@@ -48,7 +48,7 @@ jobs:
   # for trunk verification). Cheap (~30s); other jobs depend on its outputs.
   affected:
     if: github.event.pull_request.draft != true
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 15
     outputs:
       v2: ${{ steps.detect.outputs.v2 }}
@@ -69,8 +69,7 @@ jobs:
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
-    # v4-affected PRs use standard-8 for bootstrap compile headroom; script caps CI wait.
-    runs-on: ${{ needs.affected.outputs.v4 == 'true' && 'ubicloud-standard-8' || 'ubicloud-standard-2' }}
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 40
     steps:
     - name: Checkout
@@ -222,9 +221,10 @@ jobs:
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
   v2:
-    if: github.event.pull_request.draft != true && needs.affected.outputs.v2 == 'true'
+    # ARM64-PROBE: temporary branch-force to validate v2 on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v2 == 'true' || github.head_ref == 'session/merry-ibex-662')
     needs: [affected]
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 30
     steps:
     - name: Checkout
@@ -254,9 +254,10 @@ jobs:
         cargo run -p v2-compiler --bin regen_stage0 -- --verify
   # v4 — check name preserved for branch protection. Load-bearing compile runs in `ci`.
   v4:
-    if: github.event.pull_request.draft != true && needs.affected.outputs.v4 == 'true'
+    # ARM64-PROBE: temporary branch-force to validate v4 on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v4 == 'true' || github.head_ref == 'session/merry-ibex-662')
     needs: [affected, ci]
-    runs-on: ubicloud-standard-2
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 5
     steps:
     - name: v4 receipt (bootstrap gate runs in ci job)
@@ -266,9 +267,10 @@ jobs:
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).
   v3:
-    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    # ARM64-PROBE: temporary branch-force to validate v3 on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
+    if: github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'session/merry-ibex-662')
     needs: [affected]
-    runs-on: ubicloud-standard-8
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 120
     steps:
     - name: Checkout
@@ -457,8 +459,9 @@ jobs:
     - name: Banked-dissolutions ratchet
       run: scripts/check-banked-dissolutions.sh
   self_host_ratchet:
-    if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
-    runs-on: ubicloud-standard-8
+    # ARM64-PROBE: temporary branch-force to validate self_host_ratchet on srv1/srv2 before sweep merges; drop the head_ref clause before mark-ready.
+    if: ${{ always() && github.event.pull_request.draft != true && (needs.affected.outputs.v3 == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.head_ref == 'session/merry-ibex-662') }}
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
     needs:
     - affected
