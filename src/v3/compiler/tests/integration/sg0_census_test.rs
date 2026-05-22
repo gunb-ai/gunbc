@@ -836,6 +836,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
+    // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules` +
+    // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
+    // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
