@@ -8,7 +8,7 @@ module v4.extdeps.languages.machine_code
 
 
 import v4.std.algebra { fold_list }
-import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.collection { List, Map }
 import v4.std.machine { Byte }
 import v4.std.model_core {
   EffectSemanticsDecl,

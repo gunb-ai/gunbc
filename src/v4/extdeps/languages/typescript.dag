@@ -9,7 +9,7 @@
 
 module v4.extdeps.languages.typescript
 
-import v4.std.collection { List, Map, Set, empty_map, map_insert }
+import v4.std.collection { List, Map, Set }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
