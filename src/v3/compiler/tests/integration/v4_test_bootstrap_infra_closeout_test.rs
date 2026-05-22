@@ -53,12 +53,14 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
     );
     assert!(
         IDEMPOTENT_OPERATION_GENERATED_DAG.contains("testgen_emit_idempotent_operation_claim")
-            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_read_idempotent_operation_claim")
-            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_upsert_idempotent_operation_claim")
-            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_delete_idempotent_operation_claim")
-            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains(
-                "generated_idempotent_operation_sample_count_is_three"
-            ),
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_read_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_upsert_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_delete_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_idempotent_operation_sample_count_is_three"),
         "idempotent-operation generator slice must produce at least three sample TestClaim rows"
     );
     assert!(
