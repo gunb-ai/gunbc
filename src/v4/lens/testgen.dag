@@ -39,7 +39,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v4.std.algebra { FreeMonoid, Empty, Cons }
+import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
@@ -782,36 +782,31 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
 }
 
 
-// 🟡 gated — feature:witness-validity-canonical-fold-list-encoder — bind node://adhoc-620d7e77-3e8 — dissolve-on-arrival: canonical Node-valued fold_list combinator in v4.std.algebra (substrate task per openai-pro #3565 RC); forbidden: parallel hand-rolled List<T> Node encoders elsewhere in the lens lane.
+// Consumes canonical fold_list; no parallel walker authority.
 fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
-  match xs {
-    Empty =>
-      Accepted {
-        value: witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty),
-        diagnostics: None
-      }
-    Cons { head: h, tail: t } =>
-      bind_outcome(o: witness_validity_diagnostic_node(d: h), f: fn(hn) {
-        bind_outcome(o: witness_validity_diagnostic_list_node(xs: t), f: fn(tn) {
+  fold_list(
+    xs: xs,
+    empty: Accepted {
+      value: witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty),
+      diagnostics: None
+    },
+    cons: fn(acc, h) {
+      bind_outcome(o: acc, f: fn(prev_node) {
+        bind_outcome(o: witness_validity_diagnostic_node(d: h), f: fn(hn) {
           Accepted {
             value: Node {
               kind: TypeNode { connective: Conj },
               children: [
-                Edge {
-                  label: Named { name: witness_validity_list_cons_head },
-                  target: hn
-                },
-                Edge {
-                  label: Named { name: witness_validity_list_cons_tail },
-                  target: tn
-                }
+                Edge { label: Named { name: witness_validity_list_cons_head }, target: hn },
+                Edge { label: Named { name: witness_validity_list_cons_tail }, target: prev_node }
               ]
             },
             diagnostics: None
           }
         })
       })
-  }
+    }
+  )
 }
 
 
