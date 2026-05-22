@@ -447,14 +447,10 @@ fn go_unsigned_int_width_node(width: UnsignedIntWidth) -> Node {
   }
 }
 
-fn go_integer_width_node(scalar: GoScalar) -> Node {
-  match scalar {
-    SignedIntScalar { width } => go_signed_int_width_node(width: width)
-    UnsignedIntScalar { width } => go_unsigned_int_width_node(width: width)
-    FloatScalar { width } => go_signed_int_width_node(width: SignedBits8)
-    ComplexScalar { width } => go_signed_int_width_node(width: SignedBits8)
-    BoolScalar => go_signed_int_width_node(width: SignedBits8)
-    StringScalar => go_signed_int_width_node(width: SignedBits8)
+fn go_integer_width_node(width: GoIntegerWidth) -> Node {
+  match width {
+    GoSignedWidth { width } => go_signed_int_width_node(width: width)
+    GoUnsignedWidth { width } => go_unsigned_int_width_node(width: width)
   }
 }
 
@@ -490,8 +486,12 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.surface_spelling)
       ),
       go_named_edge(
-        name: go_facts_field_scalar,
-        target: go_inhabitant_atom(id: facts.surface_spelling)
+        name: go_facts_field_width,
+        target: go_integer_width_node(width: facts.width)
+      ),
+      go_named_edge(
+        name: go_facts_field_signedness,
+        target: go_int_kind_node(kind: facts.signedness)
       ),
       go_named_edge(
         name: go_facts_field_overflow,
@@ -611,11 +611,11 @@ fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> Pri
       ),
       go_primitive_axis_binding(
         axis: primitive_fact_axis_width,
-        fact: go_integer_width_node(scalar: facts.scalar)
+        fact: go_integer_width_node(width: facts.width)
       ),
       go_primitive_axis_binding(
         axis: primitive_fact_axis_signedness,
-        fact: go_int_kind_node(kind: go_int_kind_from_scalar(scalar: facts.scalar))
+        fact: go_int_kind_node(kind: facts.signedness)
       ),
       go_primitive_axis_binding(
         axis: primitive_fact_axis_overflow_disposition,
