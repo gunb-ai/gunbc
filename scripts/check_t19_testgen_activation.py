@@ -20,7 +20,8 @@ TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 EFFECTS = ROOT / "src/v4/std/effects.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
-<<<<<<< HEAD
+GENERATOR_WISHLIST = ROOT / "src/v4/test/claim/generated/testgen_category_wishlist.dag"
+ALGEBRA_GENERATED = ROOT / "src/v4/test/claim/generated/algebra_law_conformance.dag"
 COPRODUCT_EXHAUSTIVENESS_GENERATED = (
     ROOT / "src/v4/test/claim/generated/coproduct_exhaustiveness.dag"
 )
@@ -29,9 +30,6 @@ REFINEMENT_MANIFEST = ROOT / "src/v4/test/claim/generated/refinement_preservatio
 IDEMPOTENT_OPERATION_GENERATED = (
     ROOT / "src/v4/test/claim/generated/idempotent_operation_conformance.dag"
 )
-=======
-GENERATOR_WISHLIST = ROOT / "src/v4/test/claim/generated/testgen_category_wishlist.dag"
->>>>>>> 36c3a3f89f (WIP: Generative TestClaim categories lane — formalize wishlist + dispatch non)
 VERIFICATION = ROOT / "src/v4/std/verification.dag"
 
 
@@ -51,34 +49,30 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 
 
 def main() -> None:
-<<<<<<< HEAD
     for path in (
         TESTGEN,
         COPRODUCT_EXHAUSTIVENESS_GENERATED,
         EFFECTS,
         LBE_GENERATED,
         LBE_MANIFEST,
+        GENERATOR_WISHLIST,
+        ALGEBRA_GENERATED,
         REFINEMENT_GENERATED,
         REFINEMENT_MANIFEST,
         IDEMPOTENT_OPERATION_GENERATED,
         VERIFICATION,
     ):
-=======
-    for path in (TESTGEN, LBE_GENERATED, LBE_MANIFEST, GENERATOR_WISHLIST, VERIFICATION):
->>>>>>> 36c3a3f89f (WIP: Generative TestClaim categories lane — formalize wishlist + dispatch non)
         _require(path)
 
     testgen = _read(TESTGEN)
     effects = _read(EFFECTS)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
-<<<<<<< HEAD
+    wishlist = _read(GENERATOR_WISHLIST)
+    algebra = _read(ALGEBRA_GENERATED)
     coproduct_exhaustiveness = _read(COPRODUCT_EXHAUSTIVENESS_GENERATED)
     refinement = _read(REFINEMENT_GENERATED)
     refinement_manifest = _read(REFINEMENT_MANIFEST)
-=======
-    wishlist = _read(GENERATOR_WISHLIST)
->>>>>>> 36c3a3f89f (WIP: Generative TestClaim categories lane — formalize wishlist + dispatch non)
     verification = _read(VERIFICATION)
 
     _require_substrings(
@@ -90,6 +84,9 @@ def main() -> None:
             "type FrozenLanguageBehaviorSnapshot",
             "type LanguageBehaviorIoMock",
             "fn testgen_emit_language_behavior_equivalence_claim",
+            "fn testgen_emit_algebra_law_claim",
+            "if lhs == rhs",
+            "t19_algebra_law_tautological_sides",
             "fn testgen_emit_idempotent_operation_claim",
             "fn testgen_scheduled_language_behavior_generators",
             "fn testgen_scheduled_idempotent_operation_subjects",
@@ -176,7 +173,44 @@ def main() -> None:
     )
 
     _require_substrings(
-<<<<<<< HEAD
+        "testgen_category_wishlist.dag",
+        wishlist,
+        (
+            "fn testgen_pending_non_tautological_generator_wishlist",
+            "fn testgen_dispatched_non_tautological_generators",
+            "type TestgenOracleBasis",
+            "StructuralConstructionWitness",
+            "AlgebraLawWitness",
+            "DiagnosticNegativeFixture",
+            "LensObservationFixture",
+            "RoundTripDifferential",
+            "FrozenIoSnapshot",
+            "dispatch_key: Symbol",
+            "feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee",
+            "data claim_testgen_wishlist_formalized: TestClaim",
+        ),
+    )
+
+    _require_substrings(
+        "algebra_law_conformance.dag",
+        algebra,
+        (
+            "testgen_emit_algebra_law_claim",
+            "generated_nat_add_left_identity_claim",
+            "generated_nat_add_associativity_claim",
+            "generated_nat_mul_annihilator_claim",
+            "fn t19_generated_nat_add",
+            "fn t19_generated_nat_mul",
+            "lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one())",
+            "rhs: t19_generated_nat_one()",
+            "lhs: t19_generated_nat_mul(left: t19_generated_nat_zero(), right: t19_generated_nat_three())",
+            "rhs: t19_generated_nat_zero()",
+            "fn generated_algebra_law_claim_rows",
+            "length(xs: generated_algebra_law_claim_rows()) == 3",
+        ),
+    )
+
+    _require_substrings(
         "coproduct_exhaustiveness.dag",
         coproduct_exhaustiveness,
         (
@@ -232,29 +266,12 @@ def main() -> None:
             "sample_delete_subject",
             "sample_label_only_subject",
             "generated_idempotent_operation_sample_count_is_three",
-=======
-        "testgen_category_wishlist.dag",
-        wishlist,
-        (
-            "fn testgen_pending_non_tautological_generator_wishlist",
-            "fn testgen_dispatched_non_tautological_generators",
-            "type TestgenOracleBasis",
-            "StructuralConstructionWitness",
-            "AlgebraLawWitness",
-            "DiagnosticNegativeFixture",
-            "LensObservationFixture",
-            "RoundTripDifferential",
-            "FrozenIoSnapshot",
-            "dispatch_key: Symbol",
-            "data claim_testgen_wishlist_formalized: TestClaim",
->>>>>>> 36c3a3f89f (WIP: Generative TestClaim categories lane — formalize wishlist + dispatch non)
         ),
     )
 
     if "LanguageBehaviorEquivalence" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("LanguageBehaviorEquivalence must be a TestgenConcept variant, not free text only")
 
-<<<<<<< HEAD
     if "RefinementPreservation" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("RefinementPreservation must be a TestgenConcept variant, not free text only")
 
@@ -262,6 +279,21 @@ def main() -> None:
         raise SystemExit(
             "IdempotentOperationSubject must stay outside the closed seven-way TestgenConcept coproduct"
         )
+
+    pending_rows = wishlist.split("fn testgen_pending_non_tautological_generator_wishlist")[1].split(
+        "fn testgen_dispatched_non_tautological_generators"
+    )[0]
+    if pending_rows.count("TestgenWishlistRow {") != 5:
+        raise SystemExit("generator wishlist must carry exactly five pending non-LBE rows")
+
+    dispatched_rows = wishlist.split("fn testgen_dispatched_non_tautological_generators")[1].split(
+        "fn pending_non_tautological_generator_count_is_five"
+    )[0]
+    if dispatched_rows.count("TestgenWishlistRow {") != 1:
+        raise SystemExit("generator wishlist must carry exactly one dispatched LBE row")
+
+    if algebra.count("data generated_nat_") < 3:
+        raise SystemExit("algebra-law generator must produce at least three sample TestClaim rows")
 
     _require_substrings(
         "effects.dag",
@@ -289,23 +321,9 @@ def main() -> None:
 
     print(
         "OK: T-19 testgen activation "
-        "(LBE + refinement-preservation + idempotent-operation + coproduct-exhaustiveness generated receipts)."
+        "(LBE + algebra-law + refinement-preservation + idempotent-operation + "
+        "coproduct-exhaustiveness generated receipts)."
     )
-=======
-    pending_rows = wishlist.split("fn testgen_pending_non_tautological_generator_wishlist")[1].split(
-        "fn testgen_dispatched_non_tautological_generators"
-    )[0]
-    if pending_rows.count("TestgenWishlistRow {") != 5:
-        raise SystemExit("generator wishlist must carry exactly five pending non-LBE rows")
-
-    dispatched_rows = wishlist.split("fn testgen_dispatched_non_tautological_generators")[1].split(
-        "fn pending_non_tautological_generator_count_is_five"
-    )[0]
-    if dispatched_rows.count("TestgenWishlistRow {") != 1:
-        raise SystemExit("generator wishlist must carry exactly one dispatched LBE row")
-
-    print("OK: T-19 testgen activation (LBE sixth category + generated runner receipts + generator wishlist).")
->>>>>>> 36c3a3f89f (WIP: Generative TestClaim categories lane — formalize wishlist + dispatch non)
 
 
 if __name__ == "__main__":
