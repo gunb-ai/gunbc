@@ -124,7 +124,7 @@ def main() -> None:
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
             "type TestClaimCoproductVariant",
-            "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lens-testgendag--producer-of-testclaim-corpus-from-substrate",
+            "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
             "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
             "T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
             "T19ManualRefinementNonEmptyListBase",

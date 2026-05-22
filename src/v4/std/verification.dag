@@ -103,9 +103,9 @@ type T19ManualAnchorKey
 
 
 // RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
-// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lens-testgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
 type TestClaimCoproductVariant
-// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lens-testgendag--producer-of-testclaim-corpus-from-substrate
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
   = TestClaimCompilesClaimVariant
   | TestClaimDiagnosticClaimVariant
   | TestClaimEqualsClaimVariant
