@@ -154,7 +154,8 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
-        TESTGEN_DAG.contains("omitted_variant: TestClaimCoproductVariant")
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_input(anchor: T19GeneratedAnchorKey) -> Node")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: T19GeneratedAnchorKey) -> TestClaimCoproductVariant")
             && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(")
             && TESTGEN_DAG.contains("anchor: anchor")
             && TESTGEN_DAG.contains("at: node_locus(node: input)")
