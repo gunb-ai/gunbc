@@ -162,6 +162,9 @@ jobs:
     - name: T-15 v4 bin main.dag smoke (live integration receipt)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.v3 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
       run: cargo test -p v3-compiler --test integration v4_bin_main_dag_smoke_test::v4_bin_main_dag_tokenizes_and_parses_with_trampoline_source_anchor -- --exact --quiet
+    - name: Lens-CI registry activation smoke
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      run: cargo test -p v3-compiler --test integration v4_lens_registry_dag_smoke_test -- --quiet
     # v4 bootstrap viability — standalone `v4` jobs hit a ~5m Ubicloud shutdown mid-emit;
     # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a
     # receipt-only stub so required check names stay stable (see main ci.yml commentary).
@@ -180,6 +183,17 @@ jobs:
     - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       run: bash scripts/v4-mvp1-e2e-gate.sh
+    - name: Lens-CI registry semantic v4 compile (rust target)
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: |
+        set -euo pipefail
+        entry_root="${RUNNER_TEMP}/v4-lens-ci-entry"
+        deps_root="${RUNNER_TEMP}/v4-lens-ci-deps"
+        mkdir -p "${entry_root}/v4/workflow" "${deps_root}"
+        cp src/v4/workflow/ci.dag "${entry_root}/v4/workflow/ci.dag"
+        cp -R src/v4/. "${deps_root}/"
+        rm "${deps_root}/workflow/ci.dag"
+        target/release/v2-compiler compile --source-root "${entry_root}" --source-root "${deps_root}" --output-dir "${RUNNER_TEMP}/v4-lens-ci-rust" --target rust
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile
