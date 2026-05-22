@@ -18,8 +18,9 @@
 //         input L1.13.b consumes), (b) at least one Practice-11-parameterized
 //         dissolution shape landing as the migration target. Until those
 //         dependencies land, the lens's `verdict` is Unrealized for every fn
-//         in the corpus and `fire` returns the empty FactSet — the substrate
-//         row exists so consumers (registry, coverage, subsumption) can
+//         in the corpus and `table_decision_tree_fact_for_fn` returns the
+//         carrier with that verdict — the substrate row exists so consumers
+//         (registry, coverage, subsumption) can
 //         reference it as a typed authority rather than a prose pointer.
 //         See L1.13.b (`decision_tree_collapse`) for the parallel sub-signature
 //         that generalizes parent L1.13 to non-`match` source forms.
@@ -40,10 +41,10 @@ type TableDecisionTreePattern
 
 
 // 🟢 verdict — fail-closed default; the lens NEVER fires until the producer-
-// stage dependency (decision_tree_shape) lands. The Realized variant carries
-// the migration target (which substrate carrier the function should dissolve
-// to) — reviewer overrides the pattern at the candidate-Diff stage, the lens
-// supplies the default inference.
+// stage dependency (decision_tree_shape) lands. The `TableDissolves` variant
+// carries the migration target (which substrate carrier the function should
+// dissolve to) — reviewer overrides the pattern at the candidate-Diff stage,
+// the lens supplies the default inference.
 type TableDecisionTreeVerdict
   = Unrealized                    // producer-stage `decision_tree_shape` not available for this locus.
   | NotATable                     // decision-tree present but escape clause fires (structural divergence / partial table / open vocabulary / non-table dispatch).
