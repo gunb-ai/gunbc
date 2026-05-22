@@ -54,9 +54,6 @@ type CiPipeline {
 }
 
 type LensCiLiveWorkflowSignal {
-  signal: Symbol
-  execution_job: Symbol
-  required_lenses: List<LensIdV0>
   smoke_step_name: String
   semantic_step_name: String
   semantic_target: String
@@ -78,9 +75,6 @@ data lens_ci_required_lenses: List<LensIdV0> = [
 ]
 
 data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
-  signal: lens_ci_registry_signal
-  execution_job: lens_ci_registry_execution
-  required_lenses: lens_ci_required_lenses
   smoke_step_name: "Lens-CI registry activation smoke"
   semantic_step_name: "Lens-CI registry semantic v4 compile (rust target)"
   semantic_target: "rust"
