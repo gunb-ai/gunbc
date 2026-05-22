@@ -639,17 +639,6 @@ fn parse_module(source: &str, file: &str) -> SurfaceModule {
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
 }
 
-fn between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
-    let start_index = source
-        .find(start)
-        .unwrap_or_else(|| panic!("missing start marker: {start}"));
-    let tail = &source[start_index..];
-    let end_index = tail
-        .find(end)
-        .unwrap_or_else(|| panic!("missing end marker after {start}: {end}"));
-    &tail[..end_index]
-}
-
 fn type_sum<'a>(module: &'a SurfaceModule, name: &str) -> &'a [SurfaceVariant] {
     module
         .items

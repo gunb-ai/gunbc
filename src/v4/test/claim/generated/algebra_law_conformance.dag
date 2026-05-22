@@ -1,0 +1,109 @@
+// src/v4/test/claim/generated/algebra_law_conformance.dag
+// Scope: T-19 generated algebra-law TestClaim rows from Nat algebra subjects.
+// Owns: algebra-law generated sample rows via testgen_emit_algebra_law_claim.
+// Consumes: v4.lens.testgen, v4.std.nat, v4.std.verification, v4.test.claim.algebra_laws.nat_semiring.
+// Status: generated corpus — first non-LBE generator slice; execution deferred to T-22 runner bridge.
+
+module v4.test.claim.generated.algebra_law_conformance
+
+
+import v4.lens.testgen {
+  testgen_emit_algebra_law_claim,
+  t19_law_nat_add_left_identity,
+  t19_law_nat_add_associativity,
+  t19_law_nat_mul_annihilator
+}
+import v4.std.algebra { length }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.verification {
+  TestClaim,
+  TestClassification,
+  T19ManualNatAddAssociativity,
+  T19ManualNatAddLeftIdentity,
+  T19ManualNatMulAnnihilator,
+  Tier1,
+  Unit
+}
+import v4.test.claim.algebra_laws.nat_semiring {
+  nat_add_left_identity_input,
+  nat_add_associativity_input,
+  nat_mul_annihilator_input
+}
+import v4.std.diagnostic { Outcome }
+
+
+data algebra_law_generated_lhs_field: Symbol = algebra_law_generated_lhs_field
+data algebra_law_generated_rhs_field: Symbol = algebra_law_generated_rhs_field
+data algebra_law_generated_law_field: Symbol = algebra_law_generated_law_field
+data algebra_law_generated_source_symbol: Symbol = algebra_law_generated_source_symbol
+data algebra_law_generated_expected_symbol: Symbol = algebra_law_generated_expected_symbol
+
+
+fn algebra_law_generated_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn algebra_law_generated_side(law: Symbol, side: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: algebra_law_generated_law_field }, target: algebra_law_generated_atom(s: law) },
+      Edge { label: Named { name: algebra_law_generated_lhs_field }, target: algebra_law_generated_atom(s: side) },
+    ]
+  }
+}
+
+
+fn algebra_law_generated_expected(law_subject: Node, law: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: algebra_law_generated_law_field }, target: algebra_law_generated_atom(s: law) },
+      Edge { label: Named { name: algebra_law_generated_rhs_field }, target: law_subject },
+    ]
+  }
+}
+
+
+data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
+  anchor: T19ManualNatAddLeftIdentity,
+  label: "generated/algebra_law: Nat addition left identity",
+  lhs: algebra_law_generated_side(law: t19_law_nat_add_left_identity, side: algebra_law_generated_source_symbol),
+  rhs: algebra_law_generated_expected(law_subject: nat_add_left_identity_input, law: t19_law_nat_add_left_identity),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
+
+data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
+  anchor: T19ManualNatAddAssociativity,
+  label: "generated/algebra_law: Nat addition associativity",
+  lhs: algebra_law_generated_side(law: t19_law_nat_add_associativity, side: algebra_law_generated_source_symbol),
+  rhs: algebra_law_generated_expected(law_subject: nat_add_associativity_input, law: t19_law_nat_add_associativity),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
+
+data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
+  anchor: T19ManualNatMulAnnihilator,
+  label: "generated/algebra_law: Nat multiplication annihilator",
+  lhs: algebra_law_generated_side(law: t19_law_nat_mul_annihilator, side: algebra_law_generated_source_symbol),
+  rhs: algebra_law_generated_expected(law_subject: nat_mul_annihilator_input, law: t19_law_nat_mul_annihilator),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
+
+fn generated_algebra_law_claim_rows() -> List<Outcome<TestClaim>> {
+  [
+    generated_nat_add_left_identity_claim,
+    generated_nat_add_associativity_claim,
+    generated_nat_mul_annihilator_claim,
+  ]
+}
+
+
+fn generated_algebra_law_sample_count_is_three() -> Bool {
+  length(xs: generated_algebra_law_claim_rows()) == 3
+}
