@@ -1,14 +1,8 @@
 # Manual C1 Phase-1 Tier-3 mirror baseline capture (``tier3_baseline.json``).
 #
-# Dispatched on self-hosted arm64 srv2 (R-3 per ``docs/audit/c1-r3-canonical-bench-host-decision-matrix.md`` —
-# host class changed from `ubicloud-standard-2` to gunbc self-hosted arm64 srv2 on 2026-05-22; baselines captured on the
-# prior host class are not directly comparable, so the next baseline refresh re-establishes ground truth on the new host).
-# Pinned to srv2 specifically (srv1 has degraded DIMMs); the 5-capture matrix runs with
-# `max-parallel: 1` so each capture has the physical host to itself — that serialization
-# is what gives the captures the no-contention property R-7 expects (the old Ubicloud
-# model relied on per-matrix-entry fresh VMs; the self-hosted model relies on serialization).
-# Runs five independent bench jobs (serial on srv2 — see strategy.max-parallel), aggregates
-# per procedure §2 / R-7 via ``scripts/aggregate_tier3_baseline.py``.
+# Dispatched on `ubicloud-standard-2` (R-3 per ``docs/audit/c1-r3-canonical-bench-host-decision-matrix.md``).
+# Runs five independent bench jobs (separate VMs), aggregates per procedure §2 / R-7 via
+# ``scripts/aggregate_tier3_baseline.py``.
 #
 # **Phase-1 gate (R-7):** the canonical baseline lives in the repo tree at
 # ``src/v3/compiler/benches/tier3_baseline.json`` (merged on ``main`` before mirror dissolution PRs).
@@ -31,31 +25,15 @@ concurrency:
   group: tier3-baseline-capture-${{ github.repository }}
   cancel-in-progress: false
 
-# See `.github/workflows/ci.yml` for the per-job CARGO_HOME / RUSTUP_HOME
-# rationale — self-hosted runners on srv1/srv2 share `$HOME` across ephemeral
-# worker instances, so per-job toolchain state must live in `RUNNER_TEMP` to
-# avoid concurrent-rustup races.
-
 jobs:
   capture-run:
     strategy:
       fail-fast: false
-      # Serialize the matrix so the 5 captures don't share a physical host (srv2 only
-      # has so many cores; concurrent benches contend on memory bandwidth + scheduler,
-      # which would encode runner contention into the baseline rather than code behavior).
-      max-parallel: 1
       matrix:
         run_number: [1, 2, 3, 4, 5]
-    # Pin to srv2 specifically: srv1 has 2 dead DIMMs (degraded memory subsystem); srv2 is
-    # healthy. Baseline reproducibility wants a single known-good host class — operator
-    # can rotate to a different host explicitly via this label if needed.
-    runs-on: [self-hosted, linux, arm64, srv2]
+    runs-on: ubicloud-standard-2
     timeout-minutes: 60
     steps:
-      - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
-        run: |
-          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
-          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -64,9 +42,6 @@ jobs:
         with:
           cache: true
           rustflags: ""
-
-      - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
-        run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
 
       - name: Run tier3 mirror benchmarks
         run: cargo bench --bench tier3_mirror_perf -p v3-compiler
@@ -85,7 +60,7 @@ jobs:
 
   aggregate:
     needs: capture-run
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -112,7 +87,7 @@ jobs:
           fi
           mapfile -t sorted < <(printf '%s\n' "${bundles[@]}" | sort -V)
           python3 scripts/aggregate_tier3_baseline.py \
-            --host-id gunbc-srv2-arm64 \
+            --host-id ubicloud-standard-2 \
             --git-sha "${GITHUB_SHA}" \
             --output tier3_baseline.json \
             "${sorted[@]}"
