@@ -123,6 +123,8 @@ data kotlin_facts_field_overflow: Symbol = kotlin_facts_field_overflow
 data kotlin_facts_field_value_format: Symbol = kotlin_facts_field_value_format
 data kotlin_facts_field_representation: Symbol = kotlin_facts_field_representation
 data kotlin_facts_field_scalar_classifier: Symbol = kotlin_facts_field_scalar_classifier
+data kotlin_primitive_fact_axis_value_format: Symbol = kotlin_primitive_fact_axis_value_format
+data kotlin_primitive_fact_axis_scalar_classifier: Symbol = kotlin_primitive_fact_axis_scalar_classifier
 
 data kotlin_tag_signed: Symbol = kotlin_tag_signed
 data kotlin_tag_bits8: Symbol = kotlin_tag_bits8
@@ -469,8 +471,16 @@ fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) ->
         fact: kotlin_float_width_node(width: facts.width)
       ),
       kotlin_primitive_axis_binding(
+        axis: kotlin_primitive_fact_axis_value_format,
+        fact: kotlin_float_value_format_node(value_format: facts.value_format)
+      ),
+      kotlin_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: kotlin_runtime_representation_node(representation: facts.representation)
+      ),
+      kotlin_primitive_axis_binding(
+        axis: kotlin_primitive_fact_axis_scalar_classifier,
+        fact: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
       )
     ]
   }
@@ -489,6 +499,10 @@ fn kotlin_primitive_bundle_from_nonnumeric_facts(
       kotlin_primitive_axis_binding(
         axis: primitive_fact_axis_encoding,
         fact: kotlin_runtime_representation_node(representation: facts.representation)
+      ),
+      kotlin_primitive_axis_binding(
+        axis: kotlin_primitive_fact_axis_scalar_classifier,
+        fact: kotlin_scalar_node(scalar: kotlin_nonnumeric_as_scalar(scalar: facts.scalar))
       )
     ]
   }
