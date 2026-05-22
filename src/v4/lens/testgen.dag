@@ -433,7 +433,7 @@ fn testgen_emit_witness_validity_claim(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate,
-  witness: StructuralPropertyWitness,
+  witness: StructuralPropertyWitness
 ) -> Outcome<TestClaim> {
   match verify_witness(
     source_facts: source_facts,

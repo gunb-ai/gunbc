@@ -47,7 +47,7 @@ data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> =
     witness: StructuralPropertyWitness {
       property: preservation_rule_constraint_satisfaction,
       evidence: stub_empty_conj,
-    },
+    }
   )
 
 
@@ -65,7 +65,7 @@ data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> =
     witness: StructuralPropertyWitness {
       property: witness_validity_unrealized_rule,
       evidence: stub_empty_conj,
-    },
+    }
   )
 
 
@@ -83,7 +83,7 @@ data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> =
     witness: StructuralPropertyWitness {
       property: preservation_rule_constraint_satisfaction,
       evidence: stub_empty_disj,
-    },
+    }
   )
 
 
@@ -101,5 +101,5 @@ data row_witness_validity_rule_not_realized: Outcome<TestClaim> =
     witness: StructuralPropertyWitness {
       property: witness_validity_unrealized_rule,
       evidence: stub_empty_conj,
-    },
+    }
   )
