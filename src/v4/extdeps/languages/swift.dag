@@ -404,10 +404,10 @@ fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
 
 fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Symbol {
   match facts {
-    SwiftBoolPrimitiveFacts { surface_spelling, .. } => surface_spelling
-    SwiftCharacterPrimitiveFacts { surface_spelling, .. } => surface_spelling
-    SwiftStringPrimitiveFacts { surface_spelling, .. } => surface_spelling
-    SwiftVoidPrimitiveFacts { surface_spelling, .. } => surface_spelling
+    SwiftBoolPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+    SwiftCharacterPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+    SwiftStringPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+    SwiftVoidPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
   }
 }
 
