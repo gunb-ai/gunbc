@@ -95,6 +95,9 @@ type T19ManualAnchorKey
   | T19ManualNatMulLeftIdentity
   | T19ManualNatMulAnnihilator
   | T19ManualNatMulAssociativity
+  | T19ManualLbeConjDagSurface
+  | T19ManualLbeDisjDagSurface
+  | T19ManualLbeTransformDagSurface
   | T19ManualAnchorAbsent
 
 

@@ -14,9 +14,9 @@ import v4.std.diagnostic {
   ByteRange,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Rejected,
   Suggested,
   Textual,
@@ -117,7 +117,7 @@ data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticCl
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_complexity_reason,
-        at: NodeLocus { node: falsification_complexity_diagnostic_without_correct_code },
+        at: node_locus(node: falsification_complexity_diagnostic_without_correct_code),
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
@@ -132,7 +132,7 @@ data claim_transport_diagnostic_suggests_shared_contract: TestClaim = Diagnostic
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_transport_reason,
-        at: NodeLocus { node: falsification_transport_diagnostic_without_correct_code },
+        at: node_locus(node: falsification_transport_diagnostic_without_correct_code),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
@@ -147,7 +147,7 @@ data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim =
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_ambiguous_boundary_reason,
-        at: NodeLocus { node: falsification_ambiguous_boundary_without_unavailable_reason },
+        at: node_locus(node: falsification_ambiguous_boundary_without_unavailable_reason),
         correction: Unavailable { reason: AmbiguousIntent }
       }
     ),
@@ -192,7 +192,7 @@ data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_port_reason,
-        at: PortLocus { port: correction_port_symbol },
+        at: port_locus(port: correction_port_symbol),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
@@ -207,7 +207,7 @@ data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = 
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_external_contract_reason,
-        at: NodeLocus { node: falsification_external_contract_without_reason },
+        at: node_locus(node: falsification_external_contract_without_reason),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ),
@@ -222,7 +222,7 @@ data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = Diag
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_user_boundary_reason,
-        at: NodeLocus { node: falsification_user_boundary_without_reason },
+        at: node_locus(node: falsification_user_boundary_without_reason),
         correction: Unavailable { reason: UserInputBoundary }
       }
     ),
