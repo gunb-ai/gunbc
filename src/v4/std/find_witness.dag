@@ -16,7 +16,7 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
-  NodeLocus,
+  node_locus,
   Outcome,
   Rejected,
   Unavailable,
@@ -65,28 +65,28 @@ type MultiplicityPolicy
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_no_candidate,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_ambiguous_candidate,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_not_realized,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_invalid_witness,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
