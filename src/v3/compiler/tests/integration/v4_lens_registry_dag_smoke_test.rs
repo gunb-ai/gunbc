@@ -14,7 +14,8 @@
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceType, SurfaceVariant, VariantPayload,
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceRecordField, SurfaceType,
+    SurfaceVariant, VariantPayload,
 };
 use v3_compiler::tokenize_for_test;
 
@@ -22,6 +23,8 @@ const REGISTRY_DAG: &str = include_str!("../../../../v4/lens/registry.dag");
 const REGISTRY_PATH: &str = "src/v4/lens/registry.dag";
 const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_PATH: &str = "src/v4/workflow/ci.dag";
+const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
+const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -142,6 +145,81 @@ fn list_body_vars(body: &SurfaceExpr) -> Vec<&str> {
         .collect()
 }
 
+fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
+    let SurfaceExpr::Record { fields, .. } = body else {
+        panic!("expected record body, got {body:?}");
+    };
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+}
+
+fn expr_var_name(expr: &SurfaceExpr) -> &str {
+    match expr {
+        SurfaceExpr::Var { name, .. } => name,
+        other => panic!("expected var expr, got {other:?}"),
+    }
+}
+
+fn expr_string(expr: &SurfaceExpr) -> &str {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::String(value),
+            ..
+        } => value,
+        other => panic!("expected string literal expr, got {other:?}"),
+    }
+}
+
+fn yaml_mapping_get<'a>(
+    value: &'a serde_yaml::Value,
+    key: &str,
+    path: &str,
+) -> &'a serde_yaml::Value {
+    let mapping = value
+        .as_mapping()
+        .unwrap_or_else(|| panic!("{path}: expected YAML mapping"));
+    mapping
+        .iter()
+        .find_map(|(k, v)| (k.as_str() == Some(key)).then_some(v))
+        .unwrap_or_else(|| panic!("{path}: missing YAML key `{key}`"))
+}
+
+fn yaml_sequence<'a>(value: &'a serde_yaml::Value, path: &str) -> &'a [serde_yaml::Value] {
+    value
+        .as_sequence()
+        .unwrap_or_else(|| panic!("{path}: expected YAML sequence"))
+}
+
+fn workflow_step<'a>(
+    workflow: &'a serde_yaml::Value,
+    job: &str,
+    step_name: &str,
+) -> &'a serde_yaml::Value {
+    let jobs = yaml_mapping_get(workflow, "jobs", CI_YML_PATH);
+    let job_value = yaml_mapping_get(jobs, job, &format!("{CI_YML_PATH}:jobs"));
+    let steps = yaml_sequence(
+        yaml_mapping_get(job_value, "steps", &format!("{CI_YML_PATH}:jobs.{job}")),
+        &format!("{CI_YML_PATH}:jobs.{job}.steps"),
+    );
+    steps
+        .iter()
+        .find(|step| {
+            yaml_mapping_get(step, "name", &format!("{CI_YML_PATH}:jobs.{job}.steps"))
+                .as_str()
+                == Some(step_name)
+        })
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing `{job}` step `{step_name}`"))
+}
+
+fn workflow_step_string<'a>(step: &'a serde_yaml::Value, key: &str, step_name: &str) -> &'a str {
+    yaml_mapping_get(step, key, &format!("{CI_YML_PATH}:{step_name}"))
+        .as_str()
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}:{step_name}.{key}: expected YAML string"))
+}
+
 #[test]
 fn v4_lens_registry_dag_compiles() {
     let module = parse_module(REGISTRY_DAG, REGISTRY_PATH);
@@ -196,5 +274,48 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
     assert!(
         surface_declares_data(&module, "lens_ci_registry_signal"),
         "{CI_PATH}: Lens-CI must expose a CI gate signal"
+    );
+    let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
+    assert_eq!(
+        expr_var_name(record_body_field(live_signal, "signal")),
+        "lens_ci_registry_signal",
+        "{CI_PATH}: live workflow binding must name the modeled Lens-CI gate signal"
+    );
+    assert_eq!(
+        expr_var_name(record_body_field(live_signal, "execution_job")),
+        "lens_ci_registry_execution",
+        "{CI_PATH}: live workflow binding must name the Lens-CI registry execution job"
+    );
+    assert_eq!(
+        expr_var_name(record_body_field(live_signal, "required_lenses")),
+        "lens_ci_required_lenses",
+        "{CI_PATH}: live workflow binding must consume the modeled required-lens policy"
+    );
+
+    let workflow =
+        gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
+            .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));
+    let smoke_step_name = expr_string(record_body_field(live_signal, "smoke_step_name"));
+    let semantic_step_name = expr_string(record_body_field(live_signal, "semantic_step_name"));
+    let semantic_target = expr_string(record_body_field(live_signal, "semantic_target"));
+    let smoke_step = workflow_step(&workflow, "ci", smoke_step_name);
+    let semantic_step = workflow_step(&workflow, "ci", semantic_step_name);
+    let smoke_run = workflow_step_string(smoke_step, "run", smoke_step_name);
+    let semantic_if = workflow_step_string(semantic_step, "if", semantic_step_name);
+    let semantic_run = workflow_step_string(semantic_step, "run", semantic_step_name);
+
+    assert!(
+        smoke_run.contains("v4_lens_registry_dag_smoke_test"),
+        "{CI_YML_PATH}: `{smoke_step_name}` must execute this registry/CI binding harness"
+    );
+    assert!(
+        semantic_if.contains("needs.affected.outputs.v4 == 'true'")
+            && semantic_if.contains("needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{semantic_step_name}` must run for v4 and workflow-policy changes"
+    );
+    assert!(
+        semantic_run.contains("target/release/v2-compiler compile --source-root src/v4")
+            && semantic_run.contains(&format!("--target {semantic_target}")),
+        "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );
 }
