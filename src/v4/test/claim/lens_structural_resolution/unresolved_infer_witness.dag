@@ -35,6 +35,7 @@ import v4.std.dependency {
   DependencyView,
   dependency_binds_to_edge
 }
+import v4.std.diagnostic { node_locus }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
@@ -102,7 +103,7 @@ fn sr_infer_resolved_facts() -> InferredFacts {
 
 fn sr_infer_usage_site_witness() -> Witness<InferredFacts> {
   Violates {
-    diagnostic: infer_descent_not_derived_diagnostic(n: sr_infer_use)
+    diagnostic: infer_descent_not_derived_diagnostic(at: node_locus(node: sr_infer_use))
   }
 }
 

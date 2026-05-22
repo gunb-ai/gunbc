@@ -496,7 +496,6 @@ fn lean_primitive_fact_map_2(
   )
 }
 
-
 fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {
   match facts.scalar {
     IntScalar { kind, width } => PrimitiveFactBundle {
