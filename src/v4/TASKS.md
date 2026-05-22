@@ -124,7 +124,7 @@ second set of facts.)
 
 ```
 Substrate / extdeps fan-out:
-  T-4.5 extdeps/{process,file_system}.dag                      [needs T-3, T-25-core]
+  T-4.5 extdeps/{posix,file_system}.dag                        [needs T-3, T-25-core]
   T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core, T-26]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
@@ -173,7 +173,7 @@ Interpreter + lens dimensions (each needs T-9):
         runtime carriers plus a concrete runtime extdep; eval cannot be
         authored before the runtime carriers exist.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
-  T-13  lens/{parallelism,effect,ownership,idempotency}.dag   [needs T-9]
+  T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
          XL scope, research-tier risk)              [needs T-12 for current-complexity input]
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
@@ -546,9 +546,13 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 ---
 
-### T-13: lens/{parallelism,effect,ownership,idempotency}.dag
+### T-13: lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag
 
-**I/O**: `Node -> Witness<...>` per lens
+**I/O**: `(InferredTree, List<DependencyView>) -> Witness<...>` per lens — each
+`*_witness(tree, dependencies)` projects over `dependency_lens` output; facts at
+usage sites come from `tree.facts.lookup`, not row payload (Practice 11).
+`structural_resolution` also exports `at(tree: InferredTree)` for registry/dry-run
+entry (wires `dependency_lens(root: tree.root)` internally).
 
 **Modeling decisions per lens** (see file headers).
 
@@ -815,7 +819,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Generator<C> generic carrier shape — one lens, parameterized over substrate concept type
-- Per-substrate-kind testgen rules — closed five-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip`; names align with the type-construction / algebra-law / diagnostic-exhaustiveness / lens-applicability / bidirectional-roundtrip scheduling arms)
+- Per-substrate-kind testgen rules — closed six-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip` / `LanguageBehaviorEquivalence`; LBE pairs `TypeConstructionSubject` × target `language: Symbol` with `FrozenLanguageBehaviorSnapshot` + `LanguageBehaviorIoMock` I/O mock; generated corpus in `test/claim/generated/language_behavior_equivalence.dag` runs through `run_test_claim` / `run_test_claim_assert`; CI gate `scripts/check_t19_testgen_activation.py`)
 - **TestClaim.classification** (`TestClassification`: Tier×Layer) on every produced claim — canonical field in `std/verification.dag` (STRUCTURE §248); testgen stamps the same axes on each emitted claim as on its scheduling `Generator<C>`. Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
 - Bootstrap path: hand-authored TestClaims in `test/claim/manual/` are the contract testgen must satisfy; coverage lens (T-18) enforces produced ⊇ manual
 
@@ -1030,7 +1034,7 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 **Gap:** `PositiveInt` (PID), `NonNegativeInt` (exit code), non-empty
 `String` (paths/keys), `NonEmptyList` (`AbsolutePath`), and a general
 `where`-clause / phantom-bound on records — needed by T-4.5
-process/file_system, T-4.6 json/toml, rust.dag and others; no substrate
+posix/file_system, T-4.6 json/toml, rust.dag and others; no substrate
 exists (`integer.dag` explicitly states "no `where`-clause").
 **Disposition — SCHEDULED (operator ruling 2026-05-17; no rule-out). DECOMPOSE into core + tail:**
 - **T-25-core** — a refinement modeled as a **base type + a fail-closed
@@ -1043,7 +1047,7 @@ exists (`integer.dag` explicitly states "no `where`-clause").
   validation at a named constructor boundary. T-25-core sits **near T-3**
   (the cardinality area) and is a **hard prerequisite** of the extdeps
   tasks that ground refinement-bearing carriers — **T-4** (the per-language
-  fact-bundles, e.g. rust.dag), **T-4.5** (process/file_system — `PositiveInt`
+  fact-bundles, e.g. rust.dag), **T-4.5** (posix/file_system — `PositiveInt`
   PID, `NonNegativeInt` exit code, `NonEmptyList` `AbsolutePath`), and
   **T-4.6** (the format models — non-empty json/toml keys). Those tasks
   carry T-25-core in their `[needs]`.

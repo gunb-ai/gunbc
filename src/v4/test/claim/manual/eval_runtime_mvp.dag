@@ -8,9 +8,13 @@ module v4.test.claim.manual.eval_runtime_mvp
 
 
 import v4.compiler.eval {
+  EvalContext,
   Inputs,
+  TestClaimRun,
   eval,
-  eval_diagnostic
+  eval_diagnostic,
+  eval_test_claim_subject,
+  run_test_claim
 }
 import v4.compiler.infer {
   AlgebraRef,
@@ -28,7 +32,6 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
   None,
   Outcome,
   Rejected,
@@ -73,6 +76,7 @@ import v4.std.node {
   Atom,
   ComputationNode,
   Edge,
+  Hash,
   Named,
   Node,
   Positional,
@@ -80,6 +84,14 @@ import v4.std.node {
   Transform,
   TypeNode,
   Value
+}
+import v4.std.verification {
+  EqualsClaim,
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit
 }
 import v4.std.witness {
   Holds,
@@ -92,12 +104,16 @@ import v4.std.witness {
 data eval_mvp2_add_symbol: Symbol = eval_mvp2_add_symbol
 data eval_mvp2_left_symbol: Symbol = eval_mvp2_left_symbol
 data eval_mvp2_right_symbol: Symbol = eval_mvp2_right_symbol
+data eval_mvp2_five_symbol: Symbol = eval_mvp2_five_symbol
 data eval_mvp2_i64_symbol: Symbol = eval_mvp2_i64_symbol
 data eval_mvp2_algebra_symbol: Symbol = eval_mvp2_algebra_symbol
 data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
 data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
+// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
+data eval_mvp2_claim_hash: Hash = eval_mvp2_claim_hash
+data eval_mvp2_interpretation_hash: Hash = eval_mvp2_interpretation_hash
 
 
 fn eval_mvp2_byte() -> Byte {
@@ -131,6 +147,11 @@ fn eval_mvp2_literal_node(name: Symbol) -> Node {
       }
     ]
   }
+}
+
+
+fn eval_mvp2_five_literal_node() -> Node {
+  eval_mvp2_literal_node(name: eval_mvp2_five_symbol)
 }
 
 
@@ -179,8 +200,12 @@ fn eval_mvp2_five_value() -> RuntimeValue {
 }
 
 
-fn eval_mvp2_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  Accepted { value: eval_mvp2_two_value(), diagnostics: None }
+fn eval_mvp2_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == eval_mvp2_five_literal_node() {
+    Accepted { value: eval_mvp2_five_value(), diagnostics: None }
+  } else {
+    Accepted { value: eval_mvp2_two_value(), diagnostics: None }
+  }
 }
 
 
@@ -362,3 +387,30 @@ data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
     (p.primitive_type == eval_mvp2_i64_node()) && (count(p.bytes) == 5)
   _ => false
 }
+
+
+fn eval_mvp2_context() -> EvalContext {
+  EvalContext {
+    interpretation: eval_mvp2_interpretation_algebra()
+  }
+}
+
+
+data claim_eval_mvp2_test_claim_route: TestClaim = EqualsClaim {
+  label: "eval routes TestClaim through runtime interpretation",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: eval_mvp2_add_subgraph(),
+  rhs: eval_mvp2_five_literal_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data run_eval_mvp2_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: eval_test_claim_subject(
+    claim: claim_eval_mvp2_test_claim_route,
+    context: eval_mvp2_context(),
+    tree: eval_mvp2_inferred_tree()
+  ),
+  claim_hash: eval_mvp2_claim_hash,
+  interpretation_hash: eval_mvp2_interpretation_hash
+)

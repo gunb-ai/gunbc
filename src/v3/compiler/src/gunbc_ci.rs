@@ -233,6 +233,198 @@ pub fn select_affected_gates_for_binary_shim(
     select_affected_gates(dag, &diff)
 }
 
+/// Structural mirror of `v4.lens.subsumption.DiffId` for Lens-CI rerun evidence.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DissolutionDiffId {
+    pub id: String,
+}
+
+/// Structural mirror of `v4.lens.subsumption.TestClaimId` for Lens-CI rerun evidence.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DissolutionTestClaimId {
+    pub id: String,
+}
+
+/// Structural mirror of `v4.lens.subsumption.ProducerStageId` for Lens-CI row evidence.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DissolutionProducerStageId {
+    pub id: String,
+}
+
+impl From<&str> for DissolutionDiffId {
+    fn from(id: &str) -> Self {
+        Self { id: id.into() }
+    }
+}
+
+impl From<&str> for DissolutionTestClaimId {
+    fn from(id: &str) -> Self {
+        Self { id: id.into() }
+    }
+}
+
+impl From<&str> for DissolutionProducerStageId {
+    fn from(id: &str) -> Self {
+        Self { id: id.into() }
+    }
+}
+
+/// Structural mirror of `v4.lens.subsumption.SubsumptionVerification`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubsumptionVerificationRuntime {
+    MechanicalReverification {
+        test_claim: DissolutionTestClaimId,
+    },
+    ProducerStageDerivation {
+        derivation_path: Vec<DissolutionProducerStageId>,
+    },
+}
+
+/// Structural mirror of one `v4.lens.subsumption.DissolutionSubsumption` row.
+///
+/// `subsumed_fixes` mirrors the substrate `Set<DiffId>` shape as a
+/// concrete enumerable `BTreeSet`: the predicate-shaped substrate set is
+/// approximated by its membership extension here, so the host runtime can
+/// iterate the fix set without enumerating the universe of `DiffId`s.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DissolutionSubsumptionRuntimeRow {
+    pub root_fix: DissolutionDiffId,
+    pub subsumed_fixes: BTreeSet<DissolutionDiffId>,
+    pub verification: SubsumptionVerificationRuntime,
+}
+
+/// Source authority for the post-root-fix TestClaim report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MechanicalReverificationReportAuthority {
+    LensCiTestClaimRunner,
+}
+
+/// Typed execution status for the TestClaim rerun.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MechanicalReverificationExecution {
+    Completed {
+        report_authority: MechanicalReverificationReportAuthority,
+    },
+    Failed,
+    NotRun,
+    ReportUnavailable,
+}
+
+/// Lens-CI evidence from applying `root_fix` and rerunning the lens suite for one TestClaim row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MechanicalReverificationRun {
+    pub test_claim: DissolutionTestClaimId,
+    pub applied_root_fix: DissolutionDiffId,
+    pub execution: MechanicalReverificationExecution,
+    pub findings_before: BTreeSet<DissolutionDiffId>,
+    pub findings_after: BTreeSet<DissolutionDiffId>,
+}
+
+/// Typed fail-closed outcome for `MechanicalReverification` row validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MechanicalReverificationError {
+    NonMechanicalRow,
+    TestClaimMismatch {
+        expected: DissolutionTestClaimId,
+        observed: DissolutionTestClaimId,
+    },
+    RootFixMismatch {
+        expected: DissolutionDiffId,
+        observed: DissolutionDiffId,
+    },
+    TestClaimExecutionNotAuthoritative {
+        execution: MechanicalReverificationExecution,
+    },
+    SubsumedFixMissingBefore {
+        fix: DissolutionDiffId,
+    },
+    SubsumedFixStillPresentAfter {
+        fix: DissolutionDiffId,
+    },
+}
+
+/// Verdict emitted by the Lens-CI `MechanicalReverification` runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MechanicalReverificationVerdict {
+    Verified,
+    NotVerified {
+        diagnostic: MechanicalReverificationError,
+    },
+    Unverifiable {
+        diagnostic: MechanicalReverificationError,
+    },
+}
+
+/// Validate a `MechanicalReverification` row against one concrete rerun.
+///
+/// This is the Lens-CI host runtime for `v4.lens.subsumption` while v4 TestClaim execution is
+/// still staged: CI supplies the observed pre/post fix sets, and this function validates the row
+/// without reading comments or diagnostic prose.
+pub fn verify_mechanical_reverification(
+    row: &DissolutionSubsumptionRuntimeRow,
+    run: &MechanicalReverificationRun,
+) -> Result<(), MechanicalReverificationError> {
+    let expected_claim = match &row.verification {
+        SubsumptionVerificationRuntime::MechanicalReverification { test_claim } => test_claim,
+        SubsumptionVerificationRuntime::ProducerStageDerivation { .. } => {
+            return Err(MechanicalReverificationError::NonMechanicalRow);
+        }
+    };
+
+    if expected_claim != &run.test_claim {
+        return Err(MechanicalReverificationError::TestClaimMismatch {
+            expected: expected_claim.clone(),
+            observed: run.test_claim.clone(),
+        });
+    }
+    if row.root_fix != run.applied_root_fix {
+        return Err(MechanicalReverificationError::RootFixMismatch {
+            expected: row.root_fix.clone(),
+            observed: run.applied_root_fix.clone(),
+        });
+    }
+    if run.execution
+        != (MechanicalReverificationExecution::Completed {
+            report_authority: MechanicalReverificationReportAuthority::LensCiTestClaimRunner,
+        })
+    {
+        return Err(
+            MechanicalReverificationError::TestClaimExecutionNotAuthoritative {
+                execution: run.execution.clone(),
+            },
+        );
+    }
+
+    for fix in row.subsumed_fixes.iter() {
+        if !run.findings_before.contains(fix) {
+            return Err(MechanicalReverificationError::SubsumedFixMissingBefore {
+                fix: fix.clone(),
+            });
+        }
+        if run.findings_after.contains(fix) {
+            return Err(
+                MechanicalReverificationError::SubsumedFixStillPresentAfter { fix: fix.clone() },
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Emit the Lens-CI verdict for one scaffolded `MechanicalReverification` rerun.
+pub fn mechanical_reverification_verdict(
+    row: &DissolutionSubsumptionRuntimeRow,
+    run: &MechanicalReverificationRun,
+) -> MechanicalReverificationVerdict {
+    match verify_mechanical_reverification(row, run) {
+        Ok(()) => MechanicalReverificationVerdict::Verified,
+        Err(err @ MechanicalReverificationError::SubsumedFixStillPresentAfter { .. }) => {
+            MechanicalReverificationVerdict::NotVerified { diagnostic: err }
+        }
+        Err(err) => MechanicalReverificationVerdict::Unverifiable { diagnostic: err },
+    }
+}
+
 fn topo_sort_subset(
     dag: &CiWorkflowDagInput,
     subset: &HashSet<&str>,
@@ -287,6 +479,18 @@ fn topo_sort_subset(
 mod tests {
     use super::*;
 
+    fn diff_id(id: &str) -> DissolutionDiffId {
+        DissolutionDiffId::from(id)
+    }
+
+    fn test_claim_id(id: &str) -> DissolutionTestClaimId {
+        DissolutionTestClaimId::from(id)
+    }
+
+    fn producer_stage_id(id: &str) -> DissolutionProducerStageId {
+        DissolutionProducerStageId::from(id)
+    }
+
     fn demo_ci_dag() -> CiWorkflowDagInput {
         CiWorkflowDagInput {
             gates: vec![
@@ -313,6 +517,43 @@ mod tests {
                 ("lint".into(), "l1-ratchet".into()),
                 ("tests".into(), "l1-ratchet".into()),
             ],
+        }
+    }
+
+    fn demo_mechanical_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
+        DissolutionSubsumptionRuntimeRow {
+            root_fix: diff_id("demo_mechanical_root_fix"),
+            subsumed_fixes: BTreeSet::from([
+                diff_id("demo_mechanical_leaf_fix_a"),
+                diff_id("demo_mechanical_leaf_fix_b"),
+                diff_id("demo_mechanical_leaf_fix_c"),
+            ]),
+            verification: SubsumptionVerificationRuntime::MechanicalReverification {
+                test_claim: test_claim_id("demo_mechanical_reverification_claim"),
+            },
+        }
+    }
+
+    fn demo_producer_stage_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
+        DissolutionSubsumptionRuntimeRow {
+            root_fix: diff_id("demo_producer_stage_root_fix"),
+            subsumed_fixes: BTreeSet::from([diff_id("demo_producer_stage_leaf_fix")]),
+            verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
+                derivation_path: vec![producer_stage_id("demo_producer_stage")],
+            },
+        }
+    }
+
+    fn successful_demo_reverification() -> MechanicalReverificationRun {
+        let row = demo_mechanical_subsumption_row_fixture();
+        MechanicalReverificationRun {
+            test_claim: test_claim_id("demo_mechanical_reverification_claim"),
+            applied_root_fix: diff_id("demo_mechanical_root_fix"),
+            execution: MechanicalReverificationExecution::Completed {
+                report_authority: MechanicalReverificationReportAuthority::LensCiTestClaimRunner,
+            },
+            findings_before: row.subsumed_fixes.clone(),
+            findings_after: BTreeSet::new(),
         }
     }
 
@@ -547,6 +788,157 @@ mod tests {
         assert_eq!(
             select_affected_gates_for_binary_shim(&dag, &receipt),
             Ok(Vec::new())
+        );
+    }
+
+    #[test]
+    fn mechanical_row_fixture_uses_nominal_runtime_ids() {
+        let row = demo_mechanical_subsumption_row_fixture();
+        let SubsumptionVerificationRuntime::MechanicalReverification { test_claim } =
+            &row.verification
+        else {
+            panic!("demo subsumption row must use MechanicalReverification");
+        };
+        assert_eq!(
+            test_claim,
+            &test_claim_id("demo_mechanical_reverification_claim")
+        );
+        assert!(row
+            .subsumed_fixes
+            .contains(&diff_id("demo_mechanical_leaf_fix_a")));
+        assert_eq!(row.subsumed_fixes.len(), 3);
+    }
+
+    #[test]
+    fn producer_stage_rows_preserve_derivation_path() {
+        let row = demo_producer_stage_subsumption_row_fixture();
+        assert_eq!(
+            row.verification,
+            SubsumptionVerificationRuntime::ProducerStageDerivation {
+                derivation_path: vec![producer_stage_id("demo_producer_stage")]
+            }
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_accepts_when_subsumed_fixes_clear() {
+        let row = demo_mechanical_subsumption_row_fixture();
+        let run = successful_demo_reverification();
+        assert_eq!(verify_mechanical_reverification(&row, &run), Ok(()));
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::Verified
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_surviving_subsumed_fix() {
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut run = successful_demo_reverification();
+        run.findings_after
+            .insert(diff_id("demo_mechanical_leaf_fix_a"));
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(
+                MechanicalReverificationError::SubsumedFixStillPresentAfter {
+                    fix: diff_id("demo_mechanical_leaf_fix_a")
+                }
+            )
+        );
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::NotVerified {
+                diagnostic: MechanicalReverificationError::SubsumedFixStillPresentAfter {
+                    fix: diff_id("demo_mechanical_leaf_fix_a")
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_unobserved_subsumed_fix() {
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut run = successful_demo_reverification();
+        run.findings_before
+            .remove(&diff_id("demo_mechanical_leaf_fix_c"));
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(MechanicalReverificationError::SubsumedFixMissingBefore {
+                fix: diff_id("demo_mechanical_leaf_fix_c")
+            })
+        );
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::Unverifiable {
+                diagnostic: MechanicalReverificationError::SubsumedFixMissingBefore {
+                    fix: diff_id("demo_mechanical_leaf_fix_c")
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_unexecuted_claim() {
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut run = successful_demo_reverification();
+        run.execution = MechanicalReverificationExecution::NotRun;
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(
+                MechanicalReverificationError::TestClaimExecutionNotAuthoritative {
+                    execution: MechanicalReverificationExecution::NotRun
+                }
+            )
+        );
+        assert_eq!(
+            mechanical_reverification_verdict(&row, &run),
+            MechanicalReverificationVerdict::Unverifiable {
+                diagnostic: MechanicalReverificationError::TestClaimExecutionNotAuthoritative {
+                    execution: MechanicalReverificationExecution::NotRun
+                }
+            }
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_wrong_claim_or_root() {
+        let row = demo_mechanical_subsumption_row_fixture();
+        let mut wrong_claim = successful_demo_reverification();
+        wrong_claim.test_claim = test_claim_id("other_claim");
+        assert_eq!(
+            verify_mechanical_reverification(&row, &wrong_claim),
+            Err(MechanicalReverificationError::TestClaimMismatch {
+                expected: test_claim_id("demo_mechanical_reverification_claim"),
+                observed: test_claim_id("other_claim"),
+            })
+        );
+
+        let mut wrong_root = successful_demo_reverification();
+        wrong_root.applied_root_fix = diff_id("other_root");
+        assert_eq!(
+            verify_mechanical_reverification(&row, &wrong_root),
+            Err(MechanicalReverificationError::RootFixMismatch {
+                expected: diff_id("demo_mechanical_root_fix"),
+                observed: diff_id("other_root"),
+            })
+        );
+    }
+
+    #[test]
+    fn mechanical_reverification_rejects_producer_stage_rows() {
+        let row = demo_producer_stage_subsumption_row_fixture();
+        let run = MechanicalReverificationRun {
+            test_claim: test_claim_id("demo_producer_stage_claim"),
+            applied_root_fix: diff_id("demo_producer_stage_root_fix"),
+            execution: MechanicalReverificationExecution::Completed {
+                report_authority: MechanicalReverificationReportAuthority::LensCiTestClaimRunner,
+            },
+            findings_before: BTreeSet::from([diff_id("demo_producer_stage_leaf_fix")]),
+            findings_after: BTreeSet::new(),
+        };
+        assert_eq!(
+            verify_mechanical_reverification(&row, &run),
+            Err(MechanicalReverificationError::NonMechanicalRow)
         );
     }
 }

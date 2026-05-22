@@ -32,6 +32,40 @@ const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
+const LBE_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
+const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+
+#[test]
+fn t19_language_behavior_equivalence_generated_claims_parse() {
+    parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
+    assert!(
+        LBE_GENERATED_DAG.contains("run_test_claim(")
+            && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
+            && LBE_GENERATED_DAG.contains("-> Outcome<TestClaim>")
+            && LBE_GENERATED_DAG.contains("Fail { actual: Rejected { diagnostics:")
+            && LBE_GENERATED_DAG.contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG.contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG.contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
+            && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("witness_lbe_transform_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("testgen_scheduled_language_behavior_generators"),
+        "generated LBE corpus must wire frozen-snapshot mocks through run_test_claim_assert and run_test_claim"
+    );
+    assert!(
+        TESTGEN_DAG.contains("LanguageBehaviorEquivalence {")
+            && TESTGEN_DAG.contains("type FrozenLanguageBehaviorSnapshot")
+            && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim")
+            && TESTGEN_DAG.contains("t19_lbe_label_conj_dag_surface"),
+        "testgen lens must emit LBE claims with frozen snapshot + I/O mock carriers"
+    );
+}
 
 #[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
@@ -64,6 +98,19 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
             && EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
         "RoundTripClaim eval authority must stay Deferred (single authority; verification must not synthesize expected Outcome<Node>)"
     );
+    assert!(
+        !EVAL_DAG.contains("Accepted { value: inputs.root"),
+        "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
+    );
+    assert!(
+        EVAL_DAG.contains("eval_node_unrealized"),
+        "eval_node must surface an explicit unrealized-eval diagnostic until eval's Outcome<RuntimeValue> projects to Outcome<Node>"
+    );
+    assert!(
+        EVAL_DAG.contains("nd.head.reason == eval_node_unrealized")
+            && EVAL_DAG.contains("Deferred { actual: actual, diagnostic: nd.head }"),
+        "run_test_claim_assert must short-circuit to Verdict.Deferred when actual is Rejected with eval_node_unrealized — across ALL TestClaim variants — so CompilesClaim/EqualsClaim can't Pass and DiagnosticClaim can't trivially-match the unrealized signal"
+    );
 }
 
 #[test]
@@ -78,8 +125,9 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
             "DiagnosticExhaustiveness",
             "LensApplicability",
             "BidirectionalRoundtrip",
+            "LanguageBehaviorEquivalence",
         ]),
-        "T-19 scheduling arms must stay the closed five-way set from TASKS.md"
+        "T-19 scheduling arms must stay the closed six-way set (LBE activation)"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "Generator")),

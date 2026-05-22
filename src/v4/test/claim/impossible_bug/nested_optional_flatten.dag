@@ -24,7 +24,7 @@ module v4.test.claim.impossible_bug.nested_optional_flatten
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
-  NodeLocus,
+  node_locus,
   None,
   Outcome,
   Rejected,
@@ -101,7 +101,7 @@ data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: double_unwrap_reason,
-        at: NodeLocus { node: falsification_optional_double_unwrap },
+        at: node_locus(node: falsification_optional_double_unwrap),
         correction: Suggested { node: flattened_optional_input }
       }
     ),
@@ -116,7 +116,7 @@ data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: nested_optional_reason,
-        at: NodeLocus { node: falsification_nested_optional },
+        at: node_locus(node: falsification_nested_optional),
         correction: Suggested { node: flattened_optional_input }
       }
     ),
