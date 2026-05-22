@@ -45,7 +45,7 @@ fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
 
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness {} }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
   }
@@ -56,7 +56,7 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: claim, diagnostics: _ } =>
       match test_claim_t19_anchor(c: claim) {
-        T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness } => true
+        T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness {} } => true
         _ => false
       }
     Rejected { diagnostics: _ } => false

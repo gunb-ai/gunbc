@@ -566,7 +566,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   Accepted {
     value: DiagnosticClaim {
       label: t19_coproduct_exhaustiveness_label,
-      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness),
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {}),
       input: input,
       expected_rejection: diagnostics_singleton(
         d: coproduct_exhaustiveness_diagnostic(subject: subject, input: input)
@@ -582,7 +582,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   [
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness),
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness {}),
       slot: DiagnosticExhaustiveness {
         subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
       },
@@ -762,7 +762,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness } =>
+    T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness {} } =>
       Accepted {
         value: DiagnosticExhaustiveness {
           subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
