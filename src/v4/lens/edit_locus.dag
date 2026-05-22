@@ -12,8 +12,8 @@ module v4.lens.edit_locus
 import v4.compiler.infer { InferredTree }
 import v4.lens.affected_set { AffectedSetReading, affected_set }
 import v4.std.artifact { Artifact, NodeArtifactProvenance }
-import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, fold_list, length }
-import v4.std.collection { List }
+import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, length }
+import v4.std.collection { List, list_snoc_item }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -86,9 +86,9 @@ fn node_eq(left: Node, right: Node) -> Bool {
 }
 
 
-fn push_locus_if_absent(acc: List<Node>, locus: Node) -> List<Node> {
+fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> {
   if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
-    list_push(acc, locus)
+    list_snoc_item(xs: acc, item: locus)
   } else {
     acc
   }
@@ -98,63 +98,108 @@ fn push_locus_if_absent(acc: List<Node>, locus: Node) -> List<Node> {
 fn loci_from_bindings_for_path(
   read: EditLocusRead,
   changed: RepoPath,
-  bindings: List<EditLocusBinding>,
-  acc: List<Node>
-) -> List<Node> {
-  fold_list(xs: bindings, empty: acc, cons: fn(acc2, binding) {
-    if read.path_regex_matches(changed: changed, pattern: binding.pattern) {
-      push_locus_if_absent(acc: acc2, locus: binding.locus)
-    } else {
-      acc2
-    }
-  })
+  bindings: FreeMonoid<EditLocusBinding>,
+  acc: FreeMonoid<Node>
+) -> FreeMonoid<Node> {
+  match bindings {
+    Empty => acc
+    Cons { head: binding, tail: rest } =>
+      let acc2 = if read.path_regex_matches(changed: changed, pattern: binding.pattern) {
+        push_locus_if_absent(acc: acc, locus: binding.locus)
+      } else {
+        acc
+      }
+      loci_from_bindings_for_path(
+        read: read,
+        changed: changed,
+        bindings: rest,
+        acc: acc2
+      )
+  }
 }
 
 
 fn loci_from_provenance_for_path(
   read: EditLocusRead,
   changed: RepoPath,
-  provenance: List<NodeArtifactProvenance>,
-  acc: List<Node>
-) -> List<Node> {
-  fold_list(xs: provenance, empty: acc, cons: fn(acc2, row) {
-    if read.artifact_path_matches_changed(changed: changed, file_path: row.artifact.file_path) {
-      push_locus_if_absent(acc: acc2, locus: row.node)
-    } else {
-      acc2
-    }
-  })
+  provenance: FreeMonoid<NodeArtifactProvenance>,
+  acc: FreeMonoid<Node>
+) -> FreeMonoid<Node> {
+  match provenance {
+    Empty => acc
+    Cons { head: row, tail: rest } =>
+      let acc2 = if read.artifact_path_matches_changed(
+        changed: changed,
+        file_path: row.artifact.file_path
+      ) {
+        push_locus_if_absent(acc: acc, locus: row.node)
+      } else {
+        acc
+      }
+      loci_from_provenance_for_path(
+        read: read,
+        changed: changed,
+        provenance: rest,
+        acc: acc2
+      )
+  }
 }
 
 
 fn collect_edit_loci(
   read: EditLocusRead,
   git_diff: GitDiffNameOnly,
-  bindings: List<EditLocusBinding>,
-  provenance: List<NodeArtifactProvenance>
-) -> List<Node> {
-  fold_list(xs: git_diff.changed_paths, empty: [], cons: fn(acc, changed) {
-    let with_bindings = loci_from_bindings_for_path(
-      read: read,
-      changed: changed,
-      bindings: bindings,
-      acc: acc
-    )
-    loci_from_provenance_for_path(
-      read: read,
-      changed: changed,
-      provenance: provenance,
-      acc: with_bindings
-    )
-  })
+  bindings: FreeMonoid<EditLocusBinding>,
+  provenance: FreeMonoid<NodeArtifactProvenance>
+) -> FreeMonoid<Node> {
+  collect_edit_loci_on_paths(
+    read: read,
+    changed_paths: git_diff.changed_paths,
+    bindings: bindings,
+    provenance: provenance,
+    acc: Empty
+  )
+}
+
+
+fn collect_edit_loci_on_paths(
+  read: EditLocusRead,
+  changed_paths: FreeMonoid<RepoPath>,
+  bindings: FreeMonoid<EditLocusBinding>,
+  provenance: FreeMonoid<NodeArtifactProvenance>,
+  acc: FreeMonoid<Node>
+) -> FreeMonoid<Node> {
+  match changed_paths {
+    Empty => acc
+    Cons { head: changed, tail: rest } =>
+      let with_bindings = loci_from_bindings_for_path(
+        read: read,
+        changed: changed,
+        bindings: bindings,
+        acc: acc
+      )
+      let with_provenance = loci_from_provenance_for_path(
+        read: read,
+        changed: changed,
+        provenance: provenance,
+        acc: with_bindings
+      )
+      collect_edit_loci_on_paths(
+        read: read,
+        changed_paths: rest,
+        bindings: bindings,
+        provenance: provenance,
+        acc: with_provenance
+      )
+  }
 }
 
 
 fn resolve_edit_locus(
   read: EditLocusRead,
   git_diff: GitDiffNameOnly,
-  bindings: List<EditLocusBinding>,
-  provenance: List<NodeArtifactProvenance>
+  bindings: FreeMonoid<EditLocusBinding>,
+  provenance: FreeMonoid<NodeArtifactProvenance>
 ) -> Witness<Node> {
   let loci = collect_edit_loci(
     read: read,
@@ -182,8 +227,8 @@ fn affected_set_reading_from_git_diff(
   edit_read: EditLocusRead,
   graph: InferredTree,
   git_diff: GitDiffNameOnly,
-  bindings: List<EditLocusBinding>,
-  provenance: List<NodeArtifactProvenance>
+  bindings: FreeMonoid<EditLocusBinding>,
+  provenance: FreeMonoid<NodeArtifactProvenance>
 ) -> Witness<AffectedSetReading> {
   match resolve_edit_locus(
     read: edit_read,
