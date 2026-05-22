@@ -22,7 +22,9 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceType,
+};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -214,6 +216,129 @@ fn v4_java_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_rust_integer_primitive_facts_declares_range_source_carriers() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    let fields: Vec<(String, String)> = type_record_fields(&module, "RustIntegerPrimitiveFacts")
+        .iter()
+        .map(|field| (field.name.clone(), surface_type_name(&field.ty)))
+        .collect();
+    assert_eq!(
+        fields,
+        vec![
+            ("surface_spelling".to_string(), "Symbol".to_string()),
+            ("signedness".to_string(), "RustIntKind".to_string()),
+            ("width".to_string(), "RustIntWidth".to_string()),
+            ("range_min".to_string(), "RustIntegerRangeBound".to_string()),
+            ("range_max".to_string(), "RustIntegerRangeBound".to_string()),
+            ("overflow_release".to_string(), "OverflowAction".to_string()),
+            ("std_projection".to_string(), "Symbol".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: RustIntegerPrimitiveFacts must carry declared range source facts before downstream axis binding"
+    );
+}
+
+#[test]
+fn v4_rust_integer_primitive_rows_populate_range_bounds() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    for (row, min, max) in [
+        ("rust_facts_i8", "rust_range_min_i8", "rust_range_max_i8"),
+        (
+            "rust_facts_i128",
+            "rust_range_min_i128",
+            "rust_range_max_i128",
+        ),
+        ("rust_facts_u64", "rust_range_min_u64", "rust_range_max_u64"),
+        (
+            "rust_facts_u128",
+            "rust_range_min_u128",
+            "rust_range_max_u128",
+        ),
+        (
+            "rust_facts_isize",
+            "rust_range_min_isize",
+            "rust_range_max_isize",
+        ),
+        (
+            "rust_facts_usize",
+            "rust_range_min_usize",
+            "rust_range_max_usize",
+        ),
+    ] {
+        let expr = data_expr(&module, row);
+        assert_eq!(
+            record_field_var(expr, "range_min"),
+            Some(min),
+            "{RUST_LANGUAGE_PATH}: {row}.range_min must point at the declared Rust Reference bound carrier"
+        );
+        assert_eq!(
+            record_field_var(expr, "range_max"),
+            Some(max),
+            "{RUST_LANGUAGE_PATH}: {row}.range_max must point at the declared Rust Reference bound carrier"
+        );
+    }
+}
+
+#[test]
+fn v4_rust_integer_range_bounds_carry_reference_values() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert!(
+        surface_declares_type(&module, "RustIntegerRangeBound"),
+        "{RUST_LANGUAGE_PATH}: Rust integer ranges must be modeled as value-carrying facts, not bare Symbols"
+    );
+    for (bound, value) in [
+        ("rust_range_min_i8", "-128"),
+        ("rust_range_max_i8", "127"),
+        (
+            "rust_range_min_i128",
+            "-170141183460469231731687303715884105728",
+        ),
+        (
+            "rust_range_max_i128",
+            "170141183460469231731687303715884105727",
+        ),
+        ("rust_range_min_u64", "0"),
+        ("rust_range_max_u64", "18446744073709551615"),
+        ("rust_range_min_u128", "0"),
+        (
+            "rust_range_max_u128",
+            "340282366920938463463374607431768211455",
+        ),
+        ("rust_range_min_isize", "pointer_width_signed_min"),
+        ("rust_range_max_isize", "pointer_width_signed_max"),
+        ("rust_range_min_usize", "0"),
+        ("rust_range_max_usize", "pointer_width_unsigned_max"),
+    ] {
+        let expr = data_expr(&module, bound);
+        assert_eq!(
+            record_field_string(expr, "value"),
+            Some(value),
+            "{RUST_LANGUAGE_PATH}: range bound `{bound}` must carry the Rust Reference value, not only an opaque label"
+        );
+    }
+}
+
+#[test]
+fn v4_rust_integer_fact_bundle_binds_range_axis() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "primitive_fact_axis_range"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust integer primitive bundles must import the canonical range axis"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_integer_range_node"),
+        "{RUST_LANGUAGE_PATH}: range axis must bind a dedicated range fact node, not reuse width/signedness heuristics"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_primitive_bundle_from_integer_facts"),
+        "{RUST_LANGUAGE_PATH}: integer primitive bundles must remain the producer for axis-keyed facts"
+    );
+}
+
+#[test]
 fn v4_mvp1_rust_add_claim_tokenizes_and_parses() {
     let _module = parse_module(MVP1_CLAIM_DAG, MVP1_CLAIM_PATH);
 }
@@ -308,4 +433,94 @@ fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, nam
         } => item_name == name,
         _ => false,
     })
+}
+
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record {name}"))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered = args
+                .iter()
+                .map(|arg| match arg {
+                    v3_compiler::parse_surface::TypeAngleArg::TypeExpr { ty } => {
+                        surface_type_name(ty)
+                    }
+                    v3_compiler::parse_surface::TypeAngleArg::WidthNatLiteral {
+                        decimal, ..
+                    } => decimal.clone(),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("?{}", surface_type_name(inner)),
+        SurfaceType::Arrow { .. } => "fn".to_string(),
+    }
+}
+
+fn data_expr<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a SurfaceExpr {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(body),
+                ..
+            } if item_name == name => Some(body),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data declaration body {name}"))
+}
+
+fn record_field_var<'a>(expr: &'a SurfaceExpr, field_name: &str) -> Option<&'a str> {
+    let fields = match expr {
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
+        _ => return None,
+    };
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .and_then(|field| match &field.value {
+            SurfaceExpr::Var { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+}
+
+fn record_field_string<'a>(expr: &'a SurfaceExpr, field_name: &str) -> Option<&'a str> {
+    let fields = match expr {
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
+        _ => return None,
+    };
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .and_then(|field| match &field.value {
+            SurfaceExpr::Literal {
+                value: SurfaceLiteral::String(value),
+                ..
+            } => Some(value.as_str()),
+            _ => None,
+        })
 }
