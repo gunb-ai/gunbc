@@ -63,7 +63,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 import v4.std.cardinality { Never }
 import v4.std.text { String }
 
@@ -973,10 +973,10 @@ fn rust_mvp1_positional_token_edge(token: RustConcreteSyntaxToken) -> Edge {
   }
 }
 
-// Order-preserving snoc: free_monoid_fold visits tail→head but cons(empty, h) builds forward order.
+// Order-preserving snoc: fold_list visits tail→head but cons(empty, h) builds forward order.
 // Compile-time list snoc for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
 fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Cons { head: item, tail: Empty },
     cons: fn(rest, existing) {
@@ -986,7 +986,7 @@ fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
 }
 
 fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: right,
     empty: left,
     cons: fn(acc, item) {
@@ -996,7 +996,7 @@ fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
 }
 
 fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_mvp1_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
@@ -1057,7 +1057,7 @@ fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token: RustConcreteSyntaxTo
 }
 
 fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  free_monoid_fold(
+  fold_list(
     xs: rust_mvp1_concrete_tokens(),
     empty: rust_grammar_terminal(token_class: rust_token_kw_fn),
     cons: fn(acc, token) {
@@ -1075,7 +1075,7 @@ fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
 }
 
 fn rust_relation_token_edges(tokens: List<RustConcreteSyntaxToken>) -> List<Edge> {
-  free_monoid_fold(
+  fold_list(
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
@@ -1237,7 +1237,7 @@ fn rust_noninteger_catalog_surface_symbol_step(
 }
 
 fn rust_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: rust_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1247,7 +1247,7 @@ fn rust_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_float_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: rust_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1257,7 +1257,7 @@ fn rust_float_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_noninteger_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1370,7 +1370,7 @@ fn rust_primitive_bundle_from_noninteger_facts(
 }
 
 fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1383,7 +1383,7 @@ fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1396,7 +1396,7 @@ fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {

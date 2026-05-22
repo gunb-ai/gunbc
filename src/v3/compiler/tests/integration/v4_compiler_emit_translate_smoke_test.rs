@@ -13,7 +13,9 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-//! land in the same PR.
+//! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
+//! `v4_rust_language_model_declares_t11_translation_rules` and
+//! `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag`) in INVARIANTS.md.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -31,6 +33,8 @@ const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
 const EMIT_PATH: &str = "src/v4/compiler/05_emit.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const JAVA_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/java.dag");
+const JAVA_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/java.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
@@ -240,6 +244,27 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
     assert!(
         surface_declares_fn(&module, "rust_overflow_disposition_node"),
         "{RUST_LANGUAGE_PATH}: must materialize overflow disposition facts as a Node for primitive bundles"
+    );
+}
+
+#[test]
+fn v4_java_language_model_declares_t11_translation_rules() {
+    let module = parse_module(JAVA_LANGUAGE_DAG, JAVA_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "JavaGrammarRelationRow"),
+        "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "java_mvp1_translation_rules_node"),
+        "{JAVA_LANGUAGE_PATH}: must project MVP-1 Java translation rules into the target model"
     );
 }
 
