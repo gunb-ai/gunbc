@@ -58,8 +58,6 @@ import v4.extdeps.file_system {
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
   CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
@@ -439,7 +437,6 @@ fn testgen_emit_language_behavior_equivalence_claim(
 // expected_value at emit time; downstream eval reads the input subject and re-derives
 // it. Polarity (positive vs negative) is a function of the expected_value subtree —
 // not pre-decided by the row author — preserving the tautology-skip discipline.
-data witness_validity_subject_root: Symbol = witness_validity_subject_root
 data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
 data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
 data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
