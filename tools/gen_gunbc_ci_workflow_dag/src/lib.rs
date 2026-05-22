@@ -442,10 +442,26 @@ fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
             dag_string(s)
         ));
     }
-    match s {
-        "ubuntu-latest" => Ok("HostedRunner { label: UbuntuLatest }".to_string()),
-        _ => Ok(format!("SelfHosted {{ labels: [{}] }}", dag_string(s))),
+    // Known hosted-runner scalars: project into the `HostedRunner` carrier. The substrate
+    // `RunnerLabel` enum (`dsl/extdeps/github/actions.dag`) is the authority on which arms
+    // exist; today only `UbuntuLatest` is exercised by gunbc's CI, so that's the only arm
+    // wired up here. Any other hosted-family scalar (`ubuntu-24.04`, `macos-latest`,
+    // `windows-latest`, `ubicloud-*`) falls through to the fail-closed branch below — that's
+    // the same discipline the sequence path enforces, applied symmetrically to scalars.
+    if s == "ubuntu-latest" {
+        return Ok("HostedRunner { label: UbuntuLatest }".to_string());
     }
+    if is_hosted_runner_label(s) {
+        return Err(format!(
+            "runs-on scalar `{s}` is a hosted-runner-family label (`ubuntu-*`, `macos-*`, \
+             `windows-*`, `ubicloud-*`) but is not modeled — gen_gunbc_ci_workflow_dag only \
+             wires up the `ubuntu-latest` arm of substrate `RunnerLabel` today; extend both \
+             the enum (`dsl/extdeps/github/actions.dag`) and this match before using `{s}` \
+             in ci.yml"
+        )
+        .into());
+    }
+    Ok(format!("SelfHosted {{ labels: [{}] }}", dag_string(s)))
 }
 
 fn emit_needs_list(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {
