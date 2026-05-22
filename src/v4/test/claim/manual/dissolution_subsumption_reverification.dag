@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/dissolution_subsumption_reverification.dag
 // Scope: runnable TestClaim receipt for DissolutionSubsumption MechanicalReverification rows.
-// Owns: claim_rust_language_model_emit_subsumption_reverifies, run_rust_language_model_emit_subsumption_reverifies, witness_rust_language_model_emit_subsumption_passes.
+// Owns: claim_rust_language_model_emit_mechanical_reverification, verdict_rust_language_model_emit_subsumption, run_rust_language_model_emit_subsumption_reverifies.
 // Consumes: v4.compiler.eval, v4.compiler.infer, v4.lens.subsumption, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.runtime, v4.std.verification, v4.std.witness.
 // Status: manual receipt; consumes current SubsumedFixes shape until #3496 Set<DiffId> reshape lands.
 
@@ -11,6 +11,8 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimRun,
   Verdict,
+  Deferred,
+  Fail,
   Pass,
   eval_diagnostic,
   eval_test_claim_subject,
@@ -22,9 +24,12 @@ import v4.compiler.infer {
   InferredTree
 }
 import v4.lens.subsumption {
+  DiffId,
   DissolutionSubsumption,
   MechanicalReverification,
   ProducerStageDerivation,
+  SubsumedFixes,
+  TestClaimId,
   emit_rust_name_dispatch_leaf_fix,
   emit_rust_template_leaf_fix,
   rust_language_model_emit_mechanical_reverification_claim,
@@ -95,6 +100,50 @@ data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
 data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
 data subsumption_claim_hash: Hash = subsumption_claim_hash
 data subsumption_interpretation_hash: Hash = subsumption_interpretation_hash
+data mechanical_reverification_verified: Symbol = mechanical_reverification_verified
+data mechanical_reverification_not_verified: Symbol = mechanical_reverification_not_verified
+data mechanical_reverification_unverifiable: Symbol = mechanical_reverification_unverifiable
+
+
+type MechanicalReverificationReportAuthority
+  = LensCiTestClaimRunner
+  | ReportAuthorityUnavailable
+
+
+type MechanicalReverificationExecution
+  = Completed { report_authority: MechanicalReverificationReportAuthority }
+  | Failed
+  | NotRun
+  | ReportUnavailable
+
+
+type MechanicalReverificationRun {
+  test_claim: TestClaimId
+  applied_root_fix: DiffId
+  execution: MechanicalReverificationExecution
+  findings_before: SubsumedFixes
+  findings_after: List<DiffId>
+}
+
+
+type MechanicalReverificationError
+  = NonMechanicalRow
+  | TestClaimMismatch { expected: TestClaimId, observed: TestClaimId }
+  | RootFixMismatch { expected: DiffId, observed: DiffId }
+  | TestClaimExecutionNotAuthoritative { execution: MechanicalReverificationExecution }
+  | SubsumedFixMissingBefore { fix: DiffId }
+  | SubsumedFixStillPresentAfter { fix: DiffId }
+
+
+type MechanicalReverificationVerdict
+  = Verified
+  | NotVerified { diagnostic: MechanicalReverificationError }
+  | Unverifiable { diagnostic: MechanicalReverificationError }
+
+
+type OptionalDiffId
+  = DiffIdAbsent
+  | DiffIdPresent { value: DiffId }
 
 
 fn subsumption_symbol_node(s: Symbol) -> Node {
@@ -164,6 +213,120 @@ fn expected_rust_language_model_emit_receipt_node() -> Node {
         target: subsumption_symbol_node(s: rust_language_model_emit_mechanical_reverification_claim)
       }
     ]
+  }
+}
+
+
+fn completed_lens_ci_execution() -> MechanicalReverificationExecution {
+  Completed { report_authority: LensCiTestClaimRunner }
+}
+
+
+fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeValue>) -> MechanicalReverificationExecution {
+  match run.verdict {
+    Pass => completed_lens_ci_execution()
+    Fail { actual: _ } => Failed
+    Deferred { actual: _, diagnostic: _ } => ReportUnavailable
+  }
+}
+
+
+fn missing_subsumed_fix_before(expected: SubsumedFixes, observed: SubsumedFixes) -> OptionalDiffId {
+  if expected.first == observed.first {
+    match first(expected.rest) {
+      Some { value: expected_rest } =>
+        match first(observed.rest) {
+          Some { value: observed_rest } =>
+            if expected_rest == observed_rest {
+              DiffIdAbsent
+            } else {
+              DiffIdPresent { value: expected_rest }
+            }
+          None => DiffIdPresent { value: expected_rest }
+        }
+      None => DiffIdAbsent
+    }
+  } else {
+    DiffIdPresent { value: expected.first }
+  }
+}
+
+
+fn surviving_subsumed_fix_after(observed: List<DiffId>) -> OptionalDiffId {
+  match first(observed) {
+    Some { value: surviving } => DiffIdPresent { value: surviving }
+    None => DiffIdAbsent
+  }
+}
+
+
+fn mechanical_reverification_verdict(
+  row: DissolutionSubsumption,
+  run: MechanicalReverificationRun
+) -> MechanicalReverificationVerdict {
+  match row.verification {
+    MechanicalReverification { test_claim: expected_claim } =>
+      if expected_claim == run.test_claim {
+        if row.root_fix == run.applied_root_fix {
+          if run.execution == completed_lens_ci_execution() {
+            match missing_subsumed_fix_before(
+              expected: row.subsumed_fixes,
+              observed: run.findings_before
+            ) {
+              DiffIdPresent { value: missing } =>
+                Unverifiable { diagnostic: SubsumedFixMissingBefore { fix: missing } }
+              DiffIdAbsent =>
+                match surviving_subsumed_fix_after(observed: run.findings_after) {
+                  DiffIdPresent { value: surviving } =>
+                    NotVerified { diagnostic: SubsumedFixStillPresentAfter { fix: surviving } }
+                  DiffIdAbsent => Verified
+                }
+            }
+          } else {
+            Unverifiable {
+              diagnostic: TestClaimExecutionNotAuthoritative { execution: run.execution }
+            }
+          }
+        } else {
+          Unverifiable {
+            diagnostic: RootFixMismatch {
+              expected: row.root_fix,
+              observed: run.applied_root_fix
+            }
+          }
+        }
+      } else {
+        Unverifiable {
+          diagnostic: TestClaimMismatch {
+            expected: expected_claim,
+            observed: run.test_claim
+          }
+        }
+      }
+    ProducerStageDerivation { derivation_path: _ } =>
+      Unverifiable { diagnostic: NonMechanicalRow }
+  }
+}
+
+
+fn mechanical_reverification_verdict_node(v: MechanicalReverificationVerdict) -> Node {
+  match v {
+    Verified => subsumption_symbol_node(s: mechanical_reverification_verified)
+    NotVerified { diagnostic: _ } => subsumption_symbol_node(s: mechanical_reverification_not_verified)
+    Unverifiable { diagnostic: _ } => subsumption_symbol_node(s: mechanical_reverification_unverifiable)
+  }
+}
+
+
+fn rust_language_model_emit_reverification_run(
+  claim_run: TestClaimRun<Node, RuntimeValue>
+) -> MechanicalReverificationRun {
+  MechanicalReverificationRun {
+    test_claim: TestClaimId { id: rust_language_model_emit_mechanical_reverification_claim },
+    applied_root_fix: DiffId { id: rust_language_model_emit_root_fix },
+    execution: mechanical_reverification_execution_for_run(run: claim_run),
+    findings_before: rust_language_model_emit_subsumption.subsumed_fixes,
+    findings_after: []
   }
 }
 
@@ -303,8 +466,8 @@ fn subsumption_context() -> EvalContext {
 }
 
 
-data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = EqualsClaim {
-  label: "dissolution subsumption rust LanguageModel emit root mechanically reverifies",
+data claim_rust_language_model_emit_mechanical_reverification: TestClaim = EqualsClaim {
+  label: "dissolution subsumption rust LanguageModel emit row receipt",
   t19_anchor: T19ManualAnchorAbsent,
   lhs: subsumption_receipt_node(row: rust_language_model_emit_subsumption),
   rhs: expected_rust_language_model_emit_receipt_node(),
@@ -312,9 +475,9 @@ data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = EqualsCl
 }
 
 
-data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<Node, RuntimeValue> = run_test_claim(
   subject: eval_test_claim_subject(
-    claim: claim_rust_language_model_emit_subsumption_reverifies,
+    claim: claim_rust_language_model_emit_mechanical_reverification,
     context: subsumption_context(),
     tree: subsumption_inferred_tree(
       root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
@@ -325,7 +488,31 @@ data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, Run
 )
 
 
-data witness_rust_language_model_emit_subsumption_passes: Bool = match run_rust_language_model_emit_subsumption_reverifies.verdict {
-  Pass => true
-  _ => false
+data verdict_rust_language_model_emit_subsumption: MechanicalReverificationVerdict = mechanical_reverification_verdict(
+  row: rust_language_model_emit_subsumption,
+  run: rust_language_model_emit_reverification_run(
+    claim_run: run_rust_language_model_emit_mechanical_reverification_claim
+  )
+)
+
+
+data claim_rust_language_model_emit_subsumption_reverifies: TestClaim = EqualsClaim {
+  label: "dissolution subsumption rust LanguageModel emit row verifies Lens-CI verdict",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption),
+  rhs: mechanical_reverification_verdict_node(v: Verified),
+  classification: TestClassification { tier: Tier1, layer: Integration }
 }
+
+
+data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, RuntimeValue> = run_test_claim(
+  subject: eval_test_claim_subject(
+    claim: claim_rust_language_model_emit_subsumption_reverifies,
+    context: subsumption_context(),
+    tree: subsumption_inferred_tree(
+      root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
+    )
+  ),
+  claim_hash: subsumption_claim_hash,
+  interpretation_hash: subsumption_interpretation_hash
+)
