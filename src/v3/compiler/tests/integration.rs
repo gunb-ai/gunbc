@@ -65,6 +65,8 @@ mod coverage_defect_acceptance_dag_test;
 mod cross_target_coverage_carrier_test;
 #[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
 mod ctrl_pr_digests_dag_smoke_test;
+#[path = "integration/dissolution_subsumption_carrier_test.rs"]
+mod dissolution_subsumption_carrier_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
