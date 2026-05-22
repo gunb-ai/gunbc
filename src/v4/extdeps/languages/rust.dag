@@ -97,12 +97,17 @@ type RustScalar
   | UnitScalar
   | NeverScalar
 
+type RustIntegerRangeBound {
+  identity: Symbol
+  value: String
+}
+
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
   signedness: RustIntKind
   width: RustIntWidth
-  range_min: String
-  range_max: String
+  range_min: RustIntegerRangeBound
+  range_max: RustIntegerRangeBound
   overflow_release: OverflowAction
   std_projection: Symbol
 }
@@ -231,30 +236,55 @@ data rust_surface_spelling_str: Symbol = rust_surface_spelling_str
 data rust_surface_spelling_unit: Symbol = rust_surface_spelling_unit
 data rust_surface_spelling_never: Symbol = rust_surface_spelling_never
 
-data rust_range_min_i8: String = "-128"
-data rust_range_max_i8: String = "127"
-data rust_range_min_i16: String = "-32768"
-data rust_range_max_i16: String = "32767"
-data rust_range_min_i32: String = "-2147483648"
-data rust_range_max_i32: String = "2147483647"
-data rust_range_min_i64: String = "-9223372036854775808"
-data rust_range_max_i64: String = "9223372036854775807"
-data rust_range_min_i128: String = "-170141183460469231731687303715884105728"
-data rust_range_max_i128: String = "170141183460469231731687303715884105727"
-data rust_range_min_u8: String = "0"
-data rust_range_max_u8: String = "255"
-data rust_range_min_u16: String = "0"
-data rust_range_max_u16: String = "65535"
-data rust_range_min_u32: String = "0"
-data rust_range_max_u32: String = "4294967295"
-data rust_range_min_u64: String = "0"
-data rust_range_max_u64: String = "18446744073709551615"
-data rust_range_min_u128: String = "0"
-data rust_range_max_u128: String = "340282366920938463463374607431768211455"
-data rust_range_min_isize: String = "pointer_width_signed_min"
-data rust_range_max_isize: String = "pointer_width_signed_max"
-data rust_range_min_usize: String = "0"
-data rust_range_max_usize: String = "pointer_width_unsigned_max"
+data rust_range_min_i8_id: Symbol = rust_range_min_i8_id
+data rust_range_max_i8_id: Symbol = rust_range_max_i8_id
+data rust_range_min_i16_id: Symbol = rust_range_min_i16_id
+data rust_range_max_i16_id: Symbol = rust_range_max_i16_id
+data rust_range_min_i32_id: Symbol = rust_range_min_i32_id
+data rust_range_max_i32_id: Symbol = rust_range_max_i32_id
+data rust_range_min_i64_id: Symbol = rust_range_min_i64_id
+data rust_range_max_i64_id: Symbol = rust_range_max_i64_id
+data rust_range_min_i128_id: Symbol = rust_range_min_i128_id
+data rust_range_max_i128_id: Symbol = rust_range_max_i128_id
+data rust_range_min_u8_id: Symbol = rust_range_min_u8_id
+data rust_range_max_u8_id: Symbol = rust_range_max_u8_id
+data rust_range_min_u16_id: Symbol = rust_range_min_u16_id
+data rust_range_max_u16_id: Symbol = rust_range_max_u16_id
+data rust_range_min_u32_id: Symbol = rust_range_min_u32_id
+data rust_range_max_u32_id: Symbol = rust_range_max_u32_id
+data rust_range_min_u64_id: Symbol = rust_range_min_u64_id
+data rust_range_max_u64_id: Symbol = rust_range_max_u64_id
+data rust_range_min_u128_id: Symbol = rust_range_min_u128_id
+data rust_range_max_u128_id: Symbol = rust_range_max_u128_id
+data rust_range_min_isize_id: Symbol = rust_range_min_isize_id
+data rust_range_max_isize_id: Symbol = rust_range_max_isize_id
+data rust_range_min_usize_id: Symbol = rust_range_min_usize_id
+data rust_range_max_usize_id: Symbol = rust_range_max_usize_id
+
+data rust_range_min_i8: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_i8_id, value: "-128" }
+data rust_range_max_i8: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_i8_id, value: "127" }
+data rust_range_min_i16: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_i16_id, value: "-32768" }
+data rust_range_max_i16: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_i16_id, value: "32767" }
+data rust_range_min_i32: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_i32_id, value: "-2147483648" }
+data rust_range_max_i32: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_i32_id, value: "2147483647" }
+data rust_range_min_i64: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_i64_id, value: "-9223372036854775808" }
+data rust_range_max_i64: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_i64_id, value: "9223372036854775807" }
+data rust_range_min_i128: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_i128_id, value: "-170141183460469231731687303715884105728" }
+data rust_range_max_i128: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_i128_id, value: "170141183460469231731687303715884105727" }
+data rust_range_min_u8: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_u8_id, value: "0" }
+data rust_range_max_u8: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_u8_id, value: "255" }
+data rust_range_min_u16: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_u16_id, value: "0" }
+data rust_range_max_u16: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_u16_id, value: "65535" }
+data rust_range_min_u32: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_u32_id, value: "0" }
+data rust_range_max_u32: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_u32_id, value: "4294967295" }
+data rust_range_min_u64: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_u64_id, value: "0" }
+data rust_range_max_u64: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_u64_id, value: "18446744073709551615" }
+data rust_range_min_u128: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_u128_id, value: "0" }
+data rust_range_max_u128: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_u128_id, value: "340282366920938463463374607431768211455" }
+data rust_range_min_isize: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_isize_id, value: "pointer_width_signed_min" }
+data rust_range_max_isize: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_isize_id, value: "pointer_width_signed_max" }
+data rust_range_min_usize: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_min_usize_id, value: "0" }
+data rust_range_max_usize: RustIntegerRangeBound = RustIntegerRangeBound { identity: rust_range_max_usize_id, value: "pointer_width_unsigned_max" }
 
 data rust_ieee754_binary32: Symbol = rust_ieee754_binary32
 data rust_ieee754_binary64: Symbol = rust_ieee754_binary64
@@ -703,11 +733,11 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_range_min,
-        target: rust_inhabitant_atom(id: rust_facts_field_range_min)
+        target: rust_inhabitant_atom(id: facts.range_min.identity)
       ),
       rust_named_edge(
         name: rust_facts_field_range_max,
-        target: rust_inhabitant_atom(id: rust_facts_field_range_max)
+        target: rust_inhabitant_atom(id: facts.range_max.identity)
       ),
       rust_named_edge(
         name: rust_facts_field_overflow_release,
@@ -733,11 +763,11 @@ fn rust_integer_range_node(facts: RustIntegerPrimitiveFacts) -> Node {
     children: [
       rust_named_edge(
         name: rust_facts_field_range_min,
-        target: rust_inhabitant_atom(id: rust_facts_field_range_min)
+        target: rust_inhabitant_atom(id: facts.range_min.identity)
       ),
       rust_named_edge(
         name: rust_facts_field_range_max,
-        target: rust_inhabitant_atom(id: rust_facts_field_range_max)
+        target: rust_inhabitant_atom(id: facts.range_max.identity)
       )
     ]
   }
