@@ -53,7 +53,8 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
 data identity_mvp_source_atom: Symbol = identity_mvp_source_atom

@@ -442,7 +442,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Accepted {
         value: CompilesClaim {
           label: label,
-          t19_anchor: anchor,
+          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
           classification: TestClassification { tier: Tier1, layer: Unit },
@@ -453,7 +453,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Accepted {
         value: CompilesClaim {
           label: label,
-          t19_anchor: anchor,
+          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
           classification: TestClassification { tier: Tier1, layer: Unit },

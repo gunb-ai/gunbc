@@ -58,7 +58,8 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier3,
-  Boundary
+  Boundary,
+  t19_manual_claim_anchor
 }
 
 

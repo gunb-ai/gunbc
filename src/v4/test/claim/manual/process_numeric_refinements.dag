@@ -28,7 +28,8 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  T19ManualAnchorAbsent
+  T19ManualAnchorAbsent,
+  t19_manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,

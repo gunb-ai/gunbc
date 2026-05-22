@@ -33,7 +33,8 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 fn fixture_add_constraint_graph() -> ConstraintGraph {
   ConstraintGraph { root: fixture_add_resolved_tree() }

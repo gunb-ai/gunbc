@@ -44,7 +44,8 @@ import v4.std.verification {
   Unit,
   CompilesClaim,
   DiagnosticClaim,
-  EqualsClaim
+  EqualsClaim,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { Holds, Witness }
 

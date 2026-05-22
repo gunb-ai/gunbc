@@ -106,7 +106,7 @@ data falsification_nat_add_wrong_identity: Node = nat_add_law(law: nat_law_wrong
 
 
 fn accepted_claim(label: String, anchor: T19ManualAnchorKey, input: Node) -> TestClaim {
-  EqualsClaim { label: label, t19_anchor: anchor, lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
+  EqualsClaim { label: label, t19_anchor: t19_manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
   }
 }
 

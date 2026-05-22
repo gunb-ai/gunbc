@@ -18,7 +18,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data sibling_degenerate_symbol: Symbol = sibling_degenerate_symbol

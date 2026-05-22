@@ -15,7 +15,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data computation_not_type_carrier_input: Node = Node {

@@ -33,7 +33,8 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  T19ManualAnchorKey
+  T19ManualAnchorKey,
+  t19_manual_claim_anchor
 }
 import v4.std.node {
   Arrow,
@@ -118,7 +119,7 @@ data stub_bind_zero_children: Node = Node {
 fn arity_rejection_claim(label: String, input: Node, anchor: T19ManualAnchorKey) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: anchor,
+    t19_anchor: t19_manual_claim_anchor(anchor: anchor),
     input: input,
     expected_rejection: diagnostics_singleton(
       d: eval_diagnostic(reason: eval_rejected_invalid_node, node: input)

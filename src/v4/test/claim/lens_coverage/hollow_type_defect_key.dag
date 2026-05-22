@@ -20,7 +20,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data hollow_type_authority_symbol: Symbol = hollow_type_authority_symbol
