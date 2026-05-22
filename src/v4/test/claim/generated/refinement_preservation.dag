@@ -1,0 +1,110 @@
+// src/v4/test/claim/generated/refinement_preservation.dag
+// Scope: T-19 RefinementPreservation — testgen-emitted claim plus concrete refine/refined_base witness.
+// Owns: refinement_preservation_generated_nonempty_list_claim, witness_refinement_preserves_nonempty_list_base.
+// Consumes: v4.lens.testgen, v4.std.refinement, v4.std.verification, v4.test.claim.manual.connective_anchors.
+// Status: generated corpus — claim is testgen_emit output (not a parallel literal); true codegen dissolves this module.
+
+module v4.test.claim.generated.refinement_preservation
+
+
+import v4.lens.testgen {
+  RefinementPreservationSubject,
+  refinement_preservation_subject_nonempty_list_base,
+  t19_refinement_label_nonempty_list_base,
+  testgen_emit_refinement_preservation_claim
+}
+import v4.std.collection { List, non_empty }
+import v4.std.diagnostic {
+  Accepted,
+  Locus,
+  None,
+  Outcome,
+  Rejected,
+  node_locus
+}
+import v4.std.node { Node, Symbol }
+import v4.std.refinement { Refined, Validation, refine, refined_base }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualRefinementNonEmptyListBase,
+  Tier1,
+  Unit
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj
+}
+
+
+data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
+
+
+fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
+  refine(
+    base: xs,
+    by: Validation {
+      reason: refinement_preservation_empty_list_reason,
+      admits: fn(items) { non_empty(xs: items) }
+    },
+    at: at
+  )
+}
+
+
+fn nonempty_list_base_preserved_node() -> Node {
+  let original = [stub_empty_conj]
+  match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: refined, diagnostics: None } =>
+      if refined_base(r: refined) == original {
+        stub_empty_conj
+      } else {
+        stub_empty_disj
+      }
+    Rejected { diagnostics: _ } => stub_empty_disj
+  }
+}
+
+
+fn refinement_preservation_claim_from_testgen_emit(
+  subject: RefinementPreservationSubject
+) -> Outcome<TestClaim> {
+  testgen_emit_refinement_preservation_claim(
+    anchor: T19ManualRefinementNonEmptyListBase,
+    label: t19_refinement_label_nonempty_list_base,
+    subject: subject
+  )
+}
+
+
+fn refinement_preservation_generated_nonempty_list_claim() -> TestClaim {
+  match refinement_preservation_claim_from_testgen_emit(
+    subject: RefinementPreservationSubject {
+      refined_value: nonempty_list_base_preserved_node(),
+      base_value: stub_empty_conj,
+    }
+  ) {
+    Accepted { value: claim, diagnostics: None } => claim
+    Rejected { diagnostics: _ } =>
+      EqualsClaim {
+        label: t19_refinement_label_nonempty_list_base,
+        t19_anchor: T19ManualRefinementNonEmptyListBase,
+        lhs: stub_empty_disj,
+        rhs: stub_empty_conj,
+        classification: TestClassification { tier: Tier1, layer: Unit },
+      }
+  }
+}
+
+
+data claim_refinement_nonempty_list_base_preserved: TestClaim =
+  refinement_preservation_generated_nonempty_list_claim()
+
+
+data witness_refinement_preserves_nonempty_list_base: Bool =
+  nonempty_list_base_preserved_node() == stub_empty_conj
+
+
+data witness_refinement_preservation_subject_anchor: Bool =
+  refinement_preservation_subject_nonempty_list_base().base_value == stub_empty_conj

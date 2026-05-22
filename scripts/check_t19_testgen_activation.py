@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""T-19 testgen activation gate — generated LanguageBehaviorEquivalence corpus + runner receipts.
+"""T-19 testgen activation gate — generated TestClaim corpus + runner receipts.
 
-Verifies the six-way TestgenConcept arm, testgen emission helpers, and generated claim modules
+Verifies TestgenConcept arms, testgen emission helpers, and generated claim modules
 that exercise run_test_claim / run_test_claim_assert (post-T-22 eval decomposition).
 
 Run: python3 scripts/check_t19_testgen_activation.py
@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
+REFINEMENT_GENERATED = ROOT / "src/v4/test/claim/generated/refinement_preservation.dag"
+REFINEMENT_MANIFEST = ROOT / "src/v4/test/claim/generated/refinement_preservation_anchor_manifest.dag"
 VERIFICATION = ROOT / "src/v4/std/verification.dag"
 
 
@@ -37,12 +39,14 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 
 
 def main() -> None:
-    for path in (TESTGEN, LBE_GENERATED, LBE_MANIFEST, VERIFICATION):
+    for path in (TESTGEN, LBE_GENERATED, LBE_MANIFEST, REFINEMENT_GENERATED, REFINEMENT_MANIFEST, VERIFICATION):
         _require(path)
 
     testgen = _read(TESTGEN)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
+    refinement = _read(REFINEMENT_GENERATED)
+    refinement_manifest = _read(REFINEMENT_MANIFEST)
     verification = _read(VERIFICATION)
 
     _require_substrings(
@@ -59,7 +63,13 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+            "T19ManualRefinementNonEmptyListBase",
             "dag_language_model_surface_id",
+            "| RefinementPreservation { subject: RefinementPreservationSubject }",
+            "type RefinementPreservationSubject",
+            "fn testgen_emit_refinement_preservation_claim",
+            "fn refinement_preservation_subject_nonempty_list_base",
+            "t19_refinement_label_nonempty_list_base",
         ),
     )
 
@@ -70,6 +80,7 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+            "T19ManualRefinementNonEmptyListBase",
         ),
     )
 
@@ -105,10 +116,35 @@ def main() -> None:
         ),
     )
 
+    _require_substrings(
+        "refinement_preservation.dag",
+        refinement,
+        (
+            "fn refinement_preservation_claim_from_testgen_emit",
+            "-> Outcome<TestClaim>",
+            "testgen_emit_refinement_preservation_claim",
+            "RefinementPreservationSubject",
+            "refine(",
+            "refined_base(r: refined) == original",
+            "data claim_refinement_nonempty_list_base_preserved: TestClaim",
+            "witness_refinement_preserves_nonempty_list_base",
+            "T19ManualRefinementNonEmptyListBase",
+        ),
+    )
+
+    _require_substrings(
+        "refinement_preservation_anchor_manifest.dag",
+        refinement_manifest,
+        ("T19ManualRefinementNonEmptyListBase",),
+    )
+
     if "LanguageBehaviorEquivalence" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("LanguageBehaviorEquivalence must be a TestgenConcept variant, not free text only")
 
-    print("OK: T-19 testgen activation (LBE sixth category + generated runner receipts).")
+    if "RefinementPreservation" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
+        raise SystemExit("RefinementPreservation must be a TestgenConcept variant, not free text only")
+
+    print("OK: T-19 testgen activation (LBE + refinement-preservation generated receipts).")
 
 
 if __name__ == "__main__":

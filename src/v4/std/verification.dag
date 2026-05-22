@@ -98,6 +98,7 @@ type T19ManualAnchorKey
   | T19ManualLbeConjDagSurface
   | T19ManualLbeDisjDagSurface
   | T19ManualLbeTransformDagSurface
+  | T19ManualRefinementNonEmptyListBase
   | T19ManualAnchorAbsent
 
 

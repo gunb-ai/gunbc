@@ -1,0 +1,15 @@
+// src/v4/test/claim/generated/refinement_preservation_anchor_manifest.dag
+// Scope: One-row manifest for RefinementPreservation generated anchors (P2 join extension).
+// Owns: manual_anchor_refinement_nonempty_list_base row.
+// Consumes: v4.std.verification.
+
+module v4.test.claim.generated.refinement_preservation_anchor_manifest
+
+
+import v4.std.verification {
+  T19ManualAnchorKey,
+  T19ManualRefinementNonEmptyListBase
+}
+
+
+data manual_anchor_refinement_nonempty_list_base: T19ManualAnchorKey = T19ManualRefinementNonEmptyListBase
