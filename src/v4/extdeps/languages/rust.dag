@@ -41,8 +41,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -1298,123 +1300,76 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_primitive_fact_map_5(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node,
-  axis4: Symbol,
-  fact4: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(empty_map(), axis0, fact0),
-          axis1,
-          fact1
-        ),
-        axis2,
-        fact2
-      ),
-      axis3,
-      fact3
-    ),
-    axis4,
-    fact4
-  )
+fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn rust_primitive_fact_map_4(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(empty_map(), axis0, fact0),
-        axis1,
-        fact1
-      ),
-      axis2,
-      fact2
-    ),
-    axis3,
-    fact3
-  )
+fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_float_width_node(width: facts.width) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn rust_primitive_fact_map_3(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), axis0, fact0),
-      axis1,
-      fact1
-    ),
-    axis2,
-    fact2
-  )
-}
-
-fn rust_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: rust_primitive_fact_map_5(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: rust_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width),
-      axis2: primitive_fact_axis_signedness,
-      fact2: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind),
-      axis3: primitive_fact_axis_encoding,
-      fact3: rust_inhabitant_atom(id: rust_repr_integer_twos_complement),
-      axis4: primitive_fact_axis_overflow_disposition,
-      fact4: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
-    )
+    spec_facts: rust_integer_spec_facts(facts: facts)
   }
 }
 
 fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: rust_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: rust_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: rust_float_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
-      fact2: rust_inhabitant_atom(id: facts.ieee754_binary)
-    )
+    spec_facts: rust_float_spec_facts(facts: facts)
   }
 }
 
@@ -1423,12 +1378,7 @@ fn rust_primitive_bundle_from_noninteger_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: rust_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: rust_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: rust_inhabitant_atom(id: facts.representation)
-    )
+    spec_facts: rust_noninteger_spec_facts(facts: facts)
   }
 }
 
