@@ -351,13 +351,6 @@ fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) ->
 
 fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   match facts {
-<<<<<<< HEAD
-    SwiftBoolPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_bool)
-    SwiftCharacterPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_scalar_character)
-    SwiftStringPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_string)
-    SwiftVoidPrimitiveFacts { representation: _ } => swift_atom(id: swift_tag_scalar_void)
-=======
     SwiftBoolPrimitiveFacts { surface_spelling: _, representation: _ } =>
       swift_atom(id: swift_tag_scalar_bool)
     SwiftCharacterPrimitiveFacts { surface_spelling: _, representation: _ } =>
@@ -366,7 +359,6 @@ fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts)
       swift_atom(id: swift_tag_scalar_string)
     SwiftVoidPrimitiveFacts { surface_spelling: _, representation: _ } =>
       swift_atom(id: swift_tag_scalar_void)
->>>>>>> 227a377e1 (WIP: Affected-set-driven CI runner — Bazel-replacement via lens/affected_set.)
   }
 }
 
