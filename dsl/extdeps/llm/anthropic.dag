@@ -80,9 +80,9 @@ data models: List<AnthropicModelSpec> = [
 // payloads (base64 inline, URL reference, Files API `file_id`). Dissolution receipt:
 // the public Messages + vision docs document these three `source.type` values on
 // image blocks (https://platform.claude.com/docs/en/build-with-claude/vision);
-// `FileImage` is beta-gated (`files-api-2025-04-14`); `llm.Anthropic.Messages`
-// transport carries `anthropic-beta` from `anthropic_files_api_beta` so the arm
-// is emittable through the modeled service, not only as serde-shaped JSON.
+// `FileImage` is beta-gated (`files-api-2025-04-14` per `anthropic_files_api_beta`);
+// Messages transport does not yet bind that header conditionally on FileImage
+// presence — see `structural_coverage_gap_anthropic_messages_file_image_beta_header`.
 // fact placement fails because all arms bind the same `source` field on
 // `AnthropicImageBlock`; variant-is-data would demote wire coordinates into opaque
 // strings; algebraic form has no std operation/ref target beyond serde projection
@@ -357,8 +357,15 @@ data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_untagged_scalar_or_block_array",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|ImageSource.FileImage|paid:anthropic_beta_files_api_header_on_messages_transport"
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks"
+]
+
+// Honest residue: `FileImage` wire shape is modeled, but `llm.Anthropic.Messages`
+// transport cannot yet gate `anthropic-beta: files-api-2025-04-14` on FileImage
+// presence (unconditional opt-in would affect all callers). Trigger: conditional
+// transport header binding lands in the REST emitter.
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<String> = [
+  "closure:anthropic_messages_file_image|llm.Anthropic.Messages|ImageSource.FileImage|residue:anthropic_beta_not_gated_on_file_image_presence|trigger:transport emits anthropic-beta from anthropic_files_api_beta only when request messages carry FileImage"
 ]
 
 data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<String> = [
@@ -399,10 +406,7 @@ service llm.Anthropic {
       method: POST,
       path: "/v1/messages",
       body: { model: model, messages: messages, max_tokens: max_tokens, temperature: temperature, system: system },
-      headers: {
-        "anthropic-version": current_api_version.version,
-        "anthropic-beta": anthropic_files_api_beta
-      }
+      headers: { "anthropic-version": current_api_version.version }
     }
     response {
       200 => AnthropicMessages200Body
