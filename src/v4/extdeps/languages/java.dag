@@ -41,8 +41,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -62,7 +64,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, fold_list }
+import v4.std.algebra { BooleanAlgebra, fold_list, fold_list_right }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -751,10 +753,10 @@ fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxTo
 }
 
 fn java_grammar_sequence_from_token_classes() -> GrammarExpr {
-  fold_list(
+  fold_list_right(
     xs: java_mvp1_concrete_tokens(),
     empty: java_grammar_terminal(token_class: java_token_kw_static),
-    cons: fn(acc, token) {
+    snoc: fn(acc, token) {
       java_grammar_sequence_fold_step(acc: acc, token: token)
     }
   )
@@ -994,90 +996,74 @@ fn java_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn java_primitive_fact_map_4(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(empty_map(), axis0, fact0),
-        axis1,
-        fact1
-      ),
-      axis2,
-      fact2
-    ),
-    axis3,
-    fact3
-  )
+fn java_integer_spec_facts(facts: JavaIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: java_int_width_node(width: facts.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: java_int_kind_node(kind: facts.signedness) }
+        primitive_fact_axis_encoding =>
+          Holds { value: java_integer_encoding_fact(facts: facts) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn java_primitive_fact_map_3(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), axis0, fact0),
-      axis1,
-      fact1
-    ),
-    axis2,
-    fact2
-  )
+fn java_float_spec_facts(facts: JavaFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: java_float_width_node(width: facts.width) }
+        primitive_fact_axis_encoding =>
+          Holds { value: java_inhabitant_atom(id: facts.ieee754_binary) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn java_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn java_noninteger_spec_facts(facts: JavaNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: java_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: java_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn java_primitive_bundle_from_integer_facts(facts: JavaIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: java_integer_facts_node(facts: facts),
-    spec_facts: java_primitive_fact_map_4(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: java_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: java_int_width_node(width: facts.width),
-      axis2: primitive_fact_axis_signedness,
-      fact2: java_int_kind_node(kind: facts.signedness),
-      axis3: primitive_fact_axis_encoding,
-      fact3: java_integer_encoding_fact(facts: facts)
-    )
+    spec_facts: java_integer_spec_facts(facts: facts)
   }
 }
 
 fn java_primitive_bundle_from_float_facts(facts: JavaFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: java_float_facts_node(facts: facts),
-    spec_facts: java_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: java_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: java_float_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
-      fact2: java_inhabitant_atom(id: facts.ieee754_binary)
-    )
+    spec_facts: java_float_spec_facts(facts: facts)
   }
 }
 
@@ -1086,12 +1072,7 @@ fn java_primitive_bundle_from_noninteger_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: java_noninteger_facts_node(facts: facts),
-    spec_facts: java_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: java_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: java_inhabitant_atom(id: facts.representation)
-    )
+    spec_facts: java_noninteger_spec_facts(facts: facts)
   }
 }
 

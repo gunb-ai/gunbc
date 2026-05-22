@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
-// Owns: TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_facts_number, ts_facts_bigint, ts_numeric_facts_catalog, ts_bool_grounding, ts_inhabitant_atom, ts_named_edge, ts_number_arithmetic_semantics_node, ts_number_bitwise_semantics_node, ts_bigint_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_declared_inhabitants_root, ts_wave1_target_model, ts_list_snoc_item, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_primitive_fact_map_3, ts_primitive_fact_map_2, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundles_from_catalog_step, ts_wave1_primitive_fact_bundles, ts_model_core_wave1, ts_language_model_wave1
+// Owns: TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_facts_number, ts_facts_bigint, ts_numeric_facts_catalog, ts_bool_grounding, ts_inhabitant_atom, ts_named_edge, ts_number_arithmetic_semantics_node, ts_number_bitwise_semantics_node, ts_bigint_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_declared_inhabitants_root, ts_wave1_target_model, ts_list_snoc_item, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_number_spec_facts, ts_bigint_spec_facts, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundles_from_catalog_step, ts_wave1_primitive_fact_bundles, ts_model_core_wave1, ts_language_model_wave1
 // Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model.
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref — 🟡 E-6(b) staging; wave-1 lex/grammar deferred.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
@@ -17,8 +17,10 @@ import v4.std.model_core {
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.node {
   Atom,
   Conj,
@@ -29,7 +31,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, fold_list }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 
 // 🟢 grounded.
@@ -281,61 +283,53 @@ fn ts_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn ts_primitive_fact_map_3(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), axis0, fact0),
-      axis1,
-      fact1
-    ),
-    axis2,
-    fact2
-  )
+fn ts_number_spec_facts(facts: TsNumberPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: ts_inhabitant_atom(id: ts_tag_bits64) }
+        primitive_fact_axis_encoding =>
+          Holds { value: ts_inhabitant_atom(id: facts.ieee754_binary) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn ts_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn ts_bigint_spec_facts(facts: TsBigIntPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: ts_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: ts_inhabitant_atom(id: facts.encoding) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn ts_primitive_bundle_from_number_facts(facts: TsNumberPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: ts_number_facts_node(facts: facts),
-    spec_facts: ts_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: ts_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: ts_inhabitant_atom(id: ts_tag_bits64),
-      axis2: primitive_fact_axis_encoding,
-      fact2: ts_inhabitant_atom(id: facts.ieee754_binary)
-    )
+    spec_facts: ts_number_spec_facts(facts: facts)
   }
 }
 
 fn ts_primitive_bundle_from_bigint_facts(facts: TsBigIntPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: ts_bigint_facts_node(facts: facts),
-    spec_facts: ts_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: ts_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: ts_inhabitant_atom(id: facts.encoding)
-    )
+    spec_facts: ts_bigint_spec_facts(facts: facts)
   }
 }
 

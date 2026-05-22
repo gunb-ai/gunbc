@@ -19,8 +19,10 @@ import v4.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
-  primitive_fact_axis_surface_spelling
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.node {
   Atom,
   Conj,
@@ -308,17 +310,89 @@ fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
   }
 }
 
-fn python_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn python_integer_spec_facts(facts: PythonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.encoding) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_float_spec_facts(facts: PythonFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.machine_representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_complex_spec_facts(facts: PythonComplexPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.component_machine_representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_bool_spec_facts(facts: PythonBoolPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.encoding) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_singleton_spec_facts(facts: PythonSingletonPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 // C-PYINT: only surface_spelling + encoding axes bind — width/signedness/overflow are
@@ -328,12 +402,7 @@ fn python_primitive_bundle_from_integer_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_integer_facts_node(facts: facts),
-    spec_facts: python_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: python_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: python_inhabitant_atom(id: facts.encoding)
-    )
+    spec_facts: python_integer_spec_facts(facts: facts)
   }
 }
 
@@ -342,12 +411,7 @@ fn python_primitive_bundle_from_float_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_float_facts_node(facts: facts),
-    spec_facts: python_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: python_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: python_inhabitant_atom(id: facts.machine_representation)
-    )
+    spec_facts: python_float_spec_facts(facts: facts)
   }
 }
 
@@ -356,12 +420,7 @@ fn python_primitive_bundle_from_complex_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_complex_facts_node(facts: facts),
-    spec_facts: python_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: python_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: python_inhabitant_atom(id: facts.component_machine_representation)
-    )
+    spec_facts: python_complex_spec_facts(facts: facts)
   }
 }
 
@@ -373,12 +432,7 @@ fn python_primitive_bundle_from_bool_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_bool_facts_node(facts: facts),
-    spec_facts: python_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: python_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: python_inhabitant_atom(id: facts.encoding)
-    )
+    spec_facts: python_bool_spec_facts(facts: facts)
   }
 }
 
@@ -387,12 +441,7 @@ fn python_primitive_bundle_from_singleton_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: python_singleton_facts_node(facts: facts),
-    spec_facts: python_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: python_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant)
-    )
+    spec_facts: python_singleton_spec_facts(facts: facts)
   }
 }
 
