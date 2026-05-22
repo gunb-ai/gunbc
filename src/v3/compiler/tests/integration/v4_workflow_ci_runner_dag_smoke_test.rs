@@ -133,6 +133,14 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: must import subtree-aware frontier membership from verification"
     );
     assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "verification"],
+            "test_claim_ci_selection_fail_closed"
+        ),
+        "{CI_DAG_PATH}: must import fail-closed diagnostic selection guard from verification"
+    );
+    assert!(
         import_includes_name(&module, &["v4", "std", "algebra"], "filter"),
         "{CI_DAG_PATH}: must import filter from std.algebra"
     );

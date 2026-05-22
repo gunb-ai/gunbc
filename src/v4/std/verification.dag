@@ -252,6 +252,20 @@ fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Nod
   )
 }
 
+
+// Wave-0 Node frontier cannot see Symbol/textual-only diagnostic oracle facts; include until
+// ci selection consumes TestClaimCacheKey from 05_eval (IRT-4 / T-24).
+fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
+  match c {
+    DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      true
+    CompilesClaim { label: _, t19_anchor: _, input: _, expected_value: _, classification: _ } =>
+      false
+    EqualsClaim { label: _, t19_anchor: _, lhs: _, rhs: _, classification: _ } => false
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } => false
+  }
+}
+
 fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
   match c {
     CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k

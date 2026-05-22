@@ -34,7 +34,11 @@ import v4.std.algebra {
   length,
   unique
 }
-import v4.std.verification { TestClaim, test_claim_evaluation_touches_rerun_frontier }
+import v4.std.verification {
+  TestClaim,
+  test_claim_ci_selection_fail_closed,
+  test_claim_evaluation_touches_rerun_frontier
+}
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
 
@@ -262,7 +266,8 @@ fn ci_select_from_rerun_nodes(roster: List<TestClaim>, rerun: RerunNodeSet) -> L
       filter(
         xs: roster,
         predicate: fn(claim) {
-          test_claim_in_rerun_frontier(claim: claim, frontier: nodes)
+          test_claim_ci_selection_fail_closed(c: claim)
+            || test_claim_in_rerun_frontier(claim: claim, frontier: nodes)
         }
       )
     RerunNodeSetFailClosed { evidence: _ } => roster
