@@ -67,7 +67,7 @@ import v4.std.verification {
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
-  T19GeneratedCoproductExhaustiveness,
+  T19GeneratedAnchorKey,
   T19ManualNatAddAssociativity,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
