@@ -648,6 +648,7 @@ fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
 }
 
 
+// 🟡 gated — feature:T22-parameterized-outcome-eq — bind node://adhoc-c5a6fb4b-8cc — dissolve-on: v4.std.diagnostic owns a parameterized Outcome equality surface with payload comparator; forbidden: adding more payload-specific Outcome equality helpers.
 fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
