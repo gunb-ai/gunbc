@@ -415,23 +415,6 @@ fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
   }
 }
 
-fn kotlin_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      empty_map(),
-      axis0,
-      fact0
-    ),
-    axis1,
-    fact1
-  )
-}
-
 fn kotlin_primitive_fact_map_3(
   axis0: Symbol,
   fact0: Node,
@@ -452,35 +435,6 @@ fn kotlin_primitive_fact_map_3(
     ),
     axis2,
     fact2
-  )
-}
-
-fn kotlin_primitive_fact_map_4(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          empty_map(),
-          axis0,
-          fact0
-        ),
-        axis1,
-        fact1
-      ),
-      axis2,
-      fact2
-    ),
-    axis3,
-    fact3
   )
 }
 

@@ -475,29 +475,6 @@ fn lean_primitive_fact_map_2(
   )
 }
 
-fn lean_primitive_fact_map_3(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        empty_map(),
-        axis0,
-        fact0
-      ),
-      axis1,
-      fact1
-    ),
-    axis2,
-    fact2
-  )
-}
-
 fn lean_primitive_fact_map_4(
   axis0: Symbol,
   fact0: Node,
@@ -524,82 +501,6 @@ fn lean_primitive_fact_map_4(
     ),
     axis3,
     fact3
-  )
-}
-
-fn lean_primitive_fact_map_5(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node,
-  axis4: Symbol,
-  fact4: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            empty_map(),
-            axis0,
-            fact0
-          ),
-          axis1,
-          fact1
-        ),
-        axis2,
-        fact2
-      ),
-      axis3,
-      fact3
-    ),
-    axis4,
-    fact4
-  )
-}
-
-fn lean_primitive_fact_map_6(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node,
-  axis4: Symbol,
-  fact4: Node,
-  axis5: Symbol,
-  fact5: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              empty_map(),
-              axis0,
-              fact0
-            ),
-            axis1,
-            fact1
-          ),
-          axis2,
-          fact2
-        ),
-        axis3,
-        fact3
-      ),
-      axis4,
-      fact4
-    ),
-    axis5,
-    fact5
   )
 }
 
