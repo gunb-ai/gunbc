@@ -17,12 +17,14 @@ import v4.std.constraints {
   CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness,
   solve_constraints
 }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
   Unavailable,
   Accepted,
@@ -34,6 +36,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
+import v4.std.logic { Bool }
 import v4.std.node {
   Edge,
   Node,
@@ -74,6 +77,27 @@ type InferredFactsEntry {
 }
 
 
+fn inferred_facts_resolved_type_matches(
+  facts: InferredFacts,
+  candidate_type: Node
+) -> Bool {
+  candidate_type == facts.resolved_type
+}
+
+
+fn inferred_facts_inhabitance_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.inhabits.witness == facts.resolved_type)
+    && (facts.inhabits.algebra == facts.canonical.structural.evidence)
+}
+
+
+fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.canonical.structural.property == constraint_property_being_canonical)
+    && (facts.canonical.closedness.property == constraint_property_candidate_set_closedness)
+    && (facts.canonical.closedness.evidence == facts.resolved_type)
+}
+
+
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
@@ -82,14 +106,14 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_facts_lookup_miss,
-    at: NodeLocus { node: key },
+    at: node_locus(node: key),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_canonical_grounding_incoherent,
-    at: NodeLocus { node: node },
+    at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -98,7 +122,7 @@ fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
 fn infer_descent_not_derived_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_descent_not_derived,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

@@ -17,7 +17,7 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
-  NodeLocus,
+  node_locus,
   Outcome,
   Rejected,
   Unavailable,
@@ -82,7 +82,7 @@ fn coercion_not_realized_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: coercion_mismatch_reason(kind: kind),
-    at: NodeLocus { node: source.node },
+    at: node_locus(node: source.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -116,7 +116,7 @@ fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
 fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> Diagnostic {
   Diagnostic {
     reason: coercion_mismatch_candidate_set_not_closed,
-    at: NodeLocus { node: inhabitants_root },
+    at: node_locus(node: inhabitants_root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -141,6 +141,16 @@ fn coercion_candidate_set_from_declared_inhabitants(
     outcome_rejected(
       coercion_candidate_set_not_closed_diagnostic(inhabitants_root: inhabitants_root)
     )
+  }
+}
+fn coercion_quality_for_witness(
+  source: CanonicalGrounding,
+  fw: FindWitnessResult,
+) -> CoercionQuality {
+  if fw.candidate == source.node {
+    Identity
+  } else {
+    Exact
   }
 }
 fn coercion_homomorphism_evidence(
@@ -174,7 +184,7 @@ fn coercion_fold(
       Accepted {
         value: CoercionResult {
           target: fw.candidate,
-          quality: if fw.candidate == source.node { Identity } else { Exact },
+          quality: coercion_quality_for_witness(source: source, fw: fw),
           witness: CoercionWitness {
             homomorphism: HomomorphismWitness {
               rule: homomorphism_rule_exact_structural_equality,

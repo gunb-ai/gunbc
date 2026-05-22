@@ -10,7 +10,7 @@ module v4.test.claim.manual.outcome_diagnostics_eq
 
 import v4.std.diagnostic {
   Diagnostic,
-  NodeLocus,
+  node_locus,
   Unavailable,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
@@ -34,14 +34,14 @@ data diag_eq_reason_y: Symbol = diag_eq_reason_y
 fn diag_eq_x() -> Diagnostic {
   Diagnostic {
     reason: diag_eq_reason_x,
-    at: NodeLocus { node: stub_empty_conj },
+    at: node_locus(node: stub_empty_conj),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn diag_eq_y() -> Diagnostic {
   Diagnostic {
     reason: diag_eq_reason_y,
-    at: NodeLocus { node: stub_empty_conj },
+    at: node_locus(node: stub_empty_conj),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }

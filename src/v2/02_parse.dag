@@ -61,7 +61,7 @@ import v2.std.core {
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,
-  NewlineIndex, authored_name_at,
+  NewlineIndex, authored_name_at, kernel_span,
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
 }
 
@@ -1358,8 +1358,9 @@ fn parse_type_body_after_eq(tokens: List<Token>, ctx: ParseContext, name: String
     let first_name_span = r.span
     let tokens = skip_newlines(tokens: r.tokens)
 
-    // If followed by { or |, it's a sum type
-    if tok_is_lbrace(tok: tokens |> first) || tok_is_pipe(tok: tokens |> first) {
+    // If followed by {, (, or |, it's a sum type (PR-A.3 record payload; positional
+    // generic type application payload e.g. NodeAt(LocusAnchor<Node>)).
+    if tok_is_lbrace(tok: tokens |> first) || tok_is_lparen(tok: tokens |> first) || tok_is_pipe(tok: tokens |> first) {
       let r = parse_variant_fields(tokens: tokens, ctx: ctx, vname: first_name, vname_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let first_variant = r.variant
@@ -1542,6 +1543,34 @@ fn parse_single_named_int(tokens: List<Token>, ctx: ParseContext) -> NamedIntRes
   NamedIntResult { arg_name: name, arg_value: r3.value, tokens: r3.tokens, ctx: ctx, err: none }
 }
 
+// Positional sum-variant payload: `Variant(Type)` only — synthetic field `"0"`.
+// Comma-separated multi-arg payloads are rejected until pattern lowering supports them.
+fn parse_positional_variant_type_fields(tokens: List<Token>, ctx: ParseContext) -> FieldsResult {
+  let tokens = skip_newlines(tokens: tokens)
+  let r = parse_type_expr(tokens: tokens, ctx: ctx)
+  if has_err(err: r.err) { return FieldsResult { fields: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
+  let field = make_field_node(
+    name: "0",
+    type_expr: r.type_expr,
+    cardinality: Required,
+    default_value: none,
+    from_key: none,
+    span: r.type_expr.span,
+    name_span: kernel_span(name: "0")
+  )
+  match eat(tokens: r.tokens, expected: ExpectComma) {
+  EatConsumed { token: comma_tok, tokens: __ec } =>
+    FieldsResult {
+      fields: [],
+      tokens: __ec,
+      ctx: r.ctx,
+      err: Some { value: parse_error(msg: "positional variant payload accepts a single type only (comma-separated fields not supported yet)", span: token_span(tok: Some { value: comma_tok })) }
+    }
+  EatUnchanged { tokens: __eu } =>
+    FieldsResult { fields: [field], tokens: r.tokens, ctx: r.ctx, err: none }
+  }
+}
+
 fn parse_variant_fields(tokens: List<Token>, ctx: ParseContext, vname: String, vname_span: SourceSpan) -> VariantResult {
   let start_span = token_span(tok: tokens |> first)
   match eat(tokens: tokens, expected: ExpectLBrace) {
@@ -1554,9 +1583,19 @@ fn parse_variant_fields(tokens: List<Token>, ctx: ParseContext, vname: String, v
     let v = make_variant_node(name: vname, fields: r.fields, span: start_span, name_span: vname_span)
     VariantResult { variant: v, tokens: r2.tokens, ctx: r.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
-    // Unit variant (no fields)
-    let v = make_variant_node(name: vname, fields: [], span: vname_span, name_span: vname_span)
-    VariantResult { variant: v, tokens: tokens, ctx: ctx, err: none }
+    match eat(tokens: tokens, expected: ExpectLParen) {
+    EatConsumed { token: _, tokens: __ec } =>
+      let r = parse_positional_variant_type_fields(tokens: __ec, ctx: ctx)
+      if has_err(err: r.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r.tokens, ctx: r.ctx, err: r.err } }
+      let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
+      if has_err(err: r2.err) { return VariantResult { variant: make_variant_node(name: vname, fields: [], span: start_span, name_span: vname_span), tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+      let v = make_variant_node(name: vname, fields: r.fields, span: start_span, name_span: vname_span)
+      VariantResult { variant: v, tokens: r2.tokens, ctx: r.ctx, err: none }
+    EatUnchanged { tokens: __eu2 } =>
+      // Unit variant (no fields)
+      let v = make_variant_node(name: vname, fields: [], span: vname_span, name_span: vname_span)
+      VariantResult { variant: v, tokens: tokens, ctx: ctx, err: none }
+    }
   }
 }
 
@@ -4361,7 +4400,7 @@ fn parse_variant_pattern(tokens: List<Token>, ctx: ParseContext, name: String) -
     if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
     if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-    let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: span, name_span: span)
+    let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: span, name_span: kernel_span(name: "0"))
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else {
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [] }, tokens: tokens, ctx: ctx, err: none }

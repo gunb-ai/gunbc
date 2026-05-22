@@ -1,8 +1,8 @@
 // src/v4/lens/subsumption.dag
-// Scope: dissolution-lens subsumption ordering carrier for root fixes that mechanically close leaf fixes.
-// Owns: DiffId, TestClaimId, ProducerStageId, SubsumedFixes, ProducerStageDerivationPath, SubsumptionVerification, DissolutionSubsumption, concept_home_rewrite_subsumption.
+// Scope: dissolution-lens subsumption ordering rows for root fixes that mechanically close leaf fixes.
+// Owns: DiffId, TestClaimId, ProducerStageId, SubsumptionVerification, DissolutionSubsumption, affected_set_irt1_subsumption.
 // Consumes: v4.std.collection, v4.std.node.
-// Status: scaffold; gated coproduct binding is on SubsumptionVerification.
+// Status: scaffold; Lens-CI host runtime accepts structural row mirrors until TestClaim execution owns these rows.
 
 module v4.lens.subsumption
 
@@ -11,10 +11,13 @@ import v4.std.collection { List }
 import v4.std.node { Symbol }
 
 
-data concept_home_rewrite_root_fix: Symbol = concept_home_rewrite_root_fix
-data wrong_home_alias_leaf_fix: Symbol = wrong_home_alias_leaf_fix
-data duplicate_home_leaf_fix: Symbol = duplicate_home_leaf_fix
-data concept_home_producer_stage: Symbol = concept_home_producer_stage
+data affected_set_irt1_frontier_root_fix: Symbol = affected_set_irt1_frontier_root_fix
+data affected_set_hash_receipt_leaf_fix: Symbol = affected_set_hash_receipt_leaf_fix
+data affected_set_boundary_receipt_leaf_fix: Symbol = affected_set_boundary_receipt_leaf_fix
+data affected_set_dimension_receipt_leaf_fix: Symbol = affected_set_dimension_receipt_leaf_fix
+data affected_set_propagation_receipt_leaf_fix: Symbol = affected_set_propagation_receipt_leaf_fix
+data affected_set_frontier_receipt_leaf_fix: Symbol = affected_set_frontier_receipt_leaf_fix
+data affected_set_irt1_mechanical_reverification_claim: Symbol = affected_set_irt1_mechanical_reverification_claim
 
 
 type DiffId {
@@ -33,21 +36,15 @@ type ProducerStageId {
 
 
 type SubsumedFixes {
-  head: DiffId
-  tail: List<DiffId>
+  first: DiffId
+  rest: List<DiffId>
 }
 
 
-type ProducerStageDerivationPath {
-  head: ProducerStageId
-  tail: List<ProducerStageId>
-}
-
-
-// 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:node://adhoc-f3d84232-824 converts to 🟢 after MechanicalReverification rows land.
+// 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:.dag TestClaim runner consumes MechanicalReverification rows.
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
-  | ProducerStageDerivation { derivation_path: ProducerStageDerivationPath }
+  | ProducerStageDerivation { derivation_path: List<ProducerStageId> }
 
 
 type DissolutionSubsumption {
@@ -57,18 +54,21 @@ type DissolutionSubsumption {
 }
 
 
-data concept_home_rewrite_subsumption: DissolutionSubsumption = {
-  root_fix: DiffId { id: concept_home_rewrite_root_fix },
-  subsumed_fixes: SubsumedFixes {
-    head: DiffId { id: wrong_home_alias_leaf_fix },
-    tail: [
-      DiffId { id: duplicate_home_leaf_fix }
-    ]
-  },
-  verification: ProducerStageDerivation {
-    derivation_path: ProducerStageDerivationPath {
-      head: ProducerStageId { id: concept_home_producer_stage },
-      tail: []
-    }
+data affected_set_irt1_subsumed_fixes: SubsumedFixes = SubsumedFixes {
+  first: DiffId { id: affected_set_hash_receipt_leaf_fix },
+  rest: [
+    DiffId { id: affected_set_boundary_receipt_leaf_fix },
+    DiffId { id: affected_set_dimension_receipt_leaf_fix },
+    DiffId { id: affected_set_propagation_receipt_leaf_fix },
+    DiffId { id: affected_set_frontier_receipt_leaf_fix }
+  ]
+}
+
+
+data affected_set_irt1_subsumption: DissolutionSubsumption = {
+  root_fix: DiffId { id: affected_set_irt1_frontier_root_fix },
+  subsumed_fixes: affected_set_irt1_subsumed_fixes,
+  verification: MechanicalReverification {
+    test_claim: TestClaimId { id: affected_set_irt1_mechanical_reverification_claim }
   }
 }

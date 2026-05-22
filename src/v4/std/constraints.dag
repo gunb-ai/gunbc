@@ -2,9 +2,10 @@
 // Scope: canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper).
 // Anchor: design-v4-compiler-homomorphism.md; TASKS.md T-9; docs/modeling-discipline.md Practice 11.
 // Owns: ConstraintGraph, CanonicalGrounding, ConstraintSatisfactionPredicate, ConstraintSolvePolicy,
-//       CanonicalGroundingCandidateSet, CanonicalGroundingWitness, solve_constraints.
+//       CanonicalGroundingCandidateSet, CanonicalGroundingWitness, constraint_satisfaction_holds,
+//       canonical_grounding_candidates, constraint_satisfaction_preservation_predicate, solve_constraints.
 // Consumes: std find_witness, std diagnostic, std witness, std node.
-// Status: W-T-10 — canonical_grounding_candidates fail-closed until graph-authored candidate evidence lands.
+// Status: identity-MVP wiring — solve_constraints → find_witness + constraint predicate dispatch; candidate/predicate bodies are tracked 🟡 scaffolds until T-9 ground + T-25-tail land.
 
 
 module v4.std.constraints
@@ -14,15 +15,14 @@ import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
+  None,
   Outcome,
   Rejected,
   Unavailable,
   bind_outcome,
-  diagnostics_singleton,
   outcome_rejected,
-  outcome_with_diagnostics,
-  rejected_with_pending
+  outcome_with_diagnostics
 }
 import v4.std.find_witness {
   CandidateSet,
@@ -31,12 +31,16 @@ import v4.std.find_witness {
   find_witness,
   preservation_rule_constraint_satisfaction
 }
-import v4.std.node { Node, Symbol }
+import v4.std.constraint_satisfaction_predicate {
+  constraint_satisfaction_preservation_holds
+}
+import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
 data constraint_property_being_canonical: Symbol = constraint_property_being_canonical
 data constraint_property_candidate_set_closedness: Symbol = constraint_property_candidate_set_closedness
 data constraints_not_realized: Symbol = constraints_not_realized
-// 🟡 coproduct dissolution — scaffold:T-9-ground · dissolve-on: W-T-9-impl consumes graph carriers.
+data constraints_ill_formed_root: Symbol = constraints_ill_formed_root
+// 🟡 coproduct dissolution — scaffold:T-9-ground · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node.
 type ConstraintGraph {
   root: Node
 }
@@ -45,7 +49,7 @@ type CanonicalGrounding {
   witness: CanonicalGroundingWitness
 }
 type ConstraintSatisfactionPredicate {
-  predicate: PreservationPredicate
+  algebra: Node
 }
 type ConstraintSolvePolicy {
   graph: ConstraintGraph
@@ -55,20 +59,69 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
-  // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: W-T-10 find_witness closedness authority supplies evidence distinct from structural witness.
+  // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: find_witness closedness authority supplies evidence distinct from structural witness.
   closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   Diagnostic {
     reason: constraints_not_realized,
-    at: NodeLocus { node: graph.root },
+    at: node_locus(node: graph.root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> Diagnostic {
+  Diagnostic {
+    reason: constraints_ill_formed_root,
+    at: node_locus(node: graph.root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+// Concept-home wrapper: mechanical body is sole authority in constraint_satisfaction_predicate.dag.
+fn constraint_satisfaction_holds(
+  source_facts: Node,
+  candidate: Node,
+  predicate: ConstraintSatisfactionPredicate,
+) -> Bool {
+  constraint_satisfaction_preservation_holds(
+    source_facts: source_facts,
+    candidate: candidate,
+    algebra: predicate.algebra
+  )
+}
+fn constraint_satisfaction_predicate(algebra: Node) -> ConstraintSatisfactionPredicate {
+  ConstraintSatisfactionPredicate { algebra: algebra }
+}
+fn constraint_satisfaction_preservation_predicate(
+  predicate: ConstraintSatisfactionPredicate,
+) -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: predicate.algebra,
+    preservation_rule: preservation_rule_constraint_satisfaction
+  }
+}
+fn canonical_grounding_candidate_set_closedness(root: Node) -> StructuralPropertyWitness {
+  StructuralPropertyWitness {
+    property: constraint_property_candidate_set_closedness,
+    evidence: root
+  }
+}
+// 🟡 coproduct dissolution — scaffold:T-9-candidate-singleton-mvp · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node (ledger: scaffold:T-9-ground · TASKS.md T-9).
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {
-  outcome_rejected(constraints_not_realized_diagnostic(graph: policy.graph))
+  if well_formed(n: policy.graph.root) {
+    Accepted {
+      value: CanonicalGroundingCandidateSet {
+        set: CandidateSet {
+          candidates: [policy.graph.root],
+          closedness: canonical_grounding_candidate_set_closedness(root: policy.graph.root)
+        }
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(constraints_ill_formed_root_diagnostic(graph: policy.graph))
+  }
 }
 fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGrounding> {
   bind_outcome(
@@ -77,10 +130,9 @@ fn solve_constraints(policy: ConstraintSolvePolicy) -> Outcome<CanonicalGroundin
       match find_witness(
         source_facts: policy.graph.root,
         candidates: grounding_candidates.set,
-        predicate: PreservationPredicate {
-          algebra: policy.graph.root,
-          preservation_rule: preservation_rule_constraint_satisfaction
-        },
+        predicate: constraint_satisfaction_preservation_predicate(
+          predicate: constraint_satisfaction_predicate(algebra: policy.graph.root)
+        ),
         multiplicity_policy: UniqueOnly
       ) {
         Accepted { value: fw, diagnostics: fw_d } =>

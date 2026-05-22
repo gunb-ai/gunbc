@@ -290,13 +290,13 @@ impl ServiceReturnStrategy {
 pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
-        ServiceMethodStrategy::ExternalReceiver { .. } => "".to_string(),
+        ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => "".to_string(),
     }
 }
 
 pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> String {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { .. } => "".to_string(),
+        ServiceMethodStrategy::SelfInParams { self_param: _, .. } => "".to_string(),
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(v2_rt::concat("(".to_string(), v.clone()), " *".to_string()),
@@ -309,15 +309,15 @@ pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> Str
 
 pub fn service_method_depth(spec: Rc<LanguageSpec>) -> i64 {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { .. } => 1,
-        ServiceMethodStrategy::ExternalReceiver { .. } => 0,
+        ServiceMethodStrategy::SelfInParams { self_param: _, .. } => 1,
+        ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => 0,
     }
 }
 
 pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { .. } => true,
-        ServiceMethodStrategy::ExternalReceiver { .. } => false,
+        ServiceMethodStrategy::SelfInParams { self_param: _, .. } => true,
+        ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => false,
     }
 }
 

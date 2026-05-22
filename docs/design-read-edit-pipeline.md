@@ -384,7 +384,7 @@ substrate data:
 | **L1.8** Wrong-home | fn whose primary concept lives upstream | Move fn + rewire imports | `nat_compare` from `float.dag` → `nat.dag`; `float.dag` imports it |
 | **L1.9** Vacuous-arm | `match` arm with trivial RHS, asymmetric within fn | (mostly) operator-confirm exemption; rare auto-fix | Operator-judgment dominated; structured 🟡 instead of auto-apply |
 | **L1.10.a** TemplateHole | string literal with `{N}` placeholders | Replace template with grammar-as-data structural emitter | `list_template: "Vec<{0}>"` → `RustTypeRealization` data row |
-| **L1.10.b** CanonicalCarrier | `String` field whose name maps to registered typed carrier | Replace field type with typed carrier; rewrite construction sites | `ShellCommand { command: String }` → `ShellCommand { command: process.Command }` |
+| **L1.10.b** CanonicalCarrier | `String` field whose name maps to registered typed carrier | Replace field type with typed carrier; rewrite construction sites | `ShellCommand { command: String }` → `ShellCommand { command: posix.Command }` |
 | **L1.11** Plausible-fallback | `None => non-Rejected Ctor` | Lift return to `Outcome<T>`; replace with `Rejected { diagnostic: DerivationUnknown }` | `derive_effect_shape` `DELETE None => CreateEffect` → `Rejected { diagnostic: ... }` |
 | **L1.12** Parallel-authority | duplicate concept home | Make non-canonical an alias edge OR add `HistoricalDeclaration` row | `dsl.std.types.Bool` → alias-identity edge to `v4.std.logic.Bool` |
 

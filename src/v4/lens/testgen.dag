@@ -1,12 +1,13 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
-// Status: Modeled Generator join for manual-anchor claims; substrate extension = operator STOP.
+// Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
 
 module v4.lens.testgen
 
 
+import v4.std.collection { List }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -47,11 +48,16 @@ import v4.extdeps.file_system {
   FileSystemOperations,
   Filesystem
 }
+import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
+  CompilesClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
   T19ManualAnchorKey,
+  T19ManualLbeConjDagSurface,
+  T19ManualLbeDisjDagSurface,
+  T19ManualLbeTransformDagSurface,
   T19ManualNatAddAssociativity,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
@@ -69,10 +75,15 @@ import v4.std.verification {
   T19ManualTcBranchEmpty,
   T19ManualTcLoopEmpty,
   T19ManualTcBindZeroChildren,
+  Tier1,
+  Unit,
   test_claim_classification,
   test_claim_t19_anchor
 }
 import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj,
+  stub_empty_transform,
   claim_arrow_two_conj_compiles,
   claim_cardinality_empty_rejected,
   claim_conj_empty_compiles,
@@ -117,15 +128,40 @@ type LensApplicabilitySubject {
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
 
 
+// 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
+type FrozenLanguageBehaviorSnapshot {
+  language: Symbol
+  input_node: Node
+  expected_value: Node
+}
+
+
+// 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
+type LanguageBehaviorIoMock {
+  snapshot: FrozenLanguageBehaviorSnapshot
+}
+
+
+// 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
+type LanguageBehaviorEquivalenceSubject {
+  subject: TypeConstructionSubject
+  language: Symbol
+}
+
+
 // 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
 // 🟡 coproduct dissolution — LB-P4-3212
-// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct
+// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (six arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
+  | LanguageBehaviorEquivalence {
+      subject: LanguageBehaviorEquivalenceSubject
+      mock: LanguageBehaviorIoMock
+    }
 
 
 type Generator<C> {
@@ -253,10 +289,163 @@ data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
 data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
 
 
+data t19_lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
+
+
+data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
+
+
+data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
+
+
 data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
 
 
 data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
+
+
+fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+  FrozenLanguageBehaviorSnapshot {
+    language: dag_language_model_surface_id,
+    input_node: stub_empty_conj,
+    expected_value: stub_empty_conj,
+  }
+}
+
+
+fn lbe_frozen_snapshot_disj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+  FrozenLanguageBehaviorSnapshot {
+    language: dag_language_model_surface_id,
+    input_node: stub_empty_disj,
+    expected_value: stub_empty_disj,
+  }
+}
+
+
+fn lbe_frozen_snapshot_transform_dag_surface() -> FrozenLanguageBehaviorSnapshot {
+  FrozenLanguageBehaviorSnapshot {
+    language: dag_language_model_surface_id,
+    input_node: stub_empty_transform,
+    expected_value: stub_empty_transform,
+  }
+}
+
+
+fn lbe_io_mock_conj_dag_surface() -> LanguageBehaviorIoMock {
+  LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_conj_dag_surface() }
+}
+
+
+fn lbe_io_mock_disj_dag_surface() -> LanguageBehaviorIoMock {
+  LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_disj_dag_surface() }
+}
+
+
+fn lbe_io_mock_transform_dag_surface() -> LanguageBehaviorIoMock {
+  LanguageBehaviorIoMock { snapshot: lbe_frozen_snapshot_transform_dag_surface() }
+}
+
+
+fn lbe_subject_conj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
+  LanguageBehaviorEquivalenceSubject {
+    subject: ConnectiveKernel { connective: Conj },
+    language: dag_language_model_surface_id,
+  }
+}
+
+
+fn lbe_subject_disj_dag_surface() -> LanguageBehaviorEquivalenceSubject {
+  LanguageBehaviorEquivalenceSubject {
+    subject: ConnectiveKernel { connective: Disj },
+    language: dag_language_model_surface_id,
+  }
+}
+
+
+fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
+  LanguageBehaviorEquivalenceSubject {
+    subject: BehaviorValueSubject { behavior: Transform },
+    language: dag_language_model_surface_id,
+  }
+}
+
+
+fn testgen_emit_language_behavior_equivalence_claim(
+  anchor: T19ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> Outcome<TestClaim> {
+  let snap = mock.snapshot
+  match anchor {
+    T19ManualLbeConjDagSurface =>
+      Accepted {
+        value: CompilesClaim {
+          label: label,
+          t19_anchor: anchor,
+          input: snap.input_node,
+          expected_value: snap.expected_value,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    T19ManualLbeDisjDagSurface =>
+      Accepted {
+        value: CompilesClaim {
+          label: label,
+          t19_anchor: anchor,
+          input: snap.input_node,
+          expected_value: snap.expected_value,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    T19ManualLbeTransformDagSurface =>
+      Accepted {
+        value: CompilesClaim {
+          label: label,
+          t19_anchor: anchor,
+          input: snap.input_node,
+          expected_value: snap.expected_value,
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
+      }
+  }
+}
+
+
+fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenConcept>> {
+  [
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: T19ManualLbeConjDagSurface,
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_conj_dag_surface(),
+        mock: lbe_io_mock_conj_dag_surface(),
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: T19ManualLbeDisjDagSurface,
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_disj_dag_surface(),
+        mock: lbe_io_mock_disj_dag_surface(),
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: T19ManualLbeTransformDagSurface,
+      slot: LanguageBehaviorEquivalence {
+        subject: lbe_subject_transform_dag_surface(),
+        mock: lbe_io_mock_transform_dag_surface(),
+      },
+    },
+  ]
+}
 
 
 fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
@@ -288,6 +477,24 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
     T19ManualNatMulLeftIdentity => Accepted { value: claim_nat_mul_left_identity, diagnostics: None }
     T19ManualNatMulAnnihilator => Accepted { value: claim_nat_mul_annihilator, diagnostics: None }
     T19ManualNatMulAssociativity => Accepted { value: claim_nat_mul_associativity, diagnostics: None }
+    T19ManualLbeConjDagSurface =>
+      testgen_emit_language_behavior_equivalence_claim(
+        anchor: T19ManualLbeConjDagSurface,
+        label: t19_lbe_label_conj_dag_surface,
+        mock: lbe_io_mock_conj_dag_surface()
+      )
+    T19ManualLbeDisjDagSurface =>
+      testgen_emit_language_behavior_equivalence_claim(
+        anchor: T19ManualLbeDisjDagSurface,
+        label: t19_lbe_label_disj_dag_surface,
+        mock: lbe_io_mock_disj_dag_surface()
+      )
+    T19ManualLbeTransformDagSurface =>
+      testgen_emit_language_behavior_equivalence_claim(
+        anchor: T19ManualLbeTransformDagSurface,
+        label: t19_lbe_label_transform_dag_surface,
+        mock: lbe_io_mock_transform_dag_surface()
+      )
   }
 }
 
@@ -388,6 +595,30 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_mul_associativity,
           },
         }, diagnostics: None }
+    T19ManualLbeConjDagSurface =>
+      Accepted {
+        value: LanguageBehaviorEquivalence {
+          subject: lbe_subject_conj_dag_surface(),
+          mock: lbe_io_mock_conj_dag_surface(),
+        },
+        diagnostics: None,
+      }
+    T19ManualLbeDisjDagSurface =>
+      Accepted {
+        value: LanguageBehaviorEquivalence {
+          subject: lbe_subject_disj_dag_surface(),
+          mock: lbe_io_mock_disj_dag_surface(),
+        },
+        diagnostics: None,
+      }
+    T19ManualLbeTransformDagSurface =>
+      Accepted {
+        value: LanguageBehaviorEquivalence {
+          subject: lbe_subject_transform_dag_surface(),
+          mock: lbe_io_mock_transform_dag_surface(),
+        },
+        diagnostics: None,
+      }
   }
 }
 

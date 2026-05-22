@@ -147,7 +147,7 @@ import v4.std.node { Symbol }
 // The B2-OMNI claim covers the format DATA-MODEL. It does NOT validate:
 //   - that an external SPICE simulator can be DRIVEN from `emit`'s
 //     output (the "clear win" in the header — that requires invoking a
-//     simulator process; an `extdeps/process.dag` consumer that
+//     simulator process; an `extdeps/posix.dag` consumer that
 //     coordinates with the emitted netlist is a separate boundary
 //     concern, not modeled here).
 //   - that SPICE's NUMERIC sub-grammar (suffix-units `1k`/`1u`/`100p`,
