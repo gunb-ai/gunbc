@@ -42,9 +42,10 @@ type Map<K, V> {
 }
 // 🟡 finite-uniqueness witness gated — feature:finite-set-uniqueness-witness;
 // dissolve-on: substrate emits a derived `unique: Witness<Holds>` projection
-// over `members` (mirrors `FreeMonoidUniqueState` in std/algebra). Until then,
-// FiniteSet's uniqueness obligation is enforced by the consuming lens / row
-// validator (e.g. v4.lens.subsumption MechanicalReverification runtime).
+// over the `head ++ tail` enumeration (mirrors `FreeMonoidUniqueState` in
+// std/algebra). Until then, FiniteSet's uniqueness obligation is enforced
+// by the consuming lens / row validator (e.g. v4.lens.subsumption
+// MechanicalReverification runtime).
 //
 // Non-empty, finite enumerated set carrier. Use FiniteSet<T> when the row
 // requires the full elements (eager-materialized closed enumeration) — Set<T>
