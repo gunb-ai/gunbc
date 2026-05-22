@@ -15,12 +15,14 @@ import v4.compiler.infer {
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
   UnresolvedInferWitness,
-  at,
   fact_eq,
   fact_single_dependency_projects_status
 }
 import v4.std.dependency { ClassifiedDependencyView }
-import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+import v4.test.claim.lens_structural_resolution.claim_carrier {
+  LensStructuralResolutionClaim,
+  lens_structural_resolution_actual
+}
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -133,12 +135,11 @@ data unresolved_infer_witness_claim: LensStructuralResolutionClaim = LensStructu
         classification: UnresolvedInferWitness
       }
     ]
-  },
-  actual: at(tree: sr_infer_claim_tree())
+  }
 }
 
 fn unresolved_infer_witness_claim_holds() -> Bool {
-  match unresolved_infer_witness_claim.actual {
+  match lens_structural_resolution_actual(claim: unresolved_infer_witness_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unresolved_infer_witness_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: UnresolvedInferWitness)

@@ -15,12 +15,14 @@ import v4.compiler.infer {
 import v4.lens.structural_resolution {
   FactsLookupMiss,
   StructuralResolutionFact,
-  at,
   fact_eq,
   fact_single_dependency_projects_status
 }
 import v4.std.dependency { ClassifiedDependencyView }
-import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+import v4.test.claim.lens_structural_resolution.claim_carrier {
+  LensStructuralResolutionClaim,
+  lens_structural_resolution_actual
+}
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -133,12 +135,11 @@ data facts_lookup_miss_claim: LensStructuralResolutionClaim = LensStructuralReso
         classification: FactsLookupMiss
       }
     ]
-  },
-  actual: at(tree: sr_lookup_claim_tree())
+  }
 }
 
 fn facts_lookup_miss_claim_holds() -> Bool {
-  match facts_lookup_miss_claim.actual {
+  match lens_structural_resolution_actual(claim: facts_lookup_miss_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: facts_lookup_miss_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: FactsLookupMiss)

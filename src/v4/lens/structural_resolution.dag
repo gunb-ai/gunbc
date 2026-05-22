@@ -182,28 +182,7 @@ fn structural_resolution_status_eq(
   a: StructuralResolutionStatus,
   b: StructuralResolutionStatus
 ) -> Bool {
-  match a {
-    BindingResolved => match b {
-      BindingResolved => true
-      _ => false
-    }
-    UnboundSymbolAtUse => match b {
-      UnboundSymbolAtUse => true
-      _ => false
-    }
-    FactsLookupMiss => match b {
-      FactsLookupMiss => true
-      _ => false
-    }
-    UnresolvedInferWitness => match b {
-      UnresolvedInferWitness => true
-      _ => false
-    }
-    OutOfScopeDependencyKind => match b {
-      OutOfScopeDependencyKind => true
-      _ => false
-    }
-  }
+  a == b
 }
 
 fn structural_resolution_classified_eq(

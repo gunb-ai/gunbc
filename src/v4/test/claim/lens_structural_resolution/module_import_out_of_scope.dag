@@ -10,12 +10,14 @@ import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
   OutOfScopeDependencyKind,
   StructuralResolutionFact,
-  at,
   fact_eq,
   fact_single_dependency_projects_status
 }
 import v4.std.dependency { ClassifiedDependencyView }
-import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+import v4.test.claim.lens_structural_resolution.claim_carrier {
+  LensStructuralResolutionClaim,
+  lens_structural_resolution_actual
+}
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {

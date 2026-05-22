@@ -10,12 +10,14 @@ import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
 import v4.lens.structural_resolution {
   BindingResolved,
   StructuralResolutionFact,
-  at,
   fact_eq,
   fact_single_dependency_projects_status
 }
 import v4.std.dependency { ClassifiedDependencyView }
-import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+import v4.test.claim.lens_structural_resolution.claim_carrier {
+  LensStructuralResolutionClaim,
+  lens_structural_resolution_actual
+}
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -119,12 +121,11 @@ data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralReso
         classification: BindingResolved
       }
     ]
-  },
-  actual: at(tree: sr_claim_tree())
+  }
 }
 
 fn binds_to_resolved_claim_holds() -> Bool {
-  match binds_to_resolved_claim.actual {
+  match lens_structural_resolution_actual(claim: binds_to_resolved_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: binds_to_resolved_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: BindingResolved)

@@ -11,12 +11,14 @@ import v4.compiler.resolve { unbound_symbol_diagnostic }
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
   UnboundSymbolAtUse,
-  at,
   fact_eq,
   fact_single_dependency_projects_status
 }
 import v4.std.dependency { ClassifiedDependencyView }
-import v4.test.claim.lens_structural_resolution.claim_carrier { LensStructuralResolutionClaim }
+import v4.test.claim.lens_structural_resolution.claim_carrier {
+  LensStructuralResolutionClaim,
+  lens_structural_resolution_actual
+}
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -129,12 +131,11 @@ data unbound_symbol_at_use_claim: LensStructuralResolutionClaim = LensStructural
         classification: UnboundSymbolAtUse
       }
     ]
-  },
-  actual: at(tree: sr_unbound_claim_tree())
+  }
 }
 
 fn unbound_symbol_at_use_claim_holds() -> Bool {
-  match unbound_symbol_at_use_claim.actual {
+  match lens_structural_resolution_actual(claim: unbound_symbol_at_use_claim) {
     Holds { value: actual } =>
       fact_eq(a: actual, b: unbound_symbol_at_use_claim.expected)
         && fact_single_dependency_projects_status(fact: actual, expected: UnboundSymbolAtUse)
