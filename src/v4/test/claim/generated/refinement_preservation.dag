@@ -63,13 +63,19 @@ data witness_refinement_preserves_nonempty_list_base: Bool = match refinement_pr
 }
 
 
-fn refinement_preservation_subject_base_value() -> Node {
+fn refinement_preservation_subject_base_value() -> Outcome<Node> {
   match refinement_preservation_subject_nonempty_list_base() {
     Accepted { value: subject, diagnostics: None } =>
-      refinement_preservation_list_node(xs: subject.original)
-    Rejected { diagnostics: _ } => refinement_preservation_list_node(xs: [])
+      Accepted {
+        value: refinement_preservation_list_node(xs: subject.original),
+        diagnostics: None
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
 }
 
 
-data witness_refinement_preservation_subject_anchor: Bool = refinement_preservation_subject_base_value() == refinement_preservation_list_node(xs: [stub_empty_conj])
+data witness_refinement_preservation_subject_anchor: Bool = match refinement_preservation_subject_base_value() {
+  Accepted { value: base, diagnostics: None } => base == refinement_preservation_list_node(xs: [stub_empty_conj])
+  Rejected { diagnostics: _ } => false
+}
