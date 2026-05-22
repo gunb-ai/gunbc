@@ -102,7 +102,7 @@ type T19ManualAnchorKey
 
 
 type T19GeneratedAnchorKey
-  = T19GeneratedCoproductExhaustiveness {}
+  = T19GeneratedCoproductExhaustiveness { omitted_variant: Symbol }
 
 
 // RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
