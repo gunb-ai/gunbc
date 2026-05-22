@@ -8,6 +8,7 @@ module v4.std.effects
 
 
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.text { String }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -56,6 +57,9 @@ type IdempotentOperationSubject
 
 data effect_shape_is_idempotent_field: Symbol = effect_shape_is_idempotent_field
 data effect_shape_inner_field: Symbol = effect_shape_inner_field
+data effect_shape_variant_read: Symbol = effect_shape_variant_read
+data effect_shape_variant_upsert: Symbol = effect_shape_variant_upsert
+data effect_shape_variant_delete: Symbol = effect_shape_variant_delete
 data idempotent_operation_callable_field: Symbol = idempotent_operation_callable_field
 data idempotent_operation_key_source_field: Symbol = idempotent_operation_key_source_field
 data key_source_path_param_field: Symbol = key_source_path_param_field
@@ -65,8 +69,8 @@ data key_source_input_field_field: Symbol = key_source_input_field_field
 data t19_sample_get_callable: Symbol = t19_sample_get_callable
 data t19_sample_upsert_callable: Symbol = t19_sample_upsert_callable
 data t19_sample_delete_callable: Symbol = t19_sample_delete_callable
-data t19_sample_upsert_path_key: String = "id"
-data t19_sample_delete_path_key: String = "id"
+data t19_sample_path_key_string: String = "id"
+data t19_sample_path_key_slug: Symbol = t19_sample_path_key_slug
 data t19_sample_label_only_callable: Symbol = t19_sample_label_only_callable
 
 
@@ -85,10 +89,10 @@ data t19_sample_delete_operation: IdempotentOperationRef = IdempotentOperationRe
 }
 
 
-data t19_sample_upsert_key_source: KeySource = PathParam { param: t19_sample_upsert_path_key }
+data t19_sample_upsert_key_source: KeySource = InputField { field: t19_sample_path_key_string }
 
 
-data t19_sample_delete_key_source: KeySource = PathParam { param: t19_sample_delete_path_key }
+data t19_sample_delete_key_source: KeySource = InputField { field: t19_sample_path_key_string }
 
 
 data t19_sample_read_subject: IdempotentOperationSubject = ReadIdempotentSample {
@@ -119,6 +123,15 @@ fn atom_node(s: Symbol) -> Node {
 }
 
 
+fn key_source_param_slug_node(param: String) -> Node {
+  if param == t19_sample_path_key_string {
+    atom_node(s: t19_sample_path_key_slug)
+  } else {
+    atom_node(s: key_source_input_field_field)
+  }
+}
+
+
 fn key_source_node(key_source: KeySource) -> Node {
   match key_source {
     PathParam { param: p } =>
@@ -129,7 +142,10 @@ fn key_source_node(key_source: KeySource) -> Node {
             label: Named { name: key_source_path_param_field },
             target: atom_node(s: key_source_path_param_field)
           },
-          Edge { label: Named { name: key_source_input_field_field }, target: atom_node(s: p) },
+          Edge {
+            label: Named { name: key_source_input_field_field },
+            target: key_source_param_slug_node(param: p)
+          },
         ]
       }
     InputField { field: f } =>
@@ -140,7 +156,10 @@ fn key_source_node(key_source: KeySource) -> Node {
             label: Named { name: key_source_input_field_field },
             target: atom_node(s: key_source_input_field_field)
           },
-          Edge { label: Named { name: key_source_input_field_field }, target: atom_node(s: f) },
+          Edge {
+            label: Named { name: key_source_input_field_field },
+            target: key_source_param_slug_node(param: f)
+          },
         ]
       }
   }
@@ -149,12 +168,15 @@ fn key_source_node(key_source: KeySource) -> Node {
 
 fn idempotent_shape_node(shape: IdempotentShape) -> Node {
   match shape {
-    ReadEffect => atom_node(s: ReadEffect)
+    ReadEffect => atom_node(s: effect_shape_variant_read)
     UpsertEffect { key_source: key_source } =>
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: UpsertEffect }, target: atom_node(s: UpsertEffect) },
+          Edge {
+            label: Named { name: effect_shape_variant_upsert },
+            target: atom_node(s: effect_shape_variant_upsert)
+          },
           Edge {
             label: Named { name: idempotent_operation_key_source_field },
             target: key_source_node(key_source: key_source)
@@ -165,7 +187,10 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge { label: Named { name: DeleteEffect }, target: atom_node(s: DeleteEffect) },
+          Edge {
+            label: Named { name: effect_shape_variant_delete },
+            target: atom_node(s: effect_shape_variant_delete)
+          },
           Edge {
             label: Named { name: idempotent_operation_key_source_field },
             target: key_source_node(key_source: key_source)

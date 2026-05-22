@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject IdempotentOperationSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LanguageBehaviorEquivalence + idempotent-operation generator (outside six-way TestgenConcept); new TestgenConcept arms = operator STOP.
 
@@ -109,14 +109,17 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_mul_associativity,
   claim_nat_mul_left_identity
 }
-import v4.test.claim.effects.idempotent_operation_samples {
-  idempotent_delete_operation_body,
-  idempotent_effect_delete_variant,
-  idempotent_effect_read_variant,
-  idempotent_effect_upsert_variant,
-  idempotent_label_only_operation,
-  idempotent_read_operation_body,
-  idempotent_upsert_operation_body
+import v4.std.effects {
+  DeleteIdempotentSample,
+  IdempotentOperationSubject,
+  LabelOnlyIdempotentInhabitance,
+  ReadIdempotentSample,
+  UpsertIdempotentSample,
+  idempotent_operation_witness_node,
+  t19_sample_delete_subject,
+  t19_sample_label_only_subject,
+  t19_sample_read_subject,
+  t19_sample_upsert_subject
 }
 
 
@@ -161,12 +164,6 @@ type LanguageBehaviorEquivalenceSubject {
   subject: TypeConstructionSubject
   language: Symbol
 }
-
-
-// 🟡 coproduct dissolution — T19-IDEMPOTENT-OPERATION.
-type IdempotentOperationSubject
-  = ComposableIdempotentOperation { effect_variant: Symbol, operation_body: Node }
-  | LabelOnlyIdempotentInhabitance { effect_variant: Symbol, label: Symbol }
 
 
 // 🟡 coproduct dissolution — LB-P4-3212.
@@ -427,13 +424,31 @@ fn idempotent_operation_apply_twice(body: Node) -> Node {
 }
 
 
+fn testgen_emit_idempotent_operation_equals_claim(
+  label: String,
+  witness: Node,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  Accepted {
+    value: EqualsClaim {
+      label: label,
+      t19_anchor: T19ManualAnchorAbsent,
+      lhs: idempotent_operation_apply_twice(body: witness),
+      rhs: idempotent_operation_apply_once(body: witness, count: t19_idempotent_apply_count_once),
+      classification: classification,
+    },
+    diagnostics: None,
+  }
+}
+
+
 fn testgen_emit_idempotent_operation_claim(
   label: String,
   subject: IdempotentOperationSubject,
   classification: TestClassification
 ) -> Outcome<TestClaim> {
   match subject {
-    LabelOnlyIdempotentInhabitance { effect_variant: _, label: _ } =>
+    LabelOnlyIdempotentInhabitance { shape: _, label: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -443,35 +458,33 @@ fn testgen_emit_idempotent_operation_claim(
           }
         )
       }
-    ComposableIdempotentOperation { effect_variant: _, operation_body: body } =>
-      Accepted {
-        value: EqualsClaim {
-          label: label,
-          t19_anchor: T19ManualAnchorAbsent,
-          lhs: idempotent_operation_apply_twice(body: body),
-          rhs: idempotent_operation_apply_once(body: body, count: t19_idempotent_apply_count_once),
-          classification: classification,
-        },
-        diagnostics: None,
-      }
+    ReadIdempotentSample { operation: _ } =>
+      testgen_emit_idempotent_operation_equals_claim(
+        label: label,
+        witness: idempotent_operation_witness_node(subject: subject),
+        classification: classification
+      )
+    UpsertIdempotentSample { operation: _, key_source: _ } =>
+      testgen_emit_idempotent_operation_equals_claim(
+        label: label,
+        witness: idempotent_operation_witness_node(subject: subject),
+        classification: classification
+      )
+    DeleteIdempotentSample { operation: _, key_source: _ } =>
+      testgen_emit_idempotent_operation_equals_claim(
+        label: label,
+        witness: idempotent_operation_witness_node(subject: subject),
+        classification: classification
+      )
   }
 }
 
 
 fn testgen_scheduled_idempotent_operation_subjects() -> List<IdempotentOperationSubject> {
   [
-    ComposableIdempotentOperation {
-      effect_variant: idempotent_effect_read_variant,
-      operation_body: atom_node(s: idempotent_read_operation_body)
-    },
-    ComposableIdempotentOperation {
-      effect_variant: idempotent_effect_upsert_variant,
-      operation_body: atom_node(s: idempotent_upsert_operation_body)
-    },
-    ComposableIdempotentOperation {
-      effect_variant: idempotent_effect_delete_variant,
-      operation_body: atom_node(s: idempotent_delete_operation_body)
-    },
+    t19_sample_read_subject,
+    t19_sample_upsert_subject,
+    t19_sample_delete_subject,
   ]
 }
 
