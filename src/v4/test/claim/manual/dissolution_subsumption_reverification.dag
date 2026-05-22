@@ -2,7 +2,7 @@
 // Scope: runnable TestClaim receipt for DissolutionSubsumption MechanicalReverification rows.
 // Owns: claim_rust_language_model_emit_mechanical_reverification, rust_language_model_emit_lens_ci_report, verdict_rust_language_model_emit_subsumption, run_rust_language_model_emit_subsumption_reverifies.
 // Consumes: v4.compiler.eval, v4.compiler.infer, v4.lens.subsumption, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.runtime, v4.std.verification, v4.std.witness.
-// Status: manual receipt; consumes current SubsumedFixes shape until #3496 Set<DiffId> reshape lands.
+// Status: manual receipt over the canonical Set<DiffId> subsumption carrier.
 
 module v4.test.claim.manual.dissolution_subsumption_reverification
 
@@ -28,7 +28,6 @@ import v4.lens.subsumption {
   DissolutionSubsumption,
   MechanicalReverification,
   ProducerStageDerivation,
-  SubsumedFixes,
   TestClaimId,
   emit_rust_name_dispatch_leaf_fix,
   emit_rust_template_leaf_fix,
@@ -37,7 +36,7 @@ import v4.lens.subsumption {
   rust_language_model_emit_subsumption
 }
 import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection { List, Map }
+import v4.std.collection { Map, Set }
 import v4.std.constraints {
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
@@ -123,8 +122,8 @@ type MechanicalReverificationRun {
   test_claim: TestClaimId
   applied_root_fix: DiffId
   execution: MechanicalReverificationExecution
-  findings_before: SubsumedFixes
-  findings_after: List<DiffId>
+  findings_before: Set<DiffId>
+  findings_after: Set<DiffId>
 }
 
 
@@ -145,7 +144,7 @@ type MechanicalReverificationVerdict
   | Unverifiable { diagnostic: MechanicalReverificationError }
 
 
-// 🟡 coproduct dissolution — local current-SubsumedFixes matcher; dissolve-on:#3496 Set<DiffId> reshape removes positional optional matching.
+// 🟡 coproduct dissolution — local manual report matcher; dissolve-on:.dag runner emits complete set-difference diagnostics.
 type OptionalDiffId
   = DiffIdAbsent
   | DiffIdPresent { value: DiffId }
@@ -159,10 +158,22 @@ fn subsumption_symbol_node(s: Symbol) -> Node {
 }
 
 
-fn subsumption_second_leaf_node(row: DissolutionSubsumption) -> Node {
-  match first(row.subsumed_fixes.rest) {
-    Some { value: fix } => subsumption_symbol_node(s: fix.id)
-    None => subsumption_symbol_node(s: subsumption_runtime_rejected)
+fn subsumption_template_leaf_node(row: DissolutionSubsumption) -> Node {
+  let fix = DiffId { id: emit_rust_template_leaf_fix }
+  if row.subsumed_fixes.member(fix) {
+    subsumption_symbol_node(s: emit_rust_template_leaf_fix)
+  } else {
+    subsumption_symbol_node(s: subsumption_runtime_rejected)
+  }
+}
+
+
+fn subsumption_name_dispatch_leaf_node(row: DissolutionSubsumption) -> Node {
+  let fix = DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  if row.subsumed_fixes.member(fix) {
+    subsumption_symbol_node(s: emit_rust_name_dispatch_leaf_fix)
+  } else {
+    subsumption_symbol_node(s: subsumption_runtime_rejected)
   }
 }
 
@@ -179,11 +190,11 @@ fn subsumption_receipt_node(row: DissolutionSubsumption) -> Node {
           },
           Edge {
             label: Named { name: subsumption_first_leaf_edge },
-            target: subsumption_symbol_node(s: row.subsumed_fixes.first.id)
+            target: subsumption_template_leaf_node(row: row)
           },
           Edge {
             label: Named { name: subsumption_second_leaf_edge },
-            target: subsumption_second_leaf_node(row: row)
+            target: subsumption_name_dispatch_leaf_node(row: row)
           },
           Edge {
             label: Named { name: subsumption_mechanical_claim_edge },
@@ -236,31 +247,28 @@ fn mechanical_reverification_execution_for_run(run: TestClaimRun<Node, RuntimeVa
 }
 
 
-fn missing_subsumed_fix_before(expected: SubsumedFixes, observed: SubsumedFixes) -> OptionalDiffId {
-  if expected.first == observed.first {
-    match first(expected.rest) {
-      Some { value: expected_rest } =>
-        match first(observed.rest) {
-          Some { value: observed_rest } =>
-            if expected_rest == observed_rest {
-              DiffIdAbsent
-            } else {
-              DiffIdPresent { value: expected_rest }
-            }
-          None => DiffIdPresent { value: expected_rest }
-        }
-      None => DiffIdAbsent
-    }
+fn missing_subsumed_fix_before(expected: Set<DiffId>, observed: Set<DiffId>) -> OptionalDiffId {
+  let template = DiffId { id: emit_rust_template_leaf_fix }
+  let name_dispatch = DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  if expected.member(template) && !observed.member(template) {
+    DiffIdPresent { value: template }
+  } else if expected.member(name_dispatch) && !observed.member(name_dispatch) {
+    DiffIdPresent { value: name_dispatch }
   } else {
-    DiffIdPresent { value: expected.first }
+    DiffIdAbsent
   }
 }
 
 
-fn surviving_subsumed_fix_after(observed: List<DiffId>) -> OptionalDiffId {
-  match first(observed) {
-    Some { value: surviving } => DiffIdPresent { value: surviving }
-    None => DiffIdAbsent
+fn surviving_subsumed_fix_after(observed: Set<DiffId>) -> OptionalDiffId {
+  let template = DiffId { id: emit_rust_template_leaf_fix }
+  let name_dispatch = DiffId { id: emit_rust_name_dispatch_leaf_fix }
+  if observed.member(template) {
+    DiffIdPresent { value: template }
+  } else if observed.member(name_dispatch) {
+    DiffIdPresent { value: name_dispatch }
+  } else {
+    DiffIdAbsent
   }
 }
 
@@ -480,15 +488,29 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
 )
 
 
-data rust_language_model_emit_observed_before: SubsumedFixes = SubsumedFixes {
-  first: DiffId { id: emit_rust_template_leaf_fix },
-  rest: [
-    DiffId { id: emit_rust_name_dispatch_leaf_fix }
-  ]
+fn rust_language_model_emit_observed_before_value() -> Set<DiffId> {
+  Set {
+    member: fn(d) {
+      d.id == emit_rust_template_leaf_fix ||
+        d.id == emit_rust_name_dispatch_leaf_fix
+    }
+  }
 }
 
 
-data rust_language_model_emit_observed_after: List<DiffId> = []
+data rust_language_model_emit_observed_before: Set<DiffId> = rust_language_model_emit_observed_before_value()
+
+
+fn rust_language_model_emit_observed_after_value() -> Set<DiffId> {
+  Set {
+    member: fn(_) {
+      false
+    }
+  }
+}
+
+
+data rust_language_model_emit_observed_after: Set<DiffId> = rust_language_model_emit_observed_after_value()
 
 
 data rust_language_model_emit_lens_ci_report: MechanicalReverificationRun = MechanicalReverificationRun {
