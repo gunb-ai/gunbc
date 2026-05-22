@@ -28,37 +28,50 @@ fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::Surface
     parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
 }
 
-fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<String>> {
+fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
     module
         .items
         .iter()
         .filter_map(|item| match item {
-            SurfaceItem::Module(m) => Some(m.path.clone()),
+            SurfaceItem::Module { path, .. } => {
+                Some(path.iter().map(String::as_str).collect::<Vec<_>>())
+            }
             _ => None,
         })
         .collect()
 }
 
-fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Fn(f) => f.name == name,
-        _ => false,
+fn import_includes_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &[&str],
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| {
+        let SurfaceItem::Import {
+            path: item_path,
+            names,
+            ..
+        } = item
+        else {
+            return false;
+        };
+        item_path.len() == path.len()
+            && item_path
+                .iter()
+                .zip(path.iter())
+                .all(|(a, &b)| a.as_str() == b)
+            && names.iter().any(|n| n == name)
     })
 }
 
-fn import_includes_path(
-    module: &v3_compiler::parse_surface::SurfaceModule,
-    path: &[&str],
-    symbol: &str,
-) -> bool {
+fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
     module.items.iter().any(|item| match item {
-        SurfaceItem::Import(i) => {
-            i.path == path
-                && i
-                    .names
-                    .iter()
-                    .any(|n| n == symbol || n.starts_with(&format!("{symbol}(")))
+        SurfaceItem::Fn {
+            name: item_name, ..
         }
+        | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
         _ => false,
     })
 }
@@ -88,7 +101,11 @@ fn v4_workflow_ci_runner_module_authority_and_entrypoints() {
         );
     }
     assert!(
-        import_includes_path(&module, &["v4", "lens", "affected_set"], "affected_set_rerun_nodes"),
+        import_includes_name(
+            &module,
+            &["v4", "lens", "affected_set"],
+            "affected_set_rerun_nodes"
+        ),
         "{CI_RUNNER_PATH}: must import affected_set_rerun_nodes from T-21 lens"
     );
 }
