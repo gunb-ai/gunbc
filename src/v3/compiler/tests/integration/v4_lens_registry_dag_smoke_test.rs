@@ -197,6 +197,51 @@ fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
     &rest[..end]
 }
 
+fn variant_record_field<'a>(
+    expr: &'a SurfaceExpr,
+    target_name: &str,
+    field_name: &str,
+) -> &'a SurfaceExpr {
+    let SurfaceExpr::VariantRecord { target, fields, .. } = expr else {
+        panic!("expected `{target_name}` record, got {expr:?}");
+    };
+    assert_eq!(
+        target, target_name,
+        "expected `{target_name}` record target, got `{target}`"
+    );
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("`{target_name}` missing `{field_name}` field"))
+}
+
+fn ci_pipeline_jobs(body: &SurfaceExpr) -> &[SurfaceExpr] {
+    let call_record = match body {
+        SurfaceExpr::Call { target, args, .. } if target == "ci_pipeline_well_formed" => {
+            args.first()
+                .unwrap_or_else(|| panic!("ci_pipeline_well_formed missing pipeline arg"))
+        }
+        other => panic!("expected ci_pipeline_well_formed call, got {other:?}"),
+    };
+    let jobs_expr = record_body_field(call_record, "jobs");
+    let SurfaceExpr::List { elements, .. } = jobs_expr else {
+        panic!("expected ci_pipeline.jobs list, got {jobs_expr:?}");
+    };
+    elements
+}
+
+fn ci_job_record_by_id<'a>(jobs: &'a [SurfaceExpr], job_id: &str) -> &'a SurfaceExpr {
+    jobs.iter()
+        .find(|job| {
+            matches!(
+                variant_record_field(job, "CiJob", "id"),
+                SurfaceExpr::Var { name, .. } if name == job_id
+            )
+        })
+        .unwrap_or_else(|| panic!("missing CiJob `{job_id}`"))
+}
+
 #[test]
 fn v4_lens_registry_dag_tokenizes_and_parses() {
     let module = parse_module(REGISTRY_DAG, REGISTRY_PATH);
@@ -271,6 +316,16 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
         "{CI_PATH}: live workflow binding must not re-author ci_pipeline signal/job/policy facts"
     );
     let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
+    let ci_pipeline = data_body(&module, "ci_pipeline");
+    let lens_ci_job = ci_job_record_by_id(
+        ci_pipeline_jobs(ci_pipeline),
+        "lens_ci_registry_execution",
+    );
+    assert_eq!(
+        list_body_vars(variant_record_field(lens_ci_job, "CiJob", "needs")),
+        vec!["v2_compile_src_v4"],
+        "{CI_PATH}: Lens-CI execution must depend on the v2 compiler artifact job used by the live semantic step"
+    );
 
     gen_gunbc_ci_workflow_dag::parse_and_validate_github_actions_workflow_yaml(CI_YML)
         .unwrap_or_else(|e| panic!("{CI_YML_PATH}: parse/validate workflow YAML: {e}"));

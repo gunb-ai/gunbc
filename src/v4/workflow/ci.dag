@@ -90,7 +90,7 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     CiJob {
       id: lens_ci_registry_execution,
       command: LensCiCommand { required_lenses: lens_ci_required_lenses },
-      needs: []
+      needs: [v2_compile_src_v4]
     }
   ],
   gates: [
