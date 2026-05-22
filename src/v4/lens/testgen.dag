@@ -123,8 +123,7 @@ type TypeConstructionSubject
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
-type TestgenCoproductSubject
-  = TestClaimCoproduct
+type TestgenCoproductSubject { symbol: Symbol }
 
 
 type TestClaimCoproductVariant
@@ -497,16 +496,14 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
 fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> DiagnosticExhaustivenessSubject {
   DiagnosticExhaustivenessSubject {
     reason: t19_coproduct_exhaustiveness_missing_variant,
-    coproduct: TestClaimCoproduct,
+    coproduct: TestgenCoproductSubject { symbol: t19_coproduct_exhaustiveness_testclaim_variant },
     omitted_variant: TestClaimDiagnosticClaimVariant,
   }
 }
 
 
 fn testgen_coproduct_subject_symbol(subject: TestgenCoproductSubject) -> Symbol {
-  match subject {
-    TestClaimCoproduct => t19_coproduct_exhaustiveness_testclaim_variant
-  }
+  subject.symbol
 }
 
 
