@@ -8,7 +8,7 @@
 module v4.extdeps.formats.sql
 
 
-import v4.std.algebra { free_monoid_fold }
+import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.cardinality { NonZeroNat }
@@ -401,12 +401,12 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
-// free_monoid_fold is a left fold, so cons-prepend folds reverse input order.
+// fold_list is a left fold, so cons-prepend folds reverse input order.
 // reverse + cons-prepend recovers the input order — this is the order-preserving
 // idiom for List<T> in v4 substrate today (no canonical list_map / list_append in
 // std/collection or std/algebra yet).
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: xs,
     empty: Empty,
     cons: fn(acc, item) {
@@ -417,7 +417,7 @@ fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
 
 fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   sql_list_reverse(
-    xs: free_monoid_fold(
+    xs: fold_list(
       xs: xs,
       empty: Empty,
       cons: fn(acc, item) {
@@ -428,7 +428,7 @@ fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
 }
 
 fn sql_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
+  fold_list(
     xs: sql_list_reverse(xs: left),
     empty: right,
     cons: fn(acc, item) {
