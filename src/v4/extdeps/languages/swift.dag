@@ -14,6 +14,7 @@ import v4.std.model_core {
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
+  primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
@@ -115,7 +116,6 @@ data swift_facts_field_ieee754_binary: Symbol = swift_facts_field_ieee754_binary
 data swift_facts_field_scalar: Symbol = swift_facts_field_scalar
 data swift_facts_field_value_fact: Symbol = swift_facts_field_value_fact
 
-data swift_primitive_fact_axis_overflow_semantics: Symbol = swift_primitive_fact_axis_overflow_semantics
 data swift_primitive_fact_axis_scalar_classifier: Symbol = swift_primitive_fact_axis_scalar_classifier
 
 data swift_tag_signed: Symbol = swift_tag_signed
@@ -474,7 +474,7 @@ fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) 
       fact1: swift_signedness_node(signedness: facts.signedness),
       axis2: primitive_fact_axis_width,
       fact2: swift_width_node(width: facts.width),
-      axis3: swift_primitive_fact_axis_overflow_semantics,
+      axis3: primitive_fact_axis_overflow_disposition,
       fact3: swift_overflow_node(overflow: facts.overflow)
     )
   }
