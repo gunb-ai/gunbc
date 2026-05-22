@@ -47,8 +47,7 @@ type SwiftUnitRepresentation {}
 
 type SwiftBoolRepresentation {}
 
-type SwiftIntegerOverflowSemantics
-  = TrapOnOverflow
+type SwiftIntegerOverflowSemantics {}
 
 type SwiftScalar
   = IntScalar { signedness: SwiftIntSignedness, width: SwiftIntWidth }
@@ -140,7 +139,7 @@ data swift_tag_scalar_character: Symbol = swift_tag_scalar_character
 data swift_tag_scalar_string: Symbol = swift_tag_scalar_string
 data swift_tag_scalar_void: Symbol = swift_tag_scalar_void
 
-data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = TrapOnOverflow
+data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {}
 data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {}
 data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterRepresentation {}
 data swift_string_representation: SwiftStringRepresentation = SwiftStringRepresentation {}
@@ -316,9 +315,8 @@ fn swift_float_width_node(width: SwiftFloatWidth) -> Node {
 }
 
 fn swift_overflow_node(overflow: SwiftIntegerOverflowSemantics) -> Node {
-  match overflow {
-    TrapOnOverflow => swift_atom(id: swift_tag_trap_on_overflow)
-  }
+  let _witness = overflow
+  swift_atom(id: swift_tag_trap_on_overflow)
 }
 
 fn swift_scalar_node(scalar: SwiftScalar) -> Node {
@@ -559,12 +557,36 @@ fn swift_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+fn swift_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: SwiftIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn swift_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: SwiftFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn swift_nonnumeric_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: SwiftNonNumericPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
 fn swift_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
     xs: swift_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
-      acc || sym == facts.surface_spelling
+      swift_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
     }
   )
 }
@@ -574,7 +596,7 @@ fn swift_float_catalog_surface_symbol(sym: Symbol) -> Bool {
     xs: swift_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
-      acc || sym == facts.surface_spelling
+      swift_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
     }
   )
 }
@@ -584,7 +606,7 @@ fn swift_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
     xs: swift_nonnumeric_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
-      acc || sym == facts.surface_spelling
+      swift_nonnumeric_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
     }
   )
 }
