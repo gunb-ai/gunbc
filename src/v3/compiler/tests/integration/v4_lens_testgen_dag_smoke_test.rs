@@ -1,11 +1,11 @@
 //! **Layer:** integration
 //!
-//! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
+//! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes claim-anchor-key-driven
 //! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
 //! `T19ManualAnchorAbsent` is fail-closed on bootstrap via `Outcome` on `manual_test_claim_for_manual_anchor`.
-//! `Generator.t19_anchor` repeats **`T19ManualAnchorKey`** from the selected manual **`TestClaim`** (single
-//! carrier authority; no mirrored present-only sum). `testgen_concept_for_manual_claim` matches on
-//! `claim.t19_anchor` so the slot projection stays aligned with the claim row.
+//! `Generator.t19_anchor` repeats **`T19ClaimAnchorKey`** from the selected **`TestClaim`** (single
+//! carrier authority; manual rows use `T19ManualClaimAnchor`). `testgen_concept_for_manual_claim`
+//! matches on `claim.t19_anchor` so the slot projection stays aligned with the claim row.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
 //! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
 //!
