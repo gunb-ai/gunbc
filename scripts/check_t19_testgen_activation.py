@@ -70,7 +70,7 @@ def main() -> None:
             "fn testgen_scheduled_language_behavior_generators",
             "fn testgen_scheduled_idempotent_operation_subjects",
             "import v4.std.effects",
-            "idempotent_operation_witness_node",
+            "idempotent_operation_apply_twice(state: t19_sample_state",
             "idempotent_operation_apply_twice",
             "idempotent_operation_apply_once",
             "t19_lbe_label_conj_dag_surface",
