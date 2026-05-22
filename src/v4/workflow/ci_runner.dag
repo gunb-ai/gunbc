@@ -16,6 +16,7 @@ import v4.lens.affected_set {
   affected_set_rerun_nodes
 }
 import v4.std.change { AffectedSet, AffectedSetEvidence }
+import v4.std.algebra { free_monoid_fold }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
@@ -32,7 +33,7 @@ type CiClaimRoster = List<TestClaim>
 
 
 fn node_in_rerun_frontier(needle: Node, frontier: List<Node>) -> Bool {
-  fold(frontier, init: false, f: fn(found, node) {
+  free_monoid_fold(xs: frontier, empty: false, cons: fn(found, node) {
     found || (node == needle)
   })
 }
@@ -69,14 +70,17 @@ fn append_claim_if_in_frontier(
 }
 
 
+fn narrow_roster_to_rerun_frontier(roster: CiClaimRoster, frontier: List<Node>) -> List<TestClaim> {
+  free_monoid_fold(xs: roster, empty: Empty, cons: fn(acc, claim) {
+    append_claim_if_in_frontier(acc: acc, claim: claim, frontier: frontier)
+  })
+}
+
+
 fn select_test_claims_for_rerun(roster: CiClaimRoster, rerun: RerunNodeSet) -> CiRerunSelection {
   match rerun {
     RerunNodeSetProduced { nodes: nodes } =>
-      CiRerunNarrow {
-        rerun: fold(roster, init: [], f: fn(acc, claim) {
-          append_claim_if_in_frontier(acc: acc, claim: claim, frontier: nodes)
-        })
-      }
+      CiRerunNarrow { rerun: narrow_roster_to_rerun_frontier(roster: roster, frontier: nodes) }
     RerunNodeSetFailClosed { evidence: evidence } =>
       CiRerunSuperset {
         roster: roster,
