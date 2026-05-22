@@ -119,5 +119,4 @@ fn edit_locus_affected_set_wire_fail_closed_holds() -> Bool {
 data edit_locus_narrow_resolution_claim_passes: Bool = edit_locus_narrow_resolution_holds()
 data edit_locus_fail_closed_claim_passes: Bool = edit_locus_fail_closed_holds()
 data edit_locus_affected_set_wire_claim_passes: Bool = edit_locus_affected_set_wire_holds()
-data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool =
-  edit_locus_affected_set_wire_fail_closed_holds()
+data edit_locus_affected_set_wire_fail_closed_claim_passes: Bool = edit_locus_affected_set_wire_fail_closed_holds()
