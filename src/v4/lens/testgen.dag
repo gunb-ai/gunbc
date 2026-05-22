@@ -783,7 +783,7 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
 
 
 // 🟡 gated — feature:witness-validity-canonical-fold-list-encoder — bind node://adhoc-620d7e77-3e8 — dissolve-on-arrival: canonical Node-valued fold_list combinator in v4.std.algebra (substrate task per openai-pro #3565 RC); forbidden: parallel hand-rolled List<T> Node encoders elsewhere in the lens lane.
-fn witness_validity_diagnostic_list_node(xs: List<Diagnostic>) -> Outcome<Node> {
+fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
   match xs {
     Empty =>
       Accepted {
