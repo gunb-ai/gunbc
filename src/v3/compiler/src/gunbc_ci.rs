@@ -280,24 +280,16 @@ pub enum SubsumptionVerificationRuntime {
     },
 }
 
-/// Non-empty mirror of `v4.lens.subsumption.SubsumedFixes`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SubsumedFixesRuntime {
-    pub first: DissolutionDiffId,
-    pub rest: Vec<DissolutionDiffId>,
-}
-
-impl SubsumedFixesRuntime {
-    fn iter(&self) -> impl Iterator<Item = &DissolutionDiffId> {
-        std::iter::once(&self.first).chain(self.rest.iter())
-    }
-}
-
 /// Structural mirror of one `v4.lens.subsumption.DissolutionSubsumption` row.
+///
+/// `subsumed_fixes` mirrors the substrate `Set<DiffId>` shape as a
+/// concrete enumerable `BTreeSet`: the predicate-shaped substrate set is
+/// approximated by its membership extension here, so the host runtime can
+/// iterate the fix set without enumerating the universe of `DiffId`s.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DissolutionSubsumptionRuntimeRow {
     pub root_fix: DissolutionDiffId,
-    pub subsumed_fixes: SubsumedFixesRuntime,
+    pub subsumed_fixes: BTreeSet<DissolutionDiffId>,
     pub verification: SubsumptionVerificationRuntime,
 }
 
@@ -531,13 +523,11 @@ mod tests {
     fn demo_mechanical_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
         DissolutionSubsumptionRuntimeRow {
             root_fix: diff_id("demo_mechanical_root_fix"),
-            subsumed_fixes: SubsumedFixesRuntime {
-                first: diff_id("demo_mechanical_leaf_fix_a"),
-                rest: vec![
-                    diff_id("demo_mechanical_leaf_fix_b"),
-                    diff_id("demo_mechanical_leaf_fix_c"),
-                ],
-            },
+            subsumed_fixes: BTreeSet::from([
+                diff_id("demo_mechanical_leaf_fix_a"),
+                diff_id("demo_mechanical_leaf_fix_b"),
+                diff_id("demo_mechanical_leaf_fix_c"),
+            ]),
             verification: SubsumptionVerificationRuntime::MechanicalReverification {
                 test_claim: test_claim_id("demo_mechanical_reverification_claim"),
             },
@@ -547,10 +537,7 @@ mod tests {
     fn demo_producer_stage_subsumption_row_fixture() -> DissolutionSubsumptionRuntimeRow {
         DissolutionSubsumptionRuntimeRow {
             root_fix: diff_id("demo_producer_stage_root_fix"),
-            subsumed_fixes: SubsumedFixesRuntime {
-                first: diff_id("demo_producer_stage_leaf_fix"),
-                rest: Vec::new(),
-            },
+            subsumed_fixes: BTreeSet::from([diff_id("demo_producer_stage_leaf_fix")]),
             verification: SubsumptionVerificationRuntime::ProducerStageDerivation {
                 derivation_path: vec![producer_stage_id("demo_producer_stage")],
             },
@@ -565,7 +552,7 @@ mod tests {
             execution: MechanicalReverificationExecution::Completed {
                 report_authority: MechanicalReverificationReportAuthority::LensCiTestClaimRunner,
             },
-            findings_before: row.subsumed_fixes.iter().cloned().collect(),
+            findings_before: row.subsumed_fixes.clone(),
             findings_after: BTreeSet::new(),
         }
     }
@@ -816,10 +803,10 @@ mod tests {
             test_claim,
             &test_claim_id("demo_mechanical_reverification_claim")
         );
-        assert_eq!(
-            row.subsumed_fixes.first,
-            diff_id("demo_mechanical_leaf_fix_a")
-        );
+        assert!(row
+            .subsumed_fixes
+            .contains(&diff_id("demo_mechanical_leaf_fix_a")));
+        assert_eq!(row.subsumed_fixes.len(), 3);
     }
 
     #[test]

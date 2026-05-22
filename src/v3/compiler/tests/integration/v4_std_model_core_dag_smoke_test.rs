@@ -133,7 +133,6 @@ fn v4_std_model_core_declares_ratified_q1_carriers() {
     for name in [
         "ModelCore",
         "PrimitiveFactBundle",
-        "PrimitiveFactAxisBinding",
         "AlgebraInhabitanceDecl",
         "AlgebraLawObligation",
         "EffectSemanticsDecl",
@@ -221,25 +220,9 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
         bundle_fields,
         vec![
             ("substrate_carrier".to_string(), "Node".to_string()),
-            (
-                "spec_facts".to_string(),
-                "List<PrimitiveFactAxisBinding>".to_string(),
-            ),
+            ("spec_facts".to_string(), "Map<Symbol, Node>".to_string()),
         ],
-        "PrimitiveFactBundle.spec_facts must be a structured axis-keyed bundle, not an opaque Node"
-    );
-    let axis_fields: Vec<(String, String)> =
-        type_record_fields(&module, "PrimitiveFactAxisBinding")
-            .iter()
-            .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
-            .collect();
-    assert_eq!(
-        axis_fields,
-        vec![
-            ("axis".to_string(), "Symbol".to_string()),
-            ("fact".to_string(), "Node".to_string()),
-        ],
-        "PrimitiveFactAxisBinding pairs a declared axis Symbol with a substrate fact Node"
+        "PrimitiveFactBundle.spec_facts must be a Map keyed by axis Symbol so duplicate axis bindings are structurally unrepresentable"
     );
     for axis in [
         "primitive_fact_axis_width",
@@ -251,7 +234,7 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
     ] {
         assert!(
             surface_declares_data(&module, axis, "Symbol"),
-            "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactAxisBinding.axis"
+            "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactBundle.spec_facts"
         );
     }
 }
