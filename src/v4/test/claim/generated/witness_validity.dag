@@ -35,8 +35,7 @@ data witness_validity_unrealized_rule: Symbol = witness_validity_unrealized_rule
 // Positive row: source_facts == candidate == algebra (well-formed empty Conj);
 // witness names the realized constraint-satisfaction rule and evidence == candidate.
 // verify_witness → Accepted → helper emits EqualsClaim(lhs=evidence, rhs=candidate).
-data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> =
-  testgen_emit_witness_validity_claim(
+data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: constraint-satisfaction holds (positive)",
     source_facts: stub_empty_conj,
     candidate: stub_empty_conj,
@@ -53,8 +52,7 @@ data row_witness_validity_constraint_satisfaction_holds: Outcome<TestClaim> =
 
 // Negative row: witness.property does not match predicate.preservation_rule.
 // verify_witness → Rejected(find_witness_invalid_witness) → DiagnosticClaim.
-data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> =
-  testgen_emit_witness_validity_claim(
+data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: property symbol mismatch (invalid witness)",
     source_facts: stub_empty_conj,
     candidate: stub_empty_conj,
@@ -71,8 +69,7 @@ data row_witness_validity_property_symbol_mismatch: Outcome<TestClaim> =
 
 // Negative row: witness.evidence is not the candidate it claims to certify.
 // verify_witness → Rejected(find_witness_invalid_witness) → DiagnosticClaim.
-data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> =
-  testgen_emit_witness_validity_claim(
+data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: evidence node mismatch (invalid witness)",
     source_facts: stub_empty_conj,
     candidate: stub_empty_conj,
@@ -89,8 +86,7 @@ data row_witness_validity_evidence_node_mismatch: Outcome<TestClaim> =
 
 // Negative row: predicate.preservation_rule is neither of the realized arms.
 // verify_witness rejects at the entry match with find_witness_not_realized → DiagnosticClaim.
-data row_witness_validity_rule_not_realized: Outcome<TestClaim> =
-  testgen_emit_witness_validity_claim(
+data row_witness_validity_rule_not_realized: Outcome<TestClaim> = testgen_emit_witness_validity_claim(
     label: "witness-validity: preservation rule not realized",
     source_facts: stub_empty_conj,
     candidate: stub_empty_conj,
