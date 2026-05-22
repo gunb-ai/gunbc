@@ -14,8 +14,7 @@ import v4.std.diagnostic {
   Textual,
   Unavailable,
   UserInputBoundary,
-  WholeFile,
-  diagnostics_singleton
+  WholeFile
 }
 import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
@@ -31,15 +30,21 @@ data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_
 data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_overflow_disposition
 
 
-type PrimitiveFactAxisBinding {
-  axis: Symbol
-  fact: Node
+type PrimitiveFactBundle {
+  substrate_carrier: Node
+  spec_facts: Map<Symbol, Node>
 }
 
 
-type PrimitiveFactBundle {
-  substrate_carrier: Node
-  spec_facts: List<PrimitiveFactAxisBinding>
+data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound
+
+
+fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: primitive_fact_axis_unbound_reason,
+    at: Textual { file: axis, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 

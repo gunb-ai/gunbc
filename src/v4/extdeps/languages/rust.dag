@@ -31,19 +31,20 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Map, Set }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -1265,51 +1266,74 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_int_width_node(width: facts.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: rust_int_kind_node(kind: facts.signedness) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_float_width_node(width: facts.width) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: [
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: rust_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: rust_int_width_node(width: facts.width)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: rust_int_kind_node(kind: facts.signedness)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
-      )
-    ]
+    spec_facts: rust_integer_spec_facts(facts: facts)
   }
 }
 
 fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: [
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: rust_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: rust_float_width_node(width: facts.width)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: rust_inhabitant_atom(id: facts.ieee754_binary)
-      )
-    ]
+    spec_facts: rust_float_spec_facts(facts: facts)
   }
 }
 
@@ -1318,16 +1342,7 @@ fn rust_primitive_bundle_from_noninteger_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: [
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: rust_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: rust_inhabitant_atom(id: facts.representation)
-      )
-    ]
+    spec_facts: rust_noninteger_spec_facts(facts: facts)
   }
 }
 

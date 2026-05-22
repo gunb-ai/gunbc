@@ -16,7 +16,7 @@ import v4.lens.testgen {
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
-import v4.std.diagnostic { Outcome, Rejected }
+import v4.std.diagnostic { Outcome, outcome_is_rejected }
 import v4.std.logic { Bool }
 import v4.std.verification {
   TestClaim,
@@ -75,10 +75,7 @@ fn generated_idempotent_operation_sample_count_is_three() -> Bool {
 
 
 fn generated_idempotent_operation_skip_is_rejected() -> Bool {
-  match generated_label_only_idempotent_skip {
-    Rejected { diagnostics: _ } => true
-    _ => false
-  }
+  outcome_is_rejected(o: generated_label_only_idempotent_skip)
 }
 
 
