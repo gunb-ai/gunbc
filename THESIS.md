@@ -303,13 +303,14 @@ vanish with their subjects, boundary tests migrate to `ExecuteCommand`-based
 per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
 (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in
 `docs/design-pure-bootstrap.md`).
-The live *count* of currently hand-authored files reads from the full
-SG-0 census in `src/v3/compiler/tests/integration/sg0_census_test.rs`
-(authority on the census): file-level **`EXPECTED_HAND_AUTHORED_NON_TEST`**
-plus **`EXPECTED_HAND_AUTHORED_FRAGMENTS`** (crate-root scaffolds) for the
-T-PB-A non-test surface, **`EXPECTED_HAND_AUTHORED_TEST`** for the T-PB-B test
-surface, and mechanical checks that paths land in the correct sub-ratchet.
-Both subsets shrink toward 0 under the 0-floor cascade promotion.
+The live *count* of currently hand-authored files is tracked per-generation:
+v2 authority: `src/v2/compiler/` stage0 census (~97%; 2 hand-maintained of 62 stage0 files).
+v3 authority (historical — v3 is frozen): `src/v3/compiler/tests/integration/sg0_census_test.rs`
+— file-level **`EXPECTED_HAND_AUTHORED_NON_TEST`** + **`EXPECTED_HAND_AUTHORED_FRAGMENTS`**
+(T-PB-A) + **`EXPECTED_HAND_AUTHORED_TEST`** (T-PB-B); both subsets were shrinking toward 0 under
+0-floor cascade but the campaign is frozen pending v4 ship.
+v4 authority (active): `src/v4/compiler/self_host.dag` (T-15) — hand-authored-file ratchet
+pending; v4 substrate is already at 0 `.rs` (193 `.dag` files, no hand-Rust).
 Generated escape hatch is acceptable for additional files; hand-authored
 files are not.
 v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
