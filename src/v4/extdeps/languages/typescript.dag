@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
-// Owns: TsEcma262PrimitiveOperationSemantics, TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_facts_number, ts_facts_bigint, ts_numeric_facts_catalog, ts_bool_grounding, ts_inhabitant_atom, ts_named_edge, ts_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_declared_inhabitants_root, ts_wave1_target_model, ts_list_snoc_item, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_primitive_axis_binding, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundles_from_catalog_step, ts_wave1_primitive_fact_bundles, ts_model_core_wave1, ts_language_model_wave1
+// Owns: TsNumberArithmeticSemantics, TsNumberBitwiseSemantics, TsBigIntOperationSemantics, TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_facts_number, ts_facts_bigint, ts_numeric_facts_catalog, ts_bool_grounding, ts_inhabitant_atom, ts_named_edge, ts_number_arithmetic_semantics_node, ts_number_bitwise_semantics_node, ts_bigint_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_declared_inhabitants_root, ts_wave1_target_model, ts_list_snoc_item, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_primitive_axis_binding, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundles_from_catalog_step, ts_wave1_primitive_fact_bundles, ts_model_core_wave1, ts_language_model_wave1
 // Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model.
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref — 🟡 E-6(b) staging; wave-1 lex/grammar deferred.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
@@ -33,17 +33,13 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
 import v4.std.target_model { target_model_edge_declared_inhabitants }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-type TsEcma262PrimitiveOperationSemantics
-  = TsNumberIeee754Binary64Semantics
-  | TsNumberBitwiseInt32Uint32Semantics
-  | TsBigIntExactUnboundedSemantics
+type TsNumberArithmeticSemantics
+type TsNumberBitwiseSemantics
+type TsBigIntOperationSemantics
 
 // 🟢 grounded.
 type TsNumberPrimitiveFacts {
   surface_spelling: Symbol
-  arithmetic_semantics: TsEcma262PrimitiveOperationSemantics
-  bitwise_semantics: TsEcma262PrimitiveOperationSemantics
   ieee754_binary: Symbol
   std_projection: Symbol
 }
@@ -51,7 +47,6 @@ type TsNumberPrimitiveFacts {
 // 🟢 grounded.
 type TsBigIntPrimitiveFacts {
   surface_spelling: Symbol
-  operation_semantics: TsEcma262PrimitiveOperationSemantics
   std_projection: Symbol
   encoding: Symbol
 }
@@ -104,15 +99,12 @@ data ts_tag_bigint_exact_unbounded: Symbol = ts_tag_bigint_exact_unbounded
 
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ts_surface_spelling_number,
-  arithmetic_semantics: TsNumberIeee754Binary64Semantics,
-  bitwise_semantics: TsNumberBitwiseInt32Uint32Semantics,
   ieee754_binary: ts_ieee754_binary64,
   std_projection: ts_std_projection_float64,
 }
 
 data ts_facts_bigint: TsBigIntPrimitiveFacts = TsBigIntPrimitiveFacts {
   surface_spelling: ts_surface_spelling_bigint,
-  operation_semantics: TsBigIntExactUnboundedSemantics,
   std_projection: ts_std_projection_bigint,
   encoding: ts_repr_bigint_exact_unbounded,
 }
@@ -135,15 +127,16 @@ fn ts_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-fn ts_operation_semantics_node(sem: TsEcma262PrimitiveOperationSemantics) -> Node {
-  match sem {
-    TsNumberIeee754Binary64Semantics =>
-      ts_inhabitant_atom(id: ts_tag_number_ieee754_binary64)
-    TsNumberBitwiseInt32Uint32Semantics =>
-      ts_inhabitant_atom(id: ts_tag_number_bitwise_int32_uint32)
-    TsBigIntExactUnboundedSemantics =>
-      ts_inhabitant_atom(id: ts_tag_bigint_exact_unbounded)
-  }
+fn ts_number_arithmetic_semantics_node() -> Node {
+  ts_inhabitant_atom(id: ts_tag_number_ieee754_binary64)
+}
+
+fn ts_number_bitwise_semantics_node() -> Node {
+  ts_inhabitant_atom(id: ts_tag_number_bitwise_int32_uint32)
+}
+
+fn ts_bigint_operation_semantics_node() -> Node {
+  ts_inhabitant_atom(id: ts_tag_bigint_exact_unbounded)
 }
 
 fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
@@ -156,11 +149,11 @@ fn ts_number_facts_node(facts: TsNumberPrimitiveFacts) -> Node {
       ),
       ts_named_edge(
         name: ts_facts_field_arithmetic_semantics,
-        target: ts_operation_semantics_node(sem: facts.arithmetic_semantics)
+        target: ts_number_arithmetic_semantics_node()
       ),
       ts_named_edge(
         name: ts_facts_field_bitwise_semantics,
-        target: ts_operation_semantics_node(sem: facts.bitwise_semantics)
+        target: ts_number_bitwise_semantics_node()
       ),
       ts_named_edge(
         name: ts_facts_field_width,
@@ -188,7 +181,7 @@ fn ts_bigint_facts_node(facts: TsBigIntPrimitiveFacts) -> Node {
       ),
       ts_named_edge(
         name: ts_facts_field_operation_semantics,
-        target: ts_operation_semantics_node(sem: facts.operation_semantics)
+        target: ts_bigint_operation_semantics_node()
       ),
       ts_named_edge(
         name: ts_facts_field_std_projection,
