@@ -443,34 +443,79 @@ fn go_overflow_node(overflow: GoBuiltinIntegerArithmeticOverflow) -> Node {
 }
 
 fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      go_named_edge(
-        name: go_facts_field_surface_spelling,
-        target: go_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      go_named_edge(
-        name: go_facts_field_width,
-        target: go_integer_width_node(width: facts.width)
-      ),
-      go_named_edge(
-        name: go_facts_field_signedness,
-        target: go_int_kind_node(kind: facts.signedness)
-      ),
-      go_named_edge(
-        name: go_facts_field_overflow,
-        target: go_overflow_node(overflow: facts.overflow)
-      ),
-      go_named_edge(
-        name: go_facts_field_encoding,
-        target: go_inhabitant_atom(id: facts.encoding)
-      ),
-      go_named_edge(
-        name: go_facts_field_std_projection,
-        target: go_inhabitant_atom(id: facts.std_projection)
-      )
-    ]
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_surface_spelling,
+          target: go_inhabitant_atom(id: surface_spelling)
+        ),
+        go_named_edge(
+          name: go_facts_field_width,
+          target: go_signed_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: go_facts_field_signedness,
+          target: go_int_kind_node(kind: Signed)
+        ),
+        go_named_edge(
+          name: go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
+        ),
+        go_named_edge(
+          name: go_facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ]
+    }
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_surface_spelling,
+          target: go_inhabitant_atom(id: surface_spelling)
+        ),
+        go_named_edge(
+          name: go_facts_field_width,
+          target: go_unsigned_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: go_facts_field_signedness,
+          target: go_int_kind_node(kind: Unsigned)
+        ),
+        go_named_edge(
+          name: go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
+        ),
+        go_named_edge(
+          name: go_facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ]
+    }
   }
 }
 
@@ -626,20 +671,51 @@ fn go_primitive_fact_map_5(
 }
 
 fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> PrimitiveFactBundle {
-  PrimitiveFactBundle {
-    substrate_carrier: go_integer_facts_node(facts: facts),
-    spec_facts: go_primitive_fact_map_5(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: go_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: go_integer_width_node(width: facts.width),
-      axis2: primitive_fact_axis_signedness,
-      fact2: go_int_kind_node(kind: facts.signedness),
-      axis3: primitive_fact_axis_overflow_disposition,
-      fact3: go_overflow_node(overflow: facts.overflow),
-      axis4: primitive_fact_axis_encoding,
-      fact4: go_inhabitant_atom(id: facts.encoding)
-    )
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => PrimitiveFactBundle {
+      substrate_carrier: go_integer_facts_node(facts: facts),
+      spec_facts: go_primitive_fact_map_5(
+        axis0: primitive_fact_axis_surface_spelling,
+        fact0: go_inhabitant_atom(id: surface_spelling),
+        axis1: primitive_fact_axis_width,
+        fact1: go_signed_int_width_node(width: width),
+        axis2: primitive_fact_axis_signedness,
+        fact2: go_int_kind_node(kind: Signed),
+        axis3: primitive_fact_axis_overflow_disposition,
+        fact3: go_overflow_node(
+          overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+        ),
+        axis4: primitive_fact_axis_encoding,
+        fact4: go_inhabitant_atom(id: encoding)
+      )
+    }
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width,
+      encoding,
+      std_projection: _
+    } => PrimitiveFactBundle {
+      substrate_carrier: go_integer_facts_node(facts: facts),
+      spec_facts: go_primitive_fact_map_5(
+        axis0: primitive_fact_axis_surface_spelling,
+        fact0: go_inhabitant_atom(id: surface_spelling),
+        axis1: primitive_fact_axis_width,
+        fact1: go_unsigned_int_width_node(width: width),
+        axis2: primitive_fact_axis_signedness,
+        fact2: go_int_kind_node(kind: Unsigned),
+        axis3: primitive_fact_axis_overflow_disposition,
+        fact3: go_overflow_node(
+          overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+        ),
+        axis4: primitive_fact_axis_encoding,
+        fact4: go_inhabitant_atom(id: encoding)
+      )
+    }
   }
 }
 
