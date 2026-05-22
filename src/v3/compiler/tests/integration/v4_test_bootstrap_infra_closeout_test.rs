@@ -35,19 +35,16 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
-<<<<<<< HEAD
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
     "src/v4/test/claim/generated/coproduct_exhaustiveness.dag";
-=======
 const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
 const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
     "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
 const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
 const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
->>>>>>> origin/main
 
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {

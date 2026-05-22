@@ -19,13 +19,11 @@ TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 EFFECTS = ROOT / "src/v4/std/effects.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
-<<<<<<< HEAD
 COPRODUCT_EXHAUSTIVENESS_GENERATED = (
     ROOT / "src/v4/test/claim/generated/coproduct_exhaustiveness.dag"
-=======
+)
 IDEMPOTENT_OPERATION_GENERATED = (
     ROOT / "src/v4/test/claim/generated/idempotent_operation_conformance.dag"
->>>>>>> origin/main
 )
 VERIFICATION = ROOT / "src/v4/std/verification.dag"
 
@@ -48,16 +46,11 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 def main() -> None:
     for path in (
         TESTGEN,
-<<<<<<< HEAD
-        LBE_GENERATED,
-        LBE_MANIFEST,
         COPRODUCT_EXHAUSTIVENESS_GENERATED,
-=======
         EFFECTS,
         LBE_GENERATED,
         LBE_MANIFEST,
         IDEMPOTENT_OPERATION_GENERATED,
->>>>>>> origin/main
         VERIFICATION,
     ):
         _require(path)
@@ -149,7 +142,6 @@ def main() -> None:
         ),
     )
 
-<<<<<<< HEAD
     _require_substrings(
         "coproduct_exhaustiveness.dag",
         coproduct_exhaustiveness,
@@ -162,7 +154,9 @@ def main() -> None:
             "witness_coproduct_exhaustiveness_all_variants_emit",
             "witness_coproduct_exhaustiveness_generator_count",
             "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4",
-=======
+        ),
+    )
+
     idempotent = _read(IDEMPOTENT_OPERATION_GENERATED)
     _require_substrings(
         "idempotent_operation_conformance.dag",
@@ -182,16 +176,12 @@ def main() -> None:
             "t19_sample_delete_subject",
             "t19_sample_label_only_subject",
             "generated_idempotent_operation_sample_count_is_three",
->>>>>>> origin/main
         ),
     )
 
     if "LanguageBehaviorEquivalence" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("LanguageBehaviorEquivalence must be a TestgenConcept variant, not free text only")
 
-<<<<<<< HEAD
-    print("OK: T-19 testgen activation (LBE + coproduct-exhaustiveness generated receipts).")
-=======
     if "IdempotentOperationSubject" in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit(
             "IdempotentOperationSubject must stay outside the closed six-way TestgenConcept coproduct"
@@ -223,9 +213,8 @@ def main() -> None:
 
     print(
         "OK: T-19 testgen activation "
-        "(LBE sixth category + idempotent-operation generator slice + generated runner receipts)."
+        "(LBE sixth category + idempotent-operation generator slice + coproduct-exhaustiveness generated receipts)."
     )
->>>>>>> origin/main
 
 
 if __name__ == "__main__":
