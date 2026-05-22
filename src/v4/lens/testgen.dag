@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_scheduled_language_behavior_generators testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject DiagnosticExhaustivenessSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.verification v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LanguageBehaviorEquivalence emission; substrate extension = operator STOP.
 
@@ -11,6 +11,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
+  NodeLocus,
   Unavailable,
   UserInputBoundary,
   Textual,
@@ -27,6 +28,7 @@ import v4.std.nat {
   nat_algebra_law_subject_symbol_inhabitant_nat
 }
 import v4.std.node {
+  Atom,
   Node,
   Connective,
   Conj,
@@ -39,6 +41,7 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
+  TypeNode,
   Symbol
 }
 import v4.extdeps.file_system {
@@ -51,6 +54,7 @@ import v4.extdeps.file_system {
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.std.verification {
   CompilesClaim,
+  DiagnosticClaim,
   TestClaim,
   TestClassification,
   T19ManualAnchorAbsent,
@@ -116,7 +120,11 @@ type TypeConstructionSubject
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
-type DiagnosticExhaustivenessSubject { reason: Symbol }
+type DiagnosticExhaustivenessSubject {
+  reason: Symbol
+  coproduct: Symbol
+  missing_variant: Symbol
+}
 
 
 type LensApplicabilitySubject {
@@ -304,6 +312,18 @@ data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
 data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
 
 
+data t19_coproduct_exhaustiveness_missing_variant: Symbol = t19_coproduct_exhaustiveness_missing_variant
+
+
+data t19_coproduct_exhaustiveness_testclaim_variant: Symbol = t19_coproduct_exhaustiveness_testclaim_variant
+
+
+data t19_coproduct_exhaustiveness_diagnostic_claim_variant: Symbol = t19_coproduct_exhaustiveness_diagnostic_claim_variant
+
+
+data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing DiagnosticClaim arm rejects"
+
+
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
   FrozenLanguageBehaviorSnapshot {
     language: dag_language_model_surface_id,
@@ -442,6 +462,67 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
+      },
+    },
+  ]
+}
+
+
+fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> DiagnosticExhaustivenessSubject {
+  DiagnosticExhaustivenessSubject {
+    reason: t19_coproduct_exhaustiveness_missing_variant,
+    coproduct: t19_coproduct_exhaustiveness_testclaim_variant,
+    missing_variant: t19_coproduct_exhaustiveness_diagnostic_claim_variant,
+  }
+}
+
+
+fn coproduct_exhaustiveness_input(subject: DiagnosticExhaustivenessSubject) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: subject.coproduct } },
+    children: []
+  }
+}
+
+
+fn coproduct_exhaustiveness_diagnostic(
+  subject: DiagnosticExhaustivenessSubject,
+  input: Node
+) -> Diagnostic {
+  Diagnostic {
+    reason: subject.reason,
+    at: NodeLocus { node: input },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn testgen_emit_coproduct_exhaustiveness_claim(
+  subject: DiagnosticExhaustivenessSubject
+) -> Outcome<TestClaim> {
+  let input = coproduct_exhaustiveness_input(subject: subject)
+  Accepted {
+    value: DiagnosticClaim {
+      label: t19_coproduct_exhaustiveness_label,
+      t19_anchor: T19ManualAnchorAbsent,
+      input: input,
+      expected_rejection: diagnostics_singleton(
+        d: coproduct_exhaustiveness_diagnostic(subject: subject, input: input)
+      ),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+    },
+    diagnostics: None,
+  }
+}
+
+
+fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
+  [
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      t19_anchor: T19ManualAnchorAbsent,
+      slot: DiagnosticExhaustiveness {
+        subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
       },
     },
   ]

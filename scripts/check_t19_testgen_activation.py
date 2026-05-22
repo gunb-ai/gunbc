@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""T-19 testgen activation gate — generated LanguageBehaviorEquivalence corpus + runner receipts.
+"""T-19 testgen activation gate — generated TestClaim corpus receipts.
 
 Verifies the six-way TestgenConcept arm, testgen emission helpers, and generated claim modules
-that exercise run_test_claim / run_test_claim_assert (post-T-22 eval decomposition).
+that exercise LBE runner receipts plus DiagnosticExhaustiveness coproduct-exhaustiveness emission.
 
 Run: python3 scripts/check_t19_testgen_activation.py
 Self-test: python3 scripts/test_check_t19_testgen_activation.py
@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
+COPRODUCT_EXHAUSTIVENESS_GENERATED = (
+    ROOT / "src/v4/test/claim/generated/coproduct_exhaustiveness.dag"
+)
 VERIFICATION = ROOT / "src/v4/std/verification.dag"
 
 
@@ -37,12 +40,19 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 
 
 def main() -> None:
-    for path in (TESTGEN, LBE_GENERATED, LBE_MANIFEST, VERIFICATION):
+    for path in (
+        TESTGEN,
+        LBE_GENERATED,
+        LBE_MANIFEST,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED,
+        VERIFICATION,
+    ):
         _require(path)
 
     testgen = _read(TESTGEN)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
+    coproduct_exhaustiveness = _read(COPRODUCT_EXHAUSTIVENESS_GENERATED)
     verification = _read(VERIFICATION)
 
     _require_substrings(
@@ -60,6 +70,10 @@ def main() -> None:
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
             "dag_language_model_surface_id",
+            "type DiagnosticExhaustivenessSubject",
+            "fn testgen_emit_coproduct_exhaustiveness_claim",
+            "fn testgen_scheduled_coproduct_exhaustiveness_generators",
+            "t19_coproduct_exhaustiveness_missing_variant",
         ),
     )
 
@@ -105,10 +119,22 @@ def main() -> None:
         ),
     )
 
+    _require_substrings(
+        "coproduct_exhaustiveness.dag",
+        coproduct_exhaustiveness,
+        (
+            "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
+            "testgen_emit_coproduct_exhaustiveness_claim",
+            "witness_coproduct_exhaustiveness_diagnostic_claim",
+            "witness_coproduct_exhaustiveness_uses_absent_anchor",
+            "witness_coproduct_exhaustiveness_generator_count",
+        ),
+    )
+
     if "LanguageBehaviorEquivalence" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("LanguageBehaviorEquivalence must be a TestgenConcept variant, not free text only")
 
-    print("OK: T-19 testgen activation (LBE sixth category + generated runner receipts).")
+    print("OK: T-19 testgen activation (LBE + coproduct-exhaustiveness generated receipts).")
 
 
 if __name__ == "__main__":

@@ -35,6 +35,10 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
+const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
+    "src/v4/test/claim/generated/coproduct_exhaustiveness.dag";
 
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {
@@ -48,9 +52,12 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
             && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
             && LBE_GENERATED_DAG.contains("-> Outcome<TestClaim>")
             && LBE_GENERATED_DAG.contains("Fail { actual: Rejected { diagnostics:")
-            && LBE_GENERATED_DAG.contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>")
-            && LBE_GENERATED_DAG.contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node>")
-            && LBE_GENERATED_DAG.contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
             && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
             && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
             && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
@@ -64,6 +71,33 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
             && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim")
             && TESTGEN_DAG.contains("t19_lbe_label_conj_dag_surface"),
         "testgen lens must emit LBE claims with frozen snapshot + I/O mock carriers"
+    );
+}
+
+#[test]
+fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
+    parse_module(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
+    );
+    assert!(
+        TESTGEN_DAG.contains("type DiagnosticExhaustivenessSubject")
+            && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
+            && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness {")
+            && TESTGEN_DAG.contains("value: DiagnosticClaim {"),
+        "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
+    );
+    assert!(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+            .contains("fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("testgen_emit_coproduct_exhaustiveness_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_diagnostic_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_generator_count"),
+        "generated coproduct-exhaustiveness corpus must consume the testgen emit helper and expose witnesses"
     );
 }
 

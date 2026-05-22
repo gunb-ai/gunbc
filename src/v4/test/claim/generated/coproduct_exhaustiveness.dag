@@ -1,0 +1,76 @@
+// src/v4/test/claim/generated/coproduct_exhaustiveness.dag
+// Scope: T-19 DiagnosticExhaustiveness — coproduct-exhaustiveness TestClaim emitted from testgen.
+// Owns: generated_coproduct_exhaustiveness_claim, scheduling witness.
+// Consumes: v4.lens.testgen, v4.std.verification.
+// Status: generated corpus — true codegen dissolves this module.
+
+module v4.test.claim.generated.coproduct_exhaustiveness
+
+
+import v4.lens.testgen {
+  coproduct_exhaustiveness_subject_testclaim_diagnostic,
+  testgen_emit_coproduct_exhaustiveness_claim,
+  testgen_scheduled_coproduct_exhaustiveness_generators
+}
+import v4.std.algebra { length }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.verification {
+  DiagnosticClaim,
+  TestClaim,
+  T19ManualAnchorAbsent,
+  test_claim_input,
+  test_claim_t19_anchor
+}
+
+
+fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim> {
+  testgen_emit_coproduct_exhaustiveness_claim(
+    subject: coproduct_exhaustiveness_subject_testclaim_diagnostic()
+  )
+}
+
+
+fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
+  match generated_coproduct_exhaustiveness_claim() {
+    Accepted { value: claim, diagnostics: _ } =>
+      Accepted { value: test_claim_input(c: claim), diagnostics: None }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+
+fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
+  match generated_coproduct_exhaustiveness_claim() {
+    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19ManualAnchorAbsent, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn witness_coproduct_exhaustiveness_anchor_absent() -> Bool {
+  match generated_coproduct_exhaustiveness_claim() {
+    Accepted { value: claim, diagnostics: _ } =>
+      match test_claim_t19_anchor(c: claim) {
+        T19ManualAnchorAbsent => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn witness_testgen_schedules_one_coproduct_exhaustiveness_generator() -> Bool {
+  length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 1
+}
+
+
+data witness_coproduct_exhaustiveness_diagnostic_claim: Bool = witness_coproduct_exhaustiveness_claim_is_diagnostic()
+
+
+data witness_coproduct_exhaustiveness_uses_absent_anchor: Bool = witness_coproduct_exhaustiveness_anchor_absent()
+
+
+data witness_coproduct_exhaustiveness_generator_count: Bool = witness_testgen_schedules_one_coproduct_exhaustiveness_generator()
