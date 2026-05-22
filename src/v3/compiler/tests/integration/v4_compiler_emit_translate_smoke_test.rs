@@ -22,9 +22,7 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{
-    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceType,
-};
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceField, SurfaceItem, SurfaceType};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -285,6 +283,10 @@ fn v4_rust_integer_range_bounds_carry_reference_values() {
         surface_declares_type(&module, "RustIntegerRangeBound"),
         "{RUST_LANGUAGE_PATH}: Rust integer ranges must be modeled as value-carrying facts, not bare Symbols"
     );
+    assert!(
+        surface_declares_type(&module, "RustIntegerRangeBoundValue"),
+        "{RUST_LANGUAGE_PATH}: Rust integer range values must be structural source facts, not opaque text outside the Node projection"
+    );
     let fields: Vec<(String, String)> = type_record_fields(&module, "RustIntegerRangeBound")
         .iter()
         .map(|field| (field.name.clone(), surface_type_name(&field.ty)))
@@ -293,63 +295,53 @@ fn v4_rust_integer_range_bounds_carry_reference_values() {
         fields,
         vec![
             ("identity".to_string(), "Symbol".to_string()),
-            ("value_identity".to_string(), "Symbol".to_string()),
-            ("value".to_string(), "String".to_string()),
+            (
+                "value".to_string(),
+                "RustIntegerRangeBoundValue".to_string(),
+            ),
         ],
-        "{RUST_LANGUAGE_PATH}: Rust integer range bounds must carry both node identities and Rust Reference values"
+        "{RUST_LANGUAGE_PATH}: Rust integer range bounds must carry both node identities and structural Rust Reference values"
     );
-    for (bound, value_identity, value) in [
-        ("rust_range_min_i8", "rust_range_value_min_i8", "-128"),
-        ("rust_range_max_i8", "rust_range_value_max_i8", "127"),
+    for (bound, value) in [
+        ("rust_range_min_i8", "RustRangeValueNeg128"),
+        ("rust_range_max_i8", "RustRangeValuePos127"),
         (
             "rust_range_min_i128",
-            "rust_range_value_min_i128",
-            "-170141183460469231731687303715884105728",
+            "RustRangeValueNeg170141183460469231731687303715884105728",
         ),
         (
             "rust_range_max_i128",
-            "rust_range_value_max_i128",
-            "170141183460469231731687303715884105727",
+            "RustRangeValuePos170141183460469231731687303715884105727",
         ),
-        ("rust_range_min_u64", "rust_range_value_min_u64", "0"),
+        ("rust_range_min_u64", "RustRangeValueZero"),
         (
             "rust_range_max_u64",
-            "rust_range_value_max_u64",
-            "18446744073709551615",
+            "RustRangeValuePos18446744073709551615",
         ),
-        ("rust_range_min_u128", "rust_range_value_min_u128", "0"),
+        ("rust_range_min_u128", "RustRangeValueZero"),
         (
             "rust_range_max_u128",
-            "rust_range_value_max_u128",
-            "340282366920938463463374607431768211455",
+            "RustRangeValuePos340282366920938463463374607431768211455",
         ),
         (
             "rust_range_min_isize",
-            "rust_range_value_min_isize",
-            "pointer_width_signed_min",
+            "RustRangeValuePointerWidthSignedMin",
         ),
         (
             "rust_range_max_isize",
-            "rust_range_value_max_isize",
-            "pointer_width_signed_max",
+            "RustRangeValuePointerWidthSignedMax",
         ),
-        ("rust_range_min_usize", "rust_range_value_min_usize", "0"),
+        ("rust_range_min_usize", "RustRangeValueZero"),
         (
             "rust_range_max_usize",
-            "rust_range_value_max_usize",
-            "pointer_width_unsigned_max",
+            "RustRangeValuePointerWidthUnsignedMax",
         ),
     ] {
         let expr = data_expr(&module, bound);
         assert_eq!(
-            record_field_var(expr, "value_identity"),
-            Some(value_identity),
-            "{RUST_LANGUAGE_PATH}: range bound `{bound}` must expose a value identity for canonical Node projection"
-        );
-        assert_eq!(
-            record_field_string(expr, "value"),
+            record_field_var(expr, "value"),
             Some(value),
-            "{RUST_LANGUAGE_PATH}: range bound `{bound}` must carry the Rust Reference value, not only an opaque label"
+            "{RUST_LANGUAGE_PATH}: range bound `{bound}` must carry the Rust Reference value as structural substrate, not only an opaque label"
         );
     }
 }
@@ -374,11 +366,18 @@ fn v4_rust_integer_fact_bundle_binds_range_axis() {
         "{RUST_LANGUAGE_PATH}: range axis must preserve each bound's value-carrying shape in the canonical Node projection"
     );
     assert!(
+        surface_declares_fn(&module, "rust_integer_range_bound_value_node"),
+        "{RUST_LANGUAGE_PATH}: range axis must project the structural bound value into the canonical Node projection"
+    );
+    assert!(
         RUST_LANGUAGE_DAG.contains("target: rust_integer_range_bound_node(bound: facts.range_min)")
             && RUST_LANGUAGE_DAG
                 .contains("target: rust_integer_range_bound_node(bound: facts.range_max)")
-            && RUST_LANGUAGE_DAG.contains("id: bound.value_identity"),
-        "{RUST_LANGUAGE_PATH}: range-axis binding must forward bound value identities, not only bound identity atoms"
+            && RUST_LANGUAGE_DAG
+                .contains("target: rust_integer_range_bound_value_node(value: bound.value)")
+            && RUST_LANGUAGE_DAG.contains("RustRangeValueNeg128 =>")
+            && RUST_LANGUAGE_DAG.contains("RustRangeValuePointerWidthUnsignedMax =>"),
+        "{RUST_LANGUAGE_PATH}: range-axis binding must forward structural bound values, not only bound identity atoms"
     );
     assert!(
         surface_declares_fn(&module, "rust_primitive_bundle_from_integer_facts"),
@@ -552,23 +551,6 @@ fn record_field_var<'a>(expr: &'a SurfaceExpr, field_name: &str) -> Option<&'a s
         .find(|field| field.name == field_name)
         .and_then(|field| match &field.value {
             SurfaceExpr::Var { name, .. } => Some(name.as_str()),
-            _ => None,
-        })
-}
-
-fn record_field_string<'a>(expr: &'a SurfaceExpr, field_name: &str) -> Option<&'a str> {
-    let fields = match expr {
-        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields,
-        _ => return None,
-    };
-    fields
-        .iter()
-        .find(|field| field.name == field_name)
-        .and_then(|field| match &field.value {
-            SurfaceExpr::Literal {
-                value: SurfaceLiteral::String(value),
-                ..
-            } => Some(value.as_str()),
             _ => None,
         })
 }
