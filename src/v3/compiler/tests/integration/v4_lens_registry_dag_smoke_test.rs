@@ -218,13 +218,12 @@ fn variant_record_field<'a>(
 
 fn ci_pipeline_jobs(body: &SurfaceExpr) -> &[SurfaceExpr] {
     let call_record = match body {
-        SurfaceExpr::Call { target, args, .. } if target == "ci_pipeline_well_formed" => {
-            args.first()
-                .unwrap_or_else(|| panic!("ci_pipeline_well_formed missing pipeline arg"))
-        }
+        SurfaceExpr::Call { target, args, .. } if target == "ci_pipeline_well_formed" => args
+            .first()
+            .unwrap_or_else(|| panic!("ci_pipeline_well_formed missing pipeline arg")),
         other => panic!("expected ci_pipeline_well_formed call, got {other:?}"),
     };
-    let jobs_expr = record_body_field(call_record, "jobs");
+    let jobs_expr = variant_record_field(call_record, "CiPipeline", "jobs");
     let SurfaceExpr::List { elements, .. } = jobs_expr else {
         panic!("expected ci_pipeline.jobs list, got {jobs_expr:?}");
     };
@@ -317,10 +316,8 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
     );
     let live_signal = data_body(&module, "lens_ci_live_workflow_signal");
     let ci_pipeline = data_body(&module, "ci_pipeline");
-    let lens_ci_job = ci_job_record_by_id(
-        ci_pipeline_jobs(ci_pipeline),
-        "lens_ci_registry_execution",
-    );
+    let lens_ci_job =
+        ci_job_record_by_id(ci_pipeline_jobs(ci_pipeline), "lens_ci_registry_execution");
     assert_eq!(
         list_body_vars(variant_record_field(lens_ci_job, "CiJob", "needs")),
         vec!["v2_compile_src_v4"],
