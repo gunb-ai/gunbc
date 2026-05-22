@@ -49,7 +49,6 @@ import v4.std.runtime {
   EvaluationEnvironment,
   InterpretationAlgebra,
   LoopInterpreter,
-  RuntimePrimitive,
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
@@ -130,9 +129,9 @@ fn lbe_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<Runt
 }
 
 
-fn lbe_call_primitive(_prim: RuntimePrimitive, _args: List<RuntimeValue>, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn lbe_call_primitive(_node: Node, _args: List<RuntimeValue>, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Rejected {
-    diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: lbe_symbol_node(s: lbe_interpretation_rejected)))
+    diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: _node))
   }
 }
 
