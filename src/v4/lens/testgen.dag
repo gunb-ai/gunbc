@@ -27,6 +27,8 @@ import v4.std.diagnostic {
   WholeFile,
   ByteRange,
   NonEmptyDiagnostics,
+  Diagnostics,
+  Some,
   Accepted,
   Rejected,
   None,
