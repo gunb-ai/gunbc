@@ -41,10 +41,11 @@ jobs:
         run_number: [1, 2, 3, 4, 5]
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 60
-    env:
-      CARGO_HOME: ${{ runner.temp }}/cargo
-      RUSTUP_HOME: ${{ runner.temp }}/rustup
     steps:
+      - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+        run: |
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v4
 
