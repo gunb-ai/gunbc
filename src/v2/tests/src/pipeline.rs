@@ -8406,7 +8406,6 @@ fn anthropic_tool_result_content_accepts_text_and_image_blocks() {
     let source = r#"module anthropic_tool_result_content_test
 
 import extdeps.llm.anthropic
-import extdeps.llm.llm { TextContent, ImageContent, Base64Image }
 
 data tool_results: List<AnthropicChatMessage> = [
   UserMessage {
@@ -8418,17 +8417,15 @@ data tool_results: List<AnthropicChatMessage> = [
       },
       UserToolResultBlock {
         tool_use_id: "toolu_image",
-        content: ToolResultBlocks {
-          blocks: [
-            TextContent { text: "chart" },
-            ImageContent {
-              source: Base64Image {
-                media_type: "image/jpeg",
-                data: "/9j/4AAQSkZJRg..."
-              }
+        content: ToolResultBlocks([
+          AnthropicTextBlock { text: "chart" },
+          AnthropicImageBlock {
+            source: Base64Image {
+              media_type: "image/jpeg",
+              data: "/9j/4AAQSkZJRg..."
             }
-          ]
-        },
+          }
+        ]),
         is_error: none
       },
       UserToolResultBlock {
