@@ -117,7 +117,6 @@ type GoIntKind
 type GoIntegerPrimitiveFacts {
   surface_spelling: Symbol
   scalar: GoScalar
-  signedness: GoIntKind
   overflow: GoBuiltinIntegerArithmeticOverflow
   encoding: Symbol
   std_projection: Symbol
@@ -205,7 +204,7 @@ data go_repr_complex_pair_binary32: Symbol = go_repr_complex_pair_binary32
 data go_repr_complex_pair_binary64: Symbol = go_repr_complex_pair_binary64
 
 data go_facts_field_surface_spelling: Symbol = go_facts_field_surface_spelling
-data go_facts_field_scalar: Symbol = go_facts_field_scalar
+data go_facts_field_scalar_classifier: Symbol = go_facts_field_scalar_classifier
 data go_facts_field_width: Symbol = go_facts_field_width
 data go_facts_field_signedness: Symbol = go_facts_field_signedness
 data go_facts_field_overflow: Symbol = go_facts_field_overflow
@@ -233,6 +232,11 @@ data go_tag_complex_bits64: Symbol = go_tag_complex_bits64
 data go_tag_complex_bits128: Symbol = go_tag_complex_bits128
 data go_tag_overflow_signed_truncates: Symbol = go_tag_overflow_signed_truncates
 data go_tag_overflow_unsigned_truncates: Symbol = go_tag_overflow_unsigned_truncates
+data go_tag_scalar_int: Symbol = go_tag_scalar_int
+data go_tag_scalar_float: Symbol = go_tag_scalar_float
+data go_tag_scalar_complex: Symbol = go_tag_scalar_complex
+data go_tag_scalar_bool: Symbol = go_tag_scalar_bool
+data go_tag_scalar_string: Symbol = go_tag_scalar_string
 
 data go_overflow_signed_truncates: GoBuiltinIntegerArithmeticOverflow =
   SignedTypedIntegerTruncatesSilentlyOnOverflow
@@ -243,7 +247,6 @@ data go_overflow_unsigned_truncates: GoBuiltinIntegerArithmeticOverflow =
 data go_facts_int8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int8,
   scalar: SignedIntScalar { width: SignedBits8 },
-  signedness: Signed,
   overflow: go_overflow_signed_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int8,
@@ -252,7 +255,6 @@ data go_facts_int8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_int16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int16,
   scalar: SignedIntScalar { width: SignedBits16 },
-  signedness: Signed,
   overflow: go_overflow_signed_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int16,
@@ -261,7 +263,6 @@ data go_facts_int16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_int32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int32,
   scalar: SignedIntScalar { width: SignedBits32 },
-  signedness: Signed,
   overflow: go_overflow_signed_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int32,
@@ -270,7 +271,6 @@ data go_facts_int32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_int64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int64,
   scalar: SignedIntScalar { width: SignedBits64 },
-  signedness: Signed,
   overflow: go_overflow_signed_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int64,
@@ -279,7 +279,6 @@ data go_facts_int64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_int: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_int,
   scalar: SignedIntScalar { width: SignedPlatformInt },
-  signedness: Signed,
   overflow: go_overflow_signed_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_int,
@@ -288,7 +287,6 @@ data go_facts_int: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_uint8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint8,
   scalar: UnsignedIntScalar { width: UnsignedBits8 },
-  signedness: Unsigned,
   overflow: go_overflow_unsigned_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint8,
@@ -297,7 +295,6 @@ data go_facts_uint8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_uint16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint16,
   scalar: UnsignedIntScalar { width: UnsignedBits16 },
-  signedness: Unsigned,
   overflow: go_overflow_unsigned_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint16,
@@ -306,7 +303,6 @@ data go_facts_uint16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_uint32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint32,
   scalar: UnsignedIntScalar { width: UnsignedBits32 },
-  signedness: Unsigned,
   overflow: go_overflow_unsigned_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint32,
@@ -315,7 +311,6 @@ data go_facts_uint32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_uint64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint64,
   scalar: UnsignedIntScalar { width: UnsignedBits64 },
-  signedness: Unsigned,
   overflow: go_overflow_unsigned_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint64,
@@ -324,7 +319,6 @@ data go_facts_uint64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_uint: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uint,
   scalar: UnsignedIntScalar { width: UnsignedPlatformInt },
-  signedness: Unsigned,
   overflow: go_overflow_unsigned_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uint,
@@ -333,7 +327,6 @@ data go_facts_uint: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
 data go_facts_uintptr: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
   surface_spelling: go_surface_spelling_uintptr,
   scalar: UnsignedIntScalar { width: UnsignedPointerSized },
-  signedness: Unsigned,
   overflow: go_overflow_unsigned_truncates,
   encoding: go_repr_twos_complement_integer,
   std_projection: go_std_projection_uintptr,
@@ -475,6 +468,55 @@ fn go_integer_width_node(scalar: GoScalar) -> Node {
   }
 }
 
+fn go_scalar_node(scalar: GoScalar) -> Node {
+  match scalar {
+    SignedIntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_int)
+        ),
+        go_named_edge(name: go_facts_field_signedness, target: go_int_kind_node(kind: Signed)),
+        go_named_edge(name: go_facts_field_width, target: go_signed_int_width_node(width: width))
+      ]
+    }
+    UnsignedIntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_int)
+        ),
+        go_named_edge(name: go_facts_field_signedness, target: go_int_kind_node(kind: Unsigned)),
+        go_named_edge(name: go_facts_field_width, target: go_unsigned_int_width_node(width: width))
+      ]
+    }
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_float)
+        ),
+        go_named_edge(name: go_facts_field_width, target: go_float_width_node(width: width))
+      ]
+    }
+    ComplexScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_complex)
+        ),
+        go_named_edge(name: go_facts_field_width, target: go_complex_width_node(width: width))
+      ]
+    }
+    BoolScalar => go_inhabitant_atom(id: go_tag_scalar_bool)
+    StringScalar => go_inhabitant_atom(id: go_tag_scalar_string)
+  }
+}
+
 fn go_float_width_node(width: GoFloatWidth) -> Node {
   match width {
     Bits32 => go_inhabitant_atom(id: go_tag_float_bits32)
@@ -507,8 +549,12 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
         target: go_inhabitant_atom(id: facts.surface_spelling)
       ),
       go_named_edge(
-        name: go_facts_field_scalar,
-        target: go_inhabitant_atom(id: facts.surface_spelling)
+        name: go_facts_field_signedness,
+        target: go_int_kind_node(kind: go_int_kind_from_scalar(scalar: facts.scalar))
+      ),
+      go_named_edge(
+        name: go_facts_field_width,
+        target: go_integer_width_node(scalar: facts.scalar)
       ),
       go_named_edge(
         name: go_facts_field_overflow,
@@ -521,6 +567,10 @@ fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
       go_named_edge(
         name: go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
+      ),
+      go_named_edge(
+        name: go_facts_field_scalar_classifier,
+        target: go_scalar_node(scalar: facts.scalar)
       )
     ]
   }
