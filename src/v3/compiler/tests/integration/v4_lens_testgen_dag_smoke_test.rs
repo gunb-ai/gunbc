@@ -199,7 +199,7 @@ fn v4_lens_testgen_wave0_outcome_return_surfaces() {
 }
 
 #[test]
-fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_manual_key() {
+fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_claim_anchor_key() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     let anchor_ty =
         generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
