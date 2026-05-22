@@ -67,12 +67,14 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
         "idempotent-operation generator slice must produce at least three sample TestClaim rows"
     );
     assert!(
-        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_idempotent_operation_skip_is_rejected")
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_label_only_skip_pins_tautology_reason")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_idempotent_operation_tautology_skip")
             && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_sample_label_only_subject")
             && EFFECTS_DAG.contains("LabelOnlyIdempotentInhabitance")
             && EFFECTS_DAG.contains("fn idempotent_operation_apply_twice")
             && EFFECTS_DAG.contains("fn idempotent_operation_apply_once")
-            && EFFECTS_DAG.contains("connective: Transform")
+            && EFFECTS_DAG.contains("ComputationNode { behavior: Transform }")
+            && EFFECTS_DAG.contains("key_source_path_param_value_field")
             && TESTGEN_DAG.contains("idempotent_operation_apply_twice(state: t19_sample_state"),
         "idempotent-operation claims must model f(f(x))==f(x) via nested Transform application in v4.std.effects, with an explicit label-only skip path in the generated corpus"
     );

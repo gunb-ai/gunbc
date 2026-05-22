@@ -12,11 +12,12 @@ import v4.lens.testgen {
   testgen_scheduled_idempotent_operation_subjects,
   t19_idempotent_label_delete,
   t19_idempotent_label_read,
-  t19_idempotent_label_upsert
+  t19_idempotent_label_upsert,
+  t19_idempotent_operation_tautology_skip
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
-import v4.std.diagnostic { Outcome, outcome_is_rejected }
+import v4.std.diagnostic { Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.verification {
   TestClaim,
@@ -60,6 +61,18 @@ data generated_label_only_idempotent_skip: Outcome<TestClaim> = testgen_emit_ide
 )
 
 
+fn generated_label_only_skip_rejection_reason() -> Symbol {
+  match generated_label_only_idempotent_skip {
+    Rejected { diagnostics: d } => d.head.reason
+    Accepted { value: _, diagnostics: _ } => t19_idempotent_operation_tautology_skip
+  }
+}
+
+
+data generated_label_only_skip_pins_tautology_reason: Bool =
+  generated_label_only_skip_rejection_reason() == t19_idempotent_operation_tautology_skip
+
+
 fn generated_idempotent_operation_claim_rows() -> List<Outcome<TestClaim>> {
   [
     generated_read_idempotent_operation_claim,
@@ -71,11 +84,6 @@ fn generated_idempotent_operation_claim_rows() -> List<Outcome<TestClaim>> {
 
 fn generated_idempotent_operation_sample_count_is_three() -> Bool {
   length(xs: generated_idempotent_operation_claim_rows()) == 3
-}
-
-
-fn generated_idempotent_operation_skip_is_rejected() -> Bool {
-  outcome_is_rejected(o: generated_label_only_idempotent_skip)
 }
 
 

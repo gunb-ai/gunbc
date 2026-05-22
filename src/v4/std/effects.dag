@@ -7,7 +7,7 @@
 module v4.std.effects
 
 
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, Transform, TypeNode }
+import v4.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -62,6 +62,7 @@ data effect_shape_variant_delete: Symbol = effect_shape_variant_delete
 data idempotent_operation_callable_field: Symbol = idempotent_operation_callable_field
 data idempotent_operation_key_source_field: Symbol = idempotent_operation_key_source_field
 data key_source_path_param_field: Symbol = key_source_path_param_field
+data key_source_path_param_value_field: Symbol = key_source_path_param_value_field
 data key_source_input_field_field: Symbol = key_source_input_field_field
 data key_source_input_value_field: Symbol = key_source_input_value_field
 data idempotent_apply_state_field: Symbol = idempotent_apply_state_field
@@ -142,7 +143,7 @@ fn key_source_node(key_source: KeySource) -> Node {
             target: atom_node(s: key_source_path_param_field)
           },
           Edge {
-            label: Named { name: key_source_input_field_field },
+            label: Named { name: key_source_path_param_value_field },
             target: atom_node(s: p)
           },
         ]
@@ -232,7 +233,7 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
 
 fn idempotent_operation_apply_node(state: Node, subject: IdempotentOperationSubject) -> Node {
   Node {
-    kind: TypeNode { connective: Transform },
+    kind: ComputationNode { behavior: Transform },
     children: [
       Edge {
         label: Named { name: idempotent_apply_state_field },

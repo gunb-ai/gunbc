@@ -76,12 +76,6 @@ fn outcome_accepted<T>(value: T) -> Outcome<T> {
 fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
 }
-fn outcome_is_rejected<T>(o: Outcome<T>) -> Bool {
-  match o {
-    Rejected { diagnostics: _ } => true
-    Accepted { value: _, diagnostics: _ } => false
-  }
-}
 fn eq(a: Extent, b: Extent) -> Bool {
   match a {
     WholeFile => match b {
