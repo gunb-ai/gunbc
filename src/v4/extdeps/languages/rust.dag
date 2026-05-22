@@ -101,8 +101,8 @@ type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
   signedness: RustIntKind
   width: RustIntWidth
-  range_min: Symbol
-  range_max: Symbol
+  range_min: String
+  range_max: String
   overflow_release: OverflowAction
   std_projection: Symbol
 }
@@ -231,30 +231,30 @@ data rust_surface_spelling_str: Symbol = rust_surface_spelling_str
 data rust_surface_spelling_unit: Symbol = rust_surface_spelling_unit
 data rust_surface_spelling_never: Symbol = rust_surface_spelling_never
 
-data rust_range_min_i8: Symbol = rust_range_min_i8
-data rust_range_max_i8: Symbol = rust_range_max_i8
-data rust_range_min_i16: Symbol = rust_range_min_i16
-data rust_range_max_i16: Symbol = rust_range_max_i16
-data rust_range_min_i32: Symbol = rust_range_min_i32
-data rust_range_max_i32: Symbol = rust_range_max_i32
-data rust_range_min_i64: Symbol = rust_range_min_i64
-data rust_range_max_i64: Symbol = rust_range_max_i64
-data rust_range_min_i128: Symbol = rust_range_min_i128
-data rust_range_max_i128: Symbol = rust_range_max_i128
-data rust_range_min_u8: Symbol = rust_range_min_u8
-data rust_range_max_u8: Symbol = rust_range_max_u8
-data rust_range_min_u16: Symbol = rust_range_min_u16
-data rust_range_max_u16: Symbol = rust_range_max_u16
-data rust_range_min_u32: Symbol = rust_range_min_u32
-data rust_range_max_u32: Symbol = rust_range_max_u32
-data rust_range_min_u64: Symbol = rust_range_min_u64
-data rust_range_max_u64: Symbol = rust_range_max_u64
-data rust_range_min_u128: Symbol = rust_range_min_u128
-data rust_range_max_u128: Symbol = rust_range_max_u128
-data rust_range_min_isize: Symbol = rust_range_min_isize
-data rust_range_max_isize: Symbol = rust_range_max_isize
-data rust_range_min_usize: Symbol = rust_range_min_usize
-data rust_range_max_usize: Symbol = rust_range_max_usize
+data rust_range_min_i8: String = "-128"
+data rust_range_max_i8: String = "127"
+data rust_range_min_i16: String = "-32768"
+data rust_range_max_i16: String = "32767"
+data rust_range_min_i32: String = "-2147483648"
+data rust_range_max_i32: String = "2147483647"
+data rust_range_min_i64: String = "-9223372036854775808"
+data rust_range_max_i64: String = "9223372036854775807"
+data rust_range_min_i128: String = "-170141183460469231731687303715884105728"
+data rust_range_max_i128: String = "170141183460469231731687303715884105727"
+data rust_range_min_u8: String = "0"
+data rust_range_max_u8: String = "255"
+data rust_range_min_u16: String = "0"
+data rust_range_max_u16: String = "65535"
+data rust_range_min_u32: String = "0"
+data rust_range_max_u32: String = "4294967295"
+data rust_range_min_u64: String = "0"
+data rust_range_max_u64: String = "18446744073709551615"
+data rust_range_min_u128: String = "0"
+data rust_range_max_u128: String = "340282366920938463463374607431768211455"
+data rust_range_min_isize: String = "pointer_width_signed_min"
+data rust_range_max_isize: String = "pointer_width_signed_max"
+data rust_range_min_usize: String = "0"
+data rust_range_max_usize: String = "pointer_width_unsigned_max"
 
 data rust_ieee754_binary32: Symbol = rust_ieee754_binary32
 data rust_ieee754_binary64: Symbol = rust_ieee754_binary64
@@ -703,11 +703,11 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_range_min,
-        target: rust_inhabitant_atom(id: facts.range_min)
+        target: rust_inhabitant_atom(id: rust_facts_field_range_min)
       ),
       rust_named_edge(
         name: rust_facts_field_range_max,
-        target: rust_inhabitant_atom(id: facts.range_max)
+        target: rust_inhabitant_atom(id: rust_facts_field_range_max)
       ),
       rust_named_edge(
         name: rust_facts_field_overflow_release,
@@ -733,11 +733,11 @@ fn rust_integer_range_node(facts: RustIntegerPrimitiveFacts) -> Node {
     children: [
       rust_named_edge(
         name: rust_facts_field_range_min,
-        target: rust_inhabitant_atom(id: facts.range_min)
+        target: rust_inhabitant_atom(id: rust_facts_field_range_min)
       ),
       rust_named_edge(
         name: rust_facts_field_range_max,
-        target: rust_inhabitant_atom(id: facts.range_max)
+        target: rust_inhabitant_atom(id: rust_facts_field_range_max)
       )
     ]
   }
