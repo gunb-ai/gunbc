@@ -11,12 +11,21 @@ use v3_compiler::tokenize_for_test;
 
 const MODEL_CORE_DAG: &str = include_str!("../../../../v4/std/model_core.dag");
 const MODEL_CORE_PATH: &str = "src/v4/std/model_core.dag";
+const ALGEBRA_DAG: &str = include_str!("../../../../v4/std/algebra.dag");
+const ALGEBRA_PATH: &str = "src/v4/std/algebra.dag";
 
 fn model_core_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
     let tokens = tokenize_for_test(MODEL_CORE_DAG, MODEL_CORE_PATH)
         .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: tokenize: {e:?}"));
     parse_for_test(&tokens, MODEL_CORE_PATH)
         .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: parse: {e:?}"))
+}
+
+fn algebra_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens = tokenize_for_test(ALGEBRA_DAG, ALGEBRA_PATH)
+        .unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: tokenize: {e:?}"));
+    parse_for_test(&tokens, ALGEBRA_PATH)
+        .unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: parse: {e:?}"))
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
@@ -249,5 +258,32 @@ fn v4_std_model_core_wave1_void_constructor_present() {
         function_count(&module, "wave1_void"),
         1,
         "wave1_void is a tracked 🟡 scaffold (feature:model-core-wave1-void-scaffold); not a silent default ModelCore"
+    );
+}
+
+#[test]
+fn v4_std_algebra_fold_list_node_pins_canonical_spine() {
+    let module = algebra_surface_or_panic();
+    assert_eq!(
+        function_count(&module, "fold_list_node"),
+        1,
+        "fold_list_node is the single exported FreeMonoid-to-Node spine encoder"
+    );
+    assert!(
+        surface_declares_data(&module, "fold_list_node_head", "Symbol"),
+        "fold_list_node must own its canonical head edge label"
+    );
+    assert!(
+        surface_declares_data(&module, "fold_list_node_tail", "Symbol"),
+        "fold_list_node must own its canonical tail edge label"
+    );
+    assert!(
+        ALGEBRA_DAG.contains("empty: Node { kind: TypeNode { connective: Conj }, children: [] }"),
+        "empty-list encoding is fixed by the helper, not supplied by callers"
+    );
+    assert!(
+        ALGEBRA_DAG.contains("Edge { label: Named { name: fold_list_node_head }, target: item_node(item) }")
+            && ALGEBRA_DAG.contains("Edge { label: Named { name: fold_list_node_tail }, target: tail_node }"),
+        "cons encoding must use the canonical head/tail edge labels"
     );
 }

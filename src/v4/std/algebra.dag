@@ -104,12 +104,11 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
 }
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
-  empty: Node,
   item_node: fn(T) -> Node
 ) -> Node {
   fold_list_right(
     xs: xs,
-    empty: empty,
+    empty: Node { kind: TypeNode { connective: Conj }, children: [] },
     snoc: fn(tail_node, item) {
       Node {
         kind: TypeNode { connective: Conj },
