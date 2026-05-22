@@ -494,10 +494,9 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
         SurfaceExpr::Call { target, args, .. } if target == "t19_manual_claim_anchor" => {
-            let SurfaceExpr::Record { fields, .. } = args
-                .first()
-                .unwrap_or_else(|| panic!("t19_manual_claim_anchor must take one named-arg record"))
-            else {
+            let SurfaceExpr::Record { fields, .. } = args.first().unwrap_or_else(|| {
+                panic!("t19_manual_claim_anchor must take one named-arg record")
+            }) else {
                 panic!(
                     "t19_manual_claim_anchor args must desugar to Record, got {:?}",
                     args.first()
@@ -505,7 +504,9 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
             };
             match record_field_expr(fields, "anchor") {
                 SurfaceExpr::Var { name, .. } => name.as_str(),
-                other => panic!("manual claim anchor wrapper must carry a discriminant var, got {other:?}"),
+                other => panic!(
+                    "manual claim anchor wrapper must carry a discriminant var, got {other:?}"
+                ),
             }
         }
         other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
