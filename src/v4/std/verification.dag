@@ -7,14 +7,21 @@
 module v4.std.verification
 
 
-import v4.std.node { Node, Symbol }
+import v4.std.algebra { Empty, any, fold_list }
+import v4.std.collection { List, list_append, list_snoc_item }
+import v4.std.node { Node, NodeFold, Symbol, fold_node }
 import v4.std.diagnostic {
   Accepted,
+  Correction,
   Diagnostic,
   Extent,
+  Locus,
+  NodeLocus,
   NonEmptyDiagnostics,
+  PortLocus,
   Outcome,
   Rejected,
+  Suggested,
   Textual,
   Unavailable,
   UserInputBoundary,
