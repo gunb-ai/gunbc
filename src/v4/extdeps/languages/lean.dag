@@ -7,14 +7,13 @@
 module v4.extdeps.languages.lean
 
 
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Map, Set, list_snoc_item }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, fold_list }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_signedness,
@@ -448,19 +447,42 @@ fn lean_inhabitant_int32_node() -> Node {
 }
 
 
-fn lean_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  fold_list(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
+fn lean_primitive_fact_map_4(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node,
+  axis3: Symbol,
+  fact3: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(empty_map(), axis0, fact0),
+        axis1,
+        fact1
+      ),
+      axis2,
+      fact2
+    ),
+    axis3,
+    fact3
   )
 }
 
-
-fn lean_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn lean_primitive_fact_map_2(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(empty_map(), axis0, fact0),
+    axis1,
+    fact1
+  )
 }
 
 
@@ -468,37 +490,25 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
   match facts.scalar {
     IntScalar { kind, width } => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
-      spec_facts: [
-        lean_primitive_axis_binding(
-          axis: primitive_fact_axis_surface_spelling,
-          fact: lean_inhabitant_atom(id: facts.surface_spelling)
-        ),
-        lean_primitive_axis_binding(
-          axis: primitive_fact_axis_width,
-          fact: lean_int_width_node(width: width)
-        ),
-        lean_primitive_axis_binding(
-          axis: primitive_fact_axis_signedness,
-          fact: lean_int_kind_node(kind: kind)
-        ),
-        lean_primitive_axis_binding(
-          axis: primitive_fact_axis_encoding,
-          fact: lean_inhabitant_atom(id: facts.representation)
-        )
-      ]
+      spec_facts: lean_primitive_fact_map_4(
+        axis0: primitive_fact_axis_surface_spelling,
+        fact0: lean_inhabitant_atom(id: facts.surface_spelling),
+        axis1: primitive_fact_axis_width,
+        fact1: lean_int_width_node(width: width),
+        axis2: primitive_fact_axis_signedness,
+        fact2: lean_int_kind_node(kind: kind),
+        axis3: primitive_fact_axis_encoding,
+        fact3: lean_inhabitant_atom(id: facts.representation)
+      )
     }
     BoolScalar => PrimitiveFactBundle {
       substrate_carrier: lean_primitive_facts_node(facts: facts),
-      spec_facts: [
-        lean_primitive_axis_binding(
-          axis: primitive_fact_axis_surface_spelling,
-          fact: lean_inhabitant_atom(id: facts.surface_spelling)
-        ),
-        lean_primitive_axis_binding(
-          axis: primitive_fact_axis_encoding,
-          fact: lean_inhabitant_atom(id: facts.representation)
-        )
-      ]
+      spec_facts: lean_primitive_fact_map_2(
+        axis0: primitive_fact_axis_surface_spelling,
+        fact0: lean_inhabitant_atom(id: facts.surface_spelling),
+        axis1: primitive_fact_axis_encoding,
+        fact1: lean_inhabitant_atom(id: facts.representation)
+      )
     }
   }
 }
@@ -509,7 +519,7 @@ fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     xs: lean_primitive_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      lean_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: lean_primitive_bundle_from_facts(facts: facts)
       )

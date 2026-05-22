@@ -1,12 +1,22 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
 // Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
-// Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.workflow.bootstrap
+// Consumes: v4.lens.registry, v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.workflow.bootstrap
 // Status: filled — declarative core + eager well-formedness; structural v2 gate only.
 
 module v4.workflow.ci
 
 
+import v4.lens.registry {
+  Complexity,
+  Cost,
+  EffectEnumeration,
+  Idempotency,
+  LensIdV0,
+  Parallelism,
+  UnusedParameters,
+  lens_registry_ids_resolve
+}
 import v4.std.node { Symbol }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.algebra {
@@ -24,6 +34,7 @@ type CiCommand
   = LintCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
+  | LensCiCommand { required_lenses: List<LensIdV0> }
   | BootstrapStageCompile { produces: Symbol }
 
 type CiJob {
@@ -42,9 +53,33 @@ type CiPipeline {
   gates: List<CiGate>
 }
 
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
+type LensCiLiveWorkflowSignal {
+  smoke_step_name: String
+  semantic_step_name: String
+  semantic_target: String
+}
+
 
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
+data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data structural_v2_compile: Symbol = structural_v2_compile
+data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
+
+data lens_ci_required_lenses: List<LensIdV0> = [
+  Complexity,
+  Cost,
+  Parallelism,
+  EffectEnumeration,
+  Idempotency,
+  UnusedParameters
+]
+
+data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
+  smoke_step_name: "Lens-CI registry activation smoke"
+  semantic_step_name: "Lens-CI registry semantic v4 compile (rust target)"
+  semantic_target: "rust"
+}
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
@@ -52,10 +87,16 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: v2_compile_src_v4,
       command: BootstrapStageCompile { produces: v4_stage0_binary },
       needs: []
+    },
+    CiJob {
+      id: lens_ci_registry_execution,
+      command: LensCiCommand { required_lenses: lens_ci_required_lenses },
+      needs: [v2_compile_src_v4]
     }
   ],
   gates: [
-    CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+    CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
+    CiGate { id: lens_ci_registry_signal, job: lens_ci_registry_execution }
   ]
 })
 
@@ -161,6 +202,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     LintCommand => true
     TestCommand => true
     IgnoredTestCommand { test_name: _ } => true
+    LensCiCommand { required_lenses } => lens_registry_ids_resolve(lens_ids: required_lenses)
     BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
   }
 }
