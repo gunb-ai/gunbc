@@ -7,19 +7,26 @@
 module v4.lens.testgen
 
 
-import v4.std.collection { List }
+import v4.std.collection { List, non_empty }
+import v4.std.algebra { fold_list, fold_list_right }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
+<<<<<<< HEAD
   node_locus,
+=======
+  Locus,
+>>>>>>> origin/main
   Unavailable,
   UserInputBoundary,
   Textual,
   WholeFile,
   Accepted,
+  Rejected,
   None,
   diagnostics_merge,
   diagnostics_singleton,
+  node_locus,
   rejected_with_pending
 }
 import v4.std.nat {
@@ -33,6 +40,7 @@ import v4.std.node {
   Node,
   Named,
   Connective,
+  Atom,
   Conj,
   Disj,
   Arrow,
@@ -43,9 +51,17 @@ import v4.std.node {
   Branch,
   Loop,
   Bind,
+<<<<<<< HEAD
   TypeNode,
   Symbol
+=======
+  Symbol,
+  TypeNode,
+  Edge,
+  Named
+>>>>>>> origin/main
 }
+import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.extdeps.file_system {
   AbsolutePath,
   FileBody,
@@ -74,7 +90,11 @@ import v4.std.verification {
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
+<<<<<<< HEAD
   T19GeneratedAnchorKey,
+=======
+  T19ManualRefinementNonEmptyListBase,
+>>>>>>> origin/main
   T19ManualNatAddAssociativity,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
@@ -178,10 +198,17 @@ type LanguageBehaviorEquivalenceSubject {
 }
 
 
+// 🟡 coproduct dissolution — T19-REFINEMENT-PRESERVATION.
+type RefinementPreservationSubject {
+  refined: Refined<List<Node>>
+  original: List<Node>
+}
+
+
 // 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
 // 🟡 coproduct dissolution — LB-P4-3212
-// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (six arms; LBE = L6 form×language)
+// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness
@@ -191,6 +218,7 @@ type TestgenConcept
       subject: LanguageBehaviorEquivalenceSubject
       mock: LanguageBehaviorIoMock
     }
+  | RefinementPreservation { subject: RefinementPreservationSubject }
 
 
 type Generator<C> {
@@ -327,6 +355,7 @@ data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node mat
 data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
 
+data t19_refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
 data t19_idempotent_operation_tautology_skip: Symbol = t19_idempotent_operation_tautology_skip
 data t19_idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
 data t19_idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
@@ -339,6 +368,7 @@ data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
 data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
 
 
+<<<<<<< HEAD
 data t19_coproduct_exhaustiveness_missing_variant: Symbol = t19_coproduct_exhaustiveness_missing_variant
 
 
@@ -361,6 +391,9 @@ data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhausti
 
 
 data t19_coproduct_exhaustiveness_omitted_variant_edge: Symbol = t19_coproduct_exhaustiveness_omitted_variant_edge
+=======
+data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
+>>>>>>> origin/main
 
 
 fn lbe_frozen_snapshot_conj_dag_surface() -> FrozenLanguageBehaviorSnapshot {
@@ -425,6 +458,89 @@ fn lbe_subject_transform_dag_surface() -> LanguageBehaviorEquivalenceSubject {
   LanguageBehaviorEquivalenceSubject {
     subject: BehaviorValueSubject { behavior: Transform },
     language: dag_language_model_surface_id,
+  }
+}
+
+
+fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
+  refine(
+    base: xs,
+    by: Validation {
+      reason: refinement_preservation_empty_list_reason,
+      admits: fn(candidate) { non_empty(xs: candidate) }
+    },
+    at: at
+  )
+}
+
+
+data refinement_preservation_list_empty_node: Symbol = refinement_preservation_list_empty_node
+data refinement_preservation_list_cons_node: Symbol = refinement_preservation_list_cons_node
+data refinement_preservation_list_head_edge: Symbol = refinement_preservation_list_head_edge
+data refinement_preservation_list_tail_edge: Symbol = refinement_preservation_list_tail_edge
+
+fn refinement_preservation_list_node(xs: List<Node>) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: Node {
+      kind: TypeNode { connective: Atom { identity: refinement_preservation_list_empty_node } },
+      children: []
+    },
+    snoc: fn(tail_node, h) {
+      Node {
+        kind: TypeNode { connective: Atom { identity: refinement_preservation_list_cons_node } },
+        children: [
+          Edge { label: Named { name: refinement_preservation_list_head_edge }, target: h },
+          Edge {
+            label: Named { name: refinement_preservation_list_tail_edge },
+            target: tail_node
+          }
+        ]
+      }
+    }
+  )
+}
+
+
+fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPreservationSubject> {
+  let original = [stub_empty_conj]
+  match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: refined, diagnostics: None } =>
+      Accepted {
+        value: RefinementPreservationSubject {
+          refined: refined,
+          original: original,
+        },
+        diagnostics: None,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+
+fn testgen_emit_refinement_preservation_claim(
+  anchor: T19ManualAnchorKey,
+  label: String,
+  subject: RefinementPreservationSubject
+) -> Outcome<TestClaim> {
+  match anchor {
+    T19ManualRefinementNonEmptyListBase =>
+      Accepted {
+        value: EqualsClaim {
+          label: label,
+          t19_anchor: anchor,
+          lhs: refinement_preservation_list_node(
+            xs: refined_base(r: subject.refined)
+          ),
+          rhs: refinement_preservation_list_node(xs: subject.original),
+          classification: TestClassification { tier: Tier1, layer: Unit },
+        },
+        diagnostics: None,
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
+      }
   }
 }
 
@@ -732,6 +848,16 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
         label: t19_lbe_label_transform_dag_surface,
         mock: lbe_io_mock_transform_dag_surface()
       )
+    T19ManualRefinementNonEmptyListBase =>
+      match refinement_preservation_subject_nonempty_list_base() {
+        Accepted { value: subject, diagnostics: None } =>
+          testgen_emit_refinement_preservation_claim(
+            anchor: T19ManualRefinementNonEmptyListBase,
+            label: t19_refinement_label_nonempty_list_base,
+            subject: subject
+          )
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
   }
 }
 
@@ -856,10 +982,23 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
+<<<<<<< HEAD
     T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
       Accepted {
         value: DiagnosticExhaustiveness,
         diagnostics: None,
+=======
+    T19ManualRefinementNonEmptyListBase =>
+      match refinement_preservation_subject_nonempty_list_base() {
+        Accepted { value: subject, diagnostics: None } =>
+          Accepted {
+            value: RefinementPreservation {
+              subject: subject,
+            },
+            diagnostics: None,
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+>>>>>>> origin/main
       }
   }
 }

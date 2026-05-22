@@ -2,8 +2,8 @@
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
 // Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map,
-//       TotalMap, TotalPolicy.
-// Consumes: std algebra, std witness.
+//       empty_map, map_insert, TotalMap, TotalPolicy.
+// Consumes: std algebra, std witness, std diagnostic, std node.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 // Adds (substrate-evolution 5/5): FiniteSet, TotalMap, TotalPolicy primitives
 // needed by L1.13.c TableDecisionTree (docs/design-dissolution-lens.md §5
@@ -16,7 +16,9 @@ module v4.std.collection
 
 
 import v4.std.algebra { FreeMonoid, PointwisePower, is_empty }
-import v4.std.witness { Witness }
+import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
+import v4.std.node { Symbol }
+import v4.std.witness { Holds, Violates, Witness }
 type List<T> = FreeMonoid<T>
 fn non_empty<T>(xs: List<T>) -> Bool {
   match is_empty(xs: xs) {
@@ -39,6 +41,32 @@ fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
+}
+data map_key_absent: Symbol = map_key_absent
+data map_lookup_port: Symbol = map_lookup_port
+fn map_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: map_key_absent,
+    at: port_locus(port: map_lookup_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn empty_map<K, V>() -> Map<K, V> {
+  Map {
+    lookup: fn(_) {
+      Violates { diagnostic: map_absent_diagnostic() }
+    }
+  }
+}
+fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
+  Map {
+    lookup: fn(candidate) {
+      match candidate == key {
+        true => Holds { value: value }
+        false => m.lookup(candidate)
+      }
+    }
+  }
 }
 // 🟡 finite-uniqueness witness gated — feature:finite-set-uniqueness-witness;
 // bind: node://adhoc-086ab97b-b41 (this PR's substrate-evolution 5/5 work-item)

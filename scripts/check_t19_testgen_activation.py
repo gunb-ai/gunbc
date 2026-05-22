@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """T-19 testgen activation gate — generated TestClaim corpus receipts.
 
 Verifies the six-way TestgenConcept arm, testgen emission helpers, and generated claim modules
 that exercise LBE runner receipts plus DiagnosticExhaustiveness coproduct-exhaustiveness emission.
+=======
+"""T-19 testgen activation gate — generated TestClaim corpus + runner receipts.
+
+Verifies TestgenConcept arms, testgen emission helpers, and generated claim modules
+that exercise run_test_claim / run_test_claim_assert (post-T-22 eval decomposition).
+>>>>>>> origin/main
 
 Run: python3 scripts/check_t19_testgen_activation.py
 Self-test: python3 scripts/test_check_t19_testgen_activation.py
@@ -19,9 +26,14 @@ TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 EFFECTS = ROOT / "src/v4/std/effects.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
+<<<<<<< HEAD
 COPRODUCT_EXHAUSTIVENESS_GENERATED = (
     ROOT / "src/v4/test/claim/generated/coproduct_exhaustiveness.dag"
 )
+=======
+REFINEMENT_GENERATED = ROOT / "src/v4/test/claim/generated/refinement_preservation.dag"
+REFINEMENT_MANIFEST = ROOT / "src/v4/test/claim/generated/refinement_preservation_anchor_manifest.dag"
+>>>>>>> origin/main
 IDEMPOTENT_OPERATION_GENERATED = (
     ROOT / "src/v4/test/claim/generated/idempotent_operation_conformance.dag"
 )
@@ -50,6 +62,8 @@ def main() -> None:
         EFFECTS,
         LBE_GENERATED,
         LBE_MANIFEST,
+        REFINEMENT_GENERATED,
+        REFINEMENT_MANIFEST,
         IDEMPOTENT_OPERATION_GENERATED,
         VERIFICATION,
     ):
@@ -59,7 +73,12 @@ def main() -> None:
     effects = _read(EFFECTS)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
+<<<<<<< HEAD
     coproduct_exhaustiveness = _read(COPRODUCT_EXHAUSTIVENESS_GENERATED)
+=======
+    refinement = _read(REFINEMENT_GENERATED)
+    refinement_manifest = _read(REFINEMENT_MANIFEST)
+>>>>>>> origin/main
     verification = _read(VERIFICATION)
 
     _require_substrings(
@@ -82,7 +101,9 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+            "T19ManualRefinementNonEmptyListBase",
             "dag_language_model_surface_id",
+<<<<<<< HEAD
             "fn coproduct_exhaustiveness_subject_testclaim_compiles",
             "fn testgen_emit_coproduct_exhaustiveness_claim",
             "fn testgen_scheduled_coproduct_exhaustiveness_generators",
@@ -95,6 +116,18 @@ def main() -> None:
             "t19_anchor: t19_generated_claim_anchor(anchor: anchor)",
             "t19_coproduct_exhaustiveness_omitted_variant_edge",
             "node_locus(node: input)",
+=======
+            "| RefinementPreservation { subject: RefinementPreservationSubject }",
+            "type RefinementPreservationSubject",
+            "fn testgen_emit_refinement_preservation_claim",
+            "fn refinement_preservation_subject_nonempty_list_base",
+            "-> Outcome<RefinementPreservationSubject>",
+            "refined: Refined<List<Node>>",
+            "original: List<Node>",
+            "refine(",
+            "refined_base(r: subject.refined)",
+            "t19_refinement_label_nonempty_list_base",
+>>>>>>> origin/main
         ),
     )
 
@@ -105,8 +138,12 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+<<<<<<< HEAD
             "type TestClaimCoproductVariant",
             "T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
+=======
+            "T19ManualRefinementNonEmptyListBase",
+>>>>>>> origin/main
         ),
     )
 
@@ -143,6 +180,7 @@ def main() -> None:
     )
 
     _require_substrings(
+<<<<<<< HEAD
         "coproduct_exhaustiveness.dag",
         coproduct_exhaustiveness,
         (
@@ -157,6 +195,29 @@ def main() -> None:
         ),
     )
 
+=======
+        "refinement_preservation.dag",
+        refinement,
+        (
+            "fn refinement_preservation_claim_from_testgen_emit",
+            "-> Outcome<TestClaim>",
+            "testgen_emit_refinement_preservation_claim",
+            "RefinementPreservationSubject",
+            "refined_base(r: subject.refined) == subject.original",
+            "refinement_preservation_subject_nonempty_list_base()",
+            "data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim>",
+            "witness_refinement_preserves_nonempty_list_base",
+            "T19ManualRefinementNonEmptyListBase",
+        ),
+    )
+
+    _require_substrings(
+        "refinement_preservation_anchor_manifest.dag",
+        refinement_manifest,
+        ("T19ManualRefinementNonEmptyListBase",),
+    )
+
+>>>>>>> origin/main
     idempotent = _read(IDEMPOTENT_OPERATION_GENERATED)
     _require_substrings(
         "idempotent_operation_conformance.dag",
@@ -182,9 +243,12 @@ def main() -> None:
     if "LanguageBehaviorEquivalence" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit("LanguageBehaviorEquivalence must be a TestgenConcept variant, not free text only")
 
+    if "RefinementPreservation" not in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
+        raise SystemExit("RefinementPreservation must be a TestgenConcept variant, not free text only")
+
     if "IdempotentOperationSubject" in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit(
-            "IdempotentOperationSubject must stay outside the closed six-way TestgenConcept coproduct"
+            "IdempotentOperationSubject must stay outside the closed seven-way TestgenConcept coproduct"
         )
 
     _require_substrings(
@@ -213,7 +277,11 @@ def main() -> None:
 
     print(
         "OK: T-19 testgen activation "
+<<<<<<< HEAD
         "(LBE sixth category + idempotent-operation generator slice + coproduct-exhaustiveness generated receipts)."
+=======
+        "(LBE + refinement-preservation + idempotent-operation generated receipts)."
+>>>>>>> origin/main
     )
 
 
