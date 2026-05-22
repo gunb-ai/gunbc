@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/llvm_ir.dag
 // Scope: LLVM 18 LangRef IR structural vocabulary (SSA-oriented types, instructions, terminators, and related carriers).
-// Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, block_well_formed, FidelityFeature, feature_disposition, LlvmWave1IntegerBits, LlvmWave1FloatKind, LlvmIntegerPrimitiveFacts, LlvmFloatPrimitiveFacts, llvm_surface_spelling_i32, llvm_surface_spelling_i64, llvm_surface_spelling_half, llvm_surface_spelling_float, llvm_surface_spelling_double, llvm_std_projection_i32, llvm_std_projection_i64, llvm_std_projection_half, llvm_std_projection_float, llvm_std_projection_double, llvm_repr_sign_agnostic_integer, llvm_repr_ieee754_float_kind, llvm_tag_width_bits32, llvm_tag_width_bits64, llvm_tag_float_kind_half, llvm_tag_float_kind_single, llvm_tag_float_kind_double, llvm_facts_field_std_projection, llvm_facts_i32, llvm_facts_i64, llvm_integer_facts_catalog, llvm_facts_half, llvm_facts_float, llvm_facts_double, llvm_float_facts_catalog, llvm_inhabitant_atom, llvm_wave1_integer_bits_node, llvm_wave1_float_kind_node, llvm_integer_facts_node, llvm_float_facts_node, llvm_list_snoc_item, llvm_list_append, llvm_primitive_axis_binding, llvm_primitive_bundle_from_integer_facts, llvm_primitive_bundle_from_float_facts, llvm_primitive_bundles_from_integer_catalog, llvm_primitive_bundles_from_float_catalog, llvm_wave1_primitive_fact_bundles, llvm_ir_model_core_wave1
+// Owns: FloatKind, LlvmType, VectorScaling, StructPacking, VarArg, LlvmConstant, LlvmValue, BinaryOpcode, ConversionOpcode, IntPredicate, FloatPredicate, ConstExprOpcode, PhiIncoming, PhiNode, SwitchCase, CallArgument, CallResult, LandingPadCleanup, LandingClause, AtomicOrdering, CmpXchgSuccessOrdering, CmpXchgFailureOrdering, FenceOrdering, AtomicRmwOrdering, AtomicRmwOp, LlvmInstruction, LoadOrdering, StoreOrdering, LoadAtomicity, StoreAtomicity, Terminator, UnwindDest, BasicBlock, Linkage, FunctionBody, FunctionParameter, LlvmFunction, GlobalMutability, GlobalInitializer, LlvmGlobal, NamedStructDef, LlvmModule, unwind_successors, block_successors, block_well_formed, FidelityFeature, feature_disposition, LlvmWave1IntegerBits, LlvmWave1FloatKind, LlvmIntegerPrimitiveFacts, LlvmFloatPrimitiveFacts, llvm_surface_spelling_i32, llvm_surface_spelling_i64, llvm_surface_spelling_half, llvm_surface_spelling_float, llvm_surface_spelling_double, llvm_std_projection_i32, llvm_std_projection_i64, llvm_std_projection_half, llvm_std_projection_float, llvm_std_projection_double, llvm_repr_sign_agnostic_integer, llvm_repr_ieee754_float_kind, llvm_tag_width_bits32, llvm_tag_width_bits64, llvm_tag_float_kind_half, llvm_tag_float_kind_single, llvm_tag_float_kind_double, llvm_facts_field_std_projection, llvm_facts_i32, llvm_facts_i64, llvm_integer_facts_catalog, llvm_facts_half, llvm_facts_float, llvm_facts_double, llvm_float_facts_catalog, llvm_inhabitant_atom, llvm_wave1_integer_bits_node, llvm_wave1_float_kind_node, llvm_integer_facts_node, llvm_float_facts_node, llvm_list_snoc_item, llvm_list_append, llvm_integer_spec_facts, llvm_float_spec_facts, llvm_primitive_bundle_from_integer_facts, llvm_primitive_bundle_from_float_facts, llvm_primitive_bundles_from_integer_catalog, llvm_primitive_bundles_from_float_catalog, llvm_wave1_primitive_fact_bundles, llvm_ir_model_core_wave1
 // Consumes: std/node.dag (Symbol); std/nat.dag (Nat); std/cardinality.dag (NonZeroNat); Int kernel-ambient.
 // Status: import v4.std.node Symbol; v4.std.nat Nat; v4.std.cardinality NonZeroNat.
 // Anchor: https://releases.llvm.org/18.1.8/docs/LangRef.html
@@ -13,17 +13,18 @@ module v4.extdeps.languages.llvm_ir
 import v4.extdeps.languages.fidelity { FidelityDisposition }
 import v4.std.algebra { fold_list }
 import v4.std.cardinality { NonZeroNat }
-import v4.std.collection { List }
+import v4.std.collection { List, Map }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.nat { Nat }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
@@ -763,43 +764,53 @@ fn llvm_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
   )
 }
 
-fn llvm_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn llvm_integer_spec_facts(facts: LlvmIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits) }
+        primitive_fact_axis_encoding =>
+          Holds { value: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn llvm_float_spec_facts(facts: LlvmFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: llvm_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: llvm_wave1_float_kind_node(kind: facts.kind) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn llvm_primitive_bundle_from_integer_facts(facts: LlvmIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: llvm_integer_facts_node(facts: facts),
-    spec_facts: [
-      llvm_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: llvm_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      llvm_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: llvm_wave1_integer_bits_node(wave1_bits: facts.wave1_bits)
-      ),
-      llvm_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: llvm_inhabitant_atom(id: llvm_repr_sign_agnostic_integer)
-      )
-    ]
+    spec_facts: llvm_integer_spec_facts(facts: facts)
   }
 }
 
 fn llvm_primitive_bundle_from_float_facts(facts: LlvmFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: llvm_float_facts_node(facts: facts),
-    spec_facts: [
-      llvm_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: llvm_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      llvm_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: llvm_wave1_float_kind_node(kind: facts.kind)
-      )
-    ]
+    spec_facts: llvm_float_spec_facts(facts: facts)
   }
 }
 

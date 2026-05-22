@@ -220,9 +220,12 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
         bundle_fields,
         vec![
             ("substrate_carrier".to_string(), "Node".to_string()),
-            ("spec_facts".to_string(), "Map<Symbol, Node>".to_string()),
+            (
+                "spec_facts".to_string(),
+                "Map<Symbol, Node>".to_string(),
+            ),
         ],
-        "PrimitiveFactBundle.spec_facts must be a Map keyed by axis Symbol so duplicate axis bindings are structurally unrepresentable"
+        "PrimitiveFactBundle.spec_facts must be axis-keyed Map<Symbol, Node> (duplicate axes structurally unrepresentable), not an opaque Node"
     );
     for axis in [
         "primitive_fact_axis_width",

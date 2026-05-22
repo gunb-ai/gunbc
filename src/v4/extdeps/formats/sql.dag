@@ -17,8 +17,10 @@ import v4.std.model_core {
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
   primitive_fact_axis_signedness,
-  primitive_fact_axis_surface_spelling
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic
 }
+import v4.std.witness { Holds, Violates }
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-SqlDialect.
@@ -350,42 +352,66 @@ fn sql_nonnumeric_facts_node(facts: SqlNonNumericPrimitiveFacts) -> Node {
   }
 }
 
-fn sql_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn sql_integer_spec_facts(facts: SqlIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_signedness =>
+          Holds { value: sql_inhabitant_atom(id: sql_tag_signed) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn sql_primitive_fact_map_1(axis0: Symbol, fact0: Node) -> Map<Symbol, Node> {
-  map_insert(empty_map(), axis0, fact0)
+fn sql_float_spec_facts(facts: SqlFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn sql_nonnumeric_spec_facts(facts: SqlNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: sql_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: sql_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn sql_primitive_bundle_from_integer_facts(facts: SqlIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: sql_integer_facts_node(facts: facts),
-    spec_facts: sql_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: sql_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_signedness,
-      fact1: sql_inhabitant_atom(id: sql_tag_signed)
-    )
+    spec_facts: sql_integer_spec_facts(facts: facts)
   }
 }
 
 fn sql_primitive_bundle_from_float_facts(facts: SqlFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: sql_float_facts_node(facts: facts),
-    spec_facts: sql_primitive_fact_map_1(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: sql_inhabitant_atom(id: facts.surface_spelling)
-    )
+    spec_facts: sql_float_spec_facts(facts: facts)
   }
 }
 
@@ -394,12 +420,7 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: sql_nonnumeric_facts_node(facts: facts),
-    spec_facts: sql_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: sql_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: sql_inhabitant_atom(id: facts.representation)
-    )
+    spec_facts: sql_nonnumeric_spec_facts(facts: facts)
   }
 }
 

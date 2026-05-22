@@ -35,10 +35,71 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
+const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
+    "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
+const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
+const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
 
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {
     parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
+    parse_module(EFFECTS_DAG, EFFECTS_PATH);
+    parse_module(
+        IDEMPOTENT_OPERATION_GENERATED_DAG,
+        IDEMPOTENT_OPERATION_GENERATED_PATH,
+    );
+    assert!(
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("testgen_emit_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_read_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_upsert_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_delete_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_idempotent_operation_sample_count_is_three"),
+        "idempotent-operation generator slice must produce at least three sample TestClaim rows"
+    );
+    assert!(
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_label_only_skip_pins_rejection")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_label_only_skip_is_rejected")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("import v4.std.node { Symbol }")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("Accepted { value: _, diagnostics: _ } => false")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_idempotent_operation_tautology_skip")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_sample_label_only_subject")
+            && EFFECTS_DAG.contains("type ComposableIdempotentOperationSubject")
+            && EFFECTS_DAG.contains("Composable(ComposableIdempotentOperationSubject)")
+            && EFFECTS_DAG.contains("LabelOnlyIdempotentInhabitance")
+            && EFFECTS_DAG.contains("fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOperationSubject)")
+            && EFFECTS_DAG.contains("fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject)")
+            && EFFECTS_DAG.contains("ComputationNode { behavior: Transform }")
+            && EFFECTS_DAG.contains("key_source_path_param_value_field")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice(state: t19_sample_state"),
+        "idempotent-operation claims must model f(f(x))==f(x) via nested Transform application in v4.std.effects, with an explicit label-only skip path in the generated corpus"
+    );
+    assert!(
+        EFFECTS_DAG.contains("type IdempotentShape")
+            && EFFECTS_DAG.contains("type EffectShape")
+            && EFFECTS_DAG.contains("ReadIdempotentSample")
+            && EFFECTS_DAG.contains("fn idempotent_operation_witness_node")
+            && EFFECTS_DAG.contains("classified_idempotent_effect_node"),
+        "v4.std.effects must carry canonical IdempotentShape/EffectShape witnesses for generator subjects"
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_emit_idempotent_operation_claim")
+            && TESTGEN_DAG.contains("import v4.std.effects")
+            && TESTGEN_DAG.contains("ComposableIdempotentOperationSubject")
+            && TESTGEN_DAG.contains("Composable(inner) =>")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_idempotent_operation_subjects"),
+        "testgen lens must emit idempotent-operation claims from v4.std.effects composable subjects, not parallel Symbol/Node subjects"
+    );
 }
 
 #[test]

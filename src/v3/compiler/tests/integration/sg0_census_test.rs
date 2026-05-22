@@ -852,9 +852,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // PREFIX T-23 v0: parse smoke on `src/v4/lens/registry.dag` (P2-staging `LensIdV0` +
-    // `LensModulePathV0`; post-#3503 P9 Symbol/List imports — isolated `compile_to_dag` deferred).
-    // SG-0 + INVARIANTS §P5(b) receipt.
+    // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
+    // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
+    // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.
+    // Paired with the CI semantic `ci.dag` entry-root compile using `--target rust`
+    // (not known-hanging `--target dag`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
     // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — T19ManualAnchorKey-driven
     // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
