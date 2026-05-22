@@ -29,12 +29,7 @@ import v4.std.verification {
   Tier1,
   Unit
 }
-import v4.workflow.ci_runner {
-  CiRerunNarrow,
-  CiRerunSuperset,
-  ci_select_from_affected_set,
-  ci_select_from_rerun_nodes
-}
+import v4.workflow.ci_runner { ci_select_from_affected_set, ci_select_from_rerun_nodes }
 
 data ci_runner_untouched_symbol: Symbol = ci_runner_untouched_symbol
 data ci_runner_touched_symbol: Symbol = ci_runner_touched_symbol
@@ -100,45 +95,41 @@ data ci_runner_fail_closed_affected: AffectedSet = AffectedSetFailClosed {
 }
 
 fn ci_runner_narrow_selection_holds() -> Bool {
-  match ci_select_from_rerun_nodes(
-    roster: ci_runner_fixture_roster,
-    rerun: ci_runner_narrow_rerun_nodes
-  ) {
-    CiRerunNarrow { rerun: rerun } =>
-      (length(xs: rerun) == 1)
-        && count_equal(
-          xs: rerun,
-          item: ci_runner_claim_touched,
-          eq: fn(left, right) { left == right }
-        ) != 0
-    CiRerunSuperset { roster: _, evidence: _ } => false
-  }
+  let rerun =
+    ci_select_from_rerun_nodes(
+      roster: ci_runner_fixture_roster,
+      rerun: ci_runner_narrow_rerun_nodes
+    )
+  (length(xs: rerun) == 1)
+    && count_equal(
+      xs: rerun,
+      item: ci_runner_claim_touched,
+      eq: fn(left, right) { left == right }
+    ) != 0
 }
 
 fn ci_runner_fail_closed_superset_holds() -> Bool {
-  match ci_select_from_affected_set(
-    roster: ci_runner_fixture_roster,
-    affected: ci_runner_fail_closed_affected
-  ) {
-    CiRerunSuperset { roster: roster, evidence: _ } =>
-      (length(xs: roster) == 3)
-        && count_equal(
-          xs: roster,
-          item: ci_runner_claim_untouched,
-          eq: fn(left, right) { left == right }
-        ) != 0
-        && count_equal(
-          xs: roster,
-          item: ci_runner_claim_touched,
-          eq: fn(left, right) { left == right }
-        ) != 0
-        && count_equal(
-          xs: roster,
-          item: ci_runner_claim_other,
-          eq: fn(left, right) { left == right }
-        ) != 0
-    CiRerunNarrow { rerun: _ } => false
-  }
+  let roster =
+    ci_select_from_affected_set(
+      roster: ci_runner_fixture_roster,
+      affected: ci_runner_fail_closed_affected
+    )
+  (length(xs: roster) == 3)
+    && count_equal(
+      xs: roster,
+      item: ci_runner_claim_untouched,
+      eq: fn(left, right) { left == right }
+    ) != 0
+    && count_equal(
+      xs: roster,
+      item: ci_runner_claim_touched,
+      eq: fn(left, right) { left == right }
+    ) != 0
+    && count_equal(
+      xs: roster,
+      item: ci_runner_claim_other,
+      eq: fn(left, right) { left == right }
+    ) != 0
 }
 
 fn ci_runner_narrow_selection_rhs() -> Node {

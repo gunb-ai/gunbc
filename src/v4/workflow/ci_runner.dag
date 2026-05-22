@@ -1,11 +1,8 @@
 // src/v4/workflow/ci_runner.dag
 // Scope: affected-set-driven TestClaim selection for incremental CI (Bazel-style node rerun frontier).
-// Owns: CiClaimRoster, CiRerunSelection, test_claim_in_rerun_frontier, select_test_claims_for_rerun,
-//       ci_select_from_rerun_nodes, ci_select_from_affected_set.
-// Consumes: v4.lens.affected_set, v4.std.change, v4.std.verification.
+// Owns: test_claim_in_rerun_frontier, ci_select_from_rerun_nodes, ci_select_from_affected_set.
+// Consumes: v4.lens.affected_set, v4.std.algebra, v4.std.change, v4.std.verification.
 // Status: Wave-0 — structural selection over RerunNodeSet; host dispatch lands with T-22/T-24.
-// Wave-0 IRT-4 posture: intersect declared per-variant evaluation Nodes (input/lhs/rhs/expected_value);
-// full TestClaim merkle surface lands with TestClaimExerciseSurface (manager Piece A).
 
 module v4.workflow.ci_runner
 
@@ -15,84 +12,40 @@ import v4.lens.affected_set {
   RerunNodeSetProduced,
   affected_set_rerun_nodes
 }
-import v4.std.change { AffectedSet, AffectedSetEvidence }
+import v4.std.algebra { any, contains, filter }
+import v4.std.change { AffectedSet }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
-import v4.std.verification {
-  CompilesClaim,
-  DiagnosticClaim,
-  EqualsClaim,
-  RoundTripClaim,
-  TestClaim
-}
+import v4.std.verification { TestClaim, test_claim_evaluation_nodes }
 
 
-// 🟡 gated — T-21/T-24 Wave-0 CI rerun selection — dissolve-on: TestClaimExerciseSurface + host wire.
-type CiRerunSelection
-  = CiRerunNarrow { rerun: List<TestClaim> }
-  | CiRerunSuperset { roster: List<TestClaim>, evidence: AffectedSetEvidence }
-
-
-type CiClaimRoster = List<TestClaim>
-
-
-fn node_in_rerun_frontier(needle: Node, frontier: List<Node>) -> Bool {
-  fold(frontier, init: false, f: fn(found, node) {
-    found || (node == needle)
-  })
-}
-
-
-// Intersect rerun frontier with every declared evaluation Node on the claim (P2 facts-flow-forward).
-// Fail-closed superset branch still runs the full roster when the lens cannot narrow.
 fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
-  match claim {
-    EqualsClaim { lhs, rhs, label: _, t19_anchor: _, classification: _ } =>
-      node_in_rerun_frontier(needle: lhs, frontier: frontier)
-        || node_in_rerun_frontier(needle: rhs, frontier: frontier)
-    CompilesClaim { input, expected_value, label: _, t19_anchor: _, classification: _ } =>
-      node_in_rerun_frontier(needle: input, frontier: frontier)
-        || node_in_rerun_frontier(needle: expected_value, frontier: frontier)
-    DiagnosticClaim { input, label: _, t19_anchor: _, expected_rejection: _, classification: _ } =>
-      node_in_rerun_frontier(needle: input, frontier: frontier)
-    RoundTripClaim { input, label: _, t19_anchor: _, classification: _ } =>
-      node_in_rerun_frontier(needle: input, frontier: frontier)
-  }
-}
-
-
-fn narrow_roster_to_rerun_frontier(roster: List<TestClaim>, frontier: List<Node>) -> List<TestClaim> {
-  fold(roster, init: [], f: fn(acc, claim) {
-    if test_claim_in_rerun_frontier(claim: claim, frontier: frontier) {
-      list_push(acc, claim)
-    } else {
-      acc
+  any(
+    xs: test_claim_evaluation_nodes(c: claim),
+    predicate: fn(n) {
+      contains(xs: frontier, item: n, eq: fn(left, right) { left == right })
     }
-  })
+  )
 }
 
 
-fn select_test_claims_for_rerun(roster: CiClaimRoster, rerun: RerunNodeSet) -> CiRerunSelection {
+fn ci_select_from_rerun_nodes(roster: List<TestClaim>, rerun: RerunNodeSet) -> List<TestClaim> {
   match rerun {
     RerunNodeSetProduced { nodes: nodes } =>
-      CiRerunNarrow { rerun: narrow_roster_to_rerun_frontier(roster: roster, frontier: nodes) }
-    RerunNodeSetFailClosed { evidence: evidence } =>
-      CiRerunSuperset {
-        roster: roster,
-        evidence: evidence
-      }
+      filter(
+        xs: roster,
+        predicate: fn(claim) {
+          test_claim_in_rerun_frontier(claim: claim, frontier: nodes)
+        }
+      )
+    RerunNodeSetFailClosed { evidence: _ } => roster
   }
 }
 
 
-fn ci_select_from_rerun_nodes(roster: CiClaimRoster, rerun: RerunNodeSet) -> CiRerunSelection {
-  select_test_claims_for_rerun(roster: roster, rerun: rerun)
-}
-
-
-fn ci_select_from_affected_set(roster: CiClaimRoster, affected: AffectedSet) -> CiRerunSelection {
-  select_test_claims_for_rerun(
+fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
     roster: roster,
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )

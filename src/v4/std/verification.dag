@@ -7,6 +7,7 @@
 module v4.std.verification
 
 
+import v4.std.collection { List, list_snoc_item }
 import v4.std.node { Node, Symbol }
 import v4.std.diagnostic {
   Accepted,
@@ -140,6 +141,21 @@ fn test_claim_input(c: TestClaim) -> Node {
     DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_rejection: _, classification: _ } => n
     EqualsClaim { lhs: n, label: _, t19_anchor: _, rhs: _, classification: _ } => n
     RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } => n
+  }
+}
+
+
+// All Nodes whose mutation invalidates claim evaluation (IRT-4 / CI rerun frontier).
+fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
+  match c {
+    EqualsClaim { lhs: l, rhs: r, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    CompilesClaim { input: n, expected_value: e, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
+    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_rejection: _, classification: _ } =>
+      list_snoc_item(xs: Empty, item: n)
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: Empty, item: n)
   }
 }
 

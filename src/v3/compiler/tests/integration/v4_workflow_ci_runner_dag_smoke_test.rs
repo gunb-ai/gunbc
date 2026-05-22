@@ -1,7 +1,8 @@
 //! **Layer:** integration
 //!
 //! T-21/T-24 Wave-0: `src/v4/workflow/ci_runner.dag` exposes affected-set-driven
-//! `TestClaim` selection over `RerunNodeSet` (node-level rerun frontier). Receipt
+//! `TestClaim` roster selection over `RerunNodeSet` (kernel `filter`/`any`/`contains`;
+//! evaluation-node projection in `verification.dag`). Receipt
 //! claims live in `src/v4/test/claim/workflow/affected_set_ci_runner.dag`.
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge
@@ -93,7 +94,6 @@ fn v4_workflow_ci_runner_module_authority_and_entrypoints() {
     for name in [
         "ci_select_from_rerun_nodes",
         "ci_select_from_affected_set",
-        "select_test_claims_for_rerun",
         "test_claim_in_rerun_frontier",
     ] {
         assert!(
@@ -109,6 +109,20 @@ fn v4_workflow_ci_runner_module_authority_and_entrypoints() {
         ),
         "{CI_RUNNER_PATH}: must import affected_set_rerun_nodes from T-21 lens"
     );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "verification"],
+            "test_claim_evaluation_nodes"
+        ),
+        "{CI_RUNNER_PATH}: must import test_claim_evaluation_nodes from verification"
+    );
+    for name in ["filter", "any", "contains"] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "algebra"], name),
+            "{CI_RUNNER_PATH}: must import {name} from std.algebra"
+        );
+    }
 }
 
 #[test]
