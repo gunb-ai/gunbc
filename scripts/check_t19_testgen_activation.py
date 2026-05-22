@@ -193,7 +193,7 @@ def main() -> None:
 
     if "IdempotentOperationSubject" in testgen.split("type TestgenConcept")[1].split("type Generator")[0]:
         raise SystemExit(
-            "IdempotentOperationSubject must stay outside the closed six-way TestgenConcept coproduct"
+            "IdempotentOperationSubject must stay outside the closed seven-way TestgenConcept coproduct"
         )
 
     _require_substrings(
