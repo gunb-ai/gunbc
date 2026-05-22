@@ -398,7 +398,8 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 }
 
 // Merge helpers only — not a `std/algebra` inhabitance. Meet is NOT GLB for MixedTop.
-// See `dsl/std/induction.dag` for operational properties and P5 generator-gap note.
+// See `dsl/std/induction.dag` for operational properties. P5: no BoundedLattice witness
+// intended; ROADMAP.md:390 tracks Rc-aware merge-helper surfacing, not lattice inhabitance.
 
 
 // =========================================================================

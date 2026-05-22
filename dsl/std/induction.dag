@@ -522,9 +522,12 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
 // `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
 // single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
 //
-// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `BoundedLattice` witness for this carrier until the
-// stage0 Rust emitter handles `Rc`-wrapped structural variants. Until then, the free
-// functions above are the sole authority (ROADMAP.md:390).
+// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `std/algebra` witness for this carrier — intentional
+// after A-tight: meet is not GLB for MixedTop, so a future `BoundedLattice` data declaration
+// would mis-state the algebra. Dissolution (ROADMAP.md:390): stage0 gains Rc<T>-aware emission
+// for merge-helper canonical surfaces (function-valued fields on a projection-sound meet/join
+// pair), or consumers keep calling `meet_sub_value` / `join_sub_value` directly. Until then,
+// the free functions above are the sole authority.
 
 
 // =========================================================================
