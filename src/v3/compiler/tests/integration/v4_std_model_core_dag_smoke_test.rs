@@ -24,8 +24,7 @@ fn model_core_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
 fn algebra_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
     let tokens = tokenize_for_test(ALGEBRA_DAG, ALGEBRA_PATH)
         .unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: tokenize: {e:?}"));
-    parse_for_test(&tokens, ALGEBRA_PATH)
-        .unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: parse: {e:?}"))
+    parse_for_test(&tokens, ALGEBRA_PATH).unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: parse: {e:?}"))
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
@@ -282,8 +281,10 @@ fn v4_std_algebra_fold_list_node_pins_canonical_spine() {
         "empty-list encoding is fixed by the helper, not supplied by callers"
     );
     assert!(
-        ALGEBRA_DAG.contains("Edge { label: Named { name: fold_list_node_head }, target: item_node(item) }")
-            && ALGEBRA_DAG.contains("Edge { label: Named { name: fold_list_node_tail }, target: tail_node }"),
+        ALGEBRA_DAG.contains(
+            "Edge { label: Named { name: fold_list_node_head }, target: item_node(item) }"
+        ) && ALGEBRA_DAG
+            .contains("Edge { label: Named { name: fold_list_node_tail }, target: tail_node }"),
         "cons encoding must use the canonical head/tail edge labels"
     );
 }
