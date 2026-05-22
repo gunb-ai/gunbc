@@ -16,11 +16,16 @@ import v4.lens.affected_set {
   affected_set_rerun_nodes
 }
 import v4.std.change { AffectedSet, AffectedSetEvidence }
-import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
-import v4.std.verification { TestClaim }
+import v4.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  TestClaim
+}
 
 
 // 🟡 gated — T-21/T-24 Wave-0 CI rerun selection — dissolve-on: TestClaimExerciseSurface + host wire.
@@ -57,22 +62,13 @@ fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool 
 }
 
 
-fn append_claim_if_in_frontier(
-  acc: List<TestClaim>,
-  claim: TestClaim,
-  frontier: List<Node>
-) -> List<TestClaim> {
-  if test_claim_in_rerun_frontier(claim: claim, frontier: frontier) {
-    list_push(acc, claim)
-  } else {
-    acc
-  }
-}
-
-
-fn narrow_roster_to_rerun_frontier(roster: CiClaimRoster, frontier: List<Node>) -> List<TestClaim> {
+fn narrow_roster_to_rerun_frontier(roster: List<TestClaim>, frontier: List<Node>) -> List<TestClaim> {
   fold(roster, init: [], f: fn(acc, claim) {
-    append_claim_if_in_frontier(acc: acc, claim: claim, frontier: frontier)
+    if test_claim_in_rerun_frontier(claim: claim, frontier: frontier) {
+      list_push(acc, claim)
+    } else {
+      acc
+    }
   })
 }
 
