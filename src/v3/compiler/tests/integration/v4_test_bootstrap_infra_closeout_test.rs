@@ -37,16 +37,13 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
-<<<<<<< HEAD
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
     "src/v4/test/claim/generated/coproduct_exhaustiveness.dag";
-=======
 const REFINEMENT_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/refinement_preservation.dag");
 const REFINEMENT_GENERATED_PATH: &str = "src/v4/test/claim/generated/refinement_preservation.dag";
->>>>>>> origin/main
 const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
 const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
@@ -153,14 +150,9 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
                 .contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
             && LBE_GENERATED_DAG
                 .contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
-<<<<<<< HEAD
-            && LBE_GENERATED_DAG
-                .contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
-=======
             && LBE_GENERATED_DAG.contains(
                 "data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue>"
             )
->>>>>>> origin/main
             && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
             && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
             && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
