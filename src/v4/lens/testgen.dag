@@ -106,18 +106,17 @@ import v4.test.claim.manual.nat_law_anchors {
   claim_nat_mul_left_identity
 }
 import v4.std.effects {
-  DeleteIdempotentSample,
+  Composable,
+  ComposableIdempotentOperationSubject,
   IdempotentOperationSubject,
   LabelOnlyIdempotentInhabitance,
-  ReadIdempotentSample,
-  UpsertIdempotentSample,
   idempotent_operation_apply_once,
   idempotent_operation_apply_twice,
-  t19_sample_delete_subject,
+  t19_sample_delete_composable,
   t19_sample_label_only_subject,
-  t19_sample_read_subject,
+  t19_sample_read_composable,
   t19_sample_state,
-  t19_sample_upsert_subject
+  t19_sample_upsert_composable
 }
 
 

@@ -1,6 +1,6 @@
 // src/v4/std/effects.dag
 // Scope: v4 effect algebra — idempotent/breaking partition (structural mirror of src/v3/std/effects.dag terminal carriers).
-// Owns: IdempotentShape BreakingShape EffectShape KeySource IdempotentOperationRef IdempotentOperationSubject idempotent_operation_witness_node idempotent_operation_apply_once idempotent_operation_apply_twice t19_sample_state
+// Owns: IdempotentShape BreakingShape EffectShape KeySource IdempotentOperationRef ComposableIdempotentOperationSubject IdempotentOperationSubject idempotent_operation_witness_node idempotent_operation_apply_once idempotent_operation_apply_twice t19_sample_state
 // Consumes: v4.std.node
 // Status: T-19 idempotent-operation generator authority; full OperationEffect port = TASKS T-8.
 
@@ -47,10 +47,15 @@ type IdempotentOperationRef {
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type IdempotentOperationSubject
+type ComposableIdempotentOperationSubject
   = ReadIdempotentSample { operation: IdempotentOperationRef }
   | UpsertIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
   | DeleteIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type IdempotentOperationSubject
+  = Composable(ComposableIdempotentOperationSubject)
   | LabelOnlyIdempotentInhabitance { shape: IdempotentShape, label: Symbol }
 
 
@@ -104,21 +109,30 @@ data t19_sample_upsert_key_source: KeySource = InputField { field: t19_sample_pa
 data t19_sample_delete_key_source: KeySource = InputField { field: t19_sample_path_key_slug }
 
 
-data t19_sample_read_subject: IdempotentOperationSubject = ReadIdempotentSample {
+data t19_sample_read_composable: ComposableIdempotentOperationSubject = ReadIdempotentSample {
   operation: t19_sample_read_operation
 }
 
 
-data t19_sample_upsert_subject: IdempotentOperationSubject = UpsertIdempotentSample {
+data t19_sample_upsert_composable: ComposableIdempotentOperationSubject = UpsertIdempotentSample {
   operation: t19_sample_upsert_operation,
   key_source: t19_sample_upsert_key_source
 }
 
 
-data t19_sample_delete_subject: IdempotentOperationSubject = DeleteIdempotentSample {
+data t19_sample_delete_composable: ComposableIdempotentOperationSubject = DeleteIdempotentSample {
   operation: t19_sample_delete_operation,
   key_source: t19_sample_delete_key_source
 }
+
+
+data t19_sample_read_subject: IdempotentOperationSubject = Composable(t19_sample_read_composable)
+
+
+data t19_sample_upsert_subject: IdempotentOperationSubject = Composable(t19_sample_upsert_composable)
+
+
+data t19_sample_delete_subject: IdempotentOperationSubject = Composable(t19_sample_delete_composable)
 
 
 data t19_sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotentInhabitance {
@@ -231,7 +245,7 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
 }
 
 
-fn idempotent_operation_apply_node(state: Node, subject: IdempotentOperationSubject) -> Node {
+fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
@@ -248,12 +262,12 @@ fn idempotent_operation_apply_node(state: Node, subject: IdempotentOperationSubj
 }
 
 
-fn idempotent_operation_apply_once(state: Node, subject: IdempotentOperationSubject) -> Node {
+fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
   idempotent_operation_apply_node(state: state, subject: subject)
 }
 
 
-fn idempotent_operation_apply_twice(state: Node, subject: IdempotentOperationSubject) -> Node {
+fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
   idempotent_operation_apply_node(
     state: idempotent_operation_apply_node(state: state, subject: subject),
     subject: subject
@@ -261,7 +275,7 @@ fn idempotent_operation_apply_twice(state: Node, subject: IdempotentOperationSub
 }
 
 
-fn idempotent_operation_witness_node(subject: IdempotentOperationSubject) -> Node {
+fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubject) -> Node {
   match subject {
     ReadIdempotentSample { operation: operation } =>
       Node {
@@ -302,20 +316,6 @@ fn idempotent_operation_witness_node(subject: IdempotentOperationSubject) -> Nod
           Edge {
             label: Named { name: idempotent_operation_callable_field },
             target: idempotent_operation_ref_node(operation: operation)
-          },
-        ]
-      }
-    LabelOnlyIdempotentInhabitance { shape: shape, label: label } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          Edge {
-            label: Named { name: effect_shape_inner_field },
-            target: classified_idempotent_effect_node(shape: shape)
-          },
-          Edge {
-            label: Named { name: idempotent_operation_callable_field },
-            target: atom_node(s: label)
           },
         ]
       }
