@@ -92,6 +92,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_structural_resolution
 ]
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — feature: substrate-derived closed-sum structural equality for `LensIdV0` — bind node://adhoc-35324347-e8a — dissolve-on-arrival: compiler-provided structural equality for closed sum values; forbidden: permanent per-variant equality table drift from `LensIdV0`.
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   match left {
     Complexity => match right {
@@ -129,6 +130,7 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived `LensModulePathV0.Bound` discriminant projection; forbidden: permanent local variant-discriminator predicate.
 fn lens_registry_entry_bound(entry: LensRegistryEntryV0) -> Bool {
   match entry.module_path {
     Bound { path: _ } => true
