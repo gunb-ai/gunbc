@@ -16,7 +16,7 @@ import v4.lens.affected_set {
   affected_set_rerun_nodes
 }
 import v4.std.change { AffectedSet, AffectedSetEvidence }
-import v4.std.algebra { free_monoid_fold }
+import v4.std.algebra { length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
@@ -33,7 +33,7 @@ type CiClaimRoster = List<TestClaim>
 
 
 fn node_in_rerun_frontier(needle: Node, frontier: List<Node>) -> Bool {
-  free_monoid_fold(xs: frontier, empty: false, cons: fn(found, node) {
+  fold(frontier, init: false, f: fn(found, node) {
     found || (node == needle)
   })
 }
@@ -71,7 +71,7 @@ fn append_claim_if_in_frontier(
 
 
 fn narrow_roster_to_rerun_frontier(roster: CiClaimRoster, frontier: List<Node>) -> List<TestClaim> {
-  free_monoid_fold(xs: roster, empty: Empty, cons: fn(acc, claim) {
+  fold(roster, init: [], f: fn(acc, claim) {
     append_claim_if_in_frontier(acc: acc, claim: claim, frontier: frontier)
   })
 }
