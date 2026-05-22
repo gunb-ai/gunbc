@@ -1,15 +1,36 @@
 // src/v4/extdeps/languages/go.dag
-// Scope: Go language spec surface (scalar width/kind sums, channel direction, export, cost shape, partial D2 resolver); L-2 pin go1.26 via Anchor.
-// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, go_bool_grounding.
-// Consumes: v4.std.node.Symbol; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; kernel-ambient Int (STRUCTURE.md traceability).
-// Status: extdeps go slice; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging; classifier = GoScalar.BoolScalar; numeric D2a rows deferred per D2-REV and resolver.dag; no D1 ops in-file.
+// Scope: Go language spec surface — primitive fact-bundles + ModelCore wave-1; L-2 pin go1.26 via Anchor.
+// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, Go*PrimitiveFacts, GoLanguageModel, go_*_facts_catalog, go_model_core_wave1, go_language_model_wave1, go_bool_grounding.
+// Consumes: v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra; kernel-ambient Int (STRUCTURE.md traceability).
+// Status: T-4 go slice — Go spec primitive fact-bundles; ModelCore.primitives filled via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging; grammar/lex/MVP deferred.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
 
-import v4.std.node { Symbol }
+import v4.std.collection { List, Set }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactAxisBinding,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_width
+}
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SignedIntWidth
@@ -56,6 +77,11 @@ type GoScalar
   | StringScalar
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type GoIntegerSignedness
+  = SignedInteger
+  | UnsignedInteger
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoChannelDirection
   = SendRecv
   | SendOnly
@@ -92,5 +118,771 @@ type GoIntegerOverflowDisposition<IRCarrier> {
   release_default: GoBuiltinIntegerArithmeticOverflow
 }
 
+type GoIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  signedness: GoIntegerSignedness
+  width: GoScalar
+  overflow: GoBuiltinIntegerArithmeticOverflow
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+type GoFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: GoFloatWidth
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+type GoComplexPrimitiveFacts {
+  surface_spelling: Symbol
+  width: GoComplexWidth
+  component_encoding: Symbol
+  std_projection: Symbol
+}
+
+type GoNonNumericPrimitiveFacts {
+  surface_spelling: Symbol
+  scalar: GoScalar
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+type GoLanguageModel {
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+data go_language_model_surface_id: Symbol = go_language_model_surface_id
+
+data go_surface_spelling_int: Symbol = go_surface_spelling_int
+data go_surface_spelling_int8: Symbol = go_surface_spelling_int8
+data go_surface_spelling_int16: Symbol = go_surface_spelling_int16
+data go_surface_spelling_int32: Symbol = go_surface_spelling_int32
+data go_surface_spelling_int64: Symbol = go_surface_spelling_int64
+data go_surface_spelling_uint: Symbol = go_surface_spelling_uint
+data go_surface_spelling_uint8: Symbol = go_surface_spelling_uint8
+data go_surface_spelling_uint16: Symbol = go_surface_spelling_uint16
+data go_surface_spelling_uint32: Symbol = go_surface_spelling_uint32
+data go_surface_spelling_uint64: Symbol = go_surface_spelling_uint64
+data go_surface_spelling_uintptr: Symbol = go_surface_spelling_uintptr
+data go_surface_spelling_float32: Symbol = go_surface_spelling_float32
+data go_surface_spelling_float64: Symbol = go_surface_spelling_float64
+data go_surface_spelling_complex64: Symbol = go_surface_spelling_complex64
+data go_surface_spelling_complex128: Symbol = go_surface_spelling_complex128
+data go_surface_spelling_bool: Symbol = go_surface_spelling_bool
+data go_surface_spelling_string: Symbol = go_surface_spelling_string
+
+data go_std_projection_int: Symbol = go_std_projection_int
+data go_std_projection_int8: Symbol = go_std_projection_int8
+data go_std_projection_int16: Symbol = go_std_projection_int16
+data go_std_projection_int32: Symbol = go_std_projection_int32
+data go_std_projection_int64: Symbol = go_std_projection_int64
+data go_std_projection_uint: Symbol = go_std_projection_uint
+data go_std_projection_uint8: Symbol = go_std_projection_uint8
+data go_std_projection_uint16: Symbol = go_std_projection_uint16
+data go_std_projection_uint32: Symbol = go_std_projection_uint32
+data go_std_projection_uint64: Symbol = go_std_projection_uint64
+data go_std_projection_uintptr: Symbol = go_std_projection_uintptr
+data go_std_projection_float32: Symbol = go_std_projection_float32
+data go_std_projection_float64: Symbol = go_std_projection_float64
+data go_std_projection_complex64: Symbol = go_std_projection_complex64
+data go_std_projection_complex128: Symbol = go_std_projection_complex128
+data go_std_projection_bool: Symbol = go_std_projection_bool
+data go_std_projection_string: Symbol = go_std_projection_string
+
+data go_repr_signed_integer_twos_complement: Symbol = go_repr_signed_integer_twos_complement
+data go_repr_unsigned_integer_modular: Symbol = go_repr_unsigned_integer_modular
+data go_repr_float32_ieee754: Symbol = go_repr_float32_ieee754
+data go_repr_float64_ieee754: Symbol = go_repr_float64_ieee754
+data go_repr_complex64_pair_float32: Symbol = go_repr_complex64_pair_float32
+data go_repr_complex128_pair_float64: Symbol = go_repr_complex128_pair_float64
+data go_repr_bool_truth_value: Symbol = go_repr_bool_truth_value
+data go_repr_string_byte_sequence: Symbol = go_repr_string_byte_sequence
+
+data go_facts_field_surface_spelling: Symbol = go_facts_field_surface_spelling
+data go_facts_field_signedness: Symbol = go_facts_field_signedness
+data go_facts_field_width: Symbol = go_facts_field_width
+data go_facts_field_overflow: Symbol = go_facts_field_overflow
+data go_facts_field_encoding: Symbol = go_facts_field_encoding
+data go_facts_field_std_projection: Symbol = go_facts_field_std_projection
+data go_facts_field_scalar_classifier: Symbol = go_facts_field_scalar_classifier
+
+data go_tag_signed: Symbol = go_tag_signed
+data go_tag_unsigned: Symbol = go_tag_unsigned
+data go_tag_bits8: Symbol = go_tag_bits8
+data go_tag_bits16: Symbol = go_tag_bits16
+data go_tag_bits32: Symbol = go_tag_bits32
+data go_tag_bits64: Symbol = go_tag_bits64
+data go_tag_platform_int: Symbol = go_tag_platform_int
+data go_tag_uintptr: Symbol = go_tag_uintptr
+data go_tag_complex_bits64: Symbol = go_tag_complex_bits64
+data go_tag_complex_bits128: Symbol = go_tag_complex_bits128
+data go_tag_scalar_int: Symbol = go_tag_scalar_int
+data go_tag_scalar_float: Symbol = go_tag_scalar_float
+data go_tag_scalar_complex: Symbol = go_tag_scalar_complex
+data go_tag_scalar_bool: Symbol = go_tag_scalar_bool
+data go_tag_scalar_string: Symbol = go_tag_scalar_string
+data go_tag_integer_overflow_signed_truncates: Symbol = go_tag_integer_overflow_signed_truncates
+data go_tag_integer_overflow_unsigned_truncates: Symbol = go_tag_integer_overflow_unsigned_truncates
+
+data go_facts_int: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_int,
+  signedness: SignedInteger,
+  width: SignedIntScalar { width: SignedPlatformInt },
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_signed_integer_twos_complement,
+  std_projection: go_std_projection_int
+}
+
+data go_facts_int8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_int8,
+  signedness: SignedInteger,
+  width: SignedIntScalar { width: SignedBits8 },
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_signed_integer_twos_complement,
+  std_projection: go_std_projection_int8
+}
+
+data go_facts_int16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_int16,
+  signedness: SignedInteger,
+  width: SignedIntScalar { width: SignedBits16 },
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_signed_integer_twos_complement,
+  std_projection: go_std_projection_int16
+}
+
+data go_facts_int32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_int32,
+  signedness: SignedInteger,
+  width: SignedIntScalar { width: SignedBits32 },
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_signed_integer_twos_complement,
+  std_projection: go_std_projection_int32
+}
+
+data go_facts_int64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_int64,
+  signedness: SignedInteger,
+  width: SignedIntScalar { width: SignedBits64 },
+  overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_signed_integer_twos_complement,
+  std_projection: go_std_projection_int64
+}
+
+data go_facts_uint: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_uint,
+  signedness: UnsignedInteger,
+  width: UnsignedIntScalar { width: UnsignedPlatformInt },
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_unsigned_integer_modular,
+  std_projection: go_std_projection_uint
+}
+
+data go_facts_uint8: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_uint8,
+  signedness: UnsignedInteger,
+  width: UnsignedIntScalar { width: UnsignedBits8 },
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_unsigned_integer_modular,
+  std_projection: go_std_projection_uint8
+}
+
+data go_facts_uint16: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_uint16,
+  signedness: UnsignedInteger,
+  width: UnsignedIntScalar { width: UnsignedBits16 },
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_unsigned_integer_modular,
+  std_projection: go_std_projection_uint16
+}
+
+data go_facts_uint32: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_uint32,
+  signedness: UnsignedInteger,
+  width: UnsignedIntScalar { width: UnsignedBits32 },
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_unsigned_integer_modular,
+  std_projection: go_std_projection_uint32
+}
+
+data go_facts_uint64: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_uint64,
+  signedness: UnsignedInteger,
+  width: UnsignedIntScalar { width: UnsignedBits64 },
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_unsigned_integer_modular,
+  std_projection: go_std_projection_uint64
+}
+
+data go_facts_uintptr: GoIntegerPrimitiveFacts = GoIntegerPrimitiveFacts {
+  surface_spelling: go_surface_spelling_uintptr,
+  signedness: UnsignedInteger,
+  width: UnsignedIntScalar { width: UnsignedPointerSized },
+  overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow,
+  encoding: go_repr_unsigned_integer_modular,
+  std_projection: go_std_projection_uintptr
+}
+
+data go_facts_float32: GoFloatPrimitiveFacts = GoFloatPrimitiveFacts {
+  surface_spelling: go_surface_spelling_float32,
+  width: Bits32,
+  encoding: go_repr_float32_ieee754,
+  std_projection: go_std_projection_float32
+}
+
+data go_facts_float64: GoFloatPrimitiveFacts = GoFloatPrimitiveFacts {
+  surface_spelling: go_surface_spelling_float64,
+  width: Bits64,
+  encoding: go_repr_float64_ieee754,
+  std_projection: go_std_projection_float64
+}
+
+data go_facts_complex64: GoComplexPrimitiveFacts = GoComplexPrimitiveFacts {
+  surface_spelling: go_surface_spelling_complex64,
+  width: Bits64,
+  component_encoding: go_repr_complex64_pair_float32,
+  std_projection: go_std_projection_complex64
+}
+
+data go_facts_complex128: GoComplexPrimitiveFacts = GoComplexPrimitiveFacts {
+  surface_spelling: go_surface_spelling_complex128,
+  width: Bits128,
+  component_encoding: go_repr_complex128_pair_float64,
+  std_projection: go_std_projection_complex128
+}
+
+data go_facts_bool: GoNonNumericPrimitiveFacts = GoNonNumericPrimitiveFacts {
+  surface_spelling: go_surface_spelling_bool,
+  scalar: BoolScalar,
+  encoding: go_repr_bool_truth_value,
+  std_projection: go_std_projection_bool
+}
+
+data go_facts_string: GoNonNumericPrimitiveFacts = GoNonNumericPrimitiveFacts {
+  surface_spelling: go_surface_spelling_string,
+  scalar: StringScalar,
+  encoding: go_repr_string_byte_sequence,
+  std_projection: go_std_projection_string
+}
+
+// Sole primitive-fact list authorities — ModelCore.primitives and canonical_symbols derive
+// from these catalogs. Add a primitive row here, not in a parallel hand-authored list.
+data go_integer_facts_catalog: List<GoIntegerPrimitiveFacts> = [
+  go_facts_int,
+  go_facts_int8,
+  go_facts_int16,
+  go_facts_int32,
+  go_facts_int64,
+  go_facts_uint,
+  go_facts_uint8,
+  go_facts_uint16,
+  go_facts_uint32,
+  go_facts_uint64,
+  go_facts_uintptr
+]
+
+data go_float_facts_catalog: List<GoFloatPrimitiveFacts> = [
+  go_facts_float32,
+  go_facts_float64
+]
+
+data go_complex_facts_catalog: List<GoComplexPrimitiveFacts> = [
+  go_facts_complex64,
+  go_facts_complex128
+]
+
+data go_nonnumeric_facts_catalog: List<GoNonNumericPrimitiveFacts> = [
+  go_facts_bool,
+  go_facts_string
+]
+
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn go_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn go_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn go_signedness_node(signedness: GoIntegerSignedness) -> Node {
+  match signedness {
+    SignedInteger => go_inhabitant_atom(id: go_tag_signed)
+    UnsignedInteger => go_inhabitant_atom(id: go_tag_unsigned)
+  }
+}
+
+fn go_signed_width_node(width: SignedIntWidth) -> Node {
+  match width {
+    SignedBits8 => go_inhabitant_atom(id: go_tag_bits8)
+    SignedBits16 => go_inhabitant_atom(id: go_tag_bits16)
+    SignedBits32 => go_inhabitant_atom(id: go_tag_bits32)
+    SignedBits64 => go_inhabitant_atom(id: go_tag_bits64)
+    SignedPlatformInt => go_inhabitant_atom(id: go_tag_platform_int)
+  }
+}
+
+fn go_unsigned_width_node(width: UnsignedIntWidth) -> Node {
+  match width {
+    UnsignedBits8 => go_inhabitant_atom(id: go_tag_bits8)
+    UnsignedBits16 => go_inhabitant_atom(id: go_tag_bits16)
+    UnsignedBits32 => go_inhabitant_atom(id: go_tag_bits32)
+    UnsignedBits64 => go_inhabitant_atom(id: go_tag_bits64)
+    UnsignedPlatformInt => go_inhabitant_atom(id: go_tag_platform_int)
+    UnsignedPointerSized => go_inhabitant_atom(id: go_tag_uintptr)
+  }
+}
+
+fn go_float_width_node(width: GoFloatWidth) -> Node {
+  match width {
+    Bits32 => go_inhabitant_atom(id: go_tag_bits32)
+    Bits64 => go_inhabitant_atom(id: go_tag_bits64)
+  }
+}
+
+fn go_complex_width_node(width: GoComplexWidth) -> Node {
+  match width {
+    Bits64 => go_inhabitant_atom(id: go_tag_complex_bits64)
+    Bits128 => go_inhabitant_atom(id: go_tag_complex_bits128)
+  }
+}
+
+fn go_overflow_node(overflow: GoBuiltinIntegerArithmeticOverflow) -> Node {
+  match overflow {
+    SignedTypedIntegerTruncatesSilentlyOnOverflow =>
+      go_inhabitant_atom(id: go_tag_integer_overflow_signed_truncates)
+    UnsignedTypedIntegerTruncatesSilentlyOnOverflow =>
+      go_inhabitant_atom(id: go_tag_integer_overflow_unsigned_truncates)
+  }
+}
+
+fn go_scalar_node(scalar: GoScalar) -> Node {
+  match scalar {
+    SignedIntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_int)
+        ),
+        go_named_edge(name: go_facts_field_signedness, target: go_inhabitant_atom(id: go_tag_signed)),
+        go_named_edge(name: go_facts_field_width, target: go_signed_width_node(width: width))
+      ]
+    }
+    UnsignedIntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_int)
+        ),
+        go_named_edge(name: go_facts_field_signedness, target: go_inhabitant_atom(id: go_tag_unsigned)),
+        go_named_edge(name: go_facts_field_width, target: go_unsigned_width_node(width: width))
+      ]
+    }
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_float)
+        ),
+        go_named_edge(name: go_facts_field_width, target: go_float_width_node(width: width))
+      ]
+    }
+    ComplexScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_facts_field_scalar_classifier,
+          target: go_inhabitant_atom(id: go_tag_scalar_complex)
+        ),
+        go_named_edge(name: go_facts_field_width, target: go_complex_width_node(width: width))
+      ]
+    }
+    BoolScalar => go_inhabitant_atom(id: go_tag_scalar_bool)
+    StringScalar => go_inhabitant_atom(id: go_tag_scalar_string)
+  }
+}
+
+fn go_integer_facts_node(facts: GoIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(
+        name: go_facts_field_signedness,
+        target: go_signedness_node(signedness: facts.signedness)
+      ),
+      go_named_edge(
+        name: go_facts_field_width,
+        target: go_scalar_node(scalar: facts.width)
+      ),
+      go_named_edge(
+        name: go_facts_field_overflow,
+        target: go_overflow_node(overflow: facts.overflow)
+      ),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_float_facts_node(facts: GoFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(name: go_facts_field_width, target: go_float_width_node(width: facts.width)),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_complex_facts_node(facts: GoComplexPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(name: go_facts_field_width, target: go_complex_width_node(width: facts.width)),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.component_encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_nonnumeric_facts_node(facts: GoNonNumericPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_facts_field_surface_spelling,
+        target: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_named_edge(
+        name: go_facts_field_scalar_classifier,
+        target: go_scalar_node(scalar: facts.scalar)
+      ),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
+  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+}
+
+fn go_primitive_bundle_from_integer_facts(facts: GoIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_integer_facts_node(facts: facts),
+    spec_facts: [
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_width,
+        fact: go_scalar_node(scalar: facts.width)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_signedness,
+        fact: go_signedness_node(signedness: facts.signedness)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_overflow_disposition,
+        fact: go_overflow_node(overflow: facts.overflow)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: go_inhabitant_atom(id: facts.encoding)
+      )
+    ]
+  }
+}
+
+fn go_primitive_bundle_from_float_facts(facts: GoFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_float_facts_node(facts: facts),
+    spec_facts: [
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_width,
+        fact: go_float_width_node(width: facts.width)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: go_inhabitant_atom(id: facts.encoding)
+      )
+    ]
+  }
+}
+
+fn go_primitive_bundle_from_complex_facts(facts: GoComplexPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_complex_facts_node(facts: facts),
+    spec_facts: [
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_width,
+        fact: go_complex_width_node(width: facts.width)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: go_inhabitant_atom(id: facts.component_encoding)
+      )
+    ]
+  }
+}
+
+fn go_primitive_bundle_from_nonnumeric_facts(
+  facts: GoNonNumericPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: go_nonnumeric_facts_node(facts: facts),
+    spec_facts: [
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_surface_spelling,
+        fact: go_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      go_primitive_axis_binding(
+        axis: primitive_fact_axis_encoding,
+        fact: go_inhabitant_atom(id: facts.encoding)
+      )
+    ]
+  }
+}
+
+fn go_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
+  fold_list(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
+    }
+  )
+}
+
+fn go_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) {
+      go_list_snoc_item(xs: acc, item: item)
+    }
+  )
+}
+
+fn go_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      go_list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      go_list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      go_list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_complex_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: go_nonnumeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      go_list_snoc_item(
+        xs: acc,
+        item: go_primitive_bundle_from_nonnumeric_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  go_list_append(
+    left: go_list_append(
+      left: go_list_append(
+        left: go_primitive_bundles_from_integer_catalog(),
+        right: go_primitive_bundles_from_float_catalog()
+      ),
+      right: go_primitive_bundles_from_complex_catalog()
+    ),
+    right: go_primitive_bundles_from_nonnumeric_catalog()
+  )
+}
+
+fn go_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_complex_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoComplexPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_nonnumeric_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoNonNumericPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_complex_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_nonnumeric_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_nonnumeric_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      go_integer_catalog_surface_symbol(sym: sym) ||
+        go_float_catalog_surface_symbol(sym: sym) ||
+        go_complex_catalog_surface_symbol(sym: sym) ||
+        go_nonnumeric_catalog_surface_symbol(sym: sym)
+    }
+  }
+}
+
+fn go_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: go_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+fn go_language_model_wave1() -> GoLanguageModel {
+  GoLanguageModel {
+    language_identity: go_language_model_surface_id,
+    canonical_symbols: go_language_model_canonical_symbols(),
+    core: go_model_core_wave1()
+  }
+}
