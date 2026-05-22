@@ -223,7 +223,8 @@ fn ci_pipeline_jobs(body: &SurfaceExpr) -> &[SurfaceExpr] {
             .unwrap_or_else(|| panic!("ci_pipeline_well_formed missing pipeline arg")),
         other => panic!("expected ci_pipeline_well_formed call, got {other:?}"),
     };
-    let jobs_expr = variant_record_field(call_record, "CiPipeline", "jobs");
+    let pipeline_expr = record_body_field(call_record, "p");
+    let jobs_expr = variant_record_field(pipeline_expr, "CiPipeline", "jobs");
     let SurfaceExpr::List { elements, .. } = jobs_expr else {
         panic!("expected ci_pipeline.jobs list, got {jobs_expr:?}");
     };
