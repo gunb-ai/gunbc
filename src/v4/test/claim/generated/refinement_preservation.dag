@@ -131,5 +131,4 @@ fn refinement_preservation_subject_base_value() -> Node {
 }
 
 
-data witness_refinement_preservation_subject_anchor: Bool =
-  refinement_preservation_subject_base_value() == refinement_preservation_list_node(xs: [stub_empty_conj])
+data witness_refinement_preservation_subject_anchor: Bool = refinement_preservation_subject_base_value() == refinement_preservation_list_node(xs: [stub_empty_conj])
