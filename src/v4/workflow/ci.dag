@@ -53,6 +53,7 @@ type CiPipeline {
   gates: List<CiGate>
 }
 
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
 type LensCiLiveWorkflowSignal {
   smoke_step_name: String
   semantic_step_name: String
