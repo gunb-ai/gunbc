@@ -559,6 +559,164 @@ fn witness_validity_subject_node(
 }
 
 
+// Full structural encoding of NonEmptyDiagnostics (head + tail) and Diagnostic (reason,
+// at, correction) so the Rejected oracle outcome preserved in the claim subject matches
+// what a re-derived verify_witness will actually be compared against (codex RC fix:
+// previous d.head.reason-only projection was lossy under Practice 3 / INVARIANTS P2).
+// Known scope: ByteRange Int positions inside Textual loci are not Node-encodable in v4
+// today and collapse to the variant-tag atom; find_witness diagnostics use NodeLocus
+// exclusively (find_witness.dag:79-92), so witness-validity rows never produce Textual
+// loci — the projection is structurally lossless for this category.
+fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
+  match r {
+    UserInputBoundary =>
+      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_user)
+    AmbiguousIntent =>
+      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_ambiguous)
+    ExternalContractUnknown =>
+      witness_validity_symbol_atom_node(s: witness_validity_no_correction_tag_external)
+  }
+}
+
+
+fn witness_validity_correction_node(c: Correction) -> Node {
+  match c {
+    Suggested { node: n } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: witness_validity_correction_tag_suggested }, target: n }
+        ]
+      }
+    Unavailable { reason: r } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_correction_tag_unavailable },
+            target: witness_validity_no_correction_reason_node(r: r)
+          }
+        ]
+      }
+  }
+}
+
+
+fn witness_validity_extent_node(e: Extent) -> Node {
+  match e {
+    WholeFile =>
+      witness_validity_symbol_atom_node(s: witness_validity_extent_tag_whole_file)
+    ByteRange { start: _, end: _ } =>
+      witness_validity_symbol_atom_node(s: witness_validity_extent_tag_byte_range)
+  }
+}
+
+
+fn witness_validity_locus_node(l: Locus) -> Node {
+  match l {
+    Textual { file: f, extent: e } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_locus_tag_textual },
+            target: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                Edge {
+                  label: Named { name: witness_validity_locus_textual_file },
+                  target: witness_validity_symbol_atom_node(s: f)
+                },
+                Edge {
+                  label: Named { name: witness_validity_locus_textual_extent },
+                  target: witness_validity_extent_node(e: e)
+                }
+              ]
+            }
+          }
+        ]
+      }
+    NodeLocus { anchor: a } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: witness_validity_locus_tag_node }, target: a.at }
+        ]
+      }
+    PortLocus { anchor: a } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_locus_tag_port },
+            target: witness_validity_symbol_atom_node(s: a.at)
+          }
+        ]
+      }
+  }
+}
+
+
+fn witness_validity_diagnostic_node(d: Diagnostic) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: witness_validity_diag_field_reason },
+        target: witness_validity_symbol_atom_node(s: d.reason)
+      },
+      Edge {
+        label: Named { name: witness_validity_diag_field_at },
+        target: witness_validity_locus_node(l: d.at)
+      },
+      Edge {
+        label: Named { name: witness_validity_diag_field_correction },
+        target: witness_validity_correction_node(c: d.correction)
+      }
+    ]
+  }
+}
+
+
+fn witness_validity_diagnostic_list_node(xs: List<Diagnostic>) -> Node {
+  match xs {
+    Empty =>
+      witness_validity_symbol_atom_node(s: witness_validity_list_tag_empty)
+    Cons { head: h, tail: t } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Named { name: witness_validity_list_cons_head },
+            target: witness_validity_diagnostic_node(d: h)
+          },
+          Edge {
+            label: Named { name: witness_validity_list_cons_tail },
+            target: witness_validity_diagnostic_list_node(xs: t)
+          }
+        ]
+      }
+  }
+}
+
+
+fn witness_validity_non_empty_diagnostics_node(d: NonEmptyDiagnostics) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: witness_validity_diags_field_head },
+        target: witness_validity_diagnostic_node(d: d.head)
+      },
+      Edge {
+        label: Named { name: witness_validity_diags_field_tail },
+        target: witness_validity_diagnostic_list_node(xs: d.tail)
+      }
+    ]
+  }
+}
+
+
 fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Node {
   match o {
     Accepted { value: w, diagnostics: _ } =>
@@ -577,15 +735,7 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Node 
         children: [
           Edge {
             label: Named { name: witness_validity_outcome_violates },
-            target: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                Edge {
-                  label: Named { name: witness_validity_outcome_reason },
-                  target: witness_validity_symbol_atom_node(s: d.head.reason)
-                }
-              ]
-            }
+            target: witness_validity_non_empty_diagnostics_node(d: d)
           }
         ]
       }
