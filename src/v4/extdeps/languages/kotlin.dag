@@ -144,8 +144,7 @@ data kotlin_tag_scalar_char: Symbol = kotlin_tag_scalar_char
 data kotlin_tag_scalar_string: Symbol = kotlin_tag_scalar_string
 data kotlin_tag_scalar_unit: Symbol = kotlin_tag_scalar_unit
 data kotlin_tag_scalar_nothing: Symbol = kotlin_tag_scalar_nothing
-data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified =
-  KotlinIntegerOverflowUnspecified {}
+data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified = KotlinIntegerOverflowUnspecified {}
 
 data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_byte,
