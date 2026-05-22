@@ -105,6 +105,13 @@ fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_five_leaves(
         .unwrap_or_else(|| {
             panic!("{SUBSUMPTION_PATH}: missing fn affected_set_irt1_subsumed_fixes_value")
         });
+    // Source-text scan (rather than a SurfaceExpr walk) because the predicate
+    // is a fn body and parse-surface doesn't expose a stable `||`-chain
+    // iterator yet. Each leaf is asserted in a `d.id ==` comparison position
+    // (not just a bare mention in a stray comment) and the total count of
+    // `d.id ==` clauses is pinned to 5, so an off-by-one regression — extra
+    // comparison, missing comparison, or a leaf mentioned only in surrounding
+    // prose — fails the ratchet.
     let body_source = &SUBSUMPTION_DAG[body_start as usize..body_end as usize];
     let expected = [
         "affected_set_hash_receipt_leaf_fix",
@@ -114,11 +121,20 @@ fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_five_leaves(
         "affected_set_frontier_receipt_leaf_fix",
     ];
     for leaf in expected {
+        let needle = format!("d.id == {leaf}");
         assert!(
-            body_source.contains(leaf),
-            "{SUBSUMPTION_PATH}: subsumed-fixes membership predicate must reference {leaf}"
+            body_source.contains(&needle),
+            "{SUBSUMPTION_PATH}: subsumed-fixes membership predicate must compare d.id to {leaf}"
         );
     }
+    let comparison_count = body_source.matches("d.id ==").count();
+    assert_eq!(
+        comparison_count,
+        expected.len(),
+        "{SUBSUMPTION_PATH}: subsumed-fixes membership predicate must contain exactly {} `d.id ==` clauses, found {}",
+        expected.len(),
+        comparison_count,
+    );
 }
 
 fn assert_record_fields(items: &[SurfaceItem], name: &str, expected: &[(&str, &str)]) {
