@@ -55,7 +55,7 @@ fn data_dep_not_in_frontier_claim_rhs() -> Node {
 
 data claim_data_dep_not_in_frontier: TestClaim = EqualsClaim {
   label: "lens_affected_set/data_dep_not_in_frontier: DataDependsOn excluded from frontier",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: data_dep_root,
   rhs: data_dep_not_in_frontier_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

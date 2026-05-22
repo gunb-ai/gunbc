@@ -80,7 +80,7 @@ fn introspect_clean_tree_passes_claim_rhs() -> Node {
 
 data claim_introspect_clean_tree_passes: TestClaim = EqualsClaim {
   label: "lens_application/introspect_clean_tree_passes: Introspect apply_lens accepts clean tree",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: introspect_root,
   rhs: introspect_clean_tree_passes_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

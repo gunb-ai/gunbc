@@ -33,7 +33,7 @@ data runner_compiles_subject: Node = Node {
 
 data claim_runner_compiles: TestClaim = CompilesClaim {
   label: "self-host fixed-point runner shape compiles",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: runner_compiles_subject,
   expected_value: runner_compiles_subject,
   classification: TestClassification { tier: Tier1, layer: Integration }

@@ -155,7 +155,7 @@ data claim_nat_mul_associativity: TestClaim = accepted_claim(
 
 data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
   label: "Nat addition wrong identity falsifies law claim",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: falsification_nat_add_wrong_identity,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

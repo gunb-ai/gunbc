@@ -140,7 +140,7 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
 
 data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
   label: "manual/wave-5-a: validate_then_compile public terminal module compiles",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: claim_validate_then_compile_module,
   expected_value: claim_validate_then_compile_module,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -149,7 +149,7 @@ data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
 
 data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
   label: "manual/wave-5-a: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: claim_validate_then_compile_module,
   rhs: claim_validate_then_compile_skips_gate_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -172,7 +172,7 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
 
 data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
   label: "manual/wave-5-a: required lens Rejected blocks before compile-core",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: claim_validate_then_compile_module,
   rhs: claim_rejecting_lens_blocks_passes(),
   classification: TestClassification { tier: Tier1, layer: Unit }

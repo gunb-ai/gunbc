@@ -44,7 +44,7 @@ fn loop_unknown_claim_rhs() -> Node {
 
 data claim_loop_unknown: TestClaim = EqualsClaim {
   label: "lens_cost/loop_unknown: loop without bound fails closed",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: loop_unknown_input,
   rhs: loop_unknown_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

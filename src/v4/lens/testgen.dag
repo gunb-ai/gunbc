@@ -59,8 +59,11 @@ import v4.std.verification {
   DiagnosticClaim,
   TestClaim,
   TestClassification,
+  T19ClaimAnchorKey,
+  T19GeneratedClaimAnchor,
   T19ManualAnchorAbsent,
   T19ManualAnchorKey,
+  T19ManualClaimAnchor,
   T19ManualLbeConjDagSurface,
   T19ManualLbeDisjDagSurface,
   T19ManualLbeTransformDagSurface,
@@ -84,6 +87,8 @@ import v4.std.verification {
   T19ManualTcBindZeroChildren,
   Tier1,
   Unit,
+  t19_generated_claim_anchor,
+  t19_manual_claim_anchor,
   test_claim_classification,
   test_claim_t19_anchor
 }
@@ -187,7 +192,7 @@ type TestgenConcept
 
 type Generator<C> {
   classification: TestClassification
-  t19_anchor: T19ManualAnchorKey
+  t19_anchor: T19ClaimAnchorKey
   slot: C
 }
 
@@ -426,7 +431,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Accepted {
         value: CompilesClaim {
           label: label,
-          t19_anchor: anchor,
+          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
           classification: TestClassification { tier: Tier1, layer: Unit },
@@ -467,7 +472,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
   [
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: T19ManualLbeConjDagSurface,
+      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeConjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_conj_dag_surface(),
         mock: lbe_io_mock_conj_dag_surface(),
@@ -475,7 +480,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: T19ManualLbeDisjDagSurface,
+      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeDisjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_disj_dag_surface(),
         mock: lbe_io_mock_disj_dag_surface(),
@@ -483,7 +488,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: T19ManualLbeTransformDagSurface,
+      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeTransformDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
@@ -561,7 +566,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   Accepted {
     value: DiagnosticClaim {
       label: t19_coproduct_exhaustiveness_label,
-      t19_anchor: T19GeneratedCoproductExhaustiveness,
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness),
       input: input,
       expected_rejection: diagnostics_singleton(
         d: coproduct_exhaustiveness_diagnostic(subject: subject, input: input)
@@ -577,7 +582,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   [
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: T19GeneratedCoproductExhaustiveness,
+      t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness),
       slot: DiagnosticExhaustiveness {
         subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
       },
@@ -633,63 +638,59 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
         label: t19_lbe_label_transform_dag_surface,
         mock: lbe_io_mock_transform_dag_surface()
       )
-    T19GeneratedCoproductExhaustiveness =>
-      testgen_emit_coproduct_exhaustiveness_claim(
-        subject: coproduct_exhaustiveness_subject_testclaim_diagnostic()
-      )
   }
 }
 
 
 fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
   match test_claim_t19_anchor(c: claim) {
-    T19ManualAnchorAbsent =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualAnchorAbsent } =>
       Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()) }
-    T19ManualTcConjEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcConjEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
         }, diagnostics: None }
-    T19ManualTcDisjEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcDisjEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Disj },
         }, diagnostics: None }
-    T19ManualTcArrowTwoConj =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcArrowTwoConj } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
         }, diagnostics: None }
-    T19ManualTcCardinalityEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcCardinalityEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Cardinality },
         }, diagnostics: None }
-    T19ManualTcInstantiationEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcInstantiationEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Instantiation },
         }, diagnostics: None }
-    T19ManualTcArrowEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcArrowEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
         }, diagnostics: None }
-    T19ManualTcTransformEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcTransformEmpty } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Transform },
         }, diagnostics: None }
-    T19ManualTcBranchEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcBranchEmpty } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Branch },
         }, diagnostics: None }
-    T19ManualTcLoopEmpty =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcLoopEmpty } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Loop },
         }, diagnostics: None }
-    T19ManualTcBindZeroChildren =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcBindZeroChildren } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Bind },
         }, diagnostics: None }
-    T19ManualTcConjEqualsRefl =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualTcConjEqualsRefl } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
         }, diagnostics: None }
-    T19ManualNatAddLeftIdentity =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualNatAddLeftIdentity } =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
             algebra: nat_algebra_law_subject_symbol_additive_monoid,
@@ -697,7 +698,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_add_left_identity,
           },
         }, diagnostics: None }
-    T19ManualNatAddRightIdentity =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualNatAddRightIdentity } =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
             algebra: nat_algebra_law_subject_symbol_additive_monoid,
@@ -705,7 +706,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_add_right_identity,
           },
         }, diagnostics: None }
-    T19ManualNatAddAssociativity =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualNatAddAssociativity } =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
             algebra: nat_algebra_law_subject_symbol_additive_monoid,
@@ -713,7 +714,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_add_associativity,
           },
         }, diagnostics: None }
-    T19ManualNatMulLeftIdentity =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualNatMulLeftIdentity } =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
             algebra: nat_algebra_law_subject_symbol_commutative_semiring,
@@ -721,7 +722,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_mul_left_identity,
           },
         }, diagnostics: None }
-    T19ManualNatMulAnnihilator =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualNatMulAnnihilator } =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
             algebra: nat_algebra_law_subject_symbol_commutative_semiring,
@@ -729,7 +730,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_mul_annihilator,
           },
         }, diagnostics: None }
-    T19ManualNatMulAssociativity =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualNatMulAssociativity } =>
       Accepted { value: AlgebraLaw {
           subject: AlgebraLawSubject {
             algebra: nat_algebra_law_subject_symbol_commutative_semiring,
@@ -737,7 +738,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
             law: t19_law_nat_mul_associativity,
           },
         }, diagnostics: None }
-    T19ManualLbeConjDagSurface =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualLbeConjDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_conj_dag_surface(),
@@ -745,7 +746,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19ManualLbeDisjDagSurface =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualLbeDisjDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_disj_dag_surface(),
@@ -753,7 +754,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19ManualLbeTransformDagSurface =>
+    T19ManualClaimAnchor { manual_anchor: T19ManualLbeTransformDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_transform_dag_surface(),
@@ -761,7 +762,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19GeneratedCoproductExhaustiveness =>
+    T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness } =>
       Accepted {
         value: DiagnosticExhaustiveness {
           subject: coproduct_exhaustiveness_subject_testclaim_diagnostic(),

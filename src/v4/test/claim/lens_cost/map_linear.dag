@@ -72,7 +72,7 @@ fn map_linear_claim_rhs() -> Node {
 
 data claim_map_linear: TestClaim = EqualsClaim {
   label: "lens_cost/map_linear: cardinality projects to linear symbolic cost",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: map_linear_input,
   rhs: map_linear_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

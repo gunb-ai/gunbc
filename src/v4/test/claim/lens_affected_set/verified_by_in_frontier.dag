@@ -55,7 +55,7 @@ fn verified_by_in_frontier_claim_rhs() -> Node {
 
 data claim_verified_by_in_frontier: TestClaim = EqualsClaim {
   label: "lens_affected_set/verified_by_in_frontier: VerifiedBy in frontier",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: verified_by_root,
   rhs: verified_by_in_frontier_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

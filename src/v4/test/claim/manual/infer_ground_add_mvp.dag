@@ -219,7 +219,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
     } =>
       DiagnosticClaim {
         label: label,
-        t19_anchor: T19ManualAnchorAbsent,
+        t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
         input: input,
         expected_rejection: r,
         classification: TestClassification { tier: Tier1, layer: Unit }
@@ -232,7 +232,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
     } =>
       CompilesClaim {
         label: label,
-        t19_anchor: T19ManualAnchorAbsent,
+        t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
         input: input,
         expected_value: v,
         classification: TestClassification { tier: Tier1, layer: Unit }

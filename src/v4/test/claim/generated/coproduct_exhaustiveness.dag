@@ -2,7 +2,7 @@
 // Scope: T-19 DiagnosticExhaustiveness — coproduct-exhaustiveness TestClaim emitted from testgen.
 // Owns: generated_coproduct_exhaustiveness_claim, scheduling witness.
 // Consumes: v4.lens.testgen, v4.std.verification.
-// Status: generated corpus — true codegen dissolves this module.
+// Status: generated corpus scaffold — dissolves when T-19 codegen emits this module from `testgen_scheduled_coproduct_exhaustiveness_generators()` and the generated-output receipt replaces this checked-in witness file.
 
 module v4.test.claim.generated.coproduct_exhaustiveness
 
@@ -19,7 +19,9 @@ import v4.std.node { Node }
 import v4.std.verification {
   DiagnosticClaim,
   TestClaim,
+  T19GeneratedClaimAnchor,
   T19GeneratedCoproductExhaustiveness,
+  t19_generated_claim_anchor,
   test_claim_input,
   test_claim_t19_anchor
 }
@@ -43,7 +45,7 @@ fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
 
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedCoproductExhaustiveness, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: DiagnosticClaim { label: _, t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness), input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
   }
@@ -54,7 +56,7 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: claim, diagnostics: _ } =>
       match test_claim_t19_anchor(c: claim) {
-        T19GeneratedCoproductExhaustiveness => true
+        T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness } => true
         _ => false
       }
     Rejected { diagnostics: _ } => false

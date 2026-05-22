@@ -248,7 +248,7 @@ fn lbe_emit_rejection_sentinel_claim(
 ) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     input: mock.snapshot.input_node,
     expected_rejection: expected,
     classification: TestClassification { tier: Tier1, layer: Unit }
