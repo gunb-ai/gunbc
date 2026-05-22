@@ -46,7 +46,7 @@ fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<
     base: xs,
     by: Validation {
       reason: refinement_preservation_empty_list_reason,
-      admits: fn(items) { non_empty(xs: items) }
+      admits: fn(candidate) { non_empty(xs: candidate) }
     },
     at: at
   )
