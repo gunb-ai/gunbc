@@ -19,7 +19,6 @@ import v4.std.model_core {
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
-  primitive_fact_axis_std_projection,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
@@ -510,10 +509,6 @@ fn mc_primitive_bundle_from_integer_facts(facts: MachineIntegerPrimitiveFacts) -
       mc_primitive_axis_binding(
         axis: primitive_fact_axis_overflow_disposition,
         fact: mc_overflow_node(overflow: facts.overflow_release)
-      ),
-      mc_primitive_axis_binding(
-        axis: primitive_fact_axis_std_projection,
-        fact: mc_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
