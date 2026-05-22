@@ -203,9 +203,9 @@ fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_manual_key() {
     assert!(
         matches!(
             anchor_ty,
-            SurfaceType::Named { name: n, .. } if n == "T19ManualAnchorKey"
+            SurfaceType::Named { name: n, .. } if n == "T19ClaimAnchorKey"
         ),
-        "Generator.t19_anchor must be `T19ManualAnchorKey` (same carrier as `TestClaim.t19_anchor`); got {anchor_ty:?}"
+        "Generator.t19_anchor must be `T19ClaimAnchorKey` (same carrier as `TestClaim.t19_anchor`, with manual/generated variants separated); got {anchor_ty:?}"
     );
 }
 

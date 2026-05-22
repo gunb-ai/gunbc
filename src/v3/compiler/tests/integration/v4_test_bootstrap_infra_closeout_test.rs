@@ -86,7 +86,7 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
             && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness {")
             && TESTGEN_DAG.contains("value: DiagnosticClaim {")
-            && TESTGEN_DAG.contains("t19_anchor: T19GeneratedCoproductExhaustiveness"),
+            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: T19GeneratedCoproductExhaustiveness)"),
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
@@ -177,7 +177,7 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
             ("classification", "TestClassification"),
-            ("t19_anchor", "T19ManualAnchorKey"),
+            ("t19_anchor", "T19ClaimAnchorKey"),
             ("slot", "C"),
         ]),
         "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
@@ -493,6 +493,21 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
     };
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
+        SurfaceExpr::Call { target, args, .. } if target == "t19_manual_claim_anchor" => {
+            let SurfaceExpr::Record { fields, .. } = args
+                .first()
+                .unwrap_or_else(|| panic!("t19_manual_claim_anchor must take one named-arg record"))
+            else {
+                panic!(
+                    "t19_manual_claim_anchor args must desugar to Record, got {:?}",
+                    args.first()
+                );
+            };
+            match record_field_expr(fields, "anchor") {
+                SurfaceExpr::Var { name, .. } => name.as_str(),
+                other => panic!("manual claim anchor wrapper must carry a discriminant var, got {other:?}"),
+            }
+        }
         other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
     }
 }
