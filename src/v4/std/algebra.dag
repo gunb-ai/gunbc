@@ -2,7 +2,7 @@
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
 // Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
-// Consumes: std diagnostic, std node.
+// Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
@@ -10,17 +10,6 @@
 module v4.std.algebra
 
 
-import v4.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_rejected
-}
 import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 type Magma<T> {
   op: fn(T, T) -> T
@@ -92,7 +81,8 @@ type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
 }
-data fold_list_node_duplicate_edge_label: Symbol = fold_list_node_duplicate_edge_label
+data fold_list_node_head: Symbol = fold_list_node_head
+data fold_list_node_tail: Symbol = fold_list_node_tail
 // Left fold: traverse head→tail, thread accumulator forward. Combinator order is `cons(acc, head)`.
 // The naive list-rebuild combinator `fn(acc, h) { Cons { head: h, tail: acc } }` REVERSES input
 // (head is prepended at each step but visited first). Use fold_list_right for order-preserving
@@ -115,40 +105,21 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
 fn fold_list_node<T>(
   xs: FreeMonoid<T>,
   empty: Node,
-  head_label: Symbol,
-  tail_label: Symbol,
-  item_node: fn(T) -> Outcome<Node>
-) -> Outcome<Node> {
-  if head_label == tail_label {
-    outcome_rejected(
-      d: Diagnostic {
-        reason: fold_list_node_duplicate_edge_label,
-        at: node_locus(node: empty),
-        correction: Unavailable { reason: ExternalContractUnknown }
+  item_node: fn(T) -> Node
+) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: empty,
+    snoc: fn(tail_node, item) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: fold_list_node_head }, target: item_node(item) },
+          Edge { label: Named { name: fold_list_node_tail }, target: tail_node },
+        ]
       }
-    )
-  } else {
-    fold_list_right(
-      xs: xs,
-      empty: Accepted { value: empty, diagnostics: None },
-      snoc: fn(tail_result, item) {
-        bind_outcome(o: item_node(item), f: fn(head_node) {
-          bind_outcome(o: tail_result, f: fn(tail_node) {
-            Accepted {
-              value: Node {
-                kind: TypeNode { connective: Conj },
-                children: [
-                  Edge { label: Named { name: head_label }, target: head_node },
-                  Edge { label: Named { name: tail_label }, target: tail_node },
-                ]
-              },
-              diagnostics: None
-            }
-          })
-        })
-      }
-    )
-  }
+    }
+  )
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
 fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
