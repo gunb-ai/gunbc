@@ -9,21 +9,18 @@ module v4.test.claim.generated.refinement_preservation
 
 import v4.lens.testgen {
   RefinementPreservationSubject,
+  nonempty_list_base_preserved_node,
   refinement_preservation_subject_nonempty_list_base,
   t19_refinement_label_nonempty_list_base,
   testgen_emit_refinement_preservation_claim
 }
-import v4.std.collection { List, non_empty }
 import v4.std.diagnostic {
   Accepted,
-  Locus,
   None,
   Outcome,
-  Rejected,
-  node_locus
+  Rejected
 }
 import v4.std.node { Node, Symbol }
-import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -35,35 +32,6 @@ import v4.std.verification {
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj
-}
-
-
-data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
-
-
-fn refine_nonempty_node_list(xs: List<Node>, at: Locus) -> Outcome<Refined<List<Node>>> {
-  refine(
-    base: xs,
-    by: Validation {
-      reason: refinement_preservation_empty_list_reason,
-      admits: fn(candidate) { non_empty(xs: candidate) }
-    },
-    at: at
-  )
-}
-
-
-fn nonempty_list_base_preserved_node() -> Node {
-  let original = [stub_empty_conj]
-  match refine_nonempty_node_list(xs: original, at: node_locus(node: stub_empty_conj)) {
-    Accepted { value: refined, diagnostics: None } =>
-      if refined_base(r: refined) == original {
-        stub_empty_conj
-      } else {
-        stub_empty_disj
-      }
-    Rejected { diagnostics: _ } => stub_empty_disj
-  }
 }
 
 
@@ -80,10 +48,7 @@ fn refinement_preservation_claim_from_testgen_emit(
 
 fn refinement_preservation_generated_nonempty_list_claim() -> TestClaim {
   match refinement_preservation_claim_from_testgen_emit(
-    subject: RefinementPreservationSubject {
-      refined_value: nonempty_list_base_preserved_node(),
-      base_value: stub_empty_conj,
-    }
+    subject: refinement_preservation_subject_nonempty_list_base()
   ) {
     Accepted { value: claim, diagnostics: None } => claim
     Rejected { diagnostics: _ } =>
