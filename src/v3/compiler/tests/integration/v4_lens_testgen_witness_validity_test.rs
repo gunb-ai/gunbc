@@ -47,7 +47,9 @@ fn witness_validity_module_imports_helper_from_lens_testgen() {
         "witness_validity.dag must import from `v4.lens.testgen` (rows route through helper)",
     );
     assert!(
-        names.iter().any(|n| n == "testgen_emit_witness_validity_claim"),
+        names
+            .iter()
+            .any(|n| n == "testgen_emit_witness_validity_claim"),
         "witness_validity.dag must import `testgen_emit_witness_validity_claim`; got {names:?}"
     );
 }
