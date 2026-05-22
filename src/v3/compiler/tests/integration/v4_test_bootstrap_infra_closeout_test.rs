@@ -35,6 +35,9 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const REFINEMENT_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/refinement_preservation.dag");
+const REFINEMENT_GENERATED_PATH: &str = "src/v4/test/claim/generated/refinement_preservation.dag";
 const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
 const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
@@ -45,6 +48,34 @@ const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
 #[test]
 fn t19_language_behavior_equivalence_generated_claims_parse() {
     parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_refinement_preservation_generated_claims_parse() {
+    parse_module(REFINEMENT_GENERATED_DAG, REFINEMENT_GENERATED_PATH);
+}
+
+#[test]
+fn t19_refinement_preservation_receipts_present() {
+    assert!(
+        TESTGEN_DAG.contains("RefinementPreservation { subject: RefinementPreservationSubject }")
+            && TESTGEN_DAG.contains("fn testgen_emit_refinement_preservation_claim")
+            && TESTGEN_DAG.contains("-> Outcome<RefinementPreservationSubject>")
+            && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
+            && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
+            && TESTGEN_DAG.contains("T19ManualRefinementNonEmptyListBase")
+            && REFINEMENT_GENERATED_DAG
+                .contains("refinement_preservation_subject_nonempty_list_base()")
+            && REFINEMENT_GENERATED_DAG
+                .contains("refined_base(r: subject.refined) == subject.original")
+            && REFINEMENT_GENERATED_DAG.contains(
+                "data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim>"
+            )
+            && REFINEMENT_GENERATED_DAG.contains(
+                "data witness_refinement_preserves_nonempty_list_base: Bool"
+            ),
+        "generated refinement-preservation corpus must derive a TestClaim through testgen_emit and prove refined_base preserves the accepted base"
+    );
 }
 
 #[test]
@@ -109,9 +140,13 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
             && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
             && LBE_GENERATED_DAG.contains("-> Outcome<TestClaim>")
             && LBE_GENERATED_DAG.contains("Fail { actual: Rejected { diagnostics:")
-            && LBE_GENERATED_DAG.contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node>")
-            && LBE_GENERATED_DAG.contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node>")
-            && LBE_GENERATED_DAG.contains("data run_lbe_transform_via_run_test_claim: TestClaimRun<Node>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG.contains(
+                "data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue>"
+            )
             && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
             && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
             && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
@@ -187,8 +222,9 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
             "LensApplicability",
             "BidirectionalRoundtrip",
             "LanguageBehaviorEquivalence",
+            "RefinementPreservation",
         ]),
-        "T-19 scheduling arms must stay the closed six-way set (LBE activation)"
+        "T-19 scheduling arms must stay the closed seven-way set (LBE + refinement-preservation activation)"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "Generator")),

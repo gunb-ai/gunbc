@@ -535,4 +535,3 @@ fn machine_code_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
-

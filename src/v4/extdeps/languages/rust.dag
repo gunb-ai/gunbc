@@ -31,7 +31,7 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Map, Set }
+import v4.std.collection { List, Map, Set, list_append, list_snoc_item }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -974,26 +974,14 @@ fn rust_mvp1_positional_token_edge(token: RustConcreteSyntaxToken) -> Edge {
   }
 }
 
-// Order-preserving snoc: fold_list visits tail→head but cons(empty, h) builds forward order.
-// Compile-time list snoc for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
+// Order-preserving local wrappers for the Rust slice; std.collection owns the list recursion.
+// Compile-time list helpers for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
 fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  fold_list(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
+  list_snoc_item(xs: xs, item: item)
 }
 
 fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  fold_list(
-    xs: right,
-    empty: left,
-    cons: fn(acc, item) {
-      rust_list_snoc_item(xs: acc, item: item)
-    }
-  )
+  list_append(left: left, right: right)
 }
 
 fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
