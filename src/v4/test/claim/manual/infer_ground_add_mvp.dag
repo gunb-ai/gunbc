@@ -284,7 +284,7 @@ fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node>
 
 fn infer_add_mvp_receipt_run(
   subject: TestClaimEvalSubject<Node>,
-) -> TestClaimRun<InferredTree, InferredTree> {
+) -> TestClaimRun<Node, InferredTree> {
   let actual = anchor_infer_add_mvp()
   TestClaimRun {
     cache: test_claim_cache_receipt(
@@ -404,7 +404,7 @@ data case_infer_add_mvp_fail_closed: InferReceiptCase = InferDiagnosticReceiptCa
 data subject_infer_add_mvp_fail_closed: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_fail_closed)
 
 
-data run_infer_add_mvp_fail_closed: TestClaimRun<InferredTree, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
+data run_infer_add_mvp_fail_closed: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_fail_closed)
 
 
 data case_infer_descent_witness_fail_closed: InferReceiptCase = InferCompilesReceiptCase {
