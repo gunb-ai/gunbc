@@ -27,7 +27,7 @@ import v4.compiler.infer {
   InferredFacts,
   InferredTree
 }
-import v4.std.collection { Map }
+import v4.std.collection { List, Map }
 import v4.std.node {
   Atom,
   Hash,
@@ -36,6 +36,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.diagnostic {
+  AmbiguousIntent,
   Diagnostic,
   ExternalContractUnknown,
   node_locus,
@@ -46,6 +47,18 @@ import v4.std.diagnostic {
   Unavailable,
   diagnostics_singleton,
   outcome_node_eq
+}
+import v4.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
 }
 import v4.std.verification {
   DiagnosticClaim,
@@ -124,7 +137,10 @@ fn run_pipeline_assert(
 }
 
 
-fn workflow_pipeline_pass_gate(run: TestClaimRun<CiPipeline>, at: Node) -> Verdict<TestClaimRun<CiPipeline>> {
+fn workflow_pipeline_pass_gate(
+  run: TestClaimRun<CiPipeline, CiPipeline>,
+  at: Node
+) -> Verdict<TestClaimRun<CiPipeline, CiPipeline>> {
   aggregate_verdicts(
     rs: [
       match run.verdict {
@@ -158,15 +174,76 @@ data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 // 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
 data claim_hash_placeholder: Hash = claim_hash_placeholder
-data evaluator_hash_placeholder: Hash = evaluator_hash_placeholder
-data resources_hash_placeholder: Hash = resources_hash_placeholder
-data extdeps_hash_placeholder: Hash = extdeps_hash_placeholder
+data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
 
 
 fn pipeline_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: []
+  }
+}
+
+
+fn pipeline_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: pipeline_extdeps,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn pipeline_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Rejected { diagnostics: diagnostics_singleton(d: pipeline_runtime_diagnostic(n: node)) }
+}
+
+
+fn pipeline_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+
+fn pipeline_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: pipeline_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: pipeline_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: pipeline_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: pipeline_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: pipeline_bind_value
+    }
   }
 }
 
@@ -236,9 +313,7 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 
 fn pipeline_claim_context() -> EvalContext {
   EvalContext {
-    evaluator: pipeline_symbol_node(s: pipeline_evaluator),
-    resources: pipeline_symbol_node(s: pipeline_resources),
-    extdeps: pipeline_symbol_node(s: pipeline_extdeps)
+    interpretation: pipeline_interpretation()
   }
 }
 
@@ -257,15 +332,13 @@ fn pipeline_rejection_subject(
 }
 
 
-fn workflow_pipeline_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline> {
+fn workflow_pipeline_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline, CiPipeline> {
   let actual = ci_pipeline_well_formed(p: subject.input.evaluator_input)
   TestClaimRun {
     cache: test_claim_cache_receipt(
       subject: subject,
       claim_hash: claim_hash_placeholder,
-      evaluator_hash: evaluator_hash_placeholder,
-      resources_hash: resources_hash_placeholder,
-      extdeps_hash: extdeps_hash_placeholder
+      interpretation_hash: interpretation_hash_placeholder
     ),
     verdict: run_pipeline_assert(
       claim: subject.claim,
@@ -298,10 +371,10 @@ data case_dangling_bootstrap_output: PipelineRejectionCase = PipelineRejectionCa
 data subject_dangling_bootstrap_output: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dangling_bootstrap_output)
 
 
-data run_dangling_bootstrap_output: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_bootstrap_output)
+data run_dangling_bootstrap_output: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_bootstrap_output)
 
 
-data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dangling_bootstrap_output: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_bootstrap_output,
   at: test_claim_input(c: subject_dangling_bootstrap_output.claim)
 )
@@ -326,10 +399,10 @@ data case_duplicate_job_id: PipelineRejectionCase = PipelineRejectionCase {
 data subject_duplicate_job_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_duplicate_job_id)
 
 
-data run_duplicate_job_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_job_id)
+data run_duplicate_job_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_job_id)
 
 
-data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_duplicate_job_id: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_duplicate_job_id,
   at: test_claim_input(c: subject_duplicate_job_id.claim)
 )
@@ -354,10 +427,10 @@ data case_duplicate_gate_id: PipelineRejectionCase = PipelineRejectionCase {
 data subject_duplicate_gate_id: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_duplicate_gate_id)
 
 
-data run_duplicate_gate_id: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_gate_id)
+data run_duplicate_gate_id: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_duplicate_gate_id)
 
 
-data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_duplicate_gate_id: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_duplicate_gate_id,
   at: test_claim_input(c: subject_duplicate_gate_id.claim)
 )
@@ -381,10 +454,10 @@ data case_dangling_need: PipelineRejectionCase = PipelineRejectionCase {
 data subject_dangling_need: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dangling_need)
 
 
-data run_dangling_need: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_need)
+data run_dangling_need: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_need)
 
 
-data gate_dangling_need: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dangling_need: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_need,
   at: test_claim_input(c: subject_dangling_need.claim)
 )
@@ -408,10 +481,10 @@ data case_dangling_gate_job: PipelineRejectionCase = PipelineRejectionCase {
 data subject_dangling_gate_job: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dangling_gate_job)
 
 
-data run_dangling_gate_job: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dangling_gate_job)
+data run_dangling_gate_job: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dangling_gate_job)
 
 
-data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dangling_gate_job: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dangling_gate_job,
   at: test_claim_input(c: subject_dangling_gate_job.claim)
 )
@@ -437,10 +510,10 @@ data case_dependency_cycle: PipelineRejectionCase = PipelineRejectionCase {
 data subject_dependency_cycle: TestClaimEvalSubject<CiPipeline> = pipeline_rejection_subject(case: case_dependency_cycle)
 
 
-data run_dependency_cycle: TestClaimRun<CiPipeline> = workflow_pipeline_run(subject: subject_dependency_cycle)
+data run_dependency_cycle: TestClaimRun<CiPipeline, CiPipeline> = workflow_pipeline_run(subject: subject_dependency_cycle)
 
 
-data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline>> = workflow_pipeline_pass_gate(
+data gate_dependency_cycle: Verdict<TestClaimRun<CiPipeline, CiPipeline>> = workflow_pipeline_pass_gate(
   run: run_dependency_cycle,
   at: test_claim_input(c: subject_dependency_cycle.claim)
 )

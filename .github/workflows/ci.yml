@@ -29,7 +29,7 @@ jobs:
   fmt:
     if: github.event.pull_request.draft != true
     runs-on: ubicloud-standard-2
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -168,15 +168,15 @@ jobs:
     # folding into `ci` (40m job budget) keeps one runner lifecycle. The `v4` job is a
     # receipt-only stub so required check names stay stable (see main ci.yml commentary).
     # MVP-1 + v4 bootstrap share the v2-compiler binary; workflow_policy PRs that
-    # touch gate wiring must still build/run the MVP-1 receipt (INVARIANTS P2/P3).
-    - name: Cache v2-compiler binary (v4 bootstrap gate)
+    # touch gate wiring must still build/run the MVP-1 and host-eval receipts.
+    - name: Cache v2-compiler binary (v4 bootstrap / host eval gate)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4-v2-bin
       uses: actions/cache@v4
       with:
         path: target/release/v2-compiler
         key: v2-compiler-bin-${{ runner.os }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
-    - name: Build v2 compiler (v4 bootstrap gate)
+    - name: Build v2 compiler (v4 bootstrap / host eval gate)
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
     - name: MVP-1 v4 add end-to-end gate (add.dag → rust → cargo run)
@@ -215,11 +215,9 @@ jobs:
         fi
         echo "error: v4 bootstrap compile failed and resolve-posture bridge did not pass" >&2
         exit 1
-    - name: 'INTERIM (T-24 bridge) — v4 v2-run-preflight notice (run gate deferred T-22)'
-      if: needs.affected.outputs.v4 == 'true'
-      env:
-        V2_PREFLIGHT_SKIP_COMPILE: "1"
-      run: bash scripts/v2-run-preflight.sh
+    - name: 'T-22 host eval receipt — eval(tree, interpretation, inputs)'
+      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      run: python3 scripts/check-v4-host-eval-receipt.py
   # v2 fixed-point — runs only when src/v2/ is affected. v2 is restored as
   # comparison artifact + v4 bootstrap source (frozen-buildable). Verifies
   # that any modification to v2 preserves the self-host fixed-point property.
@@ -263,7 +261,7 @@ jobs:
     steps:
     - name: v4 receipt (bootstrap gate runs in ci job)
       run: |
-        echo "::notice::v4 bootstrap viability + v2-run-preflight ran inside the ci job when v4 is affected."
+        echo "::notice::v4 bootstrap viability + T-22 host eval receipt ran inside the ci job when v4 is affected."
   # v3 — FROZEN 2026-05-15 pending v4 program. Runs only when src/v3/ or dsl/
   # is affected (or on push-to-main for trunk verification). v3 is no longer
   # the active compiler; v4 program supersedes it (see PR #3147).

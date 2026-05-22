@@ -6,7 +6,8 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 use crate::std_induction::SubValueRelation::{
-    IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
+    ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
+    StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, ShrinkFactor, SubValueRelation};
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
@@ -1388,6 +1389,11 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
             "}".to_string(),
         ),
         SubValueRelation::PreservedValue => "{\"_variant\": \"PreservedValue\"}".to_string(),
+        SubValueRelation::NonIncreasingValue => {
+            "{\"_variant\": \"NonIncreasingValue\"}".to_string()
+        }
+        SubValueRelation::StrictAxisErased => "{\"_variant\": \"StrictAxisErased\"}".to_string(),
+        SubValueRelation::MixedTop => "{\"_variant\": \"MixedTop\"}".to_string(),
         SubValueRelation::SubValueUnknown => "{\"_variant\": \"SubValueUnknown\"}".to_string(),
     }
 }
