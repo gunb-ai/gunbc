@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Owns: ModelCore, PrimitiveFactBundle, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
 // Consumes: v4.std.collection, v4.std.node
 // Status: T-33 modeled.
 
@@ -9,7 +9,15 @@ module v4.std.model_core
 
 
 import v4.std.collection { List, Map }
+import v4.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile
+}
 import v4.std.node { Node, Symbol }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
@@ -24,6 +32,18 @@ data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_over
 type PrimitiveFactBundle {
   substrate_carrier: Node
   spec_facts: Map<Symbol, Node>
+}
+
+
+data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound_reason
+
+
+fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: primitive_fact_axis_unbound_reason,
+    at: Textual { file: axis, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 

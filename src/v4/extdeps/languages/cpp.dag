@@ -19,8 +19,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.extdeps.cpp_abi { CppTargetProfile }
 
@@ -534,90 +536,71 @@ fn cpp_language_model_canonical_symbols(target_profile: Node) -> Set<Symbol> {
   }
 }
 
-fn cpp_primitive_fact_map_5(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node,
-  axis4: Symbol,
-  fact4: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(empty_map(), axis0, fact0),
-          axis1,
-          fact1
-        ),
-        axis2,
-        fact2
-      ),
-      axis3,
-      fact3
-    ),
-    axis4,
-    fact4
-  )
+fn cpp_integer_spec_facts(facts: CppIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: cpp_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: facts.width_fact }
+        primitive_fact_axis_signedness =>
+          Holds { value: facts.signedness_fact }
+        primitive_fact_axis_encoding =>
+          Holds { value: facts.encoding_fact }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: facts.overflow_fact }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn cpp_primitive_fact_map_4(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(empty_map(), axis0, fact0),
-        axis1,
-        fact1
-      ),
-      axis2,
-      fact2
-    ),
-    axis3,
-    fact3
-  )
+fn cpp_character_spec_facts(facts: CppCharacterPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: cpp_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: facts.width_fact }
+        primitive_fact_axis_signedness =>
+          Holds { value: facts.signedness_fact }
+        primitive_fact_axis_encoding =>
+          Holds { value: facts.encoding_fact }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn cpp_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn cpp_bool_spec_facts(facts: CppBoolPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: cpp_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: facts.encoding_fact }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn cpp_primitive_bundle_from_integer_facts(facts: CppIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: cpp_integer_facts_node(facts: facts),
-    spec_facts: cpp_primitive_fact_map_5(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: cpp_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: facts.width_fact,
-      axis2: primitive_fact_axis_signedness,
-      fact2: facts.signedness_fact,
-      axis3: primitive_fact_axis_encoding,
-      fact3: facts.encoding_fact,
-      axis4: primitive_fact_axis_overflow_disposition,
-      fact4: facts.overflow_fact
-    )
+    spec_facts: cpp_integer_spec_facts(facts: facts)
   }
 }
 
@@ -626,28 +609,14 @@ fn cpp_primitive_bundle_from_character_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: cpp_character_facts_node(facts: facts),
-    spec_facts: cpp_primitive_fact_map_4(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: cpp_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: facts.width_fact,
-      axis2: primitive_fact_axis_signedness,
-      fact2: facts.signedness_fact,
-      axis3: primitive_fact_axis_encoding,
-      fact3: facts.encoding_fact
-    )
+    spec_facts: cpp_character_spec_facts(facts: facts)
   }
 }
 
 fn cpp_primitive_bundle_from_bool_facts(facts: CppBoolPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: cpp_bool_facts_node(facts: facts),
-    spec_facts: cpp_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: cpp_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: facts.encoding_fact
-    )
+    spec_facts: cpp_bool_spec_facts(facts: facts)
   }
 }
 
