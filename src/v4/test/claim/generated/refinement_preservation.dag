@@ -16,22 +16,61 @@ import v4.lens.testgen {
 }
 import v4.std.diagnostic {
   Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  NodeLocus,
+  NonEmptyDiagnostics,
   None,
   Outcome,
-  Rejected
+  Rejected,
+  Unavailable,
+  diagnostics_singleton
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.verification {
-  EqualsClaim,
+  DiagnosticClaim,
   TestClaim,
   TestClassification,
-  T19ManualRefinementNonEmptyListBase,
+  T19ManualAnchorAbsent,
   Tier1,
   Unit
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
   stub_empty_disj
+}
+
+
+data refinement_preservation_emit_rejected: Symbol = refinement_preservation_emit_rejected
+data refinement_preservation_rejection_input: Symbol = refinement_preservation_rejection_input
+fn refinement_preservation_rejection_input_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: refinement_preservation_rejection_input } },
+    children: []
+  }
+}
+
+
+fn refinement_preservation_emit_rejection_diagnostic(input: Node) -> Diagnostic {
+  Diagnostic {
+    reason: refinement_preservation_emit_rejected,
+    at: NodeLocus { node: input },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+
+fn refinement_preservation_emit_rejection_sentinel_claim(
+  expected: NonEmptyDiagnostics
+) -> TestClaim {
+  let input = refinement_preservation_rejection_input_node()
+  DiagnosticClaim {
+    label: t19_refinement_label_nonempty_list_base,
+    t19_anchor: T19ManualAnchorAbsent,
+    input: input,
+    expected_rejection: expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
 }
 
 
@@ -52,13 +91,13 @@ fn refinement_preservation_generated_nonempty_list_claim() -> TestClaim {
   ) {
     Accepted { value: claim, diagnostics: None } => claim
     Rejected { diagnostics: _ } =>
-      EqualsClaim {
-        label: t19_refinement_label_nonempty_list_base,
-        t19_anchor: T19ManualRefinementNonEmptyListBase,
-        lhs: stub_empty_disj,
-        rhs: stub_empty_conj,
-        classification: TestClassification { tier: Tier1, layer: Unit },
-      }
+      refinement_preservation_emit_rejection_sentinel_claim(
+        expected: diagnostics_singleton(
+          d: refinement_preservation_emit_rejection_diagnostic(
+            input: refinement_preservation_rejection_input_node()
+          )
+        )
+      )
   }
 }
 
