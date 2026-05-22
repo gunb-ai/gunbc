@@ -26,22 +26,18 @@ import v4.test.claim.lens_affected_set.node_precision {
   affected_set_mid_to_leaf_dependency
 }
 
-data edit_locus_path_src_v4_affected_set: RepoPath = edit_locus_path_src_v4_affected_set
-data edit_locus_path_unknown: RepoPath = edit_locus_path_unknown
+data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
+data edit_locus_path_unknown: RepoPath = "src/v4/lens/unknown_path.dag"
 data edit_locus_pattern_v4_lens: PathRegex = edit_locus_pattern_v4_lens
 
 fn edit_locus_fixture_path_regex_matches(changed: RepoPath, pattern: PathRegex) -> Bool {
   match pattern {
-    edit_locus_pattern_v4_lens =>
-      match changed {
-        edit_locus_path_src_v4_affected_set => true
-        _ => false
-      }
+    edit_locus_pattern_v4_lens => changed == edit_locus_path_src_v4_affected_set
     _ => false
   }
 }
 
-fn edit_locus_fixture_artifact_path_matches(_changed: RepoPath, _file_path: String) -> Bool {
+fn edit_locus_fixture_artifact_path_matches(_changed: RepoPath, _file_path: RepoPath) -> Bool {
   false
 }
 

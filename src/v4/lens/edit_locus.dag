@@ -25,9 +25,9 @@ import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
 
-// RULING-1: 🟢 pretty-much-done — git path Symbol at substrate boundary (Wave-0).
-// Host projection from `git diff --name-only` String output supplies the symbol table.
-type RepoPath = Symbol
+// RULING-1: 🟢 pretty-much-done — single repo-path carrier (String = Artifact.file_path authority).
+// Git `name-only` paths and artifact provenance paths share `RepoPath`; no Symbol/String bridge.
+type RepoPath = String
 
 // RULING-1: 🟢 pretty-much-done — structural mirror of `git diff --name-only`.
 type GitDiffNameOnly {
@@ -50,7 +50,7 @@ type EditLocusBinding {
 // primitive; forbidden: hand-maintained path-regex in workflow YAML (Gate #103).
 type EditLocusRead {
   path_regex_matches: fn(RepoPath, PathRegex) -> Bool,
-  artifact_path_matches_changed: fn(RepoPath, String) -> Bool
+  artifact_path_matches_changed: fn(RepoPath, RepoPath) -> Bool
 }
 
 data edit_locus_reason_no_match: Symbol = edit_locus_reason_no_match
