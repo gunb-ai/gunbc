@@ -124,6 +124,7 @@ type TerminationProof {
 type Multiplicity
   = Bounded
   | RequiresTerminationProof
+  | ProvenTermination { proof: TerminationProof }
 
 data cardinality_structural_node_size: Symbol = cardinality_structural_node_size
 data cardinality_descent_not_proven: Symbol = cardinality_descent_not_proven
@@ -144,6 +145,7 @@ fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<Termina
     Bounded => Holds { value: structural_node_size_termination_proof() }
     RequiresTerminationProof =>
       Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
+    ProvenTermination { proof } => Holds { value: proof }
   }
 }
 
