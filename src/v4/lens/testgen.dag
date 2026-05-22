@@ -614,7 +614,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
 }
 
 
-// T-19 witness-validity: RoundTripClaim input bundles subject + oracle outcome (see PR #3565).
+// 🟡 gated — feature:v4-std-int-to-node-encoding — bind node://adhoc-10fda09f-f25 — dissolve-on-arrival: v4.std primitive Int → Node encoder; forbidden: silent collapse of ByteRange Int positions to a variant-tag atom. Until arrival, witness_validity_extent_node fails closed on Textual{ByteRange} via witness_validity_byte_range_unencodable_diagnostic.
 data witness_validity_field_source_facts: Symbol = witness_validity_field_source_facts
 data witness_validity_field_candidate: Symbol = witness_validity_field_candidate
 data witness_validity_field_predicate: Symbol = witness_validity_field_predicate
@@ -741,10 +741,6 @@ fn witness_validity_subject_node(
 }
 
 
-// Encoders return Outcome<Node>: fail-closed on Textual{ByteRange} (Int positions are not
-// Node-encodable in v4 today — gated under witness_validity_byte_range_unencodable).
-// find_witness diagnostics use NodeLocus exclusively (find_witness.dag:79-92), so
-// witness-validity rows always succeed; the fail-closed path is structural correctness.
 fn witness_validity_no_correction_reason_node(r: NoCorrectionReason) -> Node {
   match r {
     UserInputBoundary =>
