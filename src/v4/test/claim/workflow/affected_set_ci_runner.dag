@@ -1,7 +1,7 @@
 // src/v4/test/claim/workflow/affected_set_ci_runner.dag
 // Scope: T-21/T-24 receipt — CI runner narrows TestClaim roster via RerunNodeSet node frontier.
 // Owns: ci_runner_narrow_selection_claim, ci_runner_fail_closed_superset_claim.
-// Consumes: v4.workflow.ci_runner, v4.lens.affected_set, v4.std.verification.
+// Consumes: v4.workflow.ci_runner, v4.lens.affected_set, v4.std.change, v4.std.verification.
 // Status: structural claims; host execution lands with generated TestClaim harness.
 
 module v4.test.claim.workflow.affected_set_ci_runner
@@ -27,9 +27,9 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit,
-  test_claim_input
+  Unit
 }
+import v4.workflow.ci_runner { test_claim_in_rerun_frontier }
 import v4.workflow.ci_runner {
   CiRerunNarrow,
   CiRerunSuperset,
@@ -110,7 +110,7 @@ fn ci_runner_narrow_selection_holds() -> Bool {
         && count_equal(
           xs: rerun,
           item: ci_runner_claim_touched,
-          eq: fn(left, right) { test_claim_input(c: left) == test_claim_input(c: right) }
+          eq: fn(left, right) { left == right }
         ) != 0
     CiRerunSuperset { roster: _, evidence: _ } => false
   }

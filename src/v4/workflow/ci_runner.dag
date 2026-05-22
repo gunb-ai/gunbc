@@ -4,23 +4,25 @@
 //       ci_select_from_rerun_nodes, ci_select_from_affected_set.
 // Consumes: v4.lens.affected_set, v4.std.change, v4.std.verification.
 // Status: Wave-0 — structural selection over RerunNodeSet; host dispatch lands with T-22/T-24.
+// Wave-0 IRT-4 posture: intersect declared per-variant evaluation Nodes (input/lhs/rhs/expected_value);
+// full TestClaim merkle surface lands with TestClaimExerciseSurface (manager Piece A).
 
 module v4.workflow.ci_runner
 
 import v4.lens.affected_set {
-  AffectedSet,
   RerunNodeSet,
   RerunNodeSetFailClosed,
   RerunNodeSetProduced,
   affected_set_rerun_nodes
 }
-import v4.std.change { AffectedSetEvidence }
+import v4.std.change { AffectedSet, AffectedSetEvidence }
 import v4.std.collection { List }
+import v4.std.logic { Bool }
 import v4.std.node { Node }
-import v4.std.verification { TestClaim, test_claim_input }
+import v4.std.verification { TestClaim }
 
 
-// Node-level rerun frontier consumed by CI: narrow roster when produced, superset when fail-closed.
+// 🟢 coproduct dissolution — T-21/T-24 Wave-0 CI rerun selection; dissolve-on: TestClaimExerciseSurface + host wire.
 type CiRerunSelection
   = CiRerunNarrow { rerun: List<TestClaim> }
   | CiRerunSuperset { roster: List<TestClaim>, evidence: AffectedSetEvidence }
@@ -36,8 +38,21 @@ fn node_in_rerun_frontier(needle: Node, frontier: List<Node>) -> Bool {
 }
 
 
+// Intersect rerun frontier with every declared evaluation Node on the claim (P2 facts-flow-forward).
+// Fail-closed superset branch still runs the full roster when the lens cannot narrow.
 fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
-  node_in_rerun_frontier(needle: test_claim_input(c: claim), frontier: frontier)
+  match claim {
+    EqualsClaim { lhs, rhs, label: _, t19_anchor: _, classification: _ } =>
+      node_in_rerun_frontier(needle: lhs, frontier: frontier)
+        || node_in_rerun_frontier(needle: rhs, frontier: frontier)
+    CompilesClaim { input, expected_value, label: _, t19_anchor: _, classification: _ } =>
+      node_in_rerun_frontier(needle: input, frontier: frontier)
+        || node_in_rerun_frontier(needle: expected_value, frontier: frontier)
+    DiagnosticClaim { input, label: _, t19_anchor: _, expected_rejection: _, classification: _ } =>
+      node_in_rerun_frontier(needle: input, frontier: frontier)
+    RoundTripClaim { input, label: _, t19_anchor: _, classification: _ } =>
+      node_in_rerun_frontier(needle: input, frontier: frontier)
+  }
 }
 
 
