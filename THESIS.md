@@ -313,14 +313,17 @@ Both subsets shrink toward 0 under the 0-floor cascade promotion.
 Generated escape hatch is acceptable for additional files; hand-authored
 files are not.
 v2 achieves this pattern at ~97% (2 hand-maintained of 62 stage0 files);
-v3's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained).
+v3 is frozen as a comparison baseline pending v4 ship (see v4 supersession banner above).
+**v4's trajectory is the Pure Bootstrap to Zero program (0 hand-maintained)** — per operator
+2026-05-22 ("we don't need to migrate v3 → 0 — i only care about rust → 0 in v4").
 
-Fixed-point acceptance: v3 binary compiles `compiler.dag` → produces
+Fixed-point acceptance: v4 binary compiles `compiler.dag` → produces
 bit-identical stage0 Rust + bit-identical emitted artifacts.
 `compiler.dag`'s `hand_maintained_src` list monotonically shrinks to the
 empty set per [`docs/design-pure-bootstrap-zero.md`](docs/design-pure-bootstrap-zero.md)
 (LIVE 2026-04-25; supersedes the ≤5 irreducible-shim framing in
-`docs/design-pure-bootstrap.md`).
+`docs/design-pure-bootstrap.md`). Active implementation: `src/v4/compiler/self_host.dag`
+(T-15); runner pending substrate completion.
 
 **Audience duality — opt-in depth (meta-feature):**
 - Core language stays approachable — types, functions, match, effects,
