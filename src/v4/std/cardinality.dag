@@ -1,25 +1,24 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, PositiveNatLeWitness, PositiveUpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, positive_nat_le_witness_lower, positive_nat_le_witness_upper, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_value, positive_upper_bounded_nat_inclusive_max, nat_le_witness_well_formed, upper_bounded_nat_well_formed, positive_nat_le_witness_well_formed, positive_upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity, Tier-A multiplicity declarations, cardinality_propagation_witness.
-// Consumes: std collection, std diagnostic, std nat, std node, std witness.
-// Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers; Tier-A propagation fold (T-9 descent bridge).
+// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, PositiveNatLeWitness, PositiveUpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, positive_nat_le_witness_lower, positive_nat_le_witness_upper, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_value, positive_upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity, primitive multiplicity declarations, termination_proof_witness_for_node.
+// Consumes: std collection, std nat, std node.
+// Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
 
 
 module v4.std.cardinality
 
-import v4.std.collection { List, list_append, list_snoc_item }
+import v4.std.collection { List }
 import v4.std.diagnostic {
-  AmbiguousIntent,
   Diagnostic,
   ExternalContractUnknown,
-  Unavailable,
-  node_locus
+  node_locus,
+  Unavailable
 }
 import v4.std.nat { Nat }
 import v4.std.node {
-  Atom,
   Arrow,
+  Atom,
   Behavior,
   Bind,
   Branch,
@@ -33,7 +32,7 @@ import v4.std.node {
   Loop,
   Node,
   NodeFold,
-  NodeKind,
+  Symbol,
   Transform,
   TypeNode,
   Value,
@@ -126,345 +125,92 @@ type Multiplicity
   = Bounded
   | Unbounded { step: TerminationProof }
 
+data cardinality_structural_node_size: Symbol = cardinality_structural_node_size
+data cardinality_descent_not_proven: Symbol = cardinality_descent_not_proven
 
-// Tier-A kernel multiplicity (6 connectives × 5 behaviors minus Loop static row).
-// Loop is fold-derived only — NOT Bounded-by-fiat at declaration (PM ratification).
-data atom_connective_multiplicity: Multiplicity = Bounded
-data conj_connective_multiplicity: Multiplicity = Bounded
-data disj_connective_multiplicity: Multiplicity = Bounded
-data arrow_connective_multiplicity: Multiplicity = Bounded
-data cardinality_connective_multiplicity: Multiplicity = Bounded
-data instantiation_connective_multiplicity: Multiplicity = Bounded
-data value_behavior_multiplicity: Multiplicity = Bounded
-data transform_behavior_multiplicity: Multiplicity = Bounded
-data branch_behavior_multiplicity: Multiplicity = Bounded
-data bind_behavior_multiplicity: Multiplicity = Bounded
-data multiplicity_dim_atom: Symbol = multiplicity_dim_atom
-data multiplicity_dim_conj: Symbol = multiplicity_dim_conj
-data multiplicity_dim_disj: Symbol = multiplicity_dim_disj
-data multiplicity_dim_arrow: Symbol = multiplicity_dim_arrow
-data multiplicity_dim_cardinality: Symbol = multiplicity_dim_cardinality
-data multiplicity_dim_instantiation: Symbol = multiplicity_dim_instantiation
-data multiplicity_dim_value: Symbol = multiplicity_dim_value
-data multiplicity_dim_transform: Symbol = multiplicity_dim_transform
-data multiplicity_dim_branch: Symbol = multiplicity_dim_branch
-data multiplicity_dim_bind: Symbol = multiplicity_dim_bind
-data multiplicity_dim_loop: Symbol = multiplicity_dim_loop
-data cardinality_propagation_not_derived: Symbol = cardinality_propagation_not_derived
-
-
-fn cardinality_propagation_not_derived_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: cardinality_propagation_not_derived,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
+fn structural_node_size_dimension() -> RankingDimension {
+  RankingDimension { measured: cardinality_structural_node_size }
 }
 
-
-fn multiplicity_for_connective(c: Connective) -> Multiplicity {
-  match c {
-    Atom { identity: _ } => atom_connective_multiplicity
-    Conj => conj_connective_multiplicity
-    Disj => disj_connective_multiplicity
-    Arrow => arrow_connective_multiplicity
-    Cardinality => cardinality_connective_multiplicity
-    Instantiation => instantiation_connective_multiplicity
-  }
-}
-
-
-fn multiplicity_for_behavior(b: Behavior) -> Multiplicity {
-  match b {
-    Value => value_behavior_multiplicity
-    Transform => transform_behavior_multiplicity
-    Branch => branch_behavior_multiplicity
-    Bind => bind_behavior_multiplicity
-    Loop => value_behavior_multiplicity
-  }
-}
-
-
-fn ranking_dimension_for_connective(c: Connective, n: Node) -> RankingDimension {
-  match c {
-    Atom { identity: s } => RankingDimension { measured: s }
-    Conj => RankingDimension { measured: multiplicity_dim_conj }
-    Disj => RankingDimension { measured: multiplicity_dim_disj }
-    Arrow => RankingDimension { measured: multiplicity_dim_arrow }
-    Cardinality => RankingDimension { measured: multiplicity_dim_cardinality }
-    Instantiation => RankingDimension { measured: multiplicity_dim_instantiation }
-  }
-}
-
-
-fn ranking_dimension_for_behavior(b: Behavior) -> RankingDimension {
-  match b {
-    Value => RankingDimension { measured: multiplicity_dim_value }
-    Transform => RankingDimension { measured: multiplicity_dim_transform }
-    Branch => RankingDimension { measured: multiplicity_dim_branch }
-    Bind => RankingDimension { measured: multiplicity_dim_bind }
-    Loop => RankingDimension { measured: multiplicity_dim_loop }
-  }
-}
-
-
-// Mirrors lens/cost.dag composition modes — single fold authority (Practice 11).
-type MultiplicityCompositionMode
-  = SequentialMultiplicity
-  | AlternativeMultiplicity
-  | IterativeMultiplicity
-
-
-type MultiplicityFoldState {
-  mode: MultiplicityCompositionMode
-  witness: Witness<Multiplicity>
-  dim: RankingDimension
-}
-
-
-fn multiplicity_mode_for_connective(c: Connective) -> MultiplicityCompositionMode {
-  match c {
-    Atom { identity: _ } => SequentialMultiplicity
-    Conj => SequentialMultiplicity
-    Disj => AlternativeMultiplicity
-    Arrow => SequentialMultiplicity
-    Cardinality => IterativeMultiplicity
-    Instantiation => SequentialMultiplicity
-  }
-}
-
-
-fn multiplicity_mode_for_behavior(b: Behavior) -> MultiplicityCompositionMode {
-  match b {
-    Value => SequentialMultiplicity
-    Transform => SequentialMultiplicity
-    Branch => AlternativeMultiplicity
-    Loop => IterativeMultiplicity
-    Bind => SequentialMultiplicity
-  }
-}
-
-
-fn termination_proof_bounded(dim: RankingDimension) -> TerminationProof {
+fn structural_node_size_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
-    strict: dim
+    strict: structural_node_size_dimension()
   }
 }
 
-
-fn merge_termination_proof_sequential(a: TerminationProof, b: TerminationProof) -> TerminationProof {
-  TerminationProof {
-    non_increasing: list_append(
-      left: a.non_increasing,
-      right: list_snoc_item(xs: b.non_increasing, item: b.strict)
-    ),
-    strict: a.strict
-  }
-}
-
-
-fn merge_termination_proof_alternative(a: TerminationProof, b: TerminationProof) -> TerminationProof {
-  if a.strict == b.strict {
-    a
-  } else {
-    b
-  }
-}
-
-
-fn termination_proof_from_multiplicity(m: Multiplicity, dim: RankingDimension) -> TerminationProof {
+fn multiplicity_termination_proof(m: Multiplicity) -> TerminationProof {
   match m {
-    Bounded => termination_proof_bounded(dim: dim)
-    Unbounded { step: p } => p
+    Bounded => structural_node_size_termination_proof()
+    Unbounded { step } => step
   }
 }
 
-
-fn compose_multiplicity_sequential(
-  acc: Witness<Multiplicity>,
-  child: Witness<Multiplicity>,
-  acc_dim: RankingDimension,
-  child_dim: RankingDimension,
-) -> Witness<Multiplicity> {
-  match acc {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-    Holds { value: acc_m } =>
-      match child {
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-        Holds { value: child_m } =>
-          match acc_m {
-            Bounded =>
-              match child_m {
-                Bounded =>
-                  Holds { value: Bounded }
-                Unbounded { step: p } =>
-                  Holds { value: Unbounded { step: p } }
-              }
-            Unbounded { step: acc_p } =>
-              match child_m {
-                Bounded =>
-                  Holds {
-                    value: Unbounded {
-                      step: merge_termination_proof_sequential(
-                        a: acc_p,
-                        b: termination_proof_bounded(dim: child_dim)
-                      )
-                    }
-                  }
-                Unbounded { step: child_p } =>
-                  Holds {
-                    value: Unbounded {
-                      step: merge_termination_proof_sequential(a: acc_p, b: child_p)
-                    }
-                  }
-              }
-          }
-      }
+fn connective_multiplicity(c: Connective) -> Multiplicity {
+  match c {
+    Atom { identity: _ } => Bounded
+    Conj => Bounded
+    Disj => Bounded
+    Arrow => Bounded
+    Cardinality => Unbounded { step: structural_node_size_termination_proof() }
+    Instantiation => Bounded
   }
 }
 
-
-fn compose_multiplicity_alternative(
-  acc: Witness<Multiplicity>,
-  child: Witness<Multiplicity>,
-  acc_dim: RankingDimension,
-  child_dim: RankingDimension,
-) -> Witness<Multiplicity> {
-  match acc {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-    Holds { value: acc_m } =>
-      match child {
-        Violates { diagnostic: d } => Violates { diagnostic: d }
-        Holds { value: child_m } =>
-          match acc_m {
-            Bounded =>
-              match child_m {
-                Bounded => Holds { value: Bounded }
-                Unbounded { step: p } =>
-                  Holds { value: Unbounded { step: p } }
-              }
-            Unbounded { step: acc_p } =>
-              match child_m {
-                Bounded =>
-                  Holds { value: Unbounded { step: acc_p } }
-                Unbounded { step: child_p } =>
-                  Holds {
-                    value: Unbounded {
-                      step: merge_termination_proof_alternative(a: acc_p, b: child_p)
-                    }
-                  }
-              }
-          }
-      }
+fn behavior_multiplicity(b: Behavior) -> Multiplicity {
+  match b {
+    Value => Bounded
+    Transform => Bounded
+    Branch => Bounded
+    Loop => Unbounded { step: structural_node_size_termination_proof() }
+    Bind => Bounded
   }
 }
 
-
-fn compose_multiplicity_iterative(
-  child: Witness<Multiplicity>,
-  dim: RankingDimension,
-) -> Witness<Multiplicity> {
-  match child {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-    Holds { value: child_m } =>
-      match child_m {
-        Bounded =>
-          Holds {
-            value: Unbounded {
-              step: termination_proof_bounded(dim: dim)
-            }
-          }
-        Unbounded { step: p } => Holds { value: Unbounded { step: p } }
-      }
-  }
-}
-
-
-fn multiplicity_fold_init(n: Node) -> MultiplicityFoldState {
+fn node_multiplicity(n: Node) -> Multiplicity {
   match n.kind {
-    TypeNode { connective: c } =>
-      MultiplicityFoldState {
-        mode: multiplicity_mode_for_connective(c: c),
-        witness: Holds { value: multiplicity_for_connective(c: c) },
-        dim: ranking_dimension_for_connective(c: c, n: n)
-      }
-    ComputationNode { behavior: Loop } =>
-      MultiplicityFoldState {
-        mode: IterativeMultiplicity,
-        witness: Violates {
-          diagnostic: cardinality_propagation_not_derived_diagnostic(n: n)
-        },
-        dim: ranking_dimension_for_behavior(b: Loop)
-      }
-    ComputationNode { behavior: b } =>
-      MultiplicityFoldState {
-        mode: multiplicity_mode_for_behavior(b: b),
-        witness: Holds { value: multiplicity_for_behavior(b: b) },
-        dim: ranking_dimension_for_behavior(b: b)
-      }
+    TypeNode { connective: c } => connective_multiplicity(c: c)
+    ComputationNode { behavior: b } => behavior_multiplicity(b: b)
   }
 }
 
+fn cardinality_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_descent_not_proven,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 
-fn multiplicity_fold_step(
-  acc: MultiplicityFoldState,
+fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
+  Holds { value: multiplicity_termination_proof(m: node_multiplicity(n: n)) }
+}
+
+fn termination_proof_fold_step(
+  acc: Witness<TerminationProof>,
   _: Edge,
-  child: MultiplicityFoldState,
-) -> MultiplicityFoldState {
-  match acc.mode {
-    SequentialMultiplicity =>
-      MultiplicityFoldState {
-        mode: acc.mode,
-        witness: compose_multiplicity_sequential(
-          acc: acc.witness,
-          child: child.witness,
-          acc_dim: acc.dim,
-          child_dim: child.dim
-        ),
-        dim: acc.dim
-      }
-    AlternativeMultiplicity =>
-      MultiplicityFoldState {
-        mode: acc.mode,
-        witness: compose_multiplicity_alternative(
-          acc: acc.witness,
-          child: child.witness,
-          acc_dim: acc.dim,
-          child_dim: child.dim
-        ),
-        dim: acc.dim
-      }
-    IterativeMultiplicity =>
-      MultiplicityFoldState {
-        mode: acc.mode,
-        witness: compose_multiplicity_iterative(child: child.witness, dim: acc.dim),
-        dim: acc.dim
+  child: Witness<TerminationProof>
+) -> Witness<TerminationProof> {
+  match acc {
+    Violates { diagnostic: _ } => acc
+    Holds { value: proof } =>
+      match child {
+        Violates { diagnostic: _ } => child
+        Holds { value: _ } => Holds { value: proof }
       }
   }
 }
 
-
-fn multiplicity_fold() -> NodeFold<MultiplicityFoldState> {
-  NodeFold {
-    init: multiplicity_fold_init,
-    step: multiplicity_fold_step
-  }
-}
-
-
-fn multiplicity_fold_state(n: Node) -> MultiplicityFoldState {
-  fold_node(n: n, algebra: multiplicity_fold())
-}
-
-
-fn cardinality_propagation_witness(n: Node) -> Witness<TerminationProof> {
-  let state = multiplicity_fold_state(n: n)
-  match state.witness {
-    Violates { diagnostic: d } => Violates { diagnostic: d }
-    Holds { value: m } =>
-      Holds {
-        value: termination_proof_from_multiplicity(m: m, dim: state.dim)
+fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        local_termination_proof_witness(n: n0)
+      },
+      step: fn(acc, e, child) {
+        termination_proof_fold_step(acc: acc, e: e, child: child)
       }
-  }
+    }
+  )
 }

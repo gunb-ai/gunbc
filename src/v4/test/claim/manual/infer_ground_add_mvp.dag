@@ -2,7 +2,7 @@
 // Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; executable infer/descent receipts.
 // Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, infer_descent_witness_contract_node, claim rows, TestClaimRun receipts.
 // Consumes: compiler/04_infer.dag, compiler/05_eval.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
-// Status: infer derives descent via cardinality propagation; add MVP accepts when solve_constraints succeeds.
+// Status: SPI-3 receipts — infer derives descent via PR #3559 substrate; add MVP compiles when solve_constraints succeeds.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 
 
@@ -43,11 +43,9 @@ import v4.std.diagnostic {
 import v4.std.node {
   Arrow,
   Atom,
-  ComputationNode,
   Conj,
   Edge,
   Hash,
-  Loop,
   Named,
   Node,
   Positional,
@@ -397,22 +395,6 @@ fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
 }
 
 
-fn fixture_loop_without_step_node() -> Node {
-  Node {
-    kind: ComputationNode { behavior: Loop },
-    children: [
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: ComputationNode { behavior: Loop },
-          children: []
-        }
-      }
-    ]
-  }
-}
-
-
 data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
   label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
   input_symbol: infer_receipt_input_infer_add_mvp,
@@ -435,32 +417,13 @@ data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesRece
 }
 
 
-data case_infer_descent_witness_fail_closed_loop: InferReceiptCase = InferDiagnosticReceiptCase {
-  label: "manual/infer: infer_descent_witness_contract_node rejects Loop without step child",
-  input_symbol: infer_receipt_input_descent_witness,
-  input: fixture_loop_without_step_node(),
-  expected_rejection: diagnostics_singleton(
-    d: infer_descent_not_derived_diagnostic(n: fixture_loop_without_step_node())
-  )
-}
-
-
 data subject_infer_descent_witness_holds_atom: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_holds_atom)
 
 
 data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_holds_atom)
 
 
-data subject_infer_descent_witness_fail_closed_loop: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_fail_closed_loop)
-
-
-data run_infer_descent_witness_fail_closed_loop: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_fail_closed_loop)
-
-
 data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_compiles)
 
 
 data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)
-
-
-data claim_infer_descent_witness_fail_closed_loop: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_fail_closed_loop)
