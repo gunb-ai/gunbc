@@ -41,8 +41,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
@@ -95,11 +97,14 @@ type RustScalar
   | UnitScalar
   | NeverScalar
 
+type RustIntegerCarrier {
+  kind: RustIntKind
+  width: RustIntWidth
+}
+
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  signedness: RustIntKind
-  width: RustIntWidth
-  overflow_release: OverflowAction
+  overflow_disposition: OverflowDisposition<RustIntegerCarrier>
   std_projection: Symbol
 }
 
@@ -160,10 +165,15 @@ type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type OverflowDisposition<IRCarrier>
-  = MustPanicOnOverflow
-  | MayPanicOrTwoComplementWrap
+// Anchor: Rust Reference §Operator expressions / Overflow.
+// 🟢 pretty-much-done — checked arithmetic overflow facts include debug defaults and explicit `-C overflow-checks`.
+type OverflowDisposition<IRCarrier> {
+  ir_carrier: IRCarrier
+  checked_arithmetic_debug_default: OverflowAction
+  checked_arithmetic_release_default: OverflowAction
+  checked_arithmetic_overflow_checks_enabled: OverflowAction
+  checked_arithmetic_overflow_checks_disabled: OverflowAction
+}
 
 type RustLanguageModel {
   lex: LexRules
@@ -313,7 +323,7 @@ data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
 data rust_facts_field_surface_spelling: Symbol = rust_facts_field_surface_spelling
 data rust_facts_field_signedness: Symbol = rust_facts_field_signedness
 data rust_facts_field_width: Symbol = rust_facts_field_width
-data rust_facts_field_overflow_release: Symbol = rust_facts_field_overflow_release
+data rust_facts_field_overflow_disposition: Symbol = rust_facts_field_overflow_disposition
 data rust_facts_field_std_projection: Symbol = rust_facts_field_std_projection
 data rust_facts_field_scalar_classifier: Symbol = rust_facts_field_scalar_classifier
 data rust_facts_field_ieee754_binary: Symbol = rust_facts_field_ieee754_binary
@@ -322,6 +332,11 @@ data rust_facts_field_representation: Symbol = rust_facts_field_representation
 data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
 data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
 data rust_scalar_field_width: Symbol = rust_scalar_field_width
+data rust_overflow_field_ir_carrier: Symbol = rust_overflow_field_ir_carrier
+data rust_overflow_field_checked_arithmetic_debug_default: Symbol = rust_overflow_field_checked_arithmetic_debug_default
+data rust_overflow_field_checked_arithmetic_release_default: Symbol = rust_overflow_field_checked_arithmetic_release_default
+data rust_overflow_field_checked_arithmetic_checks_enabled: Symbol = rust_overflow_field_checked_arithmetic_checks_enabled
+data rust_overflow_field_checked_arithmetic_checks_disabled: Symbol = rust_overflow_field_checked_arithmetic_checks_disabled
 
 data rust_tag_signed: Symbol = rust_tag_signed
 data rust_tag_unsigned: Symbol = rust_tag_unsigned
@@ -344,6 +359,17 @@ data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
 data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
+
+fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
+  OverflowDisposition {
+    ir_carrier: RustIntegerCarrier { kind: kind, width: width },
+    checked_arithmetic_debug_default: PanicOnOverflow,
+    checked_arithmetic_release_default: TwoComplementWrap,
+    checked_arithmetic_overflow_checks_enabled: PanicOnOverflow,
+    checked_arithmetic_overflow_checks_disabled: TwoComplementWrap
+  }
+}
+
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn rust_mvp1_concrete_tokens() -> List<RustConcreteSyntaxToken> {
   [
@@ -371,97 +397,73 @@ data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i8,
-  signedness: Signed,
-  width: Bits8,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits8),
   std_projection: rust_std_projection_int8,
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i16,
-  signedness: Signed,
-  width: Bits16,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits16),
   std_projection: rust_std_projection_int16,
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i32,
-  signedness: Signed,
-  width: Bits32,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32),
   std_projection: rust_std_projection_int32,
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i64,
-  signedness: Signed,
-  width: Bits64,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits64),
   std_projection: rust_std_projection_int64,
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i128,
-  signedness: Signed,
-  width: Bits128,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits128),
   std_projection: rust_std_projection_int128,
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u8,
-  signedness: Unsigned,
-  width: Bits8,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits8),
   std_projection: rust_std_projection_uint8,
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u16,
-  signedness: Unsigned,
-  width: Bits16,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits16),
   std_projection: rust_std_projection_uint16,
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u32,
-  signedness: Unsigned,
-  width: Bits32,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits32),
   std_projection: rust_std_projection_uint32,
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u64,
-  signedness: Unsigned,
-  width: Bits64,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits64),
   std_projection: rust_std_projection_uint64,
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u128,
-  signedness: Unsigned,
-  width: Bits128,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits128),
   std_projection: rust_std_projection_uint128,
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_isize,
-  signedness: Signed,
-  width: Pointer,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Pointer),
   std_projection: rust_std_projection_int_platform,
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_usize,
-  signedness: Unsigned,
-  width: Pointer,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Pointer),
   std_projection: rust_std_projection_uint_platform,
 }
 
@@ -589,6 +591,40 @@ fn rust_overflow_node(overflow: OverflowAction) -> Node {
   }
 }
 
+fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
+  IntScalar { kind: carrier.kind, width: carrier.width }
+}
+
+fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCarrier>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_overflow_field_ir_carrier,
+        target: rust_scalar_node(
+          scalar: rust_integer_carrier_as_scalar(carrier: disposition.ir_carrier)
+        )
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_debug_default,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_debug_default)
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_release_default,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_release_default)
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_checks_enabled,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_enabled)
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_checks_disabled,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_disabled)
+      )
+    ]
+  }
+}
+
 fn rust_scalar_node(scalar: RustScalar) -> Node {
   match scalar {
     IntScalar { kind, width } => Node {
@@ -640,15 +676,15 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_signedness,
-        target: rust_int_kind_node(kind: facts.signedness)
+        target: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
       ),
       rust_named_edge(
         name: rust_facts_field_width,
-        target: rust_int_width_node(width: facts.width)
+        target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
       ),
       rust_named_edge(
-        name: rust_facts_field_overflow_release,
-        target: rust_overflow_node(overflow: facts.overflow_release)
+        name: rust_facts_field_overflow_disposition,
+        target: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
       ),
       rust_named_edge(
         name: rust_facts_field_std_projection,
@@ -657,7 +693,7 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       rust_named_edge(
         name: rust_facts_field_scalar_classifier,
         target: rust_scalar_node(
-          scalar: IntScalar { kind: facts.signedness, width: facts.width }
+          scalar: rust_integer_carrier_as_scalar(carrier: facts.overflow_disposition.ir_carrier)
         )
       )
     ]
@@ -1252,90 +1288,76 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_primitive_fact_map_4(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node,
-  axis3: Symbol,
-  fact3: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(empty_map(), axis0, fact0),
-        axis1,
-        fact1
-      ),
-      axis2,
-      fact2
-    ),
-    axis3,
-    fact3
-  )
+fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn rust_primitive_fact_map_3(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node,
-  axis2: Symbol,
-  fact2: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(
-      map_insert(empty_map(), axis0, fact0),
-      axis1,
-      fact1
-    ),
-    axis2,
-    fact2
-  )
+fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_float_width_node(width: facts.width) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
-fn rust_primitive_fact_map_2(
-  axis0: Symbol,
-  fact0: Node,
-  axis1: Symbol,
-  fact1: Node
-) -> Map<Symbol, Node> {
-  map_insert(
-    map_insert(empty_map(), axis0, fact0),
-    axis1,
-    fact1
-  )
+fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: rust_primitive_fact_map_4(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: rust_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: rust_int_width_node(width: facts.width),
-      axis2: primitive_fact_axis_signedness,
-      fact2: rust_int_kind_node(kind: facts.signedness),
-      axis3: primitive_fact_axis_encoding,
-      fact3: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
-    )
+    spec_facts: rust_integer_spec_facts(facts: facts)
   }
 }
 
 fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: rust_primitive_fact_map_3(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: rust_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_width,
-      fact1: rust_float_width_node(width: facts.width),
-      axis2: primitive_fact_axis_encoding,
-      fact2: rust_inhabitant_atom(id: facts.ieee754_binary)
-    )
+    spec_facts: rust_float_spec_facts(facts: facts)
   }
 }
 
@@ -1344,12 +1366,7 @@ fn rust_primitive_bundle_from_noninteger_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: rust_primitive_fact_map_2(
-      axis0: primitive_fact_axis_surface_spelling,
-      fact0: rust_inhabitant_atom(id: facts.surface_spelling),
-      axis1: primitive_fact_axis_encoding,
-      fact1: rust_inhabitant_atom(id: facts.representation)
-    )
+    spec_facts: rust_noninteger_spec_facts(facts: facts)
   }
 }
 

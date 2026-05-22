@@ -9,18 +9,19 @@ module v4.extdeps.languages.kotlin
 
 import v4.compiler.parse { Grammar, VoidGrammar }
 import v4.compiler.tokenize { LexRules, VoidLexRules }
-import v4.std.collection { List, Set, list_append, list_snoc_item }
+import v4.std.collection { List, Map, Set, list_append, list_snoc_item }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
@@ -416,10 +417,6 @@ fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
   }
 }
 
-fn kotlin_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
-}
-
 fn kotlin_nonnumeric_value_fact_field(value_fact: KotlinNonNumericValueFact) -> Symbol {
   match value_fact {
     RuntimeRepresentationFact { representation } => {
@@ -475,65 +472,92 @@ fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> N
   }
 }
 
+fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: kotlin_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: kotlin_int_width_node(width: facts.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: kotlin_atom(id: kotlin_tag_signed) }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: kotlin_overflow_node(overflow: facts.overflow) }
+        kotlin_primitive_fact_axis_runtime_representation =>
+          Holds { value: kotlin_runtime_representation_node(representation: facts.representation) }
+        kotlin_primitive_fact_axis_scalar_classifier =>
+          Holds { value: kotlin_scalar_node(scalar: IntScalar { width: facts.width }) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: kotlin_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: kotlin_float_width_node(width: facts.width) }
+        kotlin_primitive_fact_axis_value_format =>
+          Holds { value: kotlin_float_value_format_node(value_format: facts.value_format) }
+        kotlin_primitive_fact_axis_runtime_representation =>
+          Holds { value: kotlin_runtime_representation_node(representation: facts.representation) }
+        kotlin_primitive_fact_axis_scalar_classifier =>
+          Holds { value: kotlin_scalar_node(scalar: FloatScalar { width: facts.width }) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: kotlin_atom(id: facts.surface_spelling) }
+        _ =>
+          if axis == kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact) {
+            Holds {
+              value: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
+            }
+          } else {
+            if axis == kotlin_primitive_fact_axis_scalar_classifier {
+              Holds { value: kotlin_scalar_node(scalar: facts.scalar) }
+            } else {
+              Violates {
+                diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
 fn kotlin_primitive_bundle_from_integer_facts(
   facts: KotlinIntegerPrimitiveFacts
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: kotlin_integer_facts_node(facts: facts),
-    spec_facts: [
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: kotlin_atom(id: facts.surface_spelling)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: kotlin_int_width_node(width: facts.width)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: kotlin_atom(id: kotlin_tag_signed)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_overflow_disposition,
-        fact: kotlin_overflow_node(overflow: facts.overflow)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_runtime_representation,
-        fact: kotlin_runtime_representation_node(representation: facts.representation)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_scalar_classifier,
-        fact: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
-      )
-    ]
+    spec_facts: kotlin_integer_spec_facts(facts: facts)
   }
 }
 
 fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: kotlin_float_facts_node(facts: facts),
-    spec_facts: [
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: kotlin_atom(id: facts.surface_spelling)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: kotlin_float_width_node(width: facts.width)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_value_format,
-        fact: kotlin_float_value_format_node(value_format: facts.value_format)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_runtime_representation,
-        fact: kotlin_runtime_representation_node(representation: facts.representation)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_scalar_classifier,
-        fact: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
-      )
-    ]
+    spec_facts: kotlin_float_spec_facts(facts: facts)
   }
 }
 
@@ -542,20 +566,7 @@ fn kotlin_primitive_bundle_from_nonnumeric_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: kotlin_nonnumeric_facts_node(facts: facts),
-    spec_facts: [
-      kotlin_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: kotlin_atom(id: facts.surface_spelling)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact),
-        fact: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
-      ),
-      kotlin_primitive_axis_binding(
-        axis: kotlin_primitive_fact_axis_scalar_classifier,
-        fact: kotlin_scalar_node(scalar: facts.scalar)
-      )
-    ]
+    spec_facts: kotlin_nonnumeric_spec_facts(facts: facts)
   }
 }
 

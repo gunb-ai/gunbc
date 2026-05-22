@@ -196,19 +196,16 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 // 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
 // (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
 // and lattice bottom; `NonIncreasingValue` / `StrictAxisErased` / `MixedTop` close the lattice so
-// meet/join over the seven lawful inhabitants form a BoundedLattice (operator-ratified
-// option-(A) split, 2026-05-21 — see "Inc-split rationale" below). The split satisfies:
+// meet/join over the seven lawful inhabitants are projection-sound merge helpers only — not a
+// `std/algebra` inhabitance (operator-ratified option-(A) split, 2026-05-21; see Inc-split below).
+// The split satisfies:
 //   - codex #15942 join-projection-safety FULLY: `join(PreservedValue, StrictSubValue{f}) = MixedTop`,
 //     `proj(MixedTop) = NonIncreasing`, never fabricates Strict from a non-strict join operand.
 //   - codex #15892 meet-monotonicity WITHIN the strict cone: `meet(StrictAxisErased, Strict_f) = Strict_f`,
 //     both project to Strict — no strengthening.
-//   - `meet(MixedTop, X)` returning X for X in the lower cones is an ACCEPTED TRADE-OFF — the lattice-
-//     top-identity property would strengthen `proj(meet)` from `NonIncreasing` (proj MixedTop) to
-//     `proj(X)` when X is strict-style. The operator-ratified option (A) treats this as operationally
-//     a refinement of the top by the more specific second operand, not a fabrication, because MixedTop
-//     arises only from joins crossing the strict/non-strict boundary and meet against it does not
-//     introduce new strict witnesses — it merely refines back to an existing operand. See test
-//     `meet_mixed_top_acts_as_lattice_top_identity` for the explicit covering case.
+//   - `meet(MixedTop, X)` drops to `NonIncreasingValue` (not X) so meet never strengthens
+//     `proj(meet)` above `proj(MixedTop)` = NonIncreasing when X is strict-style. MixedTop remains
+//     join-⊤ only (`join(MixedTop, a) = MixedTop`). See `meet_mixed_top_drops_to_non_increasing`.
 //
 // Lattice ordering (top → bottom):
 //   MixedTop                                                      -- ⊤ (axis-erased OR non-strict)
@@ -388,9 +385,8 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
 // then, the by-hand match keeps the carrier's strict-cone classification co-located with
 // the lattice operations that need it (per CODING.md "pure functions, data + free functions"
 // — derive the predicate from `sub_value_to_evidence` is the homomorphism, but the
-// substrate cannot yet express that derivation). Same family as the held
-// `data sub_value_relation_bounded_lattice` (ROADMAP.md:390 — function-valued algebra
-// fields / generic lattice lifting).
+// substrate cannot yet express that derivation). P5 (ROADMAP.md:390): same engineering slice
+// as stage0 Rc<T>-aware merge-helper surfacing — not a `BoundedLattice` data witness.
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
@@ -423,10 +419,11 @@ fn sub_value_level(r: SubValueRelation) -> Int {
   }
 }
 
-// Meet (greatest lower bound) over the 7-lawful-inhabitant lattice plus the ⊥ sink.
-// Encodes the Hasse diagram in the file header. The strict-cone (StrictAxisErased over the
-// strict witnesses) lets meet(StrictAxisErased, Strict_f) return Strict_f without strengthening
-// evidence; mixed pairs drop to the GLB along the chain.
+// Projection-sound meet over the 7 lawful inhabitants plus the ⊥ sink. Not a GLB when MixedTop
+// is involved — see merge-helper properties below. Encodes the Hasse diagram in the file header.
+// The strict-cone (StrictAxisErased over strict witnesses) lets meet(SAE, Strict_f) return
+// Strict_f without strengthening evidence; mixed pairs and any pair with MixedTop drop to
+// NonIncreasingValue.
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
@@ -435,11 +432,9 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
     // SubValueUnknown absorbs.
     if la == 0 || lb == 0 { SubValueUnknown }
     else {
-      // MixedTop (level 4) is the lattice ⊤: meet returns the other operand.
-      if la == 4 { b }
+      // MixedTop (level 4) is join-⊤ only; meet with MixedTop drops to NonIncreasingValue.
+      if la == 4 || lb == 4 { NonIncreasingValue }
       else {
-        if lb == 4 { a }
-        else {
           // StrictAxisErased (level 3) dominates strict-style structurals only.
           if la == 3 {
             // a = StrictAxisErased; b is level 1 or 2 (not 0/3/4 here).
@@ -457,7 +452,6 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
               NonIncreasingValue
             }
           }
-        }
       }
     }
   }
@@ -501,42 +495,37 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// BoundedLattice<SubValueRelation> — algebra-inhabitance laws (verified by case
-// analysis over `sub_value_level` + `sub_value_structural_eq`):
+// SubValueRelation merge helpers — `meet_sub_value` / `join_sub_value` are the sole authority.
+// No `BoundedLattice` / `std/algebra` data witness is intended (A-tight #3551; ROADMAP.md:390
+// row retargeted — dissolution is merge-helper surfacing, not lattice inhabitance).
+// Meet is NOT GLB for MixedTop: projection-soundness requires meet-monotonicity, so
+// meet(MixedTop, X) saturates at NonIncreasingValue while MixedTop remains join-⊤.
+// Operational properties verified by case analysis over `sub_value_level` +
+// `sub_value_structural_eq`:
 //   - Idempotence: meet(a, a) = a; join(a, a) = a — `sub_value_structural_eq` short-circuit
 //     handles parameterised structural witnesses; non-parametric variants are caught by
 //     the level-match arms.
 //   - Commutativity: `meet` / `join` use only `sub_value_level` and `sub_value_structural_eq`,
 //     both symmetric in their arguments.
 //   - Associativity: take the lower level (meet) or higher level (join), falling to
-//     `NonIncreasingValue` (meet of pairwise-incomparable structurals) or to `StrictAxisErased`
-//     / `MixedTop` (join of strict-style-only / mixed structurals respectively) when arguments
-//     are at the structural level and not identical. Symmetric and order-independent.
-//   - Absorption: `meet(a, join(a, b)) = a` — `join(a, b)` is either `a` (if b ≤ a) or some
-//     element ≥ a (StrictAxisErased or MixedTop), and meet pulls back to a.
-//   - Top: meet(⊤, a) = a, join(⊤, a) = ⊤ — `MixedTop` at level 4.
-//   - Bottom: meet(⊥, a) = ⊥, join(⊥, a) = a — `SubValueUnknown` at level 0.
+//     `NonIncreasingValue` (meet of pairwise-incomparable structurals or any pair involving
+//     MixedTop) or to `StrictAxisErased` / `MixedTop` (join of strict-style-only / mixed
+//     structurals respectively) when arguments are at the structural level and not identical.
+//   - Absorption (qualified): `meet(a, join(a, b)) = a` only when `join(a, b) ≠ MixedTop`
+//     (e.g. all-strict joins → StrictAxisErased, or `b ≤ a` so join returns `a`). When
+//     `join(a, b) = MixedTop` (strict/non-strict boundary), `meet(a, MixedTop) =
+//     NonIncreasingValue` — not `a` — by design for projection-soundness.
+//   - Meet bottom: meet(⊥, a) = ⊥ — `SubValueUnknown` at level 0.
+//   - Join top: join(⊤, a) = ⊤ — `MixedTop` at level 4 (meet does NOT use ⊤ as identity).
 //
 // Operator-direct (PATH-2-FULL → option (A) split, ratified 2026-05-21): the two top inhabitants
 // `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
 // single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
 //
-// 🟡 P5 STAGE0-GENERATOR-GAP. A `data sub_value_relation_bounded_lattice: BoundedLattice<SubValueRelation>`
-// declaration is held until the stage0 Rust emitter handles `BoundedLattice<T>` instances where
-// `T` is an `Rc`-wrapped carrier (SubValueRelation has structural variants carrying
-// `InductiveField` / `ShrinkFactor`, which the stage0 layer materialises behind `Rc`).
-// Current stage0 emission produces `meet: Rc::new(meet_sub_value)` against a struct field
-// typed `Rc<dyn Fn(T, T) -> T>` with `T = SubValueRelation` (not `Rc<SubValueRelation>`),
-// and `top: Box::new(Rc::new(SubValueRelation::MixedTop))` against a `Box<T>` field — both
-// type-mismatch. Encoding / FermiDepth / DescentEvidence sidestep this because they are bare
-// enums with no payload. Dissolution trigger anchored at **ROADMAP.md:390** — "Four hand-rolled
-// `BoundedLattice<T>` / `Lattice<T>` instances": that row tracks the migration from named
-// meet/join helpers to generic-algebra-surface consumption ("function-valued algebra fields /
-// generic lattice lifting consumable from generated code"); when that infrastructure lands,
-// the stage0 emitter gains the `Rc<T>`-aware `BoundedLattice<T>` instantiation that lets the
-// `data sub_value_relation_bounded_lattice` declaration round-trip cleanly. Until then, the
-// lawful algebra is consumed via the free functions `meet_sub_value` / `join_sub_value`
-// directly — same denotational content, no algebra-inhabitance discoverability.
+// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `std/algebra` witness — intentional after A-tight.
+// Dissolution (ROADMAP.md:390): stage0 Rc<T>-aware emission for merge-helper canonical
+// surfaces (`meet_sub_value` / `join_sub_value` on this projection-sound pair), or direct
+// free-function calls. Until then, the functions above are the sole authority.
 
 
 // =========================================================================
