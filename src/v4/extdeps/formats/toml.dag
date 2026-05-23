@@ -18,14 +18,6 @@ type TomlSign
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type TomlIntegerRadix
-  = TomlIntegerDecimal
-  | TomlIntegerHex
-  | TomlIntegerOctal
-  | TomlIntegerBinary
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlFloatSpecial
   = TomlFloatFinite
   | TomlFloatInf
@@ -35,13 +27,24 @@ type TomlFloatSpecial
 type TomlUnderscoreSeparatedDigitsProfile {}
 
 
-// TOML integers are radix-tagged lexemes; width and machine representation are
-// deliberately absent because the TOML spec defines syntax, not a target width.
-type TomlIntegerLexemeProfile {
-  sign: TomlSign,
-  radix: TomlIntegerRadix,
-  underscores: TomlUnderscoreSeparatedDigitsProfile,
-}
+// TOML integers carry sign only on decimal form; hex/octal/binary forms are
+// unsigned lexical forms. Width and machine representation are deliberately
+// absent because the TOML spec defines syntax, not a target width.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlIntegerLexemeProfile
+  = TomlDecimalIntegerLexemeProfile {
+      sign: TomlSign,
+      underscores: TomlUnderscoreSeparatedDigitsProfile,
+    }
+  | TomlHexIntegerLexemeProfile {
+      underscores: TomlUnderscoreSeparatedDigitsProfile,
+    }
+  | TomlOctalIntegerLexemeProfile {
+      underscores: TomlUnderscoreSeparatedDigitsProfile,
+    }
+  | TomlBinaryIntegerLexemeProfile {
+      underscores: TomlUnderscoreSeparatedDigitsProfile,
+    }
 
 
 type TomlFloatLexemeProfile {
@@ -96,8 +99,7 @@ type TomlUniqueNameProfile {
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlTableSyntax
   = TomlStandardTable
-  | TomlArrayOfTables
-  | TomlInlineTableSyntax
+  | TomlArrayOfTablesElement
 
 
 type TomlTableSyntaxProfile {
