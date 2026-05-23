@@ -1,13 +1,37 @@
 // src/v4/extdeps/languages/swift.dag
 // Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.
-// Owns: SwiftIntWidth, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, swift_*_facts, swift_model_core_wave1, swift_language_model_wave1.
-// Consumes: v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision, bool canonical-B decl-ref is E-6(b) staging.
+// Owns: SwiftIntWidth, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, swift_*_facts, swift_*_inhabitant_node, swift_declared_inhabitants_root, swift_mvp1_target_model, swift_wave1_* grammar/lex.
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
+// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
 // Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
 
 module v4.extdeps.languages.swift
 
-import v4.std.collection { List, Map, Set, list_append, list_snoc_item }
+import v4.compiler.parse {
+  Grammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Sequence,
+  Terminal,
+  grammar_production_to_node
+}
+import v4.compiler.tokenize {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule
+}
+import v4.std.collection { List, Map, Set, empty_map, list_append, list_snoc_item, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
