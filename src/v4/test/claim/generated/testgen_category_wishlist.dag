@@ -1,0 +1,238 @@
+// src/v4/test/claim/generated/testgen_category_wishlist.dag
+// Scope: T-19 non-tautological generator wishlist over the closed TestgenConcept arms.
+// Owns: testgen pending/dispatched wishlist rows and dispatch keys.
+// Consumes: v4.lens.testgen, v4.std.verification, v4.test.claim.manual.connective_anchors.
+// Status: dispatch ledger — rows dissolve as each generator emits executable TestClaims.
+
+module v4.test.claim.generated.testgen_category_wishlist
+
+
+import v4.extdeps.languages.dag { dag_language_model_surface_id }
+import v4.lens.testgen {
+  AlgebraLaw,
+  AlgebraLawSubject,
+  BidirectionalRoundtrip,
+  BidirectionalRoundtripSubject,
+  DiagnosticExhaustiveness,
+  DiagnosticExhaustivenessSubject,
+  Generator,
+  LanguageBehaviorEquivalence,
+  LensApplicability,
+  LensApplicabilitySubject,
+  TestgenConcept,
+  TypeConstruction,
+  TypeConstructionSubject,
+  ConnectiveKernel,
+  lbe_io_mock_conj_dag_surface,
+  lbe_subject_conj_dag_surface,
+  t19_law_nat_add_associativity
+}
+import v4.std.algebra { length }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.nat {
+  nat_algebra_law_subject_symbol_additive_monoid,
+  nat_algebra_law_subject_symbol_inhabitant_nat
+}
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  T19ManualLbeConjDagSurface,
+  Tier1,
+  Tier2,
+  Tier3,
+  Unit,
+  Integration
+}
+import v4.test.claim.manual.connective_anchors { stub_empty_conj }
+
+
+type TestgenOracleBasis
+  = StructuralConstructionWitness
+  | AlgebraLawWitness
+  | DiagnosticNegativeFixture
+  | LensObservationFixture
+  | RoundTripDifferential
+  | FrozenIoSnapshot
+
+
+type TestgenWishlistRow {
+  generator: Generator<TestgenConcept>
+  oracle: TestgenOracleBasis
+  dispatch_key: Symbol
+}
+
+
+data t19_wishlist_type_construction_dispatch: Symbol = t19_wishlist_type_construction_dispatch
+data t19_wishlist_algebra_law_dispatch: Symbol = t19_wishlist_algebra_law_dispatch
+data t19_wishlist_diagnostic_exhaustiveness_dispatch: Symbol = t19_wishlist_diagnostic_exhaustiveness_dispatch
+data t19_wishlist_lens_applicability_dispatch: Symbol = t19_wishlist_lens_applicability_dispatch
+data t19_wishlist_bidirectional_roundtrip_dispatch: Symbol = t19_wishlist_bidirectional_roundtrip_dispatch
+data t19_dispatched_language_behavior_equivalence: Symbol = t19_dispatched_language_behavior_equivalence
+data t19_generator_wishlist_lens_structural_resolution: Symbol = t19_generator_wishlist_lens_structural_resolution
+data t19_generator_wishlist_unexpected_deferred_roundtrip: Symbol = t19_generator_wishlist_unexpected_deferred_roundtrip
+data t19_generator_wishlist_dag_surface_production: Symbol = t19_generator_wishlist_dag_surface_production
+data t19_generator_wishlist_count_symbol: Symbol = t19_generator_wishlist_count_symbol
+
+
+fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
+  Generator {
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    t19_anchor: T19ManualAnchorAbsent,
+    slot: TypeConstruction {
+      subject: ConnectiveKernel { connective: Conj },
+    }
+  }
+}
+
+
+fn wishlist_algebra_law_generator() -> Generator<TestgenConcept> {
+  Generator {
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    t19_anchor: T19ManualAnchorAbsent,
+    slot: AlgebraLaw {
+      subject: AlgebraLawSubject {
+        algebra: nat_algebra_law_subject_symbol_additive_monoid,
+        inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+        law: t19_law_nat_add_associativity,
+      },
+    }
+  }
+}
+
+
+fn wishlist_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
+  Generator {
+    classification: TestClassification { tier: Tier2, layer: Unit },
+    t19_anchor: T19ManualAnchorAbsent,
+    slot: DiagnosticExhaustiveness {
+      subject: DiagnosticExhaustivenessSubject {
+        reason: t19_generator_wishlist_unexpected_deferred_roundtrip,
+      },
+    }
+  }
+}
+
+
+fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
+  Generator {
+    classification: TestClassification { tier: Tier2, layer: Integration },
+    t19_anchor: T19ManualAnchorAbsent,
+    slot: LensApplicability {
+      subject: LensApplicabilitySubject {
+        lens: t19_generator_wishlist_lens_structural_resolution,
+        program: stub_empty_conj,
+      },
+    }
+  }
+}
+
+
+fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
+  Generator {
+    classification: TestClassification { tier: Tier3, layer: Integration },
+    t19_anchor: T19ManualAnchorAbsent,
+    slot: BidirectionalRoundtrip {
+      subject: BidirectionalRoundtripSubject {
+        language: dag_language_model_surface_id,
+        production: t19_generator_wishlist_dag_surface_production,
+      },
+    }
+  }
+}
+
+
+fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConcept> {
+  Generator {
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    t19_anchor: T19ManualLbeConjDagSurface,
+    slot: LanguageBehaviorEquivalence {
+      subject: lbe_subject_conj_dag_surface(),
+      mock: lbe_io_mock_conj_dag_surface(),
+    }
+  }
+}
+
+
+fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlistRow> {
+  [
+    TestgenWishlistRow {
+      generator: wishlist_type_construction_generator(),
+      oracle: StructuralConstructionWitness,
+      dispatch_key: t19_wishlist_type_construction_dispatch,
+    },
+    TestgenWishlistRow {
+      generator: wishlist_algebra_law_generator(),
+      oracle: AlgebraLawWitness,
+      dispatch_key: t19_wishlist_algebra_law_dispatch,
+    },
+    TestgenWishlistRow {
+      generator: wishlist_diagnostic_exhaustiveness_generator(),
+      oracle: DiagnosticNegativeFixture,
+      dispatch_key: t19_wishlist_diagnostic_exhaustiveness_dispatch,
+    },
+    TestgenWishlistRow {
+      generator: wishlist_lens_applicability_generator(),
+      oracle: LensObservationFixture,
+      dispatch_key: t19_wishlist_lens_applicability_dispatch,
+    },
+    TestgenWishlistRow {
+      generator: wishlist_bidirectional_roundtrip_generator(),
+      oracle: RoundTripDifferential,
+      dispatch_key: t19_wishlist_bidirectional_roundtrip_dispatch,
+    },
+  ]
+}
+
+
+fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> {
+  [
+    TestgenWishlistRow {
+      generator: dispatched_language_behavior_equivalence_generator(),
+      oracle: FrozenIoSnapshot,
+      dispatch_key: t19_dispatched_language_behavior_equivalence,
+    },
+  ]
+}
+
+
+fn pending_non_tautological_generator_count_is_five() -> Bool {
+  length(xs: testgen_pending_non_tautological_generator_wishlist()) == 5
+}
+
+
+fn dispatched_non_tautological_generator_count_is_one() -> Bool {
+  length(xs: testgen_dispatched_non_tautological_generators()) == 1
+}
+
+
+fn testgen_wishlist_count_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: t19_generator_wishlist_count_symbol } },
+    children: []
+  }
+}
+
+
+fn testgen_wishlist_count_claim_rhs() -> Node {
+  if pending_non_tautological_generator_count_is_five() && dispatched_non_tautological_generator_count_is_one() {
+    testgen_wishlist_count_node()
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+
+data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
+  label: "generated/testgen_category_wishlist: five pending non-tautological generator categories and one dispatched LBE category",
+  t19_anchor: T19ManualAnchorAbsent,
+  lhs: testgen_wishlist_count_node(),
+  rhs: testgen_wishlist_count_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
