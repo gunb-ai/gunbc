@@ -7,7 +7,7 @@
 module v4.test.claim.lens_synthesis.synthesis_gap_polynomial
 
 import v4.lens.synthesis { DecisionTree, synthesis_lens }
-import v4.std.algebra { non_empty }
+import v4.std.algebra { Cons, Empty, non_empty }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
@@ -20,6 +20,7 @@ import v4.std.node {
   Transform,
   TypeNode
 }
+import v4.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -82,5 +83,29 @@ data claim_synthesis_gap_polynomial: TestClaim = EqualsClaim {
   t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: synthesis_gap_poly_input,
   rhs: synthesis_gap_poly_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+// Pins the published ReportReason to SynthesisGapDecisionTree (addresses openai-pro Finding 4).
+// Returns synthesis_gap_poly_input iff the first report's reason IS SynthesisGapDecisionTree.
+fn synthesis_gap_poly_first_reason_node() -> Node {
+  match synthesis_lens(n: synthesis_gap_poly_input, declared_technique: DecisionTree) {
+    Empty => synthesis_gap_poly_sentinel
+    Cons { head: r, tail: _ } =>
+      match r {
+        Report { reason: rr, at: _ } =>
+          match rr {
+            SynthesisGapDecisionTree => synthesis_gap_poly_input
+            SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
+          }
+      }
+  }
+}
+
+data claim_synthesis_gap_poly_decision_tree_reason: TestClaim = EqualsClaim {
+  label: "lens_synthesis/synthesis_gap_polynomial: report reason is SynthesisGapDecisionTree",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: synthesis_gap_poly_input,
+  rhs: synthesis_gap_poly_first_reason_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
