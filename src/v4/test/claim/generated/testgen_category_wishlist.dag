@@ -38,6 +38,10 @@ import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
+  TestClaimCompilesClaimVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
   TestClassification,
   T19ManualAnchorAbsent,
   T19ManualLbeConjDagSurface,
@@ -45,7 +49,8 @@ import v4.std.verification {
   Tier2,
   Tier3,
   Unit,
-  Integration
+  Integration,
+  t19_manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -81,8 +86,9 @@ data t19_generator_wishlist_count_symbol: Symbol = t19_generator_wishlist_count_
 
 fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   Generator {
+    kind: TestClaimCompilesClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     slot: TypeConstruction {
       subject: ConnectiveKernel { connective: Conj },
     }
@@ -92,8 +98,9 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
 
 fn wishlist_algebra_law_generator() -> Generator<TestgenConcept> {
   Generator {
+    kind: TestClaimEqualsClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     slot: AlgebraLaw {
       subject: AlgebraLawSubject {
         algebra: nat_algebra_law_subject_symbol_additive_monoid,
@@ -107,8 +114,9 @@ fn wishlist_algebra_law_generator() -> Generator<TestgenConcept> {
 
 fn wishlist_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
   Generator {
+    kind: TestClaimDiagnosticClaimVariant,
     classification: TestClassification { tier: Tier2, layer: Unit },
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     slot: DiagnosticExhaustiveness {
       subject: DiagnosticExhaustivenessSubject {
         reason: t19_generator_wishlist_unexpected_deferred_roundtrip,
@@ -120,8 +128,9 @@ fn wishlist_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
 
 fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
   Generator {
+    kind: TestClaimCompilesClaimVariant,
     classification: TestClassification { tier: Tier2, layer: Integration },
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     slot: LensApplicability {
       subject: LensApplicabilitySubject {
         lens: t19_generator_wishlist_lens_structural_resolution,
@@ -134,8 +143,9 @@ fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
 
 fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
   Generator {
+    kind: TestClaimRoundTripClaimVariant,
     classification: TestClassification { tier: Tier3, layer: Integration },
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     slot: BidirectionalRoundtrip {
       subject: BidirectionalRoundtripSubject {
         language: dag_language_model_surface_id,
@@ -148,8 +158,9 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
 
 fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConcept> {
   Generator {
+    kind: TestClaimCompilesClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: T19ManualLbeConjDagSurface,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeConjDagSurface),
     slot: LanguageBehaviorEquivalence {
       subject: lbe_subject_conj_dag_surface(),
       mock: lbe_io_mock_conj_dag_surface(),
@@ -232,7 +243,7 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
 
 data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
   label: "generated/testgen_category_wishlist: five pending non-tautological generator categories and one dispatched LBE category",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: testgen_wishlist_count_node(),
   rhs: testgen_wishlist_count_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

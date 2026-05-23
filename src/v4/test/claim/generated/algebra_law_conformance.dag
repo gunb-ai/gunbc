@@ -21,7 +21,13 @@ import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
   nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat
+  nat_algebra_law_subject_symbol_inhabitant_nat,
+  nat_algebra_law_subject_symbol_add_operation,
+  nat_algebra_law_subject_symbol_mul_operation,
+  nat_algebra_law_subject_symbol_zero_value,
+  nat_algebra_law_subject_symbol_one_value,
+  nat_algebra_law_subject_symbol_two_value,
+  nat_algebra_law_subject_symbol_three_value
 }
 import v4.std.verification {
   TestClaim,
@@ -38,12 +44,6 @@ import v4.std.diagnostic { Outcome }
 data algebra_law_generated_operation_field: Symbol = algebra_law_generated_operation_field
 data algebra_law_generated_left_field: Symbol = algebra_law_generated_left_field
 data algebra_law_generated_right_field: Symbol = algebra_law_generated_right_field
-data t19_generated_nat_add_op: Symbol = t19_generated_nat_add_op
-data t19_generated_nat_mul_op: Symbol = t19_generated_nat_mul_op
-data t19_generated_nat_zero_value: Symbol = t19_generated_nat_zero_value
-data t19_generated_nat_one_value: Symbol = t19_generated_nat_one_value
-data t19_generated_nat_two_value: Symbol = t19_generated_nat_two_value
-data t19_generated_nat_three_value: Symbol = t19_generated_nat_three_value
 
 
 fn algebra_law_generated_atom(s: Symbol) -> Node {
@@ -69,32 +69,32 @@ fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node) -> N
 
 
 fn t19_generated_nat_zero() -> Node {
-  algebra_law_generated_value(value: t19_generated_nat_zero_value)
+  algebra_law_generated_value(value: nat_algebra_law_subject_symbol_zero_value)
 }
 
 
 fn t19_generated_nat_one() -> Node {
-  algebra_law_generated_value(value: t19_generated_nat_one_value)
+  algebra_law_generated_value(value: nat_algebra_law_subject_symbol_one_value)
 }
 
 
 fn t19_generated_nat_two() -> Node {
-  algebra_law_generated_value(value: t19_generated_nat_two_value)
+  algebra_law_generated_value(value: nat_algebra_law_subject_symbol_two_value)
 }
 
 
 fn t19_generated_nat_three() -> Node {
-  algebra_law_generated_value(value: t19_generated_nat_three_value)
+  algebra_law_generated_value(value: nat_algebra_law_subject_symbol_three_value)
 }
 
 
 fn t19_generated_nat_add(left: Node, right: Node) -> Node {
-  algebra_law_generated_binary(operation: t19_generated_nat_add_op, left: left, right: right)
+  algebra_law_generated_binary(operation: nat_algebra_law_subject_symbol_add_operation, left: left, right: right)
 }
 
 
 fn t19_generated_nat_mul(left: Node, right: Node) -> Node {
-  algebra_law_generated_binary(operation: t19_generated_nat_mul_op, left: left, right: right)
+  algebra_law_generated_binary(operation: nat_algebra_law_subject_symbol_mul_operation, left: left, right: right)
 }
 
 
