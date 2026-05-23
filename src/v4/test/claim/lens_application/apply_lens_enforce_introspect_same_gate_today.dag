@@ -7,10 +7,10 @@
 module v4.test.claim.lens_application.apply_lens_enforce_introspect_same_gate_today
 
 import v4.compiler.compile {
-  Lens,
-  LensEnforce,
-  LensIntrospect,
-  apply_lens,
+  CompileLens,
+  CompileLensEnforce,
+  CompileLensIntrospect,
+  apply_compile_lens,
   compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic
 }
@@ -63,15 +63,15 @@ fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>>
   )
 }
 
-data apply_lens_mode_rejecting_lens: Lens = Lens {
+data apply_lens_mode_rejecting_lens: CompileLens = CompileLens {
   gate: apply_lens_mode_rejecting_gate
 }
 
 fn apply_lens_mode_gate_rejects_enforce() -> Bool {
-  match apply_lens(
+  match apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
-    mode: LensEnforce
+    mode: CompileLensEnforce
   ) {
     Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
@@ -79,10 +79,10 @@ fn apply_lens_mode_gate_rejects_enforce() -> Bool {
 }
 
 fn apply_lens_mode_gate_rejects_introspect() -> Bool {
-  match apply_lens(
+  match apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
-    mode: LensIntrospect
+    mode: CompileLensIntrospect
   ) {
     Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
