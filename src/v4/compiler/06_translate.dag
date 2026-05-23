@@ -247,7 +247,7 @@ fn conj_positional_targets(parent: Node) -> List<Node> {
     _ => Empty
   }
 }
-fn list_targets_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
+fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
   match a {
     Empty =>
       match b {
@@ -258,7 +258,7 @@ fn list_targets_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
       match b {
         Empty => false
         Cons { head: hb, tail: tb } =>
-          (ha == hb) && list_targets_equal(a: ta, b: tb)
+          (ha == hb) && conj_positional_target_lists_equal(a: ta, b: tb)
       }
   }
 }
@@ -270,7 +270,7 @@ fn grammar_serialize_source_matches_row(
     bind_outcome(
       o: grammar_relation_row_tokens_root(row: row),
       f: fn(tokens_root) {
-        if list_targets_equal(
+        if conj_positional_target_lists_equal(
           a: conj_positional_targets(parent: serialize_source),
           b: conj_positional_targets(parent: tokens_root)
         ) {
