@@ -842,9 +842,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
-    // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules` +
-    // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
-    // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
+    // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules`,
+    // `v4_java_language_model_declares_t11_translation_rules`, `v4_typescript_language_model_declares_t11_translation_rules`,
+    // `v4_swift_language_model_declares_t11_translation_rules`, `v4_wasm_language_model_declares_t11_translation_rules`
+    // (T-11 five-way target grammar-relation parse surfaces, same harness file) — interim ratchet rows in INVARIANTS.md §SG-0.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",

@@ -31,7 +31,7 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Map, Set, list_append, list_snoc_item }
+import v4.std.collection { List, Map, Set, empty_map, list_append, list_snoc_item, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -1134,9 +1134,23 @@ fn rust_mvp1_target_model_node() -> Node {
   }
 }
 
+fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), rust_binding_fn_add, "add"),
+      rust_binding_param_x,
+      "x"
+    ),
+    rust_binding_param_y,
+    "y"
+  )
+}
+
 fn rust_mvp1_target_model() -> TargetModel {
   TargetModel {
     bundle: rust_mvp1_target_model_node(),
+    lex: rust_wave1_lex(),
+    binding_spellings: rust_mvp1_binding_spellings(),
     authority_source_text: rust_mvp1_source_text_authority()
   }
 }
@@ -1162,20 +1176,24 @@ fn rust_ident_lex_rule() -> LexRule {
   }
 }
 
+// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "fn " not "fn").
+// token_sequence_to_source concatenates spellings directly; the spaces here ARE the inter-token
+// spacing. This must be split into a separate layout field before forward-lex is wired for
+// these token classes (see Claude review 16906 secondary finding).
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn"),
+      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: "+"),
-      rust_lex_rule(token_class: rust_token_arrow, text: "->"),
-      rust_lex_rule(token_class: rust_token_lbrace, text: "{"),
-      rust_lex_rule(token_class: rust_token_rbrace, text: "}"),
+      rust_lex_rule(token_class: rust_token_plus, text: " + "),
+      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
       rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: rust_token_comma, text: ","),
-      rust_lex_rule(token_class: rust_token_colon, text: ":")
+      rust_lex_rule(token_class: rust_token_rparen, text: ") "),
+      rust_lex_rule(token_class: rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: rust_token_colon, text: ": ")
     ]
   }
 }
