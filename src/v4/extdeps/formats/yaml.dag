@@ -27,15 +27,12 @@ type YamlIntBase8Octal0oPrefixWitness {}
 
 type YamlIntBase16Hex0xPrefixWitness {}
 
-type YamlIntBase2Binary0bPrefixWitness {}
-
 type YamlIntOptionalSignPrefixWitness {}
 
 type YamlIntLexemeFacts {
   base10_decimal_form: YamlIntBase10DecimalFormWitness,
   base8_octal_0o_prefix: YamlIntBase8Octal0oPrefixWitness,
   base16_hex_0x_prefix: YamlIntBase16Hex0xPrefixWitness,
-  base2_binary_0b_prefix: YamlIntBase2Binary0bPrefixWitness,
   optional_sign_prefix: YamlIntOptionalSignPrefixWitness,
 }
 
