@@ -6,9 +6,18 @@
 
 module v4.test.claim.lens_synthesis.synthesis_gap_polynomial
 
-import v4.lens.synthesis { DecisionTree, synthesis_lens }
-import v4.std.algebra { fold_list_right, non_empty }
+import v4.lens.complexity { ComplexityBound, complexity_lens }
+import v4.lens.synthesis {
+  DecisionTree,
+  SynthesisGap,
+  SynthesisNoTechnique,
+  SynthesisOptimal,
+  assess_decision_tree,
+  synthesis_lens
+}
+import v4.std.algebra { non_empty }
 import v4.std.logic { Bool }
+import v4.std.witness { Holds, Violates }
 import v4.std.node {
   Atom,
   Cardinality,
@@ -87,20 +96,23 @@ data claim_synthesis_gap_polynomial: TestClaim = EqualsClaim {
 }
 
 // Pins the published ReportReason to SynthesisGapDecisionTree (addresses openai-pro Finding 4).
-// Returns synthesis_gap_poly_input iff the first report's reason IS SynthesisGapDecisionTree.
-// Uses fold_list_right (takes FreeMonoid<T>) rather than matching on List<T> directly;
-// List<T> = FreeMonoid<T> alias is transparent for fn args but not for match variant checks.
+// Bypasses List<T> to avoid bootstrap generic-T field-access limitation: r.reason fails when r
+// is a generic lambda param T even after T=Report is established. Calls assess_decision_tree
+// directly so r is bound from a concrete coproduct field (report: Report), not generic T.
 fn synthesis_gap_poly_first_reason_node() -> Node {
-  fold_list_right(
-    xs: synthesis_lens(n: synthesis_gap_poly_input, declared_technique: DecisionTree),
-    empty: synthesis_gap_poly_sentinel,
-    snoc: fn(acc, r) {
-      match r.reason {
-        SynthesisGapDecisionTree => synthesis_gap_poly_input
-        SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
+  match complexity_lens(n: synthesis_gap_poly_input) {
+    Violates { diagnostic: _ } => synthesis_gap_poly_sentinel
+    Holds { value: realization } =>
+      match assess_decision_tree(n: synthesis_gap_poly_input, realization: realization) {
+        SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
+          match r.reason {
+            SynthesisGapDecisionTree => synthesis_gap_poly_input
+            SynthesisGapInformationTheoretic => synthesis_gap_poly_sentinel
+          }
+        SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_poly_sentinel
+        SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_poly_sentinel
       }
-    }
-  )
+  }
 }
 
 data claim_synthesis_gap_poly_decision_tree_reason: TestClaim = EqualsClaim {
