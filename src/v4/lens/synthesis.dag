@@ -81,13 +81,11 @@ import v4.std.diagnostic {
   node_locus
 }
 import v4.std.node { Node, Symbol }
-import v4.std.report { Report, ReportReason }
+import v4.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 import v4.std.witness { Holds, Violates }
 
 
 data synthesis_no_technique_reason_symbol: Symbol = synthesis_no_technique_reason_symbol
-data synthesis_gap_decision_tree_reason_symbol: Symbol = synthesis_gap_decision_tree_reason_symbol
-data synthesis_gap_information_theoretic_reason_symbol: Symbol = synthesis_gap_information_theoretic_reason_symbol
 
 
 // 🟢 coproduct — closed set. STOP-and-escalate if a 6th variant is needed.
@@ -120,14 +118,6 @@ type SynthesisOutcome
       diagnostic: Diagnostic
     }
 
-
-fn synthesis_gap_decision_tree_reason() -> ReportReason {
-  synthesis_gap_decision_tree_reason_symbol
-}
-
-fn synthesis_gap_information_theoretic_reason() -> ReportReason {
-  synthesis_gap_information_theoretic_reason_symbol
-}
 
 fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -169,7 +159,7 @@ fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutco
       realization_cost: realization,
       lower_bound: decision_tree_declared_bound(n: n),
       report: Report {
-        reason: synthesis_gap_decision_tree_reason(),
+        reason: SynthesisGapDecisionTree,
         at: node_locus(node: n)
       }
     }
@@ -206,7 +196,7 @@ fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> Synthe
         realization_cost: realization,
         lower_bound: information_theoretic_declared_bound(n: n),
         report: Report {
-          reason: synthesis_gap_information_theoretic_reason(),
+          reason: SynthesisGapInformationTheoretic,
           at: node_locus(node: n)
         }
       }

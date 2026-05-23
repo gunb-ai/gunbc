@@ -1,28 +1,24 @@
 // src/v4/std/report.dag
 // Scope: advisory report carrier.
 // Anchor: docs/r4-carve-out-routing.md C7.
-// Owns: Report, ReportReason, ReportSuggestion.
-// Consumes: std diagnostic, std node.
-// Status: scaffold for T-17; advisory discipline in C7-REPORT.
+// Owns: Report, ReportReason.
+// Consumes: std diagnostic.
+// Status: T-17 filled.
 
 module v4.std.report
 
 
 import v4.std.diagnostic { Locus }
-import v4.std.node { Symbol }
 
 
-// 🟢 grounded — alias to Symbol (C7 advisory reason axis; closed set grows with T-17).
-type ReportReason = Symbol
+// 🟢 coproduct — closed set; disjoint from Diagnostic.reason (Symbol) per T-17 brief (TASKS.md:800).
+// STOP-and-escalate before adding a variant for a new advisory lens.
+type ReportReason
+  = SynthesisGapDecisionTree
+  | SynthesisGapInformationTheoretic
 
 // 🟢 grounded — advisory carrier; never Witness (INVARIANTS P3/C-8).
 type Report {
   reason: ReportReason
   at: Locus
-}
-
-// 🟢 grounded — optional human-facing detail without overloading Report.
-type ReportSuggestion {
-  report: Report
-  detail: Symbol
 }
