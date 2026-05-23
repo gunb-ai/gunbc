@@ -1,8 +1,8 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit.
+// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, CoordinationEffectObligation, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit, coordination_effect_obligation, wire_contract_obligation_table_t4_8.
 // Consumes: std/node.dag, std/collection.dag, std/nat.dag, std/network.dag.
-// Status: Modeled with tracked scaffolds.
+// Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows.
 
 module v4.extdeps.coordination
 
@@ -62,12 +62,64 @@ type ConsistencyGuarantee
   = NoReplicaConvergence
   | EventuallyConsistent { bound: ConvergeBound }
 
-// 🟡 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type CoordinationEffectKind
   = Http
   | Queue
   | Stream
   | PubSub
+
+type CoordinationEffectObligation {
+  effect: CoordinationEffectKind,
+  required_exchange: ExchangePattern,
+  required_settlement: SettlementGuarantee,
+  required_consistency: ConsistencyGuarantee
+}
+
+fn coordination_effect_obligation(effect: CoordinationEffectKind) -> CoordinationEffectObligation {
+  match effect {
+    Http => CoordinationEffectObligation {
+      effect: Http,
+      required_exchange: RequestReply,
+      required_settlement: ImmediateSettlement,
+      required_consistency: NoReplicaConvergence
+    }
+    Queue => CoordinationEffectObligation {
+      effect: Queue,
+      required_exchange: FireAndForget,
+      required_settlement: SettlesWithin { bound: SettleBound { steps: 1 } },
+      required_consistency: EventuallyConsistent { bound: ConvergeBound { steps: 1 } }
+    }
+    Stream => CoordinationEffectObligation {
+      effect: Stream,
+      required_exchange: StreamExchange,
+      required_settlement: SettlesWithin { bound: SettleBound { steps: 1 } },
+      required_consistency: EventuallyConsistent { bound: ConvergeBound { steps: 1 } }
+    }
+    PubSub => CoordinationEffectObligation {
+      effect: PubSub,
+      required_exchange: PublishSubscribe,
+      required_settlement: SettlesWithin { bound: SettleBound { steps: 1 } },
+      required_consistency: EventuallyConsistent { bound: ConvergeBound { steps: 1 } }
+    }
+  }
+}
+
+fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
+  Cons {
+    head: coordination_effect_obligation(effect: Http),
+    tail: Cons {
+      head: coordination_effect_obligation(effect: Queue),
+      tail: Cons {
+        head: coordination_effect_obligation(effect: Stream),
+        tail: Cons {
+          head: coordination_effect_obligation(effect: PubSub),
+          tail: Empty
+        }
+      }
+    }
+  }
+}
 
 // coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
 type BindRef {
