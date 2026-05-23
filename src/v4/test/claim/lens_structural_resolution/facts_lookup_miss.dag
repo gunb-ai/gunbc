@@ -85,16 +85,18 @@ fn sr_lookup_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 fn sr_lookup_resolved_facts() -> InferredFacts {
   let resolved = sr_lookup_claim_atom(s: sr_lookup_type_symbol)
   InferredFacts {
-    grounding: CanonicalGrounding {
-      node: resolved,
-      witness: sr_lookup_canonical_witness(resolved: resolved)
+    resolved_type: resolved,
+    inhabits: AlgebraRef {
+      algebra: sr_lookup_claim_atom(s: sr_lookup_algebra_symbol),
+      witness: sr_lookup_claim_atom(s: sr_lookup_algebra_witness_symbol)
     },
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
         strict: RankingDimension { measured: sr_lookup_descent_symbol }
       }
-    }
+    },
+    canonical: sr_lookup_canonical_witness(resolved: resolved)
   }
 }
 

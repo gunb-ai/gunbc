@@ -32,7 +32,6 @@ import v4.std.diagnostic {
 import v4.std.algebra { Empty }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
 import v4.std.constraints {
-  CanonicalGrounding,
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
@@ -81,17 +80,16 @@ data anchor_stub_canonical_witness: CanonicalGroundingWitness = CanonicalGroundi
 
 
 data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
-  grounding: CanonicalGrounding {
-    node: anchor_stub_empty_conj,
-    witness: anchor_stub_canonical_witness
-  },
+  resolved_type: anchor_stub_empty_conj,
+  inhabits: anchor_stub_algebra_ref,
   descent: Violates {
     diagnostic: Diagnostic {
       reason: anchor_stub_descent_not_derived,
       at: node_locus(node: anchor_stub_empty_conj),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
-  }
+  },
+  canonical: anchor_stub_canonical_witness
 }
 
 

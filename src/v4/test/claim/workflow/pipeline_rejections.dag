@@ -69,7 +69,6 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.constraints {
-  CanonicalGrounding,
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
@@ -258,24 +257,23 @@ fn workflow_inferred_algebra_ref() -> AlgebraRef {
 fn workflow_inferred_facts() -> InferredFacts {
   let resolved = pipeline_symbol_node(s: inferred_type_symbol)
   InferredFacts {
-    grounding: CanonicalGrounding {
-      node: resolved,
-      witness: CanonicalGroundingWitness {
-        structural: StructuralPropertyWitness {
-          property: constraint_property_being_canonical,
-          evidence: resolved
-        },
-        closedness: StructuralPropertyWitness {
-          property: constraint_property_candidate_set_closedness,
-          evidence: resolved
-        }
-      }
-    },
+    resolved_type: resolved,
+    inhabits: workflow_inferred_algebra_ref(),
     descent: Violates {
       diagnostic: Diagnostic {
         reason: inferred_descent_not_derived,
         at: node_locus(node: resolved),
         correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    },
+    canonical: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: constraint_property_being_canonical,
+        evidence: resolved
+      },
+      closedness: StructuralPropertyWitness {
+        property: constraint_property_candidate_set_closedness,
+        evidence: resolved
       }
     }
   }

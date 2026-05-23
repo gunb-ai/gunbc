@@ -21,7 +21,6 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
-  CanonicalGrounding,
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
@@ -82,16 +81,18 @@ fn sr_claim_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 fn sr_claim_facts() -> InferredFacts {
   let resolved = sr_claim_atom(s: sr_type_symbol)
   InferredFacts {
-    grounding: CanonicalGrounding {
-      node: resolved,
-      witness: sr_claim_canonical_witness(resolved: resolved)
+    resolved_type: resolved,
+    inhabits: AlgebraRef {
+      algebra: sr_claim_atom(s: sr_algebra_symbol),
+      witness: sr_claim_atom(s: sr_algebra_witness_symbol)
     },
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
         strict: RankingDimension { measured: sr_descent_symbol }
       }
-    }
+    },
+    canonical: sr_claim_canonical_witness(resolved: resolved)
   }
 }
 
