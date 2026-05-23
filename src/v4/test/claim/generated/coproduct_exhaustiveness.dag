@@ -16,7 +16,7 @@ import v4.lens.testgen {
   testgen_scheduled_coproduct_exhaustiveness_generators
 }
 import v4.std.algebra { length }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.verification {
