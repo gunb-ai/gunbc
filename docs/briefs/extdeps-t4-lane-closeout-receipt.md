@@ -35,7 +35,7 @@ Both headers claim **T-4.5 modeled 2026-05-16** with POSIX anchors; `file_system
 
 ### T-4.7 / T-4.8
 
-- `frameworks/react.dag` — explicit **scaffold** (“fill per TASKS.md T-4.7”).
+- `frameworks/react.dag` — **superseded after this receipt**: T-4.7 landed via PR #3206 / `31a23422a` with `v4_extdeps_react_dag` passing; treat the dependency as satisfied for T-4.8 coordination.
 - `coordination.dag` — **Modeled with tracked scaffolds** (B3 row in `DECISIONS.md` still relevant).
 
 ### T-4.9 … T-4.14 (stress / probe lanes)
