@@ -241,7 +241,7 @@ jobs:
         V4_BOOTSTRAP_COMPILER_EXIT="${{ steps.v4_bootstrap_compile.outputs.exitcode }}" \
           bash scripts/v4-bootstrap-resolve-posture-gate.sh
     - name: v4 bootstrap gate result (compile or tracked bridge)
-      if: always() && needs.affected.outputs.v4 == 'true'
+      if: always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'
       run: |
         set -euo pipefail
         if [[ "${{ steps.v4_bootstrap_compile.outcome }}" == "success" ]]; then
