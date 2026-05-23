@@ -33,7 +33,7 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Map, Set, list_append, list_snoc_item, map_insert }
+import v4.std.collection { List, Map, Set, empty_map, list_append, list_snoc_item, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
