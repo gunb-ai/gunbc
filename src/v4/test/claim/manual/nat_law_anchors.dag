@@ -6,10 +6,8 @@
 
 module v4.test.claim.manual.nat_law_anchors
 
-import v4.std.verification {
-  TestClaim,
-  Compiles,
-  TestClassification,
+import v4.std.verification {TestClaim,
+TestClassification,
   Tier1,
   Unit,
   T19ManualNatAddLeftIdentity,
@@ -17,68 +15,67 @@ import v4.std.verification {
   T19ManualNatAddAssociativity,
   T19ManualNatMulLeftIdentity,
   T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity
+  T19ManualNatMulAssociativity,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  t19_manual_claim_anchor
 }
 import v4.std.diagnostic { Accepted, None, Outcome }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 // RULING-1: 🟡 needs-more-work — stub claims; law-shaped nodes later
 
-data claim_nat_add_left_identity: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_nat_add_left_identity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid left identity nat_add(Zero,a)=a (law)",
-  t19_anchor: T19ManualNatAddLeftIdentity,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualNatAddLeftIdentity),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_nat_add_right_identity: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_nat_add_right_identity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid right identity nat_add(a,Zero)=a (law)",
-  t19_anchor: T19ManualNatAddRightIdentity,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualNatAddRightIdentity),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_nat_add_associativity: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_nat_add_associativity: TestClaim = CompilesClaim {
   label: "manual/nat: monoid associativity nat_add(nat_add(a,b),c)=nat_add(a,nat_add(b,c)) (law)",
-  t19_anchor: T19ManualNatAddAssociativity,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualNatAddAssociativity),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_nat_mul_left_identity: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_nat_mul_left_identity: TestClaim = CompilesClaim {
   label: "manual/nat: multiplicative monoid identity nat_mul(one,a)=a where one is Succ-of-Zero (law)",
-  t19_anchor: T19ManualNatMulLeftIdentity,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualNatMulLeftIdentity),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_nat_mul_annihilator: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_nat_mul_annihilator: TestClaim = CompilesClaim {
   label: "manual/nat: semiring zero annihilator nat_mul(Zero,a)=Zero (law)",
-  t19_anchor: T19ManualNatMulAnnihilator,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualNatMulAnnihilator),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_nat_mul_associativity: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_nat_mul_associativity: TestClaim = CompilesClaim {
   label: "manual/nat: multiplicative monoid associativity (law)",
-  t19_anchor: T19ManualNatMulAssociativity,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualNatMulAssociativity),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

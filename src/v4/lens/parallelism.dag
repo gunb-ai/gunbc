@@ -1,112 +1,144 @@
 // src/v4/lens/parallelism.dag
-//
-// Scope: parallelism lens — independence visible in dependency-graph
-//        structure. A THESIS free consequence (THESIS:208 "automatic
-//        parallelism from dependency graph"; same family as auto-
-//        memoization + incremental cross-run, THESIS:208-210) — it FALLS
-//        OUT of purity (no hidden state) + bounded execution (A2) + the
-//        explicit IR dep graph. It is a LENS over that physics, never a
-//        `@parallel` annotation or a scheduling pass (feedback_lenses_not
-//        _passes, feedback_no_annotations).
-// Anchor: https://en.wikipedia.org/wiki/Dataflow_programming (DAG model)
-//
-// EXPECTATIONS — what the lens is and is NOT (operator-ratified 2026-05-15):
-//
-//   It reports the independence FACT, not a spawn decision. The lens
-//   answer is target-AGNOSTIC (feedback_target_agnostic_ir): independence
-//   is a property of the IR dep graph + effects, identical whether you
-//   emit Rust, Python, CUDA, or run eval. WHETHER/HOW to realize it as
-//   actual parallel execution is target-DEPENDENT and is NOT this lens —
-//   it is a cost-derived realization decision (U1/U2 cost spine, per-
-//   target realization from extdeps/languages/<t>) taken at emit (T-11)
-//   / eval (T-22). Same ParallelismMap → different realizations; the
-//   lens never changes, only the cost-realize step does. "independent ⇒
-//   spawn" would be the heuristic this discipline forbids.
-//
-//   Does it depend on the emission target?  FACT: no.  REALIZATION: yes.
-//
-// USER-FACING CONTRACT — how a person actually uses this (operator-
-// ratified 2026-05-15: "it must be well understood by the user"):
-//
-//   It is NOT a "parallelize my code please" command. That framing is
-//   forbidden — a magic auto-parallelize transform is engine-shaped from
-//   the user's seat. It is a LENS the user READS, same UX category as
-//   complexity/cost: "what is independent, and WHY" — answered
-//   structurally ("disjoint pure inputs" / "⊕ is a Monoid" / "shares
-//   Write(file)"), or a precise fail-closed Diagnostic when not (e.g.
-//   "not a parallel-reduce: ⊕ does not inhabit a Monoid"). Never silent,
-//   never a guess.
-//
-//   The user's CONTROL SURFACE is structure, not a knob: you make work
-//   parallel by writing it independent + pure (the language already
-//   requires this); the lens confirms it or explains why-not. There is
-//   NO `@parallel` annotation; the user is never surprised.
-//
-//   Default = introspective/advisory: the fact is readable; the compiler
-//   realizes parallelism at the target ONLY where the cost model says it
-//   wins, and that realize-decision is itself derived + INSPECTABLE per
-//   target (the user can ask "will this parallelize for Rust?" and get
-//   the cost reasoning; for CPython it answers "no — GIL, no win",
-//   derived, never silent magic).
-//
-//   Guarantee = `apply_lens(parallelism, Enforce { ... })` (T-23, the
-//   uniform opt-in-depth bridge — same pattern as complexity/effects/
-//   synthesis, nothing new to learn): turns the structural fact into a
-//   fail-closed contract — e.g. "this MUST remain a parallel-reduce" →
-//   a later edit that breaks `⊕`'s associativity is a COMPILE ERROR, not
-//   a silent perf regression. (This opt-in contract is orthogonal to the
-//   lens read being a fail-closed `Witness` — the FACT is always
-//   derivable; Enforce is the user asserting a contract OVER it.)
-//
-// WORKED EXAMPLES (design contract — the worker fills to satisfy these):
-//
-//   A. Pure independence (the fact). `x=f(a); y=g(b); z=h(x,y)`, a/b
-//      disjoint, f/g pure → map: `{f ∥ g} then h`. Target-agnostic.
-//
-//   B. Effect coupling defeats structural independence (why effect.dag
-//      is consumed). `p=log(file,"A"); q=log(file,"B")` — Node-disjoint,
-//      but the effect lens reports both `Write(file)`. NOT independent
-//      (order/atomicity). Structural disjointness is NECESSARY, not
-//      SUFFICIENT — independence = structural ∧ effect-independent.
-//
-//   C. Same fact, target-dependent realization. `map(pure_f, big_list)`
-//      → lens: `ParallelMap` (all elements independent), one answer.
-//      Realization (cost-lens, per target, NOT this lens):
-//        Rust  → rayon par_iter iff parallel-cost < seq (derived)
-//        Python(CPython) → threads give NO win (GIL); realize = no, or
-//                multiprocessing iff per-elem work ≫ IPC cost (derived)
-//        Go    → goroutines (cheap; lower threshold)
-//        CUDA/PTX → the map IS a kernel (independence ↦ grid/block)
-//        Verilog → independence = literal spatial hardware parallelism
-//      Identical ParallelismMap; five cost-derived realizations.
-//
-//   D. Fold parallelizability is an ALGEBRA fact, not a guess. `fold(xs,
-//      e, ⊕)`: if `⊕` inhabits a Monoid (per std/algebra.dag inhabitance)
-//      → associative → `ParallelReduce` (tree). If non-associative (e.g.
-//      subtraction) → sequential chain, no independence. The lens READS
-//      std/algebra.dag; "is this reducible in parallel" is answered by
-//      inhabitance, never heuristically.
-//
-// Owns:
-//   - lens read: Node -> Witness<ParallelismMap>  (the independence FACT;
-//     target-agnostic; fail-closed — unknown effect/algebra ⇒ Diagnostic,
-//     never an optimistic "assume independent")
-//   - independence = structural-disjointness ∧ effect-independence
-//     ∧ (for folds) combiner-associativity-by-inhabitance. NO scheduling
-//     heuristic; NO spawn decision (that is the cost-realize step elsewhere).
-//
-// Consumes:
-//   - std/node.dag, std/witness.dag
-//   - lens/effect.dag — B3 effect-independence (structural disjointness is
-//     necessary not sufficient; example B). The single effect authority.
-//   - std/algebra.dag — combiner associativity via inhabitance (example D;
-//     parallel-reduce is an algebra fact, not a heuristic)
-//
-// Status: scaffold — fill per TASKS.md T-13
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
+// Owns: ParallelismRelation, ParallelismFact, parallelism_witness.
+// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; no copied endpoints, no parallel substrate (Practice 11 sub-rule: parallel-payload vs typed-reference).
 
 
 module v4.lens.parallelism
 
+import v4.compiler.infer { InferredTree }
+import v4.std.collection { List }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  ClassifiedDependencyView,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
+  classified_dependency_view_eq
+}
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 lens-specific classification; endpoints live on the inner DependencyView.
+type ParallelismRelation
+  = DataDependent
+  | EffectCoupled
+  | BarrierCoupled
+  | UnknownCoupling
+
+type ParallelismFact {
+  dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
+}
+
+fn parallelism_relation_for_dependency(view: DependencyView) -> ParallelismRelation {
+  match view.kind {
+    Contains => DataDependent
+    BindsTo => DataDependent
+    DataDependsOn => DataDependent
+    EffectDependsOn => EffectCoupled
+    ResourceDependsOn => EffectCoupled
+    BarrierBefore => BarrierCoupled
+    TypeDependsOn => UnknownCoupling
+    ModuleDependsOn => UnknownCoupling
+    PlacementDependsOn => UnknownCoupling
+    ModelDependsOn => UnknownCoupling
+    ProjectionDependsOn => UnknownCoupling
+    GeneratedFrom => UnknownCoupling
+    VerifiedBy => UnknownCoupling
+    PromotedBy => UnknownCoupling
+    BootstrapDependsOn => UnknownCoupling
+  }
+}
+
+fn parallelism_classify(view: DependencyView) -> ClassifiedDependencyView<ParallelismRelation> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: parallelism_relation_for_dependency(view: view)
+  }
+}
+
+fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
+  ParallelismFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, parallelism_classify(view: view))
+    })
+  }
+}
+
+fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
+  Holds {
+    value: parallelism_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn parallelism_relation_eq(a: ParallelismRelation, b: ParallelismRelation) -> Bool {
+  match a {
+    DataDependent => match b {
+      DataDependent => true
+      _ => false
+    }
+    EffectCoupled => match b {
+      EffectCoupled => true
+      _ => false
+    }
+    BarrierCoupled => match b {
+      BarrierCoupled => true
+      _ => false
+    }
+    UnknownCoupling => match b {
+      UnknownCoupling => true
+      _ => false
+    }
+  }
+}
+
+fn parallelism_classified_eq(
+  a: ClassifiedDependencyView<ParallelismRelation>,
+  b: ClassifiedDependencyView<ParallelismRelation>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
+}
+
+fn parallelism_dependency_count(
+  xs: List<ClassifiedDependencyView<ParallelismRelation>>,
+  item: ClassifiedDependencyView<ParallelismRelation>
+) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if parallelism_classified_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn parallelism_dependency_facts_eq(
+  left: List<ClassifiedDependencyView<ParallelismRelation>>,
+  right: List<ClassifiedDependencyView<ParallelismRelation>>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (parallelism_dependency_count(xs: left, item: item) == parallelism_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
+  parallelism_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}

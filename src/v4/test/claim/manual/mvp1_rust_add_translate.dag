@@ -1,0 +1,63 @@
+// src/v4/test/claim/manual/mvp1_rust_add_translate.dag
+// Scope: MVP-1 T-10 receipt — structural TestClaim anchors for translate/emit substrate.
+// Owns: mvp_add_arrow_node, claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles.
+// Consumes: compiler/05_emit.dag, compiler/06_translate.dag, std/verification.dag, std/diagnostic.dag, std/node.dag.
+// Status: parse-surface receipt; full InferredTree(add)->Accepted emit remains blocked on compiler-stage canonical grounding and target serialization scaffolds.
+// Anchor: docs/design-v4-compiler-homomorphism.md MVP-1 worked example.
+
+
+module v4.test.claim.manual.mvp1_rust_add_translate
+
+
+import v4.compiler.emit { emit }
+import v4.compiler.translate { translate }
+import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.std.node {
+  Atom,
+  Arrow,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v4.std.verification {T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
+data mvp_add_int_atom: Symbol = mvp_add_int_atom
+fn mvp_int_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: mvp_add_int_atom } },
+    children: []
+  }
+}
+data mvp_add_arrow_node: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: mvp_int_node() },
+    Edge { label: Positional, target: mvp_int_node() },
+    Edge { label: Positional, target: mvp_int_node() }
+  ]
+}
+data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/mvp1: translate stage module + coercion_fold call-site compiles",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: mvp_add_arrow_node,
+  expected_value: mvp_add_arrow_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
+  label: "manual/mvp1: emit stage module (serialize_target o translate) compiles",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: mvp_add_arrow_node,
+  expected_value: mvp_add_arrow_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -30,6 +30,7 @@ const EXPECTED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[
     ("coverage_defect_canonical_carrier", "CanonicalCarrier"),
     ("coverage_defect_plausible_fallback", "PlausibleFallback"),
     ("coverage_defect_parallel_authority", "ParallelAuthority"),
+    ("coverage_defect_skeleton_collapse", "SkeletonCollapse"),
 ];
 
 const RETIRED_ACCEPTANCE_ROWS: &[(&str, &str)] = &[

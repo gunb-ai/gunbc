@@ -74,6 +74,9 @@ type EmitGraphInfo {
   // Used by pattern emission to decide Variant vs Variant { .. }.
   // Keys are "EnumName::VariantName" for variants that carry fields.
   fielded_variants: Set<String>
+  // Tuple-payload variants (synthetic field "0" at parse). Pattern/ctor emission
+  // uses tuple syntax; bare scrutinee patterns need a payload slot (e.g. NodeAt(_)).
+  positional_payload_variants: Set<String>
   // Per-type sharing decision: type names that need shared-pointer
   // wrapping (Rc in Rust). Computed from type_summaries ×
   // recursive_type_set. The Rust emitter also adds collection types.
@@ -117,6 +120,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
+    positional_payload_variants: empty_set(),
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),
@@ -135,6 +139,11 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
   let key = concat(enum_name, "::", variant_name)
   set_contains(emit_info.fielded_variants, key)
+}
+
+// Per-variant type_summaries and emit facts use EnumName::VariantName, not bare variant.
+fn variant_summary_key(enum_name: String, variant_name: String) -> String {
+  concat(enum_name, "::", variant_name)
 }
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
@@ -365,8 +374,9 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
                 }
               )
               let vname = authored_name_at(source_indices: source_indices, node: variant)
-              map_insert(acc, vname, TypeSummary {
-                name: vname,
+              let qualified_vname = variant_summary_key(enum_name: summary.name, variant_name: vname)
+              map_insert(acc, qualified_vname, TypeSummary {
+                name: qualified_vname,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),
                 field_type_map: build_field_type_map(children: variant.children, source_indices: source_indices),

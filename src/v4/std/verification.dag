@@ -1,26 +1,46 @@
 // src/v4/std/verification.dag
-// Scope: Closed TestClaim schema — AssertKind, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, TestClaim fields.
-// Owns: AssertKind TestgenTier TestgenLayer TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
+// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, T19GeneratedAnchorKey, T19ClaimAnchorKey.
+// Owns: TestClassification ImpossibleBugClass TestClaimCoproductVariant T19ManualAnchorKey T19GeneratedAnchorKey T19ClaimAnchorKey TestClaim
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
 
 
-import v4.std.node { Node }
+import v4.std.algebra { Empty, any, fold_list }
+import v4.std.collection { List, list_append, list_snoc_item }
+import v4.std.node { Node, NodeFold, Symbol, fold_node }
 import v4.std.diagnostic {
-  Outcome
+  Accepted,
+  Correction,
+  Diagnostic,
+  Extent,
+  Locus,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  PortLocus,
+  Outcome,
+  Rejected,
+  Suggested,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
 }
 
 
-// RULING-1: pretty-much-done — closed TestClaim assertion kind set.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type AssertKind
-// 🟢 coproduct dissolution — LB-P4-3212
-  = Equals
-  | DiagnosticAssert
-  | Compiles
-  | RoundTrips
+data v4_std_verification_file: Symbol = v4_std_verification_file
+data test_claim_expected_outcome_undeclared: Symbol = test_claim_expected_outcome_undeclared
+
+
+fn test_claim_expected_outcome_undeclared_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: test_claim_expected_outcome_undeclared,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
 
 
 // RULING-1: pretty-much-done — closed TestClaim tier set.
@@ -70,6 +90,11 @@ type T19ManualAnchorKey
   | T19ManualTcArrowTwoConj
   | T19ManualTcCardinalityEmpty
   | T19ManualTcInstantiationEmpty
+  | T19ManualTcArrowEmpty
+  | T19ManualTcTransformEmpty
+  | T19ManualTcBranchEmpty
+  | T19ManualTcLoopEmpty
+  | T19ManualTcBindZeroChildren
   | T19ManualTcConjEqualsRefl
   | T19ManualNatAddLeftIdentity
   | T19ManualNatAddRightIdentity
@@ -77,16 +102,240 @@ type T19ManualAnchorKey
   | T19ManualNatMulLeftIdentity
   | T19ManualNatMulAnnihilator
   | T19ManualNatMulAssociativity
+  | T19ManualLbeConjDagSurface
+  | T19ManualLbeDisjDagSurface
+  | T19ManualLbeTransformDagSurface
+  | T19ManualRefinementNonEmptyListBase
   | T19ManualAnchorAbsent
 
 
-// RULING-1: pretty-much-done — core TestClaim carrier; receipts live beside claim rows.
-type TestClaim {
-  kind: AssertKind
-  label: String
-  t19_anchor: T19ManualAnchorKey
-  input: Node
-  expected: Outcome<Node>
-  classification: TestClassification
+// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
+type TestClaimCoproductVariant
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+  = TestClaimCompilesClaimVariant
+  | TestClaimDiagnosticClaimVariant
+  | TestClaimEqualsClaimVariant
+  | TestClaimRoundTripClaimVariant
+
+
+type T19GeneratedAnchorKey
+  = T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
+
+
+// RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this union when generated TestClaim corpora use a type that does not share t19_anchor with manual rows.
+type T19ClaimAnchorKey
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+  = T19ManualClaimAnchor { manual_anchor: T19ManualAnchorKey }
+  | T19GeneratedClaimAnchor { generated_anchor: T19GeneratedAnchorKey }
+
+
+// RULING-1: pretty-much-done — assertion shape is the variant tag (Practice 4).
+// 🟢 coproduct dissolution — LB-P4-3212.
+type TestClaim
+// 🟢 coproduct dissolution — LB-P4-3212
+  = CompilesClaim {
+      label: String
+      t19_anchor: T19ClaimAnchorKey
+      input: Node
+      expected_value: Node
+      classification: TestClassification
+    }
+  | DiagnosticClaim {
+      label: String
+      t19_anchor: T19ClaimAnchorKey
+      input: Node
+      expected_rejection: NonEmptyDiagnostics
+      classification: TestClassification
+    }
+  | EqualsClaim {
+      label: String
+      t19_anchor: T19ClaimAnchorKey
+      lhs: Node
+      rhs: Node
+      classification: TestClassification
+    }
+  | RoundTripClaim {
+      label: String
+      t19_anchor: T19ClaimAnchorKey
+      input: Node
+      classification: TestClassification
+    }
+
+
+fn test_claim_input(c: TestClaim) -> Node {
+  match c {
+    CompilesClaim { input: n, label: _, t19_anchor: _, expected_value: _, classification: _ } => n
+    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_rejection: _, classification: _ } => n
+    EqualsClaim { lhs: n, label: _, t19_anchor: _, rhs: _, classification: _ } => n
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } => n
+  }
 }
 
+
+fn locus_evaluation_nodes(at: Locus) -> List<Node> {
+  match at {
+    NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
+    Textual { file: _, extent: _ } => Empty
+    PortLocus { anchor: _ } => Empty
+  }
+}
+
+
+fn correction_evaluation_nodes(c: Correction) -> List<Node> {
+  match c {
+    Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
+    Unavailable { reason: _ } => Empty
+  }
+}
+
+
+fn diagnostic_evaluation_nodes(d: Diagnostic) -> List<Node> {
+  list_append(
+    left: locus_evaluation_nodes(at: d.at),
+    right: correction_evaluation_nodes(c: d.correction)
+  )
+}
+
+
+fn diagnostic_list_evaluation_nodes(ds: List<Diagnostic>) -> List<Node> {
+  fold_list(
+    xs: ds,
+    empty: Empty,
+    cons: fn(acc, d) {
+      list_append(left: acc, right: diagnostic_evaluation_nodes(d: d))
+    }
+  )
+}
+
+
+fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> {
+  list_append(
+    left: diagnostic_evaluation_nodes(d: d.head),
+    right: diagnostic_list_evaluation_nodes(ds: d.tail)
+  )
+}
+
+
+// All Nodes whose mutation invalidates claim evaluation (IRT-4 / CI rerun frontier).
+fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
+  match c {
+    EqualsClaim { lhs: l, rhs: r, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+    CompilesClaim { input: n, expected_value: e, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
+    DiagnosticClaim { input: n, expected_rejection: e, label: _, t19_anchor: _, classification: _ } =>
+      list_append(
+        left: list_snoc_item(xs: Empty, item: n),
+        right: non_empty_diagnostics_evaluation_nodes(d: e)
+      )
+    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
+      list_snoc_item(xs: Empty, item: n)
+  }
+}
+
+
+fn node_subtree_nodes(root: Node) -> List<Node> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: fn(self) { list_snoc_item(xs: Empty, item: self) },
+      step: fn(acc, edge, sub) {
+        list_snoc_item(xs: list_append(left: acc, right: sub), item: edge.target)
+      }
+    }
+  )
+}
+
+
+fn node_in_subtree_by_identity(root: Node, needle: Node) -> Bool {
+  any(
+    xs: node_subtree_nodes(root: root),
+    predicate: fn(member) { member == needle }
+  )
+}
+
+
+// Consume affected-set rerun nodes directly: frontier root equality or frontier node inside evaluation tree.
+fn test_claim_evaluation_node_touches_frontier(n: Node, frontier: List<Node>) -> Bool {
+  any(
+    xs: frontier,
+    predicate: fn(f) {
+      (n == f) || node_in_subtree_by_identity(root: n, needle: f)
+    }
+  )
+}
+
+
+fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Node>) -> Bool {
+  any(
+    xs: test_claim_evaluation_nodes(c: c),
+    predicate: fn(n) { test_claim_evaluation_node_touches_frontier(n: n, frontier: frontier) }
+  )
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v4.workflow.ci ci_select_from_rerun_nodes — bind TASKS.md T-24 — dissolve-on-arrival: delete when workflow/ci.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
+fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
+  match c {
+    DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      true
+    CompilesClaim { label: _, t19_anchor: _, input: _, expected_value: _, classification: _ } =>
+      false
+    EqualsClaim { label: _, t19_anchor: _, lhs: _, rhs: _, classification: _ } => false
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } => false
+  }
+}
+
+fn test_claim_t19_anchor(c: TestClaim) -> T19ClaimAnchorKey {
+  match c {
+    CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
+    DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
+    EqualsClaim { t19_anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    RoundTripClaim { t19_anchor: k, label: _, input: _, classification: _ } => k
+  }
+}
+
+fn t19_manual_claim_anchor(anchor: T19ManualAnchorKey) -> T19ClaimAnchorKey {
+  T19ManualClaimAnchor { manual_anchor: anchor }
+}
+
+fn t19_generated_claim_anchor(anchor: T19GeneratedAnchorKey) -> T19ClaimAnchorKey {
+  T19GeneratedClaimAnchor { generated_anchor: anchor }
+}
+
+fn test_claim_classification(c: TestClaim) -> TestClassification {
+  match c {
+    CompilesClaim { classification: c, label: _, t19_anchor: _, input: _, expected_value: _ } => c
+    DiagnosticClaim { classification: c, label: _, t19_anchor: _, input: _, expected_rejection: _ } => c
+    EqualsClaim { classification: c, label: _, t19_anchor: _, lhs: _, rhs: _ } => c
+    RoundTripClaim { classification: c, label: _, t19_anchor: _, input: _ } => c
+  }
+}
+
+// Projects declared expected outcomes only. RoundTripClaim has no expected-outcome field;
+// eval authority (05_eval.dag) routes it to Deferred — do not synthesize an Outcome<Node> here.
+fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
+  match c {
+    CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: e, diagnostics: None },
+        diagnostics: None
+      }
+    DiagnosticClaim { expected_rejection: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+      Accepted {
+        value: Rejected { diagnostics: e },
+        diagnostics: None
+      }
+    EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
+      Accepted {
+        value: Accepted { value: r, diagnostics: None },
+        diagnostics: None
+      }
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
+      }
+  }
+}

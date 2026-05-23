@@ -17,7 +17,7 @@ module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
 import std.types { Timestamp, Url, HttpMethod, AuthScheme }
-import std.errors { GitHubErrorShape }
+import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { WireFormat, Text }
 

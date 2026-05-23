@@ -1,0 +1,112 @@
+// src/v4/std/model_core.dag
+// Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
+// Consumes: v4.std.collection, v4.std.node
+// Status: T-33 modeled.
+
+
+module v4.std.model_core
+
+
+import v4.std.collection { List, Map }
+import v4.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile
+}
+import v4.std.node { Node, Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+
+data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
+data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
+// 🟡 needs-more-work — feature:primitive-fact-axis-range-unbound — scaffold:T-33-model-core · dissolve-on: rust.dag (or any LanguageModel extdep) gains a per-primitive range source carrier (e.g. range_min/range_max fields on RustIntegerPrimitiveFacts) and binds this axis in spec_facts (ledger: T-33 · TASKS.md § T-33)
+data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
+data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
+data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_spelling
+data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_overflow_disposition
+
+
+type PrimitiveFactBundle {
+  substrate_carrier: Node
+  spec_facts: Map<Symbol, Node>
+}
+
+
+data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound_reason
+
+
+fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: primitive_fact_axis_unbound_reason,
+    at: Textual { file: axis, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+type AlgebraInhabitanceDecl {
+  algebra: Node
+  inhabitant: Node
+  witness: Node
+}
+
+
+type AlgebraLawObligation {
+  inhabitance_witness: Node
+  law: Node
+}
+
+
+type PrimitiveOperationRef {
+  operation: Node
+  effect_signature: Node
+}
+
+
+// 🟡 needs-more-work — feature:model-core-effect-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) binds EffectSemanticsDecl.operations when first PrimitiveOperationRef carries non-trivial effect (ledger: T-33 · TASKS.md § T-33)
+type EffectSemanticsDecl {
+  operations: List<PrimitiveOperationRef>
+}
+
+
+type PartialOperationDecl {
+  operation: Node
+  precondition: Node
+  discharge: PartialityDischarge
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PartialityDischarge
+  = FailClosedAtBoundary { reason: Symbol }
+  | RefinementHonoring { validation: Node }
+
+
+// 🟡 needs-more-work — feature:model-core-partiality-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) populates PartialitySemanticsDecl.operations per operator partiality substrate (ledger: T-33 · TASKS.md § T-33)
+type PartialitySemanticsDecl {
+  operations: List<PartialOperationDecl>
+}
+
+
+type ModelCore {
+  primitives: List<PrimitiveFactBundle>
+  inhabitance: List<AlgebraInhabitanceDecl>
+  laws: List<AlgebraLawObligation>
+  effects: EffectSemanticsDecl
+  partiality: PartialitySemanticsDecl
+}
+
+
+// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: LanguageModel or concrete runtime extdep carries first non-empty ModelCore (T-4 / T-34)
+fn wave1_void() -> ModelCore {
+  ModelCore {
+    primitives: [],
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}

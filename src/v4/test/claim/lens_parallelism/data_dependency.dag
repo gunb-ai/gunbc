@@ -1,0 +1,101 @@
+// src/v4/test/claim/lens_parallelism/data_dependency.dag
+// Scope: T-13 worked claim — DataDependsOn classifies as DataDependent over `ClassifiedDependencyView<ParallelismRelation>`.
+// Owns: parallelism_data_dependency_claim.
+// Consumes: lens parallelism, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
+
+module v4.test.claim.lens_parallelism.data_dependency
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.parallelism {
+  DataDependent,
+  ParallelismFact,
+  parallelism_fact_eq,
+  parallelism_witness
+}
+import v4.std.dependency {
+  ClassifiedDependencyView,
+  DataDependsOn,
+  DependencyView
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data parallelism_root_symbol: Symbol = parallelism_root_symbol
+data parallelism_child_symbol: Symbol = parallelism_child_symbol
+data parallelism_edge_symbol: Symbol = parallelism_edge_symbol
+data parallelism_type_symbol: Symbol = parallelism_type_symbol
+data parallelism_algebra_symbol: Symbol = parallelism_algebra_symbol
+data parallelism_algebra_witness_symbol: Symbol = parallelism_algebra_witness_symbol
+data parallelism_descent_symbol: Symbol = parallelism_descent_symbol
+data parallelism_canonical_structural_symbol: Symbol = parallelism_canonical_structural_symbol
+data parallelism_canonical_closedness_symbol: Symbol = parallelism_canonical_closedness_symbol
+data parallelism_canonical_evidence_symbol: Symbol = parallelism_canonical_evidence_symbol
+
+data parallelism_child: Node = claim_atom_node(s: parallelism_child_symbol)
+
+data parallelism_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: parallelism_root_symbol } },
+  children: [
+    Edge { label: Named { name: parallelism_edge_symbol }, target: parallelism_child }
+  ]
+}
+
+data parallelism_dependency: DependencyView = DependencyView {
+  source: parallelism_root,
+  dependent: parallelism_child,
+  kind: DataDependsOn,
+  usage_site: parallelism_child
+}
+
+fn parallelism_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: parallelism_type_symbol,
+    algebra_symbol: parallelism_algebra_symbol,
+    algebra_witness_symbol: parallelism_algebra_witness_symbol,
+    descent_symbol: parallelism_descent_symbol,
+    canonical_structural_symbol: parallelism_canonical_structural_symbol,
+    canonical_closedness_symbol: parallelism_canonical_closedness_symbol,
+    canonical_evidence_symbol: parallelism_canonical_evidence_symbol
+  )
+}
+
+fn parallelism_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: parallelism_root, facts: parallelism_claim_facts())
+}
+
+type LensParallelismClaim {
+  input: InferredTree
+  expected: ParallelismFact
+  actual: Witness<ParallelismFact>
+}
+
+data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismClaim {
+  input: parallelism_claim_tree(),
+  expected: ParallelismFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: parallelism_dependency,
+        classification: DataDependent
+      }
+    ]
+  },
+  actual: parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_dependency])
+}
+
+fn parallelism_data_dependency_claim_holds() -> Bool {
+  match parallelism_data_dependency_claim.actual {
+    Holds { value: actual } =>
+      parallelism_fact_eq(a: actual, b: parallelism_data_dependency_claim.expected)
+    _ => false
+  }
+}
+
+data parallelism_data_dependency_claim_passes: Bool = parallelism_data_dependency_claim_holds()

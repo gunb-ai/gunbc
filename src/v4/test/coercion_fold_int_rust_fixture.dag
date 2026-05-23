@@ -1,13 +1,14 @@
 // src/v4/test/coercion_fold_int_rust_fixture.dag
-// Scope: Wave-2-BC3 synthetic single-candidate coercion_fold structural receipt (not rust.dag authority).
+// Scope: Wave-2-BC3 coercion_fold receipt wiring int source to rust.dag i32 inhabitant.
 // Owns: int_source_grounding_fixture, rust_i32_candidate_fixture, coercion_fold_int_to_i32_fixture.
-// Consumes: v4.std.coercion, v4.std.constraints, v4.std.find_witness, v4.std.integer.
-// Status: synthetic scaffold — dissolve-on: W-T-10 replaces fixture atoms with extdeps/languages/rust declarations.
+// Consumes: v4.extdeps.languages.rust, v4.std.coercion, v4.std.constraints, v4.std.find_witness, v4.std.integer.
+// Status: structural receipt — rust_inhabitant_i32_node authority in extdeps/languages/rust.dag.
 
 
 module v4.test.coercion_fold_int_rust_fixture
 
 
+import v4.extdeps.languages.rust { rust_inhabitant_i32_node }
 import v4.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -22,7 +23,6 @@ import v4.std.find_witness { CandidateSet, TargetDeclaredPriority }
 import v4.std.integer { Int }
 import v4.std.node {
   Atom,
-  Conj,
   Node,
   Symbol,
   TypeNode
@@ -30,20 +30,10 @@ import v4.std.node {
 import v4.std.witness { StructuralPropertyWitness }
 data fixture_int_atom: Symbol = fixture_int_atom
 data fixture_property_closed_candidates: Symbol = fixture_property_closed_candidates
-data fixture_rust_i32_atom: Symbol = fixture_rust_i32_atom
+data fixture_property_candidate_set_closedness: Symbol = fixture_property_candidate_set_closedness
 fn int_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: fixture_int_atom } },
-    children: []
-  }
-}
-fn rust_i32_inhabitant_node() -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Atom {
-        identity: fixture_rust_i32_atom
-      }
-    },
     children: []
   }
 }
@@ -54,6 +44,10 @@ fn int_source_grounding_fixture() -> CanonicalGrounding {
       structural: StructuralPropertyWitness {
         property: fixture_property_closed_candidates,
         evidence: int_source_node()
+      },
+      closedness: StructuralPropertyWitness {
+        property: fixture_property_candidate_set_closedness,
+        evidence: int_source_node()
       }
     }
   }
@@ -61,9 +55,9 @@ fn int_source_grounding_fixture() -> CanonicalGrounding {
 fn rust_i32_candidate_fixture() -> CoercionCandidateSet {
   CoercionCandidateSet {
     set: CandidateSet {
-      candidates: [rust_i32_inhabitant_node()],
+      candidates: [rust_inhabitant_i32_node()],
       closedness: StructuralPropertyWitness {
-        property: fixture_property_closed_candidates,
+        property: fixture_property_candidate_set_closedness,
         evidence: int_source_node()
       }
     }
@@ -74,7 +68,7 @@ fn coercion_fold_int_to_i32_fixture() -> Outcome<CoercionResult> {
     source: int_source_grounding_fixture(),
     candidates: rust_i32_candidate_fixture(),
     policy: TargetDeclaredPriority {
-      priority: rust_i32_inhabitant_node()
+      priority: rust_inhabitant_i32_node()
     }
   )
 }

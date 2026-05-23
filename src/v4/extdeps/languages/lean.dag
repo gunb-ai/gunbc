@@ -1,15 +1,35 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanFidelityDisposition, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, lean_bool_grounding.
-// Consumes: List, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra.
-// Status: D2-REV; 🟢 P4-3208 — (lean scalar + ledger); bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md classifier = LeanScalar.BoolScalar.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, LeanPrimitiveFacts, LeanLanguageModel, lean_*_facts, lean_*_inhabitant_node, lean_bool_grounding.
+// Consumes: List, Set, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.std.node.
+// Status: D2-REV; PROOF-1 termination slice carries Lean scalar fact-bundles into ModelCore wave-1; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md classifier = LeanScalar.BoolScalar).
 
 module v4.extdeps.languages.lean
 
 
-import v4.std.collection { List }
+import v4.std.collection { List, Map, Set, list_snoc_item }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
+  primitive_fact_axis_width
+}
+import v4.std.witness { Holds, Violates }
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  TypeNode
+}
 
 
 // Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (/ P2).
@@ -165,13 +185,6 @@ type LeanFidelityFeature
   | LeanUnsupportedTheoremClass
 
 
-// 🟢 coproduct dissolution — P4-3208.
-type LeanFidelityDisposition
-  = LeanModeled
-  | LeanDeclaredNormalized { feature: LeanFidelityFeature }
-  | LeanFailClosed { feature: LeanFidelityFeature }
-
-
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
   kernel_definitional_reduction: Bool
@@ -204,6 +217,355 @@ type LeanScalar
   | BoolScalar
 
 
+type LeanPrimitiveFacts {
+  surface_spelling: Symbol
+  scalar: LeanScalar
+  representation: Symbol
+}
+
+
+type LeanLanguageModel {
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+
+data lean_language_model_surface_id: Symbol = lean_language_model_surface_id
+
+data lean_surface_spelling_int8: Symbol = lean_surface_spelling_int8
+data lean_surface_spelling_int16: Symbol = lean_surface_spelling_int16
+data lean_surface_spelling_int32: Symbol = lean_surface_spelling_int32
+data lean_surface_spelling_int64: Symbol = lean_surface_spelling_int64
+data lean_surface_spelling_uint8: Symbol = lean_surface_spelling_uint8
+data lean_surface_spelling_uint16: Symbol = lean_surface_spelling_uint16
+data lean_surface_spelling_uint32: Symbol = lean_surface_spelling_uint32
+data lean_surface_spelling_uint64: Symbol = lean_surface_spelling_uint64
+data lean_surface_spelling_usize: Symbol = lean_surface_spelling_usize
+data lean_surface_spelling_bool: Symbol = lean_surface_spelling_bool
+
+data lean_repr_fixed_precision_integer: Symbol = lean_repr_fixed_precision_integer
+data lean_repr_usize_platform_word: Symbol = lean_repr_usize_platform_word
+data lean_repr_bool_inductive: Symbol = lean_repr_bool_inductive
+
+data lean_inhabitant_int8: Symbol = lean_inhabitant_int8
+data lean_inhabitant_int16: Symbol = lean_inhabitant_int16
+data lean_inhabitant_int32: Symbol = lean_inhabitant_int32
+data lean_inhabitant_int64: Symbol = lean_inhabitant_int64
+data lean_inhabitant_uint8: Symbol = lean_inhabitant_uint8
+data lean_inhabitant_uint16: Symbol = lean_inhabitant_uint16
+data lean_inhabitant_uint32: Symbol = lean_inhabitant_uint32
+data lean_inhabitant_uint64: Symbol = lean_inhabitant_uint64
+data lean_inhabitant_usize: Symbol = lean_inhabitant_usize
+data lean_inhabitant_bool: Symbol = lean_inhabitant_bool
+
+data lean_inhabitant_field_atom: Symbol = lean_inhabitant_field_atom
+data lean_inhabitant_field_facts: Symbol = lean_inhabitant_field_facts
+
+data lean_facts_field_surface_spelling: Symbol = lean_facts_field_surface_spelling
+data lean_facts_field_scalar_classifier: Symbol = lean_facts_field_scalar_classifier
+data lean_facts_field_representation: Symbol = lean_facts_field_representation
+
+data lean_scalar_field_classifier: Symbol = lean_scalar_field_classifier
+data lean_scalar_field_kind: Symbol = lean_scalar_field_kind
+data lean_scalar_field_width: Symbol = lean_scalar_field_width
+
+data lean_tag_signed: Symbol = lean_tag_signed
+data lean_tag_unsigned: Symbol = lean_tag_unsigned
+data lean_tag_bits8: Symbol = lean_tag_bits8
+data lean_tag_bits16: Symbol = lean_tag_bits16
+data lean_tag_bits32: Symbol = lean_tag_bits32
+data lean_tag_bits64: Symbol = lean_tag_bits64
+data lean_tag_pointer: Symbol = lean_tag_pointer
+data lean_tag_scalar_int: Symbol = lean_tag_scalar_int
+data lean_tag_scalar_bool: Symbol = lean_tag_scalar_bool
+
+data lean_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_int8,
+  scalar: IntScalar { kind: Signed, width: Bits8 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_int16: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_int16,
+  scalar: IntScalar { kind: Signed, width: Bits16 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_int32: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_int32,
+  scalar: IntScalar { kind: Signed, width: Bits32 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_int64: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_int64,
+  scalar: IntScalar { kind: Signed, width: Bits64 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_uint8: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_uint8,
+  scalar: IntScalar { kind: Unsigned, width: Bits8 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_uint16: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_uint16,
+  scalar: IntScalar { kind: Unsigned, width: Bits16 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_uint32: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_uint32,
+  scalar: IntScalar { kind: Unsigned, width: Bits32 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_uint64: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_uint64,
+  scalar: IntScalar { kind: Unsigned, width: Bits64 },
+  representation: lean_repr_fixed_precision_integer
+}
+
+data lean_facts_usize: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_usize,
+  scalar: IntScalar { kind: Unsigned, width: Pointer },
+  representation: lean_repr_usize_platform_word
+}
+
+data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
+  surface_spelling: lean_surface_spelling_bool,
+  scalar: BoolScalar,
+  representation: lean_repr_bool_inductive
+}
+
+data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
+  lean_facts_int8,
+  lean_facts_int16,
+  lean_facts_int32,
+  lean_facts_int64,
+  lean_facts_uint8,
+  lean_facts_uint16,
+  lean_facts_uint32,
+  lean_facts_uint64,
+  lean_facts_usize,
+  lean_facts_bool
+]
+
+
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+
+fn lean_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+
+fn lean_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+
+fn lean_int_kind_node(kind: LeanIntKind) -> Node {
+  match kind {
+    Signed => lean_inhabitant_atom(id: lean_tag_signed)
+    Unsigned => lean_inhabitant_atom(id: lean_tag_unsigned)
+  }
+}
+
+
+fn lean_int_width_node(width: LeanIntWidth) -> Node {
+  match width {
+    Bits8 => lean_inhabitant_atom(id: lean_tag_bits8)
+    Bits16 => lean_inhabitant_atom(id: lean_tag_bits16)
+    Bits32 => lean_inhabitant_atom(id: lean_tag_bits32)
+    Bits64 => lean_inhabitant_atom(id: lean_tag_bits64)
+    Pointer => lean_inhabitant_atom(id: lean_tag_pointer)
+  }
+}
+
+
+fn lean_scalar_node(scalar: LeanScalar) -> Node {
+  match scalar {
+    IntScalar { kind, width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        lean_named_edge(
+          name: lean_scalar_field_classifier,
+          target: lean_inhabitant_atom(id: lean_tag_scalar_int)
+        ),
+        lean_named_edge(name: lean_scalar_field_kind, target: lean_int_kind_node(kind: kind)),
+        lean_named_edge(name: lean_scalar_field_width, target: lean_int_width_node(width: width))
+      ]
+    }
+    BoolScalar => lean_inhabitant_atom(id: lean_tag_scalar_bool)
+  }
+}
+
+
+fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      lean_named_edge(
+        name: lean_facts_field_surface_spelling,
+        target: lean_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      lean_named_edge(
+        name: lean_facts_field_scalar_classifier,
+        target: lean_scalar_node(scalar: facts.scalar)
+      ),
+      lean_named_edge(
+        name: lean_facts_field_representation,
+        target: lean_inhabitant_atom(id: facts.representation)
+      )
+    ]
+  }
+}
+
+
+fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      lean_named_edge(name: lean_inhabitant_field_atom, target: lean_inhabitant_atom(id: id)),
+      lean_named_edge(
+        name: lean_inhabitant_field_facts,
+        target: lean_primitive_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+
+fn lean_inhabitant_int32_node() -> Node {
+  lean_primitive_inhabitant_node(id: lean_inhabitant_int32, facts: lean_facts_int32)
+}
+
+
+fn lean_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
+  fold_list(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
+    }
+  )
+}
+
+
+fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: lean_int_width_node(width: width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: lean_int_kind_node(kind: kind) }
+        primitive_fact_axis_encoding =>
+          Holds { value: lean_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn lean_bool_spec_facts(facts: LeanPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: lean_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: lean_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactBundle {
+  match facts.scalar {
+    IntScalar { kind, width } => PrimitiveFactBundle {
+      substrate_carrier: lean_primitive_facts_node(facts: facts),
+      spec_facts: lean_int_spec_facts(facts: facts, kind: kind, width: width)
+    }
+    BoolScalar => PrimitiveFactBundle {
+      substrate_carrier: lean_primitive_facts_node(facts: facts),
+      spec_facts: lean_bool_spec_facts(facts: facts)
+    }
+  }
+}
+
+
+fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: lean_primitive_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: lean_primitive_bundle_from_facts(facts: facts)
+      )
+    }
+  )
+}
+
+
+fn lean_catalog_surface_symbol_step(sym: Symbol, acc: Bool, facts: LeanPrimitiveFacts) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+
+fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: lean_primitive_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      lean_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+
+fn lean_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      lean_catalog_surface_symbol(sym: sym)
+    }
+  }
+}
+
+
+fn lean_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: lean_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+
+fn lean_language_model_wave1() -> LeanLanguageModel {
+  LeanLanguageModel {
+    language_identity: lean_language_model_surface_id,
+    canonical_symbols: lean_language_model_canonical_symbols(),
+    core: lean_model_core_wave1()
+  }
+}

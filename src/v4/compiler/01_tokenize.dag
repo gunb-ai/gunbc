@@ -12,7 +12,8 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, Textual, UserInputBoundary, WholeFile, Accepted, None, diagnostics_singleton}
 import v4.std.node { Symbol }
-import v4.std.text { Char, String, string_is_empty }
+import v4.std.algebra { is_empty }
+import v4.std.text { Char, String }
 
 // 🟡 coproduct dissolution — CP-1b item 13a (LexCharClass).
 type LexCharClass
@@ -90,7 +91,7 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
   }
   match rules {
     VoidLexRules =>
-      if string_is_empty(s: text) {
+      if is_empty(xs: text) {
         Accepted { value: TokenStream {
             tokens: []
           }, diagnostics: None }

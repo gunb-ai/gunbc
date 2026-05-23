@@ -1,0 +1,91 @@
+// src/v4/test/claim/manual/process_numeric_refinements.dag
+// Scope: POSIX process numeric refinement regression witnesses.
+// Owns: manual witnesses that out-of-range POSIX numeric construction rejects.
+// Consumes: v4.extdeps.posix, v4.std.diagnostic, v4.std.verification, connective stubs.
+// Status: T-25-core process refinement consumer acceptance witness; eval T-22.
+
+
+module v4.test.claim.manual.process_numeric_refinements
+
+
+import v4.extdeps.posix {
+  exit_code_out_of_range,
+  make_exit_code,
+  make_process_id,
+  make_signal_num,
+  process_id_out_of_range,
+  signal_num_out_of_range
+}
+import v4.std.diagnostic {
+  Accepted,
+  Rejected,
+  node_locus
+}
+import v4.std.node { Node }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  T19ManualAnchorAbsent,
+  t19_manual_claim_anchor
+}
+import v4.test.claim.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj
+}
+
+
+fn witness_exit_code_256_rejects() -> Bool {
+  match make_exit_code(value: 256, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == exit_code_out_of_range
+  }
+}
+
+fn witness_process_id_zero_rejects() -> Bool {
+  match make_process_id(value: 0, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == process_id_out_of_range
+  }
+}
+
+fn witness_signal_num_zero_rejects() -> Bool {
+  match make_signal_num(value: 0, at: node_locus(node: stub_empty_conj)) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics } => diagnostics.head.reason == signal_num_out_of_range
+  }
+}
+
+fn process_refinement_claim_input(ok: Bool) -> Node {
+  if ok {
+    stub_empty_conj
+  } else {
+    stub_empty_disj
+  }
+}
+
+data claim_exit_code_256_rejects: TestClaim = EqualsClaim {
+  label: "manual/process: make_exit_code rejects 256",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: process_refinement_claim_input(ok: witness_exit_code_256_rejects()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_process_id_zero_rejects: TestClaim = EqualsClaim {
+  label: "manual/process: make_process_id rejects 0",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: process_refinement_claim_input(ok: witness_process_id_zero_rejects()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_signal_num_zero_rejects: TestClaim = EqualsClaim {
+  label: "manual/process: make_signal_num rejects 0",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: process_refinement_claim_input(ok: witness_signal_num_zero_rejects()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

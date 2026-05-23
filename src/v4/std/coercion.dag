@@ -4,42 +4,49 @@
 // Owns: CoercionCandidateSet, CoercionQuality, CoercionMismatchKind,
 //       CoercionResult, CoercionWitness, coercion_fold, declared_candidates_for_algebra.
 // Consumes: std find_witness, std constraints, std diagnostic, std witness, std node.
-// Status: Wave-2-BC3 modeled; coercion_fold delegates to find_witness.
+// Status: W-T-10 — coercion_fold lifts FindWitnessResult → CoercionResult via find_witness.
 
 
 module v4.std.coercion
 
 
+import v4.std.collection { List }
 import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  None,
+  node_locus,
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_singleton,
-  outcome_rejected,
-  rejected_with_pending
+  outcome_rejected
 }
 import v4.std.find_witness {
   CandidateSet,
+  FindWitnessResult,
   PreservationPredicate,
+  TargetDeclaredPriority,
   TargetSelection,
   TargetSelectionPolicy,
   find_witness,
   preservation_rule_exact_structural_equality_zip_fold
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.witness { HomomorphismWitness, StructuralPropertyWitness }
 data coercion_property_closed_candidate_set: Symbol = coercion_property_closed_candidate_set
+data coercion_property_candidate_set_closedness: Symbol = coercion_property_candidate_set_closedness
+data coercion_homomorphism_evidence_source: Symbol = coercion_homomorphism_evidence_source
+data coercion_homomorphism_evidence_candidate: Symbol = coercion_homomorphism_evidence_candidate
+data coercion_homomorphism_evidence_find_witness: Symbol = coercion_homomorphism_evidence_find_witness
 data homomorphism_rule_exact_structural_equality: Symbol = homomorphism_rule_exact_structural_equality
 data coercion_not_realized: Symbol = coercion_not_realized
 data coercion_mismatch_no_target: Symbol = coercion_mismatch_no_target
 data coercion_mismatch_ambiguous: Symbol = coercion_mismatch_ambiguous
 data coercion_mismatch_structural: Symbol = coercion_mismatch_structural
 data coercion_mismatch_would_lose: Symbol = coercion_mismatch_would_lose
+data coercion_mismatch_candidate_set_not_closed: Symbol = coercion_mismatch_candidate_set_not_closed
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CoercionQuality
   = Identity
@@ -75,7 +82,7 @@ fn coercion_not_realized_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: coercion_mismatch_reason(kind: kind),
-    at: NodeLocus { node: source.node },
+    at: node_locus(node: source.node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -91,12 +98,73 @@ fn declared_candidates_for_algebra(
           structural: StructuralPropertyWitness {
             property: coercion_property_closed_candidate_set,
             evidence: target_model
+          },
+          // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: W-T-10 find_witness closedness authority supplies evidence distinct from structural witness.
+          closedness: StructuralPropertyWitness {
+            property: coercion_property_candidate_set_closedness,
+            evidence: target_model
           }
         }
       },
       kind: NoTargetCandidate
     )
   )
+}
+fn declared_inhabitant_candidates(inhabitants_root: Node) -> List<Node> {
+  map(inhabitants_root.children, fn(e) { e.target })
+}
+fn coercion_candidate_set_not_closed_diagnostic(inhabitants_root: Node) -> Diagnostic {
+  Diagnostic {
+    reason: coercion_mismatch_candidate_set_not_closed,
+    at: node_locus(node: inhabitants_root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn coercion_candidate_set_from_declared_inhabitants(
+  inhabitants_root: Node,
+  closedness_property: Symbol,
+) -> Outcome<CoercionCandidateSet> {
+  if well_formed(n: inhabitants_root) {
+    Accepted {
+      value: CoercionCandidateSet {
+        set: CandidateSet {
+          candidates: declared_inhabitant_candidates(inhabitants_root: inhabitants_root),
+          closedness: StructuralPropertyWitness {
+            property: closedness_property,
+            evidence: inhabitants_root
+          }
+        }
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(
+      coercion_candidate_set_not_closed_diagnostic(inhabitants_root: inhabitants_root)
+    )
+  }
+}
+fn coercion_quality_for_witness(
+  source: CanonicalGrounding,
+  fw: FindWitnessResult,
+) -> CoercionQuality {
+  if fw.candidate == source.node {
+    Identity
+  } else {
+    Exact
+  }
+}
+fn coercion_homomorphism_evidence(
+  source: CanonicalGrounding,
+  fw: FindWitnessResult,
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: coercion_homomorphism_evidence_source }, target: source.node },
+      Edge { label: Named { name: coercion_homomorphism_evidence_candidate }, target: fw.candidate },
+      Edge { label: Named { name: coercion_homomorphism_evidence_find_witness }, target: fw.witness.evidence }
+    ]
+  }
 }
 fn coercion_fold(
   source: CanonicalGrounding,
@@ -112,16 +180,31 @@ fn coercion_fold(
     },
     multiplicity_policy: TargetSelection { policy: policy }
   ) {
-    // Scaffold only while find_witness rejects: W-T-10 must lift FindWitnessResult → CoercionResult here.
-    Accepted { value: _, diagnostics: fw_d } =>
-      Rejected {
-        diagnostics: rejected_with_pending(
-          pending: fw_d,
-          rejected: diagnostics_singleton(
-            d: coercion_not_realized_diagnostic(source: source, kind: NoTargetCandidate)
-          )
-        )
+    Accepted { value: fw, diagnostics: fw_d } =>
+      Accepted {
+        value: CoercionResult {
+          target: fw.candidate,
+          quality: coercion_quality_for_witness(source: source, fw: fw),
+          witness: CoercionWitness {
+            homomorphism: HomomorphismWitness {
+              rule: homomorphism_rule_exact_structural_equality,
+              evidence: coercion_homomorphism_evidence(source: source, fw: fw)
+            }
+          }
+        },
+        diagnostics: fw_d
       }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
+}
+fn coercion_fold_with_declared_priority(
+  source: CanonicalGrounding,
+  candidates: CoercionCandidateSet,
+  priority: Node,
+) -> Outcome<CoercionResult> {
+  coercion_fold(
+    source: source,
+    candidates: candidates,
+    policy: TargetDeclaredPriority { priority: priority }
+  )
 }

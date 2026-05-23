@@ -8,8 +8,8 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract, ImageSource }
-import std.errors { AnthropicErrorShape }
+import extdeps.llm.llm { llm_snake_wire_contract }
+import extdeps.llm.anthropic_errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { HttpMethod }
@@ -46,7 +46,7 @@ data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
 
 // Nested blocks inside `ToolResultBlocks`: each row is a flat `{"type": ...}` object
 // (same tagging discipline as user message content blocks; distinct carrier so shared
-// `ContentBlock` in llm.dag stays provider-neutral).
+// provider-local nested blocks; not a cross-provider carrier).
 data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
   coproduct: "AnthropicToolResultBlock",
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
@@ -73,8 +73,15 @@ data models: List<AnthropicModelSpec> = [
 ]
 
 // -- Anthropic content blocks (provider-specific) ---------------------
-// Tool-use / tool-result surfaces are Anthropic-specific; shared multimodal
-// primitives (`ImageSource`, …) import from `extdeps.llm.llm`.
+// Tool-use / tool-result surfaces are Anthropic-specific. `ImageSource`
+// models Anthropic Messages API image `source` shapes (base64 / url; file deferred).
+
+// 🟡 SCAFFOLD provider-domain coproduct for Anthropic Messages image `source`
+// (base64/url arms emittable via `llm.Anthropic.Messages`; dissolve on
+// `structural_coverage_gap_anthropic_messages_file_image_beta_header`).
+type ImageSource
+  = Base64Image { media_type: String, data: String }
+  | UrlImage { url: String }
 
 // 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic accepts
 // either a scalar JSON string (`ToolResultText`) or a JSON array of nested blocks
@@ -83,9 +90,7 @@ data models: List<AnthropicModelSpec> = [
 // untagged emission maps directly (string vs block array) without an extra object
 // wrapper around the array arm.
 //
-// Nested block shapes use `AnthropicToolResultBlock` (below) so shared
-// `extdeps.llm.llm.ContentBlock` stays cross-provider; text/image arms mirror that
-// shared surface as Anthropic-prefixed variants for flat wire tagging.
+// Nested block shapes use `AnthropicToolResultBlock` (below).
 type AnthropicToolResultContent
   = ToolResultText(String)
   | ToolResultBlocks(List<AnthropicToolResultBlock>)
@@ -338,6 +343,10 @@ data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_untagged_scalar_or_block_array",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks"
+]
+
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<String> = [
+  "closure:anthropic_messages_file_image|ImageSource|variant_pending:FileImage|residue:file_source_requires_anthropic_beta_on_messages_transport|trigger:add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
 ]
 
 data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<String> = [

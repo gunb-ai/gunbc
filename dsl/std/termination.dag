@@ -32,7 +32,7 @@
 
 module std.termination
 
-import std.algebra { Ordering }
+import std.algebra { BoundedLattice, Ordering }
 // NOTE: is_valid_proof lives in std.graph (graph algorithm needs SCC
 // primitives). Cannot re-export here (circular: termination → graph →
 // termination). Consumers import from std.graph directly.
@@ -85,10 +85,10 @@ fn evidence_rank(e: DescentEvidence) -> Int {
   }
 }
 
-// BoundedLattice.meet: conservative merge (min in the ordering).
-// If EITHER branch is DescentUnknown, result is DescentUnknown.
-// If both are Strict, result is Strict. Otherwise NonIncreasing.
-fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+// DescentEvidence inhabits BoundedLattice:
+//   top = Strict, bottom = DescentUnknown
+// Conservative meet: keep only evidence proven on every branch.
+fn descent_evidence_lattice_meet(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
     Strict => match b {
       Strict => Strict
@@ -104,14 +104,8 @@ fn merge_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   }
 }
 
-// BoundedLattice.join: optimistic merge (max in the ordering).
-// Dual of merge_evidence (meet). Returns the BEST evidence.
-//
-// join(DescentUnknown, X) = X
-// join(NonIncreasing, Strict) = Strict
-// join(NonIncreasing, NonIncreasing) = NonIncreasing
-// join(Strict, X) = Strict
-fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
+// Optimistic join: keep the strongest evidence seen on any branch.
+fn descent_evidence_lattice_join(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   match a {
     DescentUnknown => b
     NonIncreasing => match b {
@@ -122,11 +116,12 @@ fn join_evidence(a: DescentEvidence, b: DescentEvidence) -> DescentEvidence {
   }
 }
 
-// DescentEvidence inhabits BoundedLattice:
-//   meet = merge_evidence, join = join_evidence
-//   top = Strict, bottom = DescentUnknown
-// Data declaration deferred: compiler does not yet emit generic type
-// parameters for data constants (BoundedLattice<DescentEvidence>).
+data descent_evidence_bounded_lattice: BoundedLattice<DescentEvidence> = {
+  meet: descent_evidence_lattice_meet
+  join: descent_evidence_lattice_join
+  top: Strict
+  bottom: DescentUnknown
+}
 
 
 // Fail closed: strict descent cannot be fabricated from non-increase without
@@ -157,7 +152,7 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
     Some { value: va } =>
       match b {
         None => a
-        Some { value: vb } => Some { value: merge_evidence(a: va, b: vb) }
+        Some { value: vb } => Some { value: descent_evidence_lattice_meet(a: va, b: vb) }
       }
   }
 }
@@ -165,7 +160,7 @@ fn optional_evidence_meet(a: DescentEvidence?, b: DescentEvidence?) -> DescentEv
 // map_merge_at for DescentEvidence: pointwise meet keyed by String.
 fn map_evidence_merge_at(base: Map<String, DescentEvidence>, key: String, new_val: DescentEvidence) -> Map<String, DescentEvidence> {
   match map_get(base, key) {
-    Some { value: existing } => map_insert(base, key, merge_evidence(a: existing, b: new_val))
+    Some { value: existing } => map_insert(base, key, descent_evidence_lattice_meet(a: existing, b: new_val))
     None => map_insert(base, key, new_val)
   }
 }

@@ -1,6 +1,6 @@
 // src/v4/std/nat.dag
 // Scope: Natural numbers (Part 6 nat rows; external Natural_number anchor out of Lane-B header).
-// Owns: Nat nat_cata nat_add nat_mul nat_compare nat_is_zero nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat
+// Owns: Nat nat_cata nat_add nat_mul nat_compare is_zero nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat
 // Consumes: v4.std.algebra v4.std.node
 // Status: T-3 modeled.
 
@@ -48,7 +48,7 @@ fn nat_compare(a: Nat, b: Nat) -> Ordering {
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Zero-variant discriminant projection; forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
-fn nat_is_zero(n: Nat) -> Bool {
+fn is_zero(n: Nat) -> Bool {
   match n {
     Zero => true
     Succ { prev: _ } => false

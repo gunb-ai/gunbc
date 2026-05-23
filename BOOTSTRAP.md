@@ -9,6 +9,23 @@ compiler. It is a committed, reproducible artifact — never hand-edited
 in ordinary development. Seed bumps are explicit maintenance operations
 with a documented procedure.
 
+## Current v2 mechanism
+
+v2 stage0 regeneration is owned by the `regen_stage0` binary:
+
+```bash
+cargo run -p v2-compiler --bin regen_stage0
+cargo run -p v2-compiler --bin regen_stage0 -- --verify
+```
+
+The first command writes the generated stage0 Rust files. The
+`--verify` form performs a fresh self-compile and compares it to the
+committed stage0 seed without writing. The compatibility scripts
+`scripts/regenerate-stage0.sh` and `scripts/check-stage0-freshness.sh`
+delegate to those two forms.
+
+CI runs the `--verify` form when `src/v2/` is affected.
+
 ## How it works
 
 ```
@@ -25,11 +42,15 @@ stage0 binary.
 Import resolution is transitive — the compiler follows `import`
 declarations, no manual file lists.
 
-**Hand-maintained files** (not regenerated):
-- `v2_rt.rs` — runtime primitives
-- `compiler_tests.rs` — test suite (reads .dag files from disk, no embedded source)
-- `main.rs` — CLI entry point
-- `Cargo.toml` — dependencies
+**Hand-maintained files** (not overwritten by `regen_stage0`):
+- `cli_run.rs`
+- `rest_transport_facts.rs`
+- `v2_interpreter.rs`
+- `Cargo.toml` (manifest, outside `src/`)
+
+The generated-output registry lives in
+`src/v2/stage0/src/bin/regen_stage0.rs`; both write mode and
+`--verify` mode consume that one list.
 
 ## Ordinary regeneration
 
@@ -37,12 +58,12 @@ When a `.dag` change does not alter the compiler/stage0 boundary
 (types, enums, function signatures shared between `.dag` and `.rs`):
 
 ```bash
-./scripts/regenerate-stage0.sh
+cargo run -p v2-compiler --bin regen_stage0
 ```
 
 This builds the current stage0 binary, self-compiles all `.dag`
 source, copies the output to `src/v2/stage0/src/`, and verifies
-`cargo check` passes.
+the generated crate can be formatted.
 
 Commit the `.dag` changes and the regenerated stage0 together:
 
@@ -51,9 +72,8 @@ git add src/v2/*.dag dsl/ src/v2/stage0/src/
 git commit -m "Description of .dag change"
 ```
 
-**CI verifies:** `regenerate-stage0.sh && git diff --exit-code src/v2/stage0/`
-(planned — not yet wired). Any `.dag` change that breaks regeneration
-blocks the PR.
+**CI verifies:** `cargo run -p v2-compiler --bin regen_stage0 -- --verify`.
+Any `.dag` change that breaks regeneration blocks the PR.
 
 ## Bootstrap-breaking changes
 
@@ -74,7 +94,7 @@ These changes require a **two-step compatibility window**:
 
 1. Teach the compiler to handle **both** old and new representations.
    The `.dag` source accepts both shapes temporarily.
-2. Regenerate stage0: `./scripts/regenerate-stage0.sh`
+2. Regenerate stage0: `cargo run -p v2-compiler --bin regen_stage0`
 3. Verify: `cargo check -p v2-compiler` passes.
 4. Commit and land the bridge.
 
@@ -96,7 +116,7 @@ these cases, the stage0 `.rs` files may be directly patched as a
 2. Patch `src/v2/stage0/src/*.rs` to match the new representation.
    Document what was patched and why in the commit message.
 3. Rebuild: `cargo check -p v2-compiler`
-4. Regenerate: `./scripts/regenerate-stage0.sh`
+4. Regenerate: `cargo run -p v2-compiler --bin regen_stage0`
 5. Verify the regenerated output matches the patched state (no diff).
 6. Commit everything together.
 
@@ -133,7 +153,8 @@ of change it is:
 - Direct hand edits to `src/v2/stage0/src/*.rs` outside an explicit
   seed bump workflow.
 - Adding new bootstrap source lists in ad hoc places. All source
-  resolution goes through `--source-root` and import-driven resolution.
+  resolution goes through `regen_stage0`'s source-root and import-driven
+  resolution.
 - Landing `.dag` changes that require stage0 edits without documenting
   the compatibility plan.
 - Committing `.dag` changes without regenerating stage0 (once CI gate
@@ -141,11 +162,10 @@ of change it is:
 
 ## Bootstrap manifest (planned)
 
-Today, multiple places maintain independent lists of "what bootstrap
-sees" — `prepare_sources()` in bootstrap tests, embedded source
-constants in `compiler_tests.rs`, the regen script. These will
-converge to a single manifest consumed everywhere. Until then, the
-regen script's `--source-root` resolution is the authority.
+The generated-output registry in `regen_stage0` is the authority for
+which stage0 files are overwritten. Source discovery remains
+import-driven from `src/v2`, `dsl`, and the generated method-template
+projection source root.
 
 ## Verification
 
@@ -160,7 +180,7 @@ cargo clippy --all-targets -- -D warnings     # lint clean
 After regeneration (once emitted Rust errors reach 0):
 
 ```bash
-./scripts/regenerate-stage0.sh
+cargo run -p v2-compiler --bin regen_stage0
 git diff --exit-code src/v2/stage0/           # no drift
 ```
 

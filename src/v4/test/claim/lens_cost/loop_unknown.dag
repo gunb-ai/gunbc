@@ -1,0 +1,52 @@
+// src/v4/test/claim/lens_cost/loop_unknown.dag
+// Scope: T-12 worked claim — non-structural loop bounds fail closed on cost_lens.
+// Owns: claim_loop_unknown.
+// Consumes: lens cost, std node, std verification.
+// Status: scaffold — compile-only until T-19/T-22 generated claim execution.
+
+module v4.test.claim.lens_cost.loop_unknown
+
+import v4.lens.cost { cost_lens }
+import v4.std.logic { Bool }
+import v4.std.node { ComputationNode, Conj, Loop, Node, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  t19_manual_claim_anchor
+}
+import v4.std.witness { Violates }
+
+data loop_unknown_input: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: []
+}
+
+fn loop_unknown_claim_holds() -> Bool {
+  match cost_lens(n: loop_unknown_input) {
+    Violates { diagnostic: _ } => true
+    _ => false
+  }
+}
+
+fn loop_unknown_claim_rhs() -> Node {
+  if loop_unknown_claim_holds() {
+    loop_unknown_input
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_loop_unknown: TestClaim = EqualsClaim {
+  label: "lens_cost/loop_unknown: loop without bound fails closed",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: loop_unknown_input,
+  rhs: loop_unknown_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

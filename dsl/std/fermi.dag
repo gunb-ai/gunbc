@@ -11,10 +11,10 @@
 
 module std.fermi
 
+import std.algebra { BoundedLattice }
 import std.types { FermiDepth, Milliseconds }
 
-// FermiDepth inhabits Lattice<FermiDepth>.
-// meet = fermi_meet, join = fermi_join
+// FermiDepth inhabits BoundedLattice<FermiDepth>.
 
 // --- Ordinal mapping (like stage_ordinal in state_machines.dag) -----
 
@@ -42,25 +42,30 @@ fn fermi_eq(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
   fermi_ordinal(depth: lhs) == fermi_ordinal(depth: rhs)
 }
 
-// --- Composition: lattice meet/join for the total order -------------
-
-fn fermi_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+fn fermi_lattice_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { rhs } else { lhs }
 }
 
-fn fermi_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+fn fermi_lattice_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
+}
+
+data fermi_bounded_lattice: BoundedLattice<FermiDepth> = {
+  meet: fermi_lattice_meet
+  join: fermi_lattice_join
+  top: Xl
+  bottom: Xs
 }
 
 // Historical alias retained for callers that still use magnitude vocabulary.
 fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
-  fermi_join(lhs: lhs, rhs: rhs)
+  fermi_lattice_join(lhs: lhs, rhs: rhs)
 }
 
 // --- Composition: max over a list (transitive dominance) ------------
 
 fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
-  fold(depths, init: Xs, f: (acc, d) => fermi_join(lhs: acc, rhs: d))
+  fold(depths, init: Xs, f: (acc, d) => fermi_lattice_join(lhs: acc, rhs: d))
 }
 
 // --- Guard: is depth within budget? ---------------------------------

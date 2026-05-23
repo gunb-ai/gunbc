@@ -1,13 +1,16 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, free_monoid_fold, free_monoid_is_empty, free_monoid_non_empty, free_monoid_length, free_monoid_forall, free_monoid_count_where, free_monoid_count_equal, free_monoid_unique, PointwisePower, Ordering, Homomorphism.
-// Consumes: none.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
+// Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
 
 module v4.std.algebra
+
+
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -78,14 +81,47 @@ type FreeMonoidUniqueState<T> {
   seen: FreeMonoid<T>
   unique: Bool
 }
-fn free_monoid_fold<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+data fold_list_node_head: Symbol = fold_list_node_head
+data fold_list_node_tail: Symbol = fold_list_node_tail
+// Left fold: traverse head→tail, thread accumulator forward. Combinator order is `cons(acc, head)`.
+// The naive list-rebuild combinator `fn(acc, h) { Cons { head: h, tail: acc } }` REVERSES input
+// (head is prepended at each step but visited first). Use fold_list_right for order-preserving
+// list-shaped output, or this fold with an explicit reverse pass for the same effect.
+fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
-    Cons { head: h, tail: t } => free_monoid_fold(xs: t, empty: cons(empty, h), cons: cons)
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
   }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: free_monoid_fold laundering.
-fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+// Right fold: recurse to tail first, then combine. Combinator order is `snoc(tail_result, head)`.
+// With `fn(acc, h) { Cons { head: h, tail: acc } }` the result PRESERVES input order — head is
+// prepended last, after the tail has been rebuilt. Not tail-recursive; depth is O(|xs|).
+fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+  }
+}
+fn fold_list_node<T>(
+  xs: FreeMonoid<T>,
+  item_node: fn(T) -> Node
+) -> Node {
+  fold_list_right(
+    xs: xs,
+    empty: Node { kind: TypeNode { connective: Conj }, children: [] },
+    snoc: fn(tail_node, item) {
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: fold_list_node_head }, target: item_node(item) },
+          Edge { label: Named { name: fold_list_node_tail }, target: tail_node },
+        ]
+      }
+    }
+  )
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
+fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
   match xs {
     Empty => true
     Cons { head: _, tail: _ } => false
@@ -93,21 +129,22 @@ fn free_monoid_is_empty<T>(xs: FreeMonoid<T>) -> Bool {
 }
 
 
-fn free_monoid_non_empty<T>(xs: FreeMonoid<T>) -> Bool {
-  match free_monoid_is_empty(xs: xs) {
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived non-Empty-variant discriminant projection; forbidden: fold_list laundering.
+fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match is_empty(xs: xs) {
     true => false
     false => true
   }
 }
 
 
-fn free_monoid_length<T>(xs: FreeMonoid<T>) -> Int {
-  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
+fn length<T>(xs: FreeMonoid<T>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(count, _) { count + 1 })
 }
 
 
-fn free_monoid_forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
-  free_monoid_fold(xs: xs, empty: true, cons: fn(acc, item) {
+fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: true, cons: fn(acc, item) {
     match acc {
       true => predicate(item)
       false => false
@@ -116,8 +153,33 @@ fn free_monoid_forall<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
 }
 
 
-fn free_monoid_count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
-  free_monoid_fold(xs: xs, empty: 0, cons: fn(count, item) {
+fn any<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, item) {
+    match acc {
+      true => true
+      false => predicate(item)
+    }
+  })
+}
+
+
+fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> FreeMonoid<T> {
+  fold_list_right(xs: xs, empty: Empty, snoc: fn(acc, item) {
+    match predicate(item) {
+      true => Cons { head: item, tail: acc }
+      false => acc
+    }
+  })
+}
+
+
+fn contains<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Bool {
+  any(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+}
+
+
+fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(count, item) {
     match predicate(item) {
       true => count + 1
       false => count
@@ -126,15 +188,15 @@ fn free_monoid_count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> In
 }
 
 
-fn free_monoid_count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
-  free_monoid_count_where(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+fn count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
+  count_where(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
 }
 
 
-fn free_monoid_unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
-  let state = free_monoid_fold(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
+fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  let state = fold_list(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
     match acc.unique {
-      true => match free_monoid_count_equal(xs: acc.seen, item: item, eq: eq) {
+      true => match count_equal(xs: acc.seen, item: item, eq: eq) {
         0 => FreeMonoidUniqueState { seen: Cons { head: item, tail: acc.seen }, unique: true }
         _ => FreeMonoidUniqueState { seen: acc.seen, unique: false }
       }

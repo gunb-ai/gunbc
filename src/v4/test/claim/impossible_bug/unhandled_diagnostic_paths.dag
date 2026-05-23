@@ -16,8 +16,146 @@
 // Consumes:
 //   - std/verification.dag, std/diagnostic.dag, std/integer.dag (Tier-2 totalization), std/witness.dag
 //
-// Status: scaffold — fill per TASKS.md T-14
-// Brief: see BRIEF_TEMPLATE.md.
+// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
+
 
 module v4.test.claim.impossible_bug.unhandled_diagnostic_paths
 
+
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.verification {
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier2,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
+
+
+data proven_nonzero_divisor_symbol: Symbol = proven_nonzero_divisor_symbol
+data proven_index_in_range_symbol: Symbol = proven_index_in_range_symbol
+data proven_optional_present_symbol: Symbol = proven_optional_present_symbol
+data total_division_symbol: Symbol = total_division_symbol
+data total_unwrap_symbol: Symbol = total_unwrap_symbol
+data unchecked_division_symbol: Symbol = unchecked_division_symbol
+data checked_index_symbol: Symbol = checked_index_symbol
+data unchecked_index_symbol: Symbol = unchecked_index_symbol
+data force_unwrap_symbol: Symbol = force_unwrap_symbol
+data unhandled_division_reason: Symbol = unhandled_division_reason
+data unhandled_index_reason: Symbol = unhandled_index_reason
+data force_unwrap_reason: Symbol = force_unwrap_reason
+data operation_field: Symbol = operation_field
+data witness_field: Symbol = witness_field
+
+
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn safety_subject(op: Symbol, witness: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: operation_field }, target: atom_node(s: op) },
+      Edge { label: Named { name: witness_field }, target: atom_node(s: witness) },
+    ]
+  }
+}
+
+
+data total_division_input: Node = safety_subject(op: total_division_symbol, witness: proven_nonzero_divisor_symbol)
+
+
+data checked_index_input: Node = safety_subject(op: checked_index_symbol, witness: proven_index_in_range_symbol)
+
+
+data total_unwrap_input: Node = safety_subject(op: total_unwrap_symbol, witness: proven_optional_present_symbol)
+
+
+data falsification_division_by_zero_unhandled: Node = safety_subject(op: unchecked_division_symbol, witness: force_unwrap_symbol)
+
+
+data falsification_oob_index_unhandled: Node = safety_subject(op: unchecked_index_symbol, witness: force_unwrap_symbol)
+
+
+data falsification_force_unwrap_survives: Node = atom_node(s: force_unwrap_symbol)
+
+
+data claim_division_by_zero_total_or_proven_safe: TestClaim = CompilesClaim {
+  label: "division uses total form when nonzero proof is present",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: total_division_input,
+  expected_value: total_division_input,
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_oob_index_total_or_proven_safe: TestClaim = CompilesClaim {
+  label: "indexing uses total form when range proof is present",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: checked_index_input,
+  expected_value: checked_index_input,
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
+  label: "unproven divisor cannot lower as partial division",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: falsification_division_by_zero_unhandled,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: unhandled_division_reason,
+        at: node_locus(node: falsification_division_by_zero_unhandled),
+        correction: Suggested { node: total_division_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
+  label: "unproven index cannot lower as partial lookup",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: falsification_oob_index_unhandled,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: unhandled_index_reason,
+        at: node_locus(node: falsification_oob_index_unhandled),
+        correction: Suggested { node: checked_index_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+
+data claim_force_unwrap_count_zero: TestClaim = DiagnosticClaim {
+  label: "force unwrap does not survive outside user input boundary",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: falsification_force_unwrap_survives,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: force_unwrap_reason,
+        at: node_locus(node: falsification_force_unwrap_survives),
+        correction: Suggested { node: total_unwrap_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}

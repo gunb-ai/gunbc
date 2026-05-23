@@ -1,0 +1,286 @@
+// src/v4/lens/unused_parameters.dag
+// Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (T-13 family-shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (Practice 11 / single mechanism, two outputs).
+// Owns: UseRelation, UseClassificationFact, use_classification_fact, use_classification_witness, UnusedParameterFact, UnusedParametersFact, rollup_unused, unused_parameters_fact, unused_parameters_witness.
+// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Status: T-13 family ratchet + registry split-contract.
+
+
+module v4.lens.unused_parameters
+
+import v4.compiler.infer { InferredTree }
+import v4.std.collection { List }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  ClassifiedDependencyView,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
+  classified_dependency_view_eq
+}
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
+import v4.std.node { Node }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 USE classification — `BindsTo` is the single USE kind (P6 symbol-
+// resolution attaches uses through BindsTo). `Contains` is structural
+// composition, others are non-USE dependencies. The fail-closed slot
+// `RequiresResolutionWitness` covers kinds that need further evidence.
+type UseRelation
+  = IsUseOfDeclaration
+  | IsStructuralComposition
+  | IsNonUseDependency
+  | RequiresResolutionWitness
+
+// PROJECTION OUTPUT — T-13 family shape (per-edge classification list).
+type UseClassificationFact {
+  uses: List<ClassifiedDependencyView<UseRelation>>
+}
+
+// BEHAVIORAL OUTPUT — registry-aligned (`LensIdV0::UnusedParameters` /
+// v3 declaration-centric query). Derived from `UseClassificationFact`
+// via `rollup_unused`; no parallel mechanism. The row holds the typed
+// reference (`declaration`) only — per-node `InferredFacts` flow forward
+// by reference via `tree.facts.lookup(declaration)` at use-sites
+// (Practice 3 / P2 — facts must not be copied onto carriers, even on
+// the registry-aligned row, otherwise the same parallel-payload defect
+// this ratchet dissolves leaks through the back door).
+type UnusedParameterFact {
+  declaration: Node
+}
+
+type UnusedParametersFact {
+  unused: List<UnusedParameterFact>
+}
+
+fn use_relation_for_dependency(view: DependencyView) -> UseRelation {
+  match view.kind {
+    BindsTo => IsUseOfDeclaration
+    Contains => IsStructuralComposition
+    DataDependsOn => IsNonUseDependency
+    TypeDependsOn => IsNonUseDependency
+    EffectDependsOn => IsNonUseDependency
+    ResourceDependsOn => IsNonUseDependency
+    BarrierBefore => IsNonUseDependency
+    ModuleDependsOn => IsNonUseDependency
+    PlacementDependsOn => IsNonUseDependency
+    ModelDependsOn => IsNonUseDependency
+    ProjectionDependsOn => IsNonUseDependency
+    GeneratedFrom => RequiresResolutionWitness
+    VerifiedBy => RequiresResolutionWitness
+    PromotedBy => RequiresResolutionWitness
+    BootstrapDependsOn => RequiresResolutionWitness
+  }
+}
+
+fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
+  // P6 orientation: BindsTo carries Declaration → Use, so `view.source`
+  // is the declaration; downstream readers access via `classified_source`.
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: use_relation_for_dependency(view: view)
+  }
+}
+
+fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
+  UseClassificationFact {
+    uses: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, use_classify(view: view))
+    })
+  }
+}
+
+fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UseClassificationFact> {
+  Holds {
+    value: use_classification_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+// roll-up: derive the declaration-centric set from the per-edge projection.
+// A declaration N is "unused" iff N is a Contains-dependent in `uses`
+// (the canonical declaration position under P6 — parameters/locals
+// contained in their declaring scope, matching the v3 lens contract)
+// AND no edge in `uses` has `source == N` with `relation ==
+// IsUseOfDeclaration`. Roll-up scope is derived from the existing
+// classification (feedback_scope_from_query_not_type_tag — scope is a
+// query fact, not a substrate tag).
+// 🟡 predicate dissolution — feature:variant-tag-partition-predicate.
+// Fail-closed: a relation BLOCKS the unused-verdict if it is either a
+// proven use (`IsUseOfDeclaration`) or unresolved-use evidence
+// (`RequiresResolutionWitness` — the lens couldn't classify the edge
+// kind, so the conservative answer is "uncertain, don't claim unused").
+// `IsStructuralComposition` and `IsNonUseDependency` are positive
+// non-use evidence and do not block. Dissolves on arrival of a
+// substrate variant-tag partition primitive (Practice 10 — currently
+// no parametric "partition variants of <Coproduct> by <classifier>"
+// primitive exists, so the match is hand-rolled with the dissolution
+// obligation tracked here).
+fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
+  match relation {
+    IsUseOfDeclaration => true
+    RequiresResolutionWitness => true
+    IsStructuralComposition => false
+    IsNonUseDependency => false
+  }
+}
+
+fn declaration_has_use_or_unresolved(uses: List<ClassifiedDependencyView<UseRelation>>, declaration: Node) -> Bool {
+  fold(uses, init: false, f: fn(acc, classified) {
+    if acc {
+      acc
+    } else {
+      (classified.dependency.source == declaration) && use_relation_blocks_unused(relation: classified.classification)
+    }
+  })
+}
+
+fn unused_parameter_for_declaration(declaration: Node) -> UnusedParameterFact {
+  UnusedParameterFact {
+    declaration: declaration
+  }
+}
+
+fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bool {
+  fold(unused, init: false, f: fn(acc, entry) {
+    acc || (entry.declaration == declaration)
+  })
+}
+
+// P6 + P2 boundary discipline: a declaration candidate is a node that
+// the dependency model positions AS a declaration. Containment-children
+// (parameters/locals contained in their declaring scope) are the
+// canonical declaration position and match the v3 lens contract
+// ("function + parameter port"). Sources of `BindsTo` edges are
+// declarations too, but by definition have a use, so they can never be
+// unused. Other dependency kinds do not carry declaration-position
+// semantics on either endpoint and MUST NOT be treated as candidates —
+// doing so would let a non-declaration source with only non-USE
+// dependencies appear in `unused`, an illegal state (Practice 2).
+fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
+  UnusedParametersFact {
+    unused: fold(use_fact.uses, init: [], f: fn(acc, classified) {
+      if use_relation_eq(a: classified.classification, b: IsStructuralComposition) {
+        let candidate = classified.dependency.dependent
+        if already_in_unused(unused: acc, declaration: candidate) {
+          acc
+        } else {
+          if declaration_has_use_or_unresolved(uses: use_fact.uses, declaration: candidate) {
+            acc
+          } else {
+            list_push(acc, unused_parameter_for_declaration(declaration: candidate))
+          }
+        }
+      } else {
+        acc
+      }
+    })
+  }
+}
+
+fn unused_parameters_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
+  rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies))
+}
+
+fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UnusedParametersFact> {
+  Holds {
+    value: unused_parameters_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn use_relation_eq(a: UseRelation, b: UseRelation) -> Bool {
+  match a {
+    IsUseOfDeclaration => match b {
+      IsUseOfDeclaration => true
+      _ => false
+    }
+    IsStructuralComposition => match b {
+      IsStructuralComposition => true
+      _ => false
+    }
+    IsNonUseDependency => match b {
+      IsNonUseDependency => true
+      _ => false
+    }
+    RequiresResolutionWitness => match b {
+      RequiresResolutionWitness => true
+      _ => false
+    }
+  }
+}
+
+fn use_classification_classified_eq(
+  a: ClassifiedDependencyView<UseRelation>,
+  b: ClassifiedDependencyView<UseRelation>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: use_relation_eq)
+}
+
+fn use_classification_count(
+  xs: List<ClassifiedDependencyView<UseRelation>>,
+  item: ClassifiedDependencyView<UseRelation>
+) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if use_classification_classified_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn use_classification_uses_eq(
+  left: List<ClassifiedDependencyView<UseRelation>>,
+  right: List<ClassifiedDependencyView<UseRelation>>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (use_classification_count(xs: left, item: item) == use_classification_count(xs: right, item: item))
+    })
+  }
+}
+
+fn use_classification_fact_eq(a: UseClassificationFact, b: UseClassificationFact) -> Bool {
+  use_classification_uses_eq(left: a.uses, right: b.uses)
+}
+
+fn unused_parameter_fact_eq(a: UnusedParameterFact, b: UnusedParameterFact) -> Bool {
+  a.declaration == b.declaration
+}
+
+fn unused_parameter_count(xs: List<UnusedParameterFact>, item: UnusedParameterFact) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if unused_parameter_fact_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn unused_parameter_facts_eq(left: List<UnusedParameterFact>, right: List<UnusedParameterFact>) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (unused_parameter_count(xs: left, item: item) == unused_parameter_count(xs: right, item: item))
+    })
+  }
+}
+
+fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -> Bool {
+  unused_parameter_facts_eq(left: a.unused, right: b.unused)
+}

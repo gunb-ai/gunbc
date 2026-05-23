@@ -272,6 +272,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
         &"Some".to_string(),
         "test".to_string(),
         &empty_source_indices(),
+        0,
     );
 
     assert!(matches!(
@@ -295,6 +296,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
         &"Some".to_string(),
         "test".to_string(),
         &empty_source_indices(),
+        0,
     );
 
     // PatternLookupBlocked produces LookupFailed with 0 diagnostics (silent failure)
@@ -314,6 +316,7 @@ fn optional_pattern_lookup_still_resolves_some_variant() {
         &"Some".to_string(),
         "test".to_string(),
         &empty_source_indices(),
+        0,
     );
 
     match lookup.status.as_ref() {

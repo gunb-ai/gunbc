@@ -20,6 +20,8 @@
 
 module std.encoding
 
+import std.algebra { BoundedLattice }
+
 type Encoding
   = ASCII                          // 7-bit subset (bottom: most specific)
   | UTF8                           // valid Unicode
@@ -58,9 +60,11 @@ fn is_text_encoding(e: Encoding) -> Bool {
   }
 }
 
-// BoundedLattice.meet: greatest lower bound (conservative narrowing).
+// BoundedLattice<Encoding>:
+//   top = Unknown, bottom = ASCII
+// Greatest lower bound (conservative narrowing).
 // meet(x, x) = x. For incompatible branches (text vs binary), result is ASCII.
-fn encoding_meet(a: Encoding, b: Encoding) -> Encoding {
+fn encoding_lattice_meet(a: Encoding, b: Encoding) -> Encoding {
   match a {
     Unknown => b
     ASCII => ASCII
@@ -92,9 +96,9 @@ fn encoding_meet(a: Encoding, b: Encoding) -> Encoding {
   }
 }
 
-// BoundedLattice.join: least upper bound (combining from branches).
+// Least upper bound (combining from branches).
 // join(x, x) = x. For incompatible branches (text vs binary), result is Unknown.
-fn encoding_join(a: Encoding, b: Encoding) -> Encoding {
+fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
   match a {
     ASCII => b
     Unknown => Unknown
@@ -131,8 +135,9 @@ fn encoding_join(a: Encoding, b: Encoding) -> Encoding {
   }
 }
 
-// BoundedLattice<Encoding>:
-//   meet = encoding_meet, join = encoding_join
-//   top = Unknown, bottom = ASCII
-// Data declaration deferred: compiler does not yet emit generic type
-// parameters for data constants (BoundedLattice<Encoding>).
+data encoding_bounded_lattice: BoundedLattice<Encoding> = {
+  meet: encoding_lattice_meet
+  join: encoding_lattice_join
+  top: Unknown
+  bottom: ASCII
+}

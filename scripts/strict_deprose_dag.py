@@ -251,6 +251,19 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "ConstantExpression",
         ):
             out[nm] = ("🟢", "CP-3229-VERILOG-CONSTEXPR-TERMINAL")
+    if rel.endswith("llvm_ir.dag"):
+        # Wave-1 fact-bundle coproducts (T-4 quiet-otter-381); absent at merge-base.
+        for nm, slug in (
+            ("LlvmWave1IntegerBits", "SL-3229-LLVM-WAVE1-INT-WIDTH"),
+            ("LlvmWave1FloatKind", "SL-3229-LLVM-WAVE1-FLOAT-KIND"),
+        ):
+            if nm == "LlvmWave1IntegerBits":
+                out.setdefault(nm, ("🟡", slug))
+            else:
+                out.setdefault(nm, ("🟢", slug))
+    if rel == "src/v4/extdeps/languages/typescript.dag":
+        # T-4 wave-1 catalog row tag (replaces merge-base TsEcma262NumericPrimitiveKind).
+        out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
 
 
@@ -306,7 +319,14 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
     return stripped + "\n\n"
 
 
-def format_coproduct_tag(emoji: str, ref: str) -> str:
+def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if type_name == "LlvmWave1IntegerBits":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "
+            "feature:llvm-wave1-int-bits-subset — "
+            "dissolve-on-arrival: llvm_integer_facts_catalog aligns with "
+            "LlvmType.IntegerType.bits NonZeroNat carrier (wave-2 · T-4 quiet-otter-381)."
+        )
     return f"// {emoji} coproduct dissolution · {ref}."
 
 
@@ -363,7 +383,7 @@ def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str
                 )
                 sys.exit(1)
             em, ref = tag_map[nm]
-            expected = format_coproduct_tag(em, ref)
+            expected = format_coproduct_tag(em, ref, type_name=nm)
             prev = bl[j - 1] if j > 0 else ""
             if COPRODUCT_TAG_RE.match(prev):
                 if prev != expected:
@@ -522,10 +542,10 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/typescript.dag",
-            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).",
+            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.",
             "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
-            "// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).",
-            "// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).",
+            "// Consumes: v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model.",
+            "// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings; bool canonical-B decl-ref — 🟡 E-6(b) staging; wave-1 lex/grammar deferred.",
             "// 🟡",
         ),
         (
@@ -540,7 +560,7 @@ def main() -> None:
             "src/v4/std/float.dag",
             "// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.",
             "// Anchor: https://en.wikipedia.org/wiki/IEEE_754",
-            "// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, nat_is_zero, nat_compare).",
+            "// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, is_zero, nat_compare).",
             "// Status: std float vocabulary (32/64, specials, IEEE-ordered compare).",
             "// 🟢",
         ),

@@ -1,21 +1,136 @@
 // src/v4/lens/idempotency.dag
-//
-// Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally.
-// Anchor: https://en.wikipedia.org/wiki/Idempotence
-// Unifies: (per THESIS:188) idempotency + cancellation + redundancy = algebraic simplification. Three named runtime concerns are ONE mechanism. A worker hitting "I need cancellation" or "I need redundancy detection" extends THIS lens, not new lens/cancellation.dag or lens/redundancy.dag.
-//
-// Owns:
-//   - lens read: Node -> Witness<IdempotencyClaim>
-//   - composes with std/algebra.dag for law-derived simplification
-//
-// Consumes:
-//   - std/node.dag, std/algebra.dag, std/witness.dag
-//
-// Status: scaffold — fill per TASKS.md T-13
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally (THESIS:188 — idempotency + cancellation + redundancy = algebraic simplification).
+// Owns: IdempotencyVerdict, IdempotencyFact, idempotency_witness, idempotency_classify.
+// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<IdempotencyVerdict>`; no copied endpoints, no nested per-row EffectDependencyFact (Practice 11 sub-rule: parallel-payload vs typed-reference). The algebra-law witness is the verdict payload itself; the dependency-edge identity authority is `ClassifiedDependencyView.dependency`.
 
 
 module v4.lens.idempotency
 
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.collection { List }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  ClassifiedDependencyView,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
+  classified_dependency_view_eq
+}
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 lens classification — dependency-edge alone never proves the positive
+// algebraic law, so `RequiresAlgebraWitness` is the fail-closed default;
+// `AlgebraicIdempotenceProven` carries the typed law witness on the row.
+type IdempotencyVerdict
+  = AlgebraicIdempotenceProven { law: Witness<InferredFacts> }
+  | RequiresAlgebraWitness
+
+type IdempotencyFact {
+  dependencies: List<ClassifiedDependencyView<IdempotencyVerdict>>
+}
+
+fn idempotency_verdict_for_dependency(view: DependencyView) -> IdempotencyVerdict {
+  match view.kind {
+    Contains => RequiresAlgebraWitness
+    BindsTo => RequiresAlgebraWitness
+    TypeDependsOn => RequiresAlgebraWitness
+    DataDependsOn => RequiresAlgebraWitness
+    BarrierBefore => RequiresAlgebraWitness
+    EffectDependsOn => RequiresAlgebraWitness
+    ResourceDependsOn => RequiresAlgebraWitness
+    ModuleDependsOn => RequiresAlgebraWitness
+    PlacementDependsOn => RequiresAlgebraWitness
+    ModelDependsOn => RequiresAlgebraWitness
+    ProjectionDependsOn => RequiresAlgebraWitness
+    GeneratedFrom => RequiresAlgebraWitness
+    VerifiedBy => RequiresAlgebraWitness
+    PromotedBy => RequiresAlgebraWitness
+    BootstrapDependsOn => RequiresAlgebraWitness
+  }
+}
+
+fn idempotency_classify(view: DependencyView) -> ClassifiedDependencyView<IdempotencyVerdict> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: idempotency_verdict_for_dependency(view: view)
+  }
+}
+
+fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
+  IdempotencyFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, idempotency_classify(view: view))
+    })
+  }
+}
+
+fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
+  Holds {
+    value: idempotency_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn idempotency_verdict_eq(a: IdempotencyVerdict, b: IdempotencyVerdict) -> Bool {
+  match a {
+    AlgebraicIdempotenceProven { law: a_law } => match b {
+      AlgebraicIdempotenceProven { law: b_law } => a_law == b_law
+      _ => false
+    }
+    RequiresAlgebraWitness => match b {
+      RequiresAlgebraWitness => true
+      _ => false
+    }
+  }
+}
+
+fn idempotency_classified_eq(
+  a: ClassifiedDependencyView<IdempotencyVerdict>,
+  b: ClassifiedDependencyView<IdempotencyVerdict>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
+}
+
+fn idempotency_dependency_count(
+  xs: List<ClassifiedDependencyView<IdempotencyVerdict>>,
+  item: ClassifiedDependencyView<IdempotencyVerdict>
+) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if idempotency_classified_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn idempotency_dependency_facts_eq(
+  left: List<ClassifiedDependencyView<IdempotencyVerdict>>,
+  right: List<ClassifiedDependencyView<IdempotencyVerdict>>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (idempotency_dependency_count(xs: left, item: item) == idempotency_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
+  idempotency_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}

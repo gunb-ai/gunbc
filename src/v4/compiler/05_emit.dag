@@ -1,49 +1,47 @@
 // src/v4/compiler/05_emit.dag
-// Scope: Stage 5 — InferredTree + TargetModel -> TargetSource; omni-emission, inverse-grammar walk (DECISIONS C5).
-// Owns: emit_stage_locus_port, emit_inverse_grammar_walk_not_realized, emit_inverse_grammar_walk_not_realized_diagnostic, emit.
-// Consumes: std/diagnostic.dag, std/node.dag, compiler/00_compile.dag, compiler/04_infer.dag.
-// Status: scaffold — TASKS T-10; Wave-1 fail-closed boundary.
-// Anchor: https://en.wikipedia.org/wiki/Code_generation_(compiler)
+// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
+// Owns: serialize_source_for_emitted, serialize_target, emit.
+// Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
+//           std/diagnostic.dag.
+// Status: W-T-10 MVP-1 — emit = serialize_target ∘ translate; grammar-inverse validation
+// (row emitted match + per-token Node equality) then model-authored authority_source_text;
+// per-token lex walk emit deferred T-11 (no string templates in emit path).
+// Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
 
 
 module v4.compiler.emit
 
 
-import v4.compiler.compile { TargetModel, TargetSource }
+import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
+import v4.compiler.translate {
+  TargetNodeTree,
+  target_serialize_source_from_model,
+  translate
+}
 import v4.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Locus,
+  Accepted,
   Outcome,
-  PortLocus,
-  Unavailable,
-  diagnostics_singleton
+  bind_outcome
 }
-import v4.std.node { Symbol }
-
-
-data emit_stage_locus_port: Symbol = emit_stage_locus_port
-
-
-data emit_inverse_grammar_walk_not_realized: Symbol = emit_inverse_grammar_walk_not_realized
-
-
-fn emit_inverse_grammar_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: emit_inverse_grammar_walk_not_realized,
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
+fn serialize_source_for_emitted(
+  emitted: TargetNodeTree,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  target_serialize_source_from_model(target: target, emitted: emitted)
 }
-
-
-fn emit(tree: InferredTree, target: TargetModel) -> Outcome<TargetSource> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: emit_inverse_grammar_walk_not_realized_diagnostic(
-        at: PortLocus { port: emit_stage_locus_port }
-      )
-    )
-  }
+fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<TargetSource> {
+  serialize_source_for_emitted(emitted: tree, target: target)
+}
+fn emit(
+  tree: InferredTree,
+  target: TargetModel,
+  input_lang: LanguageModel
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: translate(tree: tree, target: target, input_lang: input_lang),
+    f: fn(target_tree) {
+      serialize_target(tree: target_tree, target: target)
+    }
+  )
 }

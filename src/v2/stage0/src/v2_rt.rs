@@ -3,6 +3,7 @@
 
 #![allow(unused_variables, dead_code)]
 
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -179,6 +180,27 @@ pub fn map_contains_key<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>,
 
 pub fn map_has<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>, key: K) -> bool {
     m.contains_key(&key)
+}
+
+pub fn rc_empty_set<T: Ord>() -> Rc<BTreeSet<T>> {
+    Rc::new(BTreeSet::new())
+}
+
+pub fn rc_set_insert<T: Ord + Clone>(mut s: Rc<BTreeSet<T>>, x: T) -> Rc<BTreeSet<T>> {
+    Rc::make_mut(&mut s).insert(x);
+    s
+}
+
+pub fn rc_set_union<T: Ord + Clone>(a: Rc<BTreeSet<T>>, b: Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>> {
+    let mut out = a;
+    for x in b.iter().cloned() {
+        Rc::make_mut(&mut out).insert(x);
+    }
+    out
+}
+
+pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
+    s.as_ref().contains(&x)
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {

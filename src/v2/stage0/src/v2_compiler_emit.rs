@@ -49,6 +49,10 @@ pub use crate::v2_compiler_languages::{
     TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
@@ -94,7 +98,7 @@ use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::TypeVariable { .. } => true,
+        InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
@@ -288,8 +292,8 @@ pub fn derive_module_imports(
                                 }
                                 __found
                             }
-                            ImportTrigger::TraitImplTrigger { .. } => false,
-                            ImportTrigger::DeriveMacroTrigger { .. } => false,
+                            ImportTrigger::TraitImplTrigger { trait_name: _, .. } => false,
+                            ImportTrigger::DeriveMacroTrigger { macro_name: _, .. } => false,
                             ImportTrigger::ContainerUsageTrigger { container: c, .. } => {
                                 let mut __found = false;
                                 for n in type_names.clone().iter().cloned() {
@@ -383,11 +387,13 @@ pub fn emit_simple_expr(
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: v, .. } => emit_literal(v.clone(), &target),
             ExprData::ExprError { message, .. } => emit_error_expr(message.clone(), target.clone()),
-            ExprData::ExprVar { .. } => emit_ident(
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => emit_ident(
                 expr_var_name_at(expr.clone(), source_indices.clone()),
                 target.clone(),
             ),
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let f = field_access_field_at(expr.clone(), source_indices.clone());
                 let b = field_access_base(expr.clone());
                 if is_typed_service_call_receiver(&expr, source_indices.clone()) {
@@ -408,7 +414,10 @@ pub fn emit_simple_expr(
                                 binding_kind: bk, ..
                             } => match bk.clone().as_deref().cloned() {
                                 Some(VarBindingKind::MatchBoundBinding) => false,
-                                Some(VarBindingKind::VariantValueBinding { .. }) => false,
+                                Some(VarBindingKind::VariantValueBinding {
+                                    parent_enum: _,
+                                    ..
+                                }) => false,
                                 _ => true,
                             },
                             _ => false,
@@ -478,7 +487,7 @@ pub fn emit_simple_expr(
                     )
                 }
             },
-            ExprData::ExprRecordLit { .. } => match target.clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => match target.clone() {
                 RenderTarget::Go => emit_error_expr(
                     "record literal in simple expr not yet supported for Go".to_string(),
                     target.clone(),
@@ -530,7 +539,7 @@ pub fn emit_simple_string_interp(
             let mut __found = false;
             for p in parts.clone().iter().cloned() {
                 if match (*p.clone()).clone() {
-                    StringPart::Interpolation { .. } => true,
+                    StringPart::Interpolation { expr: _, .. } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -937,7 +946,7 @@ pub fn emit_data_value_json(
                     "]".to_string(),
                 )
             }
-            ExprData::ExprRecordLit { .. } => {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
                 let field_strs = Rc::new({
                     let mut __result = Vec::new();
                     for f in value.children.clone().iter().cloned() {
@@ -965,7 +974,9 @@ pub fn emit_data_value_json(
                     "}".to_string(),
                 )
             }
-            ExprData::ExprVar { .. } => v2_rt::concat(
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => v2_rt::concat(
                 v2_rt::concat(
                     "\"".to_string(),
                     escape_json_string(expr_var_name_at(value.clone(), source_indices.clone())),
@@ -1545,7 +1556,7 @@ pub fn reserved_prefix(target: RenderTarget) -> String {
         .clone())
     .clone()
     {
-        ReservedWordStrategy::PrefixEscape { prefix, .. } => prefix.clone(),
+        ReservedWordStrategy::PrefixEscape { prefix: prefix, .. } => prefix.clone(),
         _ => "".to_string(),
     }
 }
@@ -1558,7 +1569,7 @@ pub fn reserved_suffix(target: RenderTarget) -> String {
         .clone())
     .clone()
     {
-        ReservedWordStrategy::SuffixEscape { suffix, .. } => suffix.clone(),
+        ReservedWordStrategy::SuffixEscape { suffix: suffix, .. } => suffix.clone(),
         _ => "".to_string(),
     }
 }
@@ -1784,7 +1795,7 @@ pub fn emit_node_type(
     render_node_type(
         &n,
         &target,
-        &v2_rt::rc_empty_map::<String, bool>(),
+        &v2_rt::rc_empty_set::<String>(),
         &source_indices,
     )
 }
@@ -1792,7 +1803,7 @@ pub fn emit_node_type(
 pub fn render_node_type(
     n: &Rc<Node>,
     target: &RenderTarget,
-    shared_types: &Rc<HashMap<String, bool>>,
+    shared_types: &Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -1838,7 +1849,7 @@ pub fn render_node_type(
                     }
                     __result
                 });
-                let param_str = param_strs.join(&repr.param_separator.clone());
+                let param_str = param_strs.clone().join(&repr.param_separator.clone());
                 let ret_str = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         render_node_type(&rt, &target, &shared_types, &source_indices)
@@ -1896,7 +1907,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = emit_map_has(shared_types.clone(), tn.clone());
+        let shared = v2_rt::set_contains(shared_types.clone(), tn.clone());
         if is_disj {
             {
                 let base = if (n.ident_span.clone() != None) {
@@ -2038,7 +2049,7 @@ pub fn render_node_type(
                     if bare_is_collection {
                         emit_container(&to_snake(tn.clone()), "_".to_string(), &target)
                     } else {
-                        if (has_container_template && (param_count == 1)) {
+                        if (has_container_template && (param_count.clone() == 1)) {
                             {
                                 let inner = match n.params.clone().first().cloned() {
                                     Some(p) => render_node_type(
@@ -2052,10 +2063,38 @@ pub fn render_node_type(
                                 emit_container(&to_snake(tn.clone()), inner, &target)
                             }
                         } else {
-                            if (tn.clone().as_str() == tuple_type_name().as_str()) {
-                                render_tuple_parts(&Rc::new(vec![]), target.clone())
+                            if (param_count.clone() > 0) {
+                                {
+                                    let param_strs = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for p in n.params.clone().iter().cloned() {
+                                            __result.push(render_node_type(
+                                                &param_node_type_expr(&p),
+                                                &target,
+                                                &shared_types,
+                                                &source_indices,
+                                            ));
+                                        }
+                                        __result
+                                    });
+                                    let spec = language_spec(target.clone());
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                coerce_primitive_type(target.clone(), tn.clone()),
+                                                spec.type_arg_open.clone(),
+                                            ),
+                                            param_strs.clone().join(&", ".to_string()),
+                                        ),
+                                        spec.type_arg_close.clone(),
+                                    )
+                                }
                             } else {
-                                coerce_primitive_type(target.clone(), tn.clone())
+                                if (tn.clone().as_str() == tuple_type_name().as_str()) {
+                                    render_tuple_parts(&Rc::new(vec![]), target.clone())
+                                } else {
+                                    coerce_primitive_type(target.clone(), tn.clone())
+                                }
                             }
                         }
                     }
@@ -2532,7 +2571,9 @@ pub fn emit_unified_operation_method(
         let ret_type = emit_node_type(resolved_type(op_node.clone()), target.clone(), si.clone());
         let ret_str = service_return_str(&spec, ret_type);
         let method_name = match (*spec.visibility.clone()).clone() {
-            VisibilitySpec::CaseVisibility { .. } => emit_export_ident(op_text.clone(), &target),
+            VisibilitySpec::CaseVisibility { export_case: _, .. } => {
+                emit_export_ident(op_text.clone(), &target)
+            }
             _ => emit_ident(op_text.clone(), target.clone()),
         };
         let eff_transport = effective_operation_transport(op_node.clone(), fallback_transport);
@@ -2724,16 +2765,21 @@ pub enum ExprCategory {
 
 pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
     match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprLiteral { .. } => ExprCategory::ExprCatLeaf,
+        ExprData::ExprLiteral { value: _, .. } => ExprCategory::ExprCatLeaf,
         ExprData::ExprError { .. } => ExprCategory::ExprCatLeaf,
-        ExprData::ExprVar { .. } => ExprCategory::ExprCatLeaf,
-        ExprData::ExprFieldAccess { .. } => ExprCategory::ExprCatCompound,
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => ExprCategory::ExprCatLeaf,
+        ExprData::ExprFieldAccess { summary: _, .. } => ExprCategory::ExprCatCompound,
         ExprData::ExprCall { .. } => ExprCategory::ExprCatCompound,
-        ExprData::ExprMethodCall { .. } => ExprCategory::ExprCatCompound,
-        ExprData::ExprRecordLit { .. } => ExprCategory::ExprCatCompound,
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => ExprCategory::ExprCatCompound,
+        ExprData::ExprRecordLit { parent_enum: _, .. } => ExprCategory::ExprCatCompound,
         ExprData::ExprListLit => ExprCategory::ExprCatCompound,
         ExprData::ExprBinOp { .. } => ExprCategory::ExprCatCompound,
-        ExprData::ExprUnaryOp { .. } => ExprCategory::ExprCatCompound,
+        ExprData::ExprUnaryOp { op: _, .. } => ExprCategory::ExprCatCompound,
         ExprData::ExprLambda => ExprCategory::ExprCatCompound,
         ExprData::ExprStringInterp => ExprCategory::ExprCatCompound,
         ExprData::ExprCast => ExprCategory::ExprCatCompound,
@@ -4028,7 +4074,7 @@ pub fn emit_export_ident(name: String, target: &RenderTarget) -> String {
                     result.clone()
                 }
             }
-            VisibilitySpec::KeywordVisibility { .. } => emit_ident(name, target.clone()),
+            VisibilitySpec::KeywordVisibility { prefix: _, .. } => emit_ident(name, target.clone()),
         }
     }
 }
@@ -4403,16 +4449,21 @@ pub fn emit_shared_expr(
         ExprData::ExprError { message, .. } => {
             wrap_result(emit_error_expr(message.clone(), target.clone()))
         }
-        ExprData::ExprVar { .. } => emit_var(texpr.clone()),
-        ExprData::ExprFieldAccess { .. } => emit_field_access(texpr.clone()),
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => emit_var(texpr.clone()),
+        ExprData::ExprFieldAccess { summary: _, .. } => emit_field_access(texpr.clone()),
         ExprData::ExprCall { .. } => emit_call(texpr.clone()),
-        ExprData::ExprMethodCall { .. } => emit_method_call(texpr.clone()),
+        ExprData::ExprMethodCall {
+            method_semantics: _,
+            ..
+        } => emit_method_call(texpr.clone()),
         ExprData::ExprMatch => emit_match(texpr.clone()),
         ExprData::ExprIf => emit_if(texpr.clone()),
         ExprData::ExprLet => emit_let(texpr.clone()),
-        ExprData::ExprRecordLit { .. } => emit_record_lit(texpr.clone()),
+        ExprData::ExprRecordLit { parent_enum: _, .. } => emit_record_lit(texpr.clone()),
         ExprData::ExprBinOp { .. } => emit_bin_op(texpr.clone()),
-        ExprData::ExprUnaryOp { op, .. } => {
+        ExprData::ExprUnaryOp { op: op, .. } => {
             let operand = unaryop_operand(texpr.clone());
             wrap_result(emit_unary_op(op.clone(), recurse(operand), target.clone()))
         }
@@ -4917,7 +4968,7 @@ pub fn emit_typed_string_interp_unified(
             let mut __found = false;
             for p in parts.clone().iter().cloned() {
                 if match (*p.clone()).clone() {
-                    StringPart::Interpolation { .. } => true,
+                    StringPart::Interpolation { expr: _, .. } => true,
                     _ => false,
                 } {
                     __found = true;
@@ -6002,9 +6053,9 @@ pub fn is_tco_identity_passthrough(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*arg_val.expr_data.clone()).clone() {
-        ExprData::ExprVar { .. } => {
-            (expr_var_name_at(arg_val.clone(), si).as_str() == param_name.as_str())
-        }
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => (expr_var_name_at(arg_val.clone(), si).as_str() == param_name.as_str()),
         _ => false,
     }
 }

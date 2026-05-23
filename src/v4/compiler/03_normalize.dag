@@ -18,7 +18,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.diagnostic {
   Diagnostic,
-  NodeLocus,
+  node_locus,
   Outcome,
   UserInputBoundary,
   Accepted,
@@ -32,10 +32,10 @@ import v4.std.node {
   Edge,
   Node,
   Symbol,
-  edge_is_positional,
+  is_positional,
   all_edges_named,
   all_edges_positional,
-  node_well_formed
+  well_formed
 }
 
 
@@ -93,7 +93,7 @@ fn classify_sugar(n: Node) -> SurfaceSugarKind? {
 fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -102,7 +102,7 @@ fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_post_normalize_not_well_formed,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -178,7 +178,7 @@ fn normalize_sugar(kind: SurfaceSugarKind, n: Node, children: List<Edge>) -> Out
       if exactly_one_child(children: children) {
         match children |> first {
           Some { value: e0 } =>
-            if edge_is_positional(e: e0) {
+            if is_positional(e: e0) {
               Accepted { value: e0.target, diagnostics: None }
             } else {
               Rejected { diagnostics: diagnostics_singleton(d: malformed_sugar_diagnostic(n: n)) }
@@ -230,7 +230,7 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
-      if node_well_formed(n: normalized) {
+      if well_formed(n: normalized) {
         Accepted { value: normalized, diagnostics: d }
       } else {
         Rejected {

@@ -69,6 +69,10 @@ pub use crate::std_syntax::{
 pub use crate::v2_compiler_artifact::RenderTarget;
 use crate::v2_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -286,13 +290,13 @@ impl ServiceReturnStrategy {
 pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
-        ServiceMethodStrategy::ExternalReceiver { .. } => "".to_string(),
+        ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => "".to_string(),
     }
 }
 
 pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> String {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { .. } => "".to_string(),
+        ServiceMethodStrategy::SelfInParams { self_param: _, .. } => "".to_string(),
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(v2_rt::concat("(".to_string(), v.clone()), " *".to_string()),
@@ -305,15 +309,15 @@ pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> Str
 
 pub fn service_method_depth(spec: Rc<LanguageSpec>) -> i64 {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { .. } => 1,
-        ServiceMethodStrategy::ExternalReceiver { .. } => 0,
+        ServiceMethodStrategy::SelfInParams { self_param: _, .. } => 1,
+        ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => 0,
     }
 }
 
 pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { .. } => true,
-        ServiceMethodStrategy::ExternalReceiver { .. } => false,
+        ServiceMethodStrategy::SelfInParams { self_param: _, .. } => true,
+        ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => false,
     }
 }
 

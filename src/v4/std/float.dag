@@ -1,7 +1,7 @@
 // src/v4/std/float.dag
 // Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.
 // Owns: Float32Interchange, Float64Interchange, FloatSpecial, FloatBody, Float32, Float64, Float, float_totalizer_reason_ieee754_nan_unordered, float_totalizer_port_ieee754_nan_totalizer, sign_rank_lex, ordering_invert, float_finite_unsigned_field_order, float_special_rank, float_body_is_nan, float_finite_magnitude_zero, float_body_compare_semantic_total, float_body_compare_ieee_ordered_outcome, float_ordered_compare_nan_rejected, float_ieee_ordered_compare_outcome, float_ordered_compare_tier2
-// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, nat_is_zero, nat_compare).
+// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, is_zero, nat_compare).
 // Status: std float vocabulary (32/64, specials, IEEE-ordered compare).
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
 // Ledger: CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL.
@@ -11,10 +11,10 @@ module v4.std.float
 
 
 import v4.std.algebra { Ordering, Less, Equal, Greater }
-import v4.std.diagnostic {Diagnostic, Outcome, PortLocus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Diagnostic, Outcome, port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.logic { Bool }
 import v4.std.machine { Bit, Word32, Word64 }
-import v4.std.nat { Nat, nat_compare, nat_is_zero }
+import v4.std.nat { Nat, nat_compare, is_zero }
 import v4.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
@@ -91,7 +91,7 @@ fn float_body_is_nan(x: FloatBody) -> Bool {
   }
 }
 fn float_finite_magnitude_zero(e: Nat, f: Nat) -> Bool {
-  nat_is_zero(e) && nat_is_zero(f)
+  is_zero(e) && is_zero(f)
 }
 fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> Ordering {
   match a {
@@ -164,7 +164,7 @@ fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcom
 fn float_ordered_compare_nan_rejected() -> Outcome<Ordering> {
   Rejected { diagnostics: diagnostics_singleton(d: Diagnostic {
       reason: float_totalizer_reason_ieee754_nan_unordered,
-      at: PortLocus { port: float_totalizer_port_ieee754_nan_totalizer },
+      at: port_locus(port: float_totalizer_port_ieee754_nan_totalizer),
       correction: Unavailable { reason: UserInputBoundary },
     }) }
 }

@@ -6,10 +6,16 @@
 
 module v4.test.claim.manual.connective_anchors
 
+import v4.compiler.eval { eval_rejected_invalid_node, eval_diagnostic }
+import v4.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  diagnostics_singleton
+}
 import v4.std.verification {
   TestClaim,
-  Compiles,
-  Equals,
   TestClassification,
   Tier1,
   Unit,
@@ -18,10 +24,33 @@ import v4.std.verification {
   T19ManualTcArrowTwoConj,
   T19ManualTcCardinalityEmpty,
   T19ManualTcInstantiationEmpty,
-  T19ManualTcConjEqualsRefl
+  T19ManualTcArrowEmpty,
+  T19ManualTcTransformEmpty,
+  T19ManualTcBranchEmpty,
+  T19ManualTcLoopEmpty,
+  T19ManualTcBindZeroChildren,
+  T19ManualTcConjEqualsRefl,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  T19ManualAnchorKey,
+  t19_manual_claim_anchor
 }
-import v4.std.diagnostic { Accepted, None, Outcome }
-import v4.std.node { Node, TypeNode, Conj, Disj, Arrow, Cardinality, Instantiation, Edge }
+import v4.std.node {
+  Arrow,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  Node,
+  Transform,
+  TypeNode
+}
 
 
 data stub_empty_conj: Node = Node {
@@ -57,61 +86,129 @@ data stub_empty_instantiation: Node = Node {
 }
 
 
-data claim_conj_empty_compiles: TestClaim = TestClaim {
-  kind: Compiles,
+data stub_empty_arrow: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: []
+}
+
+
+data stub_empty_transform: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: []
+}
+
+
+data stub_empty_branch: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  children: []
+}
+
+
+data stub_empty_loop: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: []
+}
+
+
+data stub_bind_zero_children: Node = Node {
+  kind: ComputationNode { behavior: Bind },
+  children: []
+}
+
+
+fn arity_rejection_claim(label: String, input: Node, anchor: T19ManualAnchorKey) -> TestClaim {
+  DiagnosticClaim {
+    label: label,
+    t19_anchor: t19_manual_claim_anchor(anchor: anchor),
+    input: input,
+    expected_rejection: diagnostics_singleton(
+      d: eval_diagnostic(reason: eval_rejected_invalid_node, node: input)
+    ),
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+
+data claim_conj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
-  t19_anchor: T19ManualTcConjEmpty,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcConjEmpty),
   input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_disj_empty_compiles: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_disj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
-  t19_anchor: T19ManualTcDisjEmpty,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcDisjEmpty),
   input: stub_empty_disj,
-  expected: Accepted { value: stub_empty_disj, diagnostics: None },
+  expected_value: stub_empty_disj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_arrow_two_conj_compiles: TestClaim = TestClaim {
-  kind: Compiles,
+data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
-  t19_anchor: T19ManualTcArrowTwoConj,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcArrowTwoConj),
   input: stub_arrow_pair,
-  expected: Accepted { value: stub_arrow_pair, diagnostics: None },
+  expected_value: stub_arrow_pair,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_cardinality_empty_compiles: TestClaim = TestClaim {
-  kind: Compiles,
-  label: "manual/connective: Cardinality connective with zero positional children",
-  t19_anchor: T19ManualTcCardinalityEmpty,
+data claim_cardinality_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Cardinality type-node fails well-formedness (A1 arity)",
   input: stub_empty_cardinality,
-  expected: Accepted { value: stub_empty_cardinality, diagnostics: None },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
+  anchor: T19ManualTcCardinalityEmpty
+)
 
 
-data claim_instantiation_empty_compiles: TestClaim = TestClaim {
-  kind: Compiles,
-  label: "manual/connective: Instantiation connective with zero positional children",
-  t19_anchor: T19ManualTcInstantiationEmpty,
+data claim_instantiation_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Instantiation type-node fails well-formedness (A1 arity)",
   input: stub_empty_instantiation,
-  expected: Accepted { value: stub_empty_instantiation, diagnostics: None },
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
+  anchor: T19ManualTcInstantiationEmpty
+)
 
 
-data claim_conj_equals_refl: TestClaim = TestClaim {
-  kind: Equals,
+data claim_arrow_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Arrow type-node fails well-formedness (A1 arity)",
+  input: stub_empty_arrow,
+  anchor: T19ManualTcArrowEmpty
+)
+
+
+data claim_transform_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Transform computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_transform,
+  anchor: T19ManualTcTransformEmpty
+)
+
+
+data claim_branch_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Branch computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_branch,
+  anchor: T19ManualTcBranchEmpty
+)
+
+
+data claim_loop_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Loop computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_loop,
+  anchor: T19ManualTcLoopEmpty
+)
+
+
+data claim_bind_zero_children_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: Bind with zero children fails well-formedness (A1 arity == 3)",
+  input: stub_bind_zero_children,
+  anchor: T19ManualTcBindZeroChildren
+)
+
+
+data claim_conj_equals_refl: TestClaim = EqualsClaim {
   label: "manual/connective: Equals reflexivity on empty Conj stub",
-  t19_anchor: T19ManualTcConjEqualsRefl,
-  input: stub_empty_conj,
-  expected: Accepted { value: stub_empty_conj, diagnostics: None },
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcConjEqualsRefl),
+  lhs: stub_empty_conj,
+  rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

@@ -19,7 +19,7 @@ type CarrierKind
   | InferredCoreNode
   | TargetSurfaceNode
   | TargetSource
-  | HostValue
+  | RuntimeValue
 
 type PipelineStage {
   id: Symbol

@@ -25,7 +25,9 @@
 #                    script (affects which jobs run, including Gate #103), or the
 #                    Gate #103 path-regex ratchet scripts changed. Independent of
 #                    v2/v3/v4: PRs that touch only `.github/workflows/ci.yml` must still
-#                    run fail-closed workflow policy checks (INVARIANTS P2/P3).
+#                    run fail-closed workflow policy checks (INVARIANTS P2/P3) and the
+#                    MVP-1 end-to-end gate when its ci.yml wiring changes (ci job gates
+#                    MVP-1 on workflow_policy || v4).
 #
 # Why this lives in a script (not inline in ci.yml):
 # Gate #103 (`ci_uses_affected_set_selection`) policy forbids path-selection
@@ -88,9 +90,9 @@ else
 fi
 
 # v4 affected: src/v4/ touched OR workspace deps changed (deps can break v2 build,
-# which v4 depends on for bootstrap). Triggers the bootstrap viability test:
-# v2 binary compiles every v4 .dag file (proves v4 stays in v2-syntax-compatible subset).
-if echo "$changed" | grep -qE '^src/v4/|^Cargo\.(toml|lock)$'; then
+# which v4 depends for bootstrap). Also dsl/std/ — MVP-1 gate compile dep pool
+# (fixtures/v4-mvp1/add); dsl/std-only PRs must re-run the add receipt.
+if echo "$changed" | grep -qE '^src/v4/|^fixtures/v4-mvp1/|^scripts/v4-mvp1|^dsl/std/|^Cargo\.(toml|lock)$'; then
   v4_state="true"
   echo "v4 affected: yes (running v2→v4 bootstrap viability test)" >&2
 else

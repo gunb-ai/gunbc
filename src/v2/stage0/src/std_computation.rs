@@ -21,6 +21,10 @@ pub use crate::std_termination::{
     RankingDimension,
 };
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
@@ -175,7 +179,7 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
         SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
         SizeBound::ExplicitCountZero => None,
-        SizeBound::ExplicitCountPositive { .. } => None,
+        SizeBound::ExplicitCountPositive { steps: _, .. } => None,
         SizeBound::Forever => None,
     }
 }
@@ -183,7 +187,7 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
     match (*bound).clone() {
         SizeBound::ExplicitCountZero => true,
-        SizeBound::ExplicitCountPositive { .. } => true,
+        SizeBound::ExplicitCountPositive { steps: _, .. } => true,
         SizeBound::Forever => true,
         _ => false,
     }

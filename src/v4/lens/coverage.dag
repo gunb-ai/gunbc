@@ -48,6 +48,7 @@ type CoverageDefectKey
   | CanonicalCarrier
   | PlausibleFallback
   | ParallelAuthority
+  | SkeletonCollapse
 
 
 type CoverageDefectAcceptanceKey {
@@ -93,4 +94,7 @@ data coverage_defect_plausible_fallback: CoverageDefectAcceptance = {
 }
 data coverage_defect_parallel_authority: CoverageDefectAcceptance = {
   concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
+}
+data coverage_defect_skeleton_collapse: CoverageDefectAcceptance = {
+  concern: CoverageDefectAcceptanceKey { lens: SkeletonCollapse }
 }

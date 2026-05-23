@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/t19_manual_anchor_manifest.dag
-// Scope: Twelve-row membership over `std/verification.dag` `T19ManualAnchorKey` (connective_anchors ∪ nat_law_anchors).
-// Owns: twelve `T19ManualAnchorKey` data rows (no parallel string table)
+// Scope: Seventeen-row membership over `std/verification.dag` `T19ManualAnchorKey` (connective_anchors ∪ nat_law_anchors).
+// Owns: seventeen `T19ManualAnchorKey` data rows (no parallel string table)
 // Consumes: v4.std.verification
 // Status: P2 join — each row's value equals `TestClaim.t19_anchor` on the paired claim (structural discriminant equality).
 
@@ -14,6 +14,11 @@ import v4.std.verification {
   T19ManualTcArrowTwoConj,
   T19ManualTcCardinalityEmpty,
   T19ManualTcInstantiationEmpty,
+  T19ManualTcArrowEmpty,
+  T19ManualTcTransformEmpty,
+  T19ManualTcBranchEmpty,
+  T19ManualTcLoopEmpty,
+  T19ManualTcBindZeroChildren,
   T19ManualTcConjEqualsRefl,
   T19ManualNatAddLeftIdentity,
   T19ManualNatAddRightIdentity,
@@ -37,6 +42,21 @@ data manual_anchor_tc_cardinality: T19ManualAnchorKey = T19ManualTcCardinalityEm
 
 
 data manual_anchor_tc_instantiation: T19ManualAnchorKey = T19ManualTcInstantiationEmpty
+
+
+data manual_anchor_tc_arrow_empty: T19ManualAnchorKey = T19ManualTcArrowEmpty
+
+
+data manual_anchor_tc_transform_empty: T19ManualAnchorKey = T19ManualTcTransformEmpty
+
+
+data manual_anchor_tc_branch_empty: T19ManualAnchorKey = T19ManualTcBranchEmpty
+
+
+data manual_anchor_tc_loop_empty: T19ManualAnchorKey = T19ManualTcLoopEmpty
+
+
+data manual_anchor_tc_bind_zero_children: T19ManualAnchorKey = T19ManualTcBindZeroChildren
 
 
 data manual_anchor_tc_conj_equals_refl: T19ManualAnchorKey = T19ManualTcConjEqualsRefl

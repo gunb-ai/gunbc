@@ -9,7 +9,8 @@
 module v4.test.claim.manual.infer_emit_compile_anchor
 
 
-import v4.compiler.compile { Source, TargetModel, TargetSource, compile }
+import v4.compiler.compile { Source, compile_ingest_staging }
+import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   AlgebraRef,
@@ -18,17 +19,23 @@ import v4.compiler.infer {
   infer
 }
 import v4.std.algebra { Empty }
-import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Unavailable
 }
+import v4.std.algebra { Empty }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
-import v4.std.witness { Violates, Witness }
+import v4.std.constraints {
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
+import v4.std.witness { StructuralPropertyWitness, Violates, Witness }
 
 
 data anchor_stub_empty_conj: Node = Node {
@@ -37,13 +44,14 @@ data anchor_stub_empty_conj: Node = Node {
 }
 
 
-data anchor_stub_target_model: TargetModel = anchor_stub_empty_conj
+data anchor_stub_target_model: TargetModel = TargetModel {
+  bundle: anchor_stub_empty_conj,
+  authority_source_text: Empty
+}
+data anchor_stub_input_lang: LanguageModel = anchor_stub_empty_conj
 
 
 data anchor_stub_source: Source = Empty
-
-
-data anchor_stub_ranking_symbol: Symbol = anchor_stub_ranking_symbol
 
 
 data anchor_stub_algebra_ref: AlgebraRef = AlgebraRef {
@@ -52,24 +60,33 @@ data anchor_stub_algebra_ref: AlgebraRef = AlgebraRef {
 }
 
 
-data anchor_stub_ranking_dim: RankingDimension = RankingDimension {
-  measured: anchor_stub_ranking_symbol
-}
-
-
-data anchor_stub_termination_proof: TerminationProof = TerminationProof {
-  non_increasing: [],
-  strict: anchor_stub_ranking_dim
-}
-
-
 data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_realized
+data anchor_stub_descent_not_derived: Symbol = anchor_stub_descent_not_derived
+
+
+data anchor_stub_canonical_witness: CanonicalGroundingWitness = CanonicalGroundingWitness {
+  structural: StructuralPropertyWitness {
+    property: constraint_property_being_canonical,
+    evidence: anchor_stub_empty_conj
+  },
+  closedness: StructuralPropertyWitness {
+    property: constraint_property_candidate_set_closedness,
+    evidence: anchor_stub_empty_conj
+  }
+}
 
 
 data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   resolved_type: anchor_stub_empty_conj,
   inhabits: anchor_stub_algebra_ref,
-  descent: anchor_stub_termination_proof
+  descent: Violates {
+    diagnostic: Diagnostic {
+      reason: anchor_stub_descent_not_derived,
+      at: node_locus(node: anchor_stub_empty_conj),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  },
+  canonical: anchor_stub_canonical_witness
 }
 
 
@@ -78,7 +95,7 @@ data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
     Violates {
       diagnostic: Diagnostic {
         reason: anchor_facts_map_lookup_not_realized,
-        at: PortLocus { port: anchor_facts_map_lookup_not_realized },
+        at: port_locus(port: anchor_facts_map_lookup_not_realized),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }
@@ -98,10 +115,14 @@ fn anchor_infer_rejects() -> Outcome<InferredTree> {
 
 
 fn anchor_emit_rejects() -> Outcome<TargetSource> {
-  emit(tree: anchor_stub_inferred_tree, target: anchor_stub_target_model)
+  emit(
+    tree: anchor_stub_inferred_tree,
+    target: anchor_stub_target_model,
+    input_lang: anchor_stub_input_lang
+  )
 }
 
 
 fn anchor_compile_rejects() -> Outcome<TargetSource> {
-  compile(source: anchor_stub_source, target: anchor_stub_target_model)
+  compile_ingest_staging(source: anchor_stub_source, target: anchor_stub_target_model)
 }

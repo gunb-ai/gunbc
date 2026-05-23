@@ -128,7 +128,7 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
@@ -141,10 +141,18 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         node_lookup_failed(diagnostics: [])
       } else {
         let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
+        // Record / generic-record destructuring: `LocusAnchor { at: x }` against
+        // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
+        // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
+        let record_destructure = field_binding_count > 0
+          && scrut_node.connective == Conj
+          && authored_name_at(source_indices: source_indices, node: scrut_node) == variant_name
         let fallback = if scrut_opt && variant_name == "Some" {
           node_lookup_resolved(node: synthesize_optional_some_variant(scrut: scrut_node))
         } else if scrut_opt && variant_name == "None" {
           node_lookup_resolved(node: none_type)
+        } else if record_destructure {
+          node_lookup_resolved(node: scrut_node)
         } else {
           variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
         }

@@ -17,7 +17,7 @@ import v4.extdeps.languages.dag {
 import v4.std.collection { Set }
 import v4.std.diagnostic {
   Diagnostic,
-  NodeLocus,
+  node_locus,
   Outcome,
   UserInputBoundary,
   Accepted,
@@ -38,7 +38,7 @@ import v4.std.node {
   Symbol,
   TypeNode,
   fold_node,
-  node_well_formed
+  well_formed
 }
 
 
@@ -217,7 +217,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
 fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: resolve_reason_malformed_tree,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -226,7 +226,7 @@ fn malformed_tree_diagnostic(n: Node) -> Diagnostic {
 fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: resolve_reason_unbound_symbol,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -551,7 +551,7 @@ fn resolve(tree: NormalizedTree, lm: DagLanguageModel) -> Outcome<ResolvedTree> 
 
 
 fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome<ResolvedTree> {
-  if node_well_formed(n: tree) {
+  if well_formed(n: tree) {
     resolve_node(n: tree, scope: scope_from_namespace(namespace: namespace))
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }

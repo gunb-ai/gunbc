@@ -118,7 +118,7 @@ Item **1** (review verdict) is already in flight per operator directive.
 |---|---|
 | HTTP route handlers | Need `dsl/extdeps/http/server.dag` for actual server replacement |
 | SQL schema + migrations | Need `dsl/extdeps/sql/migration.dag` for migration emission |
-| Audit event persistence | Need `dsl/extdeps/audit/event.dag` for event-log emission |
+| Audit event persistence | Need `dsl/extdeps/audit/cloudevents.dag` for event-log emission |
 | Browser DOM automation | Need `dsl/extdeps/browser/dom.dag` for Puppeteer-class emission |
 | Cron / launchd / hooks | OS-level scheduling — need shell/cron emission |
 | Provider authentication | Auth + secret handling — separate Phase 3 concern |
@@ -137,7 +137,7 @@ Each is a distinct R4-class extdeps workstream. None are blocking for Phase 1.5 
 **Phase 3 — Emission targets** (gates Phase 4):
 - `dsl/extdeps/http/server.dag` — HTTP REST handler carriers
 - `dsl/extdeps/sql/migration.dag` — SQL schema emission
-- `dsl/extdeps/audit/event.dag` — audit-event emission
+- `dsl/extdeps/audit/cloudevents.dag` — CloudEvents audit emission
 
 Each is real R4-class substrate work, parallel to T-WAD's `dsl/extdeps/github/actions.dag`.
 

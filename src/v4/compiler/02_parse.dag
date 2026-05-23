@@ -10,8 +10,8 @@ module v4.compiler.parse
 
 
 import v4.compiler.tokenize { TokenStream }
-import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, PortLocus, UserInputBoundary, Accepted, None, diagnostics_singleton}
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, node_well_formed }
+import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 
 
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
@@ -210,12 +210,10 @@ fn grammar_to_node(grammar: Grammar) -> Node {
 
 
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
-  let at = PortLocus {
-    port: parse_stage_locus_port
-  }
+  let at = port_locus(port: parse_stage_locus_port)
   let ntok = count(tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
-  if !node_well_formed(n: grammar_node) {
+  if !well_formed(n: grammar_node) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
   } else {
     match grammar {

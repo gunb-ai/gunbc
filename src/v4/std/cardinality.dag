@@ -1,7 +1,7 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, PositiveNatLeWitness, PositiveUpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, positive_nat_le_witness_lower, positive_nat_le_witness_upper, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_value, positive_upper_bounded_nat_inclusive_max, nat_le_witness_well_formed, upper_bounded_nat_well_formed, positive_nat_le_witness_well_formed, positive_upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity.
+// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, PositiveNatLeWitness, PositiveUpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, positive_nat_le_witness_lower, positive_nat_le_witness_upper, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_value, positive_upper_bounded_nat_inclusive_max, nat_le_witness_well_formed, upper_bounded_nat_well_formed, positive_nat_le_witness_well_formed, positive_upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, Multiplicity, primitive multiplicity declarations, termination_proof_witness_for_node.
 // Consumes: std collection, std nat, std node.
 // Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
 
@@ -9,8 +9,36 @@
 module v4.std.cardinality
 
 import v4.std.collection { List }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  node_locus,
+  Unavailable
+}
 import v4.std.nat { Nat }
-import v4.std.node { Symbol }
+import v4.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  Node,
+  NodeFold,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  fold_node
+}
+import v4.std.witness { Holds, Violates, Witness }
 // 🟢 Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
 type Never
 type Unit
@@ -95,4 +123,97 @@ type TerminationProof {
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Multiplicity
   = Bounded
-  | Unbounded { step: TerminationProof }
+  | RequiresTerminationProof
+  | ProvenTermination { proof: TerminationProof }
+
+data cardinality_structural_node_size: Symbol = cardinality_structural_node_size
+data cardinality_descent_not_proven: Symbol = cardinality_descent_not_proven
+
+fn structural_node_size_dimension() -> RankingDimension {
+  RankingDimension { measured: cardinality_structural_node_size }
+}
+
+fn structural_node_size_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: structural_node_size_dimension()
+  }
+}
+
+fn multiplicity_termination_witness(n: Node, m: Multiplicity) -> Witness<TerminationProof> {
+  match m {
+    Bounded => Holds { value: structural_node_size_termination_proof() }
+    RequiresTerminationProof =>
+      Violates { diagnostic: cardinality_descent_not_proven_diagnostic(n: n) }
+    ProvenTermination { proof } => Holds { value: proof }
+  }
+}
+
+fn connective_multiplicity(c: Connective) -> Multiplicity {
+  match c {
+    Atom { identity: _ } => Bounded
+    Conj => Bounded
+    Disj => Bounded
+    Arrow => Bounded
+    Cardinality => RequiresTerminationProof
+    Instantiation => Bounded
+  }
+}
+
+fn behavior_multiplicity(b: Behavior) -> Multiplicity {
+  match b {
+    Value => Bounded
+    Transform => Bounded
+    Branch => Bounded
+    Loop => RequiresTerminationProof
+    Bind => Bounded
+  }
+}
+
+fn node_multiplicity(n: Node) -> Multiplicity {
+  match n.kind {
+    TypeNode { connective: c } => connective_multiplicity(c: c)
+    ComputationNode { behavior: b } => behavior_multiplicity(b: b)
+  }
+}
+
+fn cardinality_descent_not_proven_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_descent_not_proven,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
+  multiplicity_termination_witness(n: n, m: node_multiplicity(n: n))
+}
+
+fn termination_proof_fold_step(
+  acc: Witness<TerminationProof>,
+  _: Edge,
+  child: Witness<TerminationProof>
+) -> Witness<TerminationProof> {
+  match acc {
+    Violates { diagnostic: _ } => acc
+    Holds { value: proof } =>
+      match child {
+        Violates { diagnostic: _ } => child
+        Holds { value: _ } => Holds { value: proof }
+      }
+  }
+}
+
+fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        local_termination_proof_witness(n: n0)
+      },
+      step: fn(acc, e, child) {
+        termination_proof_fold_step(acc: acc, e: e, child: child)
+      }
+    }
+  )
+}

@@ -1,8 +1,8 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: AlgebraRef, InferredFacts, InferredTree, infer_stage_locus_port, infer_coercion_fold_not_realized, infer_coercion_fold_not_realized_diagnostic, infer.
-// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.diagnostic, v4.std.node.
-// Status: scaffold — TASKS T-9; Wave-1 fail-closed boundary.
+// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
+// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
+// Status: Wave-3-A T-9 — descent via std/cardinality termination_proof_witness_for_node (#3559); SPI-3 remaps propagation Violates reason to infer_descent_not_derived while preserving upstream diagnostic.at (P2 facts-flow-forward).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -10,18 +10,43 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.std.cardinality { TerminationProof }
-import v4.std.collection { Map }
+import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v4.std.collection { List, Map }
+import v4.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  ConstraintGraph,
+  ConstraintSolvePolicy,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness,
+  solve_constraints
+}
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Locus,
+  node_locus,
   Outcome,
-  PortLocus,
   Unavailable,
-  diagnostics_singleton
+  Accepted,
+  None,
+  Rejected,
+  bind_outcome,
+  diagnostics_merge,
+  diagnostics_singleton,
+  outcome_rejected,
+  rejected_with_pending
 }
-import v4.std.node { Node, Symbol }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Edge,
+  Node,
+  NodeFold,
+  Symbol,
+  fold_node,
+  well_formed
+}
+import v4.std.witness { Holds, Violates, Witness }
 
 
 // RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
@@ -35,7 +60,8 @@ type AlgebraRef {
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
-  descent: TerminationProof
+  descent: Witness<TerminationProof>
+  canonical: CanonicalGroundingWitness
 }
 
 
@@ -46,27 +72,272 @@ type InferredTree {
 }
 
 
-data infer_stage_locus_port: Symbol = infer_stage_locus_port
+type InferredFactsEntry {
+  node: Node
+  facts: InferredFacts
+}
 
 
-data infer_coercion_fold_not_realized: Symbol = infer_coercion_fold_not_realized
+fn inferred_facts_resolved_type_matches(
+  facts: InferredFacts,
+  candidate_type: Node
+) -> Bool {
+  candidate_type == facts.resolved_type
+}
 
 
-fn infer_coercion_fold_not_realized_diagnostic(at: Locus) -> Diagnostic {
+fn inferred_facts_inhabitance_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.inhabits.witness == facts.resolved_type)
+    && (facts.inhabits.algebra == facts.canonical.structural.evidence)
+}
+
+
+fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.canonical.structural.property == constraint_property_being_canonical)
+    && (facts.canonical.closedness.property == constraint_property_candidate_set_closedness)
+    && (facts.canonical.closedness.evidence == facts.resolved_type)
+}
+
+
+data infer_descent_not_derived: Symbol = infer_descent_not_derived
+data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
+data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
+
+
+fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
-    reason: infer_coercion_fold_not_realized,
+    reason: infer_facts_lookup_miss,
+    at: node_locus(node: key),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_canonical_grounding_incoherent,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: infer_descent_not_derived,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 
-fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: infer_coercion_fold_not_realized_diagnostic(
-        at: PortLocus { port: infer_stage_locus_port }
+// SPI-3: infer owns the reason symbol; substrate/cardinality owns the failing locus (fold preserves child Violates).
+fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
+  match termination_proof_witness_for_node(n: n) {
+    Holds { value: proof } => Holds { value: proof }
+    Violates { diagnostic: upstream } =>
+      Violates {
+        diagnostic: infer_descent_not_derived_diagnostic(at: upstream.at)
+      }
+  }
+}
+
+
+fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
+  AlgebraRef {
+    algebra: grounding.witness.structural.evidence,
+    witness: grounding.node
+  }
+}
+
+
+fn infer_constraint_graph(n: Node) -> ConstraintGraph {
+  ConstraintGraph { root: n }
+}
+
+
+fn inferred_facts_from_grounding(
+  n: Node,
+  grounding: CanonicalGrounding,
+  descent: Witness<TerminationProof>,
+) -> InferredFacts {
+  InferredFacts {
+    resolved_type: grounding.node,
+    inhabits: algebra_ref_from_grounding(grounding: grounding),
+    descent: descent,
+    canonical: grounding.witness
+  }
+}
+
+
+fn concat_inferred_facts_entries(
+  a: List<InferredFactsEntry>,
+  b: List<InferredFactsEntry>,
+) -> List<InferredFactsEntry> {
+  fold(b, init: a, f: fn(acc, entry) {
+    list_push(acc, entry)
+  })
+}
+
+
+fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
+  match infer_descent_witness_for_node(n: n) {
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+    Holds { value: descent_proof } =>
+      bind_outcome(
+        o: solve_constraints(
+          policy: ConstraintSolvePolicy {
+            graph: infer_constraint_graph(n: n)
+          }
+        ),
+        f: fn(grounding) {
+          Accepted {
+            value: inferred_facts_from_grounding(
+              n: n,
+              grounding: grounding,
+              descent: Holds { value: descent_proof }
+            ),
+            diagnostics: None
+          }
+        }
       )
-    )
+  }
+}
+
+
+fn lookup_inferred_facts_in_entries(
+  entries: List<InferredFactsEntry>,
+  key: Node,
+) -> Witness<InferredFacts> {
+  fold(
+    entries,
+    init: Violates {
+      diagnostic: infer_facts_lookup_miss_diagnostic(key: key)
+    },
+    f: fn(acc, entry) {
+      match acc {
+        Holds { value: _ } => acc
+        Violates { diagnostic: _ } =>
+          if entry.node == key {
+            Holds { value: entry.facts }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+
+fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, InferredFacts> {
+  Map {
+    lookup: fn(key) {
+      lookup_inferred_facts_in_entries(entries: entries, key: key)
+    }
+  }
+}
+
+
+fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(node)
+}
+// P2: InferredFacts fields are independently constructible; reject illegal pairings before export.
+fn inferred_facts_canonical_grounding_coherent(facts: InferredFacts) -> Bool {
+  well_formed(n: facts.resolved_type)
+    && well_formed(n: facts.inhabits.witness)
+    && well_formed(n: facts.inhabits.algebra)
+    && (facts.resolved_type == facts.inhabits.witness)
+    && (facts.canonical.structural.evidence == facts.inhabits.algebra)
+}
+fn canonical_grounding_from_inferred_facts(
+  node: Node,
+  facts: InferredFacts,
+) -> Outcome<CanonicalGrounding> {
+  if inferred_facts_canonical_grounding_coherent(facts: facts) {
+    Accepted {
+      value: CanonicalGrounding {
+        node: facts.resolved_type,
+        witness: facts.canonical
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+  }
+}
+
+
+// RULING-1: infer-authored canonical witness only — no compiler-side fabrication (INVARIANTS P3).
+fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
+  match inferred_facts_witness_for_node(tree: tree, node: node) {
+    Holds { value: facts } =>
+      canonical_grounding_from_inferred_facts(node: node, facts: facts)
+    Violates { diagnostic: d } =>
+      outcome_rejected(d)
+  }
+}
+
+
+fn infer_entries_fold_init(n: Node) -> Outcome<List<InferredFactsEntry>> {
+  match infer_node_facts(n: n) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: facts, diagnostics: d } =>
+      Accepted {
+        value: [InferredFactsEntry { node: n, facts: facts }],
+        diagnostics: d
+      }
+  }
+}
+
+
+// Outcome threading over fold_node until Ratified Q4 traverse_node lands (std/diagnostic.dag).
+fn infer_entries_fold_step(
+  acc: Outcome<List<InferredFactsEntry>>,
+  e: Edge,
+  child: Outcome<List<InferredFactsEntry>>,
+) -> Outcome<List<InferredFactsEntry>> {
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: acc_entries, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: child_entries, diagnostics: cd } =>
+          Accepted {
+            value: concat_inferred_facts_entries(a: acc_entries, b: child_entries),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
+}
+
+
+fn infer_entries_for_tree(tree: ResolvedTree) -> Outcome<List<InferredFactsEntry>> {
+  fold_node(
+    n: tree,
+    algebra: NodeFold {
+      init: fn(n0) {
+        infer_entries_fold_init(n: n0)
+      },
+      step: fn(acc, e, child) {
+        infer_entries_fold_step(acc: acc, e: e, child: child)
+      }
+    }
+  )
+}
+
+
+fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
+  match infer_entries_for_tree(tree: tree) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: entries, diagnostics: d } =>
+      Accepted {
+        value: InferredTree {
+          root: tree,
+          facts: facts_map_from_entries(entries: entries)
+        },
+        diagnostics: d
+      }
   }
 }

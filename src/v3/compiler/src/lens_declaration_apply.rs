@@ -1924,16 +1924,7 @@ mod substrate_reflection {
     }
 
     fn reflect_http_method_scalar(dag: &Dag, m: HttpMethodScalar) -> ReflectResult<FieldValue> {
-        let label = match m {
-            HttpMethodScalar::Get => "GET",
-            HttpMethodScalar::Post => "POST",
-            HttpMethodScalar::Put => "PUT",
-            HttpMethodScalar::Patch => "PATCH",
-            HttpMethodScalar::Delete => "DELETE",
-            HttpMethodScalar::Head => "HEAD",
-            HttpMethodScalar::Options => "OPTIONS",
-        };
-        reflect_unit_variant(dag, "HttpMethod", label)
+        reflect_unit_variant(dag, "HttpMethod", m.token())
     }
 
     fn reflect_operation(dag: &Dag, op: &Operation) -> ReflectResult<FieldValue> {

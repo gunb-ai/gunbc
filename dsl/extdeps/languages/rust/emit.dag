@@ -191,7 +191,7 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "empty_set",          bridge_name: "rc_empty_set",     passes_by_ref: false, wraps_result: false },
   { name: "set_insert",         bridge_name: "rc_set_insert",    passes_by_ref: false, wraps_result: false },
   { name: "set_union",          bridge_name: "rc_set_union",     passes_by_ref: false, wraps_result: false },
-  { name: "set_contains",       bridge_name: "set_contains",     passes_by_ref: true,  wraps_result: false },
+  { name: "set_contains",       bridge_name: "set_contains",     passes_by_ref: false, wraps_result: false },
   { name: "map_insert",         bridge_name: "rc_map_insert",    passes_by_ref: false, wraps_result: false },
   { name: "map_merge",          bridge_name: "rc_map_merge",     passes_by_ref: false, wraps_result: false },
   { name: "list_concat",        bridge_name: "rc_list_concat",   passes_by_ref: false, wraps_result: false },
@@ -279,4 +279,3 @@ data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
   { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
   { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }
 ]
-

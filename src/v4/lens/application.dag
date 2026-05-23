@@ -58,7 +58,7 @@
 // (`Correction = Suggested(Node)`), so a node.dag operation returning
 // `Result<_, Diagnostic>` would be a substrate cycle. subterm_at/
 // apply_diff are exactly the "consumers evaluate fail-closed and raise
-// the Diagnostic" discipline std/node.dag states for `node_well_formed`.
+// the Diagnostic" discipline std/node.dag states for `well_formed`.
 // apply_diff applies the Diff's ORDERED Edits SEQUENTIALLY — there is
 // NO independence/well-formedness predicate (any List<Edit> is valid;
 // the prior set+predicate shape was the P2 illegal-states anti-pattern).

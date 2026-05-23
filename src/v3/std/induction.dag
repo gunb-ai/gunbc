@@ -201,14 +201,26 @@ fn inductive_field_to_dimension(field: InductiveField, param: String) -> Ranking
 //   PreservedValue = the argument IS the parameter (no descent, bounded by Forever)
 //   SubValueUnknown = the analyzer cannot determine the relationship (hard error)
 //
-// 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
-// (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink.
+// 🟡 MIXED. Mirror of `dsl/std/induction.dag` carrier — see that file for the full Inc-split
+// rationale (option (A), operator-ratified 2026-05-21, codex #15892 vs #15942 resolution).
+//
+// Lattice ordering (top → bottom):
+//   MixedTop                                                       -- ⊤
+//   < StrictAxisErased < { StrictSubValue / IteratedSubValue / ArithmeticDescent }
+//   MixedTop > PreservedValue
+//   < NonIncreasingValue < SubValueUnknown
+//
+// StrictAxisErased projects to Strict; MixedTop projects to NonIncreasing — see
+// sub_value_to_evidence and the inline comments at the bridge functions below.
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
   | IteratedSubValue { field: InductiveField }
   | ArithmeticDescent { param: String, factor: ShrinkFactor }
   | PreservedValue
+  | NonIncreasingValue
+  | StrictAxisErased
+  | MixedTop
   | SubValueUnknown
 
 
@@ -243,6 +255,10 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
         ProportionalShrink { divisor: _ } => Strict
       }
     PreservedValue                           => NonIncreasing
+    NonIncreasingValue                       => NonIncreasing
+    // See `dsl/std/induction.dag` Inc-split rationale.
+    StrictAxisErased                         => Strict
+    MixedTop                                 => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }
 }
@@ -274,111 +290,116 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   }
 }
 
-// Meet: conservative merge. SubValueUnknown absorbs everything (worst case).
-// PreservedValue absorbs everything except SubValueUnknown.
-// For two structural relations on the **same** field/param, factors must agree
-// (`shrink_factor_eq`); otherwise the merge is incomparable → SubValueUnknown.
-// Different fields/params remain incomparable as before.
-//
-// This is a fail-closed meet-oriented helper, not a bounded-lattice witness:
-// PreservedValue is a "same argument" relation, not a top element.
+// Projection-sound merge helpers — mirrored from `dsl/std/induction.dag`.
+// See that file for ordering, operational properties, and Inc-split rationale.
+
+fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
+  match a {
+    StrictSubValue { field: fa, factor: fac_a } =>
+      match b {
+        StrictSubValue { field: fb, factor: fac_b } =>
+          inductive_field_eq(a: fa, b: fb) && shrink_factor_eq(a: fac_a, b: fac_b)
+        _ => false
+      }
+    IteratedSubValue { field: fa } =>
+      match b {
+        IteratedSubValue { field: fb } => inductive_field_eq(a: fa, b: fb)
+        _ => false
+      }
+    ArithmeticDescent { param: pa, factor: fac_a } =>
+      match b {
+        ArithmeticDescent { param: pb, factor: fac_b } =>
+          (pa == pb) && shrink_factor_eq(a: fac_a, b: fac_b)
+        _ => false
+      }
+    PreservedValue => match b { PreservedValue => true, _ => false }
+    NonIncreasingValue => match b { NonIncreasingValue => true, _ => false }
+    StrictAxisErased => match b { StrictAxisErased => true, _ => false }
+    MixedTop => match b { MixedTop => true, _ => false }
+    SubValueUnknown => match b { SubValueUnknown => true, _ => false }
+  }
+}
+
+// 🟡 PRACTICE 10 DISSOLUTION DISPOSITION: see `dsl/std/induction.dag` — hand-rolled
+// boolean projection of `sub_value_to_evidence(r) == Strict`; retires when the
+// substrate gains derived-predicate-from-projection (ROADMAP.md:390 P5 — not BoundedLattice).
+fn is_strict_style_structural(r: SubValueRelation) -> Bool {
+  match r {
+    StrictSubValue { field: _, factor: _ } => true
+    IteratedSubValue { field: _ } => true
+    ArithmeticDescent { param: _, factor: _ } => true
+    StrictAxisErased => true
+    _ => false
+  }
+}
+
+fn sub_value_level(r: SubValueRelation) -> Int {
+  match r {
+    MixedTop => 4
+    StrictAxisErased => 3
+    StrictSubValue { field: _, factor: _ } => 2
+    IteratedSubValue { field: _ } => 2
+    ArithmeticDescent { param: _, factor: _ } => 2
+    PreservedValue => 2
+    NonIncreasingValue => 1
+    SubValueUnknown => 0
+  }
+}
 
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  match a {
-    SubValueUnknown => SubValueUnknown
-    PreservedValue =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        _ => PreservedValue
+  if sub_value_structural_eq(a: a, b: b) { a }
+  else {
+    let la = sub_value_level(r: a)
+    let lb = sub_value_level(r: b)
+    if la == 0 || lb == 0 { SubValueUnknown }
+    else {
+      if la == 4 || lb == 4 { NonIncreasingValue }
+      else {
+        if la == 3 {
+          if is_strict_style_structural(r: b) { b }
+          else { NonIncreasingValue }
+        }
+        else {
+          if lb == 3 {
+            if is_strict_style_structural(r: a) { a }
+            else { NonIncreasingValue }
+          }
+          else { NonIncreasingValue }
+        }
       }
-    StrictSubValue { field: fa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        PreservedValue => PreservedValue
-        StrictSubValue { field: fb, factor: fac_b } =>
-          if inductive_field_eq(a: fa, b: fb) {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              StrictSubValue { field: fa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    IteratedSubValue { field: fa } =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        PreservedValue => PreservedValue
-        IteratedSubValue { field: fb } =>
-          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    ArithmeticDescent { param: pa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => SubValueUnknown
-        PreservedValue => PreservedValue
-        ArithmeticDescent { param: pb, factor: fac_b } =>
-          if pa == pb {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              ArithmeticDescent { param: pa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
+    }
   }
 }
-
-// Join: optimistic merge. SubValueUnknown is identity.
-// PreservedValue yields to any structural descent.
-// Same field/param requires **matching** shrink factors for a commutative join;
-// mismatched factors are incomparable → SubValueUnknown.
 
 fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
-  match a {
-    SubValueUnknown => b
-    PreservedValue =>
-      match b {
-        SubValueUnknown => PreservedValue
-        _ => b
+  if sub_value_structural_eq(a: a, b: b) { a }
+  else {
+    let la = sub_value_level(r: a)
+    let lb = sub_value_level(r: b)
+    if la == 0 { b }
+    else {
+      if lb == 0 { a }
+      else {
+        if la == 4 || lb == 4 { MixedTop }
+        else {
+          if la == 1 { b }
+          else {
+            if lb == 1 { a }
+            else {
+              if is_strict_style_structural(r: a) && is_strict_style_structural(r: b) {
+                StrictAxisErased
+              } else { MixedTop }
+            }
+          }
+        }
       }
-    StrictSubValue { field: fa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => a
-        PreservedValue => a
-        StrictSubValue { field: fb, factor: fac_b } =>
-          if inductive_field_eq(a: fa, b: fb) {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              StrictSubValue { field: fa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    IteratedSubValue { field: fa } =>
-      match b {
-        SubValueUnknown => a
-        PreservedValue => a
-        IteratedSubValue { field: fb } =>
-          if inductive_field_eq(a: fa, b: fb) { a } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
-    ArithmeticDescent { param: pa, factor: fac_a } =>
-      match b {
-        SubValueUnknown => a
-        PreservedValue => a
-        ArithmeticDescent { param: pb, factor: fac_b } =>
-          if pa == pb {
-            if shrink_factor_eq(a: fac_a, b: fac_b) {
-              ArithmeticDescent { param: pa, factor: fac_a }
-            } else { SubValueUnknown }
-          } else { SubValueUnknown }
-        _ => SubValueUnknown
-      }
+    }
   }
 }
 
-// SubValueRelation intentionally does not claim BoundedLattice inhabitance:
-//   meet_sub_value is the conservative fail-closed merge helper.
-//   join_sub_value is an optimistic auxiliary helper.
-//   SubValueUnknown is the fail-closed sink and join identity.
-//   PreservedValue is a same-argument relation, not a meet identity/top.
+// Merge helpers only — not a `std/algebra` inhabitance. Meet is NOT GLB for MixedTop.
+// See `dsl/std/induction.dag` for operational properties. P5: no BoundedLattice witness;
+// ROADMAP.md:390 row retargeted — Rc-aware merge-helper surfacing, not lattice inhabitance.
 
 
 // =========================================================================
@@ -417,6 +438,29 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
   match callee_rel {
     PreservedValue => arg_rel
     SubValueUnknown => SubValueUnknown
+    NonIncreasingValue =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        _ => NonIncreasingValue
+      }
+    StrictAxisErased =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        PreservedValue => StrictAxisErased
+        StrictSubValue { field: _, factor: _ } => StrictAxisErased
+        IteratedSubValue { field: _ } => StrictAxisErased
+        ArithmeticDescent { param: _, factor: _ } => StrictAxisErased
+        StrictAxisErased => StrictAxisErased
+        // See `dsl/std/induction.dag` — non-strict caller-side cannot be strengthened.
+        NonIncreasingValue => NonIncreasingValue
+        MixedTop => MixedTop
+      }
+    MixedTop =>
+      match arg_rel {
+        SubValueUnknown => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        _ => MixedTop
+      }
     StrictSubValue { field: _, factor: _ } =>
       match arg_rel {
         PreservedValue => callee_rel
@@ -424,22 +468,28 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
       }
     IteratedSubValue { field: _ } =>
       match arg_rel {
         PreservedValue => callee_rel
         SubValueUnknown => SubValueUnknown
-        // Conservative: StrictSubValue, not IteratedSubValue. The outer
-        // field may be OptionalRecursion (not iterable). Iteration evidence
-        // is only valid at the site that observes the list, not through
-        // cross-call composition.
         StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
       }
     ArithmeticDescent { param: p, factor: f } =>
       match arg_rel {
         PreservedValue => ArithmeticDescent { param: p, factor: f }
+        SubValueUnknown => SubValueUnknown
+        NonIncreasingValue => NonIncreasingValue
+        StrictAxisErased => StrictAxisErased
+        MixedTop => MixedTop
         _ => SubValueUnknown
       }
   }
@@ -471,6 +521,9 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
         UnitShrink => Some { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
       }
     PreservedValue                            => Some { value: SameArgumentCall }
+    NonIncreasingValue                        => none
+    StrictAxisErased                          => none
+    MixedTop                                  => none
     SubValueUnknown                           => none
   }
 }
@@ -516,6 +569,17 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
+    NonIncreasingValue =>
+      Some { value: LoweringTarget {
+        primitive: Repeat,
+        bound: Forever,
+        evidence: NonIncreasing,
+        factor: none
+      }}
+    // StrictAxisErased / MixedTop: see `dsl/std/induction.dag` — neither has a usable axis
+    // for a finite lowering bound, so both project to `none` (same fail-closed posture).
+    StrictAxisErased => none
+    MixedTop => none
     SubValueUnknown => none
   }
 }

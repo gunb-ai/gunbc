@@ -914,6 +914,85 @@ findings. Standard 🔴/🟡/🟢:
   declarations have shapes that genuinely differ in more than one
   dimension, or the structural shape itself differs.
 
+#### Parallel-payload vs typed-reference (Practice 11 sub-rule)
+
+A second-order Practice 11 failure that doesn't show up as "two
+domain-named primitives" but as **one row carrying both a typed
+reference to substrate AND a parallel copy of the referenced fields**.
+Operator-direct standing 2026-05-19, ratified for the T-13 family
+ratchet 2026-05-21 (crisp-boar-896 Phase 1, `ClassifiedDependencyView<C>`
+in `v4.std.dependency`).
+
+Worked instance (T-13 lens family pre-ratchet):
+
+```
+type ParallelismDependencyFact {
+  source: Node            // ← parallel payload, also at dependency.source
+  dependent: Node         // ← parallel payload, also at dependency.dependent
+  dependency: DependencyView   // ← typed reference (the authority)
+  source_facts: Witness<InferredFacts>     // ← parallel payload, also at tree.facts.lookup(dependency.source)
+  dependent_facts: Witness<InferredFacts>  // ← parallel payload, also at tree.facts.lookup(dependency.dependent)
+  relation: ParallelismRelation
+}
+```
+
+The row carries a `DependencyView` reference *and* re-copies its
+endpoints under semantic names (`source`/`dependent` / `at`/`owner` /
+`use_site`/`declaration`). That is **Practice 2 illegal-state-
+representable** (P2): the product type admits `source != dependency.source`
+while still type-checking. The defect is not redundancy — it is a
+parallel authority for endpoint identity. (Sharpening: even
+topologically-neutral copied names like `source`/`dependent` are still
+parallel-payload — the carrier above the typed reference IS the
+authority; any field that duplicates one of its fields is a second
+authority. The unused-parameters variant is worse: semantic names like
+`use_site`/`declaration` import `BindsTo` semantics onto every
+`DependencyKind`, so a `Contains` row is an illegal state *by
+construction*.)
+
+Practice 3 cousin: per-node `InferredFacts` "carried on the row"
+duplicate a lookup against `tree.facts` — the row should hold the
+typed reference (`dependency`) and consumers read facts at use-sites
+through `tree.facts.lookup(dependency.source)`, not from a frozen copy
+on the row (Facts Flow Forward — facts flow by reference, never by
+copy).
+
+**Mechanical test (when authoring/reviewing).** Does the row combine
+a typed reference to a substrate carrier with one or more fields
+whose values are derivable from that reference? If yes, the row is
+parallel-payload — remove the derived fields; provide free-function
+accessors (`classified_source`, `classified_dependent`, …) that
+project through the typed reference. The carrier should be
+parametric over the lens-specific projection:
+
+```
+type ClassifiedDependencyView<C> {
+  dependency: DependencyView
+  classification: C   // lens-specific (UseRelation | ParallelismRelation | OwnershipMode | …)
+}
+```
+
+— one substrate primitive, N call sites. This is the same Practice 11
+"one parameterized declaration vs N domain-named siblings" shape
+applied to a family of *lens projection rows*; the parameter is the
+classification.
+
+**Disposition.** Parallel-payload findings are BLOCKING under the
+same Practice 11 disposition table (🔴 / 🟡 / 🟢). Recurring instances
+across a family escalate to a **family-wide ratchet PR** (substrate
+primitive + N call-site migrations + claim updates in one coherent
+unit) — the T-13 ratchet is the worked precedent.
+
+**Recurring instances** (memory-grounded; sweep on each new sighting):
+
+| # | Instance | Resolution |
+|---|---|---|
+| 1 | PR #3448 `DependencyView` | merged |
+| 2 | `FileReadReceipt` rename (PR #3447) | merged |
+| 3 | `WholeDagFailClosed` rename (PR #3451) | merged |
+| 4 | `Extent::WholeFile` drop (PR #3452 reshape) | merged |
+| 5 | T-13 `*DependencyFact` family | **this ratchet — `ClassifiedDependencyView<C>` substrate** |
+
 #### Concept-home boundary discipline (Practice 11 companion)
 
 A second meta-rule, structurally distinct enough to call out separately

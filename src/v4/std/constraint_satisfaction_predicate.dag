@@ -1,0 +1,23 @@
+// src/v4/std/constraint_satisfaction_predicate.dag
+// Scope: mechanical constraint-satisfaction preservation check (leaf — no find_witness import).
+// Anchor: design-v4-compiler-homomorphism.md M10; consumed by std/constraints + std/find_witness.
+// Owns: constraint_satisfaction_preservation_holds.
+// Consumes: std node.
+// Status: T-25-tail predicate prover — algebra-bound candidate must coincide with source facts.
+
+
+module v4.std.constraint_satisfaction_predicate
+
+
+import v4.std.node { Node, well_formed }
+fn constraint_satisfaction_preservation_holds(
+  source_facts: Node,
+  candidate: Node,
+  algebra: Node,
+) -> Bool {
+  well_formed(n: source_facts)
+    && well_formed(n: algebra)
+    && well_formed(n: candidate)
+    && (algebra == source_facts)
+    && (candidate == source_facts)
+}

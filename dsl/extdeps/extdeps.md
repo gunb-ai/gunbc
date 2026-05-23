@@ -42,7 +42,6 @@ std/types.dag        "What is a refined type? A branded type? A sum type?"
 std/coordination.dag "What is a CAS mechanism? A lease? A delivery guarantee?"
 shared/behavioral.dag "What is a side effect? Determinism? A failure mode?"
 std/rate_limit.dag   "What is a rate limit? A backoff strategy? A retry trigger?"
-std/errors.dag       "What are provider error envelope shapes?"
 std/fermi.dag        "What is an order of magnitude?"
 ```
 
@@ -50,15 +49,6 @@ Example — `std/coordination.dag` defines CAS without knowing GCS exists:
 
 ```dag
 type CasMechanism = GenerationBased | ETagBased | VersionId | RowVersion
-```
-
-Example — `std/errors.dag` defines provider error envelope shapes without knowing individual operations:
-
-```dag
-type GitHubErrorShape {
-  message: String
-  documentation_url: String?
-}
 ```
 
 Example — `std/rate_limit.dag` defines retry semantics without knowing any API:
@@ -290,16 +280,19 @@ Layer 2  cloud/gcp/gcp.dag ──────────── "What is GCP?" (
            │  imports
 Layer 1  cloud/cloud.dag ──────────── "What is a cloud provider?" (abstract)
            │  imports
-Layer 0  std/errors.dag ──────────── "What is an HTTP error?"
+Layer 0  extdeps/github/errors.dag ─── "What is a GitHub API error?"
+         extdeps/cloud/gcp/errors.dag ─ "What is a GCP API error?"
          shared/behavioral.dag ──── "What is idempotency?"
          std/coordination.dag ────── "What is CAS?"
          std/rate_limit.dag ──────── "What is a retry policy?"
 ```
 
-**Each layer only knows about layers below it.** `std/errors.dag` doesn't know
-GitHub exists. `cloud/cloud.dag` doesn't know GCP exists. `cloud/gcp/gcp.dag`
-doesn't know Secret Manager exists. This is separation of concerns through
-composition, not abstraction.
+**Each layer only knows about layers below it.** `cloud/cloud.dag` doesn't
+know GCP exists. `cloud/gcp/gcp.dag` doesn't know Secret Manager exists.
+Provider error envelopes live in each provider's own home (e.g.
+`extdeps/github/errors.dag`, `extdeps/cloud/gcp/errors.dag`), so adding or
+revising a provider's error format touches one file — its own. This is
+separation of concerns through composition, not abstraction.
 
 ### Existing Examples of Pristine Composition
 
@@ -333,18 +326,22 @@ Every service declares its behavior using the same vocabulary. A new service
 doesn't need new behavior types — it instantiates existing ones with real
 values from the API spec.
 
-**errors → provider error shapes → service operations**:
+**per-provider error shapes → service operations**:
 
 ```
-std/errors.dag                  Layer 0: GitHubErrorShape, GcpErrorShape, etc.
+extdeps/github/errors.dag       Layer 0: GitHubErrorShape
+extdeps/cloud/gcp/errors.dag    Layer 0: GcpErrorShape, GcpErrorDetails
+extdeps/llm/anthropic_errors.dag Layer 0: AnthropicErrorShape, AnthropicErrorDetails
+extdeps/llm/openai_errors.dag   Layer 0: OpenAiErrorShape, OpenAiErrorDetails
     ↓ imported by
 cloud/gcp/secret_manager.dag   Layer 3: error: GcpErrorShape in service ops
 github/gists.dag                Layer 3: error: GitHubErrorShape in service ops
 ```
 
-Error shapes are defined once per provider in `std/errors.dag` (sourced from
-the actual API error envelope documentation), then referenced by every service
-operation. When GitHub changes its error format, one type changes.
+Error shapes are defined once per provider in that provider's own
+`errors.dag` (sourced from the actual API error envelope documentation),
+then referenced by every service operation. When GitHub changes its error
+format, one file — `extdeps/github/errors.dag` — changes.
 
 ### Why This Matters
 
@@ -497,7 +494,7 @@ Each module is graded on how well it implements the upstream spec:
 | Module | Lines | Grade | Spec URL | Notes |
 |--------|-------|-------|----------|-------|
 | `git.dag` | 261 | A | **Missing** | Object model, merge strategies, diff format correct |
-| `shell.dag` | 54 | A | **Missing** | POSIX find/which/printenv correct |
+| `shell.dag` | 54 | A | **Missing** | POSIX find/printenv; which extension; Exec `sh -lc` (`-l` bash login) |
 | `cron_schedule_model.dag` | 81 | A | Module header | POSIX.1-2017 XCU `crontab` five-field grammar; spec URL + edition in header |
 | `cargo.dag` | 216 | A | **Missing** | Package, target, profile, feature model correct |
 | `build/make.dag` | 127 | A | Cited | GNU Make manual URL. Recipe prefixes §5.2/5.5/5.7.1 |
@@ -567,7 +564,7 @@ Targets (28 modules):
 - `secrets/*` — cite provider-specific docs
 - `git.dag` — cite https://git-scm.com/docs or Pro Git
 - `cargo.dag` — cite https://doc.rust-lang.org/cargo/reference/
-- `shell.dag` — cite POSIX or coreutils docs
+- `shell.dag` — cite POSIX.1 for find/printenv and `-c`; common-utility docs for `which`; bash/zsh (or host `sh` implementation) for login-shell `-l` on `sh -lc`
 - `yaml.dag` — cite https://yaml.org/spec/1.2.2/
 - `tools/rust_toolchain.dag` — cite https://rust-lang.github.io/rustup/
 - `transports/sql.dag` — cite ISO SQL plus concrete prepared-statement docs

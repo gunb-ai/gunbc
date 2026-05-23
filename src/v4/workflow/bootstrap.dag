@@ -8,9 +8,8 @@ module v4.workflow.bootstrap
 
 import v4.std.node { Hash, Symbol }
 import v4.std.algebra {
-  free_monoid_count_equal,
-  free_monoid_forall,
-  free_monoid_length
+  count_equal,
+  length
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 
@@ -24,7 +23,7 @@ data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
 data pinned_v4_fixed_point_hash_pin: Symbol = pinned_v4_fixed_point_hash_pin
-// RULING-1: 🟡 needs-more-work — symbolic hash pins.
+// RULING-1: 🟡 needs-more-work — opaque digest tags (B1 content_hash operands land later).
 data v4_stage0_hash: Hash = v4_stage0_hash
 data v4_stage1_hash: Hash = v4_stage1_hash
 data v4_stage2_hash: Hash = v4_stage2_hash
@@ -72,14 +71,18 @@ fn bs_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
+fn bs_symbol_eq(left: Symbol, right: Symbol) -> Bool {
+  left == right
+}
+
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  (free_monoid_length(xs: a) == free_monoid_length(xs: b))
-    && free_monoid_forall(xs: a, predicate: fn(x) {
-         free_monoid_count_equal(xs: b, item: x, eq: fn(left, right) { left == right }) != 0
-       })
-    && free_monoid_forall(xs: b, predicate: fn(y) {
-         free_monoid_count_equal(xs: a, item: y, eq: fn(left, right) { left == right }) != 0
-       })
+  if length(xs: a) == length(xs: b) {
+    fold(a, init: true, f: fn(acc, x) {
+      acc && (count_equal(xs: a, item: x, eq: bs_symbol_eq) == count_equal(xs: b, item: x, eq: bs_symbol_eq))
+    })
+  } else {
+    false
+  }
 }
 
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
@@ -107,9 +110,11 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.self1.produces_hash.pin == v4_stage2_hash_pin)
        && (p.fixpt.left_hash.pin == v4_stage1_hash_pin)
        && (p.fixpt.right_hash.pin == v4_stage2_hash_pin)
-       && (p.fixpt.left_hash.pin == p.fixpt.right_hash.pin)
        && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
-       && (p.fixpt.left_hash.pin == p.fixpt.pinned_hash.pin)
+       && (p.self0.produces_hash.digest == p.self1.produces_hash.digest)
+       && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
+       && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
+       && (p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest)
        && (p.fixpt.via == bit_identical_check) {
     Accepted { value: p, diagnostics: None }
   } else {
@@ -117,7 +122,8 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
   }
 }
 
-data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
+// A2+A3 regression: fixpt digest mismatch must fail closed (distinct stage-2 carrier ≠ stage-1).
+data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [v4_dag_source],
     produces: v4_stage0_binary,
@@ -142,6 +148,36 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     right: v4_stage2_binary,
     right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
     pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
+    via: bit_identical_check
+  }
+})
+
+
+data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
+  seed: CompileStage {
+    consumes: [v4_dag_source],
+    produces: v4_stage0_binary,
+    produces_hash: BootstrapHashPin { digest: v4_stage0_hash, pin: v4_stage0_hash_pin },
+    compiled_by: v2_pipeline
+  },
+  self0: CompileStage {
+    consumes: [v4_dag_source, v4_stage0_binary],
+    produces: v4_stage1_binary,
+    produces_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
+    compiled_by: v4_stage0_binary
+  },
+  self1: CompileStage {
+    consumes: [v4_dag_source, v4_stage1_binary],
+    produces: v4_stage2_binary,
+    produces_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
+    compiled_by: v4_stage1_binary
+  },
+  fixpt: FixptStage1Stage2 {
+    left: v4_stage1_binary,
+    left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
+    right: v4_stage2_binary,
+    right_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
+    pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin },
     via: bit_identical_check
   }
 })

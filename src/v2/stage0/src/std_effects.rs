@@ -14,6 +14,10 @@ pub use crate::std_http_path::{
 pub use crate::std_types::HttpMethod;
 use crate::std_types::HttpMethod::{DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT};
 use crate::v2_rt;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
@@ -100,9 +104,7 @@ pub enum CompositionVerdict {
 impl CompositionVerdict {
     pub fn first_breaker(&self) -> Rc<OperationEffect> {
         match self {
-            CompositionVerdict::IdempotentComposition => {
-                panic!("no first_breaker on unit variant")
-            }
+            CompositionVerdict::IdempotentComposition => panic!("no first_breaker on unit variant"),
             CompositionVerdict::BrokenBy {
                 first_breaker: __val,
                 ..
@@ -134,38 +136,6 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
     }
 }
 
-pub fn parse_http_method(raw: &String) -> Option<HttpMethod> {
-    if (raw.clone().as_str() == "GET".to_string().as_str()) {
-        Some(HttpMethod::GET)
-    } else {
-        if (raw.clone().as_str() == "PUT".to_string().as_str()) {
-            Some(HttpMethod::PUT)
-        } else {
-            if (raw.clone().as_str() == "POST".to_string().as_str()) {
-                Some(HttpMethod::POST)
-            } else {
-                if (raw.clone().as_str() == "DELETE".to_string().as_str()) {
-                    Some(HttpMethod::DELETE)
-                } else {
-                    if (raw.clone().as_str() == "PATCH".to_string().as_str()) {
-                        Some(HttpMethod::PATCH)
-                    } else {
-                        if (raw.clone().as_str() == "HEAD".to_string().as_str()) {
-                            Some(HttpMethod::HEAD)
-                        } else {
-                            if (raw.clone().as_str() == "OPTIONS".to_string().as_str()) {
-                                Some(HttpMethod::OPTIONS)
-                            } else {
-                                None
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
     pub operation_name: String,
@@ -179,10 +149,6 @@ pub struct DerivedOpEffect {
 pub enum DeriveOpEffectResult {
     DerivedEffect {
         effect: Rc<DerivedOpEffect>,
-    },
-    UnknownHttpMethodInput {
-        operation_name: String,
-        method_str: String,
     },
     MalformedPathInput {
         operation_name: String,
@@ -222,18 +188,20 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 
 pub fn derive_op_effect(
     operation_name: String,
-    method: HttpMethod,
-    path: Rc<PathTemplate>,
+    method: &HttpMethod,
+    path: &Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    let shape = derive_effect_shape(method.clone(), path.clone());
-    Rc::new(DeriveOpEffectResult::DerivedEffect {
-        effect: Rc::new(DerivedOpEffect {
-            operation_name: operation_name,
-            method: method.clone(),
-            path_template: path.clone(),
-            shape: shape,
-        }),
-    })
+    {
+        let shape = derive_effect_shape(method.clone(), path.clone());
+        Rc::new(DeriveOpEffectResult::DerivedEffect {
+            effect: Rc::new(DerivedOpEffect {
+                operation_name: operation_name,
+                method: method.clone(),
+                path_template: path.clone(),
+                shape: shape,
+            }),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

@@ -3,10 +3,15 @@
 
 use self::ArtifactKind::*;
 use self::BoundaryKind::*;
+use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
 use crate::v2_rt;
-pub use crate::v2_std_core::TextFile;
+use crate::v2_rt::rc_empty_set as empty_set;
+use crate::v2_rt::rc_set_insert as set_insert;
+use crate::v2_rt::rc_set_union as set_union;
+use crate::v2_rt::set_contains;
+pub use crate::v2_std_core::{SourceSpan, TextFile};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::HashMap;
@@ -108,4 +113,47 @@ pub fn default_artifact_plan(
             dependencies: Rc::new(vec![]),
         })]),
     }))
+}
+
+pub type DagNodeId = String;
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum DagInferredRecord {
+    ResolvedRef {
+        node: String,
+    },
+    TypeVariableRef {
+        id: String,
+    },
+    CompilerErrorRecord {
+        message: String,
+        span: Rc<SourceSpan>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagModuleRef {
+    pub module: String,
+    pub items: Rc<Vec<String>>,
+    pub item_registry_keys: Rc<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagDiagnosticRecord {
+    pub severity: String,
+    pub message: String,
+    pub span: Rc<SourceSpan>,
+    pub module_name: Option<String>,
+    pub category: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagArtifact {
+    pub version: String,
+    pub nodes: Rc<HashMap<String, String>>,
+    pub modules: Rc<Vec<String>>,
+    pub item_registry_keys: Rc<Vec<String>>,
+    pub diagnostics: Rc<Vec<String>>,
+    pub files: Rc<Vec<String>>,
 }

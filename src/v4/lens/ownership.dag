@@ -1,20 +1,150 @@
 // src/v4/lens/ownership.dag
-//
 // Scope: ownership lens — proves no aliased mutation in emitted code.
-// Anchor: https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html + https://en.wikipedia.org/wiki/Linear_type_system
-//
-// Owns:
-//   - lens read: Node -> Witness<OwnershipMap>
-//   - aliasing modeled in substrate (cardinality + behavior)
-//
-// Consumes:
-//   - std/node.dag, std/cardinality.dag, std/witness.dag
-//
-// Status: scaffold — fill per TASKS.md T-13
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Owns: OwnershipMode, OwnershipFact, ownership_witness, ownership_classify.
+// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<OwnershipMode>`; no copied endpoints (Practice 11 sub-rule: parallel-payload vs typed-reference). Resource access/alias-mode evidence is routed via `RequiresAccessWitness`; deriving the closed access carrier is a tracked follow-up to the #3468 codex BLOCKING reviews.
 
 
 module v4.lens.ownership
 
+import v4.compiler.infer { InferredTree }
+import v4.std.collection { List }
+import v4.std.dependency {
+  BarrierBefore,
+  BindsTo,
+  BootstrapDependsOn,
+  ClassifiedDependencyView,
+  Contains,
+  DataDependsOn,
+  DependencyView,
+  EffectDependsOn,
+  GeneratedFrom,
+  ModelDependsOn,
+  ModuleDependsOn,
+  PlacementDependsOn,
+  ProjectionDependsOn,
+  PromotedBy,
+  ResourceDependsOn,
+  TypeDependsOn,
+  VerifiedBy,
+  classified_dependency_view_eq
+}
+import v4.std.integer { Int }
+import v4.std.logic { Bool }
+import v4.std.witness { Holds, Witness }
+
+// 🟢 projection-only classification. `RequiresAccessWitness` is the
+// fail-closed slot for resource/effect edges that need access evidence.
+type OwnershipMode
+  = OwnedContainment
+  | SharedRead
+  | RequiresAccessWitness
+  | BorrowedDependency
+  | UnknownOwnership
+
+type OwnershipFact {
+  dependencies: List<ClassifiedDependencyView<OwnershipMode>>
+}
+
+fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
+  match view.kind {
+    Contains => OwnedContainment
+    BindsTo => BorrowedDependency
+    DataDependsOn => SharedRead
+    EffectDependsOn => RequiresAccessWitness
+    ResourceDependsOn => RequiresAccessWitness
+    BarrierBefore => UnknownOwnership
+    TypeDependsOn => UnknownOwnership
+    ModuleDependsOn => UnknownOwnership
+    PlacementDependsOn => UnknownOwnership
+    ModelDependsOn => UnknownOwnership
+    ProjectionDependsOn => UnknownOwnership
+    GeneratedFrom => UnknownOwnership
+    VerifiedBy => UnknownOwnership
+    PromotedBy => UnknownOwnership
+    BootstrapDependsOn => UnknownOwnership
+  }
+}
+
+fn ownership_classify(view: DependencyView) -> ClassifiedDependencyView<OwnershipMode> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: ownership_mode_for_dependency(view: view)
+  }
+}
+
+fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
+  OwnershipFact {
+    dependencies: fold(dependencies, init: [], f: fn(acc, view) {
+      list_push(acc, ownership_classify(view: view))
+    })
+  }
+}
+
+fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
+  Holds {
+    value: ownership_fact(tree: tree, dependencies: dependencies)
+  }
+}
+
+fn ownership_mode_eq(a: OwnershipMode, b: OwnershipMode) -> Bool {
+  match a {
+    OwnedContainment => match b {
+      OwnedContainment => true
+      _ => false
+    }
+    SharedRead => match b {
+      SharedRead => true
+      _ => false
+    }
+    RequiresAccessWitness => match b {
+      RequiresAccessWitness => true
+      _ => false
+    }
+    BorrowedDependency => match b {
+      BorrowedDependency => true
+      _ => false
+    }
+    UnknownOwnership => match b {
+      UnknownOwnership => true
+      _ => false
+    }
+  }
+}
+
+fn ownership_classified_eq(
+  a: ClassifiedDependencyView<OwnershipMode>,
+  b: ClassifiedDependencyView<OwnershipMode>
+) -> Bool {
+  classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
+}
+
+fn ownership_dependency_count(
+  xs: List<ClassifiedDependencyView<OwnershipMode>>,
+  item: ClassifiedDependencyView<OwnershipMode>
+) -> Int {
+  fold(xs, init: 0, f: fn(acc, candidate) {
+    if ownership_classified_eq(a: candidate, b: item) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn ownership_dependency_facts_eq(
+  left: List<ClassifiedDependencyView<OwnershipMode>>,
+  right: List<ClassifiedDependencyView<OwnershipMode>>
+) -> Bool {
+  if count(left) != count(right) {
+    false
+  } else {
+    fold(left, init: true, f: fn(acc, item) {
+      acc && (ownership_dependency_count(xs: left, item: item) == ownership_dependency_count(xs: right, item: item))
+    })
+  }
+}
+
+fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
+  ownership_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+}

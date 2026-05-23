@@ -10,3 +10,11 @@ lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 ureq = { version = "2", features = ["json"] }
+
+[[bin]]
+name = "v2-compiler"
+path = "src/main.rs"
+
+[[bin]]
+name = "regen_stage0"
+path = "src/bin/regen_stage0.rs"

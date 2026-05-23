@@ -114,7 +114,7 @@
 //   msg_1fddb75c) — consistent with ptx #3170 and the verilog probe;
 //   operator ratifies all per-file Consumes strikes uniformly.)
 //
-// Status: T-4.10 modeled 2026-05-16 (smart-raven-655). The I/O contract
+// Status: T-4.10 modeled 2026-05-16 (smart-raven-655); physical-quantity axis wave-1 (quiet-otter-381) — approximate voltage + named exact-carrier gap (T-3 `Dimension`/`Volt` std/ dissolution deferred). The I/O contract
 // in this header is immutable for downstream workers. Splitting this
 // file requires explicit operator ratification (substrate extension =
 // stop signal).
@@ -147,7 +147,7 @@ import v4.std.node { Symbol }
 // The B2-OMNI claim covers the format DATA-MODEL. It does NOT validate:
 //   - that an external SPICE simulator can be DRIVEN from `emit`'s
 //     output (the "clear win" in the header — that requires invoking a
-//     simulator process; an `extdeps/process.dag` consumer that
+//     simulator process; an `extdeps/posix.dag` consumer that
 //     coordinates with the emitted netlist is a separate boundary
 //     concern, not modeled here).
 //   - that SPICE's NUMERIC sub-grammar (suffix-units `1k`/`1u`/`100p`,
@@ -397,6 +397,22 @@ type NodeRef
 type SpiceValue {
   lexeme: String
 }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type SpiceVoltUnit
+
+// 🟡 needs-more-work — feature:spice-approx-voltage-consumer — dissolve-on: NodeVoltageBinding consumer projects through SpiceApproxVoltage (T-4 wave-2) · ledger: T-4
+type SpiceApproxVoltage {
+  magnitude_lexeme: String
+  unit: SpiceVoltUnit
+}
+
+// 🟡 needs-more-work — feature:spice-exact-voltage-gap — dissolve-on: std/ exact-real / Dimension substrate (T-3) · ledger: T-4
+type SpiceExactVoltageGap {}
+
+data spice_unit_volt: Symbol = spice_unit_volt
+data spice_exact_voltage_missing_carrier: Symbol = spice_exact_voltage_missing_carrier
 
 
 // ─────────────────────────────────────────────────────────────────────

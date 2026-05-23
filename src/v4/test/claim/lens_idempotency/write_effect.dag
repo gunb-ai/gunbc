@@ -1,0 +1,101 @@
+// src/v4/test/claim/lens_idempotency/write_effect.dag
+// Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness over `ClassifiedDependencyView<IdempotencyVerdict>` (dependency-edge alone never proves the positive law).
+// Owns: idempotency_write_effect_claim.
+// Consumes: lens idempotency, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
+
+module v4.test.claim.lens_idempotency.write_effect
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.idempotency {
+  IdempotencyFact,
+  RequiresAlgebraWitness,
+  idempotency_fact_eq,
+  idempotency_witness
+}
+import v4.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  EffectDependsOn
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data idempotency_root_symbol: Symbol = idempotency_root_symbol
+data idempotency_child_symbol: Symbol = idempotency_child_symbol
+data idempotency_edge_symbol: Symbol = idempotency_edge_symbol
+data idempotency_type_symbol: Symbol = idempotency_type_symbol
+data idempotency_algebra_symbol: Symbol = idempotency_algebra_symbol
+data idempotency_algebra_witness_symbol: Symbol = idempotency_algebra_witness_symbol
+data idempotency_descent_symbol: Symbol = idempotency_descent_symbol
+data idempotency_canonical_structural_symbol: Symbol = idempotency_canonical_structural_symbol
+data idempotency_canonical_closedness_symbol: Symbol = idempotency_canonical_closedness_symbol
+data idempotency_canonical_evidence_symbol: Symbol = idempotency_canonical_evidence_symbol
+
+data idempotency_child: Node = claim_atom_node(s: idempotency_child_symbol)
+
+data idempotency_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: idempotency_root_symbol } },
+  children: [
+    Edge { label: Named { name: idempotency_edge_symbol }, target: idempotency_child }
+  ]
+}
+
+data idempotency_dependency: DependencyView = DependencyView {
+  source: idempotency_root,
+  dependent: idempotency_child,
+  kind: EffectDependsOn,
+  usage_site: idempotency_child
+}
+
+fn idempotency_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: idempotency_type_symbol,
+    algebra_symbol: idempotency_algebra_symbol,
+    algebra_witness_symbol: idempotency_algebra_witness_symbol,
+    descent_symbol: idempotency_descent_symbol,
+    canonical_structural_symbol: idempotency_canonical_structural_symbol,
+    canonical_closedness_symbol: idempotency_canonical_closedness_symbol,
+    canonical_evidence_symbol: idempotency_canonical_evidence_symbol
+  )
+}
+
+fn idempotency_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: idempotency_root, facts: idempotency_claim_facts())
+}
+
+type LensIdempotencyClaim {
+  input: InferredTree
+  expected: IdempotencyFact
+  actual: Witness<IdempotencyFact>
+}
+
+data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim {
+  input: idempotency_claim_tree(),
+  expected: IdempotencyFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: idempotency_dependency,
+        classification: RequiresAlgebraWitness
+      }
+    ]
+  },
+  actual: idempotency_witness(tree: idempotency_claim_tree(), dependencies: [idempotency_dependency])
+}
+
+fn idempotency_write_effect_claim_holds() -> Bool {
+  match idempotency_write_effect_claim.actual {
+    Holds { value: actual } =>
+      idempotency_fact_eq(a: actual, b: idempotency_write_effect_claim.expected)
+    _ => false
+  }
+}
+
+data idempotency_write_effect_claim_passes: Bool = idempotency_write_effect_claim_holds()

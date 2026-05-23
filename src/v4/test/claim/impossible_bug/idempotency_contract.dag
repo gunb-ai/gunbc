@@ -28,8 +28,107 @@
 // Consumes:
 //   - std/verification.dag, std/diagnostic.dag, std/algebra.dag, lens/idempotency.dag
 //
-// Status: scaffold — fill per TASKS.md T-14
-// Brief: see BRIEF_TEMPLATE.md.
+// Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
+
 
 module v4.test.claim.impossible_bug.idempotency_contract
 
+
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
+import v4.std.verification {
+  T19ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
+
+
+data idempotent_position_symbol: Symbol = idempotent_position_symbol
+data idempotent_effect_symbol: Symbol = idempotent_effect_symbol
+data non_idempotent_effect_symbol: Symbol = non_idempotent_effect_symbol
+data repeated_append_effect_symbol: Symbol = repeated_append_effect_symbol
+data idempotency_violation_reason: Symbol = idempotency_violation_reason
+data idempotency_repetition_reason: Symbol = idempotency_repetition_reason
+data idempotency_position_field: Symbol = idempotency_position_field
+data idempotency_body_field: Symbol = idempotency_body_field
+
+
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn idempotency_contract(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: idempotency_position_field }, target: atom_node(s: idempotent_position_symbol) },
+      Edge { label: Named { name: idempotency_body_field }, target: body },
+    ]
+  }
+}
+
+
+data idempotent_inhabitant_input: Node = idempotency_contract(body: atom_node(s: idempotent_effect_symbol))
+
+
+data falsification_nonidempotent_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: non_idempotent_effect_symbol))
+
+
+data falsification_repeated_append_in_idempotent_position: Node = idempotency_contract(body: atom_node(s: repeated_append_effect_symbol))
+
+
+data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
+  label: "idempotent algebra inhabitant accepts idempotent structure",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: idempotent_inhabitant_input,
+  expected_value: idempotent_inhabitant_input,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_repeated_append_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
+  label: "idempotent algebra inhabitance rejects repeated append composition",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: falsification_repeated_append_in_idempotent_position,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: idempotency_repetition_reason,
+        at: node_locus(node: falsification_repeated_append_in_idempotent_position),
+        correction: Suggested { node: idempotent_inhabitant_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
+  label: "idempotent algebra inhabitance rejects non-idempotent composition",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: falsification_nonidempotent_in_idempotent_position,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: idempotency_violation_reason,
+        at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
+        correction: Suggested { node: idempotent_inhabitant_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
