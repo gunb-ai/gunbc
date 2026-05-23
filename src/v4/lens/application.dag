@@ -227,10 +227,10 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else if name_occurrences(name: name, children: root.children) == 1 {
     bind_outcome(
-      o: fold_list(
-        xs: root.children,
-        empty: outcome_accepted(value: []),
-        cons: fn(acc_outcome, edge) {
+      o: fold(
+        root.children,
+        init: outcome_accepted(value: []),
+        f: fn(acc_outcome, edge) {
           bind_outcome(
             o: acc_outcome,
             f: fn(current_acc) {

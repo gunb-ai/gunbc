@@ -18,7 +18,7 @@ import v4.lens.application {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, ComputationNode, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -42,6 +42,7 @@ fn projection_test_read(root: Node) -> Outcome<Symbol> {
   match root.kind {
     TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
     TypeNode { connective: Conj } => outcome_accepted(value: projection_test_symbol)
+    ComputationNode { behavior: _ } => outcome_accepted(value: projection_test_symbol)
   }
 }
 
