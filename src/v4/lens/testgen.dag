@@ -1506,7 +1506,11 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
       }
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
       Accepted {
-        value: DiagnosticExhaustiveness,
+        value: DiagnosticExhaustiveness {
+          subject: DiagnosticExhaustivenessSubject {
+            reason: t19_coproduct_exhaustiveness_missing_variant,
+          },
+        },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
