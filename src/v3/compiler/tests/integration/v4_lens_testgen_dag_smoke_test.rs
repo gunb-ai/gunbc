@@ -372,7 +372,7 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
 }
 
 fn generator_field_ty<'a>(
-    module: &v3_compiler::parse_surface::SurfaceModule,
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
     field_name: &str,
 ) -> Option<&'a SurfaceType> {
     for item in &module.items {
