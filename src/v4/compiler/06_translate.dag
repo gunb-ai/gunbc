@@ -12,7 +12,8 @@
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
 //           std/target_model.dag.
 // Status: W-T-10 MVP-1 — live translate_node/coerce_grounded_node + child reattachment zip-fold;
-// grammar-inverse serialize via TargetModelBundle.authority_source_text (T-9 canonical grounding).
+// grammar-inverse validation (row match + per-token Node equality) then TargetModelBundle.authority_source_text;
+// per-token lex emit deferred T-11.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -71,6 +72,8 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
 }
+import v4.std.collection { List, list_snoc_item }
+import v4.std.algebra { Cons, Empty }
 import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
@@ -85,6 +88,8 @@ data translate_stage_locus_port: Symbol = translate_stage_locus_port
 data translate_target_source_not_realized: Symbol = translate_target_source_not_realized
 data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
 data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
+data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
+data translate_conj_named_child_missing: Symbol = translate_conj_named_child_missing
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
@@ -145,13 +150,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
         BundleChildFound { value: child } =>
           Accepted { value: child, diagnostics: None }
         BundleChildMissing =>
-          outcome_rejected(
-            Diagnostic {
-              reason: translate_grammar_inverse_not_realized,
-              at: node_locus(node: parent),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
+          outcome_rejected(translate_conj_named_child_missing_diagnostic(parent: parent))
         BundleChildDuplicate =>
           outcome_rejected(
             Diagnostic {
@@ -161,13 +160,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
             }
           )
         BundleChildInvalidEdge =>
-          outcome_rejected(
-            Diagnostic {
-              reason: translate_grammar_inverse_not_realized,
-              at: node_locus(node: parent),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            }
-          )
+          outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
       }
     _ =>
       outcome_rejected(
@@ -197,6 +190,20 @@ fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> Diagnos
   Diagnostic {
     reason: translate_grammar_relation_row_not_found,
     at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_conj_invalid_edge_diagnostic(parent: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_conj_invalid_edge,
+    at: node_locus(node: parent),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_conj_named_child_missing_diagnostic(parent: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_conj_named_child_missing,
+    at: node_locus(node: parent),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -244,28 +251,31 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
-fn serialize_source_positional_token_count(serialize_source: Node) -> Int {
-  match serialize_source.kind {
+fn conj_positional_targets(parent: Node) -> List<Node> {
+  match parent.kind {
     TypeNode { connective: Conj } =>
-      fold(serialize_source.children, init: 0, f: fn(acc, e) {
+      fold(parent.children, init: Empty, f: fn(acc, e) {
         match e.label {
-          Positional => acc + 1
+          Positional => list_snoc_item(xs: acc, item: e.target)
           Named { name: _ } => acc
         }
       })
-    _ => 0
+    _ => Empty
   }
 }
-fn relation_tokens_positional_token_count(tokens_root: Node) -> Int {
-  match tokens_root.kind {
-    TypeNode { connective: Conj } =>
-      fold(tokens_root.children, init: 0, f: fn(acc, e) {
-        match e.label {
-          Positional => acc + 1
-          Named { name: _ } => acc
-        }
-      })
-    _ => 0
+fn list_targets_equal(a: List<Node>, b: List<Node>) -> Bool {
+  match a {
+    Empty =>
+      match b {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => false
+        Cons { head: hb, tail: tb } =>
+          (ha == hb) && list_targets_equal(a: ta, b: tb)
+      }
   }
 }
 fn grammar_serialize_source_matches_row(
@@ -276,8 +286,10 @@ fn grammar_serialize_source_matches_row(
     bind_outcome(
       o: grammar_relation_row_tokens_root(row: row),
       f: fn(tokens_root) {
-        if serialize_source_positional_token_count(serialize_source: serialize_source)
-          == relation_tokens_positional_token_count(tokens_root: tokens_root) {
+        if list_targets_equal(
+          a: conj_positional_targets(parent: serialize_source),
+          b: conj_positional_targets(parent: tokens_root)
+        ) {
           Accepted { value: serialize_source, diagnostics: None }
         } else {
           outcome_rejected(
