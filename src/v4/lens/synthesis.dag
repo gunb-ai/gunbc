@@ -85,7 +85,6 @@ import v4.std.report { Report, ReportReason }
 import v4.std.witness { Holds, Violates }
 
 
-data synthesis_gap_reason_symbol: Symbol = synthesis_gap_reason_symbol
 data synthesis_no_technique_reason_symbol: Symbol = synthesis_no_technique_reason_symbol
 data synthesis_gap_decision_tree_reason_symbol: Symbol = synthesis_gap_decision_tree_reason_symbol
 data synthesis_gap_information_theoretic_reason_symbol: Symbol = synthesis_gap_information_theoretic_reason_symbol
@@ -121,9 +120,6 @@ type SynthesisOutcome
       diagnostic: Diagnostic
     }
 
-
-fn synthesis_reason_gap() -> ReportReason { synthesis_gap_reason_symbol }
-fn synthesis_no_technique_reason() -> ReportReason { synthesis_no_technique_reason_symbol }
 
 fn synthesis_gap_decision_tree_reason() -> ReportReason {
   synthesis_gap_decision_tree_reason_symbol
@@ -216,7 +212,7 @@ fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> Synthe
       }
     }
   } else {
-    // TODO: AlgebraicRank, AdversaryCommunication, ReductionConditional — stubs pending worked examples.
+    // Realization is sub-linear: InformationTheoretic has no lower-bound comparison for this class.
     SynthesisNoTechnique {
       diagnostic: synthesis_no_technique_diagnostic(n: n)
     }
