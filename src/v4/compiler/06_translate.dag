@@ -71,7 +71,7 @@ import v4.std.target_model {
   target_model_edge_translation_rules
 }
 import v4.std.collection { List, list_snoc_item }
-import v4.std.algebra { Cons, Empty }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 // Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
@@ -252,7 +252,7 @@ fn conj_positional_targets(parent: Node) -> List<Node> {
     _ => Empty
   }
 }
-fn list_targets_equal(a: List<Node>, b: List<Node>) -> Bool {
+fn list_targets_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
   match a {
     Empty =>
       match b {
