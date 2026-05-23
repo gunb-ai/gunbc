@@ -79,18 +79,16 @@ fn sr_mod_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 fn sr_mod_claim_facts() -> InferredFacts {
   let resolved = sr_mod_claim_atom(s: sr_mod_type_symbol)
   InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef {
-      algebra: sr_mod_claim_atom(s: sr_mod_algebra_symbol),
-      witness: sr_mod_claim_atom(s: sr_mod_algebra_witness_symbol)
+    grounding: CanonicalGrounding {
+      node: resolved,
+      witness: sr_mod_canonical_witness(resolved: resolved)
     },
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
         strict: RankingDimension { measured: sr_mod_descent_symbol }
       }
-    },
-    canonical: sr_mod_canonical_witness(resolved: resolved)
+    }
   }
 }
 
