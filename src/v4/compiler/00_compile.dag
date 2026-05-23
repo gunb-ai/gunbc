@@ -1,11 +1,11 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Owns: CoreNode, LanguageModel, RuntimeTarget, CompileMode, CompileOutput, Lens, LensApplicationMode,
-//       apply_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
+// Owns: CoreNode, LanguageModel, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
+//       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
-//       compile_eval_not_realized_diagnostic, apply_lens, run_required_lens_gates,
+//       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       compile_inferred, compile, validate_then_compile.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
 //           std/collection.dag, std/diagnostic.dag,
@@ -65,16 +65,18 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
-// 🟢 grounded — T-23 forward home for apply_lens; gate consumes InferredTree (P3 lens side-channel).
-type Lens {
+// 🟢 grounded — compile-pipeline lens gate (P3 side-channel on InferredTree).
+// Orthogonal to v4.lens.application `Lens<Output>.read` + section-scoped `apply_lens` (T-23 substrate);
+// adapter wiring is a follow-on — see application.dag header P2 boundary.
+type CompileLens {
   gate: fn(InferredTree) -> Outcome<Witness<Node>>
 }
 
 
-// 🟢 coproduct dissolution — enforce vs introspect application mode (T-23 surface).
-type LensApplicationMode
-  = LensEnforce
-  | LensIntrospect
+// 🟢 coproduct dissolution — compile gate mode until introspect demotion lands in application.dag.
+type CompileLensMode
+  = CompileLensEnforce
+  | CompileLensIntrospect
 
 
 // 🟢 grounded — lens gate witness cites substrate Witness (Practice 3; not parallel fact payload).
@@ -123,16 +125,16 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
-// LensEnforce and LensIntrospect both call gate today; introspect demotion lands with application.dag.
-fn apply_lens(
-  lens: Lens,
+// Compile-pipeline gate runner (NOT v4.lens.application::apply_lens — different root + carrier).
+// CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion is application-layer.
+fn apply_compile_lens(
+  lens: CompileLens,
   inferred: InferredTree,
-  mode: LensApplicationMode
+  mode: CompileLensMode
 ) -> Outcome<Witness<Node>> {
   match mode {
-    LensEnforce => lens.gate(tree: inferred)
-    LensIntrospect => lens.gate(tree: inferred)
+    CompileLensEnforce => lens.gate(tree: inferred)
+    CompileLensIntrospect => lens.gate(tree: inferred)
   }
 }
 
@@ -159,7 +161,7 @@ fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
 
 fn run_required_lens_gates(
   inferred: InferredTree,
-  lenses: List<Lens>
+  lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
   fold(
     lenses,
@@ -171,7 +173,7 @@ fn run_required_lens_gates(
           bind_outcome_accepted(
             od: od,
             inner: bind_outcome(
-              o: apply_lens(lens: lens, inferred: inferred, mode: LensEnforce),
+              o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
               f: fn(w) {
                 outcome_accepted(
                   value: append_lens_gate_witness(
@@ -254,7 +256,7 @@ fn validated_from_compile_output(
 fn validate_then_compile(
   source: CoreNode,
   input_lang: LanguageModel,
-  lenses: List<Lens>,
+  lenses: List<CompileLens>,
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
   bind_outcome(
