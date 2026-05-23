@@ -120,8 +120,8 @@ fn v4_p9_llvm_instruction_cost_defined_only_in_lens_cost_dag() {
 fn v4_p9_llvm_instruction_cost_absent_from_llvm_ir_dag() {
     let root = workspace_root();
     let llvm_ir = root.join("src/v4/extdeps/languages/llvm_ir.dag");
-    let source = fs::read_to_string(&llvm_ir)
-        .unwrap_or_else(|e| panic!("read {}: {e}", llvm_ir.display()));
+    let source =
+        fs::read_to_string(&llvm_ir).unwrap_or_else(|e| panic!("read {}: {e}", llvm_ir.display()));
     assert!(
         !source.contains(FN_DEF_NEEDLE),
         "P9: `{FN_DEF_NEEDLE}` must not be re-authored in llvm_ir.dag (cost authority is v4.lens.cost only)"
