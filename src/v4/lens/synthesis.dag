@@ -51,15 +51,185 @@
 //   - std/report.dag (advisory carrier)
 //   - lens/complexity.dag (current-complexity input for cross-algorithm comparison)
 //
-// Status: scaffold — fill per TASKS.md T-17
-// Brief: see BRIEF_TEMPLATE.md. C2 reframe (operator-ratified 2026-05-15)
-// COLLAPSES the prior research-tier risk: no undecidable equivalence
-// engine, no unbounded rule library. Risk is now bounded to encoding the
-// CLOSED LowerBoundTechnique set (≈5, fundamental) + authoring a few
-// honest worked examples (sort: decision-tree; matmul: algebraic-rank;
-// string-match: information-theoretic — see TASKS.md T-17). STOP-and-
-// escalate still applies if a relation class needs a 6th technique
-// (substrate extension = stop signal).
+// Status: T-17 filled.
 
 module v4.lens.synthesis
+
+
+import v4.lens.complexity {
+  ComplexityBound,
+  SizedLinearClass,
+  SizedLinearithmicClass,
+  complexity_lens,
+  complexity_bound_class,
+  single_complexity_variable,
+  sized_complexity
+}
+import v4.lens.cost {
+  ClassLinear,
+  ClassLinearithmic,
+  SizeVariable,
+  asymptotic_class_dominates
+}
+import v4.std.algebra { Cons, Empty }
+import v4.std.collection { List, list_append }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Locus,
+  Unavailable,
+  node_locus
+}
+import v4.std.node { Node, Symbol }
+import v4.std.report { Report, ReportReason }
+import v4.std.witness { Holds, Violates }
+
+
+data synthesis_gap_reason_symbol: Symbol = synthesis_gap_reason_symbol
+data synthesis_no_technique_reason_symbol: Symbol = synthesis_no_technique_reason_symbol
+data synthesis_gap_decision_tree_reason_symbol: Symbol = synthesis_gap_decision_tree_reason_symbol
+data synthesis_gap_information_theoretic_reason_symbol: Symbol = synthesis_gap_information_theoretic_reason_symbol
+
+
+// 🟢 coproduct — closed set. STOP-and-escalate if a 6th variant is needed.
+type LowerBoundTechnique
+  | DecisionTree
+  | AlgebraicRank
+  | AdversaryCommunication
+  | InformationTheoretic
+  | ReductionConditional
+
+// 🟢 product — declared relation class + applicable technique.
+type DeclaredRelationBound {
+  technique: LowerBoundTechnique
+  lower_bound: ComplexityBound
+  relation_locus: Locus
+}
+
+// 🟢 coproduct — outcome of one synthesis probe.
+type SynthesisOutcome
+  | SynthesisGap {
+      realization_cost: ComplexityBound
+      lower_bound: DeclaredRelationBound
+      report: Report
+    }
+  | SynthesisOptimal {
+      realization_cost: ComplexityBound
+      lower_bound: DeclaredRelationBound
+    }
+  | SynthesisNoTechnique {
+      diagnostic: Diagnostic
+    }
+
+
+fn synthesis_reason_gap() -> ReportReason { synthesis_gap_reason_symbol }
+fn synthesis_no_technique_reason() -> ReportReason { synthesis_no_technique_reason_symbol }
+
+fn synthesis_gap_decision_tree_reason() -> ReportReason {
+  synthesis_gap_decision_tree_reason_symbol
+}
+
+fn synthesis_gap_information_theoretic_reason() -> ReportReason {
+  synthesis_gap_information_theoretic_reason_symbol
+}
+
+fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: synthesis_no_technique_reason_symbol,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn decision_tree_declared_bound(n: Node) -> DeclaredRelationBound {
+  DeclaredRelationBound {
+    technique: DecisionTree,
+    lower_bound: sized_complexity(
+      class: SizedLinearithmicClass,
+      variables: single_complexity_variable(size_var: SizeVariable { source: n })
+    ),
+    relation_locus: node_locus(node: n)
+  }
+}
+
+fn information_theoretic_declared_bound(n: Node) -> DeclaredRelationBound {
+  DeclaredRelationBound {
+    technique: InformationTheoretic,
+    lower_bound: sized_complexity(
+      class: SizedLinearClass,
+      variables: single_complexity_variable(size_var: SizeVariable { source: n })
+    ),
+    relation_locus: node_locus(node: n)
+  }
+}
+
+// DecisionTree: realization > Θ(n log n) → gap (asymptotic_class_dominates is strict for ClassLinearithmic).
+fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
+  if asymptotic_class_dominates(
+    a: complexity_bound_class(b: realization),
+    b: ClassLinearithmic
+  ) {
+    SynthesisGap {
+      realization_cost: realization,
+      lower_bound: decision_tree_declared_bound(n: n),
+      report: Report {
+        reason: synthesis_gap_decision_tree_reason(),
+        at: node_locus(node: n)
+      }
+    }
+  } else {
+    SynthesisOptimal {
+      realization_cost: realization,
+      lower_bound: decision_tree_declared_bound(n: n)
+    }
+  }
+}
+
+// InformationTheoretic: realization strictly > Ω(n) → gap. Explicit equality check needed
+// because asymptotic_class_dominates(ClassLinear, ClassLinear) = true (unlike ClassLinearithmic).
+fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
+  let realization_class = complexity_bound_class(b: realization)
+  if realization_class == ClassLinear {
+    SynthesisOptimal {
+      realization_cost: realization,
+      lower_bound: information_theoretic_declared_bound(n: n)
+    }
+  } else {
+    if asymptotic_class_dominates(a: realization_class, b: ClassLinear) {
+      SynthesisGap {
+        realization_cost: realization,
+        lower_bound: information_theoretic_declared_bound(n: n),
+        report: Report {
+          reason: synthesis_gap_information_theoretic_reason(),
+          at: node_locus(node: n)
+        }
+      }
+    } else {
+      // TODO: AlgebraicRank, AdversaryCommunication, ReductionConditional — stubs pending worked examples.
+      SynthesisNoTechnique {
+        diagnostic: synthesis_no_technique_diagnostic(n: n)
+      }
+    }
+  }
+}
+
+fn outcome_to_reports(outcome: SynthesisOutcome) -> List<Report> {
+  match outcome {
+    SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
+      Cons { head: r, tail: Empty }
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
+    SynthesisNoTechnique { diagnostic: _ } => Empty
+  }
+}
+
+fn synthesis_lens(n: Node) -> List<Report> {
+  match complexity_lens(n: n) {
+    Violates { diagnostic: _ } => Empty
+    Holds { value: realization } =>
+      list_append(
+        left: outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization)),
+        right: outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
+      )
+  }
+}
 

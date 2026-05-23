@@ -7,3 +7,22 @@
 
 module v4.std.report
 
+
+import v4.std.diagnostic { Locus }
+import v4.std.node { Symbol }
+
+
+// 🟢 grounded — alias to Symbol (C7 advisory reason axis; closed set grows with T-17).
+type ReportReason = Symbol
+
+// 🟢 grounded — advisory carrier; never Witness (INVARIANTS P3/C-8).
+type Report {
+  reason: ReportReason
+  at: Locus
+}
+
+// 🟢 grounded — optional human-facing detail without overloading Report.
+type ReportSuggestion {
+  report: Report
+  detail: Symbol
+}

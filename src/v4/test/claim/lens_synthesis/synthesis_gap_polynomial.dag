@@ -1,0 +1,86 @@
+// src/v4/test/claim/lens_synthesis/synthesis_gap_polynomial.dag
+// Scope: T-17 worked claim — polynomial-cost node emits non-empty synthesis advisory (DecisionTree gap).
+// Owns: claim_synthesis_gap_polynomial.
+// Consumes: lens synthesis, std algebra, std node, std verification.
+// Status: T-17 filled.
+
+module v4.test.claim.lens_synthesis.synthesis_gap_polynomial
+
+import v4.lens.synthesis { synthesis_lens }
+import v4.std.algebra { non_empty }
+import v4.std.logic { Bool }
+import v4.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode
+}
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  t19_manual_claim_anchor
+}
+
+data synthesis_gap_poly_atom_symbol: Symbol = synthesis_gap_poly_atom_symbol
+data synthesis_gap_poly_sentinel_symbol: Symbol = synthesis_gap_poly_sentinel_symbol
+
+data synthesis_gap_poly_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: synthesis_gap_poly_atom_symbol } },
+  children: []
+}
+
+data synthesis_gap_poly_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: synthesis_gap_poly_leaf }
+  ]
+}
+
+data synthesis_gap_poly_inner: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: synthesis_gap_poly_body }
+  ]
+}
+
+// Nested Cardinality → polynomial (O(n^2)) complexity; strictly dominates Θ(n log n) lower bound.
+data synthesis_gap_poly_input: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: synthesis_gap_poly_inner }
+  ]
+}
+
+data synthesis_gap_poly_sentinel: Node = Node {
+  kind: TypeNode { connective: Atom { identity: synthesis_gap_poly_sentinel_symbol } },
+  children: []
+}
+
+fn synthesis_gap_poly_lens_non_empty() -> Bool {
+  non_empty(synthesis_lens(n: synthesis_gap_poly_input))
+}
+
+fn synthesis_gap_poly_rhs() -> Node {
+  if synthesis_gap_poly_lens_non_empty() {
+    synthesis_gap_poly_input
+  } else {
+    synthesis_gap_poly_sentinel
+  }
+}
+
+data claim_synthesis_gap_polynomial: TestClaim = EqualsClaim {
+  label: "lens_synthesis/synthesis_gap_polynomial: polynomial cost emits non-empty synthesis advisory",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: synthesis_gap_poly_input,
+  rhs: synthesis_gap_poly_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
