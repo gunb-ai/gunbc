@@ -61,7 +61,8 @@ fn field_type_name(field: &SurfaceField) -> &str {
 fn variant_payload_field_names(variant: &SurfaceVariant) -> BTreeSet<&str> {
     match &variant.payload {
         VariantPayload::Record(fields) => fields.iter().map(|field| field.name.as_str()).collect(),
-        VariantPayload::Unit => BTreeSet::new(),
+        VariantPayload::Positional(fields) if fields.is_empty() => BTreeSet::new(),
+        other => panic!("variant `{}` expected record payload, got {other:?}", variant.name),
     }
 }
 
