@@ -565,19 +565,6 @@ data openapi_http_method_bridge_catalog: List<OpenApiHttpMethodBridgeFacts> = [
   openapi_http_method_bridge_trace,
 ]
 
-fn openapi_http_method_to_network(method: OpenApiHttpMethod) -> HttpMethod {
-  match method {
-    OpenApiGet => GET
-    OpenApiPut => PUT
-    OpenApiPost => POST
-    OpenApiDelete => DELETE
-    OpenApiOptions => OPTIONS
-    OpenApiHead => HEAD
-    OpenApiPatch => PATCH
-    OpenApiTrace => TRACE
-  }
-}
-
 
 type OpenApiHttpStatusCodeBoundedRangeWitness {}
 
@@ -677,16 +664,6 @@ fn openapi_http_status_code_value(
     + openapi_status_digit_value(digit: ones)
 }
 
-fn openapi_wildcard_class_bounds(kind: OpenApiResponseKeyWildcardKind) -> OpenApiHttpStatusClassBounds {
-  match kind {
-    OpenApiWildcard1xx => OpenApiHttpStatusClassBounds { low: 100, high: 199 }
-    OpenApiWildcard2xx => OpenApiHttpStatusClassBounds { low: 200, high: 299 }
-    OpenApiWildcard3xx => OpenApiHttpStatusClassBounds { low: 300, high: 399 }
-    OpenApiWildcard4xx => OpenApiHttpStatusClassBounds { low: 400, high: 499 }
-    OpenApiWildcard5xx => OpenApiHttpStatusClassBounds { low: 500, high: 599 }
-  }
-}
-
 
 type OpenApiRequestReplyExchangeWitness {}
 
@@ -707,4 +684,4 @@ type OpenApiDocumentWireContractFacts {
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
-// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_http_method_to_network + status-code morphisms) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
+// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_http_method_bridge_catalog + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
