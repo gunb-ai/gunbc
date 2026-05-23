@@ -227,12 +227,6 @@ data java_binding_method_add: Symbol = java_binding_method_add
 data java_binding_param_x: Symbol = java_binding_param_x
 data java_binding_param_y: Symbol = java_binding_param_y
 
-data java_relation_field_production: Symbol = grammar_relation_field_production
-data java_relation_field_emitted: Symbol = grammar_relation_field_emitted
-data java_relation_field_tokens: Symbol = grammar_relation_field_tokens
-data java_relation_field_token_class: Symbol = concrete_syntax_token_field_class
-data java_relation_field_binding: Symbol = concrete_syntax_token_field_binding
-data java_relation_field_token_kind: Symbol = concrete_syntax_token_field_kind
 data java_relation_token_fixed: Symbol = java_relation_token_fixed
 data java_relation_token_bound: Symbol = java_relation_token_bound
 data java_relation_rule_mvp1_method_add: Symbol = java_relation_rule_mvp1_method_add
@@ -663,11 +657,11 @@ fn java_concrete_token_node(token: JavaConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           java_named_edge(
-            name: java_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: java_inhabitant_atom(id: java_relation_token_fixed)
           ),
           java_named_edge(
-            name: java_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: java_inhabitant_atom(id: c)
           )
         ]
@@ -677,15 +671,15 @@ fn java_concrete_token_node(token: JavaConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           java_named_edge(
-            name: java_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: java_inhabitant_atom(id: java_relation_token_bound)
           ),
           java_named_edge(
-            name: java_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: java_inhabitant_atom(id: c)
           ),
           java_named_edge(
-            name: java_relation_field_binding,
+            name: concrete_syntax_token_field_binding,
             target: java_inhabitant_atom(id: b)
           )
         ]
@@ -797,10 +791,10 @@ fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       java_named_edge(
-        name: java_relation_field_production,
+        name: grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      java_named_edge(name: java_relation_field_emitted, target: row.emitted),
+      java_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       java_named_edge(
         name: java_relation_field_tokens,
         target: Node {

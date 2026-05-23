@@ -316,12 +316,6 @@ data rust_binding_fn_add: Symbol = rust_binding_fn_add
 data rust_binding_param_x: Symbol = rust_binding_param_x
 data rust_binding_param_y: Symbol = rust_binding_param_y
 
-data rust_relation_field_production: Symbol = grammar_relation_field_production
-data rust_relation_field_emitted: Symbol = grammar_relation_field_emitted
-data rust_relation_field_tokens: Symbol = grammar_relation_field_tokens
-data rust_relation_field_token_class: Symbol = concrete_syntax_token_field_class
-data rust_relation_field_binding: Symbol = concrete_syntax_token_field_binding
-data rust_relation_field_token_kind: Symbol = concrete_syntax_token_field_kind
 data rust_relation_token_fixed: Symbol = rust_relation_token_fixed
 data rust_relation_token_bound: Symbol = rust_relation_token_bound
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
@@ -946,11 +940,11 @@ fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: rust_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: rust_inhabitant_atom(id: rust_relation_token_fixed)
           ),
           rust_named_edge(
-            name: rust_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: rust_inhabitant_atom(id: c)
           )
         ]
@@ -960,15 +954,15 @@ fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: rust_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: rust_inhabitant_atom(id: rust_relation_token_bound)
           ),
           rust_named_edge(
-            name: rust_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: rust_inhabitant_atom(id: c)
           ),
           rust_named_edge(
-            name: rust_relation_field_binding,
+            name: concrete_syntax_token_field_binding,
             target: rust_inhabitant_atom(id: b)
           )
         ]
@@ -1090,12 +1084,12 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_relation_field_production,
+        name: grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      rust_named_edge(name: rust_relation_field_emitted, target: row.emitted),
+      rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       rust_named_edge(
-        name: rust_relation_field_tokens,
+        name: grammar_relation_field_tokens,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: rust_relation_token_edges(tokens: row.tokens)
