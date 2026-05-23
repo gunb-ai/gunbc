@@ -14,8 +14,11 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
 //! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
-//! `v4_rust_language_model_declares_t11_translation_rules` and
-//! `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag`) in INVARIANTS.md.
+//! `v4_rust_language_model_declares_t11_translation_rules`,
+//! `v4_java_language_model_declares_t11_translation_rules`,
+//! `v4_typescript_language_model_declares_t11_translation_rules`,
+//! `v4_swift_language_model_declares_t11_translation_rules`, and
+//! `v4_wasm_language_model_declares_t11_translation_rules` in INVARIANTS.md.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
