@@ -31,7 +31,7 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Map, Set, list_append, list_snoc_item }
+import v4.std.collection { List, Map, Set, empty_map, list_append, list_snoc_item, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -841,9 +841,23 @@ fn java_mvp1_target_model_node() -> Node {
   }
 }
 
+fn java_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), java_binding_param_y, "y"),
+      java_binding_param_x,
+      "x"
+    ),
+    java_binding_method_add,
+    "add"
+  )
+}
+
 fn java_mvp1_target_model() -> TargetModel {
   TargetModel {
     bundle: java_mvp1_target_model_node(),
+    lex: java_wave1_lex(),
+    binding_spellings: java_mvp1_binding_spellings(),
     authority_source_text: java_mvp1_source_text_authority()
   }
 }
@@ -869,19 +883,23 @@ fn java_ident_lex_rule() -> LexRule {
   }
 }
 
+// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "static " not "static").
+// token_sequence_to_source concatenates spellings directly; the spaces here ARE the inter-token
+// spacing. This must be split into a separate layout field before forward-lex is wired for
+// these token classes (see Claude review 16906 secondary finding).
 fn java_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      java_lex_rule(token_class: java_token_kw_static, text: "static"),
-      java_lex_rule(token_class: java_token_kw_int, text: "int"),
-      java_lex_rule(token_class: java_token_kw_return, text: "return"),
+      java_lex_rule(token_class: java_token_kw_static, text: "static "),
+      java_lex_rule(token_class: java_token_kw_int, text: "int "),
+      java_lex_rule(token_class: java_token_kw_return, text: "return "),
       java_ident_lex_rule(),
-      java_lex_rule(token_class: java_token_plus, text: "+"),
-      java_lex_rule(token_class: java_token_lbrace, text: "{"),
-      java_lex_rule(token_class: java_token_rbrace, text: "}"),
+      java_lex_rule(token_class: java_token_plus, text: " + "),
+      java_lex_rule(token_class: java_token_lbrace, text: " { "),
+      java_lex_rule(token_class: java_token_rbrace, text: " }"),
       java_lex_rule(token_class: java_token_lparen, text: "("),
-      java_lex_rule(token_class: java_token_rparen, text: ")"),
-      java_lex_rule(token_class: java_token_comma, text: ","),
+      java_lex_rule(token_class: java_token_rparen, text: ") "),
+      java_lex_rule(token_class: java_token_comma, text: ", "),
       java_lex_rule(token_class: java_token_semicolon, text: ";")
     ]
   }

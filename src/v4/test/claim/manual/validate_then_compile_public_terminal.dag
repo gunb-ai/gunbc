@@ -25,6 +25,7 @@ import v4.compiler.compile {
 }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.target_carriers { TargetModel }
+import v4.compiler.tokenize { VoidLexRules }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 import v4.std.diagnostic {
   Accepted,
@@ -36,6 +37,7 @@ import v4.std.diagnostic {
   outcome_rejected
 }
 import v4.std.algebra { Empty }
+import v4.std.collection { empty_map }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   T19ManualAnchorAbsent,
@@ -61,6 +63,8 @@ data rust_target_model_stub: TargetModel = TargetModel {
     kind: TypeNode { connective: Conj },
     children: []
   },
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
   authority_source_text: Empty
 }
 data rejecting_lens_gate_at: Symbol = rejecting_lens_gate_at
