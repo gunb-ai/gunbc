@@ -23,7 +23,6 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
   LensStructuralResolutionClaim,
   lens_structural_resolution_actual
 }
-import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
   constraint_property_being_canonical,
