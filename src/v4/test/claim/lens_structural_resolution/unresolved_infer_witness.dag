@@ -68,19 +68,6 @@ data sr_infer_dependency: DependencyView = DependencyView {
   usage_site: sr_infer_use
 }
 
-fn sr_infer_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
-  CanonicalGroundingWitness {
-    structural: StructuralPropertyWitness {
-      property: constraint_property_being_canonical,
-      evidence: resolved
-    },
-    closedness: StructuralPropertyWitness {
-      property: constraint_property_candidate_set_closedness,
-      evidence: resolved
-    }
-  }
-}
-
 fn sr_infer_resolved_facts() -> InferredFacts {
   claim_inferred_facts(
     type_symbol: sr_infer_type_symbol,
