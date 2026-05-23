@@ -41,7 +41,9 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data shared_wire_contract_symbol: Symbol = shared_wire_contract_symbol
@@ -89,7 +91,7 @@ data falsification_target_contract_drift: Node = Node {
 
 data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
   label: "shared transport declaration compiles client and server sides",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: shared_wire_contract_input,
   expected_value: shared_wire_contract_input,
   classification: TestClassification { tier: Tier1, layer: Integration }
@@ -98,7 +100,7 @@ data claim_shared_declaration_compiles_both_sides: TestClaim = CompilesClaim {
 
 data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects target-side parallel authority",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: falsification_target_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -113,7 +115,7 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
 
 data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   label: "transport field drift rejects parallel client server authority",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: falsification_wire_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

@@ -68,7 +68,8 @@ import v4.std.verification {
   Tier1,
   Unit,
   test_claim_expected_outcome,
-  test_claim_input
+  test_claim_input,
+  t19_manual_claim_anchor
 }
 import v4.std.constraints {
   CanonicalGroundingWitness,
@@ -303,7 +304,7 @@ fn workflow_inferred_tree(root: Node) -> InferredTree {
 fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     input: input,
     expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)),
     classification: TestClassification { tier: Tier1, layer: Unit }

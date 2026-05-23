@@ -24,7 +24,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { Witness }
 import v4.test.claim.lens_common.infer_fixture {
@@ -109,7 +110,7 @@ fn apply_lens_enforce_introspect_same_gate_today_claim_rhs() -> Node {
 
 data claim_apply_lens_enforce_introspect_same_gate_today: TestClaim = EqualsClaim {
   label: "lens_application/apply_lens_enforce_introspect_same_gate_today: both modes surface gate rejection",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: apply_lens_mode_root,
   rhs: apply_lens_enforce_introspect_same_gate_today_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

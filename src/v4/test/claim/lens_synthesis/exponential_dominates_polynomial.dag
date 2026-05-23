@@ -24,7 +24,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data synthesis_exp_x_symbol: Symbol = synthesis_exp_x_symbol
@@ -60,7 +61,7 @@ fn exponential_dominates_polynomial_claim_rhs() -> Node {
 
 data claim_exponential_dominates_polynomial: TestClaim = EqualsClaim {
   label: "lens_synthesis/exponential_dominates_polynomial: exponential dominates polynomial",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: synthesis_exp_x,
   rhs: exponential_dominates_polynomial_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

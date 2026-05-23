@@ -23,7 +23,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data conj_positional_only_child_symbol: Symbol = conj_positional_only_child_symbol
@@ -57,7 +58,7 @@ fn conj_positional_only_no_fact_claim_rhs() -> Node {
 
 data claim_conj_positional_only_no_fact: TestClaim = EqualsClaim {
   label: "lens_fact_density/conj_positional_only: positional-only conj is NoFact",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: conj_positional_only_input,
   rhs: conj_positional_only_no_fact_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

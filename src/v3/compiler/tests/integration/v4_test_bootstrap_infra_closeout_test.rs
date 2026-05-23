@@ -7,6 +7,8 @@
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
@@ -35,6 +37,10 @@ const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
+const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
+    "src/v4/test/claim/generated/coproduct_exhaustiveness.dag";
 const REFINEMENT_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/refinement_preservation.dag");
 const REFINEMENT_GENERATED_PATH: &str = "src/v4/test/claim/generated/refinement_preservation.dag";
@@ -164,6 +170,53 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
 }
 
 #[test]
+fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
+    parse_module(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_compiles")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_diagnostic")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_equals")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_roundtrip")
+            && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
+            && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness")
+            && TESTGEN_DAG.contains("value: DiagnosticClaim {")
+            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: anchor)"),
+        "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_input(anchor: T19GeneratedAnchorKey) -> Node")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: T19GeneratedAnchorKey) -> TestClaimCoproductVariant")
+            && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(")
+            && TESTGEN_DAG.contains("anchor: anchor")
+            && TESTGEN_DAG.contains("at: node_locus(node: input)")
+            && !TESTGEN_DAG.contains("NodeLocus { node: input }"),
+        "coproduct-exhaustiveness generation must carry omitted variant into the input node and use canonical node_locus"
+    );
+    assert!(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+            .contains("fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("testgen_emit_coproduct_exhaustiveness_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_diagnostic_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_uses_generated_anchor")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_all_variants_emit")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_generator_count")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG.contains(
+                "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4"
+            ),
+        "generated coproduct-exhaustiveness corpus must consume the testgen emit helper and expose all four missing-arm witnesses"
+    );
+}
+
+#[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
     parse_module(DIAGNOSTIC_ASSERT_EVAL_DAG, DIAGNOSTIC_ASSERT_EVAL_PATH);
 }
@@ -230,7 +283,7 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
             ("classification", "TestClassification"),
-            ("t19_anchor", "T19ManualAnchorKey"),
+            ("t19_anchor", "T19ClaimAnchorKey"),
             ("slot", "C"),
         ]),
         "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
@@ -258,6 +311,39 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     assert!(
         !claim_keys.contains("T19ManualAnchorAbsent"),
         "the seventeen live manual anchors must not route through the absent sentinel"
+    );
+}
+
+#[test]
+fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
+    let root = workspace_root().join("src/v4/test/claim");
+    let mut dag_files = Vec::new();
+    collect_dag_files(&root, &mut dag_files);
+    dag_files.push(workspace_root().join("src/v4/lens/testgen.dag"));
+
+    let mut offenders = Vec::new();
+    for path in dag_files {
+        let source =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        for (idx, line) in source.lines().enumerate() {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("//") && trimmed.contains("t19_anchor: T19Manual") {
+                offenders.push(format!(
+                    "{}:{}: {}",
+                    path.strip_prefix(workspace_root())
+                        .unwrap_or(path.as_path())
+                        .display(),
+                    idx + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "TestClaim.t19_anchor fields must use t19_manual_claim_anchor(...) after the T19ClaimAnchorKey split:\n{}",
+        offenders.join("\n")
     );
 }
 
@@ -396,6 +482,23 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
         "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
     );
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+}
+
+fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(root).unwrap_or_else(|e| panic!("read_dir {}: {e}", root.display()));
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", root.display()));
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            out.push(path);
+        }
+    }
 }
 
 fn parse_module(source: &str, file: &str) -> SurfaceModule {
@@ -546,6 +649,22 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
     };
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
+        SurfaceExpr::Call { target, args, .. } if target == "t19_manual_claim_anchor" => {
+            let SurfaceExpr::Record { fields, .. } = args.first().unwrap_or_else(|| {
+                panic!("t19_manual_claim_anchor must take one named-arg record")
+            }) else {
+                panic!(
+                    "t19_manual_claim_anchor args must desugar to Record, got {:?}",
+                    args.first()
+                );
+            };
+            match record_field_expr(fields, "anchor") {
+                SurfaceExpr::Var { name, .. } => name.as_str(),
+                other => panic!(
+                    "manual claim anchor wrapper must carry a discriminant var, got {other:?}"
+                ),
+            }
+        }
         other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
     }
 }

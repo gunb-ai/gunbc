@@ -1,6 +1,6 @@
 // src/v4/std/verification.dag
-// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey.
-// Owns: TestClassification ImpossibleBugClass T19ManualAnchorKey TestClaim
+// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, T19GeneratedAnchorKey, T19ClaimAnchorKey.
+// Owns: TestClassification ImpossibleBugClass TestClaimCoproductVariant T19ManualAnchorKey T19GeneratedAnchorKey T19ClaimAnchorKey TestClaim
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
@@ -109,34 +109,56 @@ type T19ManualAnchorKey
   | T19ManualAnchorAbsent
 
 
+// RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this mirror when T-19 projects arm keys from TestClaim.
+type TestClaimCoproductVariant
+// 🟡 coproduct dissolution — feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+  = TestClaimCompilesClaimVariant
+  | TestClaimDiagnosticClaimVariant
+  | TestClaimEqualsClaimVariant
+  | TestClaimRoundTripClaimVariant
+
+
+type T19GeneratedAnchorKey
+  = T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
+
+
+// RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this union when generated TestClaim corpora use a type that does not share t19_anchor with manual rows.
+type T19ClaimAnchorKey
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+  = T19ManualClaimAnchor { manual_anchor: T19ManualAnchorKey }
+  | T19GeneratedClaimAnchor { generated_anchor: T19GeneratedAnchorKey }
+
+
 // RULING-1: pretty-much-done — assertion shape is the variant tag (Practice 4).
 // 🟢 coproduct dissolution — LB-P4-3212.
 type TestClaim
 // 🟢 coproduct dissolution — LB-P4-3212
   = CompilesClaim {
       label: String
-      t19_anchor: T19ManualAnchorKey
+      t19_anchor: T19ClaimAnchorKey
       input: Node
       expected_value: Node
       classification: TestClassification
     }
   | DiagnosticClaim {
       label: String
-      t19_anchor: T19ManualAnchorKey
+      t19_anchor: T19ClaimAnchorKey
       input: Node
       expected_rejection: NonEmptyDiagnostics
       classification: TestClassification
     }
   | EqualsClaim {
       label: String
-      t19_anchor: T19ManualAnchorKey
+      t19_anchor: T19ClaimAnchorKey
       lhs: Node
       rhs: Node
       classification: TestClassification
     }
   | RoundTripClaim {
       label: String
-      t19_anchor: T19ManualAnchorKey
+      t19_anchor: T19ClaimAnchorKey
       input: Node
       classification: TestClassification
     }
@@ -266,13 +288,21 @@ fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
   }
 }
 
-fn test_claim_t19_anchor(c: TestClaim) -> T19ManualAnchorKey {
+fn test_claim_t19_anchor(c: TestClaim) -> T19ClaimAnchorKey {
   match c {
     CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
     DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
     EqualsClaim { t19_anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
     RoundTripClaim { t19_anchor: k, label: _, input: _, classification: _ } => k
   }
+}
+
+fn t19_manual_claim_anchor(anchor: T19ManualAnchorKey) -> T19ClaimAnchorKey {
+  T19ManualClaimAnchor { manual_anchor: anchor }
+}
+
+fn t19_generated_claim_anchor(anchor: T19GeneratedAnchorKey) -> T19ClaimAnchorKey {
+  T19GeneratedClaimAnchor { generated_anchor: anchor }
 }
 
 fn test_claim_classification(c: TestClaim) -> TestClassification {

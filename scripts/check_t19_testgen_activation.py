@@ -2,7 +2,8 @@
 """T-19 testgen activation gate — generated TestClaim corpus + runner receipts.
 
 Verifies TestgenConcept arms, testgen emission helpers, and generated claim modules
-that exercise run_test_claim / run_test_claim_assert (post-T-22 eval decomposition).
+that exercise run_test_claim / run_test_claim_assert, refinement-preservation,
+and DiagnosticExhaustiveness coproduct-exhaustiveness emission.
 
 Run: python3 scripts/check_t19_testgen_activation.py
 Self-test: python3 scripts/test_check_t19_testgen_activation.py
@@ -19,6 +20,9 @@ TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 EFFECTS = ROOT / "src/v4/std/effects.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
+COPRODUCT_EXHAUSTIVENESS_GENERATED = (
+    ROOT / "src/v4/test/claim/generated/coproduct_exhaustiveness.dag"
+)
 REFINEMENT_GENERATED = ROOT / "src/v4/test/claim/generated/refinement_preservation.dag"
 REFINEMENT_MANIFEST = ROOT / "src/v4/test/claim/generated/refinement_preservation_anchor_manifest.dag"
 IDEMPOTENT_OPERATION_GENERATED = (
@@ -45,6 +49,7 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
 def main() -> None:
     for path in (
         TESTGEN,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED,
         EFFECTS,
         LBE_GENERATED,
         LBE_MANIFEST,
@@ -59,6 +64,7 @@ def main() -> None:
     effects = _read(EFFECTS)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
+    coproduct_exhaustiveness = _read(COPRODUCT_EXHAUSTIVENESS_GENERATED)
     refinement = _read(REFINEMENT_GENERATED)
     refinement_manifest = _read(REFINEMENT_MANIFEST)
     verification = _read(VERIFICATION)
@@ -85,6 +91,18 @@ def main() -> None:
             "T19ManualLbeTransformDagSurface",
             "T19ManualRefinementNonEmptyListBase",
             "dag_language_model_surface_id",
+            "fn coproduct_exhaustiveness_subject_testclaim_compiles",
+            "fn testgen_emit_coproduct_exhaustiveness_claim",
+            "fn testgen_scheduled_coproduct_exhaustiveness_generators",
+            "coproduct_exhaustiveness_subject_testclaim_diagnostic",
+            "coproduct_exhaustiveness_subject_testclaim_equals",
+            "coproduct_exhaustiveness_subject_testclaim_roundtrip",
+            "t19_coproduct_exhaustiveness_missing_variant",
+            "fn coproduct_exhaustiveness_anchor_omitted_variant",
+            "variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)",
+            "t19_anchor: t19_generated_claim_anchor(anchor: anchor)",
+            "t19_coproduct_exhaustiveness_omitted_variant_edge",
+            "node_locus(node: input)",
             "| RefinementPreservation { subject: RefinementPreservationSubject }",
             "type RefinementPreservationSubject",
             "fn testgen_emit_refinement_preservation_claim",
@@ -105,6 +123,10 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+            "type TestClaimCoproductVariant",
+            "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
+            "T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
             "T19ManualRefinementNonEmptyListBase",
         ),
     )
@@ -138,6 +160,21 @@ def main() -> None:
             "T19ManualLbeConjDagSurface",
             "T19ManualLbeDisjDagSurface",
             "T19ManualLbeTransformDagSurface",
+        ),
+    )
+
+    _require_substrings(
+        "coproduct_exhaustiveness.dag",
+        coproduct_exhaustiveness,
+        (
+            "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
+            "testgen_emit_coproduct_exhaustiveness_claim",
+            "T19GeneratedCoproductExhaustiveness { omitted_variant: _ }",
+            "witness_coproduct_exhaustiveness_diagnostic_claim",
+            "witness_coproduct_exhaustiveness_uses_generated_anchor",
+            "witness_coproduct_exhaustiveness_all_variants_emit",
+            "witness_coproduct_exhaustiveness_generator_count",
+            "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4",
         ),
     )
 
@@ -222,7 +259,7 @@ def main() -> None:
 
     print(
         "OK: T-19 testgen activation "
-        "(LBE + refinement-preservation + idempotent-operation generated receipts)."
+        "(LBE + refinement-preservation + idempotent-operation + coproduct-exhaustiveness generated receipts)."
     )
 
 

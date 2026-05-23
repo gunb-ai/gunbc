@@ -23,7 +23,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data synthesis_fact_x_symbol: Symbol = synthesis_fact_x_symbol
@@ -56,7 +57,7 @@ fn factorial_dominates_exponential_claim_rhs() -> Node {
 
 data claim_factorial_dominates_exponential: TestClaim = EqualsClaim {
   label: "lens_synthesis/factorial_dominates_exponential: factorial dominates exponential",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: synthesis_fact_x,
   rhs: factorial_dominates_exponential_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

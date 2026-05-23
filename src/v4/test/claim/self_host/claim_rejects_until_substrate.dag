@@ -14,7 +14,8 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.verification {T19ManualAnchorAbsent,
+import v4.std.verification {
+  T19ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -22,7 +23,9 @@ import v4.std.verification {T19ManualAnchorAbsent,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data rejects_until_substrate_subject_symbol: Symbol = rejects_until_substrate_subject_symbol
@@ -36,7 +39,7 @@ data rejects_until_substrate_subject: Node = Node {
 
 data claim_rejects_until_substrate: TestClaim = DiagnosticClaim {
   label: "self-host fixed-point runner rejects until execution substrate lands",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: rejects_until_substrate_subject,
   expected_rejection: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic()),
   classification: TestClassification { tier: Tier1, layer: Integration }

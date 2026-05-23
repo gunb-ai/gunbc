@@ -27,7 +27,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { Holds }
 
@@ -89,7 +90,7 @@ fn disj_max_claim_rhs() -> Node {
 
 data claim_disj_max: TestClaim = EqualsClaim {
   label: "lens_cost/disj_max: disjunct takes max branch cost",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: disj_max_input,
   rhs: disj_max_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

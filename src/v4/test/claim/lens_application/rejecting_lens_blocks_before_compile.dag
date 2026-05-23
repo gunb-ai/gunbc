@@ -26,7 +26,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { Witness }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
@@ -84,7 +85,7 @@ fn rejecting_lens_blocks_before_compile_claim_rhs() -> Node {
 
 data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
   label: "lens_application/rejecting_lens_blocks_before_compile: rejecting lens blocks compile",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: rejecting_lens_authority_node,
   rhs: rejecting_lens_blocks_before_compile_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

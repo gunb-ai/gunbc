@@ -20,7 +20,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data discriminant_predicate_symbol: Symbol = discriminant_predicate_symbol
@@ -51,7 +52,7 @@ fn discriminant_predicate_defect_key_claim_rhs() -> Node {
 
 data claim_discriminant_predicate_defect_key: TestClaim = EqualsClaim {
   label: "lens_coverage/discriminant_predicate_defect_key: DiscriminantPredicate acceptance key",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: discriminant_predicate_node,
   rhs: discriminant_predicate_defect_key_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

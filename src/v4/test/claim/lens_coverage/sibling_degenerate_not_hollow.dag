@@ -18,7 +18,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data sibling_degenerate_symbol: Symbol = sibling_degenerate_symbol
@@ -45,7 +46,7 @@ fn sibling_degenerate_not_hollow_claim_rhs() -> Node {
 
 data claim_sibling_degenerate_not_hollow: TestClaim = EqualsClaim {
   label: "lens_coverage/sibling_degenerate_not_hollow: DegenerateType distinct from HollowType",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: sibling_degenerate_node,
   rhs: sibling_degenerate_not_hollow_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

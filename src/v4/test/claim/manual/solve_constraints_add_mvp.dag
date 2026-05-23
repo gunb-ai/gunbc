@@ -33,7 +33,8 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 fn fixture_add_constraint_graph() -> ConstraintGraph {
   ConstraintGraph { root: fixture_add_resolved_tree() }
@@ -79,7 +80,7 @@ fn solve_constraints_claim_input(ok: Bool) -> Node {
 
 data claim_solve_constraints_add_mvp_compiles: TestClaim = CompilesClaim {
   label: "manual/solve_constraints_add_mvp: constraint path module compiles",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: fixture_add_resolved_node(),
   expected_value: fixture_add_resolved_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -88,7 +89,7 @@ data claim_solve_constraints_add_mvp_compiles: TestClaim = CompilesClaim {
 
 data claim_solve_constraints_add_accepts: TestClaim = CompilesClaim {
   label: "manual/solve_constraints_add_mvp: solve_constraints Accepted on add graph root",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: solve_constraints_claim_input(ok: witness_solve_constraints_add_accepts),
   expected_value: fixture_add_resolved_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }

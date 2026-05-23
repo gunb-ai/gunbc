@@ -28,7 +28,8 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  T19ManualAnchorAbsent
+  T19ManualAnchorAbsent,
+  t19_manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
@@ -67,7 +68,7 @@ fn process_refinement_claim_input(ok: Bool) -> Node {
 
 data claim_exit_code_256_rejects: TestClaim = EqualsClaim {
   label: "manual/process: make_exit_code rejects 256",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: process_refinement_claim_input(ok: witness_exit_code_256_rejects()),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -75,7 +76,7 @@ data claim_exit_code_256_rejects: TestClaim = EqualsClaim {
 
 data claim_process_id_zero_rejects: TestClaim = EqualsClaim {
   label: "manual/process: make_process_id rejects 0",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: process_refinement_claim_input(ok: witness_process_id_zero_rejects()),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -83,7 +84,7 @@ data claim_process_id_zero_rejects: TestClaim = EqualsClaim {
 
 data claim_signal_num_zero_rejects: TestClaim = EqualsClaim {
   label: "manual/process: make_signal_num rejects 0",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: process_refinement_claim_input(ok: witness_signal_num_zero_rejects()),
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }

@@ -83,7 +83,8 @@ import v4.std.verification {
   TestClassification,
   Tier1,
   Unit,
-  test_claim_input
+  test_claim_input,
+  t19_manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
@@ -248,7 +249,7 @@ fn lbe_emit_rejection_sentinel_claim(
 ) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: T19ManualAnchorAbsent,
+    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
     input: mock.snapshot.input_node,
     expected_rejection: expected,
     classification: TestClassification { tier: Tier1, layer: Unit }

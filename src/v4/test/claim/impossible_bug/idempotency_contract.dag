@@ -55,7 +55,9 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data idempotent_position_symbol: Symbol = idempotent_position_symbol
@@ -95,7 +97,7 @@ data falsification_repeated_append_in_idempotent_position: Node = idempotency_co
 
 data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
   label: "idempotent algebra inhabitant accepts idempotent structure",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: idempotent_inhabitant_input,
   expected_value: idempotent_inhabitant_input,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -104,7 +106,7 @@ data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
 
 data claim_repeated_append_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects repeated append composition",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: falsification_repeated_append_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -119,7 +121,7 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = Diagnostic
 
 data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects non-idempotent composition",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: falsification_nonidempotent_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

@@ -19,7 +19,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data kernel_ambient_bool_input: Node = Node {
@@ -44,7 +45,7 @@ fn kernel_ambient_bool_claim_rhs() -> Node {
 
 data claim_kernel_ambient_bool: TestClaim = EqualsClaim {
   label: "lens_fact_density/kernel_ambient_bool: kernel ambient bool atom",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: kernel_ambient_bool_input,
   rhs: kernel_ambient_bool_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

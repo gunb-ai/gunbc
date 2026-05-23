@@ -15,7 +15,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data hollow_alias_int32_symbol: Symbol = hollow_alias_int32_symbol
@@ -42,7 +43,7 @@ fn hollow_alias_no_fact_claim_rhs() -> Node {
 
 data claim_hollow_alias_no_fact: TestClaim = EqualsClaim {
   label: "lens_fact_density/hollow_alias: alias without named fields is NoFact",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: hollow_alias_input,
   rhs: hollow_alias_no_fact_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

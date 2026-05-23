@@ -23,7 +23,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { Witness }
 import v4.test.claim.lens_common.infer_fixture {
@@ -89,7 +90,7 @@ fn enforce_rejecting_gate_fires_claim_rhs() -> Node {
 
 data claim_enforce_rejecting_gate_fires: TestClaim = EqualsClaim {
   label: "lens_application/enforce_rejecting_gate_fires: Enforce apply_lens rejects gate",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: enforce_reject_root,
   rhs: enforce_rejecting_gate_fires_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

@@ -27,7 +27,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data excluded_propagation_key: ExclusionKey = ExclusionKey {
@@ -69,7 +70,7 @@ fn excluded_propagation_proof_claim_rhs() -> Node {
 
 data claim_excluded_propagation_proof: TestClaim = EqualsClaim {
   label: "lens_affected_set/excluded_propagation_proof: mark_excluded accumulates proofs in Excluded.rest",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: excluded_propagation_proof_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

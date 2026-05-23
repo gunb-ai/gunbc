@@ -49,7 +49,9 @@ import v4.std.verification {T19ManualAnchorAbsent,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  t19_manual_claim_anchor
+}
 
 
 data algebra_law_subject_algebra_field: Symbol = algebra_law_subject_algebra_field
@@ -106,7 +108,7 @@ data falsification_nat_add_wrong_identity: Node = nat_add_law(law: nat_law_wrong
 
 
 fn accepted_claim(label: String, anchor: T19ManualAnchorKey, input: Node) -> TestClaim {
-  EqualsClaim { label: label, t19_anchor: anchor, lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
+  EqualsClaim { label: label, t19_anchor: t19_manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
   }
 }
 
@@ -155,7 +157,7 @@ data claim_nat_mul_associativity: TestClaim = accepted_claim(
 
 data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
   label: "Nat addition wrong identity falsifies law claim",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: falsification_nat_add_wrong_identity,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

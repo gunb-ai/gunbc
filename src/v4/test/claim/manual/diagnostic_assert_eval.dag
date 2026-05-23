@@ -38,7 +38,8 @@ import v4.std.verification {
   T19ManualAnchorAbsent,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -92,7 +93,7 @@ data accepted_actual: Outcome<Node> = Accepted {
 
 data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim match",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: diag_assert_node(),
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -101,7 +102,7 @@ data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
 
 data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim mismatch",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: diag_assert_node(),
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -110,7 +111,7 @@ data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
 
 data witness_diagnostic_claim_accepted_fail: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim accepted fail",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: diag_assert_node(),
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }

@@ -33,7 +33,8 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  T19ManualAnchorKey
+  T19ManualAnchorKey,
+  t19_manual_claim_anchor
 }
 import v4.std.node {
   Arrow,
@@ -118,7 +119,7 @@ data stub_bind_zero_children: Node = Node {
 fn arity_rejection_claim(label: String, input: Node, anchor: T19ManualAnchorKey) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: anchor,
+    t19_anchor: t19_manual_claim_anchor(anchor: anchor),
     input: input,
     expected_rejection: diagnostics_singleton(
       d: eval_diagnostic(reason: eval_rejected_invalid_node, node: input)
@@ -130,7 +131,7 @@ fn arity_rejection_claim(label: String, input: Node, anchor: T19ManualAnchorKey)
 
 data claim_conj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Conj type-node is structurally inhabitable",
-  t19_anchor: T19ManualTcConjEmpty,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcConjEmpty),
   input: stub_empty_conj,
   expected_value: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -139,7 +140,7 @@ data claim_conj_empty_compiles: TestClaim = CompilesClaim {
 
 data claim_disj_empty_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: empty Disj type-node is structurally inhabitable",
-  t19_anchor: T19ManualTcDisjEmpty,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcDisjEmpty),
   input: stub_empty_disj,
   expected_value: stub_empty_disj,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -148,7 +149,7 @@ data claim_disj_empty_compiles: TestClaim = CompilesClaim {
 
 data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
   label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
-  t19_anchor: T19ManualTcArrowTwoConj,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcArrowTwoConj),
   input: stub_arrow_pair,
   expected_value: stub_arrow_pair,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -206,7 +207,7 @@ data claim_bind_zero_children_rejected: TestClaim = arity_rejection_claim(
 
 data claim_conj_equals_refl: TestClaim = EqualsClaim {
   label: "manual/connective: Equals reflexivity on empty Conj stub",
-  t19_anchor: T19ManualTcConjEqualsRefl,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualTcConjEqualsRefl),
   lhs: stub_empty_conj,
   rhs: stub_empty_conj,
   classification: TestClassification { tier: Tier1, layer: Unit }

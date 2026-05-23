@@ -51,7 +51,8 @@ import v4.std.verification {
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
 data distinct_zip_source_atom: Symbol = distinct_zip_source_atom
@@ -274,7 +275,7 @@ fn distinct_witness_expected() -> Node {
 }
 data claim_find_witness_distinct_node_zip_fold_compiles: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: distinct-node anchors compile",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_source_add_node(),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -282,7 +283,7 @@ data claim_find_witness_distinct_node_zip_fold_compiles: TestClaim = CompilesCla
 
 data claim_find_witness_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: distinct-node candidate accepts",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_distinct_node_accepts),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -290,7 +291,7 @@ data claim_find_witness_distinct_node_accepts: TestClaim = CompilesClaim {
 
 data claim_verify_witness_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: distinct-node witness verifies",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_verify_witness_distinct_node_accepts),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -298,7 +299,7 @@ data claim_verify_witness_distinct_node_accepts: TestClaim = CompilesClaim {
 
 data claim_find_witness_wrong_arity_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: wrong arity rejects",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_wrong_arity_rejects),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -306,7 +307,7 @@ data claim_find_witness_wrong_arity_rejects: TestClaim = CompilesClaim {
 
 data claim_find_witness_wrong_subtree_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: same root arity wrong subtree rejects",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_wrong_subtree_rejects),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -314,7 +315,7 @@ data claim_find_witness_wrong_subtree_rejects: TestClaim = CompilesClaim {
 
 data claim_find_witness_nested_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: nested distinct-node candidate accepts",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_find_witness_nested_distinct_node_accepts),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -322,7 +323,7 @@ data claim_find_witness_nested_distinct_node_accepts: TestClaim = CompilesClaim 
 
 data claim_coercion_fold_distinct_node_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_distinct_node_zip_fold: coercion_fold returns Exact",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: distinct_witness_claim_input(ok: witness_coercion_fold_distinct_node_accepts),
   expected_value: distinct_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }

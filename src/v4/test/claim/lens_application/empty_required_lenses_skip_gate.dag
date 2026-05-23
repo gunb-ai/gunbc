@@ -24,7 +24,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 
@@ -85,7 +86,7 @@ fn empty_required_lenses_skip_gate_claim_rhs() -> Node {
 
 data claim_empty_required_lenses_skip_gate: TestClaim = EqualsClaim {
   label: "lens_application/empty_required_lenses_skip_gate: empty lens list skips gate reject",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: empty_lenses_authority_node,
   rhs: empty_required_lenses_skip_gate_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

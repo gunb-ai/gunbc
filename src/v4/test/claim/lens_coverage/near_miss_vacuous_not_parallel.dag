@@ -18,7 +18,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data near_miss_vacuous_symbol: Symbol = near_miss_vacuous_symbol
@@ -45,7 +46,7 @@ fn near_miss_vacuous_not_parallel_claim_rhs() -> Node {
 
 data claim_near_miss_vacuous_not_parallel: TestClaim = EqualsClaim {
   label: "lens_coverage/near_miss_vacuous_not_parallel: VacuousArm not ParallelAuthority",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: near_miss_vacuous_node,
   rhs: near_miss_vacuous_not_parallel_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

@@ -16,7 +16,8 @@ import v4.std.verification {
   TestClassification,
   T19ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  t19_manual_claim_anchor
 }
 
 data projection_dep_root_symbol: Symbol = projection_dep_root_symbol
@@ -55,7 +56,7 @@ fn projection_dep_in_frontier_claim_rhs() -> Node {
 
 data claim_projection_dep_in_frontier: TestClaim = EqualsClaim {
   label: "lens_affected_set/projection_dep_in_frontier: ProjectionDependsOn in frontier",
-  t19_anchor: T19ManualAnchorAbsent,
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: projection_dep_root,
   rhs: projection_dep_in_frontier_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
