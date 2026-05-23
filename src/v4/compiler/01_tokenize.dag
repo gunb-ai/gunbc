@@ -15,7 +15,7 @@ import v4.std.node { Symbol }
 import v4.std.algebra { is_empty }
 import v4.std.text { Char, String }
 
-// 🟡 coproduct dissolution — CP-1b item 13a (LexCharClass).
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: LexCharClass converges into single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -35,7 +35,7 @@ type LexPattern
   | RepeatPattern { element: LexPattern }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13c (LexRule).
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: LexRule converges into single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
 
@@ -45,7 +45,7 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13d (LexRules).
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: LexRules converges into single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }

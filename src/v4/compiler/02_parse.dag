@@ -35,9 +35,8 @@ type GrammarRoot {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b/T-7 wave-1 void grammar plus modeled grammar root.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: Grammar converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type Grammar
-// 🟡 coproduct dissolution — CP-1b/T-7 wave-1 void grammar plus modeled grammar root.
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
 
