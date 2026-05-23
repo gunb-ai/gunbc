@@ -1,6 +1,8 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Owns: TomlValue.
+// Owns: TomlValue, TomlDocument, TomlParseAxis, TomlEmitAxis, TomlIntegerLexeme,
+//       TomlFloatLexeme, TomlDatetimeLexeme, TomlUniqueNameProfile,
+//       TomlTableSyntaxProfile.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
 // Anchor: https://toml.io/en/v1.0.0
@@ -9,15 +11,125 @@ module v4.extdeps.formats.toml
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlSign
+  = TomlSignAbsent
+  | TomlSignPlus
+  | TomlSignMinus
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlIntegerRadix
+  = TomlIntegerDecimal
+  | TomlIntegerHex
+  | TomlIntegerOctal
+  | TomlIntegerBinary
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlFloatSpecial
+  = TomlFloatFinite
+  | TomlFloatInf
+  | TomlFloatNan
+
+
+type TomlUnderscoreSeparatedDigitsProfile {}
+
+
+// TOML integers are radix-tagged lexemes; width and machine representation are
+// deliberately absent because the TOML spec defines syntax, not a target width.
+type TomlIntegerLexemeProfile {
+  sign: TomlSign,
+  radix: TomlIntegerRadix,
+  underscores: TomlUnderscoreSeparatedDigitsProfile,
+}
+
+
+type TomlFloatLexemeProfile {
+  sign: TomlSign,
+  special: TomlFloatSpecial,
+  underscores: TomlUnderscoreSeparatedDigitsProfile,
+}
+
+
+type TomlIntegerLexeme {
+  lexeme: String,
+  profile: TomlIntegerLexemeProfile,
+}
+
+
+type TomlFloatLexeme {
+  lexeme: String,
+  profile: TomlFloatLexemeProfile,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlDatetimeKind
+  = TomlOffsetDateTime
+  | TomlLocalDateTime
+  | TomlLocalDate
+  | TomlLocalTime
+
+
+type TomlDatetimeLexeme {
+  lexeme: String,
+  kind: TomlDatetimeKind,
+}
+
+
+type TomlUniqueNameProfile {
+  dotted_keys_define_tables: Bool,
+  duplicate_keys_rejected: Bool,
+  duplicate_tables_rejected: Bool,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlTableSyntax
+  = TomlStandardTable
+  | TomlArrayOfTables
+  | TomlInlineTableSyntax
+
+
+type TomlTableSyntaxProfile {
+  syntax: TomlTableSyntax,
+  path: List<String>,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlValue
   = TomlString { value: String }
-  | TomlInt { lexeme: String }
-  | TomlFloat { lexeme: String }
+  | TomlInt { numeric: TomlIntegerLexeme }
+  | TomlFloat { numeric: TomlFloatLexeme }
   | TomlBool { value: Bool }
-  | TomlDatetime { lexeme: String }
+  | TomlDatetime { datetime: TomlDatetimeLexeme }
   | TomlArray { elements: List<TomlValue> }
   | TomlInlineTable { entries: Map<String, TomlValue> }
-  | TomlTable { entries: Map<String, TomlValue> }
+  | TomlTable {
+      syntax: TomlTableSyntaxProfile,
+      entries: Map<String, TomlValue>,
+    }
+
+
+type TomlDocument {
+  root: TomlValue,
+  unique_names: TomlUniqueNameProfile,
+}
+
+
+// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
+type TomlParseAxis {
+  source_text: String,
+  unique_names: TomlUniqueNameProfile,
+}
+
+
+// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+type TomlEmitAxis {
+  document: TomlDocument,
+  canonical_table_syntax: TomlTableSyntaxProfile,
+}
 
 
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
