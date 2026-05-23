@@ -79,7 +79,6 @@ import v4.std.target_model {
   target_model_edge_translation_rules
 }
 import v4.std.collection { List, Map, empty_map, list_append, list_snoc_item }
-import v4.std.witness { Holds, Violates }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -405,20 +404,6 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
       )
   }
 }
-// Top-level helper so the bootstrap compiler sees explicit Map<Symbol,String>/Witness<String>
-// types rather than inferring through a nested closure (same pattern as T-23 fold helpers).
-fn spelling_from_binding_map(spellings: Map<Symbol, String>, binding: Symbol) -> Outcome<String> {
-  match spellings.lookup(binding) {
-    Holds { value: spelling } =>
-      Accepted { value: spelling, diagnostics: None }
-    Violates { diagnostic: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-        )
-      }
-  }
-}
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
   bind_outcome(
     o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
@@ -431,10 +416,20 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
               bind_outcome(
                 o: node_atom_identity(node: binding_node),
                 f: fn(binding) {
-                  spelling_from_binding_map(
-                    spellings: target.binding_spellings,
-                    binding: binding
-                  )
+                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
+                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
+                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
+                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
+                  match map_get(target.binding_spellings, binding) {
+                    Some { value: spelling } =>
+                      Accepted { value: spelling, diagnostics: None }
+                    None =>
+                      Rejected {
+                        diagnostics: diagnostics_singleton(
+                          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                        )
+                      }
+                  }
                 }
               )
             Rejected { diagnostics: _ } =>
