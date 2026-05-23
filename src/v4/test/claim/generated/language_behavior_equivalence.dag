@@ -22,10 +22,10 @@ import v4.compiler.eval {
   test_claim_cache_receipt
 }
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree
 }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.algebra { length }
 import v4.std.collection { Map }
 import v4.std.diagnostic {
@@ -157,23 +157,15 @@ fn lbe_bind_value(
 
 
 fn lbe_inferred_facts(resolved: Node) -> InferredFacts {
-  InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef { algebra: resolved, witness: resolved },
+  claim_inferred_facts_from_nodes(
+    resolved: resolved,
+    algebra: resolved,
+    canonical_structural_symbol: constraint_property_being_canonical,
+    canonical_closedness_symbol: constraint_property_candidate_set_closedness,
     descent: Violates {
       diagnostic: eval_diagnostic(reason: eval_rejected_lbe_projection_deferred, node: resolved)
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: resolved
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: resolved
-      }
     }
-  }
+  )
 }
 
 
