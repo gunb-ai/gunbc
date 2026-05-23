@@ -7,11 +7,11 @@
 module v4.test.claim.lens_structural_resolution.unresolved_infer_witness
 
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree,
   infer_descent_not_derived_diagnostic
 }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts }
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
   UnresolvedInferWitness,
@@ -26,7 +26,6 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -37,7 +36,7 @@ import v4.std.dependency {
 }
 import v4.std.diagnostic { node_locus }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v4.std.witness { Holds, Violates, Witness }
 
 data sr_infer_use_symbol: Symbol = sr_infer_use_symbol
 data sr_infer_decl_symbol: Symbol = sr_infer_decl_symbol
