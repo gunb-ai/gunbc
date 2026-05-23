@@ -15,7 +15,12 @@ module v4.test.claim.lens_common.infer_fixture
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
-import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
+import v4.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness
+}
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
