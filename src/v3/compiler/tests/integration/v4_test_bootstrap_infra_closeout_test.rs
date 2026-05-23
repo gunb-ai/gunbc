@@ -327,7 +327,7 @@ fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
         for (idx, line) in source.lines().enumerate() {
             let trimmed = line.trim();
-            if trimmed.starts_with("t19_anchor: T19Manual") {
+            if !trimmed.starts_with("//") && trimmed.contains("t19_anchor: T19Manual") {
                 offenders.push(format!(
                     "{}:{}: {}",
                     path.strip_prefix(workspace_root())
