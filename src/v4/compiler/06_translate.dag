@@ -5,8 +5,7 @@
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
 //       target_serialize_source_from_model, grammar_relation_row_for_emitted,
-//       grammar_inverse_source_validated, translate_target_source_not_realized,
-//       translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
+//       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
 //       translate_fold_step, translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
@@ -38,7 +37,6 @@ import v4.std.diagnostic {
   node_locus,
   Outcome,
   None,
-  port_locus,
   Rejected,
   Unavailable,
   bind_outcome,
@@ -84,8 +82,6 @@ type TargetBundleChildLookup
   | BundleChildInvalidEdge
 data translate_target_bundle_malformed: Symbol = translate_target_bundle_malformed
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
-data translate_stage_locus_port: Symbol = translate_stage_locus_port
-data translate_target_source_not_realized: Symbol = translate_target_source_not_realized
 data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
 data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
 data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
@@ -170,13 +166,6 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )
-  }
-}
-fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: translate_target_source_not_realized,
-    at: port_locus(port: translate_stage_locus_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> Diagnostic {

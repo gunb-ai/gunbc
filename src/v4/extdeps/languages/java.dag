@@ -796,7 +796,7 @@ fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
       ),
       java_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       java_named_edge(
-        name: java_relation_field_tokens,
+        name: grammar_relation_field_tokens,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: java_relation_token_edges(tokens: row.tokens)
