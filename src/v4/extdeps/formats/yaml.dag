@@ -21,10 +21,6 @@ type YamlValue
   | YamlMapping { entries: Map<YamlValue, YamlValue> }
 
 
-// ── Numeric-lexeme profile (YAML 1.2.2 §10.3.2 core schema) ─────────────────
-// Int/float tag resolution picks the YamlValue variant; lexeme is preserved verbatim
-// (numeric interpretation deferred to std/integer.dag + std/float.dag).
-
 type YamlIntBase10DecimalFormWitness {}
 
 type YamlIntBase8Octal0oPrefixWitness {}
@@ -55,12 +51,6 @@ type YamlFloatLexemeFacts {
   optional_sign_prefix: YamlFloatOptionalSignPrefixWitness,
 }
 
-
-// ── Canonical-key profile (YAML 1.2.2 §3.2.1.3 node comparison) ───────────────
-// Mapping keys are duplicate iff equal by resolved tag AND canonical content.
-// Map<YamlValue, YamlValue> forecloses lexeme-identical duplicates only; full
-// §3.2.1.3 enforcement is a parse-boundary obligation (see gated axis below).
-
 type YamlMappingKeyEqualityByTagAndCanonicalContentWitness {}
 
 type YamlSameTagCanonicallyEqualDuplicateKeysRejectedWitness {}
@@ -72,10 +62,6 @@ type YamlCanonicalKeyProfileFacts {
   same_tag_canonically_equal_duplicates_rejected: YamlSameTagCanonicallyEqualDuplicateKeysRejectedWitness,
   lexeme_identical_keys_map_structural_dedup: YamlLexemeIdenticalKeysMapStructuralDedupWitness,
 }
-
-
-// ── Anchor/alias resolution (YAML 1.2.2 §6.1 anchors, §7.1 aliases) ─────────
-// Structure-sharing resolves during parse; produced YamlValue is alias-free.
 
 type YamlAnchorNodeMarkedWithAmpersandWitness {}
 
@@ -99,7 +85,6 @@ type YamlAnchorAliasResolutionFacts {
 }
 
 
-// ── Gated axes ───────────────────────────────────────────────────────────────
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: canonical-key profile parse enforcement binding (YamlCanonicalKeyProfileFacts consumption at parse boundary) — SL-3229-YAML-CANONICAL-KEYS.
