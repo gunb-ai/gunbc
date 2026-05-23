@@ -40,12 +40,12 @@ fn introspect_tree() -> InferredTree {
   claim_inferred_tree(
     root: introspect_root,
     facts: claim_inferred_facts(
-    type_symbol: introspect_type_symbol,
-    algebra_symbol: introspect_algebra_symbol,
-    descent_symbol: introspect_descent_symbol,
-    canonical_structural_symbol: introspect_canonical_structural_symbol,
-    canonical_closedness_symbol: introspect_canonical_closedness_symbol
-  )
+      type_symbol: introspect_type_symbol,
+      algebra_symbol: introspect_algebra_symbol,
+      descent_symbol: introspect_descent_symbol,
+      canonical_structural_symbol: introspect_canonical_structural_symbol,
+      canonical_closedness_symbol: introspect_canonical_closedness_symbol
+    )
   )
 }
 

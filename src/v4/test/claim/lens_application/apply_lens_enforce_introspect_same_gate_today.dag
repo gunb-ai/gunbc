@@ -48,12 +48,12 @@ fn apply_lens_mode_tree() -> InferredTree {
   claim_inferred_tree(
     root: apply_lens_mode_root,
     facts: claim_inferred_facts(
-    type_symbol: apply_lens_mode_type_symbol,
-    algebra_symbol: apply_lens_mode_algebra_symbol,
-    descent_symbol: apply_lens_mode_descent_symbol,
-    canonical_structural_symbol: apply_lens_mode_canonical_structural_symbol,
-    canonical_closedness_symbol: apply_lens_mode_canonical_closedness_symbol
-  )
+      type_symbol: apply_lens_mode_type_symbol,
+      algebra_symbol: apply_lens_mode_algebra_symbol,
+      descent_symbol: apply_lens_mode_descent_symbol,
+      canonical_structural_symbol: apply_lens_mode_canonical_structural_symbol,
+      canonical_closedness_symbol: apply_lens_mode_canonical_closedness_symbol
+    )
   )
 }
 
