@@ -61,6 +61,7 @@ fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this hand-matched T19GeneratedClaimAnchor arm check with canonical anchor-type projection; forbidden: permanent hand-rolled anchor-variant discriminant in generated corpus.
 fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: claim, diagnostics: _ } =>
@@ -124,8 +125,10 @@ fn witness_coproduct_exhaustiveness_variant_emits(anchor: T19GeneratedAnchorKey)
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace count+emit conjunction with structural variant-set membership check over scheduled generators once M2 fold reflection is available; forbidden: permanent count-only scheduling proof in generated corpus.
 fn witness_testgen_schedules_all_coproduct_exhaustiveness_generators() -> Bool {
-  length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4
+  length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4 &&
+    witness_coproduct_exhaustiveness_all_testclaim_variants_emit()
 }
 
 
