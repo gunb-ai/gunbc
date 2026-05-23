@@ -119,6 +119,7 @@ import v4.std.verification {
   Unit,
   generated_claim_anchor,
   manual_claim_anchor,
+  test_claim_coproduct_variant,
   test_claim_classification,
   test_claim_anchor
 }
@@ -171,6 +172,9 @@ type TypeConstructionSubject
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
+type DiagnosticExhaustivenessSubject { reason: Symbol }
+
+
 type LensApplicabilitySubject {
   lens: Symbol
   program: Node
@@ -214,7 +218,7 @@ type TestgenConcept
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness
+  | DiagnosticExhaustiveness { subject: DiagnosticExhaustivenessSubject }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -225,6 +229,7 @@ type TestgenConcept
 
 
 type Generator<C> {
+  kind: TestClaimCoproductVariant
   classification: TestClassification
   anchor: ClaimAnchorKey
   slot: C
@@ -375,6 +380,11 @@ data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness
 
 
 data t19_algebra_law_tautological_sides: Symbol = t19_algebra_law_tautological_sides
+data t19_algebra_law_subject_field: Symbol = t19_algebra_law_subject_field
+data t19_algebra_law_algebra_field: Symbol = t19_algebra_law_algebra_field
+data t19_algebra_law_inhabitant_field: Symbol = t19_algebra_law_inhabitant_field
+data t19_algebra_law_law_field: Symbol = t19_algebra_law_law_field
+data t19_algebra_law_expression_field: Symbol = t19_algebra_law_expression_field
 
 
 data t19_coproduct_exhaustiveness_missing_variant: Symbol = t19_coproduct_exhaustiveness_missing_variant
@@ -655,7 +665,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
 
 
 fn testgen_emit_algebra_law_claim(
-  anchor: T19ManualAnchorKey,
+  anchor: ManualAnchorKey,
   label: String,
   subject: AlgebraLawSubject,
   lhs: Node,
@@ -667,7 +677,7 @@ fn testgen_emit_algebra_law_claim(
       diagnostics: diagnostics_singleton(
         d: Diagnostic {
           reason: t19_algebra_law_tautological_sides,
-          at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+          at: Textual { file: testgen_lens_file, extent: WholeFile },
           correction: Unavailable { reason: UserInputBoundary }
         }
       )
@@ -676,13 +686,41 @@ fn testgen_emit_algebra_law_claim(
     Accepted {
       value: EqualsClaim {
         label: label,
-        t19_anchor: t19_manual_claim_anchor(anchor: anchor),
-        lhs: lhs,
-        rhs: rhs,
+        anchor: manual_claim_anchor(anchor: anchor),
+        lhs: algebra_law_claim_term(subject: subject, expression: lhs),
+        rhs: algebra_law_claim_term(subject: subject, expression: rhs),
         classification: classification,
       },
       diagnostics: None,
     }
+  }
+}
+
+
+fn algebra_law_subject_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { label: Named { name: t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { label: Named { name: t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+    ]
+  }
+}
+
+
+fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { label: Named { name: t19_algebra_law_expression_field }, target: expression },
+    ]
   }
 }
 
@@ -1109,6 +1147,7 @@ fn testgen_emit_witness_validity_claim(
 fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
+      kind: TestClaimCompilesClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
       slot: LanguageBehaviorEquivalence {
@@ -1117,6 +1156,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       },
     },
     Generator {
+      kind: TestClaimCompilesClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeDisjDagSurface),
       slot: LanguageBehaviorEquivalence {
@@ -1125,6 +1165,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       },
     },
     Generator {
+      kind: TestClaimCompilesClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeTransformDagSurface),
       slot: LanguageBehaviorEquivalence {
@@ -1231,32 +1272,52 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness {
+        subject: DiagnosticExhaustivenessSubject {
+          reason: t19_coproduct_exhaustiveness_missing_variant,
+        },
+      },
     },
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness {
+        subject: DiagnosticExhaustivenessSubject {
+          reason: t19_coproduct_exhaustiveness_missing_variant,
+        },
+      },
     },
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness {
+        subject: DiagnosticExhaustivenessSubject {
+          reason: t19_coproduct_exhaustiveness_missing_variant,
+        },
+      },
     },
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness {
+        subject: DiagnosticExhaustivenessSubject {
+          reason: t19_coproduct_exhaustiveness_missing_variant,
+        },
+      },
     },
   ]
 }
@@ -1475,6 +1536,7 @@ fn bootstrap_claim_generator_for_manual_anchor(
         Accepted { value: slot, diagnostics: d1 } =>
           Accepted {
             value: Generator {
+              kind: test_claim_coproduct_variant(c: claim),
               classification: test_claim_classification(c: claim),
               anchor: test_claim_anchor(c: claim),
               slot: slot
