@@ -19,7 +19,6 @@ import v4.compiler.eval {
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree
 }
@@ -52,6 +51,7 @@ import v4.std.runtime {
   ValueInterpreter
 }
 import v4.std.constraints {
+  CanonicalGrounding,
   CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
@@ -155,20 +155,21 @@ fn lbe_bind_value(
 
 fn lbe_inferred_facts(resolved: Node) -> InferredFacts {
   InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef { algebra: resolved, witness: resolved },
+    grounding: CanonicalGrounding {
+      node: resolved,
+      witness: CanonicalGroundingWitness {
+        structural: StructuralPropertyWitness {
+          property: constraint_property_being_canonical,
+          evidence: resolved
+        },
+        closedness: StructuralPropertyWitness {
+          property: constraint_property_candidate_set_closedness,
+          evidence: resolved
+        }
+      }
+    },
     descent: Violates {
       diagnostic: eval_diagnostic(reason: eval_rejected_lbe_projection_deferred, node: resolved)
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: resolved
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: resolved
-      }
     }
   }
 }

@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
 //! R2-7 fixture drift guard: every `InferredFacts {` constructor in
-//! `src/v4/test/claim/**/*.dag` must carry the current four-field shape from
-//! `src/v4/compiler/04_infer.dag` (`resolved_type`, `inhabits`, `descent`, `canonical`).
+//! `src/v4/test/claim/**/*.dag` must carry the PR #3587 / AI-5 shape from
+//! `src/v4/compiler/04_infer.dag` (`grounding: CanonicalGrounding`, `descent`).
 //! Prevents silent semantic gaps after substrate shape sweeps (e.g. f98e8315).
 //!
 //! **ROADMAP:** T-PB-B / `pb_rust_tests_outside_residual_zero`; dissolves when
@@ -11,7 +11,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const REQUIRED_FIELDS: [&str; 4] = ["resolved_type:", "inhabits:", "descent:", "canonical:"];
+const REQUIRED_FIELDS: [&str; 2] = ["grounding:", "descent:"];
+const FORBIDDEN_FIELDS: [&str; 3] = ["resolved_type:", "inhabits:", "canonical:"];
 const CONSTRUCTOR_NEEDLE: &str = "InferredFacts {";
 
 fn workspace_root() -> PathBuf {
@@ -63,7 +64,7 @@ fn inferred_facts_block(source: &str, start: usize) -> Option<&str> {
 }
 
 #[test]
-fn v4_test_claim_inferred_facts_constructors_match_current_four_field_shape() {
+fn v4_test_claim_inferred_facts_constructors_match_grounding_descent_shape() {
     let root = workspace_root();
     let claim_root = root.join("src/v4/test/claim");
     assert!(
@@ -94,7 +95,15 @@ fn v4_test_claim_inferred_facts_constructors_match_current_four_field_shape() {
             for field in REQUIRED_FIELDS {
                 if !block.contains(field) {
                     violations.push(format!(
-                        "{}: `{CONSTRUCTOR_NEEDLE}` missing `{field}` (current authority: 04_infer.dag)",
+                        "{}: `{CONSTRUCTOR_NEEDLE}` missing `{field}` (authority: 04_infer.dag AI-5 shape)",
+                        rel_path(&root, &path)
+                    ));
+                }
+            }
+            for field in FORBIDDEN_FIELDS {
+                if block.contains(field) {
+                    violations.push(format!(
+                        "{}: `{CONSTRUCTOR_NEEDLE}` still uses retired field `{field}` (migrate to `grounding:` + `descent:`)",
                         rel_path(&root, &path)
                     ));
                 }
