@@ -4,7 +4,7 @@
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
 //       target_serialize_source_from_model, grammar_relation_row_for_emitted, token_sequence_to_source,
-//       token_spelling_from_model, lex_rules_literal_for_class, string_append, node_atom_identity,
+//       token_spelling_from_model, lex_rules_literal_for_class, lex_rule_literal_step, node_atom_identity,
 //       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
 //       translate_fold_step, translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
@@ -78,7 +78,7 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
 }
-import v4.std.collection { List, Map, empty_map, list_snoc_item }
+import v4.std.collection { List, Map, empty_map, list_append, list_snoc_item }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -355,29 +355,6 @@ fn node_atom_identity(node: Node) -> Outcome<Symbol> {
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
   }
 }
-fn string_append(left: String, right: String) -> String {
-  match left {
-    Empty => right
-    Cons { head: h, tail: t } =>
-      Cons { head: h, tail: string_append(left: t, right: right) }
-  }
-}
-fn conj_has_named_child(parent: Node, edge_name: Symbol) -> Bool {
-  match parent.kind {
-    TypeNode { connective: Conj } =>
-      fold(parent.children, init: false, f: fn(acc, e) {
-        match acc {
-          true => true
-          false =>
-            match e.label {
-              Named { name: n } => n == edge_name
-              Positional => false
-            }
-        }
-      })
-    _ => false
-  }
-}
 fn lex_rule_literal_step(
   acc: Outcome<String>,
   rule: LexRule,
@@ -407,21 +384,6 @@ fn lex_rule_literal_step(
       }
   }
 }
-fn lex_rules_literal_fold(
-  rules: List<LexRule>,
-  acc: Outcome<String>,
-  token_class: Symbol
-) -> Outcome<String> {
-  match rules {
-    Empty => acc
-    Cons { head: rule, tail: tail } =>
-      lex_rules_literal_fold(
-        rules: tail,
-        acc: lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class),
-        token_class: token_class
-      )
-  }
-}
 fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
   match rules {
     VoidLexRules =>
@@ -429,14 +391,16 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
         translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
       )
     ModeledLexRules { root: set } =>
-      lex_rules_literal_fold(
-        rules: set.rules,
-        acc: Rejected {
+      fold_list(
+        xs: set.rules,
+        empty: Rejected {
           diagnostics: diagnostics_singleton(
             d: translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
           )
         },
-        token_class: token_class
+        cons: fn(acc, rule) {
+          lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
+        }
       )
   }
 }
@@ -447,29 +411,25 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
       bind_outcome(
         o: node_atom_identity(node: class_node),
         f: fn(token_class) {
-          if conj_has_named_child(parent: token, edge_name: concrete_syntax_token_field_binding) {
-            bind_outcome(
-              o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_binding),
-              f: fn(binding_node) {
-                bind_outcome(
-                  o: node_atom_identity(node: binding_node),
-                  f: fn(binding) {
-                    match map_get(target.binding_spellings, binding) {
-                      Some { value: spelling } =>
-                        Accepted { value: spelling, diagnostics: None }
-                      None =>
-                        Rejected {
-                          diagnostics: diagnostics_singleton(
-                            d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                          )
-                        }
-                    }
+          match conj_named_child(parent: token, edge_name: concrete_syntax_token_field_binding) {
+            Accepted { value: binding_node, diagnostics: _ } =>
+              bind_outcome(
+                o: node_atom_identity(node: binding_node),
+                f: fn(binding) {
+                  match map_get(target.binding_spellings, binding) {
+                    Some { value: spelling } =>
+                      Accepted { value: spelling, diagnostics: None }
+                    None =>
+                      Rejected {
+                        diagnostics: diagnostics_singleton(
+                          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                        )
+                      }
                   }
-                )
-              }
-            )
-          } else {
-            lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+                }
+              )
+            Rejected { diagnostics: _ } =>
+              lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
           }
         }
       )
@@ -487,7 +447,7 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
           match token_spelling_from_model(target: target, token: token_node) {
             Accepted { value: spelling, diagnostics: td } =>
               Accepted {
-                value: string_append(left: partial, right: spelling),
+                value: list_append(left: partial, right: spelling),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>
