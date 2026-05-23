@@ -77,12 +77,10 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
     assert!(
         ALGEBRA_LAW_GENERATED_DAG.contains("testgen_emit_algebra_law_claim")
             && ALGEBRA_LAW_GENERATED_DAG.contains("subject: AlgebraLawSubject")
-            && ALGEBRA_LAW_GENERATED_DAG
-                .contains("nat_algebra_law_subject_symbol_additive_monoid")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_additive_monoid")
             && ALGEBRA_LAW_GENERATED_DAG
                 .contains("nat_algebra_law_subject_symbol_commutative_semiring")
-            && ALGEBRA_LAW_GENERATED_DAG
-                .contains("nat_algebra_law_subject_symbol_inhabitant_nat")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat")
             && ALGEBRA_LAW_GENERATED_DAG.contains("t19_law_nat_add_left_identity")
             && ALGEBRA_LAW_GENERATED_DAG.contains("t19_law_nat_add_associativity")
             && ALGEBRA_LAW_GENERATED_DAG.contains("t19_law_nat_mul_annihilator")
