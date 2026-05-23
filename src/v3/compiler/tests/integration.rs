@@ -285,6 +285,8 @@ mod v4_compiler_compile_public_terminal_smoke_test;
 mod v4_compiler_emit_translate_smoke_test;
 #[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
 mod v4_extdeps_file_system_dag_smoke_test;
+#[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
+mod v4_extdeps_coordination_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
 #[path = "integration/v4_lens_edit_locus_dag_smoke_test.rs"]
