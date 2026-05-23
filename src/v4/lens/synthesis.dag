@@ -15,11 +15,14 @@
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
 //
 // Owns:
-//   - lens read: Node -> Set<Report>  (advisory carrier, NEVER Witness —
-//     Witness is strictly fail-closed per INVARIANTS P3/C-8; advisory
-//     Report must not overload it. Empty set = no advice; non-empty =
+//   - lens read: (Node, LowerBoundTechnique) -> Set<Report>  (advisory carrier,
+//     NEVER Witness — Witness is strictly fail-closed per INVARIANTS P3/C-8;
+//     advisory Report must not overload it. Empty set = no advice; non-empty =
 //     advisory observations, never blocking unless user opts in via
-//     apply_lens(synthesis, Enforce { ... }))
+//     apply_lens(synthesis, Enforce { ... })).
+//     The caller DECLARES which technique applies to the node's I/O relation
+//     class; synthesis_lens does NOT infer it from Node structure
+//     (DECLARED, never inferred per T-17 + Rice-undecidability dissolution).
 //   - the user's DECLARED I/O relation (the function's contract/type —
 //     DECLARED, never inferred). There is NO program-to-program
 //     equivalence: general I/O equivalence is Rice-undecidable, and
@@ -72,7 +75,7 @@ import v4.lens.cost {
   asymptotic_class_dominates
 }
 import v4.std.algebra { Cons, Empty }
-import v4.std.collection { List, list_append }
+import v4.std.collection { List }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -226,32 +229,48 @@ fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
   }
 }
 
-// 🟡 synthesis-relation-dispatch — bind node://adhoc-synthesis-relation-class —
-// dissolve-on-arrival: when a DeclaredRelationClass substrate type lands in std/node.dag,
-// replace unconditional probe application with a declared-relation → technique dispatch;
-// forbidden: inferring relation class from Node connective/behavior (DECLARED, never inferred).
-fn synthesis_lens(n: Node) -> List<Report> {
+// Caller DECLARES declared_technique — the technique the caller's I/O relation class
+// is subject to. Probes only run for the declared technique; no unconditional sweep.
+// AlgebraicRank / AdversaryCommunication / ReductionConditional → SynthesisNoTechnique
+// (worked examples not yet implemented — honest per feedback_no_engine).
+fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Report> {
   match complexity_lens(n: n) {
     Violates { diagnostic: _ } => Empty
     Holds { value: realization } =>
-      list_append(
-        left: outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization)),
-        right: outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
-      )
+      match declared_technique {
+        DecisionTree =>
+          outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization))
+        AlgebraicRank =>
+          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+        AdversaryCommunication =>
+          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+        InformationTheoretic =>
+          outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
+        ReductionConditional =>
+          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+      }
   }
 }
 
-// Companion to synthesis_lens: surfaces SynthesisNoTechnique diagnostics.
+// Companion: surfaces SynthesisNoTechnique diagnostics for the declared technique.
 // T-17: "No applicable technique for a relation class ⇒ a helpful Diagnostic;
 // NEVER a fabricated suggestion, NEVER a silent empty set."
-fn synthesis_lens_diagnostics(n: Node) -> List<Diagnostic> {
+fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<Diagnostic> {
   match complexity_lens(n: n) {
     Violates { diagnostic: _ } => Empty
     Holds { value: realization } =>
-      list_append(
-        left: outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization)),
-        right: outcome_to_diagnostics(outcome: assess_information_theoretic(n: n, realization: realization))
-      )
+      match declared_technique {
+        DecisionTree =>
+          outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization))
+        AlgebraicRank =>
+          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+        AdversaryCommunication =>
+          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+        InformationTheoretic =>
+          outcome_to_diagnostics(outcome: assess_information_theoretic(n: n, realization: realization))
+        ReductionConditional =>
+          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
+      }
   }
 }
 
