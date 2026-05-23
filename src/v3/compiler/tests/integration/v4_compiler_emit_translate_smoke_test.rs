@@ -35,7 +35,8 @@ const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/r
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
 const JAVA_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/java.dag");
 const JAVA_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/java.dag";
-const TYPESCRIPT_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/typescript.dag");
+const TYPESCRIPT_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/typescript.dag");
 const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
 const SWIFT_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/swift.dag");
 const SWIFT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/swift.dag";

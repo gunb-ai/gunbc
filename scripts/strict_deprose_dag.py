@@ -264,6 +264,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
     if rel == "src/v4/extdeps/languages/typescript.dag":
         # T-4 wave-1 catalog row tag (replaces merge-base TsEcma262NumericPrimitiveKind).
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
+        out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
 
 
