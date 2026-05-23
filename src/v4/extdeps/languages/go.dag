@@ -17,11 +17,13 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
+import v4.std.witness { Holds, Violates }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SignedIntWidth
@@ -607,6 +609,16 @@ fn go_string_facts_node(facts: GoStringPrimitiveFacts) -> Node {
   }
 }
 
+fn go_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+    }
+  }
+}
+
 fn go_primitive_fact_map_2(
   axis0: Symbol,
   fact0: Node,
@@ -614,7 +626,7 @@ fn go_primitive_fact_map_2(
   fact1: Node
 ) -> Map<Symbol, Node> {
   map_insert(
-    map_insert(empty_map(), axis0, fact0),
+    map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
     axis1,
     fact1
   )
@@ -630,7 +642,7 @@ fn go_primitive_fact_map_3(
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), axis0, fact0),
+      map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
       axis1,
       fact1
     ),
@@ -655,7 +667,7 @@ fn go_primitive_fact_map_5(
     map_insert(
       map_insert(
         map_insert(
-          map_insert(empty_map(), axis0, fact0),
+          map_insert(go_empty_primitive_spec_facts(), axis0, fact0),
           axis1,
           fact1
         ),
