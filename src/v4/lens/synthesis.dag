@@ -185,17 +185,21 @@ fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutco
   }
 }
 
-// InformationTheoretic: realization strictly > Ω(n) → gap. Explicit equality check needed
-// because asymptotic_class_dominates(ClassLinear, ClassLinear) = true (unlike ClassLinearithmic).
+// InformationTheoretic: realization strictly > Ω(n) → gap. Explicit equality check avoids
+// asymptotic_class_dominates(ClassLinear, ClassLinear)=true falsely triggering a gap.
+// Note: let-binding before if-else is not valid in the resolve-posture gate's strict mode;
+// complexity_bound_class is called twice to avoid the binding.
 fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
-  let realization_class = complexity_bound_class(b: realization)
-  if realization_class == ClassLinear {
+  if complexity_bound_class(b: realization) == ClassLinear {
     SynthesisOptimal {
       realization_cost: realization,
       lower_bound: information_theoretic_declared_bound(n: n)
     }
   } else {
-    if asymptotic_class_dominates(a: realization_class, b: ClassLinear) {
+    if asymptotic_class_dominates(
+      a: complexity_bound_class(b: realization),
+      b: ClassLinear
+    ) {
       SynthesisGap {
         realization_cost: realization,
         lower_bound: information_theoretic_declared_bound(n: n),
