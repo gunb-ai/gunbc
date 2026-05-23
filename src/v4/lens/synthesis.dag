@@ -218,6 +218,18 @@ fn outcome_to_reports(outcome: SynthesisOutcome) -> List<Report> {
   }
 }
 
+fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
+  match outcome {
+    SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => Empty
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
+    SynthesisNoTechnique { diagnostic: d } => Cons { head: d, tail: Empty }
+  }
+}
+
+// 🟡 synthesis-relation-dispatch — bind node://adhoc-synthesis-relation-class —
+// dissolve-on-arrival: when a DeclaredRelationClass substrate type lands in std/node.dag,
+// replace unconditional probe application with a declared-relation → technique dispatch;
+// forbidden: inferring relation class from Node connective/behavior (DECLARED, never inferred).
 fn synthesis_lens(n: Node) -> List<Report> {
   match complexity_lens(n: n) {
     Violates { diagnostic: _ } => Empty
@@ -225,6 +237,20 @@ fn synthesis_lens(n: Node) -> List<Report> {
       list_append(
         left: outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization)),
         right: outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
+      )
+  }
+}
+
+// Companion to synthesis_lens: surfaces SynthesisNoTechnique diagnostics.
+// T-17: "No applicable technique for a relation class ⇒ a helpful Diagnostic;
+// NEVER a fabricated suggestion, NEVER a silent empty set."
+fn synthesis_lens_diagnostics(n: Node) -> List<Diagnostic> {
+  match complexity_lens(n: n) {
+    Violates { diagnostic: _ } => Empty
+    Holds { value: realization } =>
+      list_append(
+        left: outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization)),
+        right: outcome_to_diagnostics(outcome: assess_information_theoretic(n: n, realization: realization))
       )
   }
 }
