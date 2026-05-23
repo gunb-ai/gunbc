@@ -490,8 +490,3 @@ fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     right: sql_primitive_bundles_from_nonnumeric_catalog()
   )
 }
-
-
-// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
-// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
-// 🟡 gated — feature: ISO/IEC 9075 §5.2 regular-identifier case-folding + §11.3 column-name uniqueness-within-table constraint — SL-3229-SQL-IDENTIFIER-UNIQUENESS.
