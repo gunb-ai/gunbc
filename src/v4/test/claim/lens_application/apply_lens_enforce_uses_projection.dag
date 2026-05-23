@@ -1,8 +1,8 @@
 // src/v4/test/claim/lens_application/apply_lens_enforce_uses_projection.dag
-// Scope: T-23 worked claim — apply_lens_enforce calls project before violates(Projected, Budget).
+// Scope: T-23 worked claim — apply_lens_enforce calls violates(Output, Budget).
 // Owns: claim_apply_lens_enforce_uses_projection.
 // Consumes: v4.lens.application, v4.std.node, std verification.
-// Status: compile-only ratchet for LensEnforcement projection consumption.
+// Status: compile-only ratchet for LensEnforcement output-shaped violation relation.
 
 module v4.test.claim.lens_application.apply_lens_enforce_uses_projection
 
@@ -52,8 +52,8 @@ fn projection_test_project(output: Symbol) -> Symbol {
   output
 }
 
-fn projection_test_violates(projected: Symbol, declared: Symbol) -> Bool {
-  projected == projection_budget_fail && declared == projection_budget_fail
+fn projection_test_violates(output: Symbol, declared: Symbol) -> Bool {
+  output == projection_budget_fail && declared == projection_budget_fail
 }
 
 data projection_test_enforcement: LensEnforcement<Symbol, Symbol, Symbol> = LensEnforcement {

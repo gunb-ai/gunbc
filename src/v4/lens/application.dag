@@ -74,9 +74,11 @@ type DiagnosticSeverity
   = SeverityError {}
 
 // 🟢 TERMINAL — per-lens enforcement projection + violation relation.
+// violates first argument is full Output (v3 lens_application.dag / design §2) so
+// per-lens relations can discriminate sum variants before budget comparison.
 type LensEnforcement<Output, Budget, Projected> {
   project: fn(Output) -> Projected
-  violates: fn(Projected, Budget) -> Bool
+  violates: fn(Output, Budget) -> Bool
 }
 
 // 🟢 TERMINAL — bundled lens + canonical enforcement (P2 single authority).
@@ -420,8 +422,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
       bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
-          let projected = enforceable.enforcement.project(output: lens_output)
-          if enforceable.enforcement.violates(projected: projected, declared: budget) {
+          if enforceable.enforcement.violates(output: lens_output, declared: budget) {
             outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
           } else {
             outcome_accepted(value: lens_output)
