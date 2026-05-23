@@ -817,6 +817,12 @@ fn record_field_expr<'a>(fields: &'a [SurfaceRecordField], name: &str) -> &'a Su
         .unwrap_or_else(|| panic!("missing record field {name}"))
 }
 
+fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
+    text.split_once(start)
+        .and_then(|(_, tail)| tail.split_once(end).map(|(middle, _)| middle))
+        .unwrap_or_else(|| panic!("missing expected span from {start:?} to {end:?}"))
+}
+
 fn assert_compile_stage(
     expr: &SurfaceExpr,
     expected_consumes: &[&str],
