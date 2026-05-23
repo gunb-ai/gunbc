@@ -24,7 +24,7 @@
 
 module v4.lens.application
 
-import v4.std.algebra { Cons, is_empty, fold_list }
+import v4.std.algebra { Cons, Empty, is_empty, fold_list }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.diagnostic {
@@ -245,31 +245,24 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
   if name_occurrences(name: name, children: root.children) == 0 {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
   } else if name_occurrences(name: name, children: root.children) == 1 {
-    bind_outcome(
-      o: fold(
+    outcome_accepted(value: Node {
+      kind: root.kind,
+      children: fold(
         root.children,
-        init: outcome_accepted(value: []),
-        f: fn(acc_outcome, edge) {
-          bind_outcome(
-            o: acc_outcome,
-            f: fn(current_acc) {
-              match edge.label {
-                Named { name: edge_name } =>
-                  let next_edge = match edge_name == name {
-                    true => replace_edge_target(e: edge, replacement: child)
-                    false => edge
-                  }
-                  outcome_accepted(value: list_push(current_acc, next_edge))
-                Positional => outcome_accepted(value: list_push(current_acc, edge))
+        init: Empty,
+        f: fn(current_acc, edge) {
+          match edge.label {
+            Named { name: edge_name } =>
+              let next_edge = match edge_name == name {
+                true => replace_edge_target(e: edge, replacement: child)
+                false => edge
               }
-            }
-          )
+              list_push(current_acc, next_edge)
+            Positional => list_push(current_acc, edge)
+          }
         }
-      ),
-      f: fn(new_children) {
-        outcome_accepted(value: Node { kind: root.kind, children: new_children })
-      }
-    )
+      )
+    })
   } else {
     outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }
