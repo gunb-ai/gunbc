@@ -201,9 +201,6 @@ fn v4_lens_testgen_wave0_outcome_return_surfaces() {
 #[test]
 fn v4_lens_testgen_wave0_generator_anchor_field_is_claim_anchor_key() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
-<<<<<<< HEAD
-    let anchor_ty = generator_anchor_field_ty(&testgen).expect("Generator should declare `anchor`");
-=======
     let kind_ty = generator_field_ty(&testgen, "kind").expect("Generator should declare `kind`");
     assert!(
         matches!(
@@ -213,8 +210,7 @@ fn v4_lens_testgen_wave0_generator_anchor_field_is_claim_anchor_key() {
         "Generator.kind must carry the TestClaim coproduct variant authority; got {kind_ty:?}"
     );
     let anchor_ty =
-        generator_field_ty(&testgen, "t19_anchor").expect("Generator should declare `t19_anchor`");
->>>>>>> 7c54df088f (WIP: Resolve merge conflicts and drive PR #3557 (Generative TestClaim categor)
+        generator_field_ty(&testgen, "anchor").expect("Generator should declare `anchor`");
     assert!(
         matches!(
             anchor_ty,
@@ -375,11 +371,7 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
 }
 
-<<<<<<< HEAD
-fn generator_anchor_field_ty(
-=======
 fn generator_field_ty<'a>(
->>>>>>> 7c54df088f (WIP: Resolve merge conflicts and drive PR #3557 (Generative TestClaim categor)
     module: &v3_compiler::parse_surface::SurfaceModule,
     field_name: &str,
 ) -> Option<&SurfaceType> {
@@ -397,11 +389,7 @@ fn generator_field_ty<'a>(
             continue;
         }
         for field in fields {
-<<<<<<< HEAD
-            if field.name == "anchor" {
-=======
             if field.name == field_name {
->>>>>>> 7c54df088f (WIP: Resolve merge conflicts and drive PR #3557 (Generative TestClaim categor)
                 return Some(&field.ty);
             }
         }
