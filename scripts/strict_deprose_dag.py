@@ -94,6 +94,7 @@ def git_merge_base_lines(rel: str) -> list[str]:
             ["git", "show", f"{MERGE_BASE}:{rel}"],
             cwd=ROOT,
             text=True,
+            stderr=subprocess.DEVNULL,
         )
         return out.splitlines()
     except subprocess.CalledProcessError:
