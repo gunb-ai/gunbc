@@ -79,6 +79,7 @@ import v4.std.target_model {
   target_model_edge_translation_rules
 }
 import v4.std.collection { List, Map, empty_map, list_append, list_snoc_item }
+import v4.std.witness { Holds, Violates }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -416,10 +417,10 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
               bind_outcome(
                 o: node_atom_identity(node: binding_node),
                 f: fn(binding) {
-                  match map_get(target.binding_spellings, binding) {
-                    Some { value: spelling } =>
+                  match target.binding_spellings.lookup(binding) {
+                    Holds { value: spelling } =>
                       Accepted { value: spelling, diagnostics: None }
-                    None =>
+                    Violates { diagnostic: _ } =>
                       Rejected {
                         diagnostics: diagnostics_singleton(
                           d: translate_binding_spelling_not_found_diagnostic(binding: binding)
