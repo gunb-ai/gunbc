@@ -38,7 +38,10 @@ fn type_record_fields<'a>(
         .unwrap_or_else(|| panic!("missing type record {name}"))
 }
 
-fn type_sum_variants(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> Vec<String> {
+fn type_sum_variants(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> Vec<String> {
     module
         .items
         .iter()
@@ -90,8 +93,14 @@ fn v4_extdeps_coordination_wire_contract_uses_decomposed_facts() {
     let module = coordination_surface_or_panic();
     let facts = type_record_fields(&module, "WireContractFacts");
     assert_eq!(record_field_type(facts, "exchange"), "ExchangePattern");
-    assert_eq!(record_field_type(facts, "settlement"), "SettlementGuarantee");
-    assert_eq!(record_field_type(facts, "consistency"), "ConsistencyGuarantee");
+    assert_eq!(
+        record_field_type(facts, "settlement"),
+        "SettlementGuarantee"
+    );
+    assert_eq!(
+        record_field_type(facts, "consistency"),
+        "ConsistencyGuarantee"
+    );
 
     let wire = type_record_fields(&module, "WireContract");
     assert_eq!(record_field_type(wire, "facts"), "WireContractFacts");
@@ -107,8 +116,14 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
     );
 
     let obligation = type_record_fields(&module, "CoordinationEffectObligation");
-    assert_eq!(record_field_type(obligation, "effect"), "CoordinationEffectKind");
-    assert_eq!(record_field_type(obligation, "required_exchange"), "ExchangePattern");
+    assert_eq!(
+        record_field_type(obligation, "effect"),
+        "CoordinationEffectKind"
+    );
+    assert_eq!(
+        record_field_type(obligation, "required_exchange"),
+        "ExchangePattern"
+    );
     assert_eq!(
         record_field_type(obligation, "required_settlement"),
         "SettlementGuarantee"
