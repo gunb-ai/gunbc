@@ -405,6 +405,20 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
       )
   }
 }
+// Top-level helper so the bootstrap compiler sees explicit Map<Symbol,String>/Witness<String>
+// types rather than inferring through a nested closure (same pattern as T-23 fold helpers).
+fn spelling_from_binding_map(spellings: Map<Symbol, String>, binding: Symbol) -> Outcome<String> {
+  match spellings.lookup(binding) {
+    Holds { value: spelling } =>
+      Accepted { value: spelling, diagnostics: None }
+    Violates { diagnostic: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+        )
+      }
+  }
+}
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
   bind_outcome(
     o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
@@ -417,16 +431,10 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
               bind_outcome(
                 o: node_atom_identity(node: binding_node),
                 f: fn(binding) {
-                  match target.binding_spellings.lookup(binding) {
-                    Holds { value: spelling } =>
-                      Accepted { value: spelling, diagnostics: None }
-                    Violates { diagnostic: _ } =>
-                      Rejected {
-                        diagnostics: diagnostics_singleton(
-                          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                        )
-                      }
-                  }
+                  spelling_from_binding_map(
+                    spellings: target.binding_spellings,
+                    binding: binding
+                  )
                 }
               )
             Rejected { diagnostics: _ } =>
