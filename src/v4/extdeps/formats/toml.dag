@@ -1,8 +1,8 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Owns: TomlValue, TomlDocument, TomlParseAxis, TomlEmitAxis, TomlIntegerLexeme,
-//       TomlFloatLexeme, TomlDatetimeLexeme, TomlUniqueNameProfile,
-//       TomlTableSyntaxProfile.
+// Owns: TomlValue, TomlTable, TomlDocument, TomlParseAxis, TomlEmitAxis,
+//       TomlIntegerLexeme, TomlFloatLexeme, TomlDatetimeLexeme,
+//       TomlUniqueNameProfile, TomlTableSyntaxProfile.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
 // Anchor: https://toml.io/en/v1.0.0
@@ -77,10 +77,19 @@ type TomlDatetimeLexeme {
 }
 
 
+type TomlDottedKeysDefineTablesFact {}
+
+
+type TomlDuplicateKeysRejectedFact {}
+
+
+type TomlDuplicateTablesRejectedFact {}
+
+
 type TomlUniqueNameProfile {
-  dotted_keys_define_tables: Bool,
-  duplicate_keys_rejected: Bool,
-  duplicate_tables_rejected: Bool,
+  dotted_keys_define_tables: TomlDottedKeysDefineTablesFact,
+  duplicate_keys_rejected: TomlDuplicateKeysRejectedFact,
+  duplicate_tables_rejected: TomlDuplicateTablesRejectedFact,
 }
 
 
@@ -98,6 +107,13 @@ type TomlTableSyntaxProfile {
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlTable {
+  syntax: TomlTableSyntaxProfile,
+  entries: Map<String, TomlValue>,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlValue
   = TomlString { value: String }
   | TomlInt { numeric: TomlIntegerLexeme }
@@ -106,14 +122,11 @@ type TomlValue
   | TomlDatetime { datetime: TomlDatetimeLexeme }
   | TomlArray { elements: List<TomlValue> }
   | TomlInlineTable { entries: Map<String, TomlValue> }
-  | TomlTable {
-      syntax: TomlTableSyntaxProfile,
-      entries: Map<String, TomlValue>,
-    }
+  | TomlTableValue { table: TomlTable }
 
 
 type TomlDocument {
-  root: TomlValue,
+  root: TomlTable,
   unique_names: TomlUniqueNameProfile,
 }
 
