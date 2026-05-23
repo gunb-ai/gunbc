@@ -58,9 +58,6 @@ import v4.std.node {
   well_formed
 }
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
-  concrete_syntax_token_field_kind,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
