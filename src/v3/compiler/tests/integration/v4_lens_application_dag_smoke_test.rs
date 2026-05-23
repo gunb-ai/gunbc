@@ -75,6 +75,14 @@ fn v4_lens_application_module_authority_and_entrypoints() {
         "{APPLICATION_PATH}: SectionRef disjoint sum"
     );
     assert!(
+        APPLICATION_DAG.contains("type EnforcedApplication"),
+        "{APPLICATION_PATH}: EnforcedApplication carrier"
+    );
+    assert!(
+        APPLICATION_DAG.contains("type IntrospectApplication"),
+        "{APPLICATION_PATH}: IntrospectApplication carrier"
+    );
+    assert!(
         surface_declares_fn(&module, "section_subject"),
         "{APPLICATION_PATH}: section_subject (SectionRef projection hook)"
     );

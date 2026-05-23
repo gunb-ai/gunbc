@@ -9,7 +9,9 @@
 module v4.compiler.target_carriers
 
 
-import v4.std.node { Node }
+import v4.compiler.tokenize { LexRules, VoidLexRules }
+import v4.std.collection { Map, empty_map }
+import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 
 
@@ -20,6 +22,10 @@ type LanguageModel = Node
 // 🟢 grounded — target language model bundle (Node projection per Theme-A #9).
 type TargetModelBundle {
   bundle: Node
+  // Lexical projection for grammar-inverse emit (Theme-A #9 — same facts as LanguageModel.lex).
+  lex: LexRules
+  // Bound-terminal spellings keyed by grammar-relation binding symbols.
+  binding_spellings: Map<Symbol, String>
   // Grammar-derived authority text (authored with the model, not emit-time templates).
   authority_source_text: String
 }

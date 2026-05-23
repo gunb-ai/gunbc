@@ -61,6 +61,7 @@ import v4.std.report { Report, report_reason_to_diagnostic_reason }
 // Mechanical port (interface-freeze pin §4): opaque until shared substrate graduates.
 type DeclarationId
 type NodeId
+type SourceSpan
 
 // 🟢 TERMINAL — disjoint sum over section shapes (design-lens-application-surface §1.2).
 type SectionRef
@@ -102,6 +103,22 @@ type LensApplicationConfig<Output, Budget, Projected>
       budget: Budget
       diagnostic_severity: DiagnosticSeverity
     }
+
+// 🟢 TERMINAL — enforce-mode application carrier (design-lens-application-surface §2).
+type EnforcedApplication<Output, Budget, Projected> {
+  enforceable_lens: EnforceableLens<Output, Budget, Projected>
+  section: SectionRef
+  budget: Budget
+  diagnostic_severity: DiagnosticSeverity
+  span: SourceSpan
+}
+
+// 🟢 TERMINAL — introspect-mode application carrier (design-lens-application-surface §2).
+type IntrospectApplication<Output> {
+  lens: Lens<Output>
+  section: SectionRef
+  span: SourceSpan
+}
 
 data path_unresolvable_reason: Symbol = path_unresolvable_reason
 data path_ambiguous_reason: Symbol = path_ambiguous_reason
