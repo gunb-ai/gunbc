@@ -43,9 +43,35 @@ import v4.std.model_core {
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_width
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules,
+  target_model_edge_serialize_source
+}
+import v4.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, fold_list }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list }
+import v4.std.text { String }
 
 // 🟢 coproduct dissolution — alternatives are one-at-a-time scalar widths.
 type SwiftIntWidth
@@ -123,6 +149,18 @@ type SwiftLanguageModel {
   core: ModelCore
 }
 
+// T-11 swift grammar relation row: fixed terminals and bound terminals share
+// the Swift grammar production instead of an operator string template.
+type SwiftConcreteSyntaxToken
+  = SwiftFixedToken { token_class: Symbol }
+  | SwiftBoundToken { token_class: Symbol, binding: Symbol }
+
+type SwiftGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<SwiftConcreteSyntaxToken>
+}
+
 data swift_language_model_surface_id: Symbol = swift_language_model_surface_id
 
 data swift_surface_spelling_int: Symbol = swift_surface_spelling_int
@@ -172,6 +210,67 @@ data swift_tag_scalar_bool: Symbol = swift_tag_scalar_bool
 data swift_tag_scalar_character: Symbol = swift_tag_scalar_character
 data swift_tag_scalar_string: Symbol = swift_tag_scalar_string
 data swift_tag_scalar_void: Symbol = swift_tag_scalar_void
+
+data swift_inhabitant_int32: Symbol = swift_inhabitant_int32
+data swift_inhabitant_field_int32: Symbol = swift_inhabitant_field_int32
+data swift_inhabitant_field_atom: Symbol = swift_inhabitant_field_atom
+data swift_inhabitant_field_facts: Symbol = swift_inhabitant_field_facts
+
+data swift_token_kw_func: Symbol = swift_token_kw_func
+data swift_token_kw_return: Symbol = swift_token_kw_return
+data swift_token_ident: Symbol = swift_token_ident
+data swift_token_ty_int32: Symbol = swift_token_ty_int32
+data swift_token_plus: Symbol = swift_token_plus
+data swift_token_arrow: Symbol = swift_token_arrow
+data swift_token_lbrace: Symbol = swift_token_lbrace
+data swift_token_rbrace: Symbol = swift_token_rbrace
+data swift_token_lparen: Symbol = swift_token_lparen
+data swift_token_rparen: Symbol = swift_token_rparen
+data swift_token_comma: Symbol = swift_token_comma
+data swift_token_colon: Symbol = swift_token_colon
+
+data swift_production_mvp1_fn_add: Symbol = swift_production_mvp1_fn_add
+
+data swift_surface_fn_item: Symbol = swift_surface_fn_item
+data swift_surface_type_int32: Symbol = swift_surface_type_int32
+data swift_surface_bin_add: Symbol = swift_surface_bin_add
+data swift_binding_fn_add: Symbol = swift_binding_fn_add
+data swift_binding_param_x: Symbol = swift_binding_param_x
+data swift_binding_param_y: Symbol = swift_binding_param_y
+
+data swift_relation_token_fixed: Symbol = swift_relation_token_fixed
+data swift_relation_token_bound: Symbol = swift_relation_token_bound
+data swift_relation_rule_mvp1_fn_add: Symbol = swift_relation_rule_mvp1_fn_add
+
+data swift_mvp1_source_literal: Symbol = swift_mvp1_source_literal
+data swift_mvp1_source_text_field: Symbol = serialize_source_field_source_text
+data swift_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
+
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
+  [
+    SwiftFixedToken { token_class: swift_token_kw_func },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_fn_add },
+    SwiftFixedToken { token_class: swift_token_lparen },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
+    SwiftFixedToken { token_class: swift_token_colon },
+    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftFixedToken { token_class: swift_token_comma },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
+    SwiftFixedToken { token_class: swift_token_colon },
+    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftFixedToken { token_class: swift_token_rparen },
+    SwiftFixedToken { token_class: swift_token_arrow },
+    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftFixedToken { token_class: swift_token_lbrace },
+    SwiftFixedToken { token_class: swift_token_kw_return },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
+    SwiftFixedToken { token_class: swift_token_plus },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
+    SwiftFixedToken { token_class: swift_token_rbrace }
+  ]
+}
+data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
 
 data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {}
 data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {}
@@ -459,6 +558,349 @@ fn swift_nonnumeric_facts_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   }
 }
 
+fn swift_integer_inhabitant_node(id: Symbol, facts: SwiftIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(name: swift_inhabitant_field_atom, target: swift_atom(id: id)),
+      swift_named_edge(
+        name: swift_inhabitant_field_facts,
+        target: swift_integer_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn swift_inhabitant_int32_node() -> Node {
+  swift_integer_inhabitant_node(id: swift_inhabitant_int32, facts: swift_facts_int32)
+}
+
+fn swift_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(name: swift_inhabitant_field_int32, target: swift_inhabitant_int32_node())
+    ]
+  }
+}
+
+fn swift_mvp1_selection_policy_node() -> Node {
+  swift_inhabitant_int32_node()
+}
+
+fn swift_mvp1_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: swift_inhabitant_int32_node() },
+      Edge { label: Positional, target: swift_inhabitant_int32_node() },
+      Edge { label: Positional, target: swift_inhabitant_int32_node() }
+    ]
+  }
+}
+
+fn swift_mvp1_source_text_authority() -> String {
+  swift_mvp1_source_text
+}
+
+fn swift_concrete_token_class(token: SwiftConcreteSyntaxToken) -> Symbol {
+  match token {
+    SwiftFixedToken { token_class: c } => c
+    SwiftBoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn swift_concrete_token_node(token: SwiftConcreteSyntaxToken) -> Node {
+  match token {
+    SwiftFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          swift_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: swift_atom(id: swift_relation_token_fixed)
+          ),
+          swift_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: swift_atom(id: c)
+          )
+        ]
+      }
+    SwiftBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          swift_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: swift_atom(id: swift_relation_token_bound)
+          ),
+          swift_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: swift_atom(id: c)
+          ),
+          swift_named_edge(
+            name: concrete_syntax_token_field_binding,
+            target: swift_atom(id: b)
+          )
+        ]
+      }
+  }
+}
+
+fn swift_mvp1_positional_token_edge(token: SwiftConcreteSyntaxToken) -> Edge {
+  Edge {
+    label: Positional,
+    target: swift_concrete_token_node(token: token)
+  }
+}
+
+fn swift_mvp1_positional_edges_from_token_classes() -> List<Edge> {
+  fold_list(
+    xs: swift_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn swift_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
+    head: swift_named_edge(
+      name: swift_mvp1_source_text_field,
+      target: swift_atom(id: swift_mvp1_source_literal)
+    ),
+    tail: Cons {
+      head: swift_named_edge(
+        name: swift_mvp1_source_grammar_field,
+        target: swift_atom(id: swift_production_mvp1_fn_add)
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn swift_mvp1_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: swift_mvp1_serialize_source_prefix_edges(),
+    right: swift_mvp1_positional_edges_from_token_classes()
+  )
+}
+
+fn swift_mvp1_serialize_source_node() -> Node {
+  let _authority = swift_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: swift_mvp1_serialize_source_children()
+  }
+}
+
+fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: SwiftConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = swift_concrete_token_class(token: token)
+  if token_class == swift_token_kw_func {
+    acc
+  } else {
+    Sequence {
+      left: swift_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn swift_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list(
+    xs: swift_mvp1_concrete_tokens(),
+    empty: swift_grammar_terminal(token_class: swift_token_kw_func),
+    cons: fn(acc, token) {
+      swift_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+fn swift_mvp1_grammar_relation_row() -> SwiftGrammarRelationRow {
+  SwiftGrammarRelationRow {
+    production: swift_grammar_production_mvp1_fn_add(),
+    emitted: swift_mvp1_emitted_add_fn_node(),
+    tokens: swift_mvp1_concrete_tokens()
+  }
+}
+
+fn swift_relation_token_edges(tokens: List<SwiftConcreteSyntaxToken>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: grammar_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      swift_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      swift_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: swift_relation_token_edges(tokens: row.tokens)
+        }
+      )
+    ]
+  }
+}
+
+fn swift_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_relation_rule_mvp1_fn_add,
+        target: swift_grammar_relation_row_node(row: swift_mvp1_grammar_relation_row())
+      )
+    ]
+  }
+}
+
+fn swift_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: target_model_edge_selection_policy,
+        target: swift_mvp1_selection_policy_node()
+      ),
+      swift_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: swift_declared_inhabitants_root()
+      ),
+      swift_named_edge(
+        name: target_model_edge_translation_rules,
+        target: swift_mvp1_translation_rules_node()
+      ),
+      swift_named_edge(
+        name: target_model_edge_serialize_source,
+        target: swift_mvp1_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), swift_binding_fn_add, "add"),
+      swift_binding_param_x,
+      "x"
+    ),
+    swift_binding_param_y,
+    "y"
+  )
+}
+
+fn swift_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: swift_mvp1_target_model_node(),
+    lex: swift_wave1_lex(),
+    binding_spellings: swift_mvp1_binding_spellings(),
+    authority_source_text: swift_mvp1_source_text_authority()
+  }
+}
+
+fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+fn swift_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn swift_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_ident,
+    pattern: swift_ident_lex_pattern()
+  }
+}
+
+fn swift_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      swift_lex_rule(token_class: swift_token_kw_func, text: "func "),
+      swift_lex_rule(token_class: swift_token_kw_return, text: "return "),
+      swift_ident_lex_rule(),
+      swift_lex_rule(token_class: swift_token_ty_int32, text: "Int32"),
+      swift_lex_rule(token_class: swift_token_plus, text: " + "),
+      swift_lex_rule(token_class: swift_token_arrow, text: " -> "),
+      swift_lex_rule(token_class: swift_token_lbrace, text: " { "),
+      swift_lex_rule(token_class: swift_token_rbrace, text: " }"),
+      swift_lex_rule(token_class: swift_token_lparen, text: "("),
+      swift_lex_rule(token_class: swift_token_rparen, text: ") "),
+      swift_lex_rule(token_class: swift_token_comma, text: ", "),
+      swift_lex_rule(token_class: swift_token_colon, text: ": ")
+    ]
+  }
+}
+
+fn swift_wave1_lex() -> LexRules {
+  ModeledLexRules { root: swift_wave1_lex_rules() }
+}
+
+fn swift_grammar_atom(id: Symbol) -> Node {
+  swift_atom(id: id)
+}
+
+fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_mvp1_fn_add,
+    expression: swift_grammar_sequence_from_token_classes(),
+    emitted: swift_grammar_atom(id: swift_surface_fn_item)
+  }
+}
+
+fn swift_wave1_grammar_root() -> GrammarRoot {
+  GrammarRoot { start: swift_grammar_production_mvp1_fn_add() }
+}
+
+fn swift_wave1_grammar() -> Grammar {
+  ModeledGrammar { root: swift_wave1_grammar_root() }
+}
+
+fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == swift_token_kw_func ||
+    sym == swift_token_kw_return ||
+    sym == swift_token_ident ||
+    sym == swift_token_ty_int32 ||
+    sym == swift_token_plus ||
+    sym == swift_token_arrow ||
+    sym == swift_token_lbrace ||
+    sym == swift_token_rbrace ||
+    sym == swift_token_lparen ||
+    sym == swift_token_rparen ||
+    sym == swift_token_comma ||
+    sym == swift_token_colon
+}
+
 fn swift_primitive_fact_map_4(
   axis0: Symbol,
   fact0: Node,
@@ -672,7 +1114,11 @@ fn swift_catalog_surface_symbol(sym: Symbol) -> Bool {
 fn swift_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
-      swift_catalog_surface_symbol(sym: sym)
+      swift_catalog_surface_symbol(sym: sym) ||
+        swift_wave1_lex_token_symbol(sym: sym) ||
+        sym == swift_surface_fn_item ||
+        sym == swift_production_mvp1_fn_add ||
+        sym == swift_mvp1_source_literal
     }
   }
 }
