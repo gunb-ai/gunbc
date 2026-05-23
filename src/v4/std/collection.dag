@@ -1,7 +1,7 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
-// Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map,
+// Owns: List, list_snoc_item, list_append, Set, FiniteSet, Map,
 //       empty_map, map_insert, TotalMap, TotalPolicy.
 // Consumes: std algebra, std witness, std diagnostic, std node.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
@@ -10,6 +10,8 @@
 // L1.13.c) and as the canonical carrier for finite-enumerated rows like
 // SubsumedFixes (v4.lens.subsumption). Distinct from `Set<T> = PointwisePower<T>`
 // which is the membership-predicate (potentially infinite) BooleanAlgebra carrier.
+// AI-3 NOTE: non_empty was removed (duplicate of v4.std.algebra.non_empty).
+// Callers importing non_empty from v4.std.collection must update to v4.std.algebra.
 
 
 module v4.std.collection
@@ -20,12 +22,6 @@ import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, por
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 type List<T> = FreeMonoid<T>
-fn non_empty<T>(xs: List<T>) -> Bool {
-  match is_empty(xs: xs) {
-    true => false
-    false => true
-  }
-}
 fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }

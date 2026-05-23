@@ -5,14 +5,16 @@
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
+//       sequence_outcome, traverse_outcome,
 //       Locus, Extent, Correction, NoCorrectionReason.
-// Consumes: std node (List/fold/count are prelude — no collection import; avoids diagnostic↔witness cycle).
+// Consumes: std node, std algebra (list_append, bag_eq — avoids diagnostic↔collection cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 
 
 module v4.std.diagnostic
 
 
+import v4.std.algebra { bag_eq, list_append }
 import v4.std.node { Node }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Extent
