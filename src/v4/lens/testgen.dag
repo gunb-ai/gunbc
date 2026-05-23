@@ -1114,6 +1114,7 @@ fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> T19GeneratedAnchorK
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace this hand-enumerated TestClaimCoproductVariant → Symbol projection with canonical arm-key → symbol mapping once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled arm-identity-to-symbol mapping outside the reflection primitive.
 fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Symbol {
   match variant {
     TestClaimCompilesClaimVariant => t19_coproduct_exhaustiveness_compiles_claim_variant
