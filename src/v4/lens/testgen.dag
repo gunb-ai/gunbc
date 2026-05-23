@@ -657,6 +657,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
 fn testgen_emit_algebra_law_claim(
   anchor: T19ManualAnchorKey,
   label: String,
+  subject: AlgebraLawSubject,
   lhs: Node,
   rhs: Node,
   classification: TestClassification

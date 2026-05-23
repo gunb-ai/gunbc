@@ -196,6 +196,13 @@ def main() -> None:
         algebra,
         (
             "testgen_emit_algebra_law_claim",
+            "subject: AlgebraLawSubject",
+            "nat_algebra_law_subject_symbol_additive_monoid",
+            "nat_algebra_law_subject_symbol_commutative_semiring",
+            "nat_algebra_law_subject_symbol_inhabitant_nat",
+            "t19_law_nat_add_left_identity",
+            "t19_law_nat_add_associativity",
+            "t19_law_nat_mul_annihilator",
             "generated_nat_add_left_identity_claim",
             "generated_nat_add_associativity_claim",
             "generated_nat_mul_annihilator_claim",
