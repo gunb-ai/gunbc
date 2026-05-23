@@ -1,8 +1,10 @@
 // src/v4/extdeps/formats/yaml.dag
 // Scope: YAML 1.2.2 structural value model — declarative only; parse/emit deferred.
-// Owns: YamlValue.
+// Owns: YamlValue, YamlIntLexemeFacts, YamlFloatLexemeFacts, YamlCanonicalKeyProfileFacts,
+//       YamlAnchorAliasResolutionFacts, Yaml{Int,Float,CanonicalKey,AnchorAlias}* witness types.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
-// Status: T-4.6 scaffold — parse/emit, numeric lexeme, canonical key axes per TASKS.md T-4.6.
+// Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (§10.3.2 core schema),
+//         canonical-key profile (§3.2.1.3 tag+canonical-content), anchor/alias resolution (§6.1/§7.1).
 // Anchor: https://yaml.org/spec/1.2.2/
 
 module v4.extdeps.formats.yaml
@@ -19,6 +21,86 @@ type YamlValue
   | YamlMapping { entries: Map<YamlValue, YamlValue> }
 
 
+// ── Numeric-lexeme profile (YAML 1.2.2 §10.3.2 core schema) ─────────────────
+// Int/float tag resolution picks the YamlValue variant; lexeme is preserved verbatim
+// (numeric interpretation deferred to std/integer.dag + std/float.dag).
+
+type YamlIntBase10DecimalFormWitness {}
+
+type YamlIntBase8Octal0oPrefixWitness {}
+
+type YamlIntBase16Hex0xPrefixWitness {}
+
+type YamlIntBase2Binary0bPrefixWitness {}
+
+type YamlIntOptionalSignPrefixWitness {}
+
+type YamlIntLexemeFacts {
+  base10_decimal_form: YamlIntBase10DecimalFormWitness,
+  base8_octal_0o_prefix: YamlIntBase8Octal0oPrefixWitness,
+  base16_hex_0x_prefix: YamlIntBase16Hex0xPrefixWitness,
+  base2_binary_0b_prefix: YamlIntBase2Binary0bPrefixWitness,
+  optional_sign_prefix: YamlIntOptionalSignPrefixWitness,
+}
+
+type YamlFloatDecimalOrExponentFormWitness {}
+
+type YamlFloatSpecialInfNanLexemeWitness {}
+
+type YamlFloatOptionalSignPrefixWitness {}
+
+type YamlFloatLexemeFacts {
+  decimal_or_exponent_form: YamlFloatDecimalOrExponentFormWitness,
+  special_inf_nan_lexeme: YamlFloatSpecialInfNanLexemeWitness,
+  optional_sign_prefix: YamlFloatOptionalSignPrefixWitness,
+}
+
+
+// ── Canonical-key profile (YAML 1.2.2 §3.2.1.3 node comparison) ───────────────
+// Mapping keys are duplicate iff equal by resolved tag AND canonical content.
+// Map<YamlValue, YamlValue> forecloses lexeme-identical duplicates only; full
+// §3.2.1.3 enforcement is a parse-boundary obligation (see gated axis below).
+
+type YamlMappingKeyEqualityByTagAndCanonicalContentWitness {}
+
+type YamlSameTagCanonicallyEqualDuplicateKeysRejectedWitness {}
+
+type YamlLexemeIdenticalKeysMapStructuralDedupWitness {}
+
+type YamlCanonicalKeyProfileFacts {
+  key_equality_by_tag_and_canonical_content: YamlMappingKeyEqualityByTagAndCanonicalContentWitness,
+  same_tag_canonically_equal_duplicates_rejected: YamlSameTagCanonicallyEqualDuplicateKeysRejectedWitness,
+  lexeme_identical_keys_map_structural_dedup: YamlLexemeIdenticalKeysMapStructuralDedupWitness,
+}
+
+
+// ── Anchor/alias resolution (YAML 1.2.2 §6.1 anchors, §7.1 aliases) ─────────
+// Structure-sharing resolves during parse; produced YamlValue is alias-free.
+
+type YamlAnchorNodeMarkedWithAmpersandWitness {}
+
+type YamlAliasNodeMarkedWithAsteriskWitness {}
+
+type YamlAliasMustResolveToPriorAnchorWitness {}
+
+type YamlUnresolvableAliasFailClosedWitness {}
+
+type YamlAliasCycleFailClosedWitness {}
+
+type YamlParsedValueAliasFreeByConstructionWitness {}
+
+type YamlAnchorAliasResolutionFacts {
+  anchor_node_marked_with_ampersand: YamlAnchorNodeMarkedWithAmpersandWitness,
+  alias_node_marked_with_asterisk: YamlAliasNodeMarkedWithAsteriskWitness,
+  alias_must_resolve_to_prior_anchor: YamlAliasMustResolveToPriorAnchorWitness,
+  unresolvable_alias_fail_closed: YamlUnresolvableAliasFailClosedWitness,
+  alias_cycle_fail_closed: YamlAliasCycleFailClosedWitness,
+  parsed_value_alias_free_by_construction: YamlParsedValueAliasFreeByConstructionWitness,
+}
+
+
+// ── Gated axes ───────────────────────────────────────────────────────────────
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
-// 🟡 gated — feature: YAML §3.2.1.3 canonical mapping-key uniqueness — SL-3229-YAML-CANONICAL-KEYS.
+// 🟡 gated — feature: canonical-key profile parse enforcement binding (YamlCanonicalKeyProfileFacts consumption at parse boundary) — SL-3229-YAML-CANONICAL-KEYS.
+// 🟡 gated — feature: anchor/alias resolution parse binding (YamlAnchorAliasResolutionFacts consumption at parse boundary) — SL-3229-YAML-ANCHOR-ALIAS.
