@@ -1,11 +1,8 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
-// Owns: emit_stage_locus_port, target_translation_rules_from_model, serialize_source_for_emitted,
-//       serialize_target, emit.
-// Consumes: v4.std.target_model (target_model_edge_translation_rules).
+// Owns: serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
-//           std/diagnostic.dag,
-//           std/node.dag, std/text.dag.
+//           std/diagnostic.dag.
 // Status: W-T-10 MVP-1 — emit = serialize_target ∘ translate; grammar-inverse validation
 // (row emitted match + per-token Node equality) then model-authored authority_source_text;
 // per-token lex walk emit deferred T-11 (no string templates in emit path).
@@ -19,51 +16,19 @@ import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
   TargetNodeTree,
-  grammar_relation_row_for_emitted,
-  target_bundle_child,
   target_serialize_source_from_model,
   translate
 }
-import v4.std.target_model { target_model_edge_translation_rules }
 import v4.std.diagnostic {
   Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  node_locus,
   Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  outcome_rejected
-}
-import v4.std.node { Node, Symbol }
-data emit_stage_locus_port: Symbol = emit_stage_locus_port
-data emit_serialize_emitted_mismatch: Symbol = emit_serialize_emitted_mismatch
-fn emit_serialize_emitted_mismatch_diagnostic(emitted: Node, target: TargetModel) -> Diagnostic {
-  Diagnostic {
-    reason: emit_serialize_emitted_mismatch,
-    at: node_locus(node: emitted),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-fn target_translation_rules_from_model(target: TargetModel) -> Outcome<Node> {
-  target_bundle_child(target: target, edge_name: target_model_edge_translation_rules)
+  bind_outcome
 }
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: target_translation_rules_from_model(target: target),
-    f: fn(rules) {
-      bind_outcome(
-        o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
-        f: fn(_) {
-          target_serialize_source_from_model(target: target, emitted: emitted)
-        }
-      )
-    }
-  )
+  target_serialize_source_from_model(target: target, emitted: emitted)
 }
 fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<TargetSource> {
   serialize_source_for_emitted(emitted: tree, target: target)
