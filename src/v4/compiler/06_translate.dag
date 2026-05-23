@@ -78,10 +78,9 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
 }
-import v4.std.collection { Map, empty_map, list_snoc_item }
+import v4.std.collection { List, Map, empty_map, list_snoc_item }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v4.std.text { String }
-import v4.std.witness { Holds, Violates }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution — T-10 target-bundle named-edge lookup fold state (P3 fail-closed terminal).
 type TargetBundleChildLookup
@@ -379,6 +378,50 @@ fn conj_has_named_child(parent: Node, edge_name: Symbol) -> Bool {
     _ => false
   }
 }
+fn lex_rule_literal_step(
+  acc: Outcome<String>,
+  rule: LexRule,
+  token_class: Symbol
+) -> Outcome<String> {
+  match acc {
+    Accepted { value: _, diagnostics: _ } => acc
+    Rejected { diagnostics: _ } =>
+      match rule {
+        TokenRule { token_class: c, pattern: pattern } =>
+          if c == token_class {
+            match pattern {
+              LiteralPattern { text: text } =>
+                Accepted { value: text, diagnostics: None }
+              _ =>
+                Rejected {
+                  diagnostics: diagnostics_singleton(
+                    d: translate_lex_rule_literal_not_found_diagnostic(
+                      token_class: token_class
+                    )
+                  )
+                }
+            }
+          } else {
+            acc
+          }
+      }
+  }
+}
+fn lex_rules_literal_fold(
+  rules: List<LexRule>,
+  acc: Outcome<String>,
+  token_class: Symbol
+) -> Outcome<String> {
+  match rules {
+    Empty => acc
+    Cons { head: rule, tail: tail } =>
+      lex_rules_literal_fold(
+        rules: tail,
+        acc: lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class),
+        token_class: token_class
+      )
+  }
+}
 fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
   match rules {
     VoidLexRules =>
@@ -386,38 +429,14 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
         translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
       )
     ModeledLexRules { root: set } =>
-      fold_list(
-        xs: set.rules,
-        empty: Rejected {
+      lex_rules_literal_fold(
+        rules: set.rules,
+        acc: Rejected {
           diagnostics: diagnostics_singleton(
             d: translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
           )
         },
-        cons: fn(acc, rule) {
-          match acc {
-            Accepted { value: _, diagnostics: _ } => acc
-            Rejected { diagnostics: _ } =>
-              match rule {
-                TokenRule { token_class: c, pattern: pattern } =>
-                  if c == token_class {
-                    match pattern {
-                      LiteralPattern { text: text } =>
-                        Accepted { value: text, diagnostics: None }
-                      _ =>
-                        Rejected {
-                          diagnostics: diagnostics_singleton(
-                            d: translate_lex_rule_literal_not_found_diagnostic(
-                              token_class: token_class
-                            )
-                          )
-                        }
-                    }
-                  } else {
-                    acc
-                  }
-              }
-          }
-        }
+        token_class: token_class
       )
   }
 }
@@ -435,10 +454,10 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
                 bind_outcome(
                   o: node_atom_identity(node: binding_node),
                   f: fn(binding) {
-                    match target.binding_spellings.lookup(binding) {
-                      Holds { value: spelling } =>
+                    match map_get(target.binding_spellings, binding) {
+                      Some { value: spelling } =>
                         Accepted { value: spelling, diagnostics: None }
-                      Violates { diagnostic: d } =>
+                      None =>
                         Rejected {
                           diagnostics: diagnostics_singleton(
                             d: translate_binding_spelling_not_found_diagnostic(binding: binding)
