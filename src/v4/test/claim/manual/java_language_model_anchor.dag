@@ -10,7 +10,7 @@ import v4.extdeps.languages.java {
   JavaLanguageModel,
   java_inhabitant_int_node,
   java_language_model_wave1,
-  java_mvp1_target_model
+  java_mvp1_target_model_node
 }
 import v4.std.node { Node }
 
@@ -18,4 +18,4 @@ type java_anchor_language_model = JavaLanguageModel
 
 data java_anchor_wave1: java_anchor_language_model = java_language_model_wave1()
 data java_anchor_int: Node = java_inhabitant_int_node()
-data java_anchor_mvp1: Node = java_mvp1_target_model()
+data java_anchor_mvp1: Node = java_mvp1_target_model_node()

@@ -269,7 +269,7 @@ data java_tag_scalar_void: Symbol = java_tag_scalar_void
 
 data java_mvp1_source_literal: Symbol = java_mvp1_source_literal
 data java_mvp1_source_text_field: Symbol = serialize_source_field_source_text
-data java_mvp1_source_grammar_field: Symbol = java_mvp1_source_grammar_field
+data java_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn java_mvp1_concrete_tokens() -> List<JavaConcreteSyntaxToken> {
   [
@@ -824,9 +824,7 @@ fn java_mvp1_translation_rules_node() -> Node {
   }
 }
 
-fn java_mvp1_target_model() -> Node {
-  // liveness anchor — pairs target_model with `java_mvp1_source_text`; drops with T-10
-  let _authority = java_mvp1_source_text_authority()
+fn java_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -851,6 +849,13 @@ fn java_mvp1_target_model() -> Node {
         target: java_mvp1_serialize_source_node()
       )
     ]
+  }
+}
+
+fn java_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: java_mvp1_target_model_node(),
+    authority_source_text: java_mvp1_source_text_authority()
   }
 }
 

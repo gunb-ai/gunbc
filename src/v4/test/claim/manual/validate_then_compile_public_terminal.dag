@@ -35,6 +35,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
+import v4.std.algebra { Empty }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   T19ManualAnchorAbsent,
@@ -55,9 +56,12 @@ data rust_language_model_stub: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
-data rust_target_model_stub: TargetModel = Node {
-  kind: TypeNode { connective: Conj },
-  children: []
+data rust_target_model_stub: TargetModel = TargetModel {
+  bundle: Node {
+    kind: TypeNode { connective: Conj },
+    children: []
+  },
+  authority_source_text: Empty
 }
 data rejecting_lens_gate_at: Symbol = rejecting_lens_gate_at
 

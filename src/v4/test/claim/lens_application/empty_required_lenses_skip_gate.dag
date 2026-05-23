@@ -17,6 +17,7 @@ import v4.compiler.compile {
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }
+import v4.std.algebra { Empty }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
@@ -36,9 +37,12 @@ data empty_lenses_language_model_stub: Node = Node {
   children: []
 }
 
-data empty_lenses_target_model_stub: TargetModel = Node {
-  kind: TypeNode { connective: Conj },
-  children: []
+data empty_lenses_target_model_stub: TargetModel = TargetModel {
+  bundle: Node {
+    kind: TypeNode { connective: Conj },
+    children: []
+  },
+  authority_source_text: Empty
 }
 
 data empty_lenses_authority_node: Node = Node {
