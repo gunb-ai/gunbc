@@ -6,7 +6,7 @@
 
 module v4.test.claim.lens_synthesis.synthesis_gap_polynomial
 
-import v4.lens.synthesis { synthesis_lens }
+import v4.lens.synthesis { DecisionTree, synthesis_lens }
 import v4.std.algebra { non_empty }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -66,7 +66,7 @@ data synthesis_gap_poly_sentinel: Node = Node {
 }
 
 fn synthesis_gap_poly_lens_non_empty() -> Bool {
-  non_empty(synthesis_lens(n: synthesis_gap_poly_input))
+  non_empty(synthesis_lens(n: synthesis_gap_poly_input, declared_technique: DecisionTree))
 }
 
 fn synthesis_gap_poly_rhs() -> Node {
