@@ -28,6 +28,7 @@ import v4.std.diagnostic {
   port_locus,
   Unavailable
 }
+import v4.std.algebra { Empty }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
 import v4.std.constraints {
   CanonicalGroundingWitness,
@@ -43,7 +44,10 @@ data anchor_stub_empty_conj: Node = Node {
 }
 
 
-data anchor_stub_target_model: TargetModel = anchor_stub_empty_conj
+data anchor_stub_target_model: TargetModel = TargetModel {
+  bundle: anchor_stub_empty_conj,
+  authority_source_text: Empty
+}
 data anchor_stub_input_lang: LanguageModel = anchor_stub_empty_conj
 
 

@@ -18,7 +18,12 @@ type LanguageModel = Node
 
 
 // 🟢 grounded — target language model bundle (Node projection per Theme-A #9).
-type TargetModel = Node
+type TargetModelBundle {
+  bundle: Node
+  // Grammar-derived authority text (authored with the model, not emit-time templates).
+  authority_source_text: String
+}
+type TargetModel = TargetModelBundle
 
 
 // 🟢 grounded — serialized target text (bytes-as-data terminal for TranslateTo).

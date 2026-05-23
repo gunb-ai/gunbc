@@ -10,7 +10,7 @@ import v4.extdeps.languages.rust {
   RustLanguageModel,
   rust_inhabitant_i32_node,
   rust_language_model_wave1,
-  rust_mvp1_target_model
+  rust_mvp1_target_model_node
 }
 import v4.std.node { Node }
 
@@ -18,4 +18,4 @@ type rust_anchor_language_model = RustLanguageModel
 
 data rust_anchor_wave1: rust_anchor_language_model = rust_language_model_wave1()
 data rust_anchor_i32: Node = rust_inhabitant_i32_node()
-data rust_anchor_mvp1: Node = rust_mvp1_target_model()
+data rust_anchor_mvp1: Node = rust_mvp1_target_model_node()

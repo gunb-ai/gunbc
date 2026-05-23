@@ -45,11 +45,19 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.compiler.target_carriers { TargetModel }
 import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_emitted,
   target_model_edge_serialize_source
 }
 import v4.std.node {
@@ -218,12 +226,6 @@ data java_binding_method_add: Symbol = java_binding_method_add
 data java_binding_param_x: Symbol = java_binding_param_x
 data java_binding_param_y: Symbol = java_binding_param_y
 
-data java_relation_field_production: Symbol = java_relation_field_production
-data java_relation_field_emitted: Symbol = java_relation_field_emitted
-data java_relation_field_tokens: Symbol = java_relation_field_tokens
-data java_relation_field_token_class: Symbol = java_relation_field_token_class
-data java_relation_field_binding: Symbol = java_relation_field_binding
-data java_relation_field_token_kind: Symbol = java_relation_field_token_kind
 data java_relation_token_fixed: Symbol = java_relation_token_fixed
 data java_relation_token_bound: Symbol = java_relation_token_bound
 data java_relation_rule_mvp1_method_add: Symbol = java_relation_rule_mvp1_method_add
@@ -259,8 +261,8 @@ data java_tag_scalar_char: Symbol = java_tag_scalar_char
 data java_tag_scalar_void: Symbol = java_tag_scalar_void
 
 data java_mvp1_source_literal: Symbol = java_mvp1_source_literal
-data java_mvp1_source_text_field: Symbol = java_mvp1_source_text_field
-data java_mvp1_source_grammar_field: Symbol = java_mvp1_source_grammar_field
+data java_mvp1_source_text_field: Symbol = serialize_source_field_source_text
+data java_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn java_mvp1_concrete_tokens() -> List<JavaConcreteSyntaxToken> {
   [
@@ -654,11 +656,11 @@ fn java_concrete_token_node(token: JavaConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           java_named_edge(
-            name: java_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: java_inhabitant_atom(id: java_relation_token_fixed)
           ),
           java_named_edge(
-            name: java_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: java_inhabitant_atom(id: c)
           )
         ]
@@ -668,15 +670,15 @@ fn java_concrete_token_node(token: JavaConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           java_named_edge(
-            name: java_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: java_inhabitant_atom(id: java_relation_token_bound)
           ),
           java_named_edge(
-            name: java_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: java_inhabitant_atom(id: c)
           ),
           java_named_edge(
-            name: java_relation_field_binding,
+            name: concrete_syntax_token_field_binding,
             target: java_inhabitant_atom(id: b)
           )
         ]
@@ -788,12 +790,12 @@ fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       java_named_edge(
-        name: java_relation_field_production,
+        name: grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      java_named_edge(name: java_relation_field_emitted, target: row.emitted),
+      java_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       java_named_edge(
-        name: java_relation_field_tokens,
+        name: grammar_relation_field_tokens,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: java_relation_token_edges(tokens: row.tokens)
@@ -815,9 +817,7 @@ fn java_mvp1_translation_rules_node() -> Node {
   }
 }
 
-fn java_mvp1_target_model() -> Node {
-  // liveness anchor — pairs target_model with `java_mvp1_source_text`; drops with T-10
-  let _authority = java_mvp1_source_text_authority()
+fn java_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -834,14 +834,17 @@ fn java_mvp1_target_model() -> Node {
         target: java_mvp1_translation_rules_node()
       ),
       java_named_edge(
-        name: target_model_edge_serialize_emitted,
-        target: java_mvp1_emitted_add_method_node()
-      ),
-      java_named_edge(
         name: target_model_edge_serialize_source,
         target: java_mvp1_serialize_source_node()
       )
     ]
+  }
+}
+
+fn java_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: java_mvp1_target_model_node(),
+    authority_source_text: java_mvp1_source_text_authority()
   }
 }
 

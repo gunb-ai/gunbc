@@ -45,11 +45,19 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.compiler.target_carriers { TargetModel }
 import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_emitted,
   target_model_edge_serialize_source
 }
 import v4.std.node {
@@ -307,12 +315,6 @@ data rust_binding_fn_add: Symbol = rust_binding_fn_add
 data rust_binding_param_x: Symbol = rust_binding_param_x
 data rust_binding_param_y: Symbol = rust_binding_param_y
 
-data rust_relation_field_production: Symbol = rust_relation_field_production
-data rust_relation_field_emitted: Symbol = rust_relation_field_emitted
-data rust_relation_field_tokens: Symbol = rust_relation_field_tokens
-data rust_relation_field_token_class: Symbol = rust_relation_field_token_class
-data rust_relation_field_binding: Symbol = rust_relation_field_binding
-data rust_relation_field_token_kind: Symbol = rust_relation_field_token_kind
 data rust_relation_token_fixed: Symbol = rust_relation_token_fixed
 data rust_relation_token_bound: Symbol = rust_relation_token_bound
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
@@ -357,8 +359,8 @@ data rust_tag_scalar_unit: Symbol = rust_tag_scalar_unit
 data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 
 data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
-data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
-data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
+data rust_mvp1_source_text_field: Symbol = serialize_source_field_source_text
+data rust_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
 fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
   OverflowDisposition {
@@ -937,11 +939,11 @@ fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: rust_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: rust_inhabitant_atom(id: rust_relation_token_fixed)
           ),
           rust_named_edge(
-            name: rust_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: rust_inhabitant_atom(id: c)
           )
         ]
@@ -951,15 +953,15 @@ fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
         kind: TypeNode { connective: Conj },
         children: [
           rust_named_edge(
-            name: rust_relation_field_token_kind,
+            name: concrete_syntax_token_field_kind,
             target: rust_inhabitant_atom(id: rust_relation_token_bound)
           ),
           rust_named_edge(
-            name: rust_relation_field_token_class,
+            name: concrete_syntax_token_field_class,
             target: rust_inhabitant_atom(id: c)
           ),
           rust_named_edge(
-            name: rust_relation_field_binding,
+            name: concrete_syntax_token_field_binding,
             target: rust_inhabitant_atom(id: b)
           )
         ]
@@ -1081,12 +1083,12 @@ fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
-        name: rust_relation_field_production,
+        name: grammar_relation_field_production,
         target: grammar_production_to_node(production: row.production)
       ),
-      rust_named_edge(name: rust_relation_field_emitted, target: row.emitted),
+      rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       rust_named_edge(
-        name: rust_relation_field_tokens,
+        name: grammar_relation_field_tokens,
         target: Node {
           kind: TypeNode { connective: Conj },
           children: rust_relation_token_edges(tokens: row.tokens)
@@ -1108,9 +1110,7 @@ fn rust_mvp1_translation_rules_node() -> Node {
   }
 }
 
-fn rust_mvp1_target_model() -> Node {
-  // liveness anchor — pairs target_model with `rust_mvp1_source_text`; drops with T-10
-  let _authority = rust_mvp1_source_text_authority()
+fn rust_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -1127,14 +1127,17 @@ fn rust_mvp1_target_model() -> Node {
         target: rust_mvp1_translation_rules_node()
       ),
       rust_named_edge(
-        name: target_model_edge_serialize_emitted,
-        target: rust_mvp1_emitted_add_fn_node()
-      ),
-      rust_named_edge(
         name: target_model_edge_serialize_source,
         target: rust_mvp1_serialize_source_node()
       )
     ]
+  }
+}
+
+fn rust_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_target_model_node(),
+    authority_source_text: rust_mvp1_source_text_authority()
   }
 }
 
