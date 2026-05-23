@@ -144,6 +144,14 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         import_includes_name(&module, &["v4", "std", "algebra"], "filter"),
         "{CI_DAG_PATH}: must import filter from std.algebra"
     );
+    assert!(
+        CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
+        "{CI_DAG_PATH}: fail-closed must return full roster on RerunNodeSetFailClosed (AI-16/R1-7)"
+    );
+    assert!(
+        CI_DAG.contains("test_claim_ci_selection_fail_closed(c: claim)"),
+        "{CI_DAG_PATH}: DiagnosticClaim rows must bypass narrow filter via fail-closed guard"
+    );
 }
 
 #[test]

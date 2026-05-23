@@ -260,6 +260,10 @@ fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool 
 }
 
 
+// Fail-closed contract (AI-16/R1-7): incomplete edit-locus resolution, registry lookup, or
+// cache-key derivation must return the full roster — never a false-negative subset.
+// RerunNodeSetFailClosed => roster unchanged; DiagnosticClaim rows always pass filter via
+// test_claim_ci_selection_fail_closed. Narrow selection applies only on RerunNodeSetProduced.
 fn ci_select_from_rerun_nodes(roster: List<TestClaim>, rerun: RerunNodeSet) -> List<TestClaim> {
   match rerun {
     RerunNodeSetProduced { nodes: nodes } =>

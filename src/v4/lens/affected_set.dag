@@ -377,11 +377,7 @@ fn record_affected_dependency(
 
 
 fn dependency_in_lens_frontier(dependency: DependencyView) -> Bool {
-  match dependency.kind {
-    ProjectionDependsOn => true
-    VerifiedBy => true
-    _ => false
-  }
+  dependency_kind_in_lens_frontier_policy(kind: dependency.kind)
 }
 
 
@@ -415,6 +411,7 @@ fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSe
 }
 
 
+// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
 fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
   fold(
     dependencies,
