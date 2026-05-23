@@ -45,7 +45,16 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
+import v4.compiler.target_carriers { TargetModel }
 import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
@@ -218,12 +227,12 @@ data java_binding_method_add: Symbol = java_binding_method_add
 data java_binding_param_x: Symbol = java_binding_param_x
 data java_binding_param_y: Symbol = java_binding_param_y
 
-data java_relation_field_production: Symbol = java_relation_field_production
-data java_relation_field_emitted: Symbol = java_relation_field_emitted
-data java_relation_field_tokens: Symbol = java_relation_field_tokens
-data java_relation_field_token_class: Symbol = java_relation_field_token_class
-data java_relation_field_binding: Symbol = java_relation_field_binding
-data java_relation_field_token_kind: Symbol = java_relation_field_token_kind
+data java_relation_field_production: Symbol = grammar_relation_field_production
+data java_relation_field_emitted: Symbol = grammar_relation_field_emitted
+data java_relation_field_tokens: Symbol = grammar_relation_field_tokens
+data java_relation_field_token_class: Symbol = concrete_syntax_token_field_class
+data java_relation_field_binding: Symbol = concrete_syntax_token_field_binding
+data java_relation_field_token_kind: Symbol = concrete_syntax_token_field_kind
 data java_relation_token_fixed: Symbol = java_relation_token_fixed
 data java_relation_token_bound: Symbol = java_relation_token_bound
 data java_relation_rule_mvp1_method_add: Symbol = java_relation_rule_mvp1_method_add
@@ -259,7 +268,7 @@ data java_tag_scalar_char: Symbol = java_tag_scalar_char
 data java_tag_scalar_void: Symbol = java_tag_scalar_void
 
 data java_mvp1_source_literal: Symbol = java_mvp1_source_literal
-data java_mvp1_source_text_field: Symbol = java_mvp1_source_text_field
+data java_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data java_mvp1_source_grammar_field: Symbol = java_mvp1_source_grammar_field
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn java_mvp1_concrete_tokens() -> List<JavaConcreteSyntaxToken> {

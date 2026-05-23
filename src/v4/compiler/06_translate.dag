@@ -4,14 +4,15 @@
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_emitted,
 //       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
-//       target_serialize_source_from_model, translate_target_source_not_realized,
-//       coerce_grounded_node, translate_fold_init, translate_fold_step,
-//       translate_node, translate.
+//       target_serialize_source_from_model, grammar_relation_row_for_emitted,
+//       grammar_inverse_source_validated, translate_target_source_not_realized,
+//       translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
+//       translate_fold_step, translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
-//           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag.
-// Status: W-T-10 MVP-1 — live translate_node/coerce_grounded_node; canonical grounding from
-// InferredTree.facts (T-9); coercion via find_witness + declared_inhabitants (T-4 rust TargetModel).
-// serialize_source remains fail-closed until grammar-bidir inverse walk lands.
+//           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
+//           std/target_model.dag.
+// Status: W-T-10 MVP-1 — live translate_node/coerce_grounded_node + child reattachment zip-fold;
+// grammar-inverse serialize via TargetModelBundle.authority_source_text (T-9 canonical grounding).
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -35,6 +36,7 @@ import v4.std.diagnostic {
   ExternalContractUnknown,
   node_locus,
   Outcome,
+  None,
   port_locus,
   Rejected,
   Unavailable,
@@ -54,13 +56,20 @@ import v4.std.node {
   Positional,
   Symbol,
   TypeNode,
-  fold_node
+  fold_node,
+  well_formed
 }
 import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_serialize_emitted,
-  target_model_edge_serialize_source
+  target_model_edge_serialize_source,
+  target_model_edge_translation_rules
 }
 import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
@@ -74,11 +83,12 @@ data translate_target_bundle_malformed: Symbol = translate_target_bundle_malform
 data translate_target_bundle_duplicate_edge: Symbol = translate_target_bundle_duplicate_edge
 data translate_stage_locus_port: Symbol = translate_stage_locus_port
 data translate_target_source_not_realized: Symbol = translate_target_source_not_realized
-data translate_child_reattachment_not_realized: Symbol = translate_child_reattachment_not_realized
+data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_not_realized
+data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
-    at: node_locus(node: target),
+    at: node_locus(node: target.bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -88,7 +98,7 @@ fn translate_target_bundle_duplicate_edge_diagnostic(
 ) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_duplicate_edge,
-    at: node_locus(node: target),
+    at: node_locus(node: target.bundle),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -122,6 +132,53 @@ fn target_bundle_child_lookup_step(
       }
   }
 }
+fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        parent.children,
+        init: BundleChildMissing,
+        f: fn(acc, e) {
+          target_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
+        }
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: child, diagnostics: None }
+        BundleChildMissing =>
+          outcome_rejected(
+            Diagnostic {
+              reason: translate_grammar_inverse_not_realized,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        BundleChildDuplicate =>
+          outcome_rejected(
+            Diagnostic {
+              reason: translate_target_bundle_duplicate_edge,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        BundleChildInvalidEdge =>
+          outcome_rejected(
+            Diagnostic {
+              reason: translate_grammar_inverse_not_realized,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+      }
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: translate_grammar_inverse_not_realized,
+          at: node_locus(node: parent),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
 fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: translate_target_source_not_realized,
@@ -129,21 +186,155 @@ fn translate_target_source_not_realized_diagnostic() -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn translate_child_reattachment_not_realized_diagnostic(parent: Node) -> Diagnostic {
+fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
-    reason: translate_child_reattachment_not_realized,
-    at: node_locus(node: parent),
+    reason: translate_grammar_inverse_not_realized,
+    at: node_locus(node: emitted),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-fn target_serialize_source_from_model(target: TargetModel) -> Outcome<TargetSource> {
-  outcome_rejected(translate_target_source_not_realized_diagnostic())
+fn translate_grammar_relation_row_not_found_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_grammar_relation_row_not_found,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
-fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
-  match target.kind {
+fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {
+  conj_named_child(parent: row, edge_name: grammar_relation_field_emitted)
+}
+fn grammar_relation_row_tokens_root(row: Node) -> Outcome<Node> {
+  conj_named_child(parent: row, edge_name: grammar_relation_field_tokens)
+}
+fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node> {
+  match rules.kind {
     TypeNode { connective: Conj } =>
       match fold(
-        target.children,
+        rules.children,
+        init: Rejected {
+          diagnostics: diagnostics_singleton(
+            d: translate_grammar_relation_row_not_found_diagnostic(emitted: emitted)
+          )
+        },
+        f: fn(acc, e) {
+          match acc {
+            Accepted { value: _, diagnostics: _ } => acc
+            Rejected { diagnostics: _ } =>
+              match e.label {
+                Named { name: _ } =>
+                  match grammar_relation_row_emitted(row: e.target) {
+                    Accepted { value: row_emitted, diagnostics: rd } =>
+                      if row_emitted == emitted {
+                        Accepted { value: e.target, diagnostics: rd }
+                      } else {
+                        acc
+                      }
+                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        Accepted { value: row, diagnostics: d } =>
+          Accepted { value: row, diagnostics: d }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    _ =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
+  }
+}
+fn serialize_source_positional_token_count(serialize_source: Node) -> Int {
+  match serialize_source.kind {
+    TypeNode { connective: Conj } =>
+      fold(serialize_source.children, init: 0, f: fn(acc, e) {
+        match e.label {
+          Positional => acc + 1
+          Named { name: _ } => acc
+        }
+      })
+    _ => 0
+  }
+}
+fn relation_tokens_positional_token_count(tokens_root: Node) -> Int {
+  match tokens_root.kind {
+    TypeNode { connective: Conj } =>
+      fold(tokens_root.children, init: 0, f: fn(acc, e) {
+        match e.label {
+          Positional => acc + 1
+          Named { name: _ } => acc
+        }
+      })
+    _ => 0
+  }
+}
+fn grammar_serialize_source_matches_row(
+  serialize_source: Node,
+  row: Node
+) -> Outcome<Node> {
+  if well_formed(n: serialize_source) {
+    bind_outcome(
+      o: grammar_relation_row_tokens_root(row: row),
+      f: fn(tokens_root) {
+        if serialize_source_positional_token_count(serialize_source: serialize_source)
+          == relation_tokens_positional_token_count(tokens_root: tokens_root) {
+          Accepted { value: serialize_source, diagnostics: None }
+        } else {
+          outcome_rejected(
+            translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
+          )
+        }
+      }
+    )
+  } else {
+    outcome_rejected(
+      translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
+    )
+  }
+}
+fn grammar_inverse_source_validated(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<Node> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      bind_outcome(
+        o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+        f: fn(row) {
+          bind_outcome(
+            o: target_bundle_child(target: target, edge_name: target_model_edge_serialize_source),
+            f: fn(serialize_source) {
+              grammar_serialize_source_matches_row(
+                serialize_source: serialize_source,
+                row: row
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+fn target_serialize_source_from_model(
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: grammar_inverse_source_validated(target: target, emitted: emitted),
+    f: fn(_) {
+      Accepted {
+        value: target.authority_source_text,
+        diagnostics: None
+      }
+    }
+  )
+}
+fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
+  match target.bundle.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        target.bundle.children,
         init: BundleChildMissing,
         f: fn(acc, e) {
           target_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
@@ -221,6 +412,12 @@ fn coerce_grounded_node(
     }
   )
 }
+fn translate_coerced_shell(coerced: Node) -> Node {
+  Node {
+    kind: coerced.kind,
+    children: []
+  }
+}
 fn translate_fold_init(
   node: Node,
   tree: InferredTree,
@@ -228,11 +425,14 @@ fn translate_fold_init(
 ) -> Outcome<Node> {
   match coerce_grounded_node(source: node, tree: tree, target: target) {
     Accepted { value: coerced, diagnostics: d } =>
-      Accepted { value: coerced.target, diagnostics: d }
+      Accepted {
+        value: translate_coerced_shell(coerced: coerced.target),
+        diagnostics: d
+      }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-// P3: child translation is not reattached into parent yet — fail-closed (no silent structure drop).
+// Zip-fold child reattachment — mirrors exact_structural_equality_zip_fold_predicate step.
 fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
@@ -242,14 +442,16 @@ fn translate_fold_step(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: parent, diagnostics: ad } =>
       match child {
-        Accepted { value: _, diagnostics: cd } =>
-          Rejected {
-            diagnostics: rejected_with_pending(
-              pending: diagnostics_merge(outer: ad, inner: cd),
-              rejected: diagnostics_singleton(
-                d: translate_child_reattachment_not_realized_diagnostic(parent: parent)
+        Accepted { value: translated_child, diagnostics: cd } =>
+          Accepted {
+            value: Node {
+              kind: parent.kind,
+              children: list_push(
+                parent.children,
+                Edge { label: edge.label, target: translated_child }
               )
-            )
+            },
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
         Rejected { diagnostics: r } =>
           Rejected {
