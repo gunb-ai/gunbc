@@ -245,7 +245,7 @@ fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node
 }
 
 
-// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — migrate-to: std/diagnostic Outcome traverse/zip accumulation — dissolve-on: rejected-with-pending diagnostics merge owned by std/diagnostic; forbidden: local Rejected/Accepted ladders per eval accumulator.
 fn eval_absorb_structural_child(
   acc: Outcome<Node>,
   child: Outcome<Node>
@@ -268,7 +268,7 @@ fn eval_absorb_structural_child(
 }
 
 
-// 🟡 gated — feature:T22-runtime-control-terminalization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: ControlSemantics exposes terminalization/disposition for ControlTransfer; forbidden: each eval consumer locally deciding whether Continue/Return/Raise/Suspend is terminal.
+// 🟡 gated — feature:T22-runtime-control-terminalization — bind node://adhoc-6a2e599a-cc2 — migrate-to: std/runtime ControlSemantics terminalization — dissolve-on: ControlTransfer disposition owned by std/runtime; forbidden: eval-local terminalization of Continue/Return/Raise/Suspend.
 fn control_transfer_value(control: ControlTransfer, node: Node) -> Outcome<RuntimeValue> {
   match control {
     Continue { value: v } =>
@@ -304,7 +304,7 @@ fn eval_accept_runtime_value_with_facts(
 }
 
 
-// 🟡 gated — feature:T22-runtime-behavior-interpreter-dispatch — bind node://adhoc-6a2e599a-cc2 — dissolve-on: InterpretationAlgebra exposes a canonical Behavior-indexed interpreter/disposition so eval builds one input and consumes the runtime-owned behavior algebra; forbidden: downstream consumers owning divergent Behavior match tables.
+// 🟡 gated — feature:T22-runtime-behavior-interpreter-dispatch — bind node://adhoc-6a2e599a-cc2 — migrate-to: std/runtime Behavior-indexed interpreter dispatch — dissolve-on: InterpretationAlgebra exposes canonical behavior algebra; forbidden: divergent Behavior match tables outside std/runtime.
 fn eval_computation_node(
   behavior: Behavior,
   node: Node,
@@ -377,7 +377,7 @@ fn empty_runtime_values() -> List<RuntimeValue> {
 }
 
 
-// 🟡 gated — feature:T22-eval-runtime-edge-role — bind node://adhoc-6a2e599a-cc2 — dissolve-on: std/node exposes canonical EdgeLabel runtime-argument role query/accessor; forbidden: making Named structural edges into runtime arguments.
+// 🟡 gated — feature:T22-eval-runtime-edge-role — bind node://adhoc-6a2e599a-cc2 — migrate-to: std/node EdgeLabel runtime-argument role query — dissolve-on: canonical edge-role accessor in std/node; forbidden: eval-local Named-vs-Positional runtime argument derivation.
 fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
   match edge.label {
     Positional => true
@@ -391,7 +391,7 @@ fn eval_fold_state_value(state: EvalFoldState) -> Outcome<RuntimeValue> {
 }
 
 
-// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — migrate-to: std/diagnostic — dissolve-on: child diagnostic absorption policy in std/diagnostic; forbidden: eval-local Outcome merge ladders.
 fn eval_absorb_child_diagnostics(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<Node>
@@ -414,7 +414,7 @@ fn eval_absorb_child_diagnostics(
 }
 
 
-// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge and list append combine; forbidden: local Rejected/Accepted ladders per eval accumulator.
+// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — migrate-to: std/diagnostic — dissolve-on: list-append + Outcome merge in std/diagnostic; forbidden: eval-local append ladders.
 fn eval_append_child_value(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<RuntimeValue>
@@ -673,7 +673,7 @@ fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
 }
 
 
-// 🟡 gated — feature:T22-parameterized-outcome-eq — bind node://adhoc-c5a6fb4b-8cc — dissolve-on: v4.std.diagnostic owns a parameterized Outcome equality surface with payload comparator; forbidden: adding more payload-specific Outcome equality helpers.
+// 🟡 gated — feature:T22-parameterized-outcome-eq — bind node://adhoc-c5a6fb4b-8cc — migrate-to: std/diagnostic parameterized Outcome equality — dissolve-on: payload-comparator Outcome eq in std/diagnostic; forbidden: eval-local Outcome equality helpers.
 fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
@@ -764,6 +764,7 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 }
 
 
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — claim_hash/interpretation_hash are staging placeholders, NOT cache-validating authority; dissolve-on: B1 content_hash derivation replaces caller-supplied hashes.
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>,
   claim_hash: Hash,

@@ -17,8 +17,6 @@ import v4.std.constraints {
   CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
-  constraint_property_being_canonical,
-  constraint_property_candidate_set_closedness,
   solve_constraints
 }
 import v4.std.diagnostic {

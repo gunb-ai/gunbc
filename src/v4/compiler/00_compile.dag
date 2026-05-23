@@ -123,6 +123,7 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
+// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local Lens type and apply_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_lens as permanent surface or diverging from application.dag contract.
 // T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
 // LensEnforce and LensIntrospect both call gate today; introspect demotion lands with application.dag.
 fn apply_lens(

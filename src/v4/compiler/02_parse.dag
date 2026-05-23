@@ -14,9 +14,8 @@ import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 
 
-// 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
-// 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
   = Terminal { token_class: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }

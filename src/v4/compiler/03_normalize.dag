@@ -46,7 +46,7 @@ data normalize_reason_malformed_sugar: Symbol = normalize_reason_malformed_sugar
 data normalize_reason_post_normalize_not_well_formed: Symbol = normalize_reason_post_normalize_not_well_formed
 
 
-// 🟡 coproduct dissolution — CP-1b item 4 (SurfaceSugarKind).
+// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 / LanguageModel — dissolve-on: surface-to-kernel sugar mapping owned by language-model substrate facts, not compiler-local Atom identity comparison in classify_sugar; forbidden: persistent local SurfaceSugarKind taxonomy without structural LanguageModel carrier.
 type SurfaceSugarKind
   = ServiceSugar
   | FnSugar
@@ -64,6 +64,7 @@ fn no_surface_sugar_kind() -> SurfaceSugarKind? {
 }
 
 
+// 🟡 gated — feature:CP-1b-surface-sugar-language-model — bind TASKS.md T-8 — dissolve-on: classify_sugar reads modeled LanguageModel sugar facts; forbidden: Atom identity string/symbol comparison as permanent authority.
 fn classify_sugar(n: Node) -> SurfaceSugarKind? {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
