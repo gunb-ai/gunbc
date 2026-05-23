@@ -400,12 +400,310 @@ fn wasm_declared_inhabitants_root() -> Node {
   }
 }
 
-fn wasm_wave1_void_lex() -> LexRules {
-  VoidLexRules
+fn wasm_mvp1_selection_policy_node() -> Node {
+  wasm_inhabitant_i32_node()
 }
 
-fn wasm_wave1_void_grammar() -> Grammar {
-  VoidGrammar
+fn wasm_mvp1_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: wasm_inhabitant_i32_node() },
+      Edge { label: Positional, target: wasm_inhabitant_i32_node() },
+      Edge { label: Positional, target: wasm_inhabitant_i32_node() }
+    ]
+  }
+}
+
+fn wasm_mvp1_source_text_authority() -> String {
+  wasm_mvp1_source_text
+}
+
+fn wasm_concrete_token_class(token: WasmConcreteSyntaxToken) -> Symbol {
+  match token {
+    WasmFixedToken { token_class: c } => c
+    WasmBoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn wasm_concrete_token_node(token: WasmConcreteSyntaxToken) -> Node {
+  match token {
+    WasmFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          wasm_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: wasm_inhabitant_atom(id: wasm_relation_token_fixed)
+          ),
+          wasm_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: wasm_inhabitant_atom(id: c)
+          )
+        ]
+      }
+    WasmBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          wasm_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: wasm_inhabitant_atom(id: wasm_relation_token_bound)
+          ),
+          wasm_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: wasm_inhabitant_atom(id: c)
+          ),
+          wasm_named_edge(
+            name: concrete_syntax_token_field_binding,
+            target: wasm_inhabitant_atom(id: b)
+          )
+        ]
+      }
+  }
+}
+
+fn wasm_mvp1_positional_token_edge(token: WasmConcreteSyntaxToken) -> Edge {
+  Edge {
+    label: Positional,
+    target: wasm_concrete_token_node(token: token)
+  }
+}
+
+fn wasm_mvp1_positional_edges_from_token_classes() -> List<Edge> {
+  fold_list(
+    xs: wasm_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: wasm_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn wasm_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
+    head: wasm_named_edge(
+      name: wasm_mvp1_source_text_field,
+      target: wasm_inhabitant_atom(id: wasm_mvp1_source_literal)
+    ),
+    tail: Cons {
+      head: wasm_named_edge(
+        name: wasm_mvp1_source_grammar_field,
+        target: wasm_inhabitant_atom(id: wasm_production_mvp1_fn_add)
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn wasm_mvp1_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: wasm_mvp1_serialize_source_prefix_edges(),
+    right: wasm_mvp1_positional_edges_from_token_classes()
+  )
+}
+
+fn wasm_mvp1_serialize_source_node() -> Node {
+  let _authority = wasm_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: wasm_mvp1_serialize_source_children()
+  }
+}
+
+fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: WasmConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = wasm_concrete_token_class(token: token)
+  if token_class == wasm_token_lparen {
+    acc
+  } else {
+    Sequence {
+      left: wasm_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list(
+    xs: wasm_mvp1_concrete_tokens(),
+    empty: wasm_grammar_terminal(token_class: wasm_token_lparen),
+    cons: fn(acc, token) {
+      wasm_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+fn wasm_mvp1_grammar_relation_row() -> WasmGrammarRelationRow {
+  WasmGrammarRelationRow {
+    production: wasm_grammar_production_mvp1_fn_add(),
+    emitted: wasm_mvp1_emitted_add_fn_node(),
+    tokens: wasm_mvp1_concrete_tokens()
+  }
+}
+
+fn wasm_relation_token_edges(tokens: List<WasmConcreteSyntaxToken>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: wasm_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: grammar_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      wasm_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      wasm_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: wasm_relation_token_edges(tokens: row.tokens)
+        }
+      )
+    ]
+  }
+}
+
+fn wasm_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: wasm_relation_rule_mvp1_fn_add,
+        target: wasm_grammar_relation_row_node(row: wasm_mvp1_grammar_relation_row())
+      )
+    ]
+  }
+}
+
+fn wasm_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: target_model_edge_selection_policy,
+        target: wasm_mvp1_selection_policy_node()
+      ),
+      wasm_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: wasm_declared_inhabitants_root()
+      ),
+      wasm_named_edge(
+        name: target_model_edge_translation_rules,
+        target: wasm_mvp1_translation_rules_node()
+      ),
+      wasm_named_edge(
+        name: target_model_edge_serialize_source,
+        target: wasm_mvp1_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn wasm_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(empty_map(), wasm_binding_fn_add, "$add")
+}
+
+fn wasm_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: wasm_mvp1_target_model_node(),
+    lex: wasm_wave1_lex(),
+    binding_spellings: wasm_mvp1_binding_spellings(),
+    authority_source_text: wasm_mvp1_source_text_authority()
+  }
+}
+
+fn wasm_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+fn wasm_dollar_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: LiteralPattern { text: "$" },
+    right: SequencePattern {
+      left: CharClassPattern { class: IdentStartChar },
+      right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+    }
+  }
+}
+
+fn wasm_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: wasm_token_ident,
+    pattern: wasm_dollar_ident_lex_pattern()
+  }
+}
+
+fn wasm_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      wasm_lex_rule(token_class: wasm_token_lparen, text: "("),
+      wasm_lex_rule(token_class: wasm_token_kw_func, text: "func "),
+      wasm_ident_lex_rule(),
+      wasm_lex_rule(token_class: wasm_token_param_list, text: " (param i32 i32) "),
+      wasm_lex_rule(token_class: wasm_token_result, text: "(result i32) "),
+      wasm_lex_rule(token_class: wasm_token_local_get, text: "local.get "),
+      wasm_lex_rule(token_class: wasm_token_local_idx_0, text: "0 "),
+      wasm_lex_rule(token_class: wasm_token_local_idx_1, text: "1 "),
+      wasm_lex_rule(token_class: wasm_token_i32_add, text: "i32.add)")
+    ]
+  }
+}
+
+fn wasm_wave1_lex() -> LexRules {
+  ModeledLexRules { root: wasm_wave1_lex_rules() }
+}
+
+fn wasm_grammar_atom(id: Symbol) -> Node {
+  wasm_inhabitant_atom(id: id)
+}
+
+fn wasm_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_mvp1_fn_add,
+    expression: wasm_grammar_sequence_from_token_classes(),
+    emitted: wasm_grammar_atom(id: wasm_surface_fn_item)
+  }
+}
+
+fn wasm_wave1_grammar_root() -> GrammarRoot {
+  GrammarRoot { start: wasm_grammar_production_mvp1_fn_add() }
+}
+
+fn wasm_wave1_grammar() -> Grammar {
+  ModeledGrammar { root: wasm_wave1_grammar_root() }
+}
+
+fn wasm_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == wasm_token_lparen ||
+    sym == wasm_token_kw_func ||
+    sym == wasm_token_ident ||
+    sym == wasm_token_param_list ||
+    sym == wasm_token_result ||
+    sym == wasm_token_local_get ||
+    sym == wasm_token_local_idx_0 ||
+    sym == wasm_token_local_idx_1 ||
+    sym == wasm_token_i32_add
 }
 
 fn wasm_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
@@ -472,7 +770,11 @@ fn wasm_catalog_surface_symbol(sym: Symbol) -> Bool {
 fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
-      wasm_catalog_surface_symbol(sym: sym)
+      wasm_catalog_surface_symbol(sym: sym) ||
+        wasm_wave1_lex_token_symbol(sym: sym) ||
+        sym == wasm_surface_fn_item ||
+        sym == wasm_production_mvp1_fn_add ||
+        sym == wasm_mvp1_source_literal
     }
   }
 }
@@ -578,8 +880,8 @@ fn wasm_model_core_wave1() -> ModelCore {
 
 fn wasm_language_model_wave1() -> WasmLanguageModel {
   WasmLanguageModel {
-    lex: wasm_wave1_void_lex(),
-    grammar: wasm_wave1_void_grammar(),
+    lex: wasm_wave1_lex(),
+    grammar: wasm_wave1_grammar(),
     language_identity: wasm_language_model_surface_id,
     canonical_symbols: wasm_language_model_canonical_symbols(),
     core: wasm_model_core_wave1()
