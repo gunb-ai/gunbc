@@ -141,11 +141,19 @@ echo "=== MVP-1: cargo build mvp1_gate ==="
 )
 
 echo "=== MVP-1: cargo run mvp1_gate (assert add(2,3)==5) ==="
+set +e
 run_out="$(
   cd "$out"
   cargo run --quiet --bin mvp1_gate 2>&1
 )"
+run_status=$?
+set -e
 echo "$run_out"
+
+if [[ "$run_status" -ne 0 ]]; then
+  echo "error: MVP-1 cargo run exited $run_status (output above)" >&2
+  exit "$run_status"
+fi
 
 if ! grep -q 'mvp1-ok: add(2, 3) = 5' <<<"$run_out"; then
   echo "error: MVP-1 run did not print expected receipt (got above)" >&2
