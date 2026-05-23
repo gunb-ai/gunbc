@@ -17,6 +17,8 @@ import v4.std.constraints {
   CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness,
   solve_constraints
 }
 import v4.std.diagnostic {
@@ -35,6 +37,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
+import v4.std.logic { Bool }
 import v4.std.node {
   Edge,
   Node,
@@ -53,8 +56,10 @@ type AlgebraRef {
 }
 
 
-// Practice 2: coherence equalities enforced by construction — CanonicalGrounding is the
-// sole authority for resolved_type / inhabitance / canonical witness alignment.
+// Practice 2: InferredFacts bundles CanonicalGrounding + descent. std/constraints.dag
+// CanonicalGrounding is not yet proof-by-construction (scaffold:T-9-ground) — infer
+// enforces admission at construction and re-export via canonical_grounding_admits_infer_facts
+// until std/constraints lands a structural carrier for node/witness/closedness alignment.
 type InferredFacts {
   grounding: CanonicalGrounding
   descent: Witness<TerminationProof>
@@ -144,19 +149,43 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
 }
 
 
-fn infer_constraint_graph(n: Node) -> ConstraintGraph {
-  ConstraintGraph { root: n }
+// Infer admission gate — not a post-hoc InferredFacts field patch. Validates the
+// algebra_ref_from_grounding / closedness alignment CanonicalGrounding must satisfy
+// before infer accepts or re-exports grounding as authoritative.
+fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
+  well_formed(n: grounding.node)
+    && well_formed(n: grounding.witness.structural.evidence)
+    && (grounding.witness.structural.property == constraint_property_being_canonical)
+    && (grounding.witness.closedness.property == constraint_property_candidate_set_closedness)
+    && (grounding.witness.closedness.evidence == grounding.node)
+}
+
+
+fn inferred_facts_construction(
+  grounding: CanonicalGrounding,
+  descent: Witness<TerminationProof>,
+) -> Outcome<InferredFacts> {
+  if canonical_grounding_admits_infer_facts(grounding: grounding) {
+    Accepted {
+      value: InferredFacts {
+        grounding: grounding,
+        descent: descent
+      },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(
+      infer_canonical_grounding_incoherent_diagnostic(node: grounding.node)
+    )
+  }
 }
 
 
 fn inferred_facts_from_grounding(
   grounding: CanonicalGrounding,
   descent: Witness<TerminationProof>,
-) -> InferredFacts {
-  InferredFacts {
-    grounding: grounding,
-    descent: descent
-  }
+) -> Outcome<InferredFacts> {
+  inferred_facts_construction(grounding: grounding, descent: descent)
 }
 
 
@@ -167,6 +196,11 @@ fn concat_inferred_facts_entries(
   fold(b, init: a, f: fn(acc, entry) {
     list_push(acc, entry)
   })
+}
+
+
+fn infer_constraint_graph(n: Node) -> ConstraintGraph {
+  ConstraintGraph { root: n }
 }
 
 
@@ -182,13 +216,10 @@ fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
           }
         ),
         f: fn(grounding) {
-          Accepted {
-            value: inferred_facts_from_grounding(
-              grounding: grounding,
-              descent: Holds { value: descent_proof }
-            ),
-            diagnostics: None
-          }
+          inferred_facts_from_grounding(
+            grounding: grounding,
+            descent: Holds { value: descent_proof }
+          )
         }
       )
   }
@@ -235,7 +266,7 @@ fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
-  if well_formed(n: facts.grounding.node) {
+  if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
     Accepted {
       value: facts.grounding,
       diagnostics: None
