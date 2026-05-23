@@ -1,8 +1,7 @@
 // src/v4/compiler/06_translate.dag
 // Scope: Stage 5a — T-10 translate: fold_node + coercion_fold over infer-authored canonical grounding.
 // Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
-//       target_model_edge_declared_inhabitants, target_model_edge_serialize_emitted,
-//       target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
+//       target_model_edge_declared_inhabitants, target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
 //       target_serialize_source_from_model, grammar_relation_row_for_emitted,
 //       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
@@ -66,7 +65,6 @@ import v4.std.target_model {
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
-  target_model_edge_serialize_emitted,
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
 }

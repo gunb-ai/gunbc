@@ -58,7 +58,6 @@ import v4.std.target_model {
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
   target_model_edge_translation_rules,
-  target_model_edge_serialize_emitted,
   target_model_edge_serialize_source
 }
 import v4.std.node {
@@ -1126,10 +1125,6 @@ fn rust_mvp1_target_model_node() -> Node {
       rust_named_edge(
         name: target_model_edge_translation_rules,
         target: rust_mvp1_translation_rules_node()
-      ),
-      rust_named_edge(
-        name: target_model_edge_serialize_emitted,
-        target: rust_mvp1_emitted_add_fn_node()
       ),
       rust_named_edge(
         name: target_model_edge_serialize_source,
