@@ -1136,17 +1136,13 @@ fn rust_mvp1_target_model_node() -> Node {
 
 fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
-    key: rust_binding_param_y,
-    value: "y",
-    m: map_insert(
-      key: rust_binding_param_x,
-      value: "x",
-      m: map_insert(
-        key: rust_binding_fn_add,
-        value: "add",
-        m: empty_map()
-      )
-    )
+    map_insert(
+      map_insert(empty_map(), rust_binding_fn_add, "add"),
+      rust_binding_param_x,
+      "x"
+    ),
+    rust_binding_param_y,
+    "y"
   )
 }
 
@@ -1183,17 +1179,17 @@ fn rust_ident_lex_rule() -> LexRule {
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn"),
+      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: "+"),
-      rust_lex_rule(token_class: rust_token_arrow, text: "->"),
-      rust_lex_rule(token_class: rust_token_lbrace, text: "{"),
-      rust_lex_rule(token_class: rust_token_rbrace, text: "}"),
+      rust_lex_rule(token_class: rust_token_plus, text: " + "),
+      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
       rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: rust_token_comma, text: ","),
-      rust_lex_rule(token_class: rust_token_colon, text: ":")
+      rust_lex_rule(token_class: rust_token_rparen, text: ") "),
+      rust_lex_rule(token_class: rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: rust_token_colon, text: ": ")
     ]
   }
 }
