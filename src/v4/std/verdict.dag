@@ -1,0 +1,61 @@
+// src/v4/std/verdict.dag
+// Scope: test-run verdict algebra.
+// Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + T-22 eval runner.
+// Owns: Verdict, verdict_combine, verdict_fold.
+// Consumes: v4.std.algebra (is_empty), v4.std.collection (List), v4.std.diagnostic (Diagnostic, Outcome).
+// Status: AI-10 substrate declaration — moves Pass/Fail/Deferred algebra out of 05_eval.dag.
+//
+// ALGEBRA: (Verdict<T>, verdict_combine, Pass) forms a monoid where:
+//   Pass is the identity.
+//   Fail absorbs (worst outcome wins).
+//   Deferred is sticky: once Deferred, only Fail can promote.
+// This is the bounded-lattice order: Pass < Deferred < Fail.
+// verdict_fold fails-closed on empty list: caller supplies the empty-case verdict.
+
+
+module v4.std.verdict
+
+
+import v4.std.algebra { is_empty }
+import v4.std.collection { List }
+import v4.std.diagnostic { Diagnostic, Outcome }
+// 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
+// Pass: all expected behaviors confirmed.
+// Fail: a claim did not hold; actual outcome is attached for diagnostics.
+// Deferred: the evaluator could not decide (e.g. eval not yet realized);
+//           a diagnostic explains why, and the actual outcome is preserved.
+type Verdict<T>
+  = Pass
+  | Fail { actual: Outcome<T> }
+  | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
+// Binary combining operation for verdicts.
+// Laws:
+//   verdict_combine(Pass, v) = v                (Pass is identity)
+//   verdict_combine(Fail{a}, _) = Fail{a}       (Fail absorbs)
+//   verdict_combine(Deferred{d,diag}, Fail{b}) = Fail{b}   (Fail promotes Deferred)
+//   verdict_combine(Deferred{d,diag}, _) = Deferred{d,diag} (Deferred sticky otherwise)
+fn verdict_combine<T>(a: Verdict<T>, b: Verdict<T>) -> Verdict<T> {
+  match a {
+    Pass => b
+    Fail { actual: fa } => Fail { actual: fa }
+    Deferred { actual: da, diagnostic: diag } => match b {
+      Fail { actual: fb } => Fail { actual: fb }
+      Deferred { actual: _, diagnostic: _ } => Deferred { actual: da, diagnostic: diag }
+      Pass => Deferred { actual: da, diagnostic: diag }
+    }
+  }
+}
+// Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
+// Fail-closed on empty list: the caller supplies the empty_verdict to enforce
+// the desired policy (typically Fail with a context-specific diagnostic).
+fn verdict_fold<T>(
+  rs: List<Verdict<T>>,
+  empty_verdict: Verdict<T>
+) -> Verdict<T> {
+  match is_empty(xs: rs) {
+    true => empty_verdict
+    false => fold(rs, init: Pass, f: fn(acc, v) {
+      verdict_combine(a: acc, b: v)
+    })
+  }
+}
