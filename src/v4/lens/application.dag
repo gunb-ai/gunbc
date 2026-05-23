@@ -4,128 +4,487 @@
 // Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
 //
 // Owns:
-//   - EnforcedApplication<Output, Budget, Projected> (enforceable_lens, section,
-//     budget, diagnostic_severity, span)
-//   - IntrospectApplication<Output> (lens, section, span; no Budget — advisory)
 //   - SectionRef = DeclarationScope | NodeScope (disjoint sum; where the lens attaches)
-//   - apply_lens(lens, section, config) — the user-facing surface
+//   - EnforceableLens + LensApplicationConfig (single enforce/introspect mode authority)
+//   - apply_lens / apply_lens_enforce — introspect (Lens only) vs enforce entry points
 //   - THE single advisory→fail-closed bridge: Enforce { } converts a lens's
 //     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
 //     no other path from advisory to blocking exists
 //   - D1 OPERATIONS over the std/node.dag structural-delta types
 //     (Path/Edit/Diff — the DATA lives in std/node.dag):
 //       - subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
-//         — the subtree at a Path (term-rewriting `t|p`); a Path that
-//         does not resolve ⇒ fail-closed Diagnostic, never a guess
 //       - apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
-//         — fold the Diff's ORDERED Edits as SEQUENTIAL rewrites
-//         (`t[s]p` per Edit); all-or-nothing (any Edit whose Path no
-//         longer resolves ⇒ one Diagnostic, no partial application).
-//         NO independence/well-formedness predicate — any List<Edit>
-//         is a valid rewrite program (P2 finding 2, PR #3162).
-//         Consumer = CLI / test harness / user application code.
 //
-// QRY-1 (operator-corrected 2026-05-15) — there is NO "query" concept
-// and NO user-vs-kernel distinction. The earlier "query = user-defined
-// lens" framing is RETRACTED: user-authored vs kernel-shipped is
-// PROVENANCE, not a structural distinction — the compiler sees through
-// who wrote a lens (feedback_naming_is_aliasing). A lens is a lens. A
-// name distinguished only by who-authored-it is decorative ⇒ it must not
-// exist (operator: "a real distinction, or not exist").
-//
-// The REAL axis the operator surfaced ("a filter on a lens") is
-// SCOPE / PARAMETERIZATION — and it is already modeled, two ways, with
-// NO new noun:
-//   1. SectionRef = DeclarationScope | NodeScope (below) — applying a
-//      lens AT a scope (a sub-Node) IS a scoped read. "ask <lens> about
-//      <this section>" is `apply_lens(lens, NodeScope(x), Introspect)`.
-//   2. A lens signature may TAKE a parameter. The archetype is the
-//      affected-set lens (T-21): `affected_set:(Dag,Diff)->Witness<
-//      ReExecFrontier>`. "the affected set of THIS change" is exactly
-//      `affected_set(dag, diff)` — a lens whose answer is relative to a
-//      parameter, not absolute. Already first-class, not a query system.
-// So: lenses, read at scopes and/or parameterized. No `query.dag`, no
-// query subsystem, no authorship split — those would be the decorative
-// parallel authority the closed system forbids (STOP). The B2-OMNI
-// Node-pivot "one read, all ingested languages" property still holds —
-// it is a property of LENSES (any lens over Node), not of a "query".
-//
-// D1 (operator-ratified 2026-05-15; shape refined per a P2 review
-// finding, PR #3162) — this file is the OPERATION home for the
-// structural-delta vocabulary whose DATA TYPES (Path/Edit/Diff) live
-// in std/node.dag. The split is FORCED, not stylistic:
-// std/diagnostic.dag already `Consumes std/node.dag`
-// (`Correction = Suggested(Node)`), so a node.dag operation returning
-// `Result<_, Diagnostic>` would be a substrate cycle. subterm_at/
-// apply_diff are exactly the "consumers evaluate fail-closed and raise
-// the Diagnostic" discipline std/node.dag states for `well_formed`.
-// apply_diff applies the Diff's ORDERED Edits SEQUENTIALLY — there is
-// NO independence/well-formedness predicate (any List<Edit> is valid;
-// the prior set+predicate shape was the P2 illegal-states anti-pattern).
-// These ops are part of this file's T-23 fill; the I/O contract in
-// this header is immutable.
-//
-// AGENT-SURFACE (operator-ratified 2026-05-15) — designed early so it
-// has a structural PLACE, not bolted on later; "a very important /
-// exclusive feature" but a NATURAL CONSEQUENCE of already-ratified
-// pieces, NOT a new subsystem (and NOT the north star — included,
-// designed properly, placed). A non-text client (an LLM/agent)
-// interacts with the program AS DATA, never as files/text:
-//   READ  — it does not grep/read files; it READS LENSES at a scope:
-//           `apply_lens(lens, SectionRef, Introspect)` (this file) +
-//           the affected-set lens `affected_set(dag, diff)` (T-21,
-//           lens/affected_set.dag). The affected lens IS what replaces
-//           file-reading exploration ("what is even relevant here").
-//   WRITE — it does not emit a text patch; a change is the **D1**
-//           `apply_diff : (Node, Diff) -> Result<Node, Diagnostic>`
-//           (the ratified D1 operation in this file — NOT a total
-//           `-> Node`). An agent-supplied Diff is EXTERNAL input that
-//           may be invalid or stale, so the boundary is FAIL-CLOSED
-//           (INVARIANTS P3): an unresolved/ill-formed Diff ⇒ a typed
-//           Diagnostic, all-or-nothing, never a total transform.
-//           AGENT-1 USES D1's apply_diff; it does not restate a total
-//           one. The change is ALREADY Node, so it does NOT pass
-//           `ingest` (no source text, no LanguageModel, no parse): it
-//           enters the B2-OMNI pipeline at `core` — a SIBLING entry to
-//           `ingest`, not an instance of it: `emit ∘ core ∘ apply_diff`
-//           (cf. `compile = emit ∘ core ∘ ingest`). Diff
-//           content-addressed by B1 `content_hash` — identity over
-//           structure, not lines.
-//   BACK  — it gets the `affected_set` lens read — the minimal
-//           re-execution cone of its change — in whatever shape T-21 /
-//           lens/affected_set.dag DECLARES. AGENT-1 is a CLIENT: it
-//           defers to that lens as the single authority (P2) and coins
-//           NO return noun of its own (no `Witness<ReExecFrontier>` or
-//           any other AGENT-1-introduced type — that ungrounded noun is
-//           what this corrects, P1/P2). Plus a FAITHFUL re-emit:
-//           node-level (C5-1 `ingest∘emit = id_Node`, hash-checked) +
-//           emit-locality (C5-2) + C4 committed == emit — no lossy text
-//           round-trip.
-//   GATE  — gated like any other change: the relevant lenses run and
-//           `apply_lens(_, Enforce)` (the single advisory→fail-closed
-//           bridge above) blocks fail-closed. The agent earns no
-//           special trust; structure gates it.
-// BOUNDARY: this is a CLIENT of (apply_lens here) + (affected_set T-21)
-// + (the B2-OMNI pipeline, entered at `core` via apply_diff, then
-// `emit`) + (C5/C4 for the faithful re-emit). It introduces NO new
-// authority,
-// noun, or query subsystem (consistent with QRY-1 above +
-// feedback_closed_system_design). It is the ratified COMPOSITION named
-// and given a home, so it is a contract T-23 is accountable to — not an
-// accident waiting to be true. Honest status: this is the DESIGN; the
-// surface is realized only when T-23 composes T-21 + B2-OMNI + C5/C4
-// (all scaffold today — nothing runs yet).
-//
-// Consumes:
-//   - std/node.dag (incl. the D1 Path/Edit/Diff types),
-//     std/witness.dag, std/diagnostic.dag, std/report.dag
-//   - lens/*.dag: the lenses being applied (complexity/cost/synthesis/...)
-//
-// Status: scaffold — fill per TASKS.md T-23
-// Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
+// Status: T-23 filled — carriers + apply_lens + D1 ops (see header for immutable I/O contract).
+// P2 boundary: THIS module is the single authority for section-scoped `Lens<Output>.read`,
+// `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
+// `v4.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
+// `CompileLensMode`, `apply_compile_lens` over `InferredTree`); adapter wiring is follow-on.
 // See (T-23-PIN).
 
 module v4.lens.application
 
+import v4.std.algebra { Cons, is_empty, fold_list }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  non_empty_diagnostics_append,
+  outcome_accepted,
+  outcome_rejected
+}
+import v4.std.node {
+  Conj,
+  Diff,
+  Edge,
+  Edit,
+  Named,
+  Node,
+  NodeKind,
+  Path,
+  Positional,
+  Symbol,
+  TypeNode,
+  name_occurrences
+}
+import v4.std.report { Report, report_reason_to_diagnostic_reason }
+
+// Mechanical port (interface-freeze pin §4): opaque until shared substrate graduates.
+type DeclarationId
+type NodeId
+
+// 🟢 TERMINAL — disjoint sum over section shapes (design-lens-application-surface §1.2).
+type SectionRef
+  = DeclarationScope { declaration: DeclarationId }
+  | NodeScope { declaration: DeclarationId, node: NodeId }
+
+// 🟢 TERMINAL — C-8 fail-closed: only Error is admitted steady state (design §3 nominal).
+// v4 substrate: unit variant (v3 `Error` tag is not a v4 type name).
+type DiagnosticSeverity
+  = SeverityError {}
+
+// 🟢 TERMINAL — per-lens enforcement projection + violation relation.
+type LensEnforcement<Output, Budget, Projected> {
+  project: fn(Output) -> Projected
+  violates: fn(Projected, Budget) -> Bool
+}
+
+// 🟢 TERMINAL — bundled lens + canonical enforcement (P2 single authority).
+type EnforceableLens<Output, Budget, Projected> {
+  lens: Lens<Output>
+  enforcement: LensEnforcement<Output, Budget, Projected>
+}
+
+// 🟢 grounded — application-surface lens read (fail-closed at read boundary).
+type Lens<Output> {
+  read: fn(Node) -> Outcome<Output>
+}
+
+// 🟢 grounded — advisory lens read (Report carrier; never Witness).
+// Materialized as List<Report> (v4 Set<T> = PointwisePower membership predicate).
+type AdvisoryLens {
+  read: fn(Node) -> List<Report>
+}
+
+// 🟢 coproduct dissolution — enforce vs introspect application mode (single authority).
+type LensApplicationConfig<Output, Budget, Projected>
+  = LensIntrospect
+  | LensEnforce {
+      budget: Budget
+      diagnostic_severity: DiagnosticSeverity
+    }
+
+data path_unresolvable_reason: Symbol = path_unresolvable_reason
+data path_ambiguous_reason: Symbol = path_ambiguous_reason
+data lens_enforcement_violation_reason: Symbol = lens_enforcement_violation_reason
+data advisory_reports_empty_reason: Symbol = advisory_reports_empty_reason
+
+fn path_unresolvable_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: path_unresolvable_reason,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: path_ambiguous_reason,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn lens_enforcement_violation_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: lens_enforcement_violation_reason,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn advisory_report_diagnostic(report: Report) -> Diagnostic {
+  Diagnostic {
+    reason: report_reason_to_diagnostic_reason(reason: report.reason),
+    at: report.at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// 🟢 grounded — D1 path step via std.node `name_occurrences` uniqueness gate (Practice 10:
+// canonical substrate accessor; no parallel EdgeLabel walker).
+fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
+  if name_occurrences(name: name, children: root.children) == 0 {
+    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+  } else if name_occurrences(name: name, children: root.children) == 1 {
+    fold(
+      root.children,
+      init: outcome_rejected(d: path_unresolvable_diagnostic(at: root)),
+      f: fn(acc, e) {
+        match acc {
+          Rejected { diagnostics: _ } =>
+            match e.label {
+              Named { name: edge_name } =>
+                if edge_name == name {
+                  outcome_accepted(value: e.target)
+                } else {
+                  acc
+                }
+              Positional => acc
+            }
+          Accepted { value: _, diagnostics: _ } => acc
+        }
+      }
+    )
+  } else {
+    outcome_rejected(d: path_ambiguous_diagnostic(at: root))
+  }
+}
+
+fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
+  fold_list(
+    xs: steps,
+    empty: outcome_accepted(value: root),
+    cons: fn(acc, step) {
+      bind_outcome(
+        o: acc,
+        f: fn(current) {
+          find_child_by_name(root: current, name: step)
+        }
+      )
+    }
+  )
+}
+
+// Result<Node, Diagnostic> ≡ Outcome<Node> per DECISIONS item I / std/diagnostic.dag.
+fn subterm_at(root: Node, p: Path) -> Outcome<Node> {
+  subterm_at_steps(root: root, steps: p.steps)
+}
+
+fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
+  Edge { label: e.label, target: replacement }
+}
+
+type PathSplit {
+  init: List<Symbol>
+  last: Symbol
+  first: Bool
+}
+
+fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
+  if is_empty(xs: steps) {
+    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+  } else {
+    outcome_accepted(value: fold_list(
+      xs: steps,
+      empty: PathSplit { init: [], last: path_unresolvable_reason, first: true },
+      cons: fn(split, step) {
+        match split.first {
+          true => PathSplit { init: [], last: step, first: false }
+          false => PathSplit {
+            init: list_push(split.init, split.last),
+            last: step,
+            first: false
+          }
+        }
+      }
+    ))
+  }
+}
+
+// 🟢 grounded — D1 child replacement when `name_occurrences` proves exactly one named edge.
+fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Node> {
+  if name_occurrences(name: name, children: root.children) == 0 {
+    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+  } else if name_occurrences(name: name, children: root.children) == 1 {
+    bind_outcome(
+      o: fold_list(
+        xs: root.children,
+        empty: outcome_accepted(value: []),
+        cons: fn(acc_outcome, edge) {
+          bind_outcome(
+            o: acc_outcome,
+            f: fn(current_acc) {
+              match edge.label {
+                Named { name: edge_name } =>
+                  let next_edge = match edge_name == name {
+                    true => replace_edge_target(e: edge, replacement: child)
+                    false => edge
+                  }
+                  outcome_accepted(value: list_push(current_acc, next_edge))
+                Positional => outcome_accepted(value: list_push(current_acc, edge))
+              }
+            }
+          )
+        }
+      ),
+      f: fn(new_children) {
+        outcome_accepted(value: Node { kind: root.kind, children: new_children })
+      }
+    )
+  } else {
+    outcome_rejected(d: path_ambiguous_diagnostic(at: root))
+  }
+}
+
+type AncestorFrame {
+  ancestor: Node
+  step: Symbol
+}
+
+type AncestorWalk {
+  current: Node
+  frames: List<AncestorFrame>
+}
+
+fn collect_ancestor_frames(root: Node, steps: List<Symbol>) -> Outcome<AncestorWalk> {
+  fold_list(
+    xs: steps,
+    empty: outcome_accepted(value: AncestorWalk { current: root, frames: [] }),
+    cons: fn(walk_outcome, step) {
+      bind_outcome(
+        o: walk_outcome,
+        f: fn(walk) {
+          bind_outcome(
+            o: find_child_by_name(root: walk.current, name: step),
+            f: fn(child) {
+              outcome_accepted(value: AncestorWalk {
+                current: child,
+                frames: Cons {
+                  head: AncestorFrame { ancestor: walk.current, step: step },
+                  tail: walk.frames
+                }
+              })
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn thread_up_with_ancestor_frame(acc_outcome: Outcome<Node>, frame: AncestorFrame) -> Outcome<Node> {
+  bind_outcome(
+    o: acc_outcome,
+    f: fn(child) {
+      rebuild_node_with_child(
+        root: frame.ancestor,
+        name: frame.step,
+        child: child
+      )
+    }
+  )
+}
+
+fn thread_substitution_up(frames: List<AncestorFrame>, rebuilt_child: Node) -> Outcome<Node> {
+  fold_list(
+    xs: frames,
+    empty: outcome_accepted(value: rebuilt_child),
+    cons: thread_up_with_ancestor_frame
+  )
+}
+
+fn substitute_at(root: Node, path: Path, replacement: Node) -> Outcome<Node> {
+  if is_empty(xs: path.steps) {
+    outcome_accepted(value: replacement)
+  } else {
+    bind_outcome(
+      o: split_path_steps(root: root, steps: path.steps),
+      f: fn(split) {
+        bind_outcome(
+          o: collect_ancestor_frames(root: root, steps: split.init),
+          f: fn(walk) {
+            bind_outcome(
+              o: rebuild_node_with_child(
+                root: walk.current,
+                name: split.last,
+                child: replacement
+              ),
+              f: fn(rebuilt_leaf) {
+                thread_substitution_up(frames: walk.frames, rebuilt_child: rebuilt_leaf)
+              }
+            )
+          }
+        )
+      }
+    )
+  }
+}
+
+fn apply_edit(root: Node, edit: Edit) -> Outcome<Node> {
+  substitute_at(root: root, path: edit.at, replacement: edit.replacement)
+}
+
+fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
+  fold_list(
+    xs: edits,
+    empty: outcome_accepted(value: root),
+    cons: fn(acc, edit) {
+      bind_outcome(
+        o: acc,
+        f: fn(candidate) {
+          apply_edit(root: candidate, edit: edit)
+        }
+      )
+    }
+  )
+}
+
+// All-or-nothing sequential rewrite program (P2 finding 2 / PR #3162).
+fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
+  apply_diff_edits(root: root, edits: d.edits)
+}
+
+// 🟡 gated — feature:section-ref-to-subject-projection — bind: TASKS.md T-23 follow-on wire —
+// dissolve-on-arrival: resolve `DeclarationScope` / `NodeScope` to the bounded sub-`Node` the
+// lens reads (declaration body sub-DAG or expression subtree); forbidden: decorative `SectionRef`
+// parameters with whole-graph `read(root)` while claiming section-scoped application.
+fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
+  match section {
+    DeclarationScope { declaration: _ } => outcome_accepted(value: root)
+    NodeScope { declaration: _, node: _ } => outcome_accepted(value: root)
+  }
+}
+
+// Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
+fn apply_lens<Output>(
+  lens: Lens<Output>,
+  section: SectionRef,
+  root: Node
+) -> Outcome<Output> {
+  bind_outcome(
+    o: section_subject(root: root, section: section),
+    f: fn(subject) {
+      lens.read(root: subject)
+    }
+  )
+}
+
+// Enforce substrate entry — EnforceableLens + declared budget (design §2 EnforcedApplication).
+fn apply_lens_enforce<Output, Budget, Projected>(
+  enforceable: EnforceableLens<Output, Budget, Projected>,
+  section: SectionRef,
+  root: Node,
+  budget: Budget,
+  diagnostic_severity: DiagnosticSeverity
+) -> Outcome<Output> {
+  bind_outcome(
+    o: section_subject(root: root, section: section),
+    f: fn(subject) {
+      bind_outcome(
+        o: enforceable.lens.read(root: subject),
+        f: fn(lens_output) {
+          let projected = enforceable.enforcement.project(output: lens_output)
+          if enforceable.enforcement.violates(projected: projected, declared: budget) {
+            outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
+          } else {
+            outcome_accepted(value: lens_output)
+          }
+        }
+      )
+    }
+  )
+}
+
+type ReportDiagnosticsFold {
+  started: Bool
+  acc: NonEmptyDiagnostics
+}
+
+fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: advisory_reports_empty_reason,
+    at: node_locus(node: at),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn reports_to_non_empty_diagnostics(
+  reports: List<Report>,
+  at: Node
+) -> Outcome<NonEmptyDiagnostics> {
+  if is_empty(xs: reports) {
+    outcome_rejected(d: advisory_reports_empty_diagnostic(at: at))
+  } else {
+    outcome_accepted(value: fold_list(
+      xs: reports,
+      empty: ReportDiagnosticsFold {
+        started: false,
+        acc: diagnostics_singleton(d: advisory_reports_empty_diagnostic(at: at))
+      },
+      cons: fn(state, report) {
+        match state.started {
+          false => ReportDiagnosticsFold {
+            started: true,
+            acc: diagnostics_singleton(d: advisory_report_diagnostic(report: report))
+          }
+          true => ReportDiagnosticsFold {
+            started: true,
+            acc: non_empty_diagnostics_append(
+              a: state.acc,
+              b: diagnostics_singleton(d: advisory_report_diagnostic(report: report))
+            )
+          }
+        }
+      }
+    ).acc)
+  }
+}
+
+// THE single advisory→fail-closed bridge: non-empty advisory reports ⇒ Rejected diagnostics.
+fn apply_advisory_lens(
+  lens: AdvisoryLens,
+  section: SectionRef,
+  root: Node,
+  config: LensApplicationConfig<Report, Report, Report>
+) -> Outcome<List<Report>> {
+  bind_outcome(
+    o: section_subject(root: root, section: section),
+    f: fn(subject) {
+      let reports = lens.read(root: subject)
+      match config {
+        LensIntrospect => outcome_accepted(value: reports)
+        LensEnforce { budget: _, diagnostic_severity: _ } =>
+          if is_empty(xs: reports) {
+            outcome_accepted(value: reports)
+          } else {
+            bind_outcome(
+              o: reports_to_non_empty_diagnostics(reports: reports, at: subject),
+              f: fn(diagnostics) {
+                Rejected { diagnostics: diagnostics }
+              }
+            )
+          }
+      }
+    }
+  )
+}

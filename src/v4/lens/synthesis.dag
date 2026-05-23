@@ -15,14 +15,11 @@
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
 //
 // Owns:
-//   - lens read: (Node, LowerBoundTechnique) -> Set<Report>  (advisory carrier,
-//     NEVER Witness — Witness is strictly fail-closed per INVARIANTS P3/C-8;
-//     advisory Report must not overload it. Empty set = no advice; non-empty =
+//   - lens read: Node -> Set<Report>  (advisory carrier, NEVER Witness —
+//     Witness is strictly fail-closed per INVARIANTS P3/C-8; advisory
+//     Report must not overload it. Empty set = no advice; non-empty =
 //     advisory observations, never blocking unless user opts in via
-//     apply_lens(synthesis, Enforce { ... })).
-//     The caller DECLARES which technique applies to the node's I/O relation
-//     class; synthesis_lens does NOT infer it from Node structure
-//     (DECLARED, never inferred per T-17 + Rice-undecidability dissolution).
+//     apply_lens(synthesis, Enforce { ... }))
 //   - the user's DECLARED I/O relation (the function's contract/type —
 //     DECLARED, never inferred). There is NO program-to-program
 //     equivalence: general I/O equivalence is Rice-undecidable, and
@@ -54,225 +51,15 @@
 //   - std/report.dag (advisory carrier)
 //   - lens/complexity.dag (current-complexity input for cross-algorithm comparison)
 //
-// Status: T-17 filled.
+// Status: scaffold — fill per TASKS.md T-17
+// Brief: see BRIEF_TEMPLATE.md. C2 reframe (operator-ratified 2026-05-15)
+// COLLAPSES the prior research-tier risk: no undecidable equivalence
+// engine, no unbounded rule library. Risk is now bounded to encoding the
+// CLOSED LowerBoundTechnique set (≈5, fundamental) + authoring a few
+// honest worked examples (sort: decision-tree; matmul: algebraic-rank;
+// string-match: information-theoretic — see TASKS.md T-17). STOP-and-
+// escalate still applies if a relation class needs a 6th technique
+// (substrate extension = stop signal).
 
 module v4.lens.synthesis
-
-
-import v4.lens.complexity {
-  ComplexityBound,
-  SizedLinearClass,
-  SizedLinearithmicClass,
-  complexity_lens,
-  complexity_bound_class,
-  single_complexity_variable,
-  sized_complexity
-}
-import v4.lens.cost {
-  ClassLinear,
-  ClassLinearithmic,
-  SizeVariable,
-  asymptotic_class_dominates
-}
-import v4.std.algebra { Cons, Empty }
-import v4.std.collection { List }
-import v4.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Locus,
-  Unavailable,
-  node_locus
-}
-import v4.std.node { Node, Symbol }
-import v4.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
-import v4.std.witness { Holds, Violates }
-
-
-data synthesis_no_technique_reason_symbol: Symbol = synthesis_no_technique_reason_symbol
-
-
-// 🟢 coproduct — closed set. STOP-and-escalate if a 6th variant is needed.
-type LowerBoundTechnique
-  = DecisionTree
-  | AlgebraicRank
-  | AdversaryCommunication
-  | InformationTheoretic
-  | ReductionConditional
-
-// 🟢 product — declared relation class + applicable technique.
-type DeclaredRelationBound {
-  technique: LowerBoundTechnique
-  lower_bound: ComplexityBound
-  relation_locus: Locus
-}
-
-// 🟢 coproduct — outcome of one synthesis probe.
-type SynthesisOutcome
-  = SynthesisGap {
-      realization_cost: ComplexityBound
-      lower_bound: DeclaredRelationBound
-      report: Report
-    }
-  | SynthesisOptimal {
-      realization_cost: ComplexityBound
-      lower_bound: DeclaredRelationBound
-    }
-  | SynthesisNoTechnique {
-      diagnostic: Diagnostic
-    }
-
-
-fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: synthesis_no_technique_reason_symbol,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
-}
-
-fn decision_tree_declared_bound(n: Node) -> DeclaredRelationBound {
-  DeclaredRelationBound {
-    technique: DecisionTree,
-    lower_bound: sized_complexity(
-      class: SizedLinearithmicClass,
-      variables: single_complexity_variable(size_var: SizeVariable { source: n })
-    ),
-    relation_locus: node_locus(node: n)
-  }
-}
-
-fn information_theoretic_declared_bound(n: Node) -> DeclaredRelationBound {
-  DeclaredRelationBound {
-    technique: InformationTheoretic,
-    lower_bound: sized_complexity(
-      class: SizedLinearClass,
-      variables: single_complexity_variable(size_var: SizeVariable { source: n })
-    ),
-    relation_locus: node_locus(node: n)
-  }
-}
-
-// DecisionTree: realization > Θ(n log n) → gap (asymptotic_class_dominates is strict for ClassLinearithmic).
-fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
-  if asymptotic_class_dominates(
-    a: complexity_bound_class(b: realization),
-    b: ClassLinearithmic
-  ) {
-    SynthesisGap {
-      realization_cost: realization,
-      lower_bound: decision_tree_declared_bound(n: n),
-      report: Report {
-        reason: SynthesisGapDecisionTree,
-        at: node_locus(node: n)
-      }
-    }
-  } else {
-    SynthesisOptimal {
-      realization_cost: realization,
-      lower_bound: decision_tree_declared_bound(n: n)
-    }
-  }
-}
-
-// InformationTheoretic: realization strictly > Ω(n) → gap.
-// Double-dominance: outer gate tests dominates(realization, ClassLinear) — true iff ≥ linear
-// (reflexive for ClassLinear); inner tests dominates(ClassLinear, realization) — true iff equal,
-// false iff strictly greater → gap. Avoids == in if-conditions: parser greedily parses
-// ClassLinear{...} as a struct literal when == appears, eating the if-body and leaving else dangling.
-// complexity_bound_class called twice (pure function; let-binding before if-else is also
-// rejected by the resolve-posture gate strict mode).
-fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
-  if asymptotic_class_dominates(
-    a: complexity_bound_class(b: realization),
-    b: ClassLinear
-  ) {
-    if asymptotic_class_dominates(
-      a: ClassLinear,
-      b: complexity_bound_class(b: realization)
-    ) {
-      SynthesisOptimal {
-        realization_cost: realization,
-        lower_bound: information_theoretic_declared_bound(n: n)
-      }
-    } else {
-      SynthesisGap {
-        realization_cost: realization,
-        lower_bound: information_theoretic_declared_bound(n: n),
-        report: Report {
-          reason: SynthesisGapInformationTheoretic,
-          at: node_locus(node: n)
-        }
-      }
-    }
-  } else {
-    // Realization is sub-linear: InformationTheoretic has no lower-bound comparison for this class.
-    SynthesisNoTechnique {
-      diagnostic: synthesis_no_technique_diagnostic(n: n)
-    }
-  }
-}
-
-fn outcome_to_reports(outcome: SynthesisOutcome) -> List<Report> {
-  match outcome {
-    SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
-      Cons { head: r, tail: Empty }
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
-    SynthesisNoTechnique { diagnostic: _ } => Empty
-  }
-}
-
-fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
-  match outcome {
-    SynthesisGap { realization_cost: _, lower_bound: _, report: _ } => Empty
-    SynthesisOptimal { realization_cost: _, lower_bound: _ } => Empty
-    SynthesisNoTechnique { diagnostic: d } => Cons { head: d, tail: Empty }
-  }
-}
-
-// Caller DECLARES declared_technique — the technique the caller's I/O relation class
-// is subject to. Probes only run for the declared technique; no unconditional sweep.
-// AlgebraicRank / AdversaryCommunication / ReductionConditional → SynthesisNoTechnique with
-// honest diagnostic. Terminal: no worked example is planned here; these techniques route through
-// the diagnostic channel by design. Adding a 4th worked-example technique requires a new
-// LowerBoundTechnique variant, which is STOP-and-escalate-gated (see 🟢 mark above).
-fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Report> {
-  match complexity_lens(n: n) {
-    Violates { diagnostic: _ } => Empty
-    Holds { value: realization } =>
-      match declared_technique {
-        DecisionTree =>
-          outcome_to_reports(outcome: assess_decision_tree(n: n, realization: realization))
-        AlgebraicRank =>
-          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        AdversaryCommunication =>
-          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        InformationTheoretic =>
-          outcome_to_reports(outcome: assess_information_theoretic(n: n, realization: realization))
-        ReductionConditional =>
-          outcome_to_reports(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-      }
-  }
-}
-
-// Companion: surfaces diagnostics for the declared technique — both upstream complexity
-// failures and SynthesisNoTechnique cases. Complexity Violates propagates here so callers
-// do not need to call complexity_lens separately to detect upstream failure.
-fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<Diagnostic> {
-  match complexity_lens(n: n) {
-    Violates { diagnostic: d } => Cons { head: d, tail: Empty }
-    Holds { value: realization } =>
-      match declared_technique {
-        DecisionTree =>
-          outcome_to_diagnostics(outcome: assess_decision_tree(n: n, realization: realization))
-        AlgebraicRank =>
-          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        AdversaryCommunication =>
-          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-        InformationTheoretic =>
-          outcome_to_diagnostics(outcome: assess_information_theoretic(n: n, realization: realization))
-        ReductionConditional =>
-          outcome_to_diagnostics(outcome: SynthesisNoTechnique { diagnostic: synthesis_no_technique_diagnostic(n: n) })
-      }
-  }
-}
 

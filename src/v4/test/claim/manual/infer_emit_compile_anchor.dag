@@ -11,7 +11,6 @@ module v4.test.claim.manual.infer_emit_compile_anchor
 
 import v4.compiler.compile { Source, compile_ingest_staging }
 import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
-import v4.compiler.tokenize { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   AlgebraRef,
@@ -20,7 +19,7 @@ import v4.compiler.infer {
   infer
 }
 import v4.std.algebra { Empty }
-import v4.std.collection { Map, empty_map }
+import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -47,8 +46,6 @@ data anchor_stub_empty_conj: Node = Node {
 
 data anchor_stub_target_model: TargetModel = TargetModel {
   bundle: anchor_stub_empty_conj,
-  lex: VoidLexRules,
-  binding_spellings: empty_map(),
   authority_source_text: Empty
 }
 data anchor_stub_input_lang: LanguageModel = anchor_stub_empty_conj

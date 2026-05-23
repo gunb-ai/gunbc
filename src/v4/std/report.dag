@@ -1,15 +1,14 @@
 // src/v4/std/report.dag
 // Scope: advisory report carrier.
 // Anchor: docs/r4-carve-out-routing.md C7.
-// Owns: Report, ReportReason.
-// Consumes: std diagnostic.
-// Status: T-17 filled.
+// Owns: Report, ReportReason, ReportSuggestion.
+// Consumes: std diagnostic, std node.
+// Status: T-17 closed ReportReason; T-23 adds ReportSuggestion + diagnostic seam.
 
 module v4.std.report
 
-
 import v4.std.diagnostic { Locus }
-
+import v4.std.node { Symbol }
 
 // 🟢 coproduct — closed set; disjoint from Diagnostic.reason (Symbol) per T-17 brief (TASKS.md:800).
 // STOP-and-escalate before adding a variant for a new advisory lens.
@@ -17,8 +16,25 @@ type ReportReason
   = SynthesisGapDecisionTree
   | SynthesisGapInformationTheoretic
 
+data synthesis_gap_decision_tree_reason: Symbol = synthesis_gap_decision_tree_reason
+data synthesis_gap_information_theoretic_reason: Symbol = synthesis_gap_information_theoretic_reason
+
+// 🟢 grounded — sole advisory→fail-closed reason projection (application.dag bridge).
+fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
+  match reason {
+    SynthesisGapDecisionTree => synthesis_gap_decision_tree_reason
+    SynthesisGapInformationTheoretic => synthesis_gap_information_theoretic_reason
+  }
+}
+
 // 🟢 grounded — advisory carrier; never Witness (INVARIANTS P3/C-8).
 type Report {
   reason: ReportReason
   at: Locus
+}
+
+// 🟢 grounded — optional human-facing detail without overloading Report.
+type ReportSuggestion {
+  report: Report
+  detail: Symbol
 }

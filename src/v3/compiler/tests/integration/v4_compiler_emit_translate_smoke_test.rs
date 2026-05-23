@@ -14,11 +14,8 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
 //! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
-//! `v4_rust_language_model_declares_t11_translation_rules`,
-//! `v4_java_language_model_declares_t11_translation_rules`,
-//! `v4_typescript_language_model_declares_t11_translation_rules`,
-//! `v4_swift_language_model_declares_t11_translation_rules`, and
-//! `v4_wasm_language_model_declares_t11_translation_rules` in INVARIANTS.md.
+//! `v4_rust_language_model_declares_t11_translation_rules` and
+//! `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag`) in INVARIANTS.md.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -38,13 +35,6 @@ const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/r
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
 const JAVA_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/java.dag");
 const JAVA_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/java.dag";
-const TYPESCRIPT_LANGUAGE_DAG: &str =
-    include_str!("../../../../v4/extdeps/languages/typescript.dag");
-const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
-const SWIFT_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/swift.dag");
-const SWIFT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/swift.dag";
-const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/wasm.dag");
-const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const MVP1_CLAIM_DAG: &str =
@@ -289,69 +279,6 @@ fn v4_java_language_model_declares_t11_translation_rules() {
     assert!(
         surface_declares_fn(&module, "java_mvp1_translation_rules_node"),
         "{JAVA_LANGUAGE_PATH}: must project MVP-1 Java translation rules into the target model"
-    );
-}
-
-#[test]
-fn v4_typescript_language_model_declares_t11_translation_rules() {
-    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
-    assert!(
-        import_includes_name(
-            &module,
-            &["v4", "std", "target_model"],
-            "target_model_edge_translation_rules"
-        ),
-        "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
-    );
-    assert!(
-        surface_declares_type(&module, "TsGrammarRelationRow"),
-        "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
-    );
-    assert!(
-        surface_declares_fn(&module, "ts_mvp1_translation_rules_node"),
-        "{TYPESCRIPT_LANGUAGE_PATH}: must project MVP-1 TypeScript translation rules into the target model"
-    );
-}
-
-#[test]
-fn v4_swift_language_model_declares_t11_translation_rules() {
-    let module = parse_module(SWIFT_LANGUAGE_DAG, SWIFT_LANGUAGE_PATH);
-    assert!(
-        import_includes_name(
-            &module,
-            &["v4", "std", "target_model"],
-            "target_model_edge_translation_rules"
-        ),
-        "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
-    );
-    assert!(
-        surface_declares_type(&module, "SwiftGrammarRelationRow"),
-        "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
-    );
-    assert!(
-        surface_declares_fn(&module, "swift_mvp1_translation_rules_node"),
-        "{SWIFT_LANGUAGE_PATH}: must project MVP-1 Swift translation rules into the target model"
-    );
-}
-
-#[test]
-fn v4_wasm_language_model_declares_t11_translation_rules() {
-    let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
-    assert!(
-        import_includes_name(
-            &module,
-            &["v4", "std", "target_model"],
-            "target_model_edge_translation_rules"
-        ),
-        "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
-    );
-    assert!(
-        surface_declares_type(&module, "WasmGrammarRelationRow"),
-        "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"
-    );
-    assert!(
-        surface_declares_fn(&module, "wasm_mvp1_translation_rules_node"),
-        "{WASM_LANGUAGE_PATH}: must project MVP-1 Wasm translation rules into the target model"
     );
 }
 

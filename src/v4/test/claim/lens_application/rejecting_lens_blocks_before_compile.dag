@@ -8,7 +8,7 @@ module v4.test.claim.lens_application.rejecting_lens_blocks_before_compile
 
 import v4.compiler.compile {
   CompileOutput,
-  Lens,
+  CompileLens,
   TranslateTo,
   Validated,
   compile_lens_gate_rejected,
@@ -17,11 +17,9 @@ import v4.compiler.compile {
 }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.target_carriers { TargetModel }
-import v4.compiler.tokenize { VoidLexRules }
 import v4.std.diagnostic { Accepted, Outcome, PortLocus, Rejected, outcome_rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }
-import v4.std.collection { empty_map }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
@@ -48,8 +46,6 @@ data rejecting_lens_target_model_stub: TargetModel = TargetModel {
     kind: TypeNode { connective: Conj },
     children: []
   },
-  lex: VoidLexRules,
-  binding_spellings: empty_map(),
   authority_source_text: Empty
 }
 
@@ -64,7 +60,7 @@ fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data rejecting_lens: Lens = Lens {
+data rejecting_lens: CompileLens = CompileLens {
   gate: rejecting_lens_gate
 }
 

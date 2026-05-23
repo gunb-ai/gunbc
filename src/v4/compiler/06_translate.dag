@@ -3,16 +3,15 @@
 // Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
 //       target_model_edge_declared_inhabitants, target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
 //       target_selection_priority_from_model, coercion_candidates_from_target_model,
-//       target_serialize_source_from_model, grammar_relation_row_for_emitted, token_sequence_to_source,
-//       token_spelling_from_model, lex_rules_literal_for_class, lex_rule_literal_step, node_atom_identity,
+//       target_serialize_source_from_model, grammar_relation_row_for_emitted,
 //       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
 //       translate_fold_step, translate_node, translate.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
 //           std/target_model.dag.
-// Status: W-T-11 — grammar-inverse lex walk in target_serialize_source_from_model;
-// live translate_node/coerce_grounded_node + child reattachment zip-fold;
-// authority_source_text retained on TargetModel as self-host anchor only.
+// Status: W-T-10 MVP-1 — live translate_node/coerce_grounded_node + child reattachment zip-fold;
+// grammar-inverse validation (row match + per-token Node equality) then TargetModelBundle.authority_source_text;
+// per-token lex emit deferred T-11.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -47,7 +46,6 @@ import v4.std.diagnostic {
   rejected_with_pending
 }
 import v4.std.node {
-  Atom,
   Conj,
   Edge,
   Named,
@@ -59,18 +57,7 @@ import v4.std.node {
   fold_node,
   well_formed
 }
-import v4.compiler.tokenize {
-  LexRules,
-  LexRule,
-  LexPattern,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule,
-  VoidLexRules
-}
 import v4.std.target_model {
-  concrete_syntax_token_field_binding,
-  concrete_syntax_token_field_class,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
@@ -78,9 +65,9 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
 }
-import v4.std.collection { List, Map, empty_map, list_append, list_snoc_item }
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
-import v4.std.text { String }
+import v4.std.collection { List, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
+import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution — T-10 target-bundle named-edge lookup fold state (P3 fail-closed terminal).
 type TargetBundleChildLookup
@@ -94,8 +81,6 @@ data translate_grammar_inverse_not_realized: Symbol = translate_grammar_inverse_
 data translate_grammar_relation_row_not_found: Symbol = translate_grammar_relation_row_not_found
 data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
 data translate_conj_named_child_missing: Symbol = translate_conj_named_child_missing
-data translate_lex_rule_literal_not_found: Symbol = translate_lex_rule_literal_not_found
-data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_not_found
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
@@ -327,142 +312,6 @@ fn grammar_inverse_source_validated(
     }
   )
 }
-fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: translate_lex_rule_literal_not_found,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Atom { identity: token_class } },
-      children: []
-    }),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-fn translate_binding_spelling_not_found_diagnostic(binding: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: translate_binding_spelling_not_found,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Atom { identity: binding } },
-      children: []
-    }),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-fn node_atom_identity(node: Node) -> Outcome<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      Accepted { value: id, diagnostics: None }
-    _ =>
-      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
-  }
-}
-fn lex_rule_literal_step(
-  acc: Outcome<String>,
-  rule: LexRule,
-  token_class: Symbol
-) -> Outcome<String> {
-  match acc {
-    Accepted { value: _, diagnostics: _ } => acc
-    Rejected { diagnostics: _ } =>
-      match rule {
-        TokenRule { token_class: c, pattern: pattern } =>
-          if c == token_class {
-            match pattern {
-              LiteralPattern { text: text } =>
-                Accepted { value: text, diagnostics: None }
-              _ =>
-                Rejected {
-                  diagnostics: diagnostics_singleton(
-                    d: translate_lex_rule_literal_not_found_diagnostic(
-                      token_class: token_class
-                    )
-                  )
-                }
-            }
-          } else {
-            acc
-          }
-      }
-  }
-}
-fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<String> {
-  match rules {
-    VoidLexRules =>
-      outcome_rejected(
-        translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-      )
-    ModeledLexRules { root: set } =>
-      fold_list(
-        xs: set.rules,
-        empty: Rejected {
-          diagnostics: diagnostics_singleton(
-            d: translate_lex_rule_literal_not_found_diagnostic(token_class: token_class)
-          )
-        },
-        cons: fn(acc, rule) {
-          lex_rule_literal_step(acc: acc, rule: rule, token_class: token_class)
-        }
-      )
-  }
-}
-fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
-  bind_outcome(
-    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
-    f: fn(class_node) {
-      bind_outcome(
-        o: node_atom_identity(node: class_node),
-        f: fn(token_class) {
-          match conj_named_child(parent: token, edge_name: concrete_syntax_token_field_binding) {
-            Accepted { value: binding_node, diagnostics: _ } =>
-              bind_outcome(
-                o: node_atom_identity(node: binding_node),
-                f: fn(binding) {
-                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
-                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
-                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
-                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
-                  match map_get(target.binding_spellings, binding) {
-                    Some { value: spelling } =>
-                      Accepted { value: spelling, diagnostics: None }
-                    None =>
-                      Rejected {
-                        diagnostics: diagnostics_singleton(
-                          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                        )
-                      }
-                  }
-                }
-              )
-            Rejected { diagnostics: _ } =>
-              lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-          }
-        }
-      )
-    }
-  )
-}
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
-  fold_list(
-    xs: tokens,
-    empty: Accepted { value: Empty, diagnostics: None },
-    cons: fn(acc, token_node) {
-      match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: partial, diagnostics: ad } =>
-          match token_spelling_from_model(target: target, token: token_node) {
-            Accepted { value: spelling, diagnostics: td } =>
-              Accepted {
-                value: list_append(left: partial, right: spelling),
-                diagnostics: diagnostics_merge(outer: ad, inner: td)
-              }
-            Rejected { diagnostics: r } =>
-              Rejected {
-                diagnostics: rejected_with_pending(pending: ad, rejected: r)
-              }
-          }
-      }
-    }
-  )
-}
 fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
@@ -470,25 +319,10 @@ fn target_serialize_source_from_model(
   bind_outcome(
     o: grammar_inverse_source_validated(target: target, emitted: emitted),
     f: fn(_) {
-      bind_outcome(
-        o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
-        f: fn(rules) {
-          bind_outcome(
-            o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
-            f: fn(row) {
-              bind_outcome(
-                o: grammar_relation_row_tokens_root(row: row),
-                f: fn(tokens_root) {
-                  token_sequence_to_source(
-                    tokens: conj_positional_targets(parent: tokens_root),
-                    target: target
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
+      Accepted {
+        value: target.authority_source_text,
+        diagnostics: None
+      }
     }
   )
 }
