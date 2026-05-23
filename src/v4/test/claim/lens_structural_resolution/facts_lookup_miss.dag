@@ -42,7 +42,6 @@ data sr_lookup_use_symbol: Symbol = sr_lookup_use_symbol
 data sr_lookup_decl_symbol: Symbol = sr_lookup_decl_symbol
 data sr_lookup_type_symbol: Symbol = sr_lookup_type_symbol
 data sr_lookup_algebra_symbol: Symbol = sr_lookup_algebra_symbol
-data sr_lookup_algebra_witness_symbol: Symbol = sr_lookup_algebra_witness_symbol
 data sr_lookup_descent_symbol: Symbol = sr_lookup_descent_symbol
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
 
@@ -83,22 +82,15 @@ fn sr_lookup_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 }
 
 fn sr_lookup_resolved_facts() -> InferredFacts {
-  let resolved = sr_lookup_claim_atom(s: sr_lookup_type_symbol)
-  InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef {
-      algebra: sr_lookup_claim_atom(s: sr_lookup_algebra_symbol),
-      witness: sr_lookup_claim_atom(s: sr_lookup_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: sr_lookup_descent_symbol }
-      }
-    },
-    canonical: sr_lookup_canonical_witness(resolved: resolved)
-  }
+  claim_inferred_facts(
+    type_symbol: sr_lookup_type_symbol,
+    algebra_symbol: sr_lookup_algebra_symbol,
+    descent_symbol: sr_lookup_descent_symbol,
+    canonical_structural_symbol: constraint_property_being_canonical,
+    canonical_closedness_symbol: constraint_property_candidate_set_closedness
+  )
 }
+
 
 fn sr_lookup_usage_site_witness() -> Witness<InferredFacts> {
   Violates {

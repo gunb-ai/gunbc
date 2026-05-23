@@ -33,11 +33,9 @@ data idempotency_child_symbol: Symbol = idempotency_child_symbol
 data idempotency_edge_symbol: Symbol = idempotency_edge_symbol
 data idempotency_type_symbol: Symbol = idempotency_type_symbol
 data idempotency_algebra_symbol: Symbol = idempotency_algebra_symbol
-data idempotency_algebra_witness_symbol: Symbol = idempotency_algebra_witness_symbol
 data idempotency_descent_symbol: Symbol = idempotency_descent_symbol
 data idempotency_canonical_structural_symbol: Symbol = idempotency_canonical_structural_symbol
 data idempotency_canonical_closedness_symbol: Symbol = idempotency_canonical_closedness_symbol
-data idempotency_canonical_evidence_symbol: Symbol = idempotency_canonical_evidence_symbol
 
 data idempotency_child: Node = claim_atom_node(s: idempotency_child_symbol)
 
@@ -59,11 +57,9 @@ fn idempotency_claim_facts() -> InferredFacts {
   claim_inferred_facts(
     type_symbol: idempotency_type_symbol,
     algebra_symbol: idempotency_algebra_symbol,
-    algebra_witness_symbol: idempotency_algebra_witness_symbol,
     descent_symbol: idempotency_descent_symbol,
     canonical_structural_symbol: idempotency_canonical_structural_symbol,
-    canonical_closedness_symbol: idempotency_canonical_closedness_symbol,
-    canonical_evidence_symbol: idempotency_canonical_evidence_symbol
+    canonical_closedness_symbol: idempotency_canonical_closedness_symbol
   )
 }
 

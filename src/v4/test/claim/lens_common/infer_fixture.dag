@@ -5,17 +5,17 @@
 //   migrations to substrate (e.g. InferredFacts shape changes in
 //   04_infer.dag) need a single edit, not one per claim file
 //   (cost-of-change = 1).
-// Owns: claim_atom_node, claim_inferred_facts, claim_inferred_facts_map, claim_inferred_tree, claim_inferred_facts_for_tree.
+// Owns: claim_atom_node, claim_canonical_grounding, claim_inferred_facts_witness, claim_inferred_facts, claim_inferred_facts_map, claim_inferred_tree, claim_inferred_facts_for_tree.
 // Consumes: v4.compiler.infer, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.node, v4.std.witness.
 // Status: introduced as Phase-1 ratchet test-claim template (crisp-boar-896).
 
 
 module v4.test.claim.lens_common.infer_fixture
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
-import v4.std.constraints { CanonicalGroundingWitness }
+import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
@@ -26,38 +26,85 @@ fn claim_atom_node(s: Symbol) -> Node {
   }
 }
 
+fn claim_canonical_grounding(
+  type_symbol: Symbol,
+  algebra_symbol: Symbol,
+  canonical_structural_symbol: Symbol,
+  canonical_closedness_symbol: Symbol
+) -> CanonicalGrounding {
+  let resolved = claim_atom_node(s: type_symbol)
+  let algebra = claim_atom_node(s: algebra_symbol)
+  CanonicalGrounding {
+    node: resolved,
+    witness: CanonicalGroundingWitness {
+      structural: StructuralPropertyWitness {
+        property: canonical_structural_symbol,
+        evidence: algebra
+      },
+      closedness: StructuralPropertyWitness {
+        property: canonical_closedness_symbol,
+        evidence: resolved
+      }
+    }
+  }
+}
+
+fn claim_inferred_facts_witness(
+  grounding: CanonicalGrounding,
+  descent: Witness<TerminationProof>
+) -> InferredFacts {
+  InferredFacts {
+    grounding: grounding,
+    descent: descent
+  }
+}
+
+fn claim_inferred_facts_from_nodes(
+  resolved: Node,
+  algebra: Node,
+  canonical_structural_symbol: Symbol,
+  canonical_closedness_symbol: Symbol,
+  descent: Witness<TerminationProof>
+) -> InferredFacts {
+  claim_inferred_facts_witness(
+    grounding: CanonicalGrounding {
+      node: resolved,
+      witness: CanonicalGroundingWitness {
+        structural: StructuralPropertyWitness {
+          property: canonical_structural_symbol,
+          evidence: algebra
+        },
+        closedness: StructuralPropertyWitness {
+          property: canonical_closedness_symbol,
+          evidence: resolved
+        }
+      }
+    },
+    descent: descent
+  )
+}
+
 fn claim_inferred_facts(
   type_symbol: Symbol,
   algebra_symbol: Symbol,
-  algebra_witness_symbol: Symbol,
   descent_symbol: Symbol,
   canonical_structural_symbol: Symbol,
-  canonical_closedness_symbol: Symbol,
-  canonical_evidence_symbol: Symbol
+  canonical_closedness_symbol: Symbol
 ) -> InferredFacts {
-  InferredFacts {
-    resolved_type: claim_atom_node(s: type_symbol),
-    inhabits: AlgebraRef {
-      algebra: claim_atom_node(s: algebra_symbol),
-      witness: claim_atom_node(s: algebra_witness_symbol)
-    },
+  claim_inferred_facts_witness(
+    grounding: claim_canonical_grounding(
+      type_symbol: type_symbol,
+      algebra_symbol: algebra_symbol,
+      canonical_structural_symbol: canonical_structural_symbol,
+      canonical_closedness_symbol: canonical_closedness_symbol
+    ),
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
         strict: RankingDimension { measured: descent_symbol }
       }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: canonical_structural_symbol,
-        evidence: claim_atom_node(s: canonical_evidence_symbol)
-      },
-      closedness: StructuralPropertyWitness {
-        property: canonical_closedness_symbol,
-        evidence: claim_atom_node(s: canonical_evidence_symbol)
-      }
     }
-  }
+  )
 }
 
 fn claim_inferred_facts_map(facts: InferredFacts) -> Map<Node, InferredFacts> {

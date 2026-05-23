@@ -30,11 +30,9 @@ import v4.test.claim.lens_common.infer_fixture {
 data introspect_claim_symbol: Symbol = introspect_claim_symbol
 data introspect_type_symbol: Symbol = introspect_type_symbol
 data introspect_algebra_symbol: Symbol = introspect_algebra_symbol
-data introspect_algebra_witness_symbol: Symbol = introspect_algebra_witness_symbol
 data introspect_descent_symbol: Symbol = introspect_descent_symbol
 data introspect_canonical_structural_symbol: Symbol = introspect_canonical_structural_symbol
 data introspect_canonical_closedness_symbol: Symbol = introspect_canonical_closedness_symbol
-data introspect_canonical_evidence_symbol: Symbol = introspect_canonical_evidence_symbol
 
 data introspect_root: Node = claim_atom_node(s: introspect_claim_symbol)
 
@@ -42,14 +40,12 @@ fn introspect_tree() -> InferredTree {
   claim_inferred_tree(
     root: introspect_root,
     facts: claim_inferred_facts(
-      type_symbol: introspect_type_symbol,
-      algebra_symbol: introspect_algebra_symbol,
-      algebra_witness_symbol: introspect_algebra_witness_symbol,
-      descent_symbol: introspect_descent_symbol,
-      canonical_structural_symbol: introspect_canonical_structural_symbol,
-      canonical_closedness_symbol: introspect_canonical_closedness_symbol,
-      canonical_evidence_symbol: introspect_canonical_evidence_symbol
-    )
+    type_symbol: introspect_type_symbol,
+    algebra_symbol: introspect_algebra_symbol,
+    descent_symbol: introspect_descent_symbol,
+    canonical_structural_symbol: introspect_canonical_structural_symbol,
+    canonical_closedness_symbol: introspect_canonical_closedness_symbol
+  )
   )
 }
 

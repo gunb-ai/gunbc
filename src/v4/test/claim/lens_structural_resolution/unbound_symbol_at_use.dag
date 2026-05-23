@@ -6,7 +6,8 @@
 
 module v4.test.claim.lens_structural_resolution.unbound_symbol_at_use
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts }
 import v4.compiler.resolve { unbound_symbol_diagnostic }
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
@@ -38,7 +39,6 @@ data sr_unbound_use_symbol: Symbol = sr_unbound_use_symbol
 data sr_unbound_decl_symbol: Symbol = sr_unbound_decl_symbol
 data sr_unbound_type_symbol: Symbol = sr_unbound_type_symbol
 data sr_unbound_algebra_symbol: Symbol = sr_unbound_algebra_symbol
-data sr_unbound_algebra_witness_symbol: Symbol = sr_unbound_algebra_witness_symbol
 data sr_unbound_descent_symbol: Symbol = sr_unbound_descent_symbol
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
@@ -79,22 +79,15 @@ fn sr_unbound_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 }
 
 fn sr_unbound_resolved_facts() -> InferredFacts {
-  let resolved = sr_unbound_claim_atom(s: sr_unbound_type_symbol)
-  InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef {
-      algebra: sr_unbound_claim_atom(s: sr_unbound_algebra_symbol),
-      witness: sr_unbound_claim_atom(s: sr_unbound_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: sr_unbound_descent_symbol }
-      }
-    },
-    canonical: sr_unbound_canonical_witness(resolved: resolved)
-  }
+  claim_inferred_facts(
+    type_symbol: sr_unbound_type_symbol,
+    algebra_symbol: sr_unbound_algebra_symbol,
+    descent_symbol: sr_unbound_descent_symbol,
+    canonical_structural_symbol: constraint_property_being_canonical,
+    canonical_closedness_symbol: constraint_property_candidate_set_closedness
+  )
 }
+
 
 fn sr_unbound_usage_site_witness() -> Witness<InferredFacts> {
   Violates {
