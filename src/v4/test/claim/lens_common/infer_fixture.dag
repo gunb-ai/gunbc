@@ -12,10 +12,10 @@
 
 module v4.test.claim.lens_common.infer_fixture
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
-import v4.std.constraints { CanonicalGroundingWitness }
+import v4.std.constraints { CanonicalGrounding, CanonicalGroundingWitness }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 
@@ -36,25 +36,23 @@ fn claim_inferred_facts(
   canonical_evidence_symbol: Symbol
 ) -> InferredFacts {
   InferredFacts {
-    resolved_type: claim_atom_node(s: type_symbol),
-    inhabits: AlgebraRef {
-      algebra: claim_atom_node(s: algebra_symbol),
-      witness: claim_atom_node(s: algebra_witness_symbol)
+    grounding: CanonicalGrounding {
+      node: claim_atom_node(s: type_symbol),
+      witness: CanonicalGroundingWitness {
+        structural: StructuralPropertyWitness {
+          property: canonical_structural_symbol,
+          evidence: claim_atom_node(s: canonical_evidence_symbol)
+        },
+        closedness: StructuralPropertyWitness {
+          property: canonical_closedness_symbol,
+          evidence: claim_atom_node(s: canonical_evidence_symbol)
+        }
+      }
     },
     descent: Holds {
       value: TerminationProof {
         non_increasing: [],
         strict: RankingDimension { measured: descent_symbol }
-      }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: canonical_structural_symbol,
-        evidence: claim_atom_node(s: canonical_evidence_symbol)
-      },
-      closedness: StructuralPropertyWitness {
-        property: canonical_closedness_symbol,
-        evidence: claim_atom_node(s: canonical_evidence_symbol)
       }
     }
   }
