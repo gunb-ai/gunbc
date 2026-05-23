@@ -185,21 +185,27 @@ fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutco
   }
 }
 
-// InformationTheoretic: realization strictly > Ω(n) → gap. Explicit equality check avoids
-// asymptotic_class_dominates(ClassLinear, ClassLinear)=true falsely triggering a gap.
-// Note: let-binding before if-else is not valid in the resolve-posture gate's strict mode;
-// complexity_bound_class is called twice to avoid the binding.
+// InformationTheoretic: realization strictly > Ω(n) → gap.
+// Double-dominance: outer gate tests dominates(realization, ClassLinear) — true iff ≥ linear
+// (reflexive for ClassLinear); inner tests dominates(ClassLinear, realization) — true iff equal,
+// false iff strictly greater → gap. Avoids == in if-conditions: parser greedily parses
+// ClassLinear{...} as a struct literal when == appears, eating the if-body and leaving else dangling.
+// complexity_bound_class called twice (pure function; let-binding before if-else is also
+// rejected by the resolve-posture gate strict mode).
 fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
-  if complexity_bound_class(b: realization) == ClassLinear {
-    SynthesisOptimal {
-      realization_cost: realization,
-      lower_bound: information_theoretic_declared_bound(n: n)
-    }
-  } else {
+  if asymptotic_class_dominates(
+    a: complexity_bound_class(b: realization),
+    b: ClassLinear
+  ) {
     if asymptotic_class_dominates(
-      a: complexity_bound_class(b: realization),
-      b: ClassLinear
+      a: ClassLinear,
+      b: complexity_bound_class(b: realization)
     ) {
+      SynthesisOptimal {
+        realization_cost: realization,
+        lower_bound: information_theoretic_declared_bound(n: n)
+      }
+    } else {
       SynthesisGap {
         realization_cost: realization,
         lower_bound: information_theoretic_declared_bound(n: n),
@@ -208,11 +214,11 @@ fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> Synthe
           at: node_locus(node: n)
         }
       }
-    } else {
-      // TODO: AlgebraicRank, AdversaryCommunication, ReductionConditional — stubs pending worked examples.
-      SynthesisNoTechnique {
-        diagnostic: synthesis_no_technique_diagnostic(n: n)
-      }
+    }
+  } else {
+    // TODO: AlgebraicRank, AdversaryCommunication, ReductionConditional — stubs pending worked examples.
+    SynthesisNoTechnique {
+      diagnostic: synthesis_no_technique_diagnostic(n: n)
     }
   }
 }
