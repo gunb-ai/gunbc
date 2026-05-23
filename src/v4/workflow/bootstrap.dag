@@ -1,5 +1,6 @@
 // src/v4/workflow/bootstrap.dag
-// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
+// Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash.
+// 🟡 needs-more-work — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; bootstrap_plan_well_formed must then require computed digest equality (stage1 ≠ stage2 until fixpt proves convergence), not symbolic placeholder Hash data aliases. Until then, pin Symbols identify carrier slots; digest fields are placeholder identities — accepted bootstrap_plan below is structural wiring only, NOT proof of fixed-point convergence.
 // Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
@@ -23,7 +24,7 @@ data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
 data pinned_v4_fixed_point_hash_pin: Symbol = pinned_v4_fixed_point_hash_pin
-// RULING-1: 🟡 needs-more-work — opaque digest tags (B1 content_hash operands land later).
+// RULING-1: 🟡 needs-more-work — opaque digest tags (B1 content_hash operands land later; T-15 dissolution replaces placeholder Hash data with computed merkle digests).
 data v4_stage0_hash: Hash = v4_stage0_hash
 data v4_stage1_hash: Hash = v4_stage1_hash
 data v4_stage2_hash: Hash = v4_stage2_hash
@@ -111,6 +112,7 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.left_hash.pin == v4_stage1_hash_pin)
        && (p.fixpt.right_hash.pin == v4_stage2_hash_pin)
        && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
+       // 🟡 T-15 staging: digest equalities below prove placeholder wiring only until B1 content_hash lands; they do NOT assert stage1/stage2 binaries differ before fixpt.
        && (p.self0.produces_hash.digest == p.self1.produces_hash.digest)
        && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
        && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
@@ -153,6 +155,9 @@ data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = boot
 })
 
 
+// 🟡 T-15 staging: self1.produces_hash, fixpt.right_hash, and fixpt.pinned_hash share
+// v4_stage1_hash digest — placeholder wiring only; distinct pin Symbols identify
+// carrier slots. NOT proof of fixed-point convergence until B1 content_hash lands.
 data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [v4_dag_source],

@@ -33,7 +33,7 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Map, Set, empty_map, list_append, list_snoc_item, map_insert }
+import v4.std.collection { List, Map, Set, list_append, list_snoc_item, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -43,8 +43,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -903,6 +905,16 @@ fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     sym == swift_token_colon
 }
 
+fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+    }
+  }
+}
+
 fn swift_primitive_fact_map_4(
   axis0: Symbol,
   fact0: Node,
@@ -916,7 +928,7 @@ fn swift_primitive_fact_map_4(
   map_insert(
     map_insert(
       map_insert(
-        map_insert(empty_map(), axis0, fact0),
+        map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
         axis1,
         fact1
       ),
@@ -938,7 +950,7 @@ fn swift_primitive_fact_map_3(
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), axis0, fact0),
+      map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
       axis1,
       fact1
     ),
@@ -954,7 +966,7 @@ fn swift_primitive_fact_map_2(
   fact1: Node
 ) -> Map<Symbol, Node> {
   map_insert(
-    map_insert(empty_map(), axis0, fact0),
+    map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
     axis1,
     fact1
   )
