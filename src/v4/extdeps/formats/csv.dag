@@ -1,6 +1,7 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
+// Owns: CsvDialect, CsvNumericLexemeProfile, CsvHeaderNameProfile, CsvParseProfile, CsvEmitProfile,
+//       CsvParseAxis, CsvEmitAxis, CsvHeaderPresence, CsvRow, CsvDocument, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
@@ -10,6 +11,39 @@ module v4.extdeps.formats.csv
 
 type CsvDialect
   = CsvDialectRfc4180 {}
+
+// CSV has no numeric grammar. Numeric-looking fields remain field text lexemes.
+type CsvNumericLexemeProfile {
+  fields_are_uninterpreted_text: Bool,
+}
+
+// RFC 4180 does not impose header-name uniqueness. This profile keeps header
+// names as row text and leaves any unique-name policy to typed consumers.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type CsvHeaderNameProfile
+  = CsvHeaderNamesPreservedAsText
+
+type CsvParseProfile {
+  dialect: CsvDialect,
+  numeric_fields: CsvNumericLexemeProfile,
+  header_names: CsvHeaderNameProfile,
+}
+
+type CsvEmitProfile {
+  dialect: CsvDialect,
+  numeric_fields: CsvNumericLexemeProfile,
+  header_names: CsvHeaderNameProfile,
+}
+
+type CsvParseAxis {
+  source: String,
+  profile: CsvParseProfile,
+}
+
+type CsvEmitAxis {
+  document: CsvDocument,
+  profile: CsvEmitProfile,
+}
 
 // 🟡 coproduct dissolution — T-4.6-P4-CsvHeaderPresence.
 type CsvHeaderPresence

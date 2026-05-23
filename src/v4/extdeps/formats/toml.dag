@@ -1,11 +1,66 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Owns: TomlValue.
+// Owns: TomlNumericLexemeProfile, TomlDatetimeLexemeProfile, TomlKeyProfile,
+//       TomlTableSyntaxProfile, TomlParseProfile, TomlEmitProfile,
+//       TomlParseAxis, TomlEmitAxis, TomlValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
 // Anchor: https://toml.io/en/v1.0.0
 
 module v4.extdeps.formats.toml
+
+
+type TomlNumericLexemeProfile {
+  int_lexeme_preserved: Bool,
+  float_lexeme_preserved: Bool,
+}
+
+
+type TomlDatetimeLexemeProfile {
+  datetime_lexeme_preserved: Bool,
+}
+
+
+// TOML table paths and inline-table keys are unique by construction in this
+// model; parse rejects duplicate definitions instead of merging.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlKeyProfile
+  = TomlDuplicateKeysRejected
+
+
+// Distinguishes value shape from authoring syntax. Inline-table vs table
+// spelling is preserved as a value variant until a future syntax-collapse
+// substrate exists.
+type TomlTableSyntaxProfile {
+  duplicate_keys: TomlKeyProfile,
+  preserve_inline_table_surface: Bool,
+}
+
+
+type TomlParseProfile {
+  numbers: TomlNumericLexemeProfile,
+  datetimes: TomlDatetimeLexemeProfile,
+  tables: TomlTableSyntaxProfile,
+}
+
+
+type TomlEmitProfile {
+  numbers: TomlNumericLexemeProfile,
+  datetimes: TomlDatetimeLexemeProfile,
+  tables: TomlTableSyntaxProfile,
+}
+
+
+type TomlParseAxis {
+  source: String,
+  profile: TomlParseProfile,
+}
+
+
+type TomlEmitAxis {
+  value: TomlValue,
+  profile: TomlEmitProfile,
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.

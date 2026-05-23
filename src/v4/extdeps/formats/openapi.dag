@@ -1,6 +1,8 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Owns: OpenApiNumericLexemeProfile, OpenApiUniqueNameProfile, OpenApiParseSurface,
+//       OpenApiParseProfile, OpenApiEmitProfile, OpenApiParseAxis, OpenApiEmitAxis,
+//       OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://spec.openapis.org/oas/v3.1.0
@@ -12,6 +14,48 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
 import v4.std.network { UriReference }
 import v4.std.nat { Nat }
+
+
+type OpenApiNumericLexemeProfile {
+  preserve_json_yaml_numeric_lexemes: Bool,
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type OpenApiUniqueNameProfile
+  = OpenApiObjectNamesUnique
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type OpenApiParseSurface
+  = OpenApiParseJsonText
+  | OpenApiParseYamlText
+
+
+type OpenApiParseProfile {
+  surface: OpenApiParseSurface,
+  numbers: OpenApiNumericLexemeProfile,
+  unique_names: OpenApiUniqueNameProfile,
+}
+
+
+type OpenApiEmitProfile {
+  surface: OpenApiParseSurface,
+  numbers: OpenApiNumericLexemeProfile,
+  unique_names: OpenApiUniqueNameProfile,
+}
+
+
+type OpenApiParseAxis {
+  source: String,
+  profile: OpenApiParseProfile,
+}
+
+
+type OpenApiEmitAxis {
+  document: OpenApiDocument,
+  profile: OpenApiEmitProfile,
+}
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-OpenApiSpecificationExtensionKey.

@@ -1,11 +1,55 @@
 // src/v4/extdeps/formats/yaml.dag
 // Scope: YAML 1.2.2 structural value model — declarative only; parse/emit deferred.
-// Owns: YamlValue.
+// Owns: YamlNumericLexemeProfile, YamlCanonicalKeyPolicy, YamlMappingProfile,
+//       YamlParseProfile, YamlEmitProfile, YamlParseAxis, YamlEmitAxis, YamlValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric lexeme, canonical key axes per TASKS.md T-4.6.
 // Anchor: https://yaml.org/spec/1.2.2/
 
 module v4.extdeps.formats.yaml
+
+
+type YamlNumericLexemeProfile {
+  int_lexeme_preserved: Bool,
+  float_lexeme_preserved: Bool,
+}
+
+
+// YAML 1.2.2 §3.2.1.3 requires mapping-key uniqueness after canonicalization.
+// This structural profile records the obligation while canonical equality is
+// gated below pending substrate support.
+// 🟡 coproduct dissolution — T-4.6-P4-YamlCanonicalKeyPolicy.
+type YamlCanonicalKeyPolicy
+  = YamlCanonicalDuplicateKeysRejected
+
+
+type YamlMappingProfile {
+  canonical_key_policy: YamlCanonicalKeyPolicy,
+}
+
+
+type YamlParseProfile {
+  numbers: YamlNumericLexemeProfile,
+  mapping: YamlMappingProfile,
+}
+
+
+type YamlEmitProfile {
+  numbers: YamlNumericLexemeProfile,
+  mapping: YamlMappingProfile,
+}
+
+
+type YamlParseAxis {
+  source: String,
+  profile: YamlParseProfile,
+}
+
+
+type YamlEmitAxis {
+  value: YamlValue,
+  profile: YamlEmitProfile,
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.

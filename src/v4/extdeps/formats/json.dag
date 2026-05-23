@@ -1,11 +1,54 @@
 // src/v4/extdeps/formats/json.dag
 // Scope: JSON value grammar (RFC 8259 / ECMA-404) with unique-name object profile — declarative model only.
-// Owns: JsonValue.
+// Owns: JsonDuplicateNamePolicy, JsonNumericLexemeProfile, JsonObjectMemberProfile,
+//       JsonParseProfile, JsonEmitProfile, JsonParseAxis, JsonEmitAxis, JsonValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag; std/algebra.dag (FreeMonoid).
 // Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc8259 + https://ecma-international.org/publications-and-standards/standards/ecma-404/
 
 module v4.extdeps.formats.json
+
+
+// RFC 8259 permits parsers to accept extensions, but this profile is the
+// interchange grammar: duplicate object names fail closed instead of choosing
+// a last/first-wins semantic.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type JsonDuplicateNamePolicy
+  = JsonDuplicateNamesRejected
+
+
+type JsonNumericLexemeProfile {
+  preserve_source_lexeme: Bool,
+}
+
+
+type JsonObjectMemberProfile {
+  duplicate_names: JsonDuplicateNamePolicy,
+}
+
+
+type JsonParseProfile {
+  numbers: JsonNumericLexemeProfile,
+  object_members: JsonObjectMemberProfile,
+}
+
+
+type JsonEmitProfile {
+  numbers: JsonNumericLexemeProfile,
+  object_members: JsonObjectMemberProfile,
+}
+
+
+type JsonParseAxis {
+  source: String,
+  profile: JsonParseProfile,
+}
+
+
+type JsonEmitAxis {
+  value: JsonValue,
+  profile: JsonEmitProfile,
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
