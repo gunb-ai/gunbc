@@ -270,8 +270,20 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 }
 
 
+// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy]
+}
+
+
+fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
+  fold(
+    lens_frontier_dependency_kinds(),
+    init: false,
+    f: fn(found, policy_kind) {
+      found || (kind == policy_kind)
+    }
+  )
 }
 
 
