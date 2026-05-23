@@ -21,7 +21,7 @@ type CsvNumericLexemeProfile {
 // names as row text and leaves any unique-name policy to typed consumers.
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type CsvHeaderNameProfile
-  = CsvHeaderNamesPreservedAsText
+  = CsvHeaderNamesPreservedAsText {}
 
 type CsvParseProfile {
   dialect: CsvDialect,

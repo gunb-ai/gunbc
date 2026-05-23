@@ -20,7 +20,7 @@ type YamlNumericLexemeProfile {
 // gated below pending substrate support.
 // 🟡 coproduct dissolution — T-4.6-P4-YamlCanonicalKeyPolicy.
 type YamlCanonicalKeyPolicy
-  = YamlCanonicalDuplicateKeysRejected
+  = YamlCanonicalDuplicateKeysRejected {}
 
 
 type YamlMappingProfile {

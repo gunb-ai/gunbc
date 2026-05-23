@@ -34,7 +34,7 @@ type SqlDialect
 
 // 🟡 coproduct dissolution — T-4.6-P4-SqlIdentifierProfile.
 type SqlIdentifierProfile
-  = SqlIdentifierUniqueWithinOwnerScope
+  = SqlIdentifierUniqueWithinOwnerScope {}
 
 
 type SqlNumericLexemeProfile {

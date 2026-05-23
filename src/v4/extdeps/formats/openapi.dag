@@ -23,7 +23,7 @@ type OpenApiNumericLexemeProfile {
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type OpenApiUniqueNameProfile
-  = OpenApiObjectNamesUnique
+  = OpenApiObjectNamesUnique {}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.

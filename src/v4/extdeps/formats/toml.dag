@@ -25,7 +25,7 @@ type TomlDatetimeLexemeProfile {
 // model; parse rejects duplicate definitions instead of merging.
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlKeyProfile
-  = TomlDuplicateKeysRejected
+  = TomlDuplicateKeysRejected {}
 
 
 // Distinguishes value shape from authoring syntax. Inline-table vs table
