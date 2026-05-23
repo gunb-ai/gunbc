@@ -11,9 +11,8 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredFacts,
   InferredTree,
-  inferred_facts_canonical_well_grounded,
-  inferred_facts_inhabitance_well_grounded,
-  inferred_facts_resolved_type_matches
+  inferred_facts_descent,
+  inferred_facts_resolved_type
 }
 import v4.std.collection { List, Map, non_empty }
 import v4.std.runtime {
@@ -105,15 +104,21 @@ type TestClaimEvalSubject<T> {
 }
 
 
-// RULING-1: needs-more-work — hash slots dissolve to B1 content_hash facts.
-type TestClaimCacheKey<T> {
-  eval_subject: TestClaimEvalSubject<T>
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: B1 content_hash of the whole TestClaim evaluation subgraph replaces staging placeholders; forbidden: caller-supplied hash parameters acting as cache-validating authority before B1 content_hash lands.
+type TestClaimCacheKeyStagingPlaceholder {
   claim_hash: Hash
   interpretation_hash: Hash
 }
 
 
-// RULING-1: needs-more-work — receipt remains hash-scaffolded until cache hashes derive.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: cache key derived from content_hash(eval_subject); hash_staging is NOT cache-validating authority until B1 lands.
+type TestClaimCacheKey<T> {
+  eval_subject: TestClaimEvalSubject<T>
+  hash_staging: TestClaimCacheKeyStagingPlaceholder
+}
+
+
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: receipt keyed by derived content_hash; forbidden: treating hash_staging as authoritative cache boundary.
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -152,8 +157,10 @@ fn test_claim_cache_receipt<T>(
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
-      claim_hash: claim_hash,
-      interpretation_hash: interpretation_hash
+      hash_staging: TestClaimCacheKeyStagingPlaceholder {
+        claim_hash: claim_hash,
+        interpretation_hash: interpretation_hash
+      }
     }
   }
 }
@@ -216,7 +223,7 @@ fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<In
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      match facts.descent {
+      match inferred_facts_descent(facts: facts) {
         Holds { value: _ } =>
           Accepted { value: facts, diagnostics: None }
         Violates { diagnostic: d } =>
@@ -280,27 +287,16 @@ fn control_transfer_value(control: ControlTransfer, node: Node) -> Outcome<Runti
 }
 
 
-// 🟡 gated — feature:T22-eval-runtime-value-acceptance-witness — bind node://adhoc-6a2e599a-cc2 — dissolve-on: eval consumes a modeled acceptance witness/product tying RuntimeValue resolved type, inhabitance, and canonical grounding to InferredFacts; forbidden: permanent Bool-ladder proof erasure.
+// 🟡 gated — feature:T22-eval-runtime-value-acceptance-witness — bind node://adhoc-6a2e599a-cc2 — dissolve-on: std/runtime owns runtime-value acceptance witness tying RuntimeValue to InferredFacts construction; forbidden: permanent Bool-ladder proof erasure in eval.
 fn eval_accept_runtime_value_with_facts(
   node: Node,
   facts: InferredFacts,
   value: RuntimeValue
 ) -> Outcome<RuntimeValue> {
   let candidate_type = runtime_value_resolved_type(value: value)
-  if !inferred_facts_resolved_type_matches(
-    facts: facts,
-    candidate_type: candidate_type
-  ) {
+  if candidate_type != inferred_facts_resolved_type(facts: facts) {
     outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
-    )
-  } else if !inferred_facts_inhabitance_well_grounded(facts: facts) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
-    )
-  } else if !inferred_facts_canonical_well_grounded(facts: facts) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
     )
   } else {
     Accepted { value: value, diagnostics: None }

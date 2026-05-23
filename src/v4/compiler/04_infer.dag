@@ -37,7 +37,6 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
-import v4.std.logic { Bool }
 import v4.std.node {
   Edge,
   Node,
@@ -56,12 +55,31 @@ type AlgebraRef {
 }
 
 
-// RULING-1: needs-more-work — inhabitance coordinates remain T-9 bridged.
+// Practice 2: coherence equalities enforced by construction — CanonicalGrounding is the
+// sole authority for resolved_type / inhabitance / canonical witness alignment.
 type InferredFacts {
-  resolved_type: Node
-  inhabits: AlgebraRef
+  grounding: CanonicalGrounding
   descent: Witness<TerminationProof>
-  canonical: CanonicalGroundingWitness
+}
+
+
+fn inferred_facts_resolved_type(facts: InferredFacts) -> Node {
+  facts.grounding.node
+}
+
+
+fn inferred_facts_algebra_ref(facts: InferredFacts) -> AlgebraRef {
+  algebra_ref_from_grounding(grounding: facts.grounding)
+}
+
+
+fn inferred_facts_canonical_witness(facts: InferredFacts) -> CanonicalGroundingWitness {
+  facts.grounding.witness
+}
+
+
+fn inferred_facts_descent(facts: InferredFacts) -> Witness<TerminationProof> {
+  facts.descent
 }
 
 
@@ -75,27 +93,6 @@ type InferredTree {
 type InferredFactsEntry {
   node: Node
   facts: InferredFacts
-}
-
-
-fn inferred_facts_resolved_type_matches(
-  facts: InferredFacts,
-  candidate_type: Node
-) -> Bool {
-  candidate_type == facts.resolved_type
-}
-
-
-fn inferred_facts_inhabitance_well_grounded(facts: InferredFacts) -> Bool {
-  (facts.inhabits.witness == facts.resolved_type)
-    && (facts.inhabits.algebra == facts.canonical.structural.evidence)
-}
-
-
-fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
-  (facts.canonical.structural.property == constraint_property_being_canonical)
-    && (facts.canonical.closedness.property == constraint_property_candidate_set_closedness)
-    && (facts.canonical.closedness.evidence == facts.resolved_type)
 }
 
 
@@ -155,15 +152,12 @@ fn infer_constraint_graph(n: Node) -> ConstraintGraph {
 
 
 fn inferred_facts_from_grounding(
-  n: Node,
   grounding: CanonicalGrounding,
   descent: Witness<TerminationProof>,
 ) -> InferredFacts {
   InferredFacts {
-    resolved_type: grounding.node,
-    inhabits: algebra_ref_from_grounding(grounding: grounding),
-    descent: descent,
-    canonical: grounding.witness
+    grounding: grounding,
+    descent: descent
   }
 }
 
@@ -192,7 +186,6 @@ fn infer_node_facts(n: Node) -> Outcome<InferredFacts> {
         f: fn(grounding) {
           Accepted {
             value: inferred_facts_from_grounding(
-              n: n,
               grounding: grounding,
               descent: Holds { value: descent_proof }
             ),
@@ -240,24 +233,13 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, Inferr
 fn inferred_facts_witness_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
   tree.facts.lookup(node)
 }
-// P2: InferredFacts fields are independently constructible; reject illegal pairings before export.
-fn inferred_facts_canonical_grounding_coherent(facts: InferredFacts) -> Bool {
-  well_formed(n: facts.resolved_type)
-    && well_formed(n: facts.inhabits.witness)
-    && well_formed(n: facts.inhabits.algebra)
-    && (facts.resolved_type == facts.inhabits.witness)
-    && (facts.canonical.structural.evidence == facts.inhabits.algebra)
-}
 fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
-  if inferred_facts_canonical_grounding_coherent(facts: facts) {
+  if well_formed(n: facts.grounding.node) {
     Accepted {
-      value: CanonicalGrounding {
-        node: facts.resolved_type,
-        witness: facts.canonical
-      },
+      value: facts.grounding,
       diagnostics: None
     }
   } else {
