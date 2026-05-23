@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/sql.dag
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
-// Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
+// Owns: SqlDialect, SqlIdentifier, SqlIdentifierCaseFoldPolicy, SqlIdentifierUniqueNameProfile, SqlNumericLexemeProfile, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlTableRelationalFacts, SqlSchemaOperation, SqlRawStepPolicy, SqlStatementTextProfile, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlParseAxis, SqlEmitAxis, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag, std/model_core.dag
 // Status: T-4.6 SQL slice scaffold + v3 migration/transport port receipt + SqlDataType primitive fact-bundle wave-1.
 // Port authority: dsl/extdeps/sql/migration.dag + dsl/extdeps/transports/sql.dag. This file is the v4 checked-Shape-B home for those facts; it is not a second SQL authority.
@@ -36,6 +36,34 @@ type SqlDialect
 type SqlIdentifier
   = SqlRegularIdentifier { name: String }
   | SqlDelimitedIdentifier { name: String }
+
+
+// 🟡 coproduct dissolution — T-4.6-P4-SqlIdentifierCaseFoldPolicy.
+type SqlIdentifierCaseFoldPolicy
+  = SqlIdentifierFoldUpper
+  | SqlIdentifierFoldLower
+  | SqlIdentifierPreserveCase
+
+
+type SqlIdentifierUniqueNameProfile {
+  regular_identifier_case_fold: SqlIdentifierCaseFoldPolicy,
+  delimited_identifier_case_fold: SqlIdentifierCaseFoldPolicy,
+  table_column_names_unique_after_identifier_normalization: Bool,
+  primary_key_columns_must_reference_table_columns: Bool,
+  unique_constraint_columns_must_reference_table_columns: Bool,
+  foreign_key_columns_must_reference_table_columns: Bool,
+  foreign_key_referenced_columns_must_reference_target_table_columns: Bool,
+  index_columns_must_reference_table_columns: Bool,
+}
+
+
+type SqlNumericLexemeProfile {
+  exact_integer_surface_lexeme_preserved: Bool,
+  exact_decimal_surface_lexeme_preserved: Bool,
+  approximate_numeric_surface_lexeme_preserved: Bool,
+  numeric_precision_and_scale_are_declared_facts: Bool,
+  implementation_defined_width_is_not_inferred_from_lexeme: Bool,
+}
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-SqlDataType.
@@ -99,6 +127,16 @@ type SqlTableDefinition {
 }
 
 
+type SqlTableRelationalFacts {
+  table_name: SqlIdentifier,
+  column_names_unique_after_identifier_normalization: Bool,
+  primary_key_columns_in_table: Bool,
+  unique_constraint_columns_in_table: Bool,
+  foreign_key_columns_in_table: Bool,
+  foreign_key_referenced_columns_declared_by_target_table: Bool,
+}
+
+
 // 🟡 coproduct dissolution — T-4.6-P4-SqlSchemaOperation.
 type SqlSchemaOperation
   = SqlCreateTable { table: SqlTableDefinition }
@@ -114,6 +152,18 @@ type SqlSchemaOperation
   | SqlDropIndex { index_name: SqlIdentifier }
   | SqlAlterTableRaw { table_name: SqlIdentifier, alteration: String }
   | SqlRawStep { statement: String }
+
+
+// 🟡 coproduct dissolution — T-4.6-P4-SqlRawStepPolicy.
+type SqlRawStepPolicy
+  = SqlRawStepRejected
+  | SqlRawStepAllowedOnlyWhenStructuralOperationMissing
+
+
+// 🟡 coproduct dissolution — T-4.6-P4-SqlStatementTextProfile.
+type SqlStatementTextProfile
+  = SqlStatementTextDerivedFromStructuredOperation
+  | SqlStatementTextRawStepPassThrough
 
 
 type SqlMigrationStep {
@@ -176,6 +226,24 @@ type SqlTransportConfig {
   parameter_style: SqlParameterStyle,
   transaction_mode: SqlTransactionMode,
   result_format: SqlResultFormat,
+}
+
+
+type SqlParseAxis {
+  dialect: SqlDialect,
+  accepted_statement_kind: SqlStatementKind,
+  raw_step_policy: SqlRawStepPolicy,
+  numeric_lexeme_profile: SqlNumericLexemeProfile,
+  identifier_unique_name_profile: SqlIdentifierUniqueNameProfile,
+}
+
+
+type SqlEmitAxis {
+  dialect: SqlDialect,
+  emitted_statement_kind: SqlStatementKind,
+  statement_text_profile: SqlStatementTextProfile,
+  numeric_lexeme_profile: SqlNumericLexemeProfile,
+  identifier_unique_name_profile: SqlIdentifierUniqueNameProfile,
 }
 
 
