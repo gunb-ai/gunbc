@@ -14,7 +14,8 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
-import v4.std.collection { List, Map, non_empty }
+import v4.std.algebra { non_empty }
+import v4.std.collection { List, Map }
 import v4.std.runtime {
   EnvironmentBindingKey,
   Continue,
