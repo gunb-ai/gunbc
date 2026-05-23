@@ -69,7 +69,7 @@ import v4.std.collection { List, list_snoc_item }
 import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.witness { StructuralPropertyWitness }
 type TargetNodeTree = Node
-// Single-authority lookup state for TargetModel Conj bundles (P2/P3 fail-closed).
+// 🟢 coproduct dissolution — T-10 target-bundle named-edge lookup fold state (P3 fail-closed terminal).
 type TargetBundleChildLookup
   = BundleChildMissing
   | BundleChildFound { value: Node }
