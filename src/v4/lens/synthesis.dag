@@ -93,7 +93,7 @@ data synthesis_gap_information_theoretic_reason_symbol: Symbol = synthesis_gap_i
 
 // 🟢 coproduct — closed set. STOP-and-escalate if a 6th variant is needed.
 type LowerBoundTechnique
-  | DecisionTree
+  = DecisionTree
   | AlgebraicRank
   | AdversaryCommunication
   | InformationTheoretic
@@ -108,7 +108,7 @@ type DeclaredRelationBound {
 
 // 🟢 coproduct — outcome of one synthesis probe.
 type SynthesisOutcome
-  | SynthesisGap {
+  = SynthesisGap {
       realization_cost: ComplexityBound
       lower_bound: DeclaredRelationBound
       report: Report
