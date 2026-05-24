@@ -853,6 +853,7 @@ mod compiler_tests {
     fn freemonoid_registered_for_container_param_and_algebra_profile() {
         use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
         use crate::std_types::{container_expected_arity, container_param_name, is_container_type};
+        use crate::v2_rt;
         assert_eq!(
             v2_rt::map_get(&kernel_algebra_profile(), "FreeMonoid".to_string()),
             Some(AlgebraProfile::FreeMonoidCollectionProfile)
