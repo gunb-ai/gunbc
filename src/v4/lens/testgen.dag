@@ -46,7 +46,13 @@ import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
   nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat
+  nat_algebra_law_subject_symbol_inhabitant_nat,
+  law_nat_add_associativity,
+  law_nat_add_left_identity,
+  law_nat_add_right_identity,
+  law_nat_mul_annihilator,
+  law_nat_mul_associativity,
+  law_nat_mul_left_identity
 }
 import v4.std.node {
   Atom,
@@ -332,25 +338,7 @@ type CorpusLensDriver<C> = fn(
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
 
-data law_nat_add_left_identity: Symbol = law_nat_add_left_identity
-
-
-data law_nat_add_right_identity: Symbol = law_nat_add_right_identity
-
-
-data law_nat_add_associativity: Symbol = law_nat_add_associativity
-
-
-data law_nat_mul_left_identity: Symbol = law_nat_mul_left_identity
-
-
-data law_nat_mul_annihilator: Symbol = law_nat_mul_annihilator
-
-
-data law_nat_mul_associativity: Symbol = law_nat_mul_associativity
-
-
-data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
+fn lbe_label_conj_dag_surface() -> String {
 
 
 data lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
