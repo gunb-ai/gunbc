@@ -148,11 +148,11 @@ fn v4_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
 
 fn v4_eval_wave1_resource_boundary() -> ResourceEffectBoundary {
   ResourceEffectBoundary {
-    ffi: v4_eval_wave1_boundary_allowance(allowed: False),
-    exceptions: v4_eval_wave1_boundary_allowance(allowed: False),
-    async: v4_eval_wave1_boundary_allowance(allowed: False),
-    concurrency: v4_eval_wave1_boundary_allowance(allowed: False),
-    identity_reference: v4_eval_wave1_boundary_allowance(allowed: False)
+    ffi: v4_eval_wave1_boundary_allowance(allowed: false),
+    exceptions: v4_eval_wave1_boundary_allowance(allowed: false),
+    async: v4_eval_wave1_boundary_allowance(allowed: false),
+    concurrency: v4_eval_wave1_boundary_allowance(allowed: false),
+    identity_reference: v4_eval_wave1_boundary_allowance(allowed: false)
   }
 }
 
