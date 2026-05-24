@@ -33,7 +33,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality }
 import v4.std.verification {
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier2,
@@ -42,7 +42,7 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 
 
@@ -89,7 +89,7 @@ data falsification_optional_double_unwrap: Node = Node {
 
 data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
   label: "optional cardinality refinement keeps accessor surface single-layer",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: flattened_optional_input,
   expected_value: flattened_optional_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
@@ -98,7 +98,7 @@ data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
 
 data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
   label: "optional accessor surface rejects double unwrap shape",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_optional_double_unwrap,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -113,7 +113,7 @@ data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
 
 data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
   label: "nested optional cardinality collapses to one refinement",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nested_optional,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

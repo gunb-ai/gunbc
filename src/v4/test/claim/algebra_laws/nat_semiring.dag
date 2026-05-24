@@ -25,23 +25,23 @@ import v4.std.nat {
   nat_algebra_law_subject_symbol_inhabitant_nat
 }
 import v4.lens.testgen {
-  t19_law_nat_add_left_identity,
-  t19_law_nat_add_right_identity,
-  t19_law_nat_add_associativity,
-  t19_law_nat_mul_left_identity,
-  t19_law_nat_mul_annihilator,
-  t19_law_nat_mul_associativity
+  law_nat_add_left_identity,
+  law_nat_add_right_identity,
+  law_nat_add_associativity,
+  law_nat_mul_left_identity,
+  law_nat_mul_annihilator,
+  law_nat_mul_associativity
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.text { String }
-import v4.std.verification {T19ManualAnchorAbsent,
-  T19ManualNatAddAssociativity,
-  T19ManualNatAddLeftIdentity,
-  T19ManualNatAddRightIdentity,
-  T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity,
-  T19ManualNatMulLeftIdentity,
-  T19ManualAnchorKey,
+import v4.std.verification {ManualAnchorAbsent,
+  ManualNatAddAssociativity,
+  ManualNatAddLeftIdentity,
+  ManualNatAddRightIdentity,
+  ManualNatMulAnnihilator,
+  ManualNatMulAssociativity,
+  ManualNatMulLeftIdentity,
+  ManualAnchorKey,
   TestClaim,
   TestClassification,
   Tier1,
@@ -50,7 +50,7 @@ import v4.std.verification {T19ManualAnchorAbsent,
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 
 
@@ -96,68 +96,68 @@ fn nat_mul_law(law: Symbol) -> Node {
 }
 
 
-data nat_add_left_identity_input: Node = nat_add_law(law: t19_law_nat_add_left_identity)
-data nat_add_right_identity_input: Node = nat_add_law(law: t19_law_nat_add_right_identity)
-data nat_add_associativity_input: Node = nat_add_law(law: t19_law_nat_add_associativity)
-data nat_mul_left_identity_input: Node = nat_mul_law(law: t19_law_nat_mul_left_identity)
-data nat_mul_annihilator_input: Node = nat_mul_law(law: t19_law_nat_mul_annihilator)
-data nat_mul_associativity_input: Node = nat_mul_law(law: t19_law_nat_mul_associativity)
+data nat_add_left_identity_input: Node = nat_add_law(law: law_nat_add_left_identity)
+data nat_add_right_identity_input: Node = nat_add_law(law: law_nat_add_right_identity)
+data nat_add_associativity_input: Node = nat_add_law(law: law_nat_add_associativity)
+data nat_mul_left_identity_input: Node = nat_mul_law(law: law_nat_mul_left_identity)
+data nat_mul_annihilator_input: Node = nat_mul_law(law: law_nat_mul_annihilator)
+data nat_mul_associativity_input: Node = nat_mul_law(law: law_nat_mul_associativity)
 
 
 data falsification_nat_add_wrong_identity: Node = nat_add_law(law: nat_law_wrong_identity_symbol)
 
 
-fn accepted_claim(label: String, anchor: T19ManualAnchorKey, input: Node) -> TestClaim {
-  EqualsClaim { label: label, t19_anchor: t19_manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
+fn accepted_claim(label: String, anchor: ManualAnchorKey, input: Node) -> TestClaim {
+  EqualsClaim { label: label, anchor: manual_claim_anchor(anchor: anchor), lhs: input, rhs: input, classification: TestClassification { tier: Tier1, layer: Unit  }
   }
 }
 
 
 data claim_nat_add_left_identity: TestClaim = accepted_claim(
   label: "Nat addition left identity law",
-  anchor: T19ManualNatAddLeftIdentity,
+  anchor: ManualNatAddLeftIdentity,
   input: nat_add_left_identity_input
 )
 
 
 data claim_nat_add_right_identity: TestClaim = accepted_claim(
   label: "Nat addition right identity law",
-  anchor: T19ManualNatAddRightIdentity,
+  anchor: ManualNatAddRightIdentity,
   input: nat_add_right_identity_input
 )
 
 
 data claim_nat_add_associativity: TestClaim = accepted_claim(
   label: "Nat addition associativity law",
-  anchor: T19ManualNatAddAssociativity,
+  anchor: ManualNatAddAssociativity,
   input: nat_add_associativity_input
 )
 
 
 data claim_nat_mul_left_identity: TestClaim = accepted_claim(
   label: "Nat multiplication left identity law",
-  anchor: T19ManualNatMulLeftIdentity,
+  anchor: ManualNatMulLeftIdentity,
   input: nat_mul_left_identity_input
 )
 
 
 data claim_nat_mul_annihilator: TestClaim = accepted_claim(
   label: "Nat multiplication annihilator law",
-  anchor: T19ManualNatMulAnnihilator,
+  anchor: ManualNatMulAnnihilator,
   input: nat_mul_annihilator_input
 )
 
 
 data claim_nat_mul_associativity: TestClaim = accepted_claim(
   label: "Nat multiplication associativity law",
-  anchor: T19ManualNatMulAssociativity,
+  anchor: ManualNatMulAssociativity,
   input: nat_mul_associativity_input
 )
 
 
 data claim_nat_add_wrong_identity_falsifies_law: TestClaim = DiagnosticClaim {
   label: "Nat addition wrong identity falsifies law claim",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nat_add_wrong_identity,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

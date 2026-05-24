@@ -35,7 +35,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier2,
@@ -44,7 +44,7 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 
 
@@ -100,7 +100,7 @@ data falsification_force_unwrap_survives: Node = atom_node(s: force_unwrap_symbo
 
 data claim_division_by_zero_total_or_proven_safe: TestClaim = CompilesClaim {
   label: "division uses total form when nonzero proof is present",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: total_division_input,
   expected_value: total_division_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
@@ -109,7 +109,7 @@ data claim_division_by_zero_total_or_proven_safe: TestClaim = CompilesClaim {
 
 data claim_oob_index_total_or_proven_safe: TestClaim = CompilesClaim {
   label: "indexing uses total form when range proof is present",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: checked_index_input,
   expected_value: checked_index_input,
   classification: TestClassification { tier: Tier2, layer: Unit }
@@ -118,7 +118,7 @@ data claim_oob_index_total_or_proven_safe: TestClaim = CompilesClaim {
 
 data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
   label: "unproven divisor cannot lower as partial division",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_division_by_zero_unhandled,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -133,7 +133,7 @@ data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
 
 data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
   label: "unproven index cannot lower as partial lookup",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_oob_index_unhandled,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -148,7 +148,7 @@ data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
 
 data claim_force_unwrap_count_zero: TestClaim = DiagnosticClaim {
   label: "force unwrap does not survive outside user input boundary",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_force_unwrap_survives,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {

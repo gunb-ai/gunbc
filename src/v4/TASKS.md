@@ -705,9 +705,20 @@ value semantics (RFC 3339 / TOML §Date-Time four sub-kinds) dissolve on
 **Modeling decisions**:
 - Endpoint shape (NetworkAddress + LanguageRef + optional FrameworkRef)
 - DeploymentUnit = collection of Endpoints + WireContracts between them
-- WireContract = typed interface between two endpoints + CoordinationSemantics
-- CoordinationSemantics = Sync | Async(SettleBound) | Stream | PubSub | EventuallyConsistent(ConvergeBound) (closed enum — operator-ratified C1 closure per node.dag discipline; non-immediate-settlement variants carry their bound as a STRUCTURAL field per operator fork 2026-05-15, read deterministically by the testgen simulator arm — see coordination.dag header)
-- Effect-typing: HttpEffect, QueueEffect, StreamEffect, PubSubEffect — each is a typed parameter to Bind
+- WireContract = typed interface between two endpoints + `WireContractFacts` +
+  `CoordinationBind`.
+- Drift note (PR #3207): the older `CoordinationSemantics` /
+  `HttpEffect` / `QueueEffect` wording is superseded by the decomposed
+  `ExchangePattern` + `SettlementGuarantee` + `ConsistencyGuarantee` facts
+  on `WireContractFacts`, plus `CoordinationEffectKind` on
+  `CoordinationBind`.
+- WIRECONTRACT-OBLIGATION-TABLE-T4.8: `CoordinationEffectKind` is tracked over
+  `Http` / `Queue` / `Stream` / `PubSub`; each arm has an executable
+  `CoordinationEffectObligation` row mapping it to required exchange,
+  settlement, and consistency facts. The label bridge dissolves when
+  `CoordinationBind` references canonical obligation rows directly.
+- Effect-typing: the effect kind is intrinsic to `CoordinationBind`, not a
+  separate annotation layer.
 - Failure-at-boundary modeling (composes with std/diagnostic.dag — no silent partial-failure)
 - Idempotency at endpoint (composes with lens/idempotency.dag)
 
@@ -838,7 +849,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 **Modeling decisions**:
 - Generator<C> generic carrier shape — one lens, parameterized over substrate concept type
-- Per-substrate-kind testgen rules — closed six-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip` / `LanguageBehaviorEquivalence`; LBE pairs `TypeConstructionSubject` × target `language: Symbol` with `FrozenLanguageBehaviorSnapshot` + `LanguageBehaviorIoMock` I/O mock; generated corpus in `test/claim/generated/language_behavior_equivalence.dag` runs through `run_test_claim` / `run_test_claim_assert`; CI gate `scripts/check_t19_testgen_activation.py`)
+- Per-substrate-kind testgen rules — closed six-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip` / `LanguageBehaviorEquivalence`; LBE pairs `TypeConstructionSubject` × target `language: Symbol` with `FrozenLanguageBehaviorSnapshot` + `LanguageBehaviorIoMock` I/O mock; generated corpus in `test/claim/generated/language_behavior_equivalence.dag` runs through `run_test_claim` / `run_test_claim_assert`; CI gate `scripts/check_testgen_activation.py`)
 - **TestClaim.classification** (`TestClassification`: Tier×Layer) on every produced claim — canonical field in `std/verification.dag` (STRUCTURE §248); testgen stamps the same axes on each emitted claim as on its scheduling `Generator<C>`. Tier1/2/3 (correctness) × Unit/Integration/Boundary (test layer)
 - Bootstrap path: hand-authored TestClaims in `test/claim/manual/` are the contract testgen must satisfy; coverage lens (T-18) enforces produced ⊇ manual
 
@@ -854,11 +865,11 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - After T-19 implementation: testgen produces same set programmatically; manual claims become regression anchors.
 
 **Phase-1.5 scaffolding — forward dissolution (INVARIANTS P2)**:
-- **`t19_manual_anchor_manifest.dag` — P2 join (single authority):** `T19ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`T19ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `T19ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
-- **`TestClaimCoproductVariant` — 🟡 `feature:testclaim-coproduct-reflection` gate (coproduct-exhaustiveness):** the current generated `DiagnosticExhaustiveness` slice needs a typed `omitted_variant` key, but v4 cannot yet project the arm-key set directly from the canonical `TestClaim` coproduct. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** land the T-19 coproduct-reflection primitive/consumer that reads the `TestClaim` variant set structurally and emits per-arm generated TestClaims. **Dissolve-on-arrival:** in that same follow-up, delete `TestClaimCoproductVariant`, make `T19GeneratedCoproductExhaustiveness` consume the reflected arm key, and keep the generated corpus witness proving every reflected arm schedules/emits from the canonical `TestClaim` type.
-- **`T19ClaimAnchorKey` — 🟡 `feature:t19-claim-anchor-split` gate (claim-anchor-unification):** the generated corpus shares `TestClaim.t19_anchor` with manual claim rows; a single typed union (`T19ManualClaimAnchor | T19GeneratedClaimAnchor`) bridges this because .dag cannot yet split the field per-corpus. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** when T-19 Phase-2 defines separate corpus types for generated vs manual `TestClaim` rows (so `t19_anchor` is no longer a shared field), the union dissolves. **Dissolve-on-arrival:** in the PR that separates manual/generated claim types, delete `T19ClaimAnchorKey`, `T19ManualClaimAnchor`, and `T19GeneratedClaimAnchor` wrappers, and update all `TestClaim` field declarations accordingly.
+- **`manual_anchor_manifest.dag` — P2 join (single authority):** `ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
+- **`TestClaimCoproductVariant` — 🟡 `feature:testclaim-coproduct-reflection` gate (coproduct-exhaustiveness):** the current generated `DiagnosticExhaustiveness` slice needs a typed `omitted_variant` key, but v4 cannot yet project the arm-key set directly from the canonical `TestClaim` coproduct. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** land the T-19 coproduct-reflection primitive/consumer that reads the `TestClaim` variant set structurally and emits per-arm generated TestClaims. **Dissolve-on-arrival:** in that same follow-up, delete `TestClaimCoproductVariant`, make `GeneratedCoproductExhaustiveness` consume the reflected arm key, and keep the generated corpus witness proving every reflected arm schedules/emits from the canonical `TestClaim` type.
+- **`ClaimAnchorKey` — 🟡 `feature:t19-claim-anchor-split` gate (claim-anchor-unification):** the generated corpus shares `TestClaim.anchor` with manual claim rows; a single typed union (`ManualClaimAnchor | GeneratedClaimAnchor`) bridges this because .dag cannot yet split the field per-corpus. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** when T-19 Phase-2 defines separate corpus types for generated vs manual `TestClaim` rows (so `anchor` is no longer a shared field), the union dissolves. **Dissolve-on-arrival:** in the PR that separates manual/generated claim types, delete `ClaimAnchorKey`, `ManualClaimAnchor`, and `GeneratedClaimAnchor` wrappers, and update all `TestClaim` field declarations accordingly.
 - **`BehaviorValueSubject` (L1 `Value` in `type_construction`):** `BehaviorValueSubject { behavior: Behavior }` in `lens/testgen.dag` — carries the **five-behavior** axis structurally (pairs with `ConnectiveKernel { connective: Connective }` for the **six connectives** per bootstrap pragma above). **No** live manual `TestClaim` yet ⇒ **no** manifest row until one lands (same P2 bijection rule).
-- **Retirement (same band as M2 unblock):** fold manifest membership into reflection / `Symbol` spellings once M2 cross-file loading + literal validation land; never reintroduce parallel `Int` encodings of axes already on `TestClaim`. **`T19ManualAnchorAbsent`:** use on **`TestClaim`** rows not in the twelve-anchor manifest until a broader substrate generalizes membership.
+- **Retirement (same band as M2 unblock):** fold manifest membership into reflection / `Symbol` spellings once M2 cross-file loading + literal validation land; never reintroduce parallel `Int` encodings of axes already on `TestClaim`. **`ManualAnchorAbsent`:** use on **`TestClaim`** rows not in the twelve-anchor manifest until a broader substrate generalizes membership.
 - **`lens/testgen.dag` — M2 materialization band:** subject folds / eval wiring land with cross-file M2 load; first change set that enables peer imports must keep declarations consistent with this file's live `type` carriers.
 
 **Reference**:
@@ -1380,8 +1391,8 @@ does not exist on main; this task is its first authoring. The
   composed homomorphism, NOT a string template (no-templating
   principle).
 - Relationship to T-4.8 `coordination.dag`'s `WireContract` /
-  `CoordinationSemantics` (HTTP / REST is the immediate consumer in
-  omni-stack scenarios).
+  decomposed `WireContractFacts` + `CoordinationBind` shape (HTTP / REST is
+  the immediate consumer in omni-stack scenarios).
 
 **Dependencies — `[needs T-3, T-26]`. Language-orthogonal per P4.**
 Numeric and string vocabulary from T-3 for wire-format primitives;
