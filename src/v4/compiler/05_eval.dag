@@ -15,6 +15,7 @@ import v4.compiler.infer {
   inferred_facts_inhabitance_well_grounded,
   inferred_facts_resolved_type_matches
 }
+import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List, Map }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
@@ -261,15 +262,21 @@ fn eval_absorb_structural_child(
   acc: Outcome<Node>,
   child: Outcome<Node>
 ) -> Outcome<Node> {
-  bind_outcome(
-    o: sequence_outcome(xs: [acc, child], policy: eval_short_circuit_policy()),
-    f: fn(nodes) {
-      match first(nodes) {
-        Some { value: n } => Accepted { value: n, diagnostics: None }
-        None => child
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: n, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: n,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
       }
-    }
-  )
+  }
 }
 
 
@@ -347,9 +354,9 @@ fn eval_accept_runtime_value_with_facts(
 
 
 fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
-  match first(args) {
-    Some { value: v } => Accepted { value: v, diagnostics: None }
-    None => outcome_rejected(
+  match args {
+    Cons { head: v, tail: _ } => Accepted { value: v, diagnostics: None }
+    Empty => outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_branch_argument_absent, node: node)
     )
   }
@@ -357,13 +364,13 @@ fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<
 
 
 fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
-  match first(node.children) {
-    Some { value: e } =>
+  match node.children {
+    Cons { head: e, tail: _ } =>
       Accepted {
         value: EnvironmentBindingKey { declaration: e.target },
         diagnostics: None
       }
-    None => outcome_rejected(
+    Empty => outcome_rejected(
       d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
     )
   }
@@ -371,21 +378,41 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
 
 
 fn eval_bind_value_arg(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
-  match first(skip(args, 1)) {
-    Some { value: v } => Accepted { value: v, diagnostics: None }
-    None => outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-    )
+  match args {
+    Cons { head: _, tail: rest } =>
+      match rest {
+        Cons { head: v, tail: _ } => Accepted { value: v, diagnostics: None }
+        Empty => outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+        )
+      }
+    Empty =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+      )
   }
 }
 
 
 fn eval_bind_body(node: Node) -> Outcome<Node> {
-  match first(skip(node.children, 2)) {
-    Some { value: e } => Accepted { value: e.target, diagnostics: None }
-    None => outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-    )
+  match node.children {
+    Cons { head: _, tail: rest1 } =>
+      match rest1 {
+        Cons { head: _, tail: rest2 } =>
+          match rest2 {
+            Cons { head: e, tail: _ } => Accepted { value: e.target, diagnostics: None }
+            Empty => outcome_rejected(
+              d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+            )
+          }
+        Empty => outcome_rejected(
+          d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+        )
+      }
+    Empty =>
+      outcome_rejected(
+        d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+      )
   }
 }
 
@@ -605,12 +632,21 @@ fn eval_absorb_child_diagnostics(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<Node>
 ) -> Outcome<List<RuntimeValue>> {
-  bind_outcome(
-    o: sequence_outcome(xs: [child], policy: eval_short_circuit_policy()),
-    f: fn(_) {
-      acc
-    }
-  )
+  match acc {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: values, diagnostics: ad } =>
+      match child {
+        Rejected { diagnostics: cr } =>
+          Rejected {
+            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
+          }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: values,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+  }
 }
 
 
