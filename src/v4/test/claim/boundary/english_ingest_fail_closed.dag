@@ -54,12 +54,12 @@ import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier3,
   Boundary,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 
 
@@ -129,7 +129,7 @@ data english_shape_b_docs_output: Node = Node {
 
 data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
   label: "english prose ingest rejects outside the lossless core",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: arbitrary_english_prose_input,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -144,7 +144,7 @@ data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
 
 data test_english_emit_is_shapeB_docs: TestClaim = CompilesClaim {
   label: "english prose output is shape-b docs over typed values",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: english_shape_b_docs_input,
   expected_value: english_shape_b_docs_output,
   classification: TestClassification { tier: Tier3, layer: Boundary }

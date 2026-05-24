@@ -10,12 +10,8 @@ import v4.std.collection { List, Map }
 import v4.std.diagnostic { Diagnostic, Outcome }
 import v4.std.logic { Bool }
 import v4.std.machine { Byte }
-import v4.std.model_core { ModelCore, PrimitiveOperationRef }
-import v4.std.node { Node, Symbol }
-
-type ResourceAccess {
-  resource: Node
-}
+import v4.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
+import v4.std.node { Behavior, Node, Symbol }
 
 type RuntimeIdentity {
   identity: Symbol
@@ -67,6 +63,11 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
+// 🟡 coproduct dissolution — consumer:runtime-value-node-reification; fail-closed until RuntimeValue payloads have faithful Node representation.
+type RuntimeValueNodeProjection
+  = RuntimeValueNodeProjected { node: Node }
+  | RuntimeValueNodeUnrepresentable
+
 fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   match value {
     RuntimePrimitive { value: p } => p.primitive_type
@@ -74,6 +75,16 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
     RuntimeReference { value: r } => r.reference_type
     RuntimeClosure { value: c } => c.arrow_type
     RuntimeUnit { value: u } => u.unit_type
+  }
+}
+
+fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection {
+  match value {
+    RuntimePrimitive { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeAggregate { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeReference { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeClosure { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeUnit { value: _ } => RuntimeValueNodeUnrepresentable
   }
 }
 
@@ -109,6 +120,7 @@ type CallSemantics {
 
 type ControlSemantics {
   transfer: fn(ControlTransfer, EvaluationFrame) -> Outcome<EvaluationFrame>
+  terminal_value: fn(ControlTransfer, EvaluationFrame) -> Outcome<RuntimeValue>
 }
 
 type ExecutionSemantics {
@@ -143,6 +155,27 @@ type InterpretationAlgebra {
   branch: BranchInterpreter
   loop: LoopInterpreter
   bind: BindInterpreter
+}
+
+// 🟢 coproduct dissolution — behavior dispatch authority lives with InterpretationAlgebra, not eval consumers.
+type RuntimeBehaviorInterpreter
+  = ValueRuntimeInterpreter { interpreter: ValueInterpreter }
+  | TransformRuntimeInterpreter { interpreter: TransformInterpreter }
+  | BranchRuntimeInterpreter { interpreter: BranchInterpreter }
+  | LoopRuntimeInterpreter { interpreter: LoopInterpreter }
+  | BindRuntimeInterpreter { interpreter: BindInterpreter }
+
+fn interpretation_behavior_dispatch(
+  interpretation: InterpretationAlgebra,
+  behavior: Behavior
+) -> RuntimeBehaviorInterpreter {
+  match behavior {
+    Value => ValueRuntimeInterpreter { interpreter: interpretation.value }
+    Transform => TransformRuntimeInterpreter { interpreter: interpretation.transform }
+    Branch => BranchRuntimeInterpreter { interpreter: interpretation.branch }
+    Loop => LoopRuntimeInterpreter { interpreter: interpretation.loop }
+    Bind => BindRuntimeInterpreter { interpreter: interpretation.bind }
+  }
 }
 
 type BoundaryAllowance {

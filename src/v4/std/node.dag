@@ -1,8 +1,8 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
-// Consumes: none.
+// Owns: Symbol, Hash, Connective, ConnectiveCoproductVariant, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
+// Consumes: none (List return types use language surface; explicit v4.std.collection import introduces compile-cycle via collection→…→node).
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 // Note: bind_outcome + Outcome helpers live in v4.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
 // (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
@@ -26,6 +26,51 @@ type Behavior
   | Branch
   | Loop
   | Bind
+
+
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
+// forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
+type ConnectiveCoproductVariant
+  = ConnectiveAtomArm
+  | ConnectiveConjArm
+  | ConnectiveDisjArm
+  | ConnectiveArrowArm
+  | ConnectiveCardinalityArm
+  | ConnectiveInstantiationArm
+
+
+fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
+  [
+    ConnectiveAtomArm,
+    ConnectiveConjArm,
+    ConnectiveDisjArm,
+    ConnectiveArrowArm,
+    ConnectiveCardinalityArm,
+    ConnectiveInstantiationArm,
+  ]
+}
+
+
+fn connective_from_coproduct_variant(
+  variant: ConnectiveCoproductVariant,
+  atom_identity: Symbol
+) -> Connective {
+  match variant {
+    ConnectiveAtomArm => Atom { identity: atom_identity }
+    ConnectiveConjArm => Conj
+    ConnectiveDisjArm => Disj
+    ConnectiveArrowArm => Arrow
+    ConnectiveCardinalityArm => Cardinality
+    ConnectiveInstantiationArm => Instantiation
+  }
+}
+
+
+fn behavior_coproduct_variants() -> List<Behavior> {
+  [Value, Transform, Branch, Loop, Bind]
+}
+
+
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NodeKind
   = TypeNode { connective: Connective }

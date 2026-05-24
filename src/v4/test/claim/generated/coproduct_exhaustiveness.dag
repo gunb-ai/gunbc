@@ -22,16 +22,16 @@ import v4.std.node { Node }
 import v4.std.verification {
   DiagnosticClaim,
   TestClaim,
-  T19GeneratedClaimAnchor,
-  T19GeneratedAnchorKey,
-  T19GeneratedCoproductExhaustiveness,
+  GeneratedClaimAnchor,
+  GeneratedAnchorKey,
+  GeneratedCoproductExhaustiveness,
   TestClaimCompilesClaimVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
-  t19_generated_claim_anchor,
+  generated_claim_anchor,
   test_claim_input,
-  test_claim_t19_anchor
+  test_claim_anchor
 }
 
 
@@ -54,19 +54,19 @@ fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this hand-rolled DiagnosticClaim arm check with canonical TestClaim variant reflection; forbidden: permanent hand-enumerated TestClaim arm discriminant in generated corpus.
 fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
-    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => false
   }
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this hand-matched T19GeneratedClaimAnchor arm check with canonical anchor-type projection; forbidden: permanent hand-rolled anchor-variant discriminant in generated corpus.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this hand-matched GeneratedClaimAnchor arm check with canonical anchor-type projection; forbidden: permanent hand-rolled anchor-variant discriminant in generated corpus.
 fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: claim, diagnostics: _ } =>
-      match test_claim_t19_anchor(c: claim) {
-        T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } } => true
+      match test_claim_anchor(c: claim) {
+        GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: _ } } => true
         _ => false
       }
     Rejected { diagnostics: _ } => false
@@ -91,11 +91,11 @@ fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this four-arm hand-enumerated TestClaimCoproductVariant equality check with canonical variant-key reflection; forbidden: permanent hand-rolled arm-identity match over TestClaimCoproductVariant in generated corpus.
-fn witness_coproduct_exhaustiveness_variant_emits(anchor: T19GeneratedAnchorKey) -> Bool {
+fn witness_coproduct_exhaustiveness_variant_emits(anchor: GeneratedAnchorKey) -> Bool {
   match testgen_emit_coproduct_exhaustiveness_claim(anchor: anchor) {
-    Accepted { value: DiagnosticClaim { label: _, t19_anchor: T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
+    Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
       match anchor {
-        T19GeneratedCoproductExhaustiveness { omitted_variant: requested_variant } =>
+        GeneratedCoproductExhaustiveness { omitted_variant: requested_variant } =>
           match requested_variant {
             TestClaimCompilesClaimVariant =>
               match omitted_variant {
