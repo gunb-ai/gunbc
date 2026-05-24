@@ -312,6 +312,19 @@ fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
             "{needle}: missing nat substrate AlgebraLawSubject Symbol ground"
         );
     }
+    for forbidden in [
+        "nat_algebra_law_subject_symbol_add_operation",
+        "nat_algebra_law_subject_symbol_mul_operation",
+        "nat_algebra_law_subject_symbol_zero_value",
+        "nat_algebra_law_subject_symbol_one_value",
+        "nat_algebra_law_subject_symbol_two_value",
+        "nat_algebra_law_subject_symbol_three_value",
+    ] {
+        assert!(
+            !nat_src.contains(forbidden),
+            "{forbidden}: Nat substrate must not export operation/value mirror symbols"
+        );
+    }
 }
 
 /// Pin the six Nat algebra-law anchors while allowing a single helper-owned AlgebraLaw constructor.
