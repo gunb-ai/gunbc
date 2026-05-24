@@ -341,15 +341,22 @@ flat — dispatch in waves):
 
 ---
 
-### T-4.5: extdeps/posix.dag + extdeps/file_system.dag
+### T-4.5: extdeps/posix.dag + extdeps/file_system.dag  [SUBSTRATE LANDED]
 
+**Status:** Both files landed. `posix.dag` models the POSIX process substrate
+(ProcessId/ExitCode/SignalNum via T-25-core refinement substrate — PR #3507;
+CapturedOutputPipes stdout/stderr axes, ProcessTable opaque OS resource).
+`file_system.dag` models file-system resource + modeled effects (ModeledFileEffects
+per Practice 11 companion; legacy FileSystemOperations P5-bridge dissolves when
+testgen transitions to ModeledFileEffects). TestClaims in `test/claim/manual/process_numeric_refinements.dag`
+and `test/claim/manual/posix_output_capture.dag`.
 **File**: 2 files in `src/v4/extdeps/`
 **Why bundled**: both are OS-interaction substrate; both are required for v4 to function as a self-hosting compiler (read source files, write emitted files, ExecuteCommand for boundary tests per THESIS facet 3).
 **Why anchored**: each file carries a `# Anchor:` to its canonical reference (Wikipedia/POSIX). Reviewers validate the modeling against the reference — no invented vocabulary.
 
-**Modeling decisions**:
-- `posix.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
-- `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as distinct Diagnostic `reason` name-references (`Symbol`, per std/diagnostic.dag — `reason` is an opaque name-reference, not a closed enum).
+**Modeling decisions (resolved)**:
+- `posix.dag`: parent/child via `ProcessIdentity.parent: ProcessId`; signal handling minimal (`SignalNum` + `Termination` sum — no named SIGTERM/SIGKILL constants per T-4.5 modeling decision); pipe capture buffered via `CapturedOutputPipes { stdout, stderr: CapturedByteStream }`.
+- `file_system.dag`: `FilesystemPath = Absolute | Relative` (Disj sum); symlink target as `FileKind` discriminant (`FileKindResolutionPolicy = FollowSymlinks | DoNotFollowSymlinks`); read failure modes as opaque `Symbol` reason-references per std/diagnostic.dag.
 
 **Reference**:
 - Anchors in file headers (Wikipedia: Process, Wikipedia: File system, POSIX File and Directory Operations)
@@ -558,8 +565,14 @@ entry (wires `dependency_lens(root: tree.root)` internally).
 
 ---
 
-### T-14: test/claim/* + test/fixture/* — TestClaim corpus
+### T-14: test/claim/* + test/fixture/* — TestClaim corpus  [CORPUS FILLED]
 
+**Status:** Corpus filled **PR #3467**. All 6 impossible-bug classes landed
+(`suboptimal_complexity`, `idempotency_contract`, `transport_type_drift`,
+`nested_optional_flatten`, `unenumerated_effects`, `unhandled_diagnostic_paths`).
+`algebra_laws/nat_semiring.dag` and `diagnostic_correction/show_correct_code.dag` filled.
+Manual claims in `test/claim/manual/` (connective_anchors, nat_law_anchors, process_numeric_refinements,
+refinement_nonempty_list, posix_output_capture, and others). Execution deferred to T-22 runner.
 **Files**: `src/v4/test/claim/*` directories (6 impossible_bug + algebra_laws + diagnostic_correction + future categories) + `src/v4/test/fixture/*`
 **Operator-ratified additions 2026-05-15**: scaffolds for all 6 R1+R2+ impossible-bug classes already present (`test/claim/impossible_bug/{suboptimal_complexity,idempotency_contract,transport_type_drift,nested_optional_flatten,unenumerated_effects,unhandled_diagnostic_paths}.dag`); diagnostic_correction/ + algebra_laws/ directories ready for fill-in.
 
