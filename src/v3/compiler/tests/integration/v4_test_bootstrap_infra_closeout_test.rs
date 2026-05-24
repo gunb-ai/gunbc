@@ -329,9 +329,14 @@ fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
             && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness")
+            && TESTGEN_DAG.contains("subject: DiagnosticExhaustivenessSubject")
+            && TESTGEN_DAG.contains("reason: subject.reason")
+            && TESTGEN_DAG.contains(
+                "d: coproduct_exhaustiveness_diagnostic(subject: subject, input: input)"
+            )
             && TESTGEN_DAG.contains("value: DiagnosticClaim {")
             && TESTGEN_DAG.contains("anchor: generated_claim_anchor(anchor: anchor)"),
-        "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
+        "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen while consuming subject reason"
     );
     assert!(
         TESTGEN_DAG.contains("fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node")
@@ -347,6 +352,10 @@ fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             .contains("fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
                 .contains("testgen_emit_coproduct_exhaustiveness_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("subject: DiagnosticExhaustivenessSubject")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("reason: t19_coproduct_exhaustiveness_missing_variant")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
                 .contains("witness_coproduct_exhaustiveness_diagnostic_claim")
             && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
