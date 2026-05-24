@@ -24,16 +24,20 @@ type TomlUnderscoreSeparatedDigitsProfile {}
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlIntegerLexemeProfile
   = TomlDecimalIntegerLexemeProfile {
+      lexeme: String,
       sign: TomlSign,
       underscores: TomlUnderscoreSeparatedDigitsProfile,
     }
   | TomlHexIntegerLexemeProfile {
+      lexeme: String,
       underscores: TomlUnderscoreSeparatedDigitsProfile,
     }
   | TomlOctalIntegerLexemeProfile {
+      lexeme: String,
       underscores: TomlUnderscoreSeparatedDigitsProfile,
     }
   | TomlBinaryIntegerLexemeProfile {
+      lexeme: String,
       underscores: TomlUnderscoreSeparatedDigitsProfile,
     }
 
@@ -41,27 +45,24 @@ type TomlIntegerLexemeProfile
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlFloatLexemeProfile
   = TomlFiniteFloatLexemeProfile {
+      lexeme: String,
       sign: TomlSign,
       underscores: TomlUnderscoreSeparatedDigitsProfile,
     }
   | TomlInfFloatLexemeProfile {
+      lexeme: String,
       sign: TomlSign,
     }
   | TomlNanFloatLexemeProfile {
+      lexeme: String,
       sign: TomlSign,
     }
 
 
-type TomlIntegerLexeme {
-  lexeme: String,
-  profile: TomlIntegerLexemeProfile,
-}
+type TomlIntegerLexeme = TomlIntegerLexemeProfile
 
 
-type TomlFloatLexeme {
-  lexeme: String,
-  profile: TomlFloatLexemeProfile,
-}
+type TomlFloatLexeme = TomlFloatLexemeProfile
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
