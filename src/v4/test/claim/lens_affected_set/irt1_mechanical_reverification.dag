@@ -35,7 +35,7 @@ import v4.lens.affected_set_examples {
   expected_affected_set_excluded_proofs,
   expected_affected_set_rejected_edit_fail_closed
 }
-import v4.std.diagnostic { Some, diagnostics_singleton }
+import v4.std.diagnostic { None, Some, diagnostics_singleton }
 import v4.std.logic { Bool }
 import v4.std.node { Conj, Node, TypeNode }
 import v4.std.verification {
