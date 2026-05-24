@@ -189,7 +189,7 @@ fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVaria
         lhs: complexity_variables_from_cost(cost: lhs),
         rhs: complexity_variables_from_cost(cost: rhs)
       )
-    UnknownCost { reason: _, diagnostic: d } =>
+    UnknownCost { diagnostic: d } =>
       Violates { diagnostic: d }
   }
 }

@@ -44,9 +44,6 @@ import v4.std.algebra {
   Semigroup
 }
 import v4.std.cardinality {
-  cardinality_loop_bound_ambiguous,
-  cardinality_loop_bound_malformed,
-  cardinality_loop_bound_not_loop,
   loop_bound_measure,
   loop_bound_witness_for_node,
   NonZeroNat
@@ -54,8 +51,9 @@ import v4.std.cardinality {
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
-  node_locus,
-  Unavailable
+  Textual,
+  Unavailable,
+  WholeFile
 }
 import v4.std.node {
   Arrow,
@@ -87,7 +85,7 @@ import v4.std.witness { Holds, Violates, Witness }
 
 
 data cost_reason_unmodeled_symbolic_cost: Symbol = cost_reason_unmodeled_symbolic_cost
-data cost_lattice_top_reason: String = "lattice-top-unknown-cost"
+data cost_lattice_top_virtual_file: Symbol = cost_lattice_top_virtual_file
 
 // U2/T-12: this is the single cost carrier. Complexity imports the
 // `asymptotic_class_of_cost` projection below and does not re-walk `Node`.
@@ -119,7 +117,7 @@ type SymbolicCost
   | FactorialCost { variable: SizeVariable }
   | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
-  | UnknownCost { reason: String, diagnostic: Diagnostic }
+  | UnknownCost { diagnostic: Diagnostic }
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type AsymptoticClass
@@ -180,24 +178,19 @@ fn linear_in_node(n: Node) -> SymbolicCost {
   LinearCost { variable: size_of_node(n: n) }
 }
 
-data cost_lattice_top_node: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: []
-}
-
 data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
   reason: cost_reason_unmodeled_symbolic_cost,
-  at: node_locus(node: cost_lattice_top_node),
+  at: Textual { file: cost_lattice_top_virtual_file, extent: WholeFile },
   correction: Unavailable { reason: AmbiguousIntent }
 }
 
-fn unknown_cost(reason: String, diagnostic: Diagnostic) -> SymbolicCost {
-  UnknownCost { reason: reason, diagnostic: diagnostic }
+fn unknown_cost(diagnostic: Diagnostic) -> SymbolicCost {
+  UnknownCost { diagnostic: diagnostic }
 }
 
 fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   match c {
-    UnknownCost { reason: _, diagnostic: d } =>
+    UnknownCost { diagnostic: d } =>
       Violates { diagnostic: d }
     _ =>
       Holds { value: c }
@@ -215,36 +208,12 @@ fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
   }
 }
 
-fn unknown_cost_for_loop_bound_diagnostic(d: Diagnostic) -> SymbolicCost {
-  if d.reason == cardinality_loop_bound_ambiguous {
-    unknown_cost(
-      reason: "loop-bound-ambiguous: Loop node declares more than one loop_bound_edge",
-      diagnostic: d
-    )
-  } else if d.reason == cardinality_loop_bound_malformed {
-    unknown_cost(
-      reason: "loop-bound-malformed: Loop node violates Loop edge discipline",
-      diagnostic: d
-    )
-  } else if d.reason == cardinality_loop_bound_not_loop {
-    unknown_cost(
-      reason: "loop-bound-not-loop: loop_bound_edge witness requested on non-Loop node",
-      diagnostic: d
-    )
-  } else {
-    unknown_cost(
-      reason: "loop-bound-undeclared: Loop node missing loop_bound_edge Named attachment",
-      diagnostic: d
-    )
-  }
-}
-
 fn base_cost_for_loop(n: Node) -> SymbolicCost {
   match loop_bound_witness_for_node(n: n) {
     Holds { value: bound } =>
       linear_in_node(n: loop_bound_measure(bound: bound))
     Violates { diagnostic: d } =>
-      unknown_cost_for_loop_bound_diagnostic(d: d)
+      unknown_cost(diagnostic: d)
   }
 }
 
@@ -299,11 +268,11 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
 fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => b
-    UnknownCost { reason: _, diagnostic: _ } => a
+    UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => a
-        UnknownCost { reason: _, diagnostic: _ } => b
+        UnknownCost { diagnostic: _ } => b
         _ => SumCost { lhs: a, rhs: b }
       }
   }
@@ -313,12 +282,12 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => zero_cost()
     ConstantCost { value: Succ { prev: Zero } } => b
-    UnknownCost { reason: _, diagnostic: _ } => a
+    UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => zero_cost()
         ConstantCost { value: Succ { prev: Zero } } => a
-        UnknownCost { reason: _, diagnostic: _ } => b
+        UnknownCost { diagnostic: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
       }
   }
@@ -667,7 +636,7 @@ fn asymptotic_class_of_cost(cost: SymbolicCost) -> AsymptoticClass {
         a: asymptotic_class_of_cost(cost: lhs),
         b: asymptotic_class_of_cost(cost: rhs)
       )
-    UnknownCost { reason: _, diagnostic: _ } => ClassUnknown
+    UnknownCost { diagnostic: _ } => ClassUnknown
   }
 }
 
@@ -693,7 +662,7 @@ data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
     meet: cost_lattice_meet,
     join: cost_lattice_join
   },
-  top: UnknownCost { reason: cost_lattice_top_reason, diagnostic: cost_lattice_top_diagnostic },
+  top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
   bottom: ConstantCost { value: Zero }
 }
 
