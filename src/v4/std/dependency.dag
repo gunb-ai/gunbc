@@ -1,8 +1,8 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
-// Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
-// Consumes: v4.std.collection, v4.std.node.
-// Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
+// Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers, classified_source, classified_dependent, classified_usage_site, classified_dependency_view_eq, dependency_binds_to_edge, dependency_module_import_edge, dependency_bootstrap_depends_edge, classify_named_edge_usage, classify_node_edge_usage, dependency_view_for_edge, append_dependency_views, dependency_fold_init, dependency_fold_step, dependency_fold_algebra, dependency_fold_dependencies, dependency_lens, ReadinessLayer, readiness_fold_init, ready_set_fold_step, ready_set_algebra, readiness_fold_ready, ready_set, append_nodes, topological_layers_fold_init, topological_layers_fold_step, topological_layers_algebra, readiness_fold_layers, topological_layers, append_readiness_layers.
+// Consumes: std/collection.dag; std/logic.dag; std/node.dag.
+// Status: Wave-2-A substrate.
 
 module v4.std.dependency
 
@@ -21,13 +21,11 @@ import v4.std.node {
   fold_node
 }
 
-// Substrate-visible edge labels for resolve-stage dependency kinds (Wave-2-A staged).
-// Ordinary Named record fields stay Contains; only marked dependency_*_edge labels classify.
 data dependency_binds_to_edge: Symbol = dependency_binds_to_edge
 data dependency_module_import_edge: Symbol = dependency_module_import_edge
 data dependency_bootstrap_depends_edge: Symbol = dependency_bootstrap_depends_edge
 
-// 🟢 closed set — P6 dependency classification taxonomy.
+// 🟢 coproduct dissolution
 type DependencyKind
   = Contains
   | BindsTo
@@ -52,16 +50,6 @@ type DependencyView {
   usage_site: Node
 }
 
-// 🟢 parametric T-13 lens row — one carrier for every lens that projects
-// a per-edge classification over `DependencyView`. The dependency edge is
-// the single endpoint authority; classification is the lens-specific
-// projection. Practice 11 sub-rule (parallel-payload vs typed-reference):
-// no parallel `source`/`dependent`/`at`/`owner`/`use_site` fields — those
-// are read through `dependency.*` accessors below, never duplicated on
-// the row. Per-node InferredFacts are read at use-sites via
-// `tree.facts.lookup(...)`, NOT stored on the row (Practice 3 — facts
-// flow forward by reference). Concept-home is here in v4.std.dependency
-// (M9 / Practice 11 concept-home discipline).
 type ClassifiedDependencyView<C> {
   dependency: DependencyView
   classification: C
@@ -92,15 +80,6 @@ type DependencyFoldState {
   dependencies: List<DependencyView>
 }
 
-// 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts
-// dissolve-on: T-9 resolve writes ModuleDependsOn / BootstrapDependsOn labels inline (BindsTo partial).
-// Staged: resolve will stamp `dependency_binds_to_edge` on declaration-container edges whose
-// target is the Atom reference (P6 Decl→AtomUse). Atom has NoEdges — it cannot be edge parent.
-// Not bind-edge-0 binder target (`03_resolve.dag` resolve_bind_binder_target). Claims mark explicitly until T-9.
-// Module/bootstrap markers remain claim-only until import/bootstrap producers land.
-// Bind nodes are NOT all BindsTo — edge 0 is binder target; edges 1+ are scope bodies (`resolve_bind_edges`).
-// Ordinary TypeNode Named record fields remain Contains (composition, not use).
-// BindsTo: marked use edge on non-Bind parent (Decl → Atom reference / use site).
 fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
   if sym == dependency_binds_to_edge {
     match parent.kind {
@@ -123,8 +102,6 @@ fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
   }
 }
 
-// P6 BindsTo: declaration (source) before Atom use (dependent / usage_site).
-// Substrate edge: parent = decl container (Conj/LabeledEdges), target = Atom reference.
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
   let kind = classify_node_edge_usage(parent: parent, edge: edge)
   DependencyView {
@@ -261,7 +238,7 @@ fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
   state.layers
 }
 
-// 🟡 predicate dissolution — feature:readiness-rank-layer-merge.
+// 🟡 readiness-rank-layer-merge
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   readiness_fold_layers(
     state: fold_node(
