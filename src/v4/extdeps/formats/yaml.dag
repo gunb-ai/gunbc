@@ -1,7 +1,6 @@
 // src/v4/extdeps/formats/yaml.dag
 // Scope: YAML 1.2.2 structural value model — declarative only; parse/emit deferred.
-// Owns: YamlValue, YamlIntLexemeFacts, YamlFloatLexemeFacts, YamlCanonicalKeyProfileFacts,
-//       YamlAnchorAliasResolutionFacts, Yaml{Int,Float,CanonicalKey,AnchorAlias}* witness types.
+// Owns: YamlValue.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (§10.3.2 core schema),
 //         canonical-key profile (§3.2.1.3 tag+canonical-content), anchor/alias resolution (§6.1/§7.1).
