@@ -1,7 +1,7 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, loop_bound_edge, loop_behavior_edges_conform, loop_edge_contributes_to_iteration_fold, ...
+// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, loop_bound_edge, loop_behavior_edges_conform, loop_bound_measure_target, loop_edge_contributes_to_iteration_fold, ...
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 // Note: bind_outcome + Outcome helpers live in v4.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
@@ -126,6 +126,20 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   (bound_edges == 0 || bound_edges == 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
+fn loop_bound_measure_target(children: List<Edge>) -> Node {
+  fold(children, init: Node { kind: TypeNode { connective: Conj }, children: [] }, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == loop_bound_edge {
+          e.target
+        } else {
+          acc
+        }
+      Positional => acc
+    }
+  })
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {

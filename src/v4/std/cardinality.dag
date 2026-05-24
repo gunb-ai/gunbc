@@ -39,6 +39,7 @@ import v4.std.node {
   Value,
   fold_node,
   loop_behavior_edges_conform,
+  loop_bound_measure_target,
   loop_bound_edge,
   name_occurrences
 }
@@ -174,6 +175,7 @@ fn loop_bound_not_loop_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: cardinality-loop-bound-measure-witness — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent owns Loop measure witness minting; forbidden: hand-rolled EdgeLabel walks outside std.node loop_bound_measure_target.
 fn loop_measure_node(n: Node) -> Witness<Node> {
   match n.kind {
     ComputationNode { behavior: Loop } => {
@@ -185,17 +187,7 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
       } else if !loop_behavior_edges_conform(children: n.children) {
         Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
       } else {
-        fold(n.children, init: Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }, f: fn(acc, e) {
-          match e.label {
-            Named { name: sym } =>
-              if sym == loop_bound_edge {
-                Holds { value: e.target }
-              } else {
-                acc
-              }
-            Positional => acc
-          }
-        })
+        Holds { value: loop_bound_measure_target(children: n.children) }
       }
     }
     _ => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }
