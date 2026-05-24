@@ -109,6 +109,13 @@ type CoverageMissingDiagnosticsFold
   | SomeCoverageMissingDiagnostics { acc: NonEmptyDiagnostics }
 
 
+// 🟢 coproduct dissolution — local slice projection carrier for fail-closed actual-key collection.
+type CoverageSliceProjection<C>
+  = CoverageSliceNotApplicable
+  | CoverageSlicePresent { key: C }
+  | CoverageSliceInvalid { diagnostics: NonEmptyDiagnostics }
+
+
 type Coverage<C> {
   concern: C
 }
