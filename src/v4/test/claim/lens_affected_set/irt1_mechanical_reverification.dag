@@ -11,13 +11,13 @@ import v4.lens.affected_set {
   DimensionNotRead,
   ExclusionKey,
   UnchangedPureBoundary,
-  affected_fold_accepts_more_edits,
   empty_affected_fold_acc,
   empty_frontier,
   frontier_from_fold_acc,
   mark_boundary_excluded,
   mark_excluded,
-  mark_rerun
+  mark_rerun,
+  merge_seed_edit_fold_step
 }
 import v4.lens.affected_set_examples {
   affected_set_example_dimension,
@@ -98,13 +98,15 @@ fn irt1_pending_escalation_receipt_holds() -> Bool {
 }
 
 fn irt1_fail_closed_absorbs_later_edits() -> Bool {
-  affected_fold_accepts_more_edits(
-    acc: AffectedFoldAcc {
-      dag: affected_set_example_node,
-      frontier: expected_affected_set_rejected_edit_fail_closed,
-      pending: None
-    }
-  ) == false
+  let fail_closed = AffectedFoldAcc {
+    dag: affected_set_example_node,
+    frontier: expected_affected_set_rejected_edit_fail_closed,
+    pending: None
+  }
+  merge_seed_edit_fold_step(
+    acc: fail_closed,
+    live: empty_affected_fold_acc(dag: affected_set_example_node)
+  ) == fail_closed
 }
 
 fn irt1_empty_diff_fold_is_empty_frontier() -> Bool {

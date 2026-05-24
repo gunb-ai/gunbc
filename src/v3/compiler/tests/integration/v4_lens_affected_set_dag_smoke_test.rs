@@ -84,8 +84,12 @@ fn v4_lens_affected_set_module_authority_and_entrypoints() {
         "{AFFECTED_SET_PATH}: IRT-1 whole/changed-subgraph gate marker"
     );
     assert!(
+        surface_declares_fn(&module, "merge_seed_edit_fold_step"),
+        "{AFFECTED_SET_PATH}: merge_seed_edit_fold_step (IRT-1 fail-closed absorption step)"
+    );
+    assert!(
         surface_declares_fn(&module, "affected_fold_accepts_more_edits"),
-        "{AFFECTED_SET_PATH}: affected_fold_accepts_more_edits (fail-closed absorption predicate)"
+        "{AFFECTED_SET_PATH}: affected_fold_accepts_more_edits (canonical fold gate query)"
     );
     assert!(
         surface_declares_fn(&module, "frontier_from_fold_acc"),

@@ -784,24 +784,33 @@ fn seed_edit_fold_acc(
   acc: AffectedFoldAcc,
   edit: Edit
 ) -> AffectedFoldAcc {
-  match acc.frontier {
-    FailClosed { reason: _ } => acc
-    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
-      seed_edit_fold_acc_live(
-        read_model: read_model,
-        post_edit_dag: post_edit_dag,
-        acc: acc,
-        edit: edit
-      )
-  }
+  merge_seed_edit_fold_step(
+    acc: acc,
+    live: seed_edit_fold_acc_live(
+      read_model: read_model,
+      post_edit_dag: post_edit_dag,
+      acc: acc,
+      edit: edit
+    )
+  )
 }
 
 
-// IRT-1 fail-closed absorption predicate: once frontier is FailClosed, seed_edit_fold_acc is idempotent.
+// 🟢 TERMINAL — canonical IRT-1 fold gate; consumed by merge_seed_edit_fold_step / seed_edit_fold_acc.
 fn affected_fold_accepts_more_edits(acc: AffectedFoldAcc) -> Bool {
   match acc.frontier {
     FailClosed { reason: _ } => false
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => true
+  }
+}
+
+
+// Canonical IRT-1 absorption step: fail-closed acc rejects live seed expansion.
+fn merge_seed_edit_fold_step(acc: AffectedFoldAcc, live: AffectedFoldAcc) -> AffectedFoldAcc {
+  if affected_fold_accepts_more_edits(acc: acc) {
+    live
+  } else {
+    acc
   }
 }
 
