@@ -213,6 +213,7 @@ data coverage_defect_skeleton_collapse: CoverageDefectAcceptance = {
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace connective_eq / behavior_eq / type_construction_subject_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-variant Connective/Behavior equality table drift from std/node.dag.
 fn connective_eq(a: Connective, b: Connective) -> Bool {
   match a {
     Atom { identity: ai } =>
@@ -312,6 +313,7 @@ fn l7_coverage_key_eq(a: L7CoverageKey, b: L7CoverageKey) -> Bool {
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace impossible_bug_coverage_key_eq call sites with the substrate ImpossibleBugClass equality primitive and delete this helper in that same PR; forbidden: permanent per-variant ImpossibleBugClass equality table drift from std/verification.dag.
 fn impossible_bug_coverage_key_eq(a: ImpossibleBugCoverageKey, b: ImpossibleBugCoverageKey) -> Bool {
   match a.bug_class {
     SuboptimalComplexity =>
@@ -348,6 +350,7 @@ fn impossible_bug_coverage_key_eq(a: ImpossibleBugCoverageKey, b: ImpossibleBugC
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace testgen_coverage_key_eq call sites with the substrate TestgenConcept equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestgenConcept equality table drift from lens/testgen.dag.
 fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool {
   match a {
     TypeConstruction { subject: as } =>
@@ -682,6 +685,14 @@ fn l7_coverage_key_from_claim(c: TestClaim) -> Outcome<L7CoverageKey> {
 
 fn l6_coverage_key_from_testgen_concept(concept: TestgenConcept) -> Outcome<L6CoverageKey> {
   match concept {
+    TypeConstruction { subject: subject } =>
+      Accepted {
+        value: l6_coverage_key(
+          subject: subject,
+          language: dag_language_model_surface_id
+        ),
+        diagnostics: None,
+      }
     LanguageBehaviorEquivalence { subject: subject, mock: _ } =>
       Accepted {
         value: l6_coverage_key(subject: subject.subject, language: subject.language),
