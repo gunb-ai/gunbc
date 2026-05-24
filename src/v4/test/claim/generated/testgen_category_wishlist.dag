@@ -27,7 +27,8 @@ import v4.lens.testgen {
   ConnectiveKernel,
   lbe_io_mock_conj_dag_surface,
   lbe_subject_conj_dag_surface,
-  law_nat_add_associativity
+  law_nat_add_associativity,
+  t19_coproduct_exhaustiveness_missing_variant
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
@@ -45,6 +46,7 @@ import v4.std.verification {
   TestClaimEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   TestClassification,
+  GeneratedCoproductExhaustiveness,
   ManualAnchorAbsent,
   ManualLbeConjDagSurface,
   ManualNatAddAssociativity,
@@ -54,6 +56,7 @@ import v4.std.verification {
   Tier3,
   Unit,
   Integration,
+  generated_claim_anchor,
   manual_claim_anchor
 }
 import v4.std.refinement { Refined }
@@ -79,11 +82,11 @@ type TestgenWishlistRow {
 
 
 data t19_wishlist_type_construction_dispatch: Symbol = t19_wishlist_type_construction_dispatch
-data t19_wishlist_diagnostic_exhaustiveness_dispatch: Symbol = t19_wishlist_diagnostic_exhaustiveness_dispatch
 data t19_wishlist_lens_applicability_dispatch: Symbol = t19_wishlist_lens_applicability_dispatch
 data t19_wishlist_bidirectional_roundtrip_dispatch: Symbol = t19_wishlist_bidirectional_roundtrip_dispatch
 data t19_dispatched_language_behavior_equivalence: Symbol = t19_dispatched_language_behavior_equivalence
 data t19_dispatched_algebra_law: Symbol = t19_dispatched_algebra_law
+data t19_dispatched_diagnostic_exhaustiveness: Symbol = t19_dispatched_diagnostic_exhaustiveness
 data t19_dispatched_refinement_preservation: Symbol = t19_dispatched_refinement_preservation
 data t19_generator_wishlist_lens_structural_resolution: Symbol = t19_generator_wishlist_lens_structural_resolution
 data t19_generator_wishlist_unexpected_deferred_roundtrip: Symbol = t19_generator_wishlist_unexpected_deferred_roundtrip
@@ -119,14 +122,18 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
 }
 
 
-fn wishlist_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
+fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimDiagnosticClaimVariant,
     classification: TestClassification { tier: Tier2, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: generated_claim_anchor(
+      anchor: GeneratedCoproductExhaustiveness {
+        omitted_variant: TestClaimDiagnosticClaimVariant,
+      }
+    ),
     slot: DiagnosticExhaustiveness {
       subject: DiagnosticExhaustivenessSubject {
-        reason: t19_generator_wishlist_unexpected_deferred_roundtrip,
+        reason: t19_coproduct_exhaustiveness_missing_variant,
       },
     }
   }
@@ -199,11 +206,6 @@ fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlist
       dispatch_key: t19_wishlist_type_construction_dispatch,
     },
     TestgenWishlistRow {
-      generator: wishlist_diagnostic_exhaustiveness_generator(),
-      oracle: DiagnosticNegativeFixture,
-      dispatch_key: t19_wishlist_diagnostic_exhaustiveness_dispatch,
-    },
-    TestgenWishlistRow {
       generator: wishlist_lens_applicability_generator(),
       oracle: LensObservationFixture,
       dispatch_key: t19_wishlist_lens_applicability_dispatch,
@@ -230,6 +232,11 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
       dispatch_key: t19_dispatched_algebra_law,
     },
     TestgenWishlistRow {
+      generator: dispatched_diagnostic_exhaustiveness_generator(),
+      oracle: DiagnosticNegativeFixture,
+      dispatch_key: t19_dispatched_diagnostic_exhaustiveness,
+    },
+    TestgenWishlistRow {
       generator: dispatched_refinement_preservation_generator(),
       oracle: RefinementProjectionWitness,
       dispatch_key: t19_dispatched_refinement_preservation,
@@ -238,13 +245,13 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
 }
 
 
-fn pending_non_tautological_generator_count_is_four() -> Bool {
-  length(xs: testgen_pending_non_tautological_generator_wishlist()) == 4
+fn pending_non_tautological_generator_count_is_three() -> Bool {
+  length(xs: testgen_pending_non_tautological_generator_wishlist()) == 3
 }
 
 
-fn dispatched_non_tautological_generator_count_is_three() -> Bool {
-  length(xs: testgen_dispatched_non_tautological_generators()) == 3
+fn dispatched_non_tautological_generator_count_is_four() -> Bool {
+  length(xs: testgen_dispatched_non_tautological_generators()) == 4
 }
 
 
@@ -257,7 +264,7 @@ fn testgen_wishlist_count_node() -> Node {
 
 
 fn testgen_wishlist_count_claim_rhs() -> Node {
-  if pending_non_tautological_generator_count_is_four() && dispatched_non_tautological_generator_count_is_three() {
+  if pending_non_tautological_generator_count_is_three() && dispatched_non_tautological_generator_count_is_four() {
     testgen_wishlist_count_node()
   } else {
     Node {
@@ -269,7 +276,7 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
 
 
 data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
-  label: "generated/testgen_category_wishlist: four pending non-tautological generator categories and three dispatched categories",
+  label: "generated/testgen_category_wishlist: three pending non-tautological generator categories and four dispatched categories",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: testgen_wishlist_count_node(),
   rhs: testgen_wishlist_count_claim_rhs(),
