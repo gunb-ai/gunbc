@@ -253,3 +253,28 @@ T-20 expansion); the runtime model (§2) is the accumulation of
 `src/v4/extdeps/posix.dag` / `src/v4/extdeps/file_system.dag` into a
 complete execution substrate. None of it dispatches before the operator
 ratifies this layer model as the Phase-1 definition.
+
+## 8. Yellow items for operator ratification
+
+These are not Phase-2 dispatch items. They are the explicit Phase-1
+operator decisions this layer model needs ratified before seed-reduction
+work starts:
+
+- 🟡 **LanguageModel carrier authority.** §2 and §4 depend on a declared
+  `LanguageModel` authority, but that carrier is not landed yet
+  (Theme-A #9). Ratify whether the frozen sub-model is a subset of a
+  named `LanguageModel` carrier, or whether the authority is formally
+  "a model IS a `Node`." Without that decision, `seed_capability` cannot
+  be declared as data.
+- 🟡 **Projection-input completeness gate.** §2 names the seed projection
+  inputs that are still scaffolds: `machine_code.dag`, `posix.dag`, and
+  `file_system.dag`. Ratify that Phase 2 is blocked until those inputs
+  reach modeled state sufficient for `emit(snapshot, target_model,
+  runtime_model)`; otherwise the seed would depend on ambient target or
+  runtime assumptions.
+- 🟡 **Seed-honesty discharge placement.** §6 defines diverse
+  double-compilation as the discharge witness for the seed-honesty axiom.
+  Ratify where that witness lives in the v4 substrate/workflow boundary
+  (`workflow/bootstrap.dag`, the T-15 fixed-point gate, or a dedicated
+  T-32 witness surface) so Phase 2 does not collapse honesty into the
+  bit-identical reproduction check.
