@@ -189,6 +189,7 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
       } else {
         match loop_bound_measure_target(children: n.children) {
           Found { target: measure } => Holds { value: measure }
+          Ambiguous => Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
           Absent => Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
         }
       }

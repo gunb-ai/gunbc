@@ -175,13 +175,18 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
 type LoopMeasureTargetLookup
   = Found { target: Node }
+  | Ambiguous
   | Absent
 fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
   fold(children, init: Absent, f: fn(acc, e) {
     match e.label {
       Named { name: sym } =>
         if sym == loop_bound_edge {
-          Found { target: e.target }
+          match acc {
+            Absent => Found { target: e.target }
+            Found { target: _ } => Ambiguous
+            Ambiguous => Ambiguous
+          }
         } else {
           acc
         }
