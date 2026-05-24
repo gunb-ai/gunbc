@@ -20,7 +20,13 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.logic { Bool }
-import v4.std.model_core { ModelCore, PrimitiveOperationRef, wave1_void }
+import v4.std.model_core {
+  EffectSignature,
+  ModelCore,
+  PrimitiveOperationRef,
+  ResourceAccess,
+  wave1_void
+}
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.runtime {
   AllocationSemantics,
@@ -39,7 +45,6 @@ import v4.std.runtime {
   InterpretationAlgebra,
   LoopInterpreter,
   Raise,
-  ResourceAccess,
   ResourceEffectBoundary,
   Return,
   RuntimeValue,
@@ -206,7 +211,14 @@ fn v4_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
   BoundaryAllowance {
     operation: PrimitiveOperationRef {
       operation: v4_eval_wave1_boundary_operation_node(),
-      effect_signature: v4_eval_wave1_effect_signature_node()
+      effect_signature: EffectSignature {
+        signature: v4_eval_wave1_effect_signature_node(),
+        resources: [
+          ResourceAccess {
+            resource: v4_eval_wave1_boundary_operation_node()
+          }
+        ]
+      }
     },
     resource: ResourceAccess {
       resource: v4_eval_wave1_boundary_operation_node()
