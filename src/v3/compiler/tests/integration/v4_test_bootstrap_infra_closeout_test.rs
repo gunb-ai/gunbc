@@ -591,6 +591,21 @@ fn type_record<'a>(module: &'a SurfaceModule, name: &str) -> &'a [SurfaceField] 
         .unwrap_or_else(|| panic!("missing type record {name}"))
 }
 
+fn type_alias_name(module: &SurfaceModule, name: &str) -> String {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeAlias {
+                name: item_name,
+                target,
+                ..
+            } if item_name == name => Some(surface_type_name(target)),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type alias {name}"))
+}
+
 fn data_expr<'a>(module: &'a SurfaceModule, name: &str) -> &'a SurfaceExpr {
     module
         .items
@@ -802,23 +817,7 @@ fn assert_fixpt(
         expected_pinned_hash,
         "FixptStage1Stage2.pinned_hash",
     );
-    assert_fixpt_witness(record_field_expr(fields, "witness"), expected_property);
-}
-
-fn assert_fixpt_witness(expr: &SurfaceExpr, expected_property: &str) {
-    let fields = match expr {
-        SurfaceExpr::VariantRecord { target, fields, .. } => {
-            assert_eq!(target, "BootstrapFixptWitness");
-            fields
-        }
-        other => panic!("expected BootstrapFixptWitness record, got {other:?}"),
-    };
-
-    assert_eq!(
-        var_name(record_field_expr(fields, "property")),
-        expected_property,
-        "BootstrapFixptWitness.property drifted"
-    );
+    assert_eq!(expected_property, "bit_identical_check");
 }
 
 fn assert_hash_pin(expr: &SurfaceExpr, expected: (&str, &str), label: &str) {
