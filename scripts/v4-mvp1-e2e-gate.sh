@@ -27,7 +27,8 @@
 #
 # Env:
 #   V2_COMPILER   — path to v2-compiler binary (default: target/release/v2-compiler)
-#   MVP1_OUT_DIR  — compile output directory (default: /tmp/v4-mvp1-out)
+#   MVP1_OUT_DIR  — compile output directory (default: $RUNNER_TEMP/v4-mvp1-out-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT,
+#                   falling back to /tmp/v4-mvp1-out-$$ outside GitHub Actions)
 
 set -euo pipefail
 
@@ -50,8 +51,10 @@ if [[ ! -f "${entry_root}/add.dag" ]]; then
   exit 1
 fi
 
-out="${MVP1_OUT_DIR:-/tmp/v4-mvp1-out}"
-log="${MVP1_LOG:-/tmp/v4-mvp1.log}"
+run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
+tmp_root="${RUNNER_TEMP:-/tmp}"
+out="${MVP1_OUT_DIR:-${tmp_root}/v4-mvp1-out-${run_suffix}}"
+log="${MVP1_LOG:-${tmp_root}/v4-mvp1-${run_suffix}.log}"
 rm -rf "$out"
 mkdir -p "$out"
 
