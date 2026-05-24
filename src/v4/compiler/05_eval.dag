@@ -11,6 +11,7 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredFacts,
   InferredTree,
+  canonical_grounding_admits_infer_facts,
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
@@ -224,11 +225,19 @@ fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<In
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      match inferred_facts_descent(facts: facts) {
-        Holds { value: _ } =>
-          Accepted { value: facts, diagnostics: None }
-        Violates { diagnostic: d } =>
-          Rejected { diagnostics: diagnostics_singleton(d: d) }
+      if !canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
+          )
+        }
+      } else {
+        match inferred_facts_descent(facts: facts) {
+          Holds { value: _ } =>
+            Accepted { value: facts, diagnostics: None }
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d) }
+        }
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -289,18 +298,27 @@ fn control_transfer_value(control: ControlTransfer, node: Node) -> Outcome<Runti
 
 
 // 🟡 gated — feature:T22-eval-runtime-value-acceptance-witness — bind node://adhoc-6a2e599a-cc2 — dissolve-on: std/runtime owns runtime-value acceptance witness tying RuntimeValue to InferredFacts construction; forbidden: permanent Bool-ladder proof erasure in eval.
+// Eval boundary re-validates grounding coherence: InferredFacts remains directly
+// constructible in test fixtures, so consumers fail closed until std/constraints
+// makes CanonicalGrounding proof-by-construction (scaffold:T-9-ground).
 fn eval_accept_runtime_value_with_facts(
   node: Node,
   facts: InferredFacts,
   value: RuntimeValue
 ) -> Outcome<RuntimeValue> {
-  let candidate_type = runtime_value_resolved_type(value: value)
-  if candidate_type != inferred_facts_resolved_type(facts: facts) {
+  if !canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
     outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
+      d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
     )
   } else {
-    Accepted { value: value, diagnostics: None }
+    let candidate_type = runtime_value_resolved_type(value: value)
+    if candidate_type != inferred_facts_resolved_type(facts: facts) {
+      outcome_rejected(
+        d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
+      )
+    } else {
+      Accepted { value: value, diagnostics: None }
+    }
   }
 }
 
