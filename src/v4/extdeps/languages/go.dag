@@ -7,7 +7,7 @@
 
 module v4.extdeps.languages.go
 
-import v4.std.collection { List, Map, list_append, list_snoc_item }
+import v4.std.collection { List, Map, list_append, list_snoc_item, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
