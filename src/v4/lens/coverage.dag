@@ -945,7 +945,11 @@ fn append_coverage_slice_projection<C>(
 fn l7_coverage_projection_from_claim(c: TestClaim) -> CoverageSliceProjection<L7CoverageKey> {
   match testgen_coverage_key_from_claim(c: c) {
     Rejected { diagnostics: d } =>
-      CoverageSliceInvalid { diagnostics: d }
+      if testgen_coverage_rejection_not_applicable(c: c) {
+        CoverageSliceNotApplicable
+      } else {
+        CoverageSliceInvalid { diagnostics: d }
+      }
     Accepted { value: concept, diagnostics: None } =>
       match concept {
         AlgebraLaw { subject: subject } =>
@@ -959,7 +963,11 @@ fn l7_coverage_projection_from_claim(c: TestClaim) -> CoverageSliceProjection<L7
 fn l6_coverage_projection_from_claim(c: TestClaim) -> CoverageSliceProjection<L6CoverageKey> {
   match testgen_coverage_key_from_claim(c: c) {
     Rejected { diagnostics: d } =>
-      CoverageSliceInvalid { diagnostics: d }
+      if claim_is_outside_testgen_scheduled_anchor(c: c) {
+        CoverageSliceNotApplicable
+      } else {
+        CoverageSliceInvalid { diagnostics: d }
+      }
     Accepted { value: concept, diagnostics: None } =>
       match concept {
         TypeConstruction { subject: subject } =>
@@ -986,7 +994,11 @@ fn testgen_coverage_projection_from_claim(
     Accepted { value: key, diagnostics: None } =>
       CoverageSlicePresent { key: key }
     Rejected { diagnostics: d } =>
-      CoverageSliceInvalid { diagnostics: d }
+      if testgen_coverage_rejection_not_applicable(c: c) {
+        CoverageSliceNotApplicable
+      } else {
+        CoverageSliceInvalid { diagnostics: d }
+      }
   }
 }
 
