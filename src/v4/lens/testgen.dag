@@ -374,6 +374,12 @@ data manual_anchor_absent_bootstrap: Symbol = manual_anchor_absent_bootstrap
 data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
 
 
+data t19_algebra_law_tautological_sides: Symbol = t19_algebra_law_tautological_sides
+
+
+data t19_coproduct_exhaustiveness_missing_variant: Symbol = t19_coproduct_exhaustiveness_missing_variant
+
+
 data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
 
 
@@ -644,6 +650,38 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
+  }
+}
+
+
+fn testgen_emit_algebra_law_claim(
+  anchor: T19ManualAnchorKey,
+  label: String,
+  lhs: Node,
+  rhs: Node,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  if lhs == rhs {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: t19_algebra_law_tautological_sides,
+          at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else {
+    Accepted {
+      value: EqualsClaim {
+        label: label,
+        t19_anchor: t19_manual_claim_anchor(anchor: anchor),
+        lhs: lhs,
+        rhs: rhs,
+        classification: classification,
+      },
+      diagnostics: None,
+    }
   }
 }
 
