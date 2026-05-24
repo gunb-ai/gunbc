@@ -70,9 +70,14 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
         TESTGEN_DAG.contains("fn testgen_emit_algebra_law_claim")
             && TESTGEN_DAG.contains("if lhs == rhs")
             && TESTGEN_DAG.contains("t19_algebra_law_tautological_sides")
+            && TESTGEN_DAG.contains(
+                "fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node"
+            )
+            && TESTGEN_DAG.contains("lhs: algebra_law_claim_term(subject: subject, expression: lhs)")
+            && TESTGEN_DAG.contains("rhs: algebra_law_claim_term(subject: subject, expression: rhs)")
             && TESTGEN_DAG.contains("Rejected {")
             && TESTGEN_DAG.contains("value: EqualsClaim {"),
-        "testgen must reject tautological algebra-law sides before emitting an EqualsClaim"
+        "testgen must reject tautological algebra-law sides and carry AlgebraLawSubject into emitted EqualsClaim terms"
     );
     assert!(
         ALGEBRA_LAW_GENERATED_DAG.contains("testgen_emit_algebra_law_claim")
@@ -81,6 +86,9 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
             && ALGEBRA_LAW_GENERATED_DAG
                 .contains("nat_algebra_law_subject_symbol_commutative_semiring")
             && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_add_operation")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_mul_operation")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_zero_value")
             && ALGEBRA_LAW_GENERATED_DAG.contains("t19_law_nat_add_left_identity")
             && ALGEBRA_LAW_GENERATED_DAG.contains("t19_law_nat_add_associativity")
             && ALGEBRA_LAW_GENERATED_DAG.contains("t19_law_nat_mul_annihilator")
@@ -94,6 +102,10 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
     assert!(
         ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_add")
             && ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_mul")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("operation: nat_algebra_law_subject_symbol_add_operation")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("operation: nat_algebra_law_subject_symbol_mul_operation")
             && ALGEBRA_LAW_GENERATED_DAG
                 .contains("lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one())")
             && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_one()")

@@ -201,7 +201,20 @@ fn v4_lens_testgen_wave0_outcome_return_surfaces() {
 #[test]
 fn v4_lens_testgen_wave0_generator_anchor_field_is_claim_anchor_key() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+<<<<<<< HEAD
     let anchor_ty = generator_anchor_field_ty(&testgen).expect("Generator should declare `anchor`");
+=======
+    let kind_ty = generator_field_ty(&testgen, "kind").expect("Generator should declare `kind`");
+    assert!(
+        matches!(
+            kind_ty,
+            SurfaceType::Named { name: n, .. } if n == "TestClaimCoproductVariant"
+        ),
+        "Generator.kind must carry the TestClaim coproduct variant authority; got {kind_ty:?}"
+    );
+    let anchor_ty =
+        generator_field_ty(&testgen, "t19_anchor").expect("Generator should declare `t19_anchor`");
+>>>>>>> 7c54df088f (WIP: Resolve merge conflicts and drive PR #3557 (Generative TestClaim categor)
     assert!(
         matches!(
             anchor_ty,
@@ -222,6 +235,10 @@ fn v4_lens_testgen_wave0_concept_projection_matches_claim_anchor() {
 
 #[test]
 fn v4_lens_testgen_wave0_generator_carries_claim_classification_and_anchor() {
+    assert!(
+        TESTGEN_DAG.contains("kind: test_claim_coproduct_variant(c: claim)"),
+        "Generator must take claim kind from manual TestClaim via substrate helper"
+    );
     assert!(
         TESTGEN_DAG.contains("classification: test_claim_classification(c: claim)"),
         "Generator must take classification from manual TestClaim via substrate helper"
@@ -358,8 +375,13 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
 }
 
+<<<<<<< HEAD
 fn generator_anchor_field_ty(
+=======
+fn generator_field_ty<'a>(
+>>>>>>> 7c54df088f (WIP: Resolve merge conflicts and drive PR #3557 (Generative TestClaim categor)
     module: &v3_compiler::parse_surface::SurfaceModule,
+    field_name: &str,
 ) -> Option<&SurfaceType> {
     for item in &module.items {
         let SurfaceItem::TypeRecord {
@@ -375,7 +397,11 @@ fn generator_anchor_field_ty(
             continue;
         }
         for field in fields {
+<<<<<<< HEAD
             if field.name == "anchor" {
+=======
+            if field.name == field_name {
+>>>>>>> 7c54df088f (WIP: Resolve merge conflicts and drive PR #3557 (Generative TestClaim categor)
                 return Some(&field.ty);
             }
         }

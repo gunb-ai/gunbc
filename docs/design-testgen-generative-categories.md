@@ -24,16 +24,17 @@ This excludes `f(x) = f(x)`, type-conformance for already typechecked inputs, an
 | `LensApplicability` | Lens plus program subject | Lens observation over a program produces or rejects with the expected witness | Observation fixture, property checker, or negative fixture | Skip if the row only reruns the lens and compares its own emitted fact |
 | `BidirectionalRoundtrip` | Language production plus target identity | Encode/decode or parse/emit roundtrip preserves the independently declared value | Differential roundtrip through two directions | Skip identity productions with no distinct decode/encode step |
 | `TypeConstruction` | Connective or behavior construction subjects | Constructed node matches the structural witness or rejects arity errors | Construction witness or negative arity fixture | Skip type-conformance rows already proven by parsing/lowering alone |
+| `RefinementPreservation` | Refined value plus original base | Refinement preserves the accepted base value | Accepted refinement witness plus base projection | Skip if the refinement was not accepted or the projected base is only restated without the refined carrier |
 
-Operator wishlist examples route through those arms rather than extending the arm set: coproduct exhaustiveness is a `DiagnosticExhaustiveness` or `LensApplicability` family depending on whether the first slice is a missing-branch diagnostic or a branch-coverage lens observation; refinement preservation, witness validity, and idempotent operation conformance route through `LensApplicability` until a later substrate change proves a more specific arm is needed.
+Operator wishlist examples route through those seven arms rather than extending the arm set: coproduct exhaustiveness is a `DiagnosticExhaustiveness` or `LensApplicability` family depending on whether the first slice is a missing-branch diagnostic or a branch-coverage lens observation; refinement preservation uses its canonical `RefinementPreservation` arm; witness validity and idempotent operation conformance route through `LensApplicability` until a later substrate change proves a more specific arm is needed.
 
 ## Landed Slices
 
 `LanguageBehaviorEquivalence` is live in `src/v4/lens/testgen.dag` via `testgen_emit_language_behavior_equivalence_claim` and `testgen_scheduled_language_behavior_generators`. The generated corpus is `src/v4/test/claim/generated/language_behavior_equivalence.dag`; it carries three runner receipts through `run_test_claim` / `run_test_claim_assert`.
 
-`AlgebraLaw` now has a generator emission helper, `testgen_emit_algebra_law_claim`, and a first generated Nat corpus at `src/v4/test/claim/generated/algebra_law_conformance.dag`. The helper carries the canonical `AlgebraLawSubject` at the generator boundary; the sample rows reuse the modeled Nat algebra/law symbols and keep the generated source side and expected-law witness side as separate nodes so the row is not `lhs == lhs`.
+`AlgebraLaw` now has a generator emission helper, `testgen_emit_algebra_law_claim`, and a first generated Nat corpus at `src/v4/test/claim/generated/algebra_law_conformance.dag`. The helper carries the canonical `AlgebraLawSubject` into both emitted equality terms; the sample rows reuse the modeled Nat algebra/law and operation/value symbols from `v4.std.nat` and keep the generated source side and expected-law witness side as separate nodes so the row is not `lhs == lhs`.
 
-`src/v4/test/claim/generated/testgen_category_wishlist.dag` records one pending or dispatched row per `TestgenConcept` arm with an oracle basis and dispatch key. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed scheduling coproduct remains `src/v4/lens/testgen.dag`.
+`src/v4/test/claim/generated/testgen_category_wishlist.dag` records pending or dispatched rows through the canonical `Generator` shape: `kind`, `t19_anchor`, `classification`, and `slot`. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed seven-arm scheduling coproduct remains `src/v4/lens/testgen.dag`.
 
 ## Worked Samples
 
@@ -58,4 +59,4 @@ The next generator PRs should land one category at a time and include:
 - a structural test or script guard proving the rows are generated through the category emission helper;
 - an explicit tautology-skip path, preferably represented as a negative fixture or count witness.
 
-Recommended order by canonical arm: `LensApplicability` witness-validity instance, `DiagnosticExhaustiveness` coproduct-exhaustiveness instance, `LensApplicability` idempotent-operation instance, and `LensApplicability` refinement-preservation instance. Algebra-law broadening from the Nat sample to all algebra carriers can proceed in parallel under the existing `AlgebraLaw` arm.
+Recommended order by canonical arm: `LensApplicability` witness-validity instance, `DiagnosticExhaustiveness` coproduct-exhaustiveness instance, `LensApplicability` idempotent-operation instance, and `RefinementPreservation` generated-corpus broadening. Algebra-law broadening from the Nat sample to all algebra carriers can proceed in parallel under the existing `AlgebraLaw` arm.
