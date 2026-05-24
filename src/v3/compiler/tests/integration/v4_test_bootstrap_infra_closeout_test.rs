@@ -803,10 +803,7 @@ fn assert_fixpt(
         expected_pinned_hash,
         "FixptStage1Stage2.pinned_hash",
     );
-    assert_fixpt_witness(
-        record_field_expr(fields, "witness"),
-        expected_property,
-    );
+    assert_fixpt_witness(record_field_expr(fields, "witness"), expected_property);
 }
 
 fn assert_fixpt_witness(expr: &SurfaceExpr, expected_property: &str) {
