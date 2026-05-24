@@ -78,13 +78,7 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
 }
 
 fn runtime_value_node(value: RuntimeValue) -> Node {
-  match value {
-    RuntimePrimitive { value: p } => p.primitive_type
-    RuntimeAggregate { value: a } => a.aggregate_type
-    RuntimeReference { value: r } => r.reference_type
-    RuntimeClosure { value: c } => c.arrow
-    RuntimeUnit { value: u } => u.unit_type
-  }
+  runtime_value_resolved_type(value: value)
 }
 
 type ValueRepresentationModel {

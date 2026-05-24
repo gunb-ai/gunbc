@@ -15,8 +15,7 @@ import v4.compiler.infer {
   inferred_facts_inhabitance_well_grounded,
   inferred_facts_resolved_type_matches
 }
-import v4.std.algebra { fold_list }
-import v4.std.collection { List, Map }
+import v4.std.collection { List, Map, list_nth }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
@@ -31,9 +30,17 @@ import v4.std.runtime {
   RuntimePrimitive,
   RuntimeReference,
   RuntimeUnit,
+  RuntimeBehaviorInterpreter,
+  ValueRuntimeInterpreter,
+  TransformRuntimeInterpreter,
+  BranchRuntimeInterpreter,
+  LoopRuntimeInterpreter,
+  BindRuntimeInterpreter,
   Suspend,
   ControlTransfer,
   RuntimeValue,
+  interpretation_behavior_dispatch,
+  runtime_value_node,
   runtime_value_resolved_type
 }
 import v4.std.node {
@@ -184,7 +191,9 @@ data eval_rejected_resolved_type_mismatch: Symbol = eval_rejected_resolved_type_
 data eval_rejected_inhabitance_mismatch: Symbol = eval_rejected_inhabitance_mismatch
 data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
 data eval_rejected_branch_argument_absent: Symbol = eval_rejected_branch_argument_absent
-data eval_rejected_bind_children_absent: Symbol = eval_rejected_bind_children_absent
+data eval_rejected_bind_key_absent: Symbol = eval_rejected_bind_key_absent
+data eval_rejected_bind_value_absent: Symbol = eval_rejected_bind_value_absent
+data eval_rejected_bind_body_absent: Symbol = eval_rejected_bind_body_absent
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -300,18 +309,6 @@ type RuntimeValueAcceptanceWitness {
 }
 
 
-type EvalRuntimeArgumentLookup {
-  index: Int
-  value: Outcome<RuntimeValue>
-}
-
-
-type EvalEdgeLookup {
-  index: Int
-  value: Outcome<Edge>
-}
-
-
 fn eval_runtime_value_acceptance_witness(
   node: Node,
   facts: InferredFacts,
@@ -365,63 +362,40 @@ fn eval_accept_runtime_value_with_facts(
 }
 
 
-fn eval_nth_runtime_argument(
-  args: List<RuntimeValue>,
-  wanted: Int,
-  node: Node,
-  absent_reason: Symbol
-) -> Outcome<RuntimeValue> {
-  fold_list(
-    xs: args,
-    empty: EvalRuntimeArgumentLookup {
-      index: 0,
-      value: outcome_rejected(d: eval_diagnostic(reason: absent_reason, node: node))
-    },
-    cons: fn(acc, item) {
-      EvalRuntimeArgumentLookup {
-        index: acc.index + 1,
-        value: if acc.index == wanted {
-          Accepted { value: item, diagnostics: None }
-        } else {
-          acc.value
-        }
-      }
-    }
-  ).value
-}
-
-
-fn eval_nth_edge(
-  edges: List<Edge>,
-  wanted: Int,
-  node: Node,
-  absent_reason: Symbol
-) -> Outcome<Edge> {
-  fold_list(
-    xs: edges,
-    empty: EvalEdgeLookup {
-      index: 0,
-      value: outcome_rejected(d: eval_diagnostic(reason: absent_reason, node: node))
-    },
-    cons: fn(acc, item) {
-      EvalEdgeLookup {
-        index: acc.index + 1,
-        value: if acc.index == wanted {
-          Accepted { value: item, diagnostics: None }
-        } else {
-          acc.value
-        }
-      }
-    }
-  ).value
+fn eval_witness_outcome<T>(witness: Witness<T>) -> Outcome<T> {
+  match witness {
+    Holds { value: v } => Accepted { value: v, diagnostics: None }
+    Violates { diagnostic: d } => outcome_rejected(d: d)
+  }
 }
 
 
 fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
-  eval_nth_runtime_argument(
-    args: args,
-    wanted: 0,
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: args,
+      wanted: 0,
+      absent: eval_diagnostic(reason: eval_rejected_branch_argument_absent, node: node)
+    )
+  )
+}
+
+
+fn eval_nth_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: node.children,
+      wanted: wanted,
+      absent: eval_diagnostic(reason: absent_reason, node: node)
+    )
+  )
+}
+
+
+fn eval_branch_condition_edge(node: Node) -> Outcome<Edge> {
+  eval_nth_child(
     node: node,
+    wanted: 0,
     absent_reason: eval_rejected_branch_argument_absent
   )
 }
@@ -429,11 +403,10 @@ fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<
 
 fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
   bind_outcome(
-    o: eval_nth_edge(
-      edges: node.children,
-      wanted: 0,
+    o: eval_nth_child(
       node: node,
-      absent_reason: eval_rejected_bind_children_absent
+      wanted: 0,
+      absent_reason: eval_rejected_bind_key_absent
     ),
     f: fn(e) {
       Accepted {
@@ -445,23 +418,21 @@ fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
 }
 
 
-fn eval_bind_value_arg(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
-  eval_nth_runtime_argument(
-    args: args,
-    wanted: 1,
+fn eval_bind_value_edge(node: Node) -> Outcome<Edge> {
+  eval_nth_child(
     node: node,
-    absent_reason: eval_rejected_bind_children_absent
+    wanted: 1,
+    absent_reason: eval_rejected_bind_value_absent
   )
 }
 
 
 fn eval_bind_body(node: Node) -> Outcome<Node> {
   bind_outcome(
-    o: eval_nth_edge(
-      edges: node.children,
-      wanted: 2,
+    o: eval_nth_child(
       node: node,
-      absent_reason: eval_rejected_bind_children_absent
+      wanted: 2,
+      absent_reason: eval_rejected_bind_body_absent
     ),
     f: fn(e) {
       Accepted { value: e.target, diagnostics: None }
@@ -470,32 +441,20 @@ fn eval_bind_body(node: Node) -> Outcome<Node> {
 }
 
 
-type RuntimeBehaviorInterpreterDispatch {
-  interpret: fn(Node, List<RuntimeValue>, InferredFacts, InferredTree, InterpretationAlgebra, EvaluationEnvironment, V4EvaluatorRuntime) -> Outcome<RuntimeValue>
-}
-
-
-fn eval_behavior_dispatch(behavior: Behavior) -> RuntimeBehaviorInterpreterDispatch {
-  match behavior {
-    Value => RuntimeBehaviorInterpreterDispatch { interpret: eval_value_node }
-    Transform => RuntimeBehaviorInterpreterDispatch { interpret: eval_transform_node }
-    Branch => RuntimeBehaviorInterpreterDispatch { interpret: eval_branch_node }
-    Loop => RuntimeBehaviorInterpreterDispatch { interpret: eval_loop_node }
-    Bind => RuntimeBehaviorInterpreterDispatch { interpret: eval_bind_node }
-  }
-}
-
-
 fn eval_value_node(
   node: Node,
   _args: List<RuntimeValue>,
   _facts: InferredFacts,
   _tree: InferredTree,
-  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
   _runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
-  interpretation.value.allocate_literal(node, environment)
+  match interpreter {
+    ValueRuntimeInterpreter { interpreter: value } =>
+      value.allocate_literal(node, environment)
+    _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
+  }
 }
 
 
@@ -504,11 +463,15 @@ fn eval_transform_node(
   args: List<RuntimeValue>,
   _facts: InferredFacts,
   _tree: InferredTree,
-  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
   _runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
-  interpretation.transform.call_primitive(node, args, environment)
+  match interpreter {
+    TransformRuntimeInterpreter { interpreter: transform } =>
+      transform.call_primitive(node, args, environment)
+    _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
+  }
 }
 
 
@@ -517,27 +480,31 @@ fn eval_branch_node(
   args: List<RuntimeValue>,
   _facts: InferredFacts,
   tree: InferredTree,
-  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
-  bind_outcome(
-    o: eval_first_runtime_argument(args: args, node: node),
-    f: fn(condition) {
+  match interpreter {
+    BranchRuntimeInterpreter { interpreter: branch } =>
       bind_outcome(
-        o: interpretation.branch.choose_branch(node, condition, environment),
-        f: fn(chosen) {
-          eval_runtime_node(
-            node: chosen,
-            tree: tree,
-            interpretation: interpretation,
-            environment: environment,
-            runtime: runtime
+        o: eval_first_runtime_argument(args: args, node: node),
+        f: fn(condition) {
+          bind_outcome(
+            o: branch.choose_branch(node, condition, environment),
+            f: fn(chosen) {
+              eval_runtime_node(
+                node: chosen,
+                tree: tree,
+                interpretation: runtime.interpretation,
+                environment: environment,
+                runtime: runtime
+              )
+            }
           )
         }
       )
-    }
-  )
+    _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
+  }
 }
 
 
@@ -546,21 +513,25 @@ fn eval_loop_node(
   _args: List<RuntimeValue>,
   _facts: InferredFacts,
   _tree: InferredTree,
-  interpretation: InterpretationAlgebra,
+  interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
-  bind_outcome(
-    o: interpretation.loop.step_loop(node, environment),
-    f: fn(control) {
-      control_transfer_value(
-        control: control,
-        node: node,
-        runtime: runtime,
-        environment: environment
+  match interpreter {
+    LoopRuntimeInterpreter { interpreter: loop_interpreter } =>
+      bind_outcome(
+        o: loop_interpreter.step_loop(node, environment),
+        f: fn(control) {
+          control_transfer_value(
+            control: control,
+            node: node,
+            runtime: runtime,
+            environment: environment
+          )
+        }
       )
-    }
-  )
+    _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
+  }
 }
 
 
@@ -568,6 +539,85 @@ fn eval_bind_node(
   node: Node,
   args: List<RuntimeValue>,
   _facts: InferredFacts,
+  tree: InferredTree,
+  interpreter: RuntimeBehaviorInterpreter,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  match interpreter {
+    BindRuntimeInterpreter { interpreter: bind } =>
+      bind_outcome(
+        o: eval_bind_key(node: node),
+        f: fn(key) {
+          bind_outcome(
+            o: eval_first_runtime_argument(args: args, node: node),
+            f: fn(bound_value) {
+              bind_outcome(
+                o: bind.bind_value(key, bound_value, environment),
+                f: fn(bound_environment) {
+                  bind_outcome(
+                    o: eval_bind_body(node: node),
+                    f: fn(body) {
+                      eval_runtime_node(
+                        node: body,
+                        tree: tree,
+                        interpretation: runtime.interpretation,
+                        environment: bound_environment,
+                        runtime: runtime
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    _ => outcome_rejected(d: eval_diagnostic(reason: eval_rejected_type_node, node: node))
+  }
+}
+
+
+fn eval_branch_runtime_node(
+  node: Node,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: eval_branch_condition_edge(node: node),
+    f: fn(condition_edge) {
+      bind_outcome(
+        o: eval_runtime_node(
+          node: condition_edge.target,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime
+        ),
+        f: fn(condition) {
+          bind_outcome(
+            o: interpretation.branch.choose_branch(node, condition, environment),
+            f: fn(chosen) {
+              eval_runtime_node(
+                node: chosen,
+                tree: tree,
+                interpretation: interpretation,
+                environment: environment,
+                runtime: runtime
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn eval_bind_runtime_node(
+  node: Node,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
@@ -577,23 +627,34 @@ fn eval_bind_node(
     o: eval_bind_key(node: node),
     f: fn(key) {
       bind_outcome(
-        o: eval_bind_value_arg(args: args, node: node),
-        f: fn(bound_value) {
+        o: eval_bind_value_edge(node: node),
+        f: fn(value_edge) {
           bind_outcome(
-            o: interpretation.bind.bind_value(key, bound_value, environment),
-            f: fn(bound_environment) {
+            o: eval_runtime_node(
+              node: value_edge.target,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime
+            ),
+            f: fn(bound_value) {
               bind_outcome(
-                o: eval_bind_body(node: node),
+                o: interpretation.bind.bind_value(key, bound_value, environment),
+                f: fn(bound_environment) {
+                  bind_outcome(
+                    o: eval_bind_body(node: node),
                 f: fn(body) {
                   eval_runtime_node(
-                    node: body,
-                    tree: tree,
-                    interpretation: interpretation,
-                    environment: bound_environment,
-                    runtime: runtime
-                  )
+                        node: body,
+                        tree: tree,
+                        interpretation: interpretation,
+                        environment: bound_environment,
+                        runtime: runtime
+                      )
                 }
               )
+            }
+          )
             }
           )
         }
@@ -619,7 +680,10 @@ fn eval_computation_node(
       args,
       facts,
       tree,
-      interpretation,
+      interpretation_behavior_dispatch(
+        interpretation: interpretation,
+        behavior: behavior
+      ),
       environment,
       runtime
     ),
@@ -759,7 +823,7 @@ fn eval_fold_init(
 
 fn eval_maybe_complete_node(
   node: Node,
-  processed_children: Int,
+  progress: EvalProgress,
   args: List<RuntimeValue>,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
@@ -767,17 +831,18 @@ fn eval_maybe_complete_node(
   runtime: V4EvaluatorRuntime,
   pending: Outcome<RuntimeValue>
 ) -> Outcome<RuntimeValue> {
-  if processed_children == count(node.children) {
-    eval_interpret_node(
-      node: node,
-      args: args,
-      tree: tree,
-      interpretation: interpretation,
-      environment: environment,
-      runtime: runtime
-    )
-  } else {
-    pending
+  match progress {
+    ReadyToInterpret =>
+      eval_interpret_node(
+        node: node,
+        args: args,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime
+      )
+    Interpreted => pending
+    AwaitingChildren => pending
   }
 }
 
@@ -798,10 +863,11 @@ fn eval_fold_step(
     eval_absorb_child_diagnostics(acc: acc.child_values, child: child.structural)
   }
   let processed_children = acc.processed_children + 1
+  let progress = if processed_children == count(acc.node.children) { ReadyToInterpret } else { AwaitingChildren }
   EvalFoldState {
     node: acc.node,
     processed_children: processed_children,
-    progress: if processed_children == count(acc.node.children) { Interpreted } else { AwaitingChildren },
+    progress: progress,
     structural: structural,
     child_values: next_args,
     value: bind_outcome(
@@ -812,7 +878,7 @@ fn eval_fold_step(
           f: fn(args) {
             eval_maybe_complete_node(
               node: acc.node,
-              processed_children: processed_children,
+              progress: progress,
               args: args,
               tree: tree,
               interpretation: interpretation,
@@ -835,32 +901,52 @@ fn eval_runtime_node(
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
-  let folded = fold_node(
-    n: node,
-    algebra: NodeFold {
-      init: fn(n0) {
-        eval_fold_init(
-          node: n0,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime
-        )
-      },
-      step: fn(acc, e, child) {
-        eval_fold_step(
-          acc: acc,
-          edge: e,
-          child: child,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime
-        )
+  match node.kind {
+    ComputationNode { behavior: Branch } =>
+      eval_branch_runtime_node(
+        node: node,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime
+      )
+    ComputationNode { behavior: Bind } =>
+      eval_bind_runtime_node(
+        node: node,
+        tree: tree,
+        interpretation: interpretation,
+        environment: environment,
+        runtime: runtime
+      )
+    _ => {
+      let folded = fold_node(
+        n: node,
+        algebra: NodeFold {
+          init: fn(n0) {
+            eval_fold_init(
+              node: n0,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime
+            )
+          },
+          step: fn(acc, e, child) {
+            eval_fold_step(
+              acc: acc,
+              edge: e,
+              child: child,
+              tree: tree,
+              interpretation: interpretation,
+              environment: environment,
+              runtime: runtime
+            )
+          }
+        }
+      )
+      eval_fold_state_value(state: folded)
       }
-    }
-  )
-  eval_fold_state_value(state: folded)
+  }
 }
 
 
@@ -879,17 +965,6 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
     }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
-  }
-}
-
-
-fn runtime_value_node(value: RuntimeValue) -> Node {
-  match value {
-    RuntimePrimitive { value: p } => p.primitive_type
-    RuntimeAggregate { value: a } => a.aggregate_type
-    RuntimeReference { value: r } => r.reference_type
-    RuntimeClosure { value: c } => c.arrow
-    RuntimeUnit { value: u } => u.unit_type
   }
 }
 
