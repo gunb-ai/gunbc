@@ -220,7 +220,7 @@ def check_generated_eval(eval_rs: Path) -> None:
     require_order(
         computation_body,
         [
-            "interpretation_behavior_dispatch(interpretation, behavior)",
+            "interpretation_behavior_dispatch(interpretation.clone(), behavior)",
             "RuntimeBehaviorInterpreter::ValueRuntimeInterpreter",
             "RuntimeBehaviorInterpreter::TransformRuntimeInterpreter",
             "RuntimeBehaviorInterpreter::BranchRuntimeInterpreter",
@@ -240,7 +240,7 @@ def check_generated_eval(eval_rs: Path) -> None:
         [
             "eval_first_runtime_argument",
             "v2_rt::choose_branch",
-            "eval_runtime_node(chosen.clone(), tree.clone(), runtime.interpretation.clone(), environment.clone(), runtime.clone())",
+            "eval_runtime_node(chosen.clone(), tree.clone(), interpretation.clone(), environment.clone(), runtime.clone())",
         ],
         eval_rs,
         "compiled Branch interpreter chooses and resumes through selected subgraph",
@@ -251,10 +251,10 @@ def check_generated_eval(eval_rs: Path) -> None:
         bind_body,
         [
             "eval_bind_key",
-            "eval_first_runtime_argument",
+            "eval_bind_value_argument",
             "v2_rt::bind_value",
             "eval_bind_body",
-            "eval_runtime_node(body.clone(), tree.clone(), runtime.interpretation.clone(), bound_environment.clone(), runtime.clone())",
+            "eval_runtime_node(body.clone(), tree.clone(), interpretation.clone(), bound_environment.clone(), runtime.clone())",
         ],
         eval_rs,
         "compiled Bind interpreter extends environment and resumes through body",
