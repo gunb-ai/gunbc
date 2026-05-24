@@ -253,3 +253,16 @@ fn sequence_outcome<T>(
 // traverse_outcome / traverse_node / sequence_node deferred: v2 bootstrap rejects
 // fn(T) -> Outcome<U> and fn(Node) -> Outcome<R> in higher-order parameter types
 // (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.
+fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } =>
+        payload_eq(av, bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}
