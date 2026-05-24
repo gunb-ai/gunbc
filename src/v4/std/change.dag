@@ -11,7 +11,7 @@ import v4.std.dependency { DependencyKind, DependencyView, ReadinessLayer }
 import v4.std.diagnostic { NonEmptyDiagnostics, Outcome }
 import v4.std.node { Node, Path, Symbol }
 
-// 🟢 closed set — change shapes consumed by consequence recomputation.
+// 🟢 coproduct dissolution
 type ChangeKind
   = NodeChanged
   | NodeAdded

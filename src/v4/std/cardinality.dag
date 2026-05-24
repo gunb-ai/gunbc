@@ -39,7 +39,7 @@ import v4.std.node {
   fold_node
 }
 import v4.std.witness { Holds, Violates, Witness }
-// 🟢 Part 1 Never/Unit + §PR-3252-cardinality-std (Practice 9).
+// 🟢 coproduct dissolution
 type Never
 type Unit
 type NonZeroNat {
