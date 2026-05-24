@@ -1,0 +1,101 @@
+// src/v4/test/claim/lens_parallelism/barrier_coupling.dag
+// Scope: T-13 worked claim — BarrierBefore classifies as BarrierCoupled over `ClassifiedDependencyView<ParallelismRelation>`.
+// Owns: parallelism_barrier_coupling_claim.
+// Consumes: lens parallelism, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
+
+module v4.test.claim.lens_parallelism.barrier_coupling
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.parallelism {
+  BarrierCoupled,
+  ParallelismFact,
+  parallelism_fact_eq,
+  parallelism_witness
+}
+import v4.std.dependency {
+  BarrierBefore,
+  ClassifiedDependencyView,
+  DependencyView
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data parallelism_bc_root_symbol: Symbol = parallelism_bc_root_symbol
+data parallelism_bc_child_symbol: Symbol = parallelism_bc_child_symbol
+data parallelism_bc_edge_symbol: Symbol = parallelism_bc_edge_symbol
+data parallelism_bc_type_symbol: Symbol = parallelism_bc_type_symbol
+data parallelism_bc_algebra_symbol: Symbol = parallelism_bc_algebra_symbol
+data parallelism_bc_algebra_witness_symbol: Symbol = parallelism_bc_algebra_witness_symbol
+data parallelism_bc_descent_symbol: Symbol = parallelism_bc_descent_symbol
+data parallelism_bc_canonical_structural_symbol: Symbol = parallelism_bc_canonical_structural_symbol
+data parallelism_bc_canonical_closedness_symbol: Symbol = parallelism_bc_canonical_closedness_symbol
+data parallelism_bc_canonical_evidence_symbol: Symbol = parallelism_bc_canonical_evidence_symbol
+
+data parallelism_bc_child: Node = claim_atom_node(s: parallelism_bc_child_symbol)
+
+data parallelism_bc_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: parallelism_bc_root_symbol } },
+  children: [
+    Edge { label: Named { name: parallelism_bc_edge_symbol }, target: parallelism_bc_child }
+  ]
+}
+
+data parallelism_bc_dependency: DependencyView = DependencyView {
+  source: parallelism_bc_root,
+  dependent: parallelism_bc_child,
+  kind: BarrierBefore,
+  usage_site: parallelism_bc_child
+}
+
+fn parallelism_bc_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: parallelism_bc_type_symbol,
+    algebra_symbol: parallelism_bc_algebra_symbol,
+    algebra_witness_symbol: parallelism_bc_algebra_witness_symbol,
+    descent_symbol: parallelism_bc_descent_symbol,
+    canonical_structural_symbol: parallelism_bc_canonical_structural_symbol,
+    canonical_closedness_symbol: parallelism_bc_canonical_closedness_symbol,
+    canonical_evidence_symbol: parallelism_bc_canonical_evidence_symbol
+  )
+}
+
+fn parallelism_bc_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: parallelism_bc_root, facts: parallelism_bc_claim_facts())
+}
+
+type LensParallelismBarrierCouplingClaim {
+  input: InferredTree
+  expected: ParallelismFact
+  actual: Witness<ParallelismFact>
+}
+
+data parallelism_barrier_coupling_claim: LensParallelismBarrierCouplingClaim = LensParallelismBarrierCouplingClaim {
+  input: parallelism_bc_claim_tree(),
+  expected: ParallelismFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: parallelism_bc_dependency,
+        classification: BarrierCoupled
+      }
+    ]
+  },
+  actual: parallelism_witness(tree: parallelism_bc_claim_tree(), dependencies: [parallelism_bc_dependency])
+}
+
+fn parallelism_barrier_coupling_claim_holds() -> Bool {
+  match parallelism_barrier_coupling_claim.actual {
+    Holds { value: actual } =>
+      parallelism_fact_eq(a: actual, b: parallelism_barrier_coupling_claim.expected)
+    _ => false
+  }
+}
+
+data parallelism_barrier_coupling_claim_passes: Bool = parallelism_barrier_coupling_claim_holds()

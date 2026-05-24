@@ -1,0 +1,101 @@
+// src/v4/test/claim/lens_ownership/unknown_ownership.dag
+// Scope: T-13 worked claim — TypeDependsOn classifies as UnknownOwnership over `ClassifiedDependencyView<OwnershipMode>` (structural/module/placement/model/projection/generated/verified/promoted/bootstrap/barrier edges all fall into UnknownOwnership — the fail-closed variant until access evidence is available).
+// Owns: ownership_unknown_ownership_claim.
+// Consumes: lens ownership, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
+
+module v4.test.claim.lens_ownership.unknown_ownership
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.ownership {
+  OwnershipFact,
+  UnknownOwnership,
+  ownership_fact_eq,
+  ownership_witness
+}
+import v4.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  TypeDependsOn
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data ownership_uo_root_symbol: Symbol = ownership_uo_root_symbol
+data ownership_uo_child_symbol: Symbol = ownership_uo_child_symbol
+data ownership_uo_edge_symbol: Symbol = ownership_uo_edge_symbol
+data ownership_uo_type_symbol: Symbol = ownership_uo_type_symbol
+data ownership_uo_algebra_symbol: Symbol = ownership_uo_algebra_symbol
+data ownership_uo_algebra_witness_symbol: Symbol = ownership_uo_algebra_witness_symbol
+data ownership_uo_descent_symbol: Symbol = ownership_uo_descent_symbol
+data ownership_uo_canonical_structural_symbol: Symbol = ownership_uo_canonical_structural_symbol
+data ownership_uo_canonical_closedness_symbol: Symbol = ownership_uo_canonical_closedness_symbol
+data ownership_uo_canonical_evidence_symbol: Symbol = ownership_uo_canonical_evidence_symbol
+
+data ownership_uo_child: Node = claim_atom_node(s: ownership_uo_child_symbol)
+
+data ownership_uo_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ownership_uo_root_symbol } },
+  children: [
+    Edge { label: Named { name: ownership_uo_edge_symbol }, target: ownership_uo_child }
+  ]
+}
+
+data ownership_uo_dependency: DependencyView = DependencyView {
+  source: ownership_uo_root,
+  dependent: ownership_uo_child,
+  kind: TypeDependsOn,
+  usage_site: ownership_uo_child
+}
+
+fn ownership_uo_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: ownership_uo_type_symbol,
+    algebra_symbol: ownership_uo_algebra_symbol,
+    algebra_witness_symbol: ownership_uo_algebra_witness_symbol,
+    descent_symbol: ownership_uo_descent_symbol,
+    canonical_structural_symbol: ownership_uo_canonical_structural_symbol,
+    canonical_closedness_symbol: ownership_uo_canonical_closedness_symbol,
+    canonical_evidence_symbol: ownership_uo_canonical_evidence_symbol
+  )
+}
+
+fn ownership_uo_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: ownership_uo_root, facts: ownership_uo_claim_facts())
+}
+
+type LensOwnershipUnknownOwnershipClaim {
+  input: InferredTree
+  expected: OwnershipFact
+  actual: Witness<OwnershipFact>
+}
+
+data ownership_unknown_ownership_claim: LensOwnershipUnknownOwnershipClaim = LensOwnershipUnknownOwnershipClaim {
+  input: ownership_uo_claim_tree(),
+  expected: OwnershipFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: ownership_uo_dependency,
+        classification: UnknownOwnership
+      }
+    ]
+  },
+  actual: ownership_witness(tree: ownership_uo_claim_tree(), dependencies: [ownership_uo_dependency])
+}
+
+fn ownership_unknown_ownership_claim_holds() -> Bool {
+  match ownership_unknown_ownership_claim.actual {
+    Holds { value: actual } =>
+      ownership_fact_eq(a: actual, b: ownership_unknown_ownership_claim.expected)
+    _ => false
+  }
+}
+
+data ownership_unknown_ownership_claim_passes: Bool = ownership_unknown_ownership_claim_holds()

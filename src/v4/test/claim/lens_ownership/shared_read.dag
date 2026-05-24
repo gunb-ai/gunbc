@@ -1,0 +1,101 @@
+// src/v4/test/claim/lens_ownership/shared_read.dag
+// Scope: T-13 worked claim — DataDependsOn classifies as SharedRead over `ClassifiedDependencyView<OwnershipMode>`.
+// Owns: ownership_shared_read_claim.
+// Consumes: lens ownership, std dependency, lens_common fixture.
+// Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
+
+
+module v4.test.claim.lens_ownership.shared_read
+
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.lens.ownership {
+  OwnershipFact,
+  SharedRead,
+  ownership_fact_eq,
+  ownership_witness
+}
+import v4.std.dependency {
+  ClassifiedDependencyView,
+  DataDependsOn,
+  DependencyView
+}
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.witness { Holds, Witness }
+import v4.test.claim.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data ownership_sr_root_symbol: Symbol = ownership_sr_root_symbol
+data ownership_sr_child_symbol: Symbol = ownership_sr_child_symbol
+data ownership_sr_edge_symbol: Symbol = ownership_sr_edge_symbol
+data ownership_sr_type_symbol: Symbol = ownership_sr_type_symbol
+data ownership_sr_algebra_symbol: Symbol = ownership_sr_algebra_symbol
+data ownership_sr_algebra_witness_symbol: Symbol = ownership_sr_algebra_witness_symbol
+data ownership_sr_descent_symbol: Symbol = ownership_sr_descent_symbol
+data ownership_sr_canonical_structural_symbol: Symbol = ownership_sr_canonical_structural_symbol
+data ownership_sr_canonical_closedness_symbol: Symbol = ownership_sr_canonical_closedness_symbol
+data ownership_sr_canonical_evidence_symbol: Symbol = ownership_sr_canonical_evidence_symbol
+
+data ownership_sr_child: Node = claim_atom_node(s: ownership_sr_child_symbol)
+
+data ownership_sr_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ownership_sr_root_symbol } },
+  children: [
+    Edge { label: Named { name: ownership_sr_edge_symbol }, target: ownership_sr_child }
+  ]
+}
+
+data ownership_sr_dependency: DependencyView = DependencyView {
+  source: ownership_sr_root,
+  dependent: ownership_sr_child,
+  kind: DataDependsOn,
+  usage_site: ownership_sr_child
+}
+
+fn ownership_sr_claim_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: ownership_sr_type_symbol,
+    algebra_symbol: ownership_sr_algebra_symbol,
+    algebra_witness_symbol: ownership_sr_algebra_witness_symbol,
+    descent_symbol: ownership_sr_descent_symbol,
+    canonical_structural_symbol: ownership_sr_canonical_structural_symbol,
+    canonical_closedness_symbol: ownership_sr_canonical_closedness_symbol,
+    canonical_evidence_symbol: ownership_sr_canonical_evidence_symbol
+  )
+}
+
+fn ownership_sr_claim_tree() -> InferredTree {
+  claim_inferred_tree(root: ownership_sr_root, facts: ownership_sr_claim_facts())
+}
+
+type LensOwnershipSharedReadClaim {
+  input: InferredTree
+  expected: OwnershipFact
+  actual: Witness<OwnershipFact>
+}
+
+data ownership_shared_read_claim: LensOwnershipSharedReadClaim = LensOwnershipSharedReadClaim {
+  input: ownership_sr_claim_tree(),
+  expected: OwnershipFact {
+    dependencies: [
+      ClassifiedDependencyView {
+        dependency: ownership_sr_dependency,
+        classification: SharedRead
+      }
+    ]
+  },
+  actual: ownership_witness(tree: ownership_sr_claim_tree(), dependencies: [ownership_sr_dependency])
+}
+
+fn ownership_shared_read_claim_holds() -> Bool {
+  match ownership_shared_read_claim.actual {
+    Holds { value: actual } =>
+      ownership_fact_eq(a: actual, b: ownership_shared_read_claim.expected)
+    _ => false
+  }
+}
+
+data ownership_shared_read_claim_passes: Bool = ownership_shared_read_claim_holds()
