@@ -95,15 +95,15 @@ import v4.std.verification {
   NestedOptionalFlatten,
   RoundTripClaim,
   SuboptimalComplexity,
-  T19GeneratedClaimAnchor,
-  T19ManualAnchorKey,
-  T19ManualClaimAnchor,
-  T19ManualNatAddAssociativity,
-  T19ManualNatAddLeftIdentity,
-  T19ManualNatAddRightIdentity,
-  T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity,
-  T19ManualNatMulLeftIdentity,
+  GeneratedClaimAnchor,
+  ManualAnchorKey,
+  ManualClaimAnchor,
+  ManualNatAddAssociativity,
+  ManualNatAddLeftIdentity,
+  ManualNatAddRightIdentity,
+  ManualNatMulAnnihilator,
+  ManualNatMulAssociativity,
+  ManualNatMulLeftIdentity,
   TestClaim,
   TransportTypeDrift,
   UnenumeratedEffects,
@@ -120,7 +120,7 @@ import v4.std.verification {
   impossible_bug_reason_transport_drift,
   impossible_bug_reason_unhandled_division,
   impossible_bug_reason_unhandled_index,
-  test_claim_t19_anchor
+  test_claim_anchor
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -699,34 +699,34 @@ fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> 
 }
 
 
-fn l7_coverage_key_from_manual_anchor(anchor: T19ManualAnchorKey) -> Outcome<L7CoverageKey> {
+fn l7_coverage_key_from_manual_anchor(anchor: ManualAnchorKey) -> Outcome<L7CoverageKey> {
   match anchor {
-    T19ManualNatAddLeftIdentity =>
+    ManualNatAddLeftIdentity =>
       Accepted {
         value: nat_add_law_subject(law: t19_law_nat_add_left_identity),
         diagnostics: None,
       }
-    T19ManualNatAddRightIdentity =>
+    ManualNatAddRightIdentity =>
       Accepted {
         value: nat_add_law_subject(law: t19_law_nat_add_right_identity),
         diagnostics: None,
       }
-    T19ManualNatAddAssociativity =>
+    ManualNatAddAssociativity =>
       Accepted {
         value: nat_add_law_subject(law: t19_law_nat_add_associativity),
         diagnostics: None,
       }
-    T19ManualNatMulLeftIdentity =>
+    ManualNatMulLeftIdentity =>
       Accepted {
         value: nat_mul_law_subject(law: t19_law_nat_mul_left_identity),
         diagnostics: None,
       }
-    T19ManualNatMulAnnihilator =>
+    ManualNatMulAnnihilator =>
       Accepted {
         value: nat_mul_law_subject(law: t19_law_nat_mul_annihilator),
         diagnostics: None,
       }
-    T19ManualNatMulAssociativity =>
+    ManualNatMulAssociativity =>
       Accepted {
         value: nat_mul_law_subject(law: t19_law_nat_mul_associativity),
         diagnostics: None,
@@ -746,10 +746,10 @@ fn l7_coverage_key_from_manual_anchor(anchor: T19ManualAnchorKey) -> Outcome<L7C
 
 
 fn l7_coverage_key_from_claim(c: TestClaim) -> Outcome<L7CoverageKey> {
-  match test_claim_t19_anchor(c: c) {
-    T19ManualClaimAnchor { manual_anchor: anchor } =>
+  match test_claim_anchor(c: c) {
+    ManualClaimAnchor { manual_anchor: anchor } =>
       l7_coverage_key_from_manual_anchor(anchor: anchor)
-    T19GeneratedClaimAnchor { generated_anchor: _ } =>
+    GeneratedClaimAnchor { generated_anchor: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -857,9 +857,9 @@ fn impossible_bug_coverage_key_from_diagnostic_reason(reason: Symbol) -> Outcome
 
 fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
   match c {
-    DiagnosticClaim { expected_rejection: d, label: _, t19_anchor: _, input: _, classification: _ } =>
+    DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
       impossible_bug_coverage_key_from_diagnostic_reason(reason: d.head.reason)
-    CompilesClaim { label: _, t19_anchor: _, input: _, expected_value: _, classification: _ } =>
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -869,7 +869,7 @@ fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBug
           }
         )
       }
-    EqualsClaim { label: _, t19_anchor: _, lhs: _, rhs: _, classification: _ } =>
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -879,7 +879,7 @@ fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBug
           }
         )
       }
-    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } =>
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {

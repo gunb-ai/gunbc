@@ -44,14 +44,10 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-<<<<<<< HEAD
-  manual_claim_anchor
-=======
   impossible_bug_reason_force_unwrap,
   impossible_bug_reason_unhandled_division,
   impossible_bug_reason_unhandled_index,
-  t19_manual_claim_anchor
->>>>>>> 5d9e24064 (WIP: T-18: fill lens/coverage.dag meta-lens (L6/L7/impossible-bug/testgen cov)
+  manual_claim_anchor
 }
 
 
