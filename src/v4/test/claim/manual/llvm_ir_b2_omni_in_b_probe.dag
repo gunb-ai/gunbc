@@ -8,10 +8,12 @@ module v4.test.claim.manual.llvm_ir_b2_omni_in_b_probe
 
 import v4.extdeps.languages.llvm_ir {
   BasicBlock,
+  ConstantOperand,
   ConditionalBr,
   Defined,
   FunctionBody,
   IntegerType,
+  IntConstant,
   LlvmType,
   LocalRef,
   PhiIncoming,
@@ -56,12 +58,12 @@ fn llvm_probe_atom(s: Symbol) -> Node {
 data llvm_probe_type: LlvmType = IntegerType { bits: NonZeroNat { prev: Zero } }
 
 data llvm_probe_left_incoming: PhiIncoming = PhiIncoming {
-  value: LocalRef { name: llvm_probe_left_symbol },
+  value: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 0 } },
   block: llvm_probe_left_symbol
 }
 
 data llvm_probe_right_incoming: PhiIncoming = PhiIncoming {
-  value: LocalRef { name: llvm_probe_right_symbol },
+  value: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 1 } },
   block: llvm_probe_right_symbol
 }
 
@@ -76,7 +78,7 @@ data llvm_probe_entry_block: BasicBlock = BasicBlock {
   phis: [],
   body: [],
   terminator: ConditionalBr {
-    condition: LocalRef { name: llvm_probe_cond_symbol },
+    condition: ConstantOperand { constant: IntConstant { ty: llvm_probe_type, value: 1 } },
     if_true: llvm_probe_left_symbol,
     if_false: llvm_probe_right_symbol
   }
