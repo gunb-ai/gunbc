@@ -406,10 +406,11 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         ]),
         "FixptStage1Stage2 must carry only the canonical compared hashes and fixed-point pin"
     );
-    assert_eq!(
-        record_field_type_map(type_record(&module, "BootstrapFixptWitness")),
-        expected_field_type_map(&[("result", "Witness<FixptStage1Stage2>")]),
-        "BootstrapFixptWitness must use the canonical Witness over the canonical fixpt record"
+    assert!(
+        !BOOTSTRAP_DAG.contains("type BootstrapFixptWitness")
+            && BOOTSTRAP_DAG.contains("fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2>")
+            && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2>"),
+        "fixpt proof must flow through canonical Witness<FixptStage1Stage2> without an N-wrapper record"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "BootstrapPlan")),
@@ -491,10 +492,10 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
                 .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
             && BOOTSTRAP_DAG
                 .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest")
-            && BOOTSTRAP_DAG.contains("match bootstrap_fixpt_witness(f: p.fixpt).result")
+            && BOOTSTRAP_DAG.contains("match bootstrap_fixpt_witness(f: p.fixpt)")
             && BOOTSTRAP_DAG.contains("Holds { value: _ } =>")
-            && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: BootstrapFixptWitness")
-            && BOOTSTRAP_DAG.contains("result: Witness<FixptStage1Stage2>")
+            && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2>")
+            && !BOOTSTRAP_DAG.contains("BootstrapFixptWitness")
             && !BOOTSTRAP_DAG.contains("fn bootstrap_fixpt_holds")
             && !BOOTSTRAP_DAG.contains("p.fixpt.witness"),
         "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields and consume the derived witness directly (A2+A3/P2)"

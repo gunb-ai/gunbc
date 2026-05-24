@@ -1,7 +1,7 @@
 // src/v4/workflow/bootstrap.dag
 // Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
 // 🟡 needs-more-work — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; bootstrap_plan_well_formed must then require computed digest equality (stage1 ≠ stage2 until fixpt proves convergence), not symbolic placeholder Hash data aliases. Until then, pin Symbols identify carrier slots; digest fields are placeholder identities — accepted bootstrap_plan below is structural wiring only, NOT proof of fixed-point convergence.
-// Owns: CompileStage, BootstrapFixptWitness, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan
+// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan, bootstrap_fixpt_witness, bootstrap_plan_fixpt_witness
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.std.witness
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
@@ -52,11 +52,6 @@ type FixptStage1Stage2 {
   pinned_hash: BootstrapHashPin
 }
 
-// RULING-1: 🟢 pretty-much-done — fixed-point equality witness; BitIdentical is the property proved by digest equality over the canonical FixptStage1Stage2 fields.
-type BootstrapFixptWitness {
-  result: Witness<FixptStage1Stage2>
-}
-
 // RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
 type BootstrapPlan {
   seed: CompileStage
@@ -90,7 +85,7 @@ fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   }
 }
 
-fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> BootstrapFixptWitness {
+fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2> {
   if (f.left == v4_stage1_binary)
        && (f.right == v4_stage2_binary)
        && (f.left_hash.pin == v4_stage1_hash_pin)
@@ -98,9 +93,9 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> BootstrapFixptWitness {
        && (f.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
        && (f.left_hash.digest == f.right_hash.digest)
        && (f.pinned_hash.digest == f.left_hash.digest) {
-    BootstrapFixptWitness { result: Holds { value: f } }
+    Holds { value: f }
   } else {
-    BootstrapFixptWitness { result: Violates { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) } }
+    Violates { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) }
   }
 }
 
@@ -113,7 +108,7 @@ fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
 }
 
 fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
-  match bootstrap_fixpt_witness(f: p.fixpt).result {
+  match bootstrap_fixpt_witness(f: p.fixpt) {
     Holds { value: _ } =>
       if bs_list_eq(a: p.seed.consumes, b: [v4_dag_source])
            && (p.seed.produces == v4_stage0_binary)
@@ -202,7 +197,7 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
   }
 })
 
-data bootstrap_plan_fixpt_witness: BootstrapFixptWitness = match bootstrap_plan {
+data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => BootstrapFixptWitness { result: Violates { diagnostic: nd.head } }
+  Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
 }
