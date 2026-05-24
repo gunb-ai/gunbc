@@ -2,7 +2,7 @@
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
 // Owns: TomlValue, TomlTable, TomlRootTable, TomlDocument, TomlParseAxis, TomlEmitAxis,
 //       TomlTablePath, TomlIntegerLexeme, TomlFloatLexeme, TomlDatetimeLexeme,
-//       TomlUniqueNameProfile, TomlTableSyntaxProfile.
+//       TomlUniqueNameProfile, TomlTableHeaderSyntaxProfile, TomlInlineTableSyntaxProfile.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
 // Anchor: https://toml.io/en/v1.0.0
@@ -91,7 +91,7 @@ type TomlUniqueNameProfile {
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type TomlTableSyntax
+type TomlTableHeaderSyntax
   = TomlStandardTable
   | TomlArrayOfTablesElement
 
@@ -102,15 +102,23 @@ type TomlTablePath {
 }
 
 
-type TomlTableSyntaxProfile {
-  syntax: TomlTableSyntax,
+type TomlTableHeaderSyntaxProfile {
+  syntax: TomlTableHeaderSyntax,
   path: TomlTablePath,
+}
+
+
+type TomlInlineTableClosedFact {}
+
+
+type TomlInlineTableSyntaxProfile {
+  closed_inline_scope: TomlInlineTableClosedFact,
 }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlTable {
-  syntax: TomlTableSyntaxProfile,
+  syntax: TomlTableHeaderSyntaxProfile,
   entries: Map<String, TomlValue>,
 }
 
@@ -128,7 +136,10 @@ type TomlValue
   | TomlBool { value: Bool }
   | TomlDatetime { datetime: TomlDatetimeLexeme }
   | TomlArray { elements: List<TomlValue> }
-  | TomlInlineTable { entries: Map<String, TomlValue> }
+  | TomlInlineTable {
+      syntax: TomlInlineTableSyntaxProfile,
+      entries: Map<String, TomlValue>,
+    }
   | TomlTableValue { table: TomlTable }
 
 
