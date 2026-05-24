@@ -1,7 +1,7 @@
 // src/v4/extdeps/cpp_abi.dag
 // Scope: C++ ABI / target data-model facts for implementation-defined fundamental widths.
 // Anchor: ISO/IEC 14882:2024 [basic.fundamental] + Itanium C++ ABI revision 1.86.
-// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppWcharTSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel<plain_char_signedness,wchar_t_signedness>, Cpp{Char,Short,Int,Long,LongLong,Pointer,WcharT}WidthSelectionWitness, Cpp{ILP32,LP64}LongWidthSelectionWitness.
+// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppWcharTSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel<plain_char_signedness,wchar_t_signedness>, Cpp{Char,Short,Int,Long,LongLong,Pointer,WcharT}WidthSelectionWitness.
 // Consumes: std/machine.dag vocabulary by coincidence index only: MachineWidth<Word8/16/32/64>.
 // Status: T-29 modeled 2026-05-18.
 
@@ -126,7 +126,7 @@ type CppILP64IntegerWidths = CppCoreIntegerWidthModel {
 }
 type CppILP64DataModel<plain_char_signedness, wchar_t_signedness> = CppTargetDataModel<CppDataModelFamilyILP64, CppILP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
 
-// 🟢 pretty-much-done — slot-specific width witness; role is the type name; selected_width projects a CppCoreIntegerWidthModel field; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟡 feature:t4-cpp-scalar-ladder — slot-specific width witness carrier; role is the type name; resolved selected_width is derived from CppTargetProfile data model in languages/cpp.dag, not restated here; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppCharWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppShortWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppIntWidthSelectionWitness { selected_width: CppIntegerWidth }
@@ -134,11 +134,3 @@ type CppLongWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppLongLongWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppPointerWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppWcharTWidthSelectionWitness { selected_width: CppIntegerWidth }
-
-// 🟢 pretty-much-done — long-width witness aliases project CppILP32IntegerWidths.long_width / CppLP64IntegerWidths.long_width; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag, test/claim/manual/cpp_abi_lp64_width_anchor.dag.
-type CppILP32LongWidthSelectionWitness = CppLongWidthSelectionWitness {
-  selected_width: CppIntegerWidth32
-}
-type CppLP64LongWidthSelectionWitness = CppLongWidthSelectionWitness {
-  selected_width: CppIntegerWidth64
-}

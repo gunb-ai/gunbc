@@ -1,5 +1,5 @@
 // src/v4/test/claim/manual/cpp_abi_lp64_width_anchor.dag
-// Scope: Compile anchor for LP64 long-width witness (isolated module — v2 rejects duplicate CppCoreIntegerWidthModel alias inhabitants in one module).
+// Scope: Compile anchor for LP64 target data-model (isolated module — v2 rejects duplicate CppCoreIntegerWidthModel alias inhabitants in one module).
 // Owns: cpp_lp64_anchor_* type aliases.
 // Consumes: extdeps/cpp_abi.dag.
 // Status: compile-only groundedness testcase.
@@ -10,7 +10,6 @@ import v4.extdeps.cpp_abi {
   CppAbiModelItaniumCxxAbi186,
   CppDataModelFamilyLP64,
   CppLP64IntegerWidths,
-  CppLP64LongWidthSelectionWitness,
   CppPlainCharSignedness,
   CppTargetDataModel,
   CppTargetProfile,
@@ -19,4 +18,3 @@ import v4.extdeps.cpp_abi {
 
 type cpp_lp64_anchor_data_model = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSignedness, CppWcharTSignedness>
 type cpp_lp64_anchor_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_lp64_anchor_data_model>
-type cpp_lp64_anchor_long_width_witness = CppLP64LongWidthSelectionWitness
