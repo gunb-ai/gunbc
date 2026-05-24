@@ -15,7 +15,6 @@ type Validation<B> {
   reason: Symbol
   admits: fn(B) -> Bool
 }
-// erasure-eligible: transparent newtype, representationally identical to B once refine discharges (T-25-tail erases proven refinements).
 type Refined<B> {
   base: B
 }

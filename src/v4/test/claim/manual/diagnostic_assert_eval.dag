@@ -9,14 +9,11 @@ module v4.test.claim.manual.diagnostic_assert_eval
 
 
 import v4.compiler.eval {
-  Pass,
-  Fail,
-  Deferred,
-  Verdict,
   aggregate_verdicts,
   eval_diagnostic,
   run_test_claim_assert
 }
+import v4.std.verdict { Verdict, Pass, Fail, Deferred }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
