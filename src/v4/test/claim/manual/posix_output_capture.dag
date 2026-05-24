@@ -24,8 +24,8 @@ import v4.test.claim.manual.connective_anchors { stub_empty_conj, stub_empty_dis
 
 
 data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
-  stdout: [],
-  stderr: []
+  stdout: Empty,
+  stderr: Empty
 }
 
 
