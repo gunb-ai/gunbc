@@ -1,13 +1,8 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
 // Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
-<<<<<<< HEAD
 // Consumes: v4.std.algebra (list_append), v4.std.collection, v4.std.node.
 // Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
-=======
-// Consumes: std/collection.dag; std/logic.dag; std/node.dag.
-// Status: Wave-2-A substrate.
->>>>>>> origin/main
 
 module v4.std.dependency
 

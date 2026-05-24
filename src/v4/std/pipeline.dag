@@ -10,13 +10,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Accumulate, ShortCircuit, StageDiagnosticPolicy }
 import v4.std.node { Node, Symbol }
 
-<<<<<<< HEAD
 // 🟢 closed set — v4 pipeline boundary carriers.
-=======
-type StageDiagnosticPolicy
-
-// 🟢 coproduct dissolution
->>>>>>> origin/main
 type CarrierKind
   = SurfaceNode
   | CoreNode
