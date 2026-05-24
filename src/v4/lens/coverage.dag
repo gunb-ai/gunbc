@@ -892,19 +892,23 @@ fn fold_diagnostic_tail_into_impossible_bug_keys(
 }
 
 
-type SoleImpossibleBugKeyFold {
-  count: Int
-  key: ImpossibleBugCoverageKey
-}
+type SoleImpossibleBugKeyFold
+  = NoImpossibleBugKey
+  | OneImpossibleBugKey { key: ImpossibleBugCoverageKey }
+  | MultipleImpossibleBugKeys
 
 
 fn sole_impossible_bug_coverage_key_fold(
   state: SoleImpossibleBugKeyFold,
   key: ImpossibleBugCoverageKey
 ) -> SoleImpossibleBugKeyFold {
-  SoleImpossibleBugKeyFold {
-    count: state.count + 1,
-    key: key,
+  match state {
+    NoImpossibleBugKey =>
+      OneImpossibleBugKey { key: key }
+    OneImpossibleBugKey { key: _ } =>
+      MultipleImpossibleBugKeys
+    MultipleImpossibleBugKeys =>
+      MultipleImpossibleBugKeys
   }
 }
 
@@ -914,16 +918,13 @@ fn sole_impossible_bug_coverage_key(
 ) -> Outcome<ImpossibleBugCoverageKey> {
   let state = fold_list_right(
     xs: keys,
-    empty: SoleImpossibleBugKeyFold {
-      count: 0,
-      key: ImpossibleBugCoverageKey { bug_class: IdempotencyContract },
-    },
+    empty: NoImpossibleBugKey,
     snoc: fn(s, key) {
       sole_impossible_bug_coverage_key_fold(state: s, key: key)
     }
   )
-  match state.count {
-    0 =>
+  match state {
+    NoImpossibleBugKey =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
@@ -933,9 +934,9 @@ fn sole_impossible_bug_coverage_key(
           }
         )
       }
-    1 =>
-      Accepted { value: state.key, diagnostics: None }
-    _ =>
+    OneImpossibleBugKey { key: key } =>
+      Accepted { value: key, diagnostics: None }
+    MultipleImpossibleBugKeys =>
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
