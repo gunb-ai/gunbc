@@ -649,6 +649,48 @@ fn ct_type_size_test() -> String {
     "    }\n\n")
 }
 
+fn ct_kernel_profile_tests() -> String {
+  concat(
+    "    // =========================================================================\n",
+    "    // Kernel algebra profile / keyed container carrier tests\n",
+    "    // =========================================================================\n\n",
+    "    #[test]\n",
+    "    fn freemonoid_registered_for_container_param_and_algebra_profile() {\n",
+    "        use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};\n",
+    "        use crate::std_types::{container_expected_arity, container_param_name, is_container_type};\n",
+    "        use crate::v2_rt;\n",
+    "        assert_eq!(\n",
+    "            v2_rt::map_get(&kernel_algebra_profile(), \"FreeMonoid\".to_string()),\n",
+    "            Some(AlgebraProfile::FreeMonoidCollectionProfile)\n",
+    "        );\n",
+    "        assert_eq!(container_expected_arity(\"FreeMonoid\".to_string()), Some(1));\n",
+    "        assert!(is_container_type(\"FreeMonoid\".to_string()));\n",
+    "        assert_eq!(\n",
+    "            container_param_name(\"FreeMonoid\".to_string(), 0),\n",
+    "            Some(\"T\".to_string())\n",
+    "        );\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn make_keyed_container_type_preserves_partial_function_carrier() {\n",
+    "        use crate::v2_compiler_infer_types::{\n",
+    "            make_keyed_container_type, make_map_type, type_variable_node,\n",
+    "        };\n",
+    "        use crate::v2_compiler_parse::authored_name_at;\n",
+    "        use crate::v2_rt::rc_empty_map as empty_map;\n",
+    "        let key = type_variable_node(\"K\".to_string());\n",
+    "        let value = type_variable_node(\"V\".to_string());\n",
+    "        let pf =\n",
+    "            make_keyed_container_type(&\"PartialFunction\".to_string(), key.clone(), value.clone());\n",
+    "        let map = make_map_type(key, value);\n",
+    "        let indices = empty_map();\n",
+    "        assert_eq!(\n",
+    "            authored_name_at(indices.clone(), &pf.ty),\n",
+    "            \"PartialFunction\".to_string()\n",
+    "        );\n",
+    "        assert_eq!(authored_name_at(indices, &map.ty), \"Map\".to_string());\n",
+    "    }\n\n")
+}
+
 fn ct_coercion_tests() -> String {
   let entries = extract_coercion_tests()
   let test_fns = entries |> map(e => render_coercion_test_rust(entry: e))
@@ -1400,6 +1442,7 @@ fn compiler_tests_source() -> String {
     ct_self_compile_cargo_check_test(),
     ct_gist_tests(),
     ct_type_size_test(),
+    ct_kernel_profile_tests(),
     ct_coercion_tests(),
     ct_profile_helpers(),
     ct_profile_gist_test(),
