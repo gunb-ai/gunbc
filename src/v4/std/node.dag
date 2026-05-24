@@ -168,7 +168,7 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: loop_bound_edge, children: children)
-  (bound_edges == 0 || bound_edges == 1)
+  (bound_edges == 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
