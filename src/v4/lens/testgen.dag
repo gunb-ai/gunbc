@@ -1097,6 +1097,12 @@ fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
 }
 
 
+type NatAlgebraLawScheduleRow {
+  obligation: NatAlgebraLawObligation
+  anchor: ManualAnchorKey
+}
+
+
 fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
   AlgebraLawSubject {
     algebra: o.algebra,
@@ -1146,20 +1152,18 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
 }
 
 
-fn testgen_manual_anchor_from_nat_obligation(
-  o: NatAlgebraLawObligation
-) -> Outcome<ManualAnchorKey> {
-  if o.law == law_nat_add_left_identity {
+fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
+  if law == law_nat_add_left_identity {
     Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
-  } else if o.law == law_nat_add_right_identity {
+  } else if law == law_nat_add_right_identity {
     Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
-  } else if o.law == law_nat_add_associativity {
+  } else if law == law_nat_add_associativity {
     Accepted { value: ManualNatAddAssociativity, diagnostics: None }
-  } else if o.law == law_nat_mul_left_identity {
+  } else if law == law_nat_mul_left_identity {
     Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
-  } else if o.law == law_nat_mul_annihilator {
+  } else if law == law_nat_mul_annihilator {
     Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
-  } else if o.law == law_nat_mul_associativity {
+  } else if law == law_nat_mul_associativity {
     Accepted { value: ManualNatMulAssociativity, diagnostics: None }
   } else {
     Rejected {
@@ -1168,6 +1172,108 @@ fn testgen_manual_anchor_from_nat_obligation(
       )
     }
   }
+}
+
+
+fn testgen_manual_anchor_from_nat_obligation(
+  o: NatAlgebraLawObligation
+) -> Outcome<ManualAnchorKey> {
+  testgen_manual_anchor_for_law(law: o.law)
+}
+
+
+fn nat_algebra_law_schedule_row_from_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  bind_outcome(
+    o: testgen_manual_anchor_for_law(law: obligation.law),
+    f: fn(anchor) {
+      Accepted {
+        value: NatAlgebraLawScheduleRow { obligation: obligation, anchor: anchor },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
+  match a {
+    ManualNatAddLeftIdentity =>
+      match b {
+        ManualNatAddLeftIdentity => true
+        _ => false
+      }
+    ManualNatAddRightIdentity =>
+      match b {
+        ManualNatAddRightIdentity => true
+        _ => false
+      }
+    ManualNatAddAssociativity =>
+      match b {
+        ManualNatAddAssociativity => true
+        _ => false
+      }
+    ManualNatMulLeftIdentity =>
+      match b {
+        ManualNatMulLeftIdentity => true
+        _ => false
+      }
+    ManualNatMulAnnihilator =>
+      match b {
+        ManualNatMulAnnihilator => true
+        _ => false
+      }
+    ManualNatMulAssociativity =>
+      match b {
+        ManualNatMulAssociativity => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+fn append_nat_algebra_law_schedule_row_if_anchor_matches(
+  found: Outcome<NatAlgebraLawScheduleRow>,
+  obligation: NatAlgebraLawObligation,
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  match found {
+    Accepted { value: _, diagnostics: _ } => found
+    Rejected { diagnostics: _ } =>
+      bind_outcome(
+        o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
+        f: fn(row) {
+          if nat_manual_anchor_key_eq(a: row.anchor, b: anchor) {
+            Accepted { value: row, diagnostics: None }
+          } else {
+            found
+          }
+        }
+      )
+  }
+}
+
+
+fn nat_algebra_law_schedule_row_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_algebra_law_schedule_row_if_anchor_matches(
+        found: found,
+        obligation: obligation,
+        anchor: anchor
+      )
+    }
+  )
 }
 
 
@@ -1227,41 +1333,13 @@ fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenC
 }
 
 
-fn law_symbol_for_manual_nat_anchor(anchor: ManualAnchorKey) -> Outcome<Symbol> {
-  match anchor {
-    ManualNatAddLeftIdentity =>
-      Accepted { value: law_nat_add_left_identity, diagnostics: None }
-    ManualNatAddRightIdentity =>
-      Accepted { value: law_nat_add_right_identity, diagnostics: None }
-    ManualNatAddAssociativity =>
-      Accepted { value: law_nat_add_associativity, diagnostics: None }
-    ManualNatMulLeftIdentity =>
-      Accepted { value: law_nat_mul_left_identity, diagnostics: None }
-    ManualNatMulAnnihilator =>
-      Accepted { value: law_nat_mul_annihilator, diagnostics: None }
-    ManualNatMulAssociativity =>
-      Accepted { value: law_nat_mul_associativity, diagnostics: None }
-    _ =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: testgen_non_algebra_law_scheduled_slot,
-            at: Textual { file: testgen_lens_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
-      }
-  }
-}
-
-
 fn nat_algebra_law_obligation_for_manual_anchor(
   anchor: ManualAnchorKey
 ) -> Outcome<NatAlgebraLawObligation> {
   bind_outcome(
-    o: law_symbol_for_manual_nat_anchor(anchor: anchor),
-    f: fn(law) {
-      nat_algebra_law_obligation_for_law(law: law)
+    o: nat_algebra_law_schedule_row_for_manual_anchor(anchor: anchor),
+    f: fn(row) {
+      Accepted { value: row.obligation, diagnostics: None }
     }
   )
 }

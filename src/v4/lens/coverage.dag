@@ -60,6 +60,7 @@ import v4.std.diagnostic {
   WholeFile,
   bind_outcome,
   diagnostics_singleton,
+  non_empty_diagnostics_append,
   outcome_accepted
 }
 import v4.std.verification {
@@ -102,7 +103,10 @@ import v4.std.node {
   behavior_coproduct_variants,
   connective_coproduct_variants
 }
-import v4.std.witness { Holds, Violates, Witness }
+type CoverageMissingDiagnosticsFold {
+  started: Bool
+  acc: NonEmptyDiagnostics
+}
 
 
 type Coverage<C> {
@@ -1153,56 +1157,137 @@ fn coverage_reading_complete(r: CoverageReading) -> Bool {
 }
 
 
-fn coverage_incomplete_diagnostic(r: CoverageReading) -> Diagnostic {
-  match is_empty(xs: r.l6_missing) {
+fn coverage_missing_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: coverage_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn append_coverage_missing_diagnostic(
+  state: CoverageMissingDiagnosticsFold,
+  reason: Symbol
+) -> CoverageMissingDiagnosticsFold {
+  match state.started {
     false =>
-      Diagnostic {
-        reason: coverage_reason_l6_missing,
-        at: Textual { file: coverage_virtual_file, extent: WholeFile },
-        correction: Unavailable { reason: UserInputBoundary }
+      CoverageMissingDiagnosticsFold {
+        started: true,
+        acc: diagnostics_singleton(d: coverage_missing_diagnostic(reason: reason))
       }
     true =>
-      match is_empty(xs: r.l7_missing) {
-        false =>
-          Diagnostic {
-            reason: coverage_reason_l7_missing,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        true =>
-          match is_empty(xs: r.impossible_bug_missing) {
-            false =>
-              Diagnostic {
-                reason: coverage_reason_impossible_bug_missing,
-                at: Textual { file: coverage_virtual_file, extent: WholeFile },
-                correction: Unavailable { reason: UserInputBoundary }
-              }
-            true =>
-              match is_empty(xs: r.testgen_missing) {
-                false =>
-                  Diagnostic {
-                    reason: coverage_reason_testgen_missing,
-                    at: Textual { file: coverage_virtual_file, extent: WholeFile },
-                    correction: Unavailable { reason: UserInputBoundary }
-                  }
-                true =>
-                  Diagnostic {
-                    reason: coverage_reason_incomplete,
-                    at: Textual { file: coverage_virtual_file, extent: WholeFile },
-                    correction: Unavailable { reason: UserInputBoundary }
-                  }
-              }
-          }
+      CoverageMissingDiagnosticsFold {
+        started: true,
+        acc: non_empty_diagnostics_append(
+          a: state.acc,
+          b: diagnostics_singleton(d: coverage_missing_diagnostic(reason: reason))
+        )
       }
   }
 }
 
 
-fn coverage_lens(corpus: List<TestClaim>) -> Witness<CoverageReading> {
+fn coverage_missing_diagnostics_from_l6_missing(
+  state: CoverageMissingDiagnosticsFold,
+  missing: List<Coverage<L6CoverageKey>>
+) -> CoverageMissingDiagnosticsFold {
+  fold_list(
+    xs: missing,
+    empty: state,
+    cons: fn(s, _entry) {
+      append_coverage_missing_diagnostic(
+        state: s,
+        reason: coverage_reason_l6_missing
+      )
+    }
+  )
+}
+
+
+fn coverage_missing_diagnostics_from_l7_missing(
+  state: CoverageMissingDiagnosticsFold,
+  missing: List<Coverage<L7CoverageKey>>
+) -> CoverageMissingDiagnosticsFold {
+  fold_list(
+    xs: missing,
+    empty: state,
+    cons: fn(s, _entry) {
+      append_coverage_missing_diagnostic(
+        state: s,
+        reason: coverage_reason_l7_missing
+      )
+    }
+  )
+}
+
+
+fn coverage_missing_diagnostics_from_impossible_bug_missing(
+  state: CoverageMissingDiagnosticsFold,
+  missing: List<Coverage<ImpossibleBugCoverageKey>>
+) -> CoverageMissingDiagnosticsFold {
+  fold_list(
+    xs: missing,
+    empty: state,
+    cons: fn(s, _entry) {
+      append_coverage_missing_diagnostic(
+        state: s,
+        reason: coverage_reason_impossible_bug_missing
+      )
+    }
+  )
+}
+
+
+fn coverage_missing_diagnostics_from_testgen_missing(
+  state: CoverageMissingDiagnosticsFold,
+  missing: List<Coverage<TestgenCoverageKey>>
+) -> CoverageMissingDiagnosticsFold {
+  fold_list(
+    xs: missing,
+    empty: state,
+    cons: fn(s, _entry) {
+      append_coverage_missing_diagnostic(
+        state: s,
+        reason: coverage_reason_testgen_missing
+      )
+    }
+  )
+}
+
+
+fn coverage_missing_diagnostics(r: CoverageReading) -> NonEmptyDiagnostics {
+  let folded = coverage_missing_diagnostics_from_testgen_missing(
+    state: coverage_missing_diagnostics_from_impossible_bug_missing(
+      state: coverage_missing_diagnostics_from_l7_missing(
+        state: coverage_missing_diagnostics_from_l6_missing(
+          state: CoverageMissingDiagnosticsFold {
+            started: false,
+            acc: diagnostics_singleton(
+              d: coverage_missing_diagnostic(reason: coverage_reason_incomplete)
+            )
+          },
+          missing: r.l6_missing
+        ),
+        missing: r.l7_missing
+      ),
+      missing: r.impossible_bug_missing
+    ),
+    missing: r.testgen_missing
+  )
+  if folded.started {
+    folded.acc
+  } else {
+    diagnostics_singleton(d: coverage_missing_diagnostic(reason: coverage_reason_incomplete))
+  }
+}
+
+
+fn coverage_lens(corpus: List<TestClaim>) -> Outcome<CoverageReading> {
   let reading = coverage_reading(corpus: corpus)
   if coverage_reading_complete(r: reading) {
-    Holds { value: reading }
+    outcome_accepted(value: reading)
   } else {
-    Violates { diagnostic: coverage_incomplete_diagnostic(r: reading) }
+    Rejected { diagnostics: coverage_missing_diagnostics(r: reading) }
   }
 }
