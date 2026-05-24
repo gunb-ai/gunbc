@@ -38,6 +38,7 @@ import v4.std.node {
   TypeNode,
   Value,
   fold_node,
+  loop_behavior_edges_conform,
   loop_bound_edge,
   name_occurrences
 }
@@ -123,23 +124,20 @@ type TerminationProof {
   non_increasing: List<RankingDimension>
   strict: RankingDimension
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟡 gated — coproduct-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: loop-bound-interval-parent — bind cardinality://loop-bound — dissolve-on-arrival: shared Interval<D> parent for measure + descent evidence (v3 substrate direction); forbidden: terminal LoopBound coproduct duplicating measure per arm.
 // LoopBound records the iteration-measure witness for Loop computation nodes.
-// Cardinality carries an explicit structural measure node via the substrate
-// `loop_bound_edge` Named edge; Descent pairs a termination proof with that
-// measure. Positional children carry the loop body only.
-type LoopBound
-  = Cardinality { measure: Node }
-  | Descent { proof: TerminationProof, measure: Node }
+// `measure` is the single authoritative bound node via substrate `loop_bound_edge`;
+// `termination` is the descent-proof coordinate (Holds/Violates), not a coproduct arm.
+type LoopBound {
+  measure: Node
+  termination: Witness<TerminationProof>
+}
 
 data cardinality_loop_bound_undeclared: Symbol = cardinality_loop_bound_undeclared
 data cardinality_loop_bound_ambiguous: Symbol = cardinality_loop_bound_ambiguous
 
 fn loop_bound_measure(bound: LoopBound) -> Node {
-  match bound {
-    Cardinality { measure: m } => m
-    Descent { proof: _, measure: m } => m
-  }
+  bound.measure
 }
 
 fn loop_bound_undeclared_diagnostic(n: Node) -> Diagnostic {
@@ -162,6 +160,8 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
   if name_occurrences(name: loop_bound_edge, children: n.children) == 0 {
     Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
   } else if name_occurrences(name: loop_bound_edge, children: n.children) > 1 {
+    Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
+  } else if !loop_behavior_edges_conform(children: n.children) {
     Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
   } else {
     fold(
@@ -283,11 +283,11 @@ fn termination_proof_witness_for_node(n: Node) -> Witness<TerminationProof> {
 fn loop_bound_witness_for_node(n: Node) -> Witness<LoopBound> {
   match loop_measure_node(n: n) {
     Holds { value: measure } =>
-      match termination_proof_witness_for_node(n: n) {
-        Holds { value: proof } =>
-          Holds { value: Descent { proof: proof, measure: measure } }
-        Violates { diagnostic: _ } =>
-          Holds { value: Cardinality { measure: measure } }
+      Holds {
+        value: LoopBound {
+          measure: measure,
+          termination: termination_proof_witness_for_node(n: n)
+        }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }

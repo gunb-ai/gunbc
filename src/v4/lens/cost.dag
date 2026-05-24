@@ -69,7 +69,7 @@ import v4.std.node {
   Edge,
   Instantiation,
   Loop,
-  loop_bound_edge,
+  loop_edge_contributes_to_iteration_fold,
   Named,
   Node,
   NodeFold,
@@ -419,19 +419,12 @@ fn compose_child_cost(
   }
 }
 
-fn cost_edge_contributes_to_composition(e: Edge) -> Bool {
-  match e.label {
-    Positional => true
-    Named { name: sym } => sym != loop_bound_edge
-  }
-}
-
 fn cost_fold_step(
   acc: SymbolicCostFoldState,
   e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  if cost_edge_contributes_to_composition(e: e) {
+  if loop_edge_contributes_to_iteration_fold(e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
       cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost)
