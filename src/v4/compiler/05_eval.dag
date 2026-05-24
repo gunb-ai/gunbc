@@ -62,6 +62,7 @@ import v4.std.node {
   TypeNode,
   Value,
   fold_node,
+  is_positional,
   well_formed
 }
 import v4.std.diagnostic {
@@ -699,10 +700,7 @@ fn empty_runtime_values() -> List<RuntimeValue> {
 
 
 fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
-  match edge.label {
-    Positional => true
-    Named { name: _ } => false
-  }
+  is_positional(e: edge)
 }
 
 
