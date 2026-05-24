@@ -3,7 +3,7 @@
 // Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
 // Owns: NormalizedTree; SurfaceSugarKind; normalize; stage Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, compiler/02_parse.dag, extdeps/languages/dag.dag.
-// Status: scaffold — TASKS T-8.
+// Status: T-8 modeled — C3 sugar dissolution (ServiceSugar / FnSugar / TypeSugar / OperationSugar).
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 
 module v4.compiler.normalize

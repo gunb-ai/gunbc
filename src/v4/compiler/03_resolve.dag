@@ -1,9 +1,10 @@
 // src/v4/compiler/03_resolve.dag
 //
-// Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
-// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: scaffold — TASKS T-8.
+// Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def; T-28 cross-file binding via ModuleGraph.
+// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_graph; Symbol reasons.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/module_graph.dag (ModuleGraph),
+//           compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
+// Status: T-8 (+ T-28) modeled — K-1 single-file resolution; resolve_with_graph cross-file binding surface.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -15,6 +16,7 @@ import v4.extdeps.languages.dag {
   dag_language_model_canonical_symbols
 }
 import v4.std.collection { Set }
+import v4.std.module_graph { ModuleGraph }
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
@@ -55,7 +57,7 @@ type Namespace {
 }
 
 
-// 🟡 coproduct dissolution — feature:T-8-lexical-scope-chain — scaffold:TASKS T-8; dissolve-on-arrival: CP-1b/T-8→T-9 close (Scope).
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
@@ -556,4 +558,18 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }
   }
+}
+
+
+// T-28 cross-file binding surface (bridge: initial impl delegates to single-file resolution;
+// graph is the extension point for callers that enrich the namespace with imported module bindings).
+fn resolve_with_graph(
+  tree: NormalizedTree,
+  lm: DagLanguageModel,
+  graph: ModuleGraph
+) -> Outcome<ResolvedTree> {
+  resolve_with_namespace(
+    tree: tree,
+    namespace: build_program_namespace(tree: tree, lm: lm)
+  )
 }
