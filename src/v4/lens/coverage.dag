@@ -529,8 +529,8 @@ fn missing_coverage<C>(
 }
 
 
-// 🟡 gated — feature:l6-k1-dag-language-surface-only — bind task: src/v4/TASKS.md#t-18-lenscoveragedag--meta-lens-for-coverage-discipline
-// dissolve-on-arrival: bootstrap_l6_language_surfaces projects extdeps/languages scheduled L6 surfaces; forbidden: reporting K-1 single-language bootstrap as full L6 completeness.
+// 🟡 gated — feature:l6-k1-dag-language-surface-only — bind task: src/v4/TASKS.md#t-4-extdepslanguagesrustpythongocpptypescriptdag
+// dissolve-on-arrival: bootstrap_l6_language_surfaces projects extdeps/languages scheduled L6 surface Symbol anchors; forbidden: reporting K-1 single-language bootstrap as full L6 completeness.
 fn bootstrap_l6_language_surfaces() -> List<Symbol> {
   [dag_language_model_surface_id]
 }
