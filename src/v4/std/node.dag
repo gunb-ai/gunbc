@@ -1,7 +1,7 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
+// Owns: Symbol, Hash, Connective, ConnectiveCoproductVariant, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
 // Consumes: none.
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 // Note: bind_outcome + Outcome helpers live in v4.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
@@ -31,15 +31,39 @@ type Behavior
 // 🟡 gated — feature:coproduct-variant-enumeration — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root
 // dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
-fn connective_coproduct_variants(atom_identity: Symbol) -> List<Connective> {
+type ConnectiveCoproductVariant
+  = ConnectiveAtomArm
+  | ConnectiveConjArm
+  | ConnectiveDisjArm
+  | ConnectiveArrowArm
+  | ConnectiveCardinalityArm
+  | ConnectiveInstantiationArm
+
+
+fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
   [
-    Atom { identity: atom_identity },
-    Conj,
-    Disj,
-    Arrow,
-    Cardinality,
-    Instantiation,
+    ConnectiveAtomArm,
+    ConnectiveConjArm,
+    ConnectiveDisjArm,
+    ConnectiveArrowArm,
+    ConnectiveCardinalityArm,
+    ConnectiveInstantiationArm,
   ]
+}
+
+
+fn connective_from_coproduct_variant(
+  variant: ConnectiveCoproductVariant,
+  atom_identity: Symbol
+) -> Connective {
+  match variant {
+    ConnectiveAtomArm => Atom { identity: atom_identity }
+    ConnectiveConjArm => Conj
+    ConnectiveDisjArm => Disj
+    ConnectiveArrowArm => Arrow
+    ConnectiveCardinalityArm => Cardinality
+    ConnectiveInstantiationArm => Instantiation
+  }
 }
 
 

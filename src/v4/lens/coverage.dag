@@ -101,7 +101,8 @@ import v4.std.node {
   Transform,
   Value,
   behavior_coproduct_variants,
-  connective_coproduct_variants
+  connective_coproduct_variant_keys,
+  connective_from_coproduct_variant
 }
 // 🟢 coproduct dissolution — local fold state for per-missing coverage diagnostic accumulation.
 type CoverageMissingDiagnosticsFold
@@ -526,7 +527,19 @@ fn bootstrap_l6_language_surfaces() -> List<Symbol> {
 
 
 fn substrate_connective_kernels() -> List<Connective> {
-  connective_coproduct_variants(atom_identity: dag_c3_surface_sugar_type)
+  fold_list_right(
+    xs: connective_coproduct_variant_keys(),
+    empty: Empty,
+    snoc: fn(acc, variant) {
+      list_snoc_item(
+        xs: acc,
+        item: connective_from_coproduct_variant(
+          variant: variant,
+          atom_identity: dag_c3_surface_sugar_type
+        )
+      )
+    }
+  )
 }
 
 
