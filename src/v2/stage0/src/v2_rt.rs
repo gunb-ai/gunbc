@@ -386,6 +386,29 @@ pub fn from_code_point(cp: i64) -> String {
         .unwrap_or_default()
 }
 
+const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
+const FNV1A64_PRIME: u64 = 0x100000001b3;
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = FNV1A64_OFFSET;
+    for b in bytes {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(FNV1A64_PRIME);
+    }
+    hash
+}
+
+pub fn atom_identity_hash(s: String) -> String {
+    format!("{:016x}", fnv1a64(s.as_bytes()))
+}
+
+pub fn hash_combine(a: String, b: String) -> String {
+    let mut bytes = a.into_bytes();
+    bytes.push(0);
+    bytes.extend_from_slice(b.as_bytes());
+    format!("{:016x}", fnv1a64(&bytes))
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,

@@ -164,6 +164,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "list_push".to_string(),
             list_of_type_variable("collection_element".to_string()),
         );
+        let m = v2_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), string_type());
+        let m = v2_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), string_type());
         m.clone()
     }
 }
