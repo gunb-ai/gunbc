@@ -624,6 +624,7 @@ fn expected_l6_coverage_keys() -> List<L6CoverageKey> {
 }
 
 
+// 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape consumed as L7CoverageKey; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete l7_coverage_key_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/coverage.
 fn l7_coverage_key_from_nat_obligation(o: NatAlgebraLawObligation) -> L7CoverageKey {
   AlgebraLawSubject {
     algebra: o.algebra,

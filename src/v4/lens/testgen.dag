@@ -1103,6 +1103,7 @@ type NatAlgebraLawScheduleRow {
 }
 
 
+// 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete algebra_law_subject_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/testgen.
 fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
   AlgebraLawSubject {
     algebra: o.algebra,
