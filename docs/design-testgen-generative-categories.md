@@ -34,6 +34,8 @@ Operator wishlist examples route through those seven arms rather than extending 
 
 `AlgebraLaw` now has a generator emission helper, `testgen_emit_algebra_law_claim`, and a first generated Nat corpus at `src/v4/test/claim/generated/algebra_law_conformance.dag`. The helper carries the canonical `AlgebraLawSubject` into both emitted equality terms; the sample rows reuse the modeled Nat algebra/law and operation/value symbols from `v4.std.nat` and keep the generated source side and expected-law witness side as separate nodes so the row is not `lhs == lhs`. The dispatch ledger therefore records AlgebraLaw as dispatched; remaining AlgebraLaw work is broadening from the Nat sample to all algebra carriers, not a pending category slot.
 
+`RefinementPreservation` is dispatched by `testgen_emit_refinement_preservation_claim` and the generated corpus at `src/v4/test/claim/generated/refinement_preservation.dag`. The dispatch ledger records the landed nonempty-list base-preservation slice; remaining work is broadening the corpus beyond that first refinement subject.
+
 `src/v4/test/claim/generated/testgen_category_wishlist.dag` records pending or dispatched rows through the canonical `Generator` shape: `kind`, `t19_anchor`, `classification`, and `slot`. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed seven-arm scheduling coproduct remains `src/v4/lens/testgen.dag`.
 
 ## Worked Samples

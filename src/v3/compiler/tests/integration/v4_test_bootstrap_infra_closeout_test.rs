@@ -130,6 +130,7 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
             && TESTGEN_WISHLIST_DAG.contains("LensObservationFixture")
             && TESTGEN_WISHLIST_DAG.contains("RoundTripDifferential")
             && TESTGEN_WISHLIST_DAG.contains("FrozenIoSnapshot")
+            && TESTGEN_WISHLIST_DAG.contains("RefinementProjectionWitness")
             && TESTGEN_WISHLIST_DAG.contains("dispatch_key: Symbol"),
         "T-19 wishlist rows must name an independent oracle basis plus a dispatch key"
     );
@@ -171,8 +172,8 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
     );
     assert_eq!(
         dispatched.matches("TestgenWishlistRow {").count(),
-        2,
-        "wishlist must record the two already-dispatched generator rows"
+        3,
+        "wishlist must record the three already-dispatched generator rows"
     );
     assert!(
         dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
@@ -183,6 +184,11 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
         dispatched.contains("generator: dispatched_algebra_law_generator()")
             && dispatched.contains("oracle: AlgebraLawWitness"),
         "dispatched row must keep AlgebraLaw tied to the algebra-law witness oracle"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_refinement_preservation_generator()")
+            && dispatched.contains("oracle: RefinementProjectionWitness"),
+        "dispatched row must keep RefinementPreservation tied to the projection witness oracle"
     );
 }
 

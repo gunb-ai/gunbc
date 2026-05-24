@@ -192,6 +192,7 @@ def main() -> None:
             "LensObservationFixture",
             "RoundTripDifferential",
             "FrozenIoSnapshot",
+            "RefinementProjectionWitness",
             "dispatch_key: Symbol",
             "feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee",
             "data claim_testgen_wishlist_formalized: TestClaim",
@@ -310,13 +311,14 @@ def main() -> None:
     dispatched_rows = wishlist.split("fn testgen_dispatched_non_tautological_generators")[1].split(
         "fn pending_non_tautological_generator_count_is_four"
     )[0]
-    if dispatched_rows.count("TestgenWishlistRow {") != 2:
-        raise SystemExit("generator wishlist must carry exactly two dispatched rows")
+    if dispatched_rows.count("TestgenWishlistRow {") != 3:
+        raise SystemExit("generator wishlist must carry exactly three dispatched rows")
     if (
         "generator: dispatched_language_behavior_equivalence_generator()" not in dispatched_rows
         or "generator: dispatched_algebra_law_generator()" not in dispatched_rows
+        or "generator: dispatched_refinement_preservation_generator()" not in dispatched_rows
     ):
-        raise SystemExit("dispatched wishlist rows must include LBE and AlgebraLaw")
+        raise SystemExit("dispatched wishlist rows must include LBE, AlgebraLaw, and RefinementPreservation")
 
     if algebra.count("data generated_nat_") < 3:
         raise SystemExit("algebra-law generator must produce at least three sample TestClaim rows")
