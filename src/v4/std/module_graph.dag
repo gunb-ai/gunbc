@@ -56,6 +56,7 @@ type AncestorRelation {
 
 data module_graph_ancestor_not_prefix: Symbol = module_graph_ancestor_not_prefix
 data module_graph_entry_not_found: Symbol = module_graph_entry_not_found
+data module_graph_duplicate_path: Symbol = module_graph_duplicate_path
 
 
 fn module_ancestor_not_prefix_diagnostic() -> Diagnostic {
@@ -72,6 +73,32 @@ fn module_entry_not_found_diagnostic() -> Diagnostic {
     reason: module_graph_entry_not_found,
     at: port_locus(port: module_graph_entry_not_found),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn module_graph_duplicate_path_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: module_graph_duplicate_path,
+    at: port_locus(port: module_graph_duplicate_path),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// Fold state for uniqueness-enforced entry lookup. Arms are fixed (not-found / found-once / duplicate).
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ModuleEntryFindState
+  = EntryNotFound
+  | EntryFoundOnce { found: ModuleEntry }
+  | EntryFoundDuplicate
+
+
+fn module_entry_find_state_to_witness(state: ModuleEntryFindState) -> Witness<ModuleEntry> {
+  match state {
+    EntryNotFound => Violates { diagnostic: module_entry_not_found_diagnostic() }
+    EntryFoundOnce { found: entry } => Holds { value: entry }
+    EntryFoundDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
   }
 }
 
@@ -155,24 +182,26 @@ fn module_ancestor_witness(
 }
 
 
-// Look up a module entry by exact path match. Returns the first matching entry.
+// Look up a module entry by exact path match. Fails with a duplicate-path diagnostic if path is not unique in the graph.
 fn module_graph_entry_for_path(
   graph: ModuleGraph,
   path: ModulePath
 ) -> Witness<ModuleEntry> {
-  fold_list(
-    xs: graph.entries,
-    empty: Violates { diagnostic: module_entry_not_found_diagnostic() },
-    cons: fn(acc, entry) {
-      match acc {
-        Holds { value: _ } => acc
-        Violates { diagnostic: _ } =>
-          if module_path_eq(a: entry.path, b: path) {
-            Holds { value: entry }
-          } else {
-            acc
+  module_entry_find_state_to_witness(
+    state: fold_list(
+      xs: graph.entries,
+      empty: EntryNotFound,
+      cons: fn(acc, entry) {
+        if module_path_eq(a: entry.path, b: path) {
+          match acc {
+            EntryNotFound => EntryFoundOnce { found: entry }
+            EntryFoundOnce { found: _ } => EntryFoundDuplicate
+            EntryFoundDuplicate => EntryFoundDuplicate
           }
+        } else {
+          acc
+        }
       }
-    }
+    )
   )
 }
