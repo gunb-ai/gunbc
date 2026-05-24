@@ -62,6 +62,7 @@ type CiGate {
   run_policy: CiGateRunPolicy
 }
 
+// 🟡 coproduct dissolution — feature:project-github-actions-run-policy (docs/r3-program-plan.md gates #98/#100) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `CiGate.run_policy` directly and this interim live-projection policy carrier is deleted; forbidden: adding GitHub Actions-only gate conditions outside `CiGate.run_policy`.
 type CiGateRunPolicy
   = Always
   | RequiresJobAttempt { job: Symbol }
