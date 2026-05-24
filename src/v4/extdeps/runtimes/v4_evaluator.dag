@@ -2,12 +2,22 @@
 // Scope: Concrete v4 evaluator runtime fact-bundle.
 // Owns: V4EvaluatorRuntime, v4_evaluator_runtime_id, v4_evaluator_runtime_wave1, v4_evaluator_*_wave1 slice accessors.
 // Consumes: v4.std.model_core, v4.std.runtime, v4.std.node.
-// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; RuntimeTarget wiring staged.
+// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; wave-1 bundle is carrier wiring only — interpretation/execution hooks fail-closed until T-22 semantics land.
 
 module v4.extdeps.runtimes.v4_evaluator
 
 import v4.std.collection { List }
-import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.std.diagnostic {
+  Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
 import v4.std.logic { Bool }
 import v4.std.model_core { ModelCore, PrimitiveOperationRef, wave1_void }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -42,6 +52,12 @@ data v4_evaluator_runtime_id: Symbol = v4_evaluator_runtime_id
 data v4_eval_wave1_unit_type_symbol: Symbol = v4_eval_wave1_unit_type_symbol
 data v4_eval_wave1_boundary_operation_symbol: Symbol = v4_eval_wave1_boundary_operation_symbol
 data v4_eval_wave1_boundary_effect_symbol: Symbol = v4_eval_wave1_boundary_effect_symbol
+data v4_eval_wave1_value_not_realized: Symbol = v4_eval_wave1_value_not_realized
+data v4_eval_wave1_transform_not_realized: Symbol = v4_eval_wave1_transform_not_realized
+data v4_eval_wave1_branch_not_realized: Symbol = v4_eval_wave1_branch_not_realized
+data v4_eval_wave1_loop_not_realized: Symbol = v4_eval_wave1_loop_not_realized
+data v4_eval_wave1_bind_not_realized: Symbol = v4_eval_wave1_bind_not_realized
+data v4_eval_wave1_call_not_realized: Symbol = v4_eval_wave1_call_not_realized
 
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
@@ -81,8 +97,32 @@ fn v4_eval_wave1_unit_value() -> RuntimeValue {
   }
 }
 
-fn v4_eval_wave1_represent_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  Accepted { value: v4_eval_wave1_unit_value(), diagnostics: None }
+fn v4_eval_wave1_runtime_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn v4_eval_wave1_reject_runtime(reason: Symbol, node: Node) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(reason: reason, node: node)) }
+}
+
+fn v4_eval_wave1_reject_node(reason: Symbol, node: Node) -> Outcome<Node> {
+  Rejected { diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(reason: reason, node: node)) }
+}
+
+fn v4_eval_wave1_reject_control(reason: Symbol, node: Node) -> Outcome<ControlTransfer> {
+  Rejected { diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(reason: reason, node: node)) }
+}
+
+fn v4_eval_wave1_reject_environment(reason: Symbol, node: Node) -> Outcome<EvaluationEnvironment> {
+  Rejected { diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(reason: reason, node: node)) }
+}
+
+fn v4_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  v4_eval_wave1_reject_runtime(reason: v4_eval_wave1_value_not_realized, node: node)
 }
 
 fn v4_eval_wave1_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
@@ -94,35 +134,35 @@ fn v4_eval_wave1_allocate_literal(node: Node, env: EvaluationEnvironment) -> Out
 }
 
 fn v4_eval_wave1_call_primitive(
-  _node: Node,
+  node: Node,
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  Accepted { value: v4_eval_wave1_unit_value(), diagnostics: None }
+  v4_eval_wave1_reject_runtime(reason: v4_eval_wave1_transform_not_realized, node: node)
 }
 
-fn v4_eval_wave1_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: v4_eval_wave1_unit_type_node(), diagnostics: None }
+fn v4_eval_wave1_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  v4_eval_wave1_reject_node(reason: v4_eval_wave1_branch_not_realized, node: node)
 }
 
-fn v4_eval_wave1_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: v4_eval_wave1_unit_value() }, diagnostics: None }
+fn v4_eval_wave1_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  v4_eval_wave1_reject_control(reason: v4_eval_wave1_loop_not_realized, node: node)
 }
 
 fn v4_eval_wave1_bind_value(
-  _key: EnvironmentBindingKey,
+  key: EnvironmentBindingKey,
   _value: RuntimeValue,
-  env: EvaluationEnvironment
+  _env: EvaluationEnvironment
 ) -> Outcome<EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  v4_eval_wave1_reject_environment(reason: v4_eval_wave1_bind_not_realized, node: key.declaration)
 }
 
 fn v4_eval_wave1_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn v4_eval_wave1_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
-  Accepted { value: Return { value: v4_eval_wave1_unit_value() }, diagnostics: None }
+fn v4_eval_wave1_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  v4_eval_wave1_reject_control(reason: v4_eval_wave1_call_not_realized, node: call.callee)
 }
 
 fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
@@ -167,6 +207,7 @@ fn v4_evaluator_value_representation_wave1() -> ValueRepresentationModel {
   }
 }
 
+// 🟡 gated — feature:T34-wave1-evaluator-semantics — dissolve-on: T-22 binds primitive/branch/bind/loop interpretation against ModelCore facts; forbidden: Accepted hooks that ignore node/env/args inputs and fabricate unit/continue results.
 fn v4_evaluator_interpretation_wave1() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
