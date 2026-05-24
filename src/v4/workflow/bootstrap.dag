@@ -54,7 +54,9 @@ type FixptStage1Stage2 {
 }
 
 // RULING-1: 🟢 pretty-much-done — fixed-point equality witness; BitIdentical is the property proved by digest equality over the canonical FixptStage1Stage2 fields.
-type BootstrapFixptWitness = Witness<FixptStage1Stage2>
+type BootstrapFixptWitness {
+  result: Witness<FixptStage1Stage2>
+}
 
 // RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
 type BootstrapPlan {
@@ -97,14 +99,14 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> BootstrapFixptWitness {
        && (f.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
        && (f.left_hash.digest == f.right_hash.digest)
        && (f.pinned_hash.digest == f.left_hash.digest) {
-    Holds { value: f }
+    BootstrapFixptWitness { result: Holds { value: f } }
   } else {
-    Violates { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) }
+    BootstrapFixptWitness { result: Violates { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) } }
   }
 }
 
 fn bootstrap_fixpt_holds(f: FixptStage1Stage2) -> Bool {
-  match bootstrap_fixpt_witness(f: f) {
+  match bootstrap_fixpt_witness(f: f).result {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
@@ -207,5 +209,5 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
 
 data bootstrap_plan_fixpt_witness: BootstrapFixptWitness = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
-  Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+  Rejected { diagnostics: nd } => BootstrapFixptWitness { result: Violates { diagnostic: nd.head } }
 }

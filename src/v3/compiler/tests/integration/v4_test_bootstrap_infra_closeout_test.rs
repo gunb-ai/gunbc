@@ -407,8 +407,8 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "FixptStage1Stage2 must carry only the canonical compared hashes and fixed-point pin"
     );
     assert_eq!(
-        type_alias_name(&module, "BootstrapFixptWitness"),
-        "Witness<FixptStage1Stage2>",
+        record_field_type_map(type_record(&module, "BootstrapFixptWitness")),
+        expected_field_type_map(&[("result", "Witness<FixptStage1Stage2>")]),
         "BootstrapFixptWitness must use the canonical Witness over the canonical fixpt record"
     );
     assert_eq!(
@@ -494,7 +494,7 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
                 .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest")
             && BOOTSTRAP_DAG.contains("bootstrap_fixpt_holds(f: p.fixpt)")
             && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: BootstrapFixptWitness")
-            && BOOTSTRAP_DAG.contains("type BootstrapFixptWitness = Witness<FixptStage1Stage2>")
+            && BOOTSTRAP_DAG.contains("result: Witness<FixptStage1Stage2>")
             && !BOOTSTRAP_DAG.contains("p.fixpt.witness"),
         "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields and derive the witness from that record (A2+A3/P2)"
     );
@@ -589,21 +589,6 @@ fn type_record<'a>(module: &'a SurfaceModule, name: &str) -> &'a [SurfaceField] 
             _ => None,
         })
         .unwrap_or_else(|| panic!("missing type record {name}"))
-}
-
-fn type_alias_name(module: &SurfaceModule, name: &str) -> String {
-    module
-        .items
-        .iter()
-        .find_map(|item| match item {
-            SurfaceItem::TypeAlias {
-                name: item_name,
-                target,
-                ..
-            } if item_name == name => Some(surface_type_name(target)),
-            _ => None,
-        })
-        .unwrap_or_else(|| panic!("missing type alias {name}"))
 }
 
 fn data_expr<'a>(module: &'a SurfaceModule, name: &str) -> &'a SurfaceExpr {
