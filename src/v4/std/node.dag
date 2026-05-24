@@ -83,7 +83,7 @@ type Edge {
   label: EdgeLabel
   target: Node
 }
-// Structural attachment for Loop iteration measure (cardinality.dag reads this edge).
+// 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
 data loop_bound_edge: Symbol = loop_bound_edge
 type Node {
   kind: NodeKind
