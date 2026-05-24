@@ -54,6 +54,7 @@ import v4.std.cardinality {
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
+  ExternalContractUnknown,
   node_locus,
   Unavailable
 }
@@ -119,7 +120,7 @@ type SymbolicCost
   | FactorialCost { variable: SizeVariable }
   | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
-  | UnknownCost { reason: String }
+  | UnknownCost { reason: String, diagnostic: Diagnostic }
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type AsymptoticClass
@@ -180,8 +181,19 @@ fn linear_in_node(n: Node) -> SymbolicCost {
   LinearCost { variable: size_of_node(n: n) }
 }
 
-fn unknown_cost(reason: String) -> SymbolicCost {
-  UnknownCost { reason: reason }
+data cost_lattice_top_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
+  reason: cost_reason_unmodeled_symbolic_cost,
+  at: node_locus(node: cost_lattice_top_node),
+  correction: Unavailable { reason: AmbiguousIntent }
+}
+
+fn unknown_cost(reason: String, diagnostic: Diagnostic) -> SymbolicCost {
+  UnknownCost { reason: reason, diagnostic: diagnostic }
 }
 
 fn symbolic_cost_diagnostic(n: Node) -> Diagnostic {
@@ -194,8 +206,8 @@ fn symbolic_cost_diagnostic(n: Node) -> Diagnostic {
 
 fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   match c {
-    UnknownCost { reason: _ } =>
-      Violates { diagnostic: symbolic_cost_diagnostic(n: n) }
+    UnknownCost { reason: _, diagnostic: d } =>
+      Violates { diagnostic: d }
     _ =>
       Holds { value: c }
   }
@@ -215,19 +227,23 @@ fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
 fn unknown_cost_for_loop_bound_diagnostic(d: Diagnostic) -> SymbolicCost {
   if d.reason == cardinality_loop_bound_ambiguous {
     unknown_cost(
-      reason: "loop-bound-ambiguous: Loop node declares more than one loop_bound_edge"
+      reason: "loop-bound-ambiguous: Loop node declares more than one loop_bound_edge",
+      diagnostic: d
     )
   } else if d.reason == cardinality_loop_bound_malformed {
     unknown_cost(
-      reason: "loop-bound-malformed: Loop node violates Loop edge discipline"
+      reason: "loop-bound-malformed: Loop node violates Loop edge discipline",
+      diagnostic: d
     )
   } else if d.reason == cardinality_loop_bound_not_loop {
     unknown_cost(
-      reason: "loop-bound-not-loop: loop_bound_edge witness requested on non-Loop node"
+      reason: "loop-bound-not-loop: loop_bound_edge witness requested on non-Loop node",
+      diagnostic: d
     )
   } else {
     unknown_cost(
-      reason: "loop-bound-undeclared: Loop node missing loop_bound_edge Named attachment"
+      reason: "loop-bound-undeclared: Loop node missing loop_bound_edge Named attachment",
+      diagnostic: d
     )
   }
 }
@@ -292,11 +308,11 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
 fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => b
-    UnknownCost { reason: _ } => a
+    UnknownCost { reason: _, diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => a
-        UnknownCost { reason: _ } => b
+        UnknownCost { reason: _, diagnostic: _ } => b
         _ => SumCost { lhs: a, rhs: b }
       }
   }
