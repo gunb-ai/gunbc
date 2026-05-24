@@ -1,14 +1,15 @@
 // src/v4/test/claim/manual/posix_output_capture.dag
 // Scope: POSIX CapturedOutputPipes structural witnesses — stdout and stderr as separate capture axes.
 // Owns: empty_captured_pipes, claim_captured_output_pipes_stdout_empty, claim_captured_output_pipes_stderr_empty.
-// Consumes: v4.extdeps.posix, v4.std.verification, connective stubs.
+// Consumes: v4.extdeps.posix, v4.std.algebra, v4.std.verification, connective stubs.
 // Status: T-4.5 capture pipe modeling witness; eval T-22.
 
 
 module v4.test.claim.manual.posix_output_capture
 
 
-import v4.extdeps.posix { CapturedByteStream, CapturedOutputPipes }
+import v4.extdeps.posix { CapturedOutputPipes }
+import v4.std.algebra { is_empty }
 import v4.std.node { Node }
 import v4.std.verification {
   EqualsClaim,
@@ -29,18 +30,12 @@ data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
 
 
 fn witness_captured_pipes_stdout_is_empty() -> Bool {
-  match empty_captured_pipes.stdout {
-    Empty => true
-    Cons { head: _, tail: _ } => false
-  }
+  is_empty(xs: empty_captured_pipes.stdout)
 }
 
 
 fn witness_captured_pipes_stderr_is_empty() -> Bool {
-  match empty_captured_pipes.stderr {
-    Empty => true
-    Cons { head: _, tail: _ } => false
-  }
+  is_empty(xs: empty_captured_pipes.stderr)
 }
 
 
