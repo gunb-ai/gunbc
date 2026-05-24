@@ -21,9 +21,8 @@ const IRT1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_affected_set/irt1_mechanical_reverification.dag");
 const IRT1_CLAIM_PATH: &str =
     "src/v4/test/claim/lens_affected_set/irt1_mechanical_reverification.dag";
-const FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG: &str = include_str!(
-    "../../../../v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag"
-);
+const FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag");
 const FAIL_CLOSED_PENDING_ESCALATION_CLAIM_PATH: &str =
     "src/v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag";
 
