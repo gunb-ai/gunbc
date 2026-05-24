@@ -47,6 +47,11 @@ closing at T-15.
         (T-4.8 coordination.dag is load-bearing — T-16 uses it for
         endpoint partitioning; facts must flow forward from the
         coordination substrate into the flagship demo)
+  T-36  Omni ingest demo: `.dag` source → Node → emit → source (round-trip)
+        [needs T-6, T-7, T-8, T-9, T-10; dag.dag lex/grammar data from T-6/T-7]
+        One executable claim: parse a known `.dag` program, emit it back,
+        assert bit-identical. Validates `ingest = emit⁻¹` (C5) is not
+        just a property claim but a checked, executable fact before T-15.
   T-15  bin/main.dag + bootstrap glue + self-host fixed-point validation
         + PROOF-1: the external trust-discharge for A3 — a lens =
           (evidence read: A2 descent, the coercion-fold chain, cost,
@@ -328,6 +333,22 @@ flat — dispatch in waves):
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
 - **Declare every surface feature's disposition (C5-fidelity).** For each feature: `Modeled` (∈ F, Node-bearing, round-trips both ways — e.g. Python indentation IS block structure) | `Declared-normalized` (deliberately not in F; `emit∘ingest` canonicalizes — Go/C++ insignificant whitespace; a *declared*, reviewable loss, never silent) | `Fail-closed` (encountered but neither → Diagnostic, no-engine). F = the spec's own meaning-vs-lexical distinction, not worker judgment. Round-trip fidelity = declared model completeness.
 - **A language file FACT-BUNDLES each primitive (fact-bundle reseed — operator-ratified 2026-05-17, supersedes D2).** For each primitive the file authors a **fact-bundle**: the facts read from that language's *own spec* — width, signedness, representation, overflow / NaN-Inf disposition, surface spelling — each a real modeled carrier grounding into the shared `std/` vocabulary (T-3). It does NOT bare-alias to the `std/` carrier: `type RustI32 = Int32` models *nothing about Rust* — it asserts an unproven identity while reading zero facts. A bundle deduplicates against a `std/` carrier ONLY where the identity is **proven** — a compiler-verified coincidence of the language bundle with the `std/` bundle, cited as evidence. `extdeps/` models systems we do not control: default to separate, honest modeling; reuse `std/` only on evidenced identity. A per-language `OrderedRing<<lang>Prim, …>` re-declaration is still the parallel-*algebra* substrate INVARIANTS P1:42 forbids — model the facts, never a duplicate algebra and never a hollow alias. See `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED" and `docs/modeling-discipline.md`.
+
+**Ingest support by language (scheduled — operator-ratified 2026-05-24):**
+Each language model activates bidirectional ingest when its lex/grammar DATA is filled. `dag.dag` is the first-class language — T-6/T-7 fill its lex/grammar schema AND the dag.dag data in the same commit trains. Other languages follow in T-4 Wave 2a (distinct from Wave 2b type-deepening):
+```
+  dag (dag.dag)      : ingest activated by T-6 + T-7 fill — CRITICAL PATH
+  rust (rust.dag)    : lex/grammar shape landed (Wave 1); 🟡 gate dissolves on T-10
+                       bidirectional round-trip; Wave 2a = confirm/extend ingest data
+  python / go / cpp / typescript : Wave 2a lex/grammar data fill (after T-4 Wave 1 + T-6/T-7 schema)
+  format models (json/yaml/csv/toml/sql): these model DATA FORMAT shapes — ingest
+      is handled by the universal pipeline with format LanguageModel data; no
+      separate lex/grammar fill needed in extdeps/formats/
+```
+**T-4 Wave 2a** (lex/grammar data per language): extend DATA on each language model after
+T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4 Wave 1]`.
+**T-4 Wave 2b** (type deepening): inhabitance + algebra laws + effects + partiality per language.
+Scheduled in parallel with Wave 2a. `[needs T-4 Wave 1, T-33]`.
 
 **Modeling decisions**:
 - Per-language primitive **grounding** (fact-bundle, per DECISIONS.md "D2 REVERSAL + FACT-BUNDLE RESEED"): the bundle of spec-read facts for each primitive — width / signedness / representation / overflow disposition / surface spelling — grounding into the shared `std/` vocabulary (T-3). Libraries such as `std::vector` are NOT modeled per L-2 — they are ordinary `Node`s. Deduplicate to a `std/` carrier only on proven identity; never a bare alias, never a re-declared algebra inhabitance (INVARIANTS P1:42)
