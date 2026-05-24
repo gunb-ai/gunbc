@@ -296,6 +296,7 @@ fn type_construction_subject_eq(a: TypeConstructionSubject, b: TypeConstructionS
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace algebra_law_subject_eq / l6_coverage_key_eq / l7_coverage_key_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field AlgebraLawSubject / L6CoverageKey equality table drift from std/nat.dag and lens/testgen.dag.
 fn algebra_law_subject_eq(a: AlgebraLawSubject, b: AlgebraLawSubject) -> Bool {
   a.algebra == b.algebra && a.inhabitant == b.inhabitant && a.law == b.law
 }
