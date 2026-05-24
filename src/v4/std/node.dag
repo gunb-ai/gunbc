@@ -275,67 +275,6 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
-// Canonical Hash tags for content_hash init-fold over NodeKind and EdgeLabel variants.
-data canonical_hash_atom: Hash = canonical_hash_atom
-data canonical_hash_conj: Hash = canonical_hash_conj
-data canonical_hash_disj: Hash = canonical_hash_disj
-data canonical_hash_arrow: Hash = canonical_hash_arrow
-data canonical_hash_cardinality: Hash = canonical_hash_cardinality
-data canonical_hash_instantiation: Hash = canonical_hash_instantiation
-data canonical_hash_value: Hash = canonical_hash_value
-data canonical_hash_transform: Hash = canonical_hash_transform
-data canonical_hash_branch: Hash = canonical_hash_branch
-data canonical_hash_loop: Hash = canonical_hash_loop
-data canonical_hash_bind: Hash = canonical_hash_bind
-data canonical_hash_positional_edge: Hash = canonical_hash_positional_edge
-
-
-fn canonical_hash_of_connective(c: Connective) -> Hash {
-  match c {
-    Atom { identity: _ } => canonical_hash_atom
-    Conj => canonical_hash_conj
-    Disj => canonical_hash_disj
-    Arrow => canonical_hash_arrow
-    Cardinality => canonical_hash_cardinality
-    Instantiation => canonical_hash_instantiation
-  }
-}
-
-
-fn canonical_hash_of_behavior(b: Behavior) -> Hash {
-  match b {
-    Value => canonical_hash_value
-    Transform => canonical_hash_transform
-    Branch => canonical_hash_branch
-    Loop => canonical_hash_loop
-    Bind => canonical_hash_bind
-  }
-}
-
-
-fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
-  match kind {
-    TypeNode { connective: c } => canonical_hash_of_connective(c: c)
-    ComputationNode { behavior: b } => canonical_hash_of_behavior(b: b)
-  }
-}
-
-
-// B1-CANON surface: target contract is merkle_fold ∘ canonical — structural equality key for Node identity (T-9/T-17/T-24).
-// WARNING — current bridge is acc-only: Atom identity Symbol, edge labels, and child hashes are all discarded; root-kind Hash only.
-// Consumers MUST NOT rely on this for structural identity until hash-combine lands.
-// 🟡 feature:b1-canon-hash-combine — step acc-only bridge; dissolve-on: merkle_fold hash-combine substrate primitive landed; dissolution requires THREE components: (1) Atom.identity Symbol canonicalized to Hash (atom_identity_hash substrate primitive), (2) acc combined with edge.label Hash, (3) acc combined with child Hash — all three required for full structural identity; current bridge omits all three.
-fn content_hash(n: Node) -> Hash {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
-      step: fn(acc, _e, _child_hash) { acc }
-    }
-  )
-}
-
-
 type Path {
   steps: List<Symbol>
 }
