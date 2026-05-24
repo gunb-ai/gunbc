@@ -212,12 +212,7 @@ fn v4_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
     operation: PrimitiveOperationRef {
       operation: v4_eval_wave1_boundary_operation_node(),
       effect_signature: EffectSignature {
-        signature: v4_eval_wave1_effect_signature_node(),
-        resources: [
-          ResourceAccess {
-            resource: v4_eval_wave1_boundary_operation_node()
-          }
-        ]
+        signature: v4_eval_wave1_effect_signature_node()
       }
     },
     resource: ResourceAccess {

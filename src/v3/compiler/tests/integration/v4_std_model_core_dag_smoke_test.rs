@@ -233,11 +233,8 @@ fn v4_std_model_core_effect_signature_resource_access_shape() {
         .collect();
     assert_eq!(
         signature_fields,
-        vec![
-            ("signature".to_string(), "Node".to_string()),
-            ("resources".to_string(), "List<ResourceAccess>".to_string()),
-        ],
-        "EffectSignature must own the modeled effect identity plus resource substrate facts"
+        vec![("signature".to_string(), "Node".to_string())],
+        "EffectSignature must own effect identity only; BoundaryAllowance.resource is the single resource authority"
     );
     let resource_fields: Vec<(String, String)> = type_record_fields(&module, "ResourceAccess")
         .iter()

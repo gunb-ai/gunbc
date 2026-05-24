@@ -67,7 +67,6 @@ type ResourceAccess {
 
 type EffectSignature {
   signature: Node
-  resources: List<ResourceAccess>
 }
 
 
