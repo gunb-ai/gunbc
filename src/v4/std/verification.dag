@@ -80,6 +80,21 @@ type ImpossibleBugClass
   | UnhandledDiagnosticPaths
 
 
+// Canonical Diagnostic.reason symbols for impossible-bug TestClaim rows (THESIS §392-413).
+data impossible_bug_reason_suboptimal_complexity: Symbol = impossible_bug_reason_suboptimal_complexity
+data impossible_bug_reason_suboptimal_inhabitance: Symbol = impossible_bug_reason_suboptimal_inhabitance
+data impossible_bug_reason_idempotency_violation: Symbol = impossible_bug_reason_idempotency_violation
+data impossible_bug_reason_idempotency_repetition: Symbol = impossible_bug_reason_idempotency_repetition
+data impossible_bug_reason_transport_drift: Symbol = impossible_bug_reason_transport_drift
+data impossible_bug_reason_target_transport_drift: Symbol = impossible_bug_reason_target_transport_drift
+data impossible_bug_reason_nested_optional: Symbol = impossible_bug_reason_nested_optional
+data impossible_bug_reason_double_unwrap: Symbol = impossible_bug_reason_double_unwrap
+data impossible_bug_reason_redundant_read: Symbol = impossible_bug_reason_redundant_read
+data impossible_bug_reason_unhandled_division: Symbol = impossible_bug_reason_unhandled_division
+data impossible_bug_reason_unhandled_index: Symbol = impossible_bug_reason_unhandled_index
+data impossible_bug_reason_force_unwrap: Symbol = impossible_bug_reason_force_unwrap
+
+
 // RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
 // 🟡 coproduct dissolution — LB-P4-3212.
 type ManualAnchorKey

@@ -98,6 +98,18 @@ import v4.std.verification {
   TransportTypeDrift,
   UnenumeratedEffects,
   UnhandledDiagnosticPaths,
+  impossible_bug_reason_double_unwrap,
+  impossible_bug_reason_force_unwrap,
+  impossible_bug_reason_idempotency_repetition,
+  impossible_bug_reason_idempotency_violation,
+  impossible_bug_reason_nested_optional,
+  impossible_bug_reason_redundant_read,
+  impossible_bug_reason_suboptimal_complexity,
+  impossible_bug_reason_suboptimal_inhabitance,
+  impossible_bug_reason_target_transport_drift,
+  impossible_bug_reason_transport_drift,
+  impossible_bug_reason_unhandled_division,
+  impossible_bug_reason_unhandled_index,
   test_claim_t19_anchor
 }
 import v4.std.witness { Holds, Violates, Witness }
@@ -447,6 +459,7 @@ fn bootstrap_l6_language_surfaces() -> List<Symbol> {
 
 
 fn bootstrap_type_construction_subjects() -> List<TypeConstructionSubject> {
+  // K-1 Wave-1: Atom deferred per connective_anchors.dag; expected L6 tracks testgen-scheduled subjects.
   [
     ConnectiveKernel { connective: Conj },
     ConnectiveKernel { connective: Disj },
@@ -723,38 +736,38 @@ fn l6_coverage_key_from_claim(c: TestClaim) -> Outcome<L6CoverageKey> {
 // 🟡 gated — feature:impossible-bug-claim-projection — bind task: src/v4/TASKS.md#t-18-lenscoveragedag
 // dissolve-on-arrival: TestClaim carries ImpossibleBugClass or canonical witness anchor; forbidden: reason-symbol shadow tables outside verification.
 fn impossible_bug_coverage_key_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugCoverageKey> {
-  if reason == coverage_impossible_bug_reason_suboptimal_complexity ||
-    reason == coverage_impossible_bug_reason_suboptimal_inhabitance {
+  if reason == impossible_bug_reason_suboptimal_complexity ||
+    reason == impossible_bug_reason_suboptimal_inhabitance {
     Accepted {
       value: ImpossibleBugCoverageKey { bug_class: SuboptimalComplexity },
       diagnostics: None,
     }
-  } else if reason == coverage_impossible_bug_reason_idempotency_violation ||
-    reason == coverage_impossible_bug_reason_idempotency_repetition {
+  } else if reason == impossible_bug_reason_idempotency_violation ||
+    reason == impossible_bug_reason_idempotency_repetition {
     Accepted {
       value: ImpossibleBugCoverageKey { bug_class: IdempotencyContract },
       diagnostics: None,
     }
-  } else if reason == coverage_impossible_bug_reason_transport_drift ||
-    reason == coverage_impossible_bug_reason_target_transport_drift {
+  } else if reason == impossible_bug_reason_transport_drift ||
+    reason == impossible_bug_reason_target_transport_drift {
     Accepted {
       value: ImpossibleBugCoverageKey { bug_class: TransportTypeDrift },
       diagnostics: None,
     }
-  } else if reason == coverage_impossible_bug_reason_nested_optional ||
-    reason == coverage_impossible_bug_reason_double_unwrap {
+  } else if reason == impossible_bug_reason_nested_optional ||
+    reason == impossible_bug_reason_double_unwrap {
     Accepted {
       value: ImpossibleBugCoverageKey { bug_class: NestedOptionalFlatten },
       diagnostics: None,
     }
-  } else if reason == coverage_impossible_bug_reason_redundant_read {
+  } else if reason == impossible_bug_reason_redundant_read {
     Accepted {
       value: ImpossibleBugCoverageKey { bug_class: UnenumeratedEffects },
       diagnostics: None,
     }
-  } else if reason == coverage_impossible_bug_reason_unhandled_division ||
-    reason == coverage_impossible_bug_reason_unhandled_index ||
-    reason == coverage_impossible_bug_reason_force_unwrap {
+  } else if reason == impossible_bug_reason_unhandled_division ||
+    reason == impossible_bug_reason_unhandled_index ||
+    reason == impossible_bug_reason_force_unwrap {
     Accepted {
       value: ImpossibleBugCoverageKey { bug_class: UnhandledDiagnosticPaths },
       diagnostics: None,
@@ -771,20 +784,6 @@ fn impossible_bug_coverage_key_from_diagnostic_reason(reason: Symbol) -> Outcome
     }
   }
 }
-
-
-data coverage_impossible_bug_reason_suboptimal_complexity: Symbol = coverage_impossible_bug_reason_suboptimal_complexity
-data coverage_impossible_bug_reason_suboptimal_inhabitance: Symbol = coverage_impossible_bug_reason_suboptimal_inhabitance
-data coverage_impossible_bug_reason_idempotency_violation: Symbol = coverage_impossible_bug_reason_idempotency_violation
-data coverage_impossible_bug_reason_idempotency_repetition: Symbol = coverage_impossible_bug_reason_idempotency_repetition
-data coverage_impossible_bug_reason_transport_drift: Symbol = coverage_impossible_bug_reason_transport_drift
-data coverage_impossible_bug_reason_target_transport_drift: Symbol = coverage_impossible_bug_reason_target_transport_drift
-data coverage_impossible_bug_reason_nested_optional: Symbol = coverage_impossible_bug_reason_nested_optional
-data coverage_impossible_bug_reason_double_unwrap: Symbol = coverage_impossible_bug_reason_double_unwrap
-data coverage_impossible_bug_reason_redundant_read: Symbol = coverage_impossible_bug_reason_redundant_read
-data coverage_impossible_bug_reason_unhandled_division: Symbol = coverage_impossible_bug_reason_unhandled_division
-data coverage_impossible_bug_reason_unhandled_index: Symbol = coverage_impossible_bug_reason_unhandled_index
-data coverage_impossible_bug_reason_force_unwrap: Symbol = coverage_impossible_bug_reason_force_unwrap
 
 
 fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
