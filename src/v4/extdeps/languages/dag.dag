@@ -21,7 +21,8 @@ import v4.compiler.parse {
   Optional,
   Repeat,
   Sequence,
-  Terminal
+  Terminal,
+  VoidGrammar
 }
 import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -246,8 +247,14 @@ fn dag_grammar_data_decl_expr() -> GrammarExpr {
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: dag_token_ident),
       right: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: dag_token_eq),
-        right: dag_grammar_nonterminal(production: dag_production_data_value)
+        left: dag_grammar_terminal(token_class: dag_token_colon),
+        right: dag_grammar_sequence(
+          left: dag_grammar_nonterminal(production: dag_production_type_expr),
+          right: dag_grammar_sequence(
+            left: dag_grammar_terminal(token_class: dag_token_eq),
+            right: dag_grammar_nonterminal(production: dag_production_data_value)
+          )
+        )
       )
     )
   )
@@ -374,7 +381,7 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
     emitted: dag_surface_data_value
   )
   GrammarRoot {
-    start: module,
+    start: dag_production_module,
     productions: [
       module,
       module_header,
@@ -394,6 +401,11 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
 
 
 fn dag_wave1_g0_void_grammar() -> Grammar {
+  VoidGrammar
+}
+
+
+fn dag_wave1_grammar() -> Grammar {
   ModeledGrammar { root: dag_wave1_grammar_root() }
 }
 

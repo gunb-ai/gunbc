@@ -692,7 +692,7 @@ fn wasm_grammar_production_mvp1_fn_add() -> GrammarProduction {
 
 fn wasm_wave1_grammar_root() -> GrammarRoot {
   let start = wasm_grammar_production_mvp1_fn_add()
-  GrammarRoot { start: start, productions: [start] }
+  GrammarRoot { start: wasm_production_mvp1_fn_add, productions: [start] }
 }
 
 fn wasm_wave1_grammar() -> Grammar {
