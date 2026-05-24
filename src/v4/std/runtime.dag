@@ -67,6 +67,7 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
+// 🟡 coproduct dissolution — consumer:runtime-value-node-reification; fail-closed until RuntimeValue payloads have faithful Node representation.
 type RuntimeValueNodeProjection
   = RuntimeValueNodeProjected { node: Node }
   | RuntimeValueNodeUnrepresentable
@@ -160,6 +161,7 @@ type InterpretationAlgebra {
   bind: BindInterpreter
 }
 
+// 🟢 coproduct dissolution — behavior dispatch authority lives with InterpretationAlgebra, not eval consumers.
 type RuntimeBehaviorInterpreter
   = ValueRuntimeInterpreter { interpreter: ValueInterpreter }
   | TransformRuntimeInterpreter { interpreter: TransformInterpreter }

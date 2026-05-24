@@ -160,6 +160,7 @@ type EvalFoldState {
 }
 
 
+// 🟢 coproduct dissolution — EvalFoldState carries one explicit progress authority for child-fold completion.
 type EvalProgress
   = AwaitingChildren { processed: Int }
   | ReadyToInterpret

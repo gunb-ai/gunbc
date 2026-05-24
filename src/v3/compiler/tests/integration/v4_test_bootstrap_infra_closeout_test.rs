@@ -5,6 +5,11 @@
 //! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
+//! **P5 receipt for same-path expansion:** explicit deferral to `ROADMAP.md`
+//! § "Nine lanes" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; this
+//! file remains inside the SG-0 T-PB-B test subset and dissolves when these
+//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
+//! harness coverage.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
