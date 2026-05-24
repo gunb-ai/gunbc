@@ -841,20 +841,42 @@ fn append_impossible_bug_key_from_diagnostic(
 }
 
 
+fn append_impossible_bug_keys(
+  acc: List<ImpossibleBugCoverageKey>,
+  keys: List<ImpossibleBugCoverageKey>
+) -> List<ImpossibleBugCoverageKey> {
+  fold_list_right(
+    xs: keys,
+    empty: acc,
+    snoc: fn(a, key) {
+      dedupe_snoc(acc: a, item: key, eq: impossible_bug_coverage_key_eq)
+    }
+  )
+}
+
+
+fn fold_diagnostic_tail_into_impossible_bug_keys(
+  acc: List<ImpossibleBugCoverageKey>,
+  tail: List<Diagnostic>
+) -> Outcome<List<ImpossibleBugCoverageKey>> {
+  fold_list(
+    xs: tail,
+    empty: Accepted { value: acc, diagnostics: None },
+    cons: fn(o, diagnostic) {
+      match o {
+        Accepted { value: keys, diagnostics: None } =>
+          append_impossible_bug_key_from_diagnostic(acc: keys, diagnostic: diagnostic)
+        Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
+      }
+    }
+  )
+}
+
+
 fn impossible_bug_coverage_keys_from_diagnostics(d: NonEmptyDiagnostics) -> Outcome<List<ImpossibleBugCoverageKey>> {
   match append_impossible_bug_key_from_diagnostic(acc: Empty, diagnostic: d.head) {
     Accepted { value: acc, diagnostics: None } =>
-      fold_list(
-        xs: d.tail,
-        empty: Accepted { value: acc, diagnostics: None },
-        cons: fn(o, diagnostic) {
-          match o {
-            Accepted { value: keys, diagnostics: None } =>
-              append_impossible_bug_key_from_diagnostic(acc: keys, diagnostic: diagnostic)
-            Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
-          }
-        }
-      )
+      fold_diagnostic_tail_into_impossible_bug_keys(acc: acc, tail: d.tail)
     Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
   }
 }
@@ -989,13 +1011,7 @@ fn collect_impossible_bug_coverage_keys(corpus: List<TestClaim>) -> List<Impossi
         DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
           match impossible_bug_coverage_keys_from_diagnostics(d: d) {
             Accepted { value: keys, diagnostics: None } =>
-              fold_list(
-                xs: keys,
-                empty: acc,
-                cons: fn(a, key) {
-                  dedupe_snoc(acc: a, item: key, eq: impossible_bug_coverage_key_eq)
-                }
-              )
+              append_impossible_bug_keys(acc: acc, keys: keys)
             Rejected { diagnostics: _ } => acc
           }
         _ => acc
