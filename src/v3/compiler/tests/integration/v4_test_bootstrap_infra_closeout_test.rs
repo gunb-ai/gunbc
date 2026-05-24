@@ -77,7 +77,11 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
             )
             && TESTGEN_DAG
                 .contains("fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase>")
+            && TESTGEN_DAG.contains(
+                "fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject>"
+            )
             && TESTGEN_DAG.contains("match algebra_law_manual_claim_case(anchor: anchor)")
+            && TESTGEN_DAG.contains("match algebra_law_subject_for_manual_anchor(anchor: manual_anchor)")
             && TESTGEN_DAG
                 .contains("lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs)")
             && TESTGEN_DAG
