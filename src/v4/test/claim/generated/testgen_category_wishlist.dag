@@ -58,7 +58,7 @@ import v4.std.refinement { Refined }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 
-// 🟡 coproduct dissolution — feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee; dissolve-on:pending wishlist rows become category-specific generated corpora with oracle basis carried by the concrete helper / claim shape.
+// 🟡 gated — coproduct dissolution (docs/modeling-discipline.md Practice 4) — feature:t19-generator-oracle-basis-carrier — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — owner:T-19 testgen follow-up — dissolve-on-arrival: delete TestgenOracleBasis when each wishlist arm is replaced by its category-specific generated corpus and that corpus carries oracle basis through the concrete generator helper or emitted TestClaim shape; forbidden: permanent parallel oracle-category authority in the wishlist ledger.
 type TestgenOracleBasis
   = StructuralConstructionWitness
   | AlgebraLawWitness
