@@ -33,12 +33,12 @@ import v4.lens.testgen {
   lbe_subject_conj_dag_surface,
   lbe_subject_disj_dag_surface,
   lbe_subject_transform_dag_surface,
-  t19_law_nat_add_associativity,
-  t19_law_nat_add_left_identity,
-  t19_law_nat_add_right_identity,
-  t19_law_nat_mul_annihilator,
-  t19_law_nat_mul_associativity,
-  t19_law_nat_mul_left_identity,
+  law_nat_add_associativity,
+  law_nat_add_left_identity,
+  law_nat_add_right_identity,
+  law_nat_mul_annihilator,
+  law_nat_mul_associativity,
+  law_nat_mul_left_identity,
   testgen_concept_for_manual_claim
 }
 import v4.std.algebra {
@@ -582,12 +582,12 @@ fn nat_mul_law_subject(law: Symbol) -> AlgebraLawSubject {
 
 fn expected_l7_coverage_keys() -> List<L7CoverageKey> {
   [
-    nat_add_law_subject(law: t19_law_nat_add_left_identity),
-    nat_add_law_subject(law: t19_law_nat_add_right_identity),
-    nat_add_law_subject(law: t19_law_nat_add_associativity),
-    nat_mul_law_subject(law: t19_law_nat_mul_left_identity),
-    nat_mul_law_subject(law: t19_law_nat_mul_annihilator),
-    nat_mul_law_subject(law: t19_law_nat_mul_associativity),
+    nat_add_law_subject(law: law_nat_add_left_identity),
+    nat_add_law_subject(law: law_nat_add_right_identity),
+    nat_add_law_subject(law: law_nat_add_associativity),
+    nat_mul_law_subject(law: law_nat_mul_left_identity),
+    nat_mul_law_subject(law: law_nat_mul_annihilator),
+    nat_mul_law_subject(law: law_nat_mul_associativity),
   ]
 }
 
@@ -625,12 +625,12 @@ fn expected_type_construction_testgen_keys() -> List<TestgenCoverageKey> {
 
 fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
   [
-    AlgebraLaw { subject: nat_add_law_subject(law: t19_law_nat_add_left_identity) },
-    AlgebraLaw { subject: nat_add_law_subject(law: t19_law_nat_add_right_identity) },
-    AlgebraLaw { subject: nat_add_law_subject(law: t19_law_nat_add_associativity) },
-    AlgebraLaw { subject: nat_mul_law_subject(law: t19_law_nat_mul_left_identity) },
-    AlgebraLaw { subject: nat_mul_law_subject(law: t19_law_nat_mul_annihilator) },
-    AlgebraLaw { subject: nat_mul_law_subject(law: t19_law_nat_mul_associativity) },
+    AlgebraLaw { subject: nat_add_law_subject(law: law_nat_add_left_identity) },
+    AlgebraLaw { subject: nat_add_law_subject(law: law_nat_add_right_identity) },
+    AlgebraLaw { subject: nat_add_law_subject(law: law_nat_add_associativity) },
+    AlgebraLaw { subject: nat_mul_law_subject(law: law_nat_mul_left_identity) },
+    AlgebraLaw { subject: nat_mul_law_subject(law: law_nat_mul_annihilator) },
+    AlgebraLaw { subject: nat_mul_law_subject(law: law_nat_mul_associativity) },
   ]
 }
 
@@ -692,32 +692,32 @@ fn l7_coverage_key_from_manual_anchor(anchor: ManualAnchorKey) -> Outcome<L7Cove
   match anchor {
     ManualNatAddLeftIdentity =>
       Accepted {
-        value: nat_add_law_subject(law: t19_law_nat_add_left_identity),
+        value: nat_add_law_subject(law: law_nat_add_left_identity),
         diagnostics: None,
       }
     ManualNatAddRightIdentity =>
       Accepted {
-        value: nat_add_law_subject(law: t19_law_nat_add_right_identity),
+        value: nat_add_law_subject(law: law_nat_add_right_identity),
         diagnostics: None,
       }
     ManualNatAddAssociativity =>
       Accepted {
-        value: nat_add_law_subject(law: t19_law_nat_add_associativity),
+        value: nat_add_law_subject(law: law_nat_add_associativity),
         diagnostics: None,
       }
     ManualNatMulLeftIdentity =>
       Accepted {
-        value: nat_mul_law_subject(law: t19_law_nat_mul_left_identity),
+        value: nat_mul_law_subject(law: law_nat_mul_left_identity),
         diagnostics: None,
       }
     ManualNatMulAnnihilator =>
       Accepted {
-        value: nat_mul_law_subject(law: t19_law_nat_mul_annihilator),
+        value: nat_mul_law_subject(law: law_nat_mul_annihilator),
         diagnostics: None,
       }
     ManualNatMulAssociativity =>
       Accepted {
-        value: nat_mul_law_subject(law: t19_law_nat_mul_associativity),
+        value: nat_mul_law_subject(law: law_nat_mul_associativity),
         diagnostics: None,
       }
     _ =>
