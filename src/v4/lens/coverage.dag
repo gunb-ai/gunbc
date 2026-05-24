@@ -102,21 +102,11 @@ import v4.std.verification {
   NestedOptionalFlatten,
   RoundTripClaim,
   SuboptimalComplexity,
-  GeneratedClaimAnchor,
-  ManualAnchorKey,
-  ManualClaimAnchor,
-  ManualNatAddAssociativity,
-  ManualNatAddLeftIdentity,
-  ManualNatAddRightIdentity,
-  ManualNatMulAnnihilator,
-  ManualNatMulAssociativity,
-  ManualNatMulLeftIdentity,
   TestClaim,
   TransportTypeDrift,
   UnenumeratedEffects,
   UnhandledDiagnosticPaths,
-  impossible_bug_class_from_diagnostic_reason,
-  test_claim_anchor
+  impossible_bug_class_from_diagnostic_reason
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -764,38 +754,10 @@ fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> 
 }
 
 
-fn l7_coverage_key_from_manual_anchor(anchor: ManualAnchorKey) -> Outcome<L7CoverageKey> {
-  match anchor {
-    ManualNatAddLeftIdentity =>
-      Accepted {
-        value: nat_add_law_subject(law: law_nat_add_left_identity),
-        diagnostics: None,
-      }
-    ManualNatAddRightIdentity =>
-      Accepted {
-        value: nat_add_law_subject(law: law_nat_add_right_identity),
-        diagnostics: None,
-      }
-    ManualNatAddAssociativity =>
-      Accepted {
-        value: nat_add_law_subject(law: law_nat_add_associativity),
-        diagnostics: None,
-      }
-    ManualNatMulLeftIdentity =>
-      Accepted {
-        value: nat_mul_law_subject(law: law_nat_mul_left_identity),
-        diagnostics: None,
-      }
-    ManualNatMulAnnihilator =>
-      Accepted {
-        value: nat_mul_law_subject(law: law_nat_mul_annihilator),
-        diagnostics: None,
-      }
-    ManualNatMulAssociativity =>
-      Accepted {
-        value: nat_mul_law_subject(law: law_nat_mul_associativity),
-        diagnostics: None,
-      }
+fn l7_coverage_key_from_testgen_concept(concept: TestgenConcept) -> Outcome<L7CoverageKey> {
+  match concept {
+    AlgebraLaw { subject: subject } =>
+      Accepted { value: subject, diagnostics: None }
     _ =>
       Rejected {
         diagnostics: diagnostics_singleton(
@@ -811,20 +773,12 @@ fn l7_coverage_key_from_manual_anchor(anchor: ManualAnchorKey) -> Outcome<L7Cove
 
 
 fn l7_coverage_key_from_claim(c: TestClaim) -> Outcome<L7CoverageKey> {
-  match test_claim_anchor(c: c) {
-    ManualClaimAnchor { manual_anchor: anchor } =>
-      l7_coverage_key_from_manual_anchor(anchor: anchor)
-    GeneratedClaimAnchor { generated_anchor: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: coverage_reason_l7_anchor_unmapped,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
-      }
-  }
+  bind_outcome(
+    o: testgen_coverage_key_from_claim(c: c),
+    f: fn(concept) {
+      l7_coverage_key_from_testgen_concept(concept: concept)
+    }
+  )
 }
 
 
