@@ -512,20 +512,53 @@ fn bootstrap_l6_language_surfaces() -> List<Symbol> {
 }
 
 
-fn bootstrap_type_construction_subjects() -> List<TypeConstructionSubject> {
-  // K-1 Wave-1: Atom deferred per connective_anchors.dag; expected L6 tracks testgen-scheduled subjects.
+fn substrate_connective_kernels() -> List<Connective> {
   [
-    ConnectiveKernel { connective: Conj },
-    ConnectiveKernel { connective: Disj },
-    ConnectiveKernel { connective: Arrow },
-    ConnectiveKernel { connective: Cardinality },
-    ConnectiveKernel { connective: Instantiation },
-    BehaviorValueSubject { behavior: Value },
-    BehaviorValueSubject { behavior: Transform },
-    BehaviorValueSubject { behavior: Branch },
-    BehaviorValueSubject { behavior: Loop },
-    BehaviorValueSubject { behavior: Bind },
+    Atom { identity: dag_c3_surface_sugar_type },
+    Conj,
+    Disj,
+    Arrow,
+    Cardinality,
+    Instantiation,
   ]
+}
+
+
+fn substrate_behavior_subjects() -> List<Behavior> {
+  [Value, Transform, Branch, Loop, Bind]
+}
+
+
+fn type_construction_subject_from_connective(c: Connective) -> TypeConstructionSubject {
+  ConnectiveKernel { connective: c }
+}
+
+
+fn type_construction_subject_from_behavior(b: Behavior) -> TypeConstructionSubject {
+  BehaviorValueSubject { behavior: b }
+}
+
+
+fn bootstrap_type_construction_subjects() -> List<TypeConstructionSubject> {
+  fold_list_right(
+    xs: substrate_connective_kernels(),
+    empty: fold_list_right(
+      xs: substrate_behavior_subjects(),
+      empty: Empty,
+      snoc: fn(acc, behavior) {
+        list_snoc_item(
+          xs: acc,
+          item: type_construction_subject_from_behavior(b: behavior)
+        )
+      }
+    ),
+    snoc: fn(acc, connective) {
+      list_snoc_item(
+        xs: acc,
+        item: type_construction_subject_from_connective(c: connective)
+      )
+    }
+  )
 }
 
 
@@ -804,12 +837,73 @@ fn impossible_bug_coverage_key_from_diagnostic_reason(reason: Symbol) -> Outcome
 }
 
 
-// Singleton-only: expected_rejection is NonEmptyDiagnostics but all Wave-1 impossible-bug
-// claims use diagnostics_singleton; fold when multi-diagnostic claims land.
+fn append_impossible_bug_key_from_diagnostic(
+  acc: List<ImpossibleBugCoverageKey>,
+  diagnostic: Diagnostic
+) -> Outcome<List<ImpossibleBugCoverageKey>> {
+  match impossible_bug_coverage_key_from_diagnostic_reason(reason: diagnostic.reason) {
+    Accepted { value: key, diagnostics: None } =>
+      Accepted {
+        value: dedupe_snoc(acc: acc, item: key, eq: impossible_bug_coverage_key_eq),
+        diagnostics: None,
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+
+fn impossible_bug_coverage_keys_from_diagnostics(d: NonEmptyDiagnostics) -> Outcome<List<ImpossibleBugCoverageKey>> {
+  match append_impossible_bug_key_from_diagnostic(acc: Empty, diagnostic: d.head) {
+    Accepted { value: acc, diagnostics: None } =>
+      fold_list(
+        xs: d.tail,
+        empty: Accepted { value: acc, diagnostics: None },
+        cons: fn(o, diagnostic) {
+          match o {
+            Accepted { value: keys, diagnostics: None } =>
+              append_impossible_bug_key_from_diagnostic(acc: keys, diagnostic: diagnostic)
+            Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
+          }
+        }
+      )
+    Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
+  }
+}
+
+
 fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
   match c {
     DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
-      impossible_bug_coverage_key_from_diagnostic_reason(reason: d.head.reason)
+      match impossible_bug_coverage_keys_from_diagnostics(d: d) {
+        Accepted { value: keys, diagnostics: None } =>
+          match keys {
+            Empty =>
+              Rejected {
+                diagnostics: diagnostics_singleton(
+                  d: Diagnostic {
+                    reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+                    at: Textual { file: coverage_virtual_file, extent: WholeFile },
+                    correction: Unavailable { reason: UserInputBoundary }
+                  }
+                )
+              }
+            Cons { head: key, tail: rest } =>
+              match rest {
+                Empty => Accepted { value: key, diagnostics: None }
+                Cons { head: _, tail: _ } =>
+                  Rejected {
+                    diagnostics: diagnostics_singleton(
+                      d: Diagnostic {
+                        reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+                        at: Textual { file: coverage_virtual_file, extent: WholeFile },
+                        correction: Unavailable { reason: UserInputBoundary }
+                      }
+                    )
+                  }
+              }
+          }
+        Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
+      }
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
@@ -894,10 +988,20 @@ fn collect_impossible_bug_coverage_keys(corpus: List<TestClaim>) -> List<Impossi
     xs: corpus,
     empty: Empty,
     cons: fn(acc, claim) {
-      match impossible_bug_coverage_key_from_claim(c: claim) {
-        Accepted { value: key, diagnostics: None } =>
-          dedupe_snoc(acc: acc, item: key, eq: impossible_bug_coverage_key_eq)
-        Rejected { diagnostics: _ } => acc
+      match claim {
+        DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
+          match impossible_bug_coverage_keys_from_diagnostics(d: d) {
+            Accepted { value: keys, diagnostics: None } =>
+              fold_list(
+                xs: keys,
+                empty: acc,
+                cons: fn(a, key) {
+                  dedupe_snoc(acc: a, item: key, eq: impossible_bug_coverage_key_eq)
+                }
+              )
+            Rejected { diagnostics: _ } => acc
+          }
+        _ => acc
       }
     }
   )
