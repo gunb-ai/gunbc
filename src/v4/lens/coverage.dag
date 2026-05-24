@@ -989,7 +989,7 @@ fn testgen_coverage_projection_from_claim(
     Accepted { value: key, diagnostics: None } =>
       CoverageSlicePresent { key: key }
     Rejected { diagnostics: d } =>
-      if testgen_coverage_rejection_not_applicable(c: c) {
+      if claim_is_outside_testgen_scheduled_anchor(c: c) {
         CoverageSliceNotApplicable
       } else {
         CoverageSliceInvalid { diagnostics: d }
