@@ -46,8 +46,8 @@ type ModuleGraph {
 }
 
 
-// Typed receipt of an ancestor-relation proof:
-// `ancestor.segments` is a prefix of (or equal to) `descendant.segments`.
+// Typed receipt of an ancestor-relation proof: `ancestor.segments` is a prefix of `descendant.segments`.
+// 🟡 feature:opaque-proof-constructor — AncestorRelation is a plain record; non-prefix pairs are constructible outside module_ancestor_witness; dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_ancestor_witness as the sole construction path.
 type AncestorRelation {
   ancestor: ModulePath
   descendant: ModulePath
