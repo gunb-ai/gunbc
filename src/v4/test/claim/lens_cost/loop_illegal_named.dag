@@ -1,14 +1,25 @@
 // src/v4/test/claim/lens_cost/loop_illegal_named.dag
 // Scope: T-12 worked claim — Loop with illegal Named edge fails closed.
 // Owns: claim_loop_illegal_named.
-// Consumes: lens cost, loop_cost_fixture, std verification.
+// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.loop_illegal_named
 
-import v4.lens.cost { cost_lens }
+import v4.lens.cost { cost_lens, loop_bound_edge }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Node, TypeNode }
+import v4.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -19,7 +30,34 @@ import v4.std.verification {
   t19_manual_claim_anchor
 }
 import v4.std.witness { Violates }
-import v4.test.claim.lens_cost.loop_cost_fixture { loop_illegal_named_input }
+
+data loop_illegal_named_body_atom: Symbol = loop_illegal_named_body_atom
+data loop_illegal_named_measure_atom: Symbol = loop_illegal_named_measure_atom
+data loop_illegal_named_extra_atom: Symbol = loop_illegal_named_extra_atom
+
+data loop_illegal_named_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: loop_illegal_named_body_atom } },
+  children: []
+}
+
+data loop_illegal_named_measure_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: loop_illegal_named_measure_atom } },
+  children: []
+}
+
+data loop_illegal_named_extra_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: loop_illegal_named_extra_atom } },
+  children: []
+}
+
+data loop_illegal_named_input: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [
+    Edge { label: Positional, target: loop_illegal_named_body_leaf },
+    Edge { label: Named { name: loop_bound_edge }, target: loop_illegal_named_measure_leaf },
+    Edge { label: Named { name: loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
+  ]
+}
 
 fn loop_illegal_named_claim_holds() -> Bool {
   match cost_lens(n: loop_illegal_named_input) {
