@@ -220,7 +220,12 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
         dispatched.contains("generator: dispatched_diagnostic_exhaustiveness_generator()")
             && dispatched.contains("oracle: DiagnosticNegativeFixture")
             && dispatched.contains("dispatch_key: t19_dispatched_diagnostic_exhaustiveness")
-            && dispatched.contains("classification: TestClassification { tier: Tier1, layer: Unit }"),
+            && between(
+                TESTGEN_WISHLIST_DAG,
+                "fn dispatched_diagnostic_exhaustiveness_generator",
+                "fn wishlist_lens_applicability_generator",
+            )
+            .contains("classification: TestClassification { tier: Tier1, layer: Unit }"),
         "dispatched row must keep DiagnosticExhaustiveness tied to the emitted diagnostic oracle and Tier1 emitted claim classification"
     );
     assert!(
