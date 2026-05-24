@@ -174,7 +174,6 @@ data coverage_reason_l7_missing: Symbol = coverage_reason_l7_missing
 data coverage_reason_impossible_bug_missing: Symbol = coverage_reason_impossible_bug_missing
 data coverage_reason_testgen_missing: Symbol = coverage_reason_testgen_missing
 data coverage_reason_incomplete: Symbol = coverage_reason_incomplete
-data coverage_reason_testgen_concept_unmapped: Symbol = coverage_reason_testgen_concept_unmapped
 data coverage_reason_l6_concept_unmapped: Symbol = coverage_reason_l6_concept_unmapped
 data coverage_reason_l7_anchor_unmapped: Symbol = coverage_reason_l7_anchor_unmapped
 data coverage_reason_impossible_bug_diagnostic_unmapped: Symbol = coverage_reason_impossible_bug_diagnostic_unmapped
@@ -1154,11 +1153,47 @@ fn coverage_reading_complete(r: CoverageReading) -> Bool {
 }
 
 
-fn coverage_incomplete_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: coverage_reason_incomplete,
-    at: Textual { file: coverage_virtual_file, extent: WholeFile },
-    correction: Unavailable { reason: UserInputBoundary }
+fn coverage_incomplete_diagnostic(r: CoverageReading) -> Diagnostic {
+  match is_empty(xs: r.l6_missing) {
+    false =>
+      Diagnostic {
+        reason: coverage_reason_l6_missing,
+        at: Textual { file: coverage_virtual_file, extent: WholeFile },
+        correction: Unavailable { reason: UserInputBoundary }
+      }
+    true =>
+      match is_empty(xs: r.l7_missing) {
+        false =>
+          Diagnostic {
+            reason: coverage_reason_l7_missing,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        true =>
+          match is_empty(xs: r.impossible_bug_missing) {
+            false =>
+              Diagnostic {
+                reason: coverage_reason_impossible_bug_missing,
+                at: Textual { file: coverage_virtual_file, extent: WholeFile },
+                correction: Unavailable { reason: UserInputBoundary }
+              }
+            true =>
+              match is_empty(xs: r.testgen_missing) {
+                false =>
+                  Diagnostic {
+                    reason: coverage_reason_testgen_missing,
+                    at: Textual { file: coverage_virtual_file, extent: WholeFile },
+                    correction: Unavailable { reason: UserInputBoundary }
+                  }
+                true =>
+                  Diagnostic {
+                    reason: coverage_reason_incomplete,
+                    at: Textual { file: coverage_virtual_file, extent: WholeFile },
+                    correction: Unavailable { reason: UserInputBoundary }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -1168,6 +1203,6 @@ fn coverage_lens(corpus: List<TestClaim>) -> Witness<CoverageReading> {
   if coverage_reading_complete(r: reading) {
     Holds { value: reading }
   } else {
-    Violates { diagnostic: coverage_incomplete_diagnostic() }
+    Violates { diagnostic: coverage_incomplete_diagnostic(r: reading) }
   }
 }
