@@ -561,7 +561,16 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// 🟡 T-28 cross-file binding bridge — graph not yet consumed; dissolve-on: resolver walks ModuleGraph.entries to enrich Namespace with imported-module bindings (full T-28 compile-unit realization).
+// 🟡 T-28 cross-file namespace bridge — graph entries not yet merged; dissolve-on: walks ModuleGraph.entries, extracts each entry's exported symbols, and unions them into the returned Namespace (full T-28 compile-unit realization).
+fn namespace_from_tree_and_graph(
+  tree: NormalizedTree,
+  lm: DagLanguageModel,
+  graph: ModuleGraph
+) -> Namespace {
+  build_program_namespace(tree: tree, lm: lm)
+}
+
+
 fn resolve_with_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,
@@ -569,6 +578,6 @@ fn resolve_with_graph(
 ) -> Outcome<ResolvedTree> {
   resolve_with_namespace(
     tree: tree,
-    namespace: build_program_namespace(tree: tree, lm: lm)
+    namespace: namespace_from_tree_and_graph(tree: tree, lm: lm, graph: graph)
   )
 }
