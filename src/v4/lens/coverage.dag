@@ -49,6 +49,7 @@ import v4.std.algebra {
   fold_list,
   fold_list_right,
   is_empty,
+  length,
   list_snoc_item
 }
 import v4.std.collection { List }
@@ -63,7 +64,8 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile,
   bind_outcome,
-  diagnostics_singleton
+  diagnostics_singleton,
+  outcome_accepted
 }
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
@@ -861,15 +863,73 @@ fn fold_diagnostic_tail_into_impossible_bug_keys(
 ) -> Outcome<List<ImpossibleBugCoverageKey>> {
   fold_list(
     xs: tail,
-    empty: Accepted { value: acc, diagnostics: None },
+    empty: outcome_accepted(value: acc),
     cons: fn(o, diagnostic) {
-      match o {
-        Accepted { value: keys, diagnostics: None } =>
+      bind_outcome(
+        o: o,
+        f: fn(keys) {
           append_impossible_bug_key_from_diagnostic(acc: keys, diagnostic: diagnostic)
-        Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
-      }
+        }
+      )
     }
   )
+}
+
+
+type SoleImpossibleBugKeyFold {
+  count: Int
+  key: ImpossibleBugCoverageKey
+}
+
+
+fn sole_impossible_bug_coverage_key_fold(
+  state: SoleImpossibleBugKeyFold,
+  key: ImpossibleBugCoverageKey
+) -> SoleImpossibleBugKeyFold {
+  SoleImpossibleBugKeyFold {
+    count: state.count + 1,
+    key: key,
+  }
+}
+
+
+fn sole_impossible_bug_coverage_key(
+  keys: List<ImpossibleBugCoverageKey>
+) -> Outcome<ImpossibleBugCoverageKey> {
+  let state = fold_list_right(
+    xs: keys,
+    empty: SoleImpossibleBugKeyFold {
+      count: 0,
+      key: ImpossibleBugCoverageKey { bug_class: IdempotencyContract },
+    },
+    snoc: fn(s, key) {
+      sole_impossible_bug_coverage_key_fold(state: s, key: key)
+    }
+  )
+  match state.count {
+    0 =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    1 =>
+      Accepted { value: state.key, diagnostics: None }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
 }
 
 
@@ -882,45 +942,13 @@ fn impossible_bug_coverage_keys_from_diagnostics(d: NonEmptyDiagnostics) -> Outc
 }
 
 
-fn list_sole_item<C>(xs: List<C>) -> Outcome<C> {
-  fold_list(
-    xs: xs,
-    empty: Rejected {
-      diagnostics: diagnostics_singleton(
-        d: Diagnostic {
-          reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-          at: Textual { file: coverage_virtual_file, extent: WholeFile },
-          correction: Unavailable { reason: UserInputBoundary }
-        }
-      )
-    },
-    cons: fn(o, item) {
-      match o {
-        Accepted { value: _, diagnostics: None } =>
-          Rejected {
-            diagnostics: diagnostics_singleton(
-              d: Diagnostic {
-                reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-                at: Textual { file: coverage_virtual_file, extent: WholeFile },
-                correction: Unavailable { reason: UserInputBoundary }
-              }
-            )
-          }
-        Rejected { diagnostics: _ } =>
-          Accepted { value: item, diagnostics: None }
-      }
-    }
-  )
-}
-
-
 fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
   match c {
     DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
       bind_outcome(
         o: impossible_bug_coverage_keys_from_diagnostics(d: d),
         f: fn(keys) {
-          list_sole_item(xs: keys)
+          sole_impossible_bug_coverage_key(keys: keys)
         }
       )
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
@@ -957,16 +985,58 @@ fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBug
 }
 
 
+fn testgen_coverage_keys_from_claim(c: TestClaim) -> List<TestgenCoverageKey> {
+  match testgen_coverage_key_from_claim(c: c) {
+    Accepted { value: key, diagnostics: None } =>
+      list_snoc_item(xs: Empty, item: key)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+
+fn append_testgen_keys_from_claim(
+  acc: List<TestgenCoverageKey>,
+  claim: TestClaim
+) -> List<TestgenCoverageKey> {
+  fold_list_right(
+    xs: testgen_coverage_keys_from_claim(c: claim),
+    empty: acc,
+    snoc: fn(a, key) {
+      dedupe_snoc(acc: a, item: key, eq: testgen_coverage_key_eq)
+    }
+  )
+}
+
+
 fn collect_testgen_coverage_keys(corpus: List<TestClaim>) -> List<TestgenCoverageKey> {
   fold_list(
     xs: corpus,
     empty: Empty,
     cons: fn(acc, claim) {
-      match testgen_coverage_key_from_claim(c: claim) {
-        Accepted { value: key, diagnostics: None } =>
-          dedupe_snoc(acc: acc, item: key, eq: testgen_coverage_key_eq)
-        Rejected { diagnostics: _ } => acc
-      }
+      append_testgen_keys_from_claim(acc: acc, claim: claim)
+    }
+  )
+}
+
+
+fn l7_coverage_keys_from_claim(c: TestClaim) -> List<L7CoverageKey> {
+  match l7_coverage_key_from_claim(c: c) {
+    Accepted { value: key, diagnostics: None } =>
+      list_snoc_item(xs: Empty, item: key)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+
+fn append_l7_keys_from_claim(
+  acc: List<L7CoverageKey>,
+  claim: TestClaim
+) -> List<L7CoverageKey> {
+  fold_list_right(
+    xs: l7_coverage_keys_from_claim(c: claim),
+    empty: acc,
+    snoc: fn(a, key) {
+      dedupe_snoc(acc: a, item: key, eq: l7_coverage_key_eq)
     }
   )
 }
@@ -977,11 +1047,30 @@ fn collect_l7_coverage_keys(corpus: List<TestClaim>) -> List<L7CoverageKey> {
     xs: corpus,
     empty: Empty,
     cons: fn(acc, claim) {
-      match l7_coverage_key_from_claim(c: claim) {
-        Accepted { value: key, diagnostics: None } =>
-          dedupe_snoc(acc: acc, item: key, eq: l7_coverage_key_eq)
-        Rejected { diagnostics: _ } => acc
-      }
+      append_l7_keys_from_claim(acc: acc, claim: claim)
+    }
+  )
+}
+
+
+fn l6_coverage_keys_from_claim(c: TestClaim) -> List<L6CoverageKey> {
+  match l6_coverage_key_from_claim(c: c) {
+    Accepted { value: key, diagnostics: None } =>
+      list_snoc_item(xs: Empty, item: key)
+    Rejected { diagnostics: _ } => Empty
+  }
+}
+
+
+fn append_l6_keys_from_claim(
+  acc: List<L6CoverageKey>,
+  claim: TestClaim
+) -> List<L6CoverageKey> {
+  fold_list_right(
+    xs: l6_coverage_keys_from_claim(c: claim),
+    empty: acc,
+    snoc: fn(a, key) {
+      dedupe_snoc(acc: a, item: key, eq: l6_coverage_key_eq)
     }
   )
 }
@@ -992,11 +1081,7 @@ fn collect_l6_coverage_keys(corpus: List<TestClaim>) -> List<L6CoverageKey> {
     xs: corpus,
     empty: Empty,
     cons: fn(acc, claim) {
-      match l6_coverage_key_from_claim(c: claim) {
-        Accepted { value: key, diagnostics: None } =>
-          dedupe_snoc(acc: acc, item: key, eq: l6_coverage_key_eq)
-        Rejected { diagnostics: _ } => acc
-      }
+      append_l6_keys_from_claim(acc: acc, claim: claim)
     }
   )
 }
