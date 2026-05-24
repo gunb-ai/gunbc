@@ -194,7 +194,9 @@ def main() -> None:
             "FrozenIoSnapshot",
             "RefinementProjectionWitness",
             "dispatch_key: Symbol",
-            "feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee",
+            "feature:t19-generator-oracle-basis-carrier",
+            "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            "dissolve-on-arrival: delete TestgenOracleBasis",
             "data claim_testgen_wishlist_formalized: TestClaim",
         ),
     )

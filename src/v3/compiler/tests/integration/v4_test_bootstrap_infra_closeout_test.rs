@@ -123,7 +123,11 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
     assert!(
         TESTGEN_WISHLIST_DAG.contains("type TestgenOracleBasis")
             && TESTGEN_WISHLIST_DAG
-                .contains("feature:T19-GENERATOR-ORACLE-BASIS; bind node://adhoc-6c12ca47-7ee")
+                .contains("feature:t19-generator-oracle-basis-carrier")
+            && TESTGEN_WISHLIST_DAG.contains(
+                "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            )
+            && TESTGEN_WISHLIST_DAG.contains("dissolve-on-arrival: delete TestgenOracleBasis")
             && TESTGEN_WISHLIST_DAG.contains("StructuralConstructionWitness")
             && TESTGEN_WISHLIST_DAG.contains("AlgebraLawWitness")
             && TESTGEN_WISHLIST_DAG.contains("DiagnosticNegativeFixture")
