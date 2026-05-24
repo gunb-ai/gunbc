@@ -342,7 +342,7 @@ Each language model activates bidirectional ingest when its lex/grammar DATA is 
   dag (dag.dag)      : ingest activated by T-6 + T-7 fill — CRITICAL PATH
   rust (rust.dag)    : lex/grammar shape landed (Wave 1); 🟡 gate dissolves on T-10
                        bidirectional round-trip; Wave 2a = confirm/extend ingest data
-  python / go / cpp / typescript : Wave 2a lex/grammar data fill (after T-4 Wave 1 + T-6/T-7 schema)
+  python / go / cpp / typescript : Wave 2a lex/grammar data fill (after T-4 + T-6/T-7 schema)
   format models (json/yaml/csv/toml/sql): these model DATA FORMAT shapes AND their
       syntax grammar. Ingest of format text (e.g. `{"k": 1}` → Node) requires lex/grammar
       data in extdeps/formats/ (same pattern as dag.dag/rust.dag). Grammar wave for
@@ -350,9 +350,9 @@ Each language model activates bidirectional ingest when its lex/grammar DATA is 
       `[needs T-6, T-7]`
 ```
 **T-4 Wave 2a** (lex/grammar data per language): extend DATA on each language model after
-T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4 Wave 1]`.
+T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4]` (T-4 = fact-bundle authoring; Wave 2a adds lex/grammar data on top).
 **T-4 Wave 2b** (type deepening): inhabitance + algebra laws + effects + partiality per language.
-Scheduled in parallel with Wave 2a. `[needs T-4 Wave 1, T-33]`.
+Scheduled in parallel with Wave 2a. `[needs T-4, T-33]` (T-4 = fact-bundle authoring).
 
 **Modeling decisions**:
 - Per-language primitive **grounding** (fact-bundle, per DECISIONS.md "D2 REVERSAL + FACT-BUNDLE RESEED"): the bundle of spec-read facts for each primitive — width / signedness / representation / overflow disposition / surface spelling — grounding into the shared `std/` vocabulary (T-3). Libraries such as `std::vector` are NOT modeled per L-2 — they are ordinary `Node`s. Deduplicate to a `std/` carrier only on proven identity; never a bare alias, never a re-declared algebra inhabitance (INVARIANTS P1:42)
