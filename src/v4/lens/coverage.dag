@@ -103,10 +103,10 @@ import v4.std.node {
   behavior_coproduct_variants,
   connective_coproduct_variants
 }
-type CoverageMissingDiagnosticsFold {
-  started: Bool
-  acc: NonEmptyDiagnostics
-}
+// 🟢 coproduct dissolution — local fold state for per-missing coverage diagnostic accumulation.
+type CoverageMissingDiagnosticsFold
+  = NoCoverageMissingDiagnostics
+  | SomeCoverageMissingDiagnostics { acc: NonEmptyDiagnostics }
 
 
 type Coverage<C> {
@@ -1170,17 +1170,15 @@ fn append_coverage_missing_diagnostic(
   state: CoverageMissingDiagnosticsFold,
   reason: Symbol
 ) -> CoverageMissingDiagnosticsFold {
-  match state.started {
-    false =>
-      CoverageMissingDiagnosticsFold {
-        started: true,
+  match state {
+    NoCoverageMissingDiagnostics =>
+      SomeCoverageMissingDiagnostics {
         acc: diagnostics_singleton(d: coverage_missing_diagnostic(reason: reason))
       }
-    true =>
-      CoverageMissingDiagnosticsFold {
-        started: true,
+    SomeCoverageMissingDiagnostics { acc: acc } =>
+      SomeCoverageMissingDiagnostics {
         acc: non_empty_diagnostics_append(
-          a: state.acc,
+          a: acc,
           b: diagnostics_singleton(d: coverage_missing_diagnostic(reason: reason))
         )
       }
@@ -1261,12 +1259,7 @@ fn coverage_missing_diagnostics(r: CoverageReading) -> NonEmptyDiagnostics {
     state: coverage_missing_diagnostics_from_impossible_bug_missing(
       state: coverage_missing_diagnostics_from_l7_missing(
         state: coverage_missing_diagnostics_from_l6_missing(
-          state: CoverageMissingDiagnosticsFold {
-            started: false,
-            acc: diagnostics_singleton(
-              d: coverage_missing_diagnostic(reason: coverage_reason_incomplete)
-            )
-          },
+          state: NoCoverageMissingDiagnostics,
           missing: r.l6_missing
         ),
         missing: r.l7_missing
@@ -1275,10 +1268,10 @@ fn coverage_missing_diagnostics(r: CoverageReading) -> NonEmptyDiagnostics {
     ),
     missing: r.testgen_missing
   )
-  if folded.started {
-    folded.acc
-  } else {
-    diagnostics_singleton(d: coverage_missing_diagnostic(reason: coverage_reason_incomplete))
+  match folded {
+    NoCoverageMissingDiagnostics =>
+      diagnostics_singleton(d: coverage_missing_diagnostic(reason: coverage_reason_incomplete))
+    SomeCoverageMissingDiagnostics { acc: acc } => acc
   }
 }
 
