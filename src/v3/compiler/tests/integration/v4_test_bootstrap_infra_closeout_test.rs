@@ -252,13 +252,15 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
     );
     assert!(
-        EVAL_DAG.contains("eval_node_unrealized"),
-        "eval_node must surface an explicit unrealized-eval diagnostic until eval's Outcome<RuntimeValue> projects to Outcome<Node>"
+        EVAL_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
+            && EVAL_DAG.contains("fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node>")
+            && EVAL_DAG.contains("runtime_value_node(value: value)"),
+        "eval_node must project eval's Outcome<RuntimeValue> through the runtime-value-to-Node projection"
     );
     assert!(
-        EVAL_DAG.contains("nd.head.reason == eval_node_unrealized")
-            && EVAL_DAG.contains("Deferred { actual: actual, diagnostic: nd.head }"),
-        "run_test_claim_assert must short-circuit to Verdict.Deferred when actual is Rejected with eval_node_unrealized — across ALL TestClaim variants — so CompilesClaim/EqualsClaim can't Pass and DiagnosticClaim can't trivially-match the unrealized signal"
+        !EVAL_DAG.contains("eval_node_unrealized")
+            && !EVAL_DAG.contains("nd.head.reason == eval_node_unrealized"),
+        "eval_node_unrealized fail-closed scaffold must dissolve once eval_node projects RuntimeValue into Node"
     );
 }
 

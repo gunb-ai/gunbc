@@ -190,6 +190,19 @@ fn v4_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> O
   }
 }
 
+fn v4_eval_wave1_terminal_value(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<RuntimeValue> {
+  match control {
+    Continue { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    Return { value: v } =>
+      Accepted { value: v, diagnostics: None }
+    Raise { diagnostic: d } =>
+      outcome_rejected(d: d)
+    Suspend { continuation: c } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: c.current))
+  }
+}
+
 fn v4_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {
   BoundaryAllowance {
     operation: PrimitiveOperationRef {
@@ -255,7 +268,8 @@ fn v4_evaluator_execution_wave1() -> ExecutionSemantics {
       return_value: v4_eval_wave1_return_value
     },
     control: ControlSemantics {
-      transfer: v4_eval_wave1_transfer
+      transfer: v4_eval_wave1_transfer,
+      terminal_value: v4_eval_wave1_terminal_value
     }
   }
 }

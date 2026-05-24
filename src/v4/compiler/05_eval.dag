@@ -279,14 +279,9 @@ fn control_transfer_value(
   runtime: V4EvaluatorRuntime,
   environment: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  bind_outcome(
-    o: runtime.execution.control.transfer(
-      control,
-      EvaluationFrame { current: node, environment: environment }
-    ),
-    f: fn(frame) {
-      frame.environment.bindings.lookup(EnvironmentBindingKey { declaration: frame.current })
-    }
+  runtime.execution.control.terminal_value(
+    control,
+    EvaluationFrame { current: node, environment: environment }
   )
 }
 
@@ -820,6 +815,15 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
 }
 
 
+fn run_test_claim_assert(
+  claim: TestClaim,
+  actual: Outcome<Node>,
+  at: Node
+) -> Verdict<Node> {
+  run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
+}
+
+
 fn run_test_claim_assert_decided(
   claim: TestClaim,
   actual: Outcome<Node>,
@@ -865,7 +869,6 @@ fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
 }
 
 
-// 🟡 gated — feature:T22-parameterized-outcome-eq — bind node://adhoc-c5a6fb4b-8cc — dissolve-on: v4.std.diagnostic owns a parameterized Outcome equality surface with payload comparator; forbidden: adding more payload-specific Outcome equality helpers.
 fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
   outcome_eq(a: a, b: b, payload_eq: runtime_value_eq)
 }

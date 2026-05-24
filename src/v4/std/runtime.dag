@@ -109,6 +109,7 @@ type CallSemantics {
 
 type ControlSemantics {
   transfer: fn(ControlTransfer, EvaluationFrame) -> Outcome<EvaluationFrame>
+  terminal_value: fn(ControlTransfer, EvaluationFrame) -> Outcome<RuntimeValue>
 }
 
 type ExecutionSemantics {
