@@ -273,7 +273,7 @@ fn v4_lens_testgen_nat_substrate_carries_algebra_law_subject_symbols() {
 
 #[test]
 fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
-    assert_six_algebra_law_constructor_sites_in_testgen(TESTGEN_DAG);
+    assert_six_algebra_law_subject_paths_in_testgen(TESTGEN_DAG);
 }
 
 fn assert_nat_manual_claim_blocks_use_compiles_stub(nat_law_src: &str) {
@@ -314,16 +314,49 @@ fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
     }
 }
 
-/// Count `value: AlgebraLaw {` sites in `testgen.dag` (file-wide; currently exactly six nat scheduling arms).
-fn assert_six_algebra_law_constructor_sites_in_testgen(testgen_src: &str) {
+/// Pin the six Nat algebra-law anchors while allowing a single helper-owned AlgebraLaw constructor.
+fn assert_six_algebra_law_subject_paths_in_testgen(testgen_src: &str) {
     assert!(
         testgen_src.contains("fn testgen_concept_for_manual_claim"),
         "testgen_concept_for_manual_claim must exist for Wave-0 nat scheduling slice"
     );
-    let n = testgen_src.matches("value: AlgebraLaw {").count();
+    assert!(
+        testgen_src.contains(
+            "fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject>"
+        ),
+        "testgen must project Nat algebra-law subjects through one checked helper"
+    );
+    assert!(
+        testgen_src.contains("match algebra_law_subject_for_manual_anchor(anchor: manual_anchor)"),
+        "testgen_concept_for_manual_claim must consume the shared Nat algebra-law subject helper"
+    );
+    assert_eq!(
+        testgen_src.matches("value: AlgebraLaw {").count(),
+        1,
+        "AlgebraLaw construction should be centralized after helper projection"
+    );
+    let helper = between(
+        testgen_src,
+        "fn algebra_law_subject_for_manual_anchor",
+        "fn algebra_law_subject_atom",
+    );
+    for anchor in [
+        "ManualNatAddLeftIdentity",
+        "ManualNatAddRightIdentity",
+        "ManualNatAddAssociativity",
+        "ManualNatMulLeftIdentity",
+        "ManualNatMulAnnihilator",
+        "ManualNatMulAssociativity",
+    ] {
+        assert!(
+            helper.contains(anchor),
+            "shared algebra-law subject helper must cover {anchor}"
+        );
+    }
+    let n = helper.matches("value: AlgebraLawSubject {").count();
     assert_eq!(
         n, 6,
-        "expected six nat `value: AlgebraLaw {{...}}` constructor sites in testgen.dag; got {n}"
+        "expected six Nat AlgebraLawSubject projection arms in the shared helper; got {n}"
     );
 }
 
@@ -369,6 +402,12 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
     let tokens = tokenize_for_test(source, file)
         .unwrap_or_else(|diag| panic!("{file}: tokenization failed: {diag:?}"));
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
+}
+
+fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
+    text.split_once(start)
+        .and_then(|(_, tail)| tail.split_once(end).map(|(middle, _)| middle))
+        .unwrap_or_else(|| panic!("missing expected span from {start:?} to {end:?}"))
 }
 
 fn generator_field_ty<'a>(
