@@ -341,9 +341,11 @@ Each language model activates bidirectional ingest when its lex/grammar DATA is 
   rust (rust.dag)    : lex/grammar shape landed (Wave 1); 🟡 gate dissolves on T-10
                        bidirectional round-trip; Wave 2a = confirm/extend ingest data
   python / go / cpp / typescript : Wave 2a lex/grammar data fill (after T-4 Wave 1 + T-6/T-7 schema)
-  format models (json/yaml/csv/toml/sql): these model DATA FORMAT shapes — ingest
-      is handled by the universal pipeline with format LanguageModel data; no
-      separate lex/grammar fill needed in extdeps/formats/
+  format models (json/yaml/csv/toml/sql): these model DATA FORMAT shapes AND their
+      syntax grammar. Ingest of format text (e.g. `{"k": 1}` → Node) requires lex/grammar
+      data in extdeps/formats/ (same pattern as dag.dag/rust.dag). Grammar wave for
+      formats is T-4.6 Wave 2 — scheduled after T-6/T-7 define the LexRules/Grammar schemas.
+      `[needs T-6, T-7]`
 ```
 **T-4 Wave 2a** (lex/grammar data per language): extend DATA on each language model after
 T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4 Wave 1]`.
