@@ -8,10 +8,12 @@ module v4.test.claim.generated.coproduct_exhaustiveness
 
 
 import v4.lens.testgen {
+  DiagnosticExhaustivenessSubject,
   coproduct_exhaustiveness_subject_testclaim_compiles,
   coproduct_exhaustiveness_subject_testclaim_diagnostic,
   coproduct_exhaustiveness_subject_testclaim_equals,
   coproduct_exhaustiveness_subject_testclaim_roundtrip,
+  t19_coproduct_exhaustiveness_missing_variant,
   testgen_emit_coproduct_exhaustiveness_claim,
   testgen_scheduled_coproduct_exhaustiveness_generators
 }
@@ -37,7 +39,10 @@ import v4.std.verification {
 
 fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim> {
   testgen_emit_coproduct_exhaustiveness_claim(
-    anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
+    anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic(),
+    subject: DiagnosticExhaustivenessSubject {
+      reason: t19_coproduct_exhaustiveness_missing_variant,
+    }
   )
 }
 
@@ -92,7 +97,12 @@ fn witness_coproduct_exhaustiveness_all_testclaim_variants_emit() -> Bool {
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t19-coproduct-exhaustiveness-codegen — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: generated corpus replaces this four-arm hand-enumerated TestClaimCoproductVariant equality check with canonical variant-key reflection; forbidden: permanent hand-rolled arm-identity match over TestClaimCoproductVariant in generated corpus.
 fn witness_coproduct_exhaustiveness_variant_emits(anchor: GeneratedAnchorKey) -> Bool {
-  match testgen_emit_coproduct_exhaustiveness_claim(anchor: anchor) {
+  match testgen_emit_coproduct_exhaustiveness_claim(
+    anchor: anchor,
+    subject: DiagnosticExhaustivenessSubject {
+      reason: t19_coproduct_exhaustiveness_missing_variant,
+    }
+  ) {
     Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } =>
       match anchor {
         GeneratedCoproductExhaustiveness { omitted_variant: requested_variant } =>
