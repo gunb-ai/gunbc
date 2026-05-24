@@ -8,8 +8,8 @@
 //   - SSA names are represented by result Symbol fields and LocalRef values.
 //   - phi is represented by PhiIncoming, PhiNode, and BasicBlock.phis.
 //   - CFG successor facts are projected by block_successors from Terminator.
-// Dominance is therefore a derived consumer analysis over CFG/predecessor facts,
-// not an additional field to add during the keystone-gated rework hold.
+// Dominance is intentionally not asserted here; it is later consumer analysis
+// over CFG/predecessor facts, not part of this IN-B probe receipt.
 
 module v4.test.claim.manual.llvm_ir_b2_omni_in_b_probe
 
@@ -44,7 +44,6 @@ data llvm_probe_fail_symbol: Symbol = llvm_probe_fail_symbol
 data llvm_probe_ssa_axis_symbol: Symbol = llvm_probe_ssa_axis_symbol
 data llvm_probe_phi_axis_symbol: Symbol = llvm_probe_phi_axis_symbol
 data llvm_probe_cfg_axis_symbol: Symbol = llvm_probe_cfg_axis_symbol
-data llvm_probe_dominance_axis_symbol: Symbol = llvm_probe_dominance_axis_symbol
 data llvm_probe_result_symbol: Symbol = llvm_probe_result_symbol
 data llvm_probe_cond_symbol: Symbol = llvm_probe_cond_symbol
 data llvm_probe_left_symbol: Symbol = llvm_probe_left_symbol
@@ -134,7 +133,6 @@ fn llvm_probe_pass_node() -> Node {
       Edge { label: Named { name: llvm_probe_ssa_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_phi_result_symbol) },
       Edge { label: Named { name: llvm_probe_phi_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_phi_axis_symbol) },
       Edge { label: Named { name: llvm_probe_cfg_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_cfg_axis_symbol) },
-      Edge { label: Named { name: llvm_probe_dominance_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_dominance_axis_symbol) },
     ]
   }
 }
@@ -152,7 +150,7 @@ fn llvm_probe_receipt_node() -> Node {
 data llvm_probe_expected_node: Node = llvm_probe_pass_node()
 
 data claim_llvm_ir_b2_omni_in_b_probe: TestClaim = EqualsClaim {
-  label: "T-4.12 llvm_ir B2-OMNI IN-B probe: SSA, phi, CFG successors present; dominance derived",
+  label: "T-4.12 llvm_ir B2-OMNI IN-B probe: SSA, phi, CFG successors present",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: llvm_probe_expected_node,
   rhs: llvm_probe_receipt_node(),
