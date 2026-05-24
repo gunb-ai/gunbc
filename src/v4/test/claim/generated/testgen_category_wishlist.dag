@@ -47,6 +47,8 @@ import v4.std.verification {
   TestClassification,
   ManualAnchorAbsent,
   ManualLbeConjDagSurface,
+  ManualNatAddAssociativity,
+  ManualRefinementNonEmptyListBase,
   Tier1,
   Tier2,
   Tier3,
@@ -105,7 +107,7 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimEqualsClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
     slot: AlgebraLaw {
       subject: AlgebraLawSubject {
         algebra: nat_algebra_law_subject_symbol_additive_monoid,
@@ -178,7 +180,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimEqualsClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
     slot: RefinementPreservation {
       subject: RefinementPreservationSubject {
         refined: Refined { base: [stub_empty_conj] },

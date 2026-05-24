@@ -185,13 +185,15 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
     );
     assert!(
         dispatched.contains("generator: dispatched_algebra_law_generator()")
-            && dispatched.contains("oracle: AlgebraLawWitness"),
-        "dispatched row must keep AlgebraLaw tied to the algebra-law witness oracle"
+            && dispatched.contains("oracle: AlgebraLawWitness")
+            && dispatched.contains("ManualNatAddAssociativity"),
+        "dispatched row must keep AlgebraLaw tied to the emitted algebra-law anchor and witness oracle"
     );
     assert!(
         dispatched.contains("generator: dispatched_refinement_preservation_generator()")
-            && dispatched.contains("oracle: RefinementProjectionWitness"),
-        "dispatched row must keep RefinementPreservation tied to the projection witness oracle"
+            && dispatched.contains("oracle: RefinementProjectionWitness")
+            && dispatched.contains("ManualRefinementNonEmptyListBase"),
+        "dispatched row must keep RefinementPreservation tied to the emitted refinement anchor and projection witness oracle"
     );
 }
 

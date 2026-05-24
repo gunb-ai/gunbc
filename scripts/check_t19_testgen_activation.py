@@ -318,6 +318,10 @@ def main() -> None:
         or "generator: dispatched_refinement_preservation_generator()" not in dispatched_rows
     ):
         raise SystemExit("dispatched wishlist rows must include LBE, AlgebraLaw, and RefinementPreservation")
+    if "ManualNatAddAssociativity" not in wishlist:
+        raise SystemExit("dispatched AlgebraLaw wishlist row must carry the emitted algebra-law anchor")
+    if "ManualRefinementNonEmptyListBase" not in wishlist:
+        raise SystemExit("dispatched RefinementPreservation wishlist row must carry the emitted refinement anchor")
 
     if algebra.count("data generated_nat_") < 3:
         raise SystemExit("algebra-law generator must produce at least three sample TestClaim rows")
