@@ -940,7 +940,7 @@ fn append_coverage_slice_projection<C>(
 fn l7_coverage_projection_from_claim(c: TestClaim) -> CoverageSliceProjection<L7CoverageKey> {
   match testgen_coverage_key_from_claim(c: c) {
     Rejected { diagnostics: d } =>
-      if testgen_coverage_rejection_not_applicable(c: c) {
+      if claim_is_outside_testgen_scheduled_anchor(c: c) {
         CoverageSliceNotApplicable
       } else {
         CoverageSliceInvalid { diagnostics: d }
