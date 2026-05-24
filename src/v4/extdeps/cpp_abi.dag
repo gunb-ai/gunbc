@@ -135,7 +135,7 @@ type CppLongLongWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppPointerWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppWcharTWidthSelectionWitness { selected_width: CppIntegerWidth }
 
-// 🟢 pretty-much-done — long-width witness aliases project CppILP32IntegerWidths.long_width / CppLP64IntegerWidths.long_width; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟢 pretty-much-done — long-width witness aliases project CppILP32IntegerWidths.long_width / CppLP64IntegerWidths.long_width; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag, test/claim/manual/cpp_abi_lp64_width_anchor.dag.
 type CppILP32LongWidthSelectionWitness = CppLongWidthSelectionWitness {
   selected_width: CppIntegerWidth32
 }

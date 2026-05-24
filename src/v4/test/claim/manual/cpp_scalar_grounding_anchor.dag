@@ -9,11 +9,8 @@ module v4.test.claim.manual.cpp_scalar_grounding_anchor
 import v4.extdeps.cpp_abi {
   CppAbiModelItaniumCxxAbi186,
   CppDataModelFamilyILP32,
-  CppDataModelFamilyLP64,
   CppILP32IntegerWidths,
   CppILP32LongWidthSelectionWitness,
-  CppLP64IntegerWidths,
-  CppLP64LongWidthSelectionWitness,
   CppPlainCharSignedness,
   CppTargetDataModel,
   CppTargetProfile,
@@ -31,10 +28,7 @@ import v4.extdeps.languages.cpp {
 
 type cpp_anchor_data_model = CppTargetDataModel<CppDataModelFamilyILP32, CppILP32IntegerWidths, CppPlainCharSignedness, CppWcharTSignedness>
 type cpp_anchor_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_data_model>
-type cpp_anchor_lp64_data_model = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSignedness, CppWcharTSignedness>
-type cpp_anchor_lp64_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_lp64_data_model>
 type cpp_anchor_ilp32_long_width_witness = CppILP32LongWidthSelectionWitness
-type cpp_anchor_lp64_long_width_witness = CppLP64LongWidthSelectionWitness
 type cpp_anchor_signed_width_selection = CppSignedIntegerWidthSelection { spelling: CppSignedIntegerSurfaceSpelling, target_profile: cpp_anchor_target_profile }
 type cpp_anchor_wchar_t_width_selection = CppWcharTWidthSelection { spelling: CppWcharTSurfaceSpelling, target_profile: cpp_anchor_target_profile }
 type cpp_anchor_signed_scalar = SignedIntegerScalar { width_selection: cpp_anchor_signed_width_selection, signed_representation: CppTwosComplement, overflow_disposition: CppRepresentableResultRequired }
