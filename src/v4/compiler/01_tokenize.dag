@@ -12,32 +12,41 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, Textual, UserInputBoundary, WholeFile, Accepted, None, diagnostics_singleton}
 import v4.std.node { Symbol }
-import v4.std.algebra { is_empty }
+import v4.std.algebra { fold_list, is_empty }
 import v4.std.text { Char, String }
+import v4.std.logic { Bool }
 
-// 🟡 coproduct dissolution — CP-1b item 13a (LexCharClass).
+// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
+  | HexDigitChar
   | IdentStartChar
   | IdentContinueChar
+  | StringTextChar
+  | LineCommentTextChar
+  | BlockCommentTextChar
 
 
-// 🟡 coproduct dissolution — CP-1b item 13b (LexPattern).
+// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, walker witness remains gated.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
+  | KeywordPattern { text: String }
   | CharPattern { char: Char }
   | CharClassPattern { class: LexCharClass }
   | SequencePattern { left: LexPattern, right: LexPattern }
   | ChoicePattern { left: LexPattern, right: LexPattern }
   | OptionalPattern { element: LexPattern }
   | RepeatPattern { element: LexPattern }
+  | OneOrMorePattern { element: LexPattern }
+  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13c (LexRule).
+// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule { pattern: LexPattern }
 
 
 type LexRuleSet {
@@ -45,7 +54,7 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13d (LexRules).
+// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk remains gated.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }
@@ -64,6 +73,25 @@ type TokenStream {
 data tokenize_lexical_walk_not_realized: Symbol = tokenize_lexical_walk_not_realized
 
 data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
+
+
+fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
+  match rule {
+    TokenRule { token_class: c, pattern: _ } => c == token_class
+    TriviaRule { pattern: _ } => false
+  }
+}
+
+
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  fold_list(
+    xs: rules.rules,
+    empty: false,
+    cons: fn(acc, rule) {
+      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
+    }
+  )
+}
 
 
 fn tokenize_lexical_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
