@@ -875,21 +875,15 @@ mod compiler_tests {
         use crate::v2_rt::rc_empty_map as empty_map;
         let key = type_variable_node("K".to_string());
         let value = type_variable_node("V".to_string());
-        let pf = make_keyed_container_type(
-            &"PartialFunction".to_string(),
-            key.clone(),
-            value.clone(),
-        );
+        let pf =
+            make_keyed_container_type(&"PartialFunction".to_string(), key.clone(), value.clone());
         let map = make_map_type(key, value);
         let indices = empty_map();
         assert_eq!(
             authored_name_at(indices.clone(), &pf.ty),
             "PartialFunction".to_string()
         );
-        assert_eq!(
-            authored_name_at(indices, &map.ty),
-            "Map".to_string()
-        );
+        assert_eq!(authored_name_at(indices, &map.ty), "Map".to_string());
     }
 
     #[test]
