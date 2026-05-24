@@ -1,9 +1,6 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
 // Owns: corpus coverage meta-lens (L6/L7/impossible-bug/testgen gap detection)
-//       CoverageDefectKey CoverageDefectAcceptanceKey CoverageReading coverage_lens
-//       expected_l6_coverage_keys expected_l7_coverage_keys expected_impossible_bug_coverage_keys
-//       expected_testgen_coverage_keys
 // Consumes: std/node std/witness std/diagnostic std/verification std/algebra std/nat
 //           extdeps/languages/dag lens/testgen
 // Status: T-18 filled — substrate-derived expected sets + corpus gap read for L6/L7/testgen/impossible-bug.
@@ -42,7 +39,8 @@ import v4.std.algebra {
   filter,
   fold_list,
   fold_list_right,
-  is_empty
+  is_empty,
+  list_snoc_item
 }
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -409,7 +407,7 @@ fn dedupe_snoc<C>(acc: List<C>, item: C, eq: fn(C, C) -> Bool) -> List<C> {
   if contains(xs: acc, item: item, eq: eq) {
     acc
   } else {
-    Cons { head: item, tail: acc }
+    list_snoc_item(xs: acc, item: item)
   }
 }
 
