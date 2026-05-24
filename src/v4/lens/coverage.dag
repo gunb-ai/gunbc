@@ -1002,20 +1002,27 @@ fn collect_l6_coverage_keys(corpus: List<TestClaim>) -> List<L6CoverageKey> {
 }
 
 
+fn impossible_bug_coverage_keys_from_claim(c: TestClaim) -> List<ImpossibleBugCoverageKey> {
+  match c {
+    DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
+      match impossible_bug_coverage_keys_from_diagnostics(d: d) {
+        Accepted { value: keys, diagnostics: None } => keys
+        Rejected { diagnostics: _ } => Empty
+      }
+    _ => Empty
+  }
+}
+
+
 fn collect_impossible_bug_coverage_keys(corpus: List<TestClaim>) -> List<ImpossibleBugCoverageKey> {
   fold_list(
     xs: corpus,
     empty: Empty,
     cons: fn(acc, claim) {
-      match claim {
-        DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
-          match impossible_bug_coverage_keys_from_diagnostics(d: d) {
-            Accepted { value: keys, diagnostics: None } =>
-              append_impossible_bug_keys(acc: acc, keys: keys)
-            Rejected { diagnostics: _ } => acc
-          }
-        _ => acc
-      }
+      append_impossible_bug_keys(
+        acc: acc,
+        keys: impossible_bug_coverage_keys_from_claim(c: claim)
+      )
     }
   )
 }
