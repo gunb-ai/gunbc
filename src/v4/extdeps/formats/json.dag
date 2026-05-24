@@ -23,25 +23,32 @@ type JsonValue
 // ── Numeric-lexeme profile ───────────────────────────────────────────────────
 // RFC 8259 §6: number = [ minus ] int [ frac ] [ exp ]
 //              int  = zero / ( digit1-9 *DIGIT )        — no leading zeros
-//              frac = decimal-point 1*DIGIT
-//              exp  = e [ minus / plus ] 1*DIGIT
-
-type JsonNumberIntegerNoLeadingZerosWitness {}
-
-type JsonNumberFracDecimalPointSeparatorWitness {}
-
-type JsonNumberExpEOrCapitalEMarkerWitness {}
-
-type JsonNumberExpSignOptionalPlusOrMinusWitness {}
+//              frac = decimal-point 1*DIGIT             — 1+ digits required
+//              exp  = e [ minus / plus ] 1*DIGIT        — 1+ digits required
 
 type JsonNumberLeadingMinusOptionalPrefixWitness {}
 
+type JsonNumberIntegerNoLeadingZerosWitness {}
+
+// frac = decimal-point 1*DIGIT — the decimal point must be followed by ≥1 digit;
+// bare trailing dot (e.g. "1.") is not a valid JSON number.
+type JsonNumberFracDecimalPointSeparatorWitness {}
+type JsonNumberFracRequiresAtLeastOneDigitAfterPointWitness {}
+
+// exp = e [sign] 1*DIGIT — the exponent marker must be followed by ≥1 digit;
+// bare trailing exponent (e.g. "1e") is not a valid JSON number.
+type JsonNumberExpEOrCapitalEMarkerWitness {}
+type JsonNumberExpSignOptionalPlusOrMinusWitness {}
+type JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness {}
+
 type JsonNumberLexemeFacts {
+  leading_minus_optional_prefix: JsonNumberLeadingMinusOptionalPrefixWitness,
   integer_part_no_leading_zeros: JsonNumberIntegerNoLeadingZerosWitness,
   frac_decimal_point_separator: JsonNumberFracDecimalPointSeparatorWitness,
+  frac_requires_at_least_one_digit_after_point: JsonNumberFracRequiresAtLeastOneDigitAfterPointWitness,
   exp_e_or_capital_e_marker: JsonNumberExpEOrCapitalEMarkerWitness,
   exp_sign_optional_plus_or_minus: JsonNumberExpSignOptionalPlusOrMinusWitness,
-  leading_minus_optional_prefix: JsonNumberLeadingMinusOptionalPrefixWitness,
+  exp_requires_at_least_one_digit_after_marker: JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness,
 }
 
 
