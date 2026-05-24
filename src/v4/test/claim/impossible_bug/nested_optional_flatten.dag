@@ -21,6 +21,10 @@
 module v4.test.claim.impossible_bug.nested_optional_flatten
 
 
+import v4.lens.coverage {
+  coverage_impossible_bug_reason_double_unwrap,
+  coverage_impossible_bug_reason_nested_optional
+}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -49,8 +53,6 @@ import v4.std.verification {
 data optional_value_symbol: Symbol = optional_value_symbol
 data flattened_optional_symbol: Symbol = flattened_optional_symbol
 data double_unwrap_symbol: Symbol = double_unwrap_symbol
-data nested_optional_reason: Symbol = nested_optional_reason
-data double_unwrap_reason: Symbol = double_unwrap_reason
 data optional_inner: Symbol = optional_inner
 data optional_outer: Symbol = optional_outer
 

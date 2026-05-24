@@ -35,6 +35,10 @@
 module v4.test.claim.impossible_bug.idempotency_contract
 
 
+import v4.lens.coverage {
+  coverage_impossible_bug_reason_idempotency_repetition,
+  coverage_impossible_bug_reason_idempotency_violation
+}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -64,8 +68,6 @@ data idempotent_position_symbol: Symbol = idempotent_position_symbol
 data idempotent_effect_symbol: Symbol = idempotent_effect_symbol
 data non_idempotent_effect_symbol: Symbol = non_idempotent_effect_symbol
 data repeated_append_effect_symbol: Symbol = repeated_append_effect_symbol
-data idempotency_violation_reason: Symbol = idempotency_violation_reason
-data idempotency_repetition_reason: Symbol = idempotency_repetition_reason
 data idempotency_position_field: Symbol = idempotency_position_field
 data idempotency_body_field: Symbol = idempotency_body_field
 
@@ -110,7 +112,7 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = Diagnostic
   input: falsification_repeated_append_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: idempotency_repetition_reason,
+        reason: coverage_impossible_bug_reason_idempotency_repetition,
         at: node_locus(node: falsification_repeated_append_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
@@ -125,7 +127,7 @@ data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticCl
   input: falsification_nonidempotent_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: idempotency_violation_reason,
+        reason: coverage_impossible_bug_reason_idempotency_violation,
         at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }

@@ -39,6 +39,10 @@
 module v4.test.claim.impossible_bug.suboptimal_complexity
 
 
+import v4.lens.coverage {
+  coverage_impossible_bug_reason_suboptimal_complexity,
+  coverage_impossible_bug_reason_suboptimal_inhabitance
+}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -69,8 +73,6 @@ data complexity_contract_symbol: Symbol = complexity_contract_symbol
 data complexity_body_linear_symbol: Symbol = complexity_body_linear_symbol
 data complexity_body_quadratic_symbol: Symbol = complexity_body_quadratic_symbol
 data complexity_body_contradictory_inhabitant_symbol: Symbol = complexity_body_contradictory_inhabitant_symbol
-data complexity_violation_reason: Symbol = complexity_violation_reason
-data complexity_inhabitance_reason: Symbol = complexity_inhabitance_reason
 data complexity_bound_field: Symbol = complexity_bound_field
 data complexity_body_field: Symbol = complexity_body_field
 
@@ -123,7 +125,7 @@ data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticCla
   input: falsification_overcost_against_structural_bound,
   expected_rejection: expected_complexity_rejection(
     input: falsification_overcost_against_structural_bound,
-    reason: complexity_violation_reason,
+    reason: coverage_impossible_bug_reason_suboptimal_complexity,
     correction: within_bound_input
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -139,7 +141,7 @@ data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {
   input: falsification_cost_contradicts_inhabitance,
   expected_rejection: expected_complexity_rejection(
     input: falsification_cost_contradicts_inhabitance,
-    reason: complexity_inhabitance_reason,
+    reason: coverage_impossible_bug_reason_suboptimal_inhabitance,
     correction: within_bound_input
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }

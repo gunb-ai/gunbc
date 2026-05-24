@@ -1,15 +1,110 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageDefectKey CoverageDefectAcceptanceKey
-// Consumes: std/node std/witness std/diagnostic std/verification std/algebra extdeps/languages lens/testgen
-// Status: scaffold — fill per TASKS T-18.
+// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey
+//       CoverageDefectKey CoverageDefectAcceptanceKey CoverageReading coverage_lens
+//       expected_l6_coverage_keys expected_l7_coverage_keys expected_impossible_bug_coverage_keys
+//       expected_testgen_coverage_keys
+// Consumes: std/node std/witness std/diagnostic std/verification std/algebra std/nat
+//           extdeps/languages/dag lens/testgen
+// Status: T-18 filled — substrate-derived expected sets + corpus gap read for L6/L7/testgen/impossible-bug.
 
 module v4.lens.coverage
 
 
-import v4.std.node { Symbol }
-import v4.std.verification { ImpossibleBugClass }
-import v4.lens.testgen { TestgenConcept, AlgebraLawSubject, TypeConstructionSubject }
+import v4.extdeps.languages.dag { dag_language_model_surface_id }
+import v4.lens.testgen {
+  AlgebraLawSubject,
+  BehaviorValueSubject,
+  ConnectiveKernel,
+  DiagnosticExhaustiveness,
+  LanguageBehaviorEquivalence,
+  LanguageBehaviorIoMock,
+  RefinementPreservation,
+  TestgenConcept,
+  TypeConstructionSubject,
+  lbe_io_mock_conj_dag_surface,
+  lbe_io_mock_disj_dag_surface,
+  lbe_io_mock_transform_dag_surface,
+  lbe_subject_conj_dag_surface,
+  lbe_subject_disj_dag_surface,
+  lbe_subject_transform_dag_surface,
+  t19_law_nat_add_associativity,
+  t19_law_nat_add_left_identity,
+  t19_law_nat_add_right_identity,
+  t19_law_nat_mul_annihilator,
+  t19_law_nat_mul_associativity,
+  t19_law_nat_mul_left_identity,
+  testgen_concept_for_manual_claim
+}
+import v4.std.algebra {
+  Cons,
+  Empty,
+  contains,
+  filter,
+  fold_list,
+  fold_list_right,
+  is_empty
+}
+import v4.std.collection { List }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Rejected,
+  Outcome,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  bind_outcome,
+  diagnostics_singleton
+}
+import v4.std.nat {
+  nat_algebra_law_subject_symbol_additive_monoid,
+  nat_algebra_law_subject_symbol_commutative_semiring,
+  nat_algebra_law_subject_symbol_inhabitant_nat
+}
+import v4.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  Conj,
+  Connective,
+  Disj,
+  Instantiation,
+  Loop,
+  Symbol,
+  Transform,
+  Value
+}
+import v4.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  IdempotencyContract,
+  ImpossibleBugClass,
+  NestedOptionalFlatten,
+  RoundTripClaim,
+  SuboptimalComplexity,
+  T19GeneratedClaimAnchor,
+  T19ManualAnchorKey,
+  T19ManualClaimAnchor,
+  T19ManualNatAddAssociativity,
+  T19ManualNatAddLeftIdentity,
+  T19ManualNatAddRightIdentity,
+  T19ManualNatMulAnnihilator,
+  T19ManualNatMulAssociativity,
+  T19ManualNatMulLeftIdentity,
+  TestClaim,
+  TransportTypeDrift,
+  UnenumeratedEffects,
+  UnhandledDiagnosticPaths,
+  test_claim_t19_anchor
+}
+import v4.std.witness { Holds, Violates, Witness }
 
 
 type Coverage<C> {
@@ -32,6 +127,14 @@ type ImpossibleBugCoverageKey {
 
 
 type TestgenCoverageKey = TestgenConcept
+
+
+type CoverageReading {
+  l6_missing: List<Coverage<L6CoverageKey>>
+  l7_missing: List<Coverage<L7CoverageKey>>
+  impossible_bug_missing: List<Coverage<ImpossibleBugCoverageKey>>
+  testgen_missing: List<Coverage<TestgenCoverageKey>>
+}
 
 
 // 🟡 coproduct dissolution — SL-COVERAGE-DEFECT-KEY.
@@ -57,6 +160,18 @@ type CoverageDefectAcceptanceKey {
 
 
 type CoverageDefectAcceptance = Coverage<CoverageDefectAcceptanceKey>
+
+
+data coverage_virtual_file: Symbol = coverage_virtual_file
+data coverage_reason_l6_missing: Symbol = coverage_reason_l6_missing
+data coverage_reason_l7_missing: Symbol = coverage_reason_l7_missing
+data coverage_reason_impossible_bug_missing: Symbol = coverage_reason_impossible_bug_missing
+data coverage_reason_testgen_missing: Symbol = coverage_reason_testgen_missing
+data coverage_reason_incomplete: Symbol = coverage_reason_incomplete
+data coverage_reason_testgen_concept_unmapped: Symbol = coverage_reason_testgen_concept_unmapped
+data coverage_reason_l6_concept_unmapped: Symbol = coverage_reason_l6_concept_unmapped
+data coverage_reason_l7_anchor_unmapped: Symbol = coverage_reason_l7_anchor_unmapped
+data coverage_reason_impossible_bug_diagnostic_unmapped: Symbol = coverage_reason_impossible_bug_diagnostic_unmapped
 
 
 data coverage_defect_discriminant_predicate: CoverageDefectAcceptance = {
@@ -97,4 +212,717 @@ data coverage_defect_parallel_authority: CoverageDefectAcceptance = {
 }
 data coverage_defect_skeleton_collapse: CoverageDefectAcceptance = {
   concern: CoverageDefectAcceptanceKey { lens: SkeletonCollapse }
+}
+
+
+fn connective_eq(a: Connective, b: Connective) -> Bool {
+  match a {
+    Atom { identity: ai } =>
+      match b {
+        Atom { identity: bi } => ai == bi
+        _ => false
+      }
+    Conj =>
+      match b {
+        Conj => true
+        _ => false
+      }
+    Disj =>
+      match b {
+        Disj => true
+        _ => false
+      }
+    Arrow =>
+      match b {
+        Arrow => true
+        _ => false
+      }
+    Cardinality =>
+      match b {
+        Cardinality => true
+        _ => false
+      }
+    Instantiation =>
+      match b {
+        Instantiation => true
+        _ => false
+      }
+  }
+}
+
+
+fn behavior_eq(a: Behavior, b: Behavior) -> Bool {
+  match a {
+    Value =>
+      match b {
+        Value => true
+        _ => false
+      }
+    Transform =>
+      match b {
+        Transform => true
+        _ => false
+      }
+    Branch =>
+      match b {
+        Branch => true
+        _ => false
+      }
+    Loop =>
+      match b {
+        Loop => true
+        _ => false
+      }
+    Bind =>
+      match b {
+        Bind => true
+        _ => false
+      }
+  }
+}
+
+
+fn type_construction_subject_eq(a: TypeConstructionSubject, b: TypeConstructionSubject) -> Bool {
+  match a {
+    ConnectiveKernel { connective: ac } =>
+      match b {
+        ConnectiveKernel { connective: bc } => connective_eq(a: ac, b: bc)
+        _ => false
+      }
+    BehaviorValueSubject { behavior: ab } =>
+      match b {
+        BehaviorValueSubject { behavior: bb } => behavior_eq(a: ab, b: bb)
+        _ => false
+      }
+  }
+}
+
+
+fn algebra_law_subject_eq(a: AlgebraLawSubject, b: AlgebraLawSubject) -> Bool {
+  a.algebra == b.algebra && a.inhabitant == b.inhabitant && a.law == b.law
+}
+
+
+fn l6_coverage_key_eq(a: L6CoverageKey, b: L6CoverageKey) -> Bool {
+  a.language == b.language &&
+    type_construction_subject_eq(a: a.subject, b: b.subject)
+}
+
+
+fn l7_coverage_key_eq(a: L7CoverageKey, b: L7CoverageKey) -> Bool {
+  algebra_law_subject_eq(a: a, b: b)
+}
+
+
+fn impossible_bug_coverage_key_eq(a: ImpossibleBugCoverageKey, b: ImpossibleBugCoverageKey) -> Bool {
+  match a.bug_class {
+    SuboptimalComplexity =>
+      match b.bug_class {
+        SuboptimalComplexity => true
+        _ => false
+      }
+    IdempotencyContract =>
+      match b.bug_class {
+        IdempotencyContract => true
+        _ => false
+      }
+    TransportTypeDrift =>
+      match b.bug_class {
+        TransportTypeDrift => true
+        _ => false
+      }
+    NestedOptionalFlatten =>
+      match b.bug_class {
+        NestedOptionalFlatten => true
+        _ => false
+      }
+    UnenumeratedEffects =>
+      match b.bug_class {
+        UnenumeratedEffects => true
+        _ => false
+      }
+    UnhandledDiagnosticPaths =>
+      match b.bug_class {
+        UnhandledDiagnosticPaths => true
+        _ => false
+      }
+  }
+}
+
+
+fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool {
+  match a {
+    TypeConstruction { subject: as } =>
+      match b {
+        TypeConstruction { subject: bs } =>
+          type_construction_subject_eq(a: as, b: bs)
+        _ => false
+      }
+    AlgebraLaw { subject: as } =>
+      match b {
+        AlgebraLaw { subject: bs } => algebra_law_subject_eq(a: as, b: bs)
+        _ => false
+      }
+    DiagnosticExhaustiveness =>
+      match b {
+        DiagnosticExhaustiveness => true
+        _ => false
+      }
+    LensApplicability { subject: _ } =>
+      match b {
+        LensApplicability { subject: _ } => true
+        _ => false
+      }
+    BidirectionalRoundtrip { subject: _ } =>
+      match b {
+        BidirectionalRoundtrip { subject: _ } => true
+        _ => false
+      }
+    LanguageBehaviorEquivalence { subject: as, mock: _ } =>
+      match b {
+        LanguageBehaviorEquivalence { subject: bs, mock: _ } =>
+          type_construction_subject_eq(a: as.subject, b: bs.subject) &&
+            as.language == bs.language
+        _ => false
+      }
+    RefinementPreservation { subject: _ } =>
+      match b {
+        RefinementPreservation { subject: _ } => true
+        _ => false
+      }
+  }
+}
+
+
+fn l6_coverage_key(subject: TypeConstructionSubject, language: Symbol) -> L6CoverageKey {
+  L6CoverageKey { subject: subject, language: language }
+}
+
+
+fn coverage_of<C>(key: C) -> Coverage<C> {
+  Coverage { concern: key }
+}
+
+
+fn dedupe_snoc<C>(acc: List<C>, item: C, eq: fn(C, C) -> Bool) -> List<C> {
+  if contains(xs: acc, item: item, eq: eq) {
+    acc
+  } else {
+    Cons { head: item, tail: acc }
+  }
+}
+
+
+fn missing_keys<C>(
+  expected: List<C>,
+  actual: List<C>,
+  eq: fn(C, C) -> Bool
+) -> List<C> {
+  filter(xs: expected, predicate: fn(key) {
+    !contains(xs: actual, item: key, eq: eq)
+  })
+}
+
+
+fn missing_coverage<C>(
+  expected: List<C>,
+  actual: List<C>,
+  eq: fn(C, C) -> Bool
+) -> List<Coverage<C>> {
+  fold_list_right(
+    xs: missing_keys(expected: expected, actual: actual, eq: eq),
+    empty: Empty,
+    snoc: fn(acc, key) {
+      Cons { head: coverage_of(key: key), tail: acc }
+    }
+  )
+}
+
+
+fn bootstrap_l6_language_surfaces() -> List<Symbol> {
+  [dag_language_model_surface_id]
+}
+
+
+fn bootstrap_type_construction_subjects() -> List<TypeConstructionSubject> {
+  [
+    ConnectiveKernel { connective: Conj },
+    ConnectiveKernel { connective: Disj },
+    ConnectiveKernel { connective: Arrow },
+    ConnectiveKernel { connective: Cardinality },
+    ConnectiveKernel { connective: Instantiation },
+    BehaviorValueSubject { behavior: Value },
+    BehaviorValueSubject { behavior: Transform },
+    BehaviorValueSubject { behavior: Branch },
+    BehaviorValueSubject { behavior: Loop },
+    BehaviorValueSubject { behavior: Bind },
+  ]
+}
+
+
+fn append_l6_keys_for_language(
+  subjects: List<TypeConstructionSubject>,
+  language: Symbol,
+  acc: List<L6CoverageKey>
+) -> List<L6CoverageKey> {
+  fold_list_right(
+    xs: subjects,
+    empty: acc,
+    snoc: fn(tail, subject) {
+      Cons {
+        head: l6_coverage_key(subject: subject, language: language),
+        tail: tail
+      }
+    }
+  )
+}
+
+
+fn expected_l6_coverage_keys() -> List<L6CoverageKey> {
+  fold_list_right(
+    xs: bootstrap_l6_language_surfaces(),
+    empty: Empty,
+    snoc: fn(acc, language) {
+      append_l6_keys_for_language(
+        subjects: bootstrap_type_construction_subjects(),
+        language: language,
+        acc: acc
+      )
+    }
+  )
+}
+
+
+fn nat_add_law_subject(law: Symbol) -> AlgebraLawSubject {
+  AlgebraLawSubject {
+    algebra: nat_algebra_law_subject_symbol_additive_monoid,
+    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+    law: law,
+  }
+}
+
+
+fn nat_mul_law_subject(law: Symbol) -> AlgebraLawSubject {
+  AlgebraLawSubject {
+    algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+    law: law,
+  }
+}
+
+
+fn expected_l7_coverage_keys() -> List<L7CoverageKey> {
+  [
+    nat_add_law_subject(law: t19_law_nat_add_left_identity),
+    nat_add_law_subject(law: t19_law_nat_add_right_identity),
+    nat_add_law_subject(law: t19_law_nat_add_associativity),
+    nat_mul_law_subject(law: t19_law_nat_mul_left_identity),
+    nat_mul_law_subject(law: t19_law_nat_mul_annihilator),
+    nat_mul_law_subject(law: t19_law_nat_mul_associativity),
+  ]
+}
+
+
+fn expected_impossible_bug_coverage_keys() -> List<ImpossibleBugCoverageKey> {
+  [
+    ImpossibleBugCoverageKey { bug_class: SuboptimalComplexity },
+    ImpossibleBugCoverageKey { bug_class: IdempotencyContract },
+    ImpossibleBugCoverageKey { bug_class: TransportTypeDrift },
+    ImpossibleBugCoverageKey { bug_class: NestedOptionalFlatten },
+    ImpossibleBugCoverageKey { bug_class: UnenumeratedEffects },
+    ImpossibleBugCoverageKey { bug_class: UnhandledDiagnosticPaths },
+  ]
+}
+
+
+fn expected_type_construction_testgen_keys() -> List<TestgenCoverageKey> {
+  [
+    TypeConstruction { subject: ConnectiveKernel { connective: Conj } },
+    TypeConstruction { subject: ConnectiveKernel { connective: Disj } },
+    TypeConstruction { subject: ConnectiveKernel { connective: Arrow } },
+    TypeConstruction { subject: ConnectiveKernel { connective: Cardinality } },
+    TypeConstruction { subject: ConnectiveKernel { connective: Instantiation } },
+    TypeConstruction { subject: BehaviorValueSubject { behavior: Transform } },
+    TypeConstruction { subject: BehaviorValueSubject { behavior: Branch } },
+    TypeConstruction { subject: BehaviorValueSubject { behavior: Loop } },
+    TypeConstruction { subject: BehaviorValueSubject { behavior: Bind } },
+  ]
+}
+
+
+fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
+  [
+    AlgebraLaw { subject: nat_add_law_subject(law: t19_law_nat_add_left_identity) },
+    AlgebraLaw { subject: nat_add_law_subject(law: t19_law_nat_add_right_identity) },
+    AlgebraLaw { subject: nat_add_law_subject(law: t19_law_nat_add_associativity) },
+    AlgebraLaw { subject: nat_mul_law_subject(law: t19_law_nat_mul_left_identity) },
+    AlgebraLaw { subject: nat_mul_law_subject(law: t19_law_nat_mul_annihilator) },
+    AlgebraLaw { subject: nat_mul_law_subject(law: t19_law_nat_mul_associativity) },
+  ]
+}
+
+
+fn expected_language_behavior_equivalence_testgen_keys() -> List<TestgenCoverageKey> {
+  [
+    LanguageBehaviorEquivalence {
+      subject: lbe_subject_conj_dag_surface(),
+      mock: lbe_io_mock_conj_dag_surface(),
+    },
+    LanguageBehaviorEquivalence {
+      subject: lbe_subject_disj_dag_surface(),
+      mock: lbe_io_mock_disj_dag_surface(),
+    },
+    LanguageBehaviorEquivalence {
+      subject: lbe_subject_transform_dag_surface(),
+      mock: lbe_io_mock_transform_dag_surface(),
+    },
+  ]
+}
+
+
+// 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag
+// dissolve-on-arrival: project expected TestgenConcept rows from manual-anchor manifest + scheduled generators.
+fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
+  fold_list_right(
+    xs: expected_type_construction_testgen_keys(),
+    empty: fold_list_right(
+      xs: expected_algebra_law_testgen_keys(),
+      empty: fold_list_right(
+        xs: expected_language_behavior_equivalence_testgen_keys(),
+        empty: [DiagnosticExhaustiveness],
+        snoc: fn(acc, item) {
+          dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+        }
+      ),
+      snoc: fn(acc, item) {
+        dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+      }
+    ),
+    snoc: fn(acc, item) {
+      dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
+    }
+  )
+}
+
+
+fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> {
+  match testgen_concept_for_manual_claim(claim: c) {
+    Accepted { value: concept, diagnostics: None } =>
+      Accepted { value: concept, diagnostics: None }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+
+fn l7_coverage_key_from_manual_anchor(anchor: T19ManualAnchorKey) -> Outcome<L7CoverageKey> {
+  match anchor {
+    T19ManualNatAddLeftIdentity =>
+      Accepted {
+        value: nat_add_law_subject(law: t19_law_nat_add_left_identity),
+        diagnostics: None,
+      }
+    T19ManualNatAddRightIdentity =>
+      Accepted {
+        value: nat_add_law_subject(law: t19_law_nat_add_right_identity),
+        diagnostics: None,
+      }
+    T19ManualNatAddAssociativity =>
+      Accepted {
+        value: nat_add_law_subject(law: t19_law_nat_add_associativity),
+        diagnostics: None,
+      }
+    T19ManualNatMulLeftIdentity =>
+      Accepted {
+        value: nat_mul_law_subject(law: t19_law_nat_mul_left_identity),
+        diagnostics: None,
+      }
+    T19ManualNatMulAnnihilator =>
+      Accepted {
+        value: nat_mul_law_subject(law: t19_law_nat_mul_annihilator),
+        diagnostics: None,
+      }
+    T19ManualNatMulAssociativity =>
+      Accepted {
+        value: nat_mul_law_subject(law: t19_law_nat_mul_associativity),
+        diagnostics: None,
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_l7_anchor_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+
+
+fn l7_coverage_key_from_claim(c: TestClaim) -> Outcome<L7CoverageKey> {
+  match test_claim_t19_anchor(c: c) {
+    T19ManualClaimAnchor { manual_anchor: anchor } =>
+      l7_coverage_key_from_manual_anchor(anchor: anchor)
+    T19GeneratedClaimAnchor { generated_anchor: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_l7_anchor_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+
+
+fn l6_coverage_key_from_testgen_concept(concept: TestgenConcept) -> Outcome<L6CoverageKey> {
+  match concept {
+    LanguageBehaviorEquivalence { subject: subject, mock: _ } =>
+      Accepted {
+        value: l6_coverage_key(subject: subject.subject, language: subject.language),
+        diagnostics: None,
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_l6_concept_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+
+
+fn l6_coverage_key_from_claim(c: TestClaim) -> Outcome<L6CoverageKey> {
+  bind_outcome(
+    o: testgen_coverage_key_from_claim(c: c),
+    f: fn(concept) {
+      l6_coverage_key_from_testgen_concept(concept: concept)
+    }
+  )
+}
+
+
+// 🟡 gated — feature:impossible-bug-claim-projection — bind task: src/v4/TASKS.md#t-18-lenscoveragedag
+// dissolve-on-arrival: TestClaim carries ImpossibleBugClass or canonical witness anchor; forbidden: reason-symbol shadow tables outside verification.
+fn impossible_bug_coverage_key_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugCoverageKey> {
+  if reason == coverage_impossible_bug_reason_suboptimal_complexity ||
+    reason == coverage_impossible_bug_reason_suboptimal_inhabitance {
+    Accepted {
+      value: ImpossibleBugCoverageKey { bug_class: SuboptimalComplexity },
+      diagnostics: None,
+    }
+  } else if reason == coverage_impossible_bug_reason_idempotency_violation ||
+    reason == coverage_impossible_bug_reason_idempotency_repetition {
+    Accepted {
+      value: ImpossibleBugCoverageKey { bug_class: IdempotencyContract },
+      diagnostics: None,
+    }
+  } else if reason == coverage_impossible_bug_reason_transport_drift ||
+    reason == coverage_impossible_bug_reason_target_transport_drift {
+    Accepted {
+      value: ImpossibleBugCoverageKey { bug_class: TransportTypeDrift },
+      diagnostics: None,
+    }
+  } else if reason == coverage_impossible_bug_reason_nested_optional ||
+    reason == coverage_impossible_bug_reason_double_unwrap {
+    Accepted {
+      value: ImpossibleBugCoverageKey { bug_class: NestedOptionalFlatten },
+      diagnostics: None,
+    }
+  } else if reason == coverage_impossible_bug_reason_redundant_read {
+    Accepted {
+      value: ImpossibleBugCoverageKey { bug_class: UnenumeratedEffects },
+      diagnostics: None,
+    }
+  } else if reason == coverage_impossible_bug_reason_unhandled_division ||
+    reason == coverage_impossible_bug_reason_unhandled_index ||
+    reason == coverage_impossible_bug_reason_force_unwrap {
+    Accepted {
+      value: ImpossibleBugCoverageKey { bug_class: UnhandledDiagnosticPaths },
+      diagnostics: None,
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+          at: Textual { file: coverage_virtual_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  }
+}
+
+
+data coverage_impossible_bug_reason_suboptimal_complexity: Symbol = coverage_impossible_bug_reason_suboptimal_complexity
+data coverage_impossible_bug_reason_suboptimal_inhabitance: Symbol = coverage_impossible_bug_reason_suboptimal_inhabitance
+data coverage_impossible_bug_reason_idempotency_violation: Symbol = coverage_impossible_bug_reason_idempotency_violation
+data coverage_impossible_bug_reason_idempotency_repetition: Symbol = coverage_impossible_bug_reason_idempotency_repetition
+data coverage_impossible_bug_reason_transport_drift: Symbol = coverage_impossible_bug_reason_transport_drift
+data coverage_impossible_bug_reason_target_transport_drift: Symbol = coverage_impossible_bug_reason_target_transport_drift
+data coverage_impossible_bug_reason_nested_optional: Symbol = coverage_impossible_bug_reason_nested_optional
+data coverage_impossible_bug_reason_double_unwrap: Symbol = coverage_impossible_bug_reason_double_unwrap
+data coverage_impossible_bug_reason_redundant_read: Symbol = coverage_impossible_bug_reason_redundant_read
+data coverage_impossible_bug_reason_unhandled_division: Symbol = coverage_impossible_bug_reason_unhandled_division
+data coverage_impossible_bug_reason_unhandled_index: Symbol = coverage_impossible_bug_reason_unhandled_index
+data coverage_impossible_bug_reason_force_unwrap: Symbol = coverage_impossible_bug_reason_force_unwrap
+
+
+fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
+  match c {
+    DiagnosticClaim { expected_rejection: d, label: _, t19_anchor: _, input: _, classification: _ } =>
+      impossible_bug_coverage_key_from_diagnostic_reason(reason: d.head.reason)
+    CompilesClaim { label: _, t19_anchor: _, input: _, expected_value: _, classification: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    EqualsClaim { label: _, t19_anchor: _, lhs: _, rhs: _, classification: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+            at: Textual { file: coverage_virtual_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+
+
+fn collect_testgen_coverage_keys(corpus: List<TestClaim>) -> List<TestgenCoverageKey> {
+  fold_list(
+    xs: corpus,
+    empty: Empty,
+    cons: fn(acc, claim) {
+      match testgen_coverage_key_from_claim(c: claim) {
+        Accepted { value: key, diagnostics: None } =>
+          dedupe_snoc(acc: acc, item: key, eq: testgen_coverage_key_eq)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+
+fn collect_l7_coverage_keys(corpus: List<TestClaim>) -> List<L7CoverageKey> {
+  fold_list(
+    xs: corpus,
+    empty: Empty,
+    cons: fn(acc, claim) {
+      match l7_coverage_key_from_claim(c: claim) {
+        Accepted { value: key, diagnostics: None } =>
+          dedupe_snoc(acc: acc, item: key, eq: l7_coverage_key_eq)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+
+fn collect_l6_coverage_keys(corpus: List<TestClaim>) -> List<L6CoverageKey> {
+  fold_list(
+    xs: corpus,
+    empty: Empty,
+    cons: fn(acc, claim) {
+      match l6_coverage_key_from_claim(c: claim) {
+        Accepted { value: key, diagnostics: None } =>
+          dedupe_snoc(acc: acc, item: key, eq: l6_coverage_key_eq)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+
+fn collect_impossible_bug_coverage_keys(corpus: List<TestClaim>) -> List<ImpossibleBugCoverageKey> {
+  fold_list(
+    xs: corpus,
+    empty: Empty,
+    cons: fn(acc, claim) {
+      match impossible_bug_coverage_key_from_claim(c: claim) {
+        Accepted { value: key, diagnostics: None } =>
+          dedupe_snoc(acc: acc, item: key, eq: impossible_bug_coverage_key_eq)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+
+fn coverage_reading(corpus: List<TestClaim>) -> CoverageReading {
+  CoverageReading {
+    l6_missing: missing_coverage(
+      expected: expected_l6_coverage_keys(),
+      actual: collect_l6_coverage_keys(corpus: corpus),
+      eq: l6_coverage_key_eq
+    ),
+    l7_missing: missing_coverage(
+      expected: expected_l7_coverage_keys(),
+      actual: collect_l7_coverage_keys(corpus: corpus),
+      eq: l7_coverage_key_eq
+    ),
+    impossible_bug_missing: missing_coverage(
+      expected: expected_impossible_bug_coverage_keys(),
+      actual: collect_impossible_bug_coverage_keys(corpus: corpus),
+      eq: impossible_bug_coverage_key_eq
+    ),
+    testgen_missing: missing_coverage(
+      expected: expected_testgen_coverage_keys(),
+      actual: collect_testgen_coverage_keys(corpus: corpus),
+      eq: testgen_coverage_key_eq
+    ),
+  }
+}
+
+
+fn coverage_reading_complete(r: CoverageReading) -> Bool {
+  is_empty(xs: r.l6_missing) &&
+    is_empty(xs: r.l7_missing) &&
+    is_empty(xs: r.impossible_bug_missing) &&
+    is_empty(xs: r.testgen_missing)
+}
+
+
+fn coverage_incomplete_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: coverage_reason_incomplete,
+    at: Textual { file: coverage_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn coverage_lens(corpus: List<TestClaim>) -> Witness<CoverageReading> {
+  let reading = coverage_reading(corpus: corpus)
+  if coverage_reading_complete(r: reading) {
+    Holds { value: reading }
+  } else {
+    Violates { diagnostic: coverage_incomplete_diagnostic() }
+  }
 }
