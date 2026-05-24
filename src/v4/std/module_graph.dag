@@ -108,7 +108,7 @@ fn module_path_segment_eq(a: ModulePathSegment, b: ModulePathSegment) -> Bool {
 }
 
 
-// 🟢 predicate dissolution — zip_eq canonical two-list primitive landed in std/algebra.dag (node://adhoc-16289004-6ea).
+// 🟢 predicate dissolution — zip_eq canonical two-list primitive landed in std/algebra.dag.
 fn module_path_segments_eq(
   a: FreeMonoid<ModulePathSegment>,
   b: FreeMonoid<ModulePathSegment>
@@ -122,7 +122,7 @@ fn module_path_eq(a: ModulePath, b: ModulePath) -> Bool {
 }
 
 
-// 🟢 predicate dissolution — is_prefix_of canonical two-list primitive landed in std/algebra.dag (node://adhoc-16289004-6ea).
+// 🟢 predicate dissolution — is_prefix_of canonical two-list primitive landed in std/algebra.dag.
 fn module_segments_is_prefix_of(
   prefix: FreeMonoid<ModulePathSegment>,
   path: FreeMonoid<ModulePathSegment>
@@ -160,7 +160,7 @@ fn module_ancestor_witness(
 }
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind node://adhoc-a5735146-0e1 — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T (node://adhoc-a5735146-0e1); forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
 fn module_graph_entry_for_path_fold(
   entries: FreeMonoid<ModuleEntry>,
   path: ModulePath,
