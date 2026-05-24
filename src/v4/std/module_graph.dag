@@ -1,0 +1,223 @@
+// src/v4/std/module_graph.dag
+// Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
+// Owns: ModulePath, ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup.
+// Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/witness.dag.
+// Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_resolve.dag.
+// Anchor: https://en.wikipedia.org/wiki/Module_(programming)
+
+
+module v4.std.module_graph
+
+
+import v4.std.algebra { Empty, Cons, FreeMonoid }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  port_locus
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+
+// A single segment in a dotted module path (e.g. "std" in "v4.std.node").
+type ModulePathSegment {
+  name: Symbol
+}
+
+
+// An ordered list of path segments forming a fully-qualified module path.
+type ModulePath {
+  segments: FreeMonoid<ModulePathSegment>
+}
+
+
+// A module entry: its declared path and the resolved Node tree rooted at that module.
+type ModuleEntry {
+  path: ModulePath
+  root: Node
+}
+
+
+// The full module graph for a compilation unit — a flat registry of all known modules.
+type ModuleGraph {
+  entries: FreeMonoid<ModuleEntry>
+}
+
+
+// Typed receipt of an ancestor-relation proof: `ancestor.segments` is a prefix of `descendant.segments`.
+// 🟡 feature:opaque-proof-constructor — AncestorRelation is a plain record; non-prefix pairs are constructible outside module_ancestor_witness; dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_ancestor_witness as the sole construction path.
+type AncestorRelation {
+  ancestor: ModulePath
+  descendant: ModulePath
+}
+
+
+data module_graph_ancestor_not_prefix: Symbol = module_graph_ancestor_not_prefix
+data module_graph_entry_not_found: Symbol = module_graph_entry_not_found
+data module_graph_duplicate_path: Symbol = module_graph_duplicate_path
+
+
+fn module_ancestor_not_prefix_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: module_graph_ancestor_not_prefix,
+    at: port_locus(port: module_graph_ancestor_not_prefix),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn module_entry_not_found_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: module_graph_entry_not_found,
+    at: port_locus(port: module_graph_entry_not_found),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn module_graph_duplicate_path_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: module_graph_duplicate_path,
+    at: port_locus(port: module_graph_duplicate_path),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// Fold state for uniqueness-enforced entry lookup. Arms are fixed (not-found / found-once / duplicate).
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ModuleEntryFindState
+  = EntryNotFound
+  | EntryFoundOnce { found: ModuleEntry }
+  | EntryFoundDuplicate
+
+
+fn module_entry_find_state_to_witness(state: ModuleEntryFindState) -> Witness<ModuleEntry> {
+  match state {
+    EntryNotFound => Violates { diagnostic: module_entry_not_found_diagnostic() }
+    EntryFoundOnce { found: entry } => Holds { value: entry }
+    EntryFoundDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
+  }
+}
+
+
+fn module_path_segment_eq(a: ModulePathSegment, b: ModulePathSegment) -> Bool {
+  a.name == b.name
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: free-monoid-zip-eq — hand-rolls Empty/Cons zip-equality; dissolve-on-arrival: canonical zip-fold equality primitive in std/algebra.dag; forbidden: fold_list laundering.
+fn module_path_segments_eq(
+  a: FreeMonoid<ModulePathSegment>,
+  b: FreeMonoid<ModulePathSegment>
+) -> Bool {
+  match a {
+    Empty =>
+      match b {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => false
+        Cons { head: hb, tail: tb } =>
+          module_path_segment_eq(a: ha, b: hb)
+            && module_path_segments_eq(a: ta, b: tb)
+      }
+  }
+}
+
+
+fn module_path_eq(a: ModulePath, b: ModulePath) -> Bool {
+  module_path_segments_eq(a: a.segments, b: b.segments)
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: free-monoid-prefix-fold — hand-rolls Empty/Cons prefix walk; dissolve-on-arrival: canonical prefix-fold primitive in std/algebra.dag; forbidden: fold_list laundering.
+fn module_segments_is_prefix_of(
+  prefix: FreeMonoid<ModulePathSegment>,
+  path: FreeMonoid<ModulePathSegment>
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match path {
+        Empty => false
+        Cons { head: h_path, tail: t_path } =>
+          module_path_segment_eq(a: h_prefix, b: h_path)
+            && module_segments_is_prefix_of(prefix: t_prefix, path: t_path)
+      }
+  }
+}
+
+
+// True if `ancestor.segments` is a prefix of (or equal to) `descendant.segments`.
+fn module_is_prefix_of(ancestor: ModulePath, descendant: ModulePath) -> Bool {
+  module_segments_is_prefix_of(
+    prefix: ancestor.segments,
+    path: descendant.segments
+  )
+}
+
+
+// Witnesses that `ancestor` is a module-path prefix of (or equal to) `descendant`.
+// Primary predicate for pub(in path) visibility and cross-file binding checks in
+// compiler/03_resolve.dag.
+fn module_ancestor_witness(
+  ancestor: ModulePath,
+  descendant: ModulePath
+) -> Witness<AncestorRelation> {
+  if module_is_prefix_of(ancestor: ancestor, descendant: descendant) {
+    Holds {
+      value: AncestorRelation {
+        ancestor: ancestor,
+        descendant: descendant
+      }
+    }
+  } else {
+    Violates { diagnostic: module_ancestor_not_prefix_diagnostic() }
+  }
+}
+
+
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list generic dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 compiler resolves nested user-defined generic type parameters correctly; forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
+fn module_graph_entry_for_path_fold(
+  entries: FreeMonoid<ModuleEntry>,
+  path: ModulePath,
+  acc: ModuleEntryFindState
+) -> ModuleEntryFindState {
+  match entries {
+    Empty => acc
+    Cons { head: entry, tail: rest } =>
+      module_graph_entry_for_path_fold(
+        entries: rest,
+        path: path,
+        acc: if module_path_eq(a: entry.path, b: path) {
+          match acc {
+            EntryNotFound => EntryFoundOnce { found: entry }
+            EntryFoundOnce { found: _ } => EntryFoundDuplicate
+            EntryFoundDuplicate => EntryFoundDuplicate
+          }
+        } else {
+          acc
+        }
+      )
+  }
+}
+
+
+// Look up a module entry by exact path match. Fails with a duplicate-path diagnostic if path is not unique in the graph.
+fn module_graph_entry_for_path(
+  graph: ModuleGraph,
+  path: ModulePath
+) -> Witness<ModuleEntry> {
+  module_entry_find_state_to_witness(
+    state: module_graph_entry_for_path_fold(
+      entries: graph.entries,
+      path: path,
+      acc: EntryNotFound
+    )
+  )
+}
