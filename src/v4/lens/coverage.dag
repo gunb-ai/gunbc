@@ -859,20 +859,6 @@ fn append_impossible_bug_key_from_diagnostic(
 }
 
 
-fn append_impossible_bug_keys(
-  acc: List<ImpossibleBugCoverageKey>,
-  keys: List<ImpossibleBugCoverageKey>
-) -> List<ImpossibleBugCoverageKey> {
-  fold_list_right(
-    xs: keys,
-    empty: acc,
-    snoc: fn(a, key) {
-      dedupe_snoc(acc: a, item: key, eq: impossible_bug_coverage_key_eq)
-    }
-  )
-}
-
-
 fn fold_diagnostic_tail_into_impossible_bug_keys(
   acc: List<ImpossibleBugCoverageKey>,
   tail: List<Diagnostic>
