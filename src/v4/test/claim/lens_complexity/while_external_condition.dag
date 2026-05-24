@@ -12,12 +12,12 @@ import v4.lens.complexity {
   unknown_complexity_with_diagnostic
 }
 import v4.lens.cost { SymbolicCost, UnknownCost, cost_lens }
+import v4.std.cardinality { cardinality_loop_bound_undeclared }
 import v4.std.diagnostic {
-  AmbiguousIntent,
   Diagnostic,
-  Textual,
+  ExternalContractUnknown,
   Unavailable,
-  WholeFile
+  node_locus
 }
 import v4.std.node {
   Atom,
@@ -30,9 +30,6 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.witness { Witness }
-
-data while_external_condition_file: Symbol = while_external_condition_file
-data while_external_condition_reason: Symbol = while_external_condition_reason
 
 type LensComplexityClaim {
   input: Node
@@ -55,19 +52,21 @@ data while_external_condition_input: Node = Node {
   ]
 }
 
-data while_external_condition_diagnostic: Diagnostic = Diagnostic {
-  reason: while_external_condition_reason,
-  at: Textual { file: while_external_condition_file, extent: WholeFile },
-  correction: Unavailable { reason: AmbiguousIntent }
+data while_external_condition_loop_bound_diagnostic: Diagnostic = Diagnostic {
+  reason: cardinality_loop_bound_undeclared,
+  at: node_locus(node: while_external_condition_input),
+  correction: Unavailable { reason: ExternalContractUnknown }
 }
 
 data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   input: while_external_condition_input,
-  expected_cost: UnknownCost { reason: "loop-bound-undeclared: Loop behavior carries no iteration bound in std/node.dag; structurally unknowable until bound is declared" },
+  expected_cost: UnknownCost {
+    diagnostic: while_external_condition_loop_bound_diagnostic
+  },
   expected_complexity: unknown_complexity_with_diagnostic(
-    diagnostic: while_external_condition_diagnostic
+    diagnostic: while_external_condition_loop_bound_diagnostic
   ),
-  falsification: while_external_condition_diagnostic
+  falsification: while_external_condition_loop_bound_diagnostic
 }
 
 fn while_external_condition_actual_cost() -> Witness<SymbolicCost> {

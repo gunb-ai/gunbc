@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/swift.dag
 // Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.
-// Owns: SwiftIntWidth, SwiftIntSignedness, SwiftFloatWidth, SwiftStringRepresentation, SwiftCharacterRepresentation, SwiftUnitRepresentation, SwiftBoolRepresentation, SwiftIntegerOverflowSemantics, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, SwiftConcreteSyntaxToken, SwiftGrammarRelationRow, swift_language_model_surface_id, swift_surface_spelling_int, swift_surface_spelling_int8, swift_surface_spelling_int16, swift_surface_spelling_int32, swift_surface_spelling_int64, swift_surface_spelling_uint, swift_surface_spelling_uint8, swift_surface_spelling_uint16, swift_surface_spelling_uint32, swift_surface_spelling_uint64, swift_surface_spelling_float, swift_surface_spelling_double, swift_surface_spelling_bool, swift_surface_spelling_character, swift_surface_spelling_string, swift_surface_spelling_void, swift_facts_field_surface_spelling, swift_facts_field_signedness, swift_facts_field_width, swift_facts_field_overflow, swift_facts_field_ieee754_binary, swift_facts_field_scalar, swift_facts_field_value_fact, swift_primitive_fact_axis_scalar_classifier, swift_tag_signed, swift_tag_unsigned, swift_tag_bits8, swift_tag_bits16, swift_tag_bits32, swift_tag_bits64, swift_tag_pointer_word, swift_tag_trap_on_overflow, swift_tag_ieee754_binary32, swift_tag_ieee754_binary64, swift_tag_bool_representation, swift_tag_character_extended_grapheme_cluster, swift_tag_string_unicode_text, swift_tag_void_empty_tuple, swift_tag_scalar_int, swift_tag_scalar_float, swift_tag_scalar_bool, swift_tag_scalar_character, swift_tag_scalar_string, swift_tag_scalar_void, swift_inhabitant_int32, swift_inhabitant_field_int32, swift_inhabitant_field_atom, swift_inhabitant_field_facts, swift_token_kw_func, swift_token_kw_return, swift_token_ident, swift_token_ty_int32, swift_token_plus, swift_token_arrow, swift_token_lbrace, swift_token_rbrace, swift_token_lparen, swift_token_rparen, swift_token_comma, swift_token_colon, swift_production_mvp1_fn_add, swift_surface_fn_item, swift_surface_type_int32, swift_surface_bin_add, swift_binding_fn_add, swift_binding_param_x, swift_binding_param_y, swift_relation_token_fixed, swift_relation_token_bound, swift_relation_rule_mvp1_fn_add, swift_mvp1_source_literal, swift_mvp1_source_text_field, swift_mvp1_source_grammar_field, swift_mvp1_concrete_tokens, swift_mvp1_source_text, swift_integer_overflow_trap, swift_bool_representation, swift_character_representation, swift_string_representation, swift_unit_representation, swift_facts_int, swift_facts_int8, swift_facts_int16, swift_facts_int32, swift_facts_int64, swift_facts_uint, swift_facts_uint8, swift_facts_uint16, swift_facts_uint32, swift_facts_uint64, swift_facts_float, swift_facts_double, swift_facts_bool, swift_facts_character, swift_facts_string, swift_facts_void, swift_integer_facts_catalog, swift_float_facts_catalog, swift_nonnumeric_facts_catalog, swift_bool_grounding, swift_atom, swift_named_edge, swift_signedness_node, swift_width_node, swift_float_width_node, swift_overflow_node, swift_scalar_node, swift_nonnumeric_representation_node, swift_nonnumeric_scalar_classifier_node, swift_integer_facts_node, swift_float_facts_node, swift_nonnumeric_surface_spelling, swift_nonnumeric_facts_node, swift_integer_inhabitant_node, swift_inhabitant_int32_node, swift_declared_inhabitants_root, swift_mvp1_selection_policy_node, swift_mvp1_emitted_add_fn_node, swift_mvp1_source_text_authority, swift_concrete_token_class, swift_concrete_token_node, swift_mvp1_positional_token_edge, swift_mvp1_positional_edges_from_token_classes, swift_mvp1_serialize_source_prefix_edges, swift_mvp1_serialize_source_children, swift_mvp1_serialize_source_node, swift_grammar_terminal, swift_grammar_sequence_fold_step, swift_grammar_sequence_from_token_classes, swift_mvp1_grammar_relation_row, swift_relation_token_edges, swift_grammar_relation_row_node, swift_mvp1_translation_rules_node, swift_mvp1_target_model_node, swift_mvp1_binding_spellings, swift_mvp1_target_model, swift_lex_rule, swift_ident_lex_pattern, swift_ident_lex_rule, swift_wave1_lex_rules, swift_wave1_lex, swift_grammar_atom, swift_grammar_production_mvp1_fn_add, swift_wave1_grammar_root, swift_wave1_grammar, swift_wave1_lex_token_symbol, swift_primitive_fact_map_4, swift_primitive_fact_map_3, swift_primitive_fact_map_2, swift_primitive_bundle_from_integer_facts, swift_primitive_bundle_from_float_facts, swift_primitive_bundle_from_nonnumeric_facts, swift_primitive_bundles_from_integer_catalog, swift_primitive_bundles_from_float_catalog, swift_primitive_bundles_from_nonnumeric_catalog, swift_wave1_primitive_fact_bundles, swift_integer_catalog_surface_symbol_step, swift_float_catalog_surface_symbol_step, swift_nonnumeric_catalog_surface_symbol_step, swift_integer_catalog_surface_symbol, swift_float_catalog_surface_symbol, swift_nonnumeric_catalog_surface_symbol, swift_catalog_surface_symbol, swift_language_model_canonical_symbols, swift_model_core_wave1, swift_language_model_wave1
+// Owns: SwiftIntWidth, SwiftIntSignedness, SwiftFloatWidth, SwiftStringRepresentation, SwiftCharacterRepresentation, SwiftUnitRepresentation, SwiftBoolRepresentation, SwiftIntegerOverflowSemantics, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, SwiftConcreteSyntaxToken, SwiftGrammarRelationRow, swift_language_model_surface_id, swift_surface_spelling_int, swift_surface_spelling_int8, swift_surface_spelling_int16, swift_surface_spelling_int32, swift_surface_spelling_int64, swift_surface_spelling_uint, swift_surface_spelling_uint8, swift_surface_spelling_uint16, swift_surface_spelling_uint32, swift_surface_spelling_uint64, swift_surface_spelling_float, swift_surface_spelling_double, swift_surface_spelling_bool, swift_surface_spelling_character, swift_surface_spelling_string, swift_surface_spelling_void, swift_facts_field_surface_spelling, swift_facts_field_signedness, swift_facts_field_width, swift_facts_field_overflow, swift_facts_field_ieee754_binary, swift_facts_field_scalar, swift_facts_field_value_fact, swift_primitive_fact_axis_scalar_classifier, swift_tag_signed, swift_tag_unsigned, swift_tag_bits8, swift_tag_bits16, swift_tag_bits32, swift_tag_bits64, swift_tag_pointer_word, swift_tag_trap_on_overflow, swift_tag_ieee754_binary32, swift_tag_ieee754_binary64, swift_tag_bool_representation, swift_tag_character_extended_grapheme_cluster, swift_tag_string_unicode_text, swift_tag_void_empty_tuple, swift_tag_scalar_int, swift_tag_scalar_float, swift_tag_scalar_bool, swift_tag_scalar_character, swift_tag_scalar_string, swift_tag_scalar_void, swift_inhabitant_int32, swift_inhabitant_field_int32, swift_inhabitant_field_atom, swift_inhabitant_field_facts, swift_token_kw_func, swift_token_kw_return, swift_token_ident, swift_token_ty_int32, swift_token_plus, swift_token_arrow, swift_token_lbrace, swift_token_rbrace, swift_token_lparen, swift_token_rparen, swift_token_comma, swift_token_colon, swift_production_mvp1_fn_add, swift_surface_fn_item, swift_surface_type_int32, swift_surface_bin_add, swift_binding_fn_add, swift_binding_param_x, swift_binding_param_y, swift_relation_token_fixed, swift_relation_token_bound, swift_relation_rule_mvp1_fn_add, swift_mvp1_source_literal, swift_mvp1_source_text_field, swift_mvp1_source_grammar_field, swift_mvp1_concrete_tokens, swift_mvp1_source_text, swift_integer_overflow_trap, swift_bool_representation, swift_character_representation, swift_string_representation, swift_unit_representation, swift_facts_int, swift_facts_int8, swift_facts_int16, swift_facts_int32, swift_facts_int64, swift_facts_uint, swift_facts_uint8, swift_facts_uint16, swift_facts_uint32, swift_facts_uint64, swift_facts_float, swift_facts_double, swift_facts_bool, swift_facts_character, swift_facts_string, swift_facts_void, swift_integer_facts_catalog, swift_float_facts_catalog, swift_nonnumeric_facts_catalog, swift_bool_grounding, swift_atom, swift_named_edge, swift_signedness_node, swift_width_node, swift_float_width_node, swift_overflow_node, swift_scalar_node, swift_nonnumeric_representation_node, swift_nonnumeric_scalar_classifier_node, swift_integer_facts_node, swift_float_facts_node, swift_nonnumeric_surface_spelling, swift_nonnumeric_facts_node, swift_integer_inhabitant_node, swift_inhabitant_int32_node, swift_declared_inhabitants_root, swift_mvp1_selection_policy_node, swift_mvp1_emitted_add_fn_node, swift_mvp1_source_text_authority, swift_concrete_token_class, swift_concrete_token_node, swift_mvp1_positional_token_edge, swift_mvp1_positional_edges_from_token_classes, swift_mvp1_serialize_source_prefix_edges, swift_mvp1_serialize_source_children, swift_mvp1_serialize_source_node, swift_grammar_terminal, swift_grammar_sequence_fold_step, swift_grammar_sequence_from_token_classes, swift_mvp1_grammar_relation_row, swift_relation_token_edges, swift_grammar_relation_row_node, swift_mvp1_translation_rules_node, swift_mvp1_target_model_node, swift_mvp1_binding_spellings, swift_mvp1_target_model, swift_lex_rule, swift_ident_lex_pattern, swift_ident_lex_rule, swift_wave1_lex_rules, swift_wave1_lex, swift_grammar_atom, swift_grammar_production_mvp1_fn_add, swift_wave1_grammar_root, swift_wave1_grammar, swift_wave1_lex_token_symbol, swift_empty_primitive_spec_facts, swift_primitive_fact_map_4, swift_primitive_fact_map_3, swift_primitive_fact_map_2, swift_primitive_bundle_from_integer_facts, swift_primitive_bundle_from_float_facts, swift_primitive_bundle_from_nonnumeric_facts, swift_primitive_bundles_from_integer_catalog, swift_primitive_bundles_from_float_catalog, swift_primitive_bundles_from_nonnumeric_catalog, swift_wave1_primitive_fact_bundles, swift_integer_catalog_surface_symbol_step, swift_float_catalog_surface_symbol_step, swift_nonnumeric_catalog_surface_symbol_step, swift_integer_catalog_surface_symbol, swift_float_catalog_surface_symbol, swift_nonnumeric_catalog_surface_symbol, swift_catalog_surface_symbol, swift_language_model_canonical_symbols, swift_model_core_wave1, swift_language_model_wave1
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
 // Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
 // Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
@@ -43,8 +43,10 @@ import v4.std.model_core {
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -881,7 +883,8 @@ fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
 }
 
 fn swift_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: swift_grammar_production_mvp1_fn_add() }
+  let start = swift_grammar_production_mvp1_fn_add()
+  GrammarRoot { start: swift_production_mvp1_fn_add, productions: [start] }
 }
 
 fn swift_wave1_grammar() -> Grammar {
@@ -903,6 +906,16 @@ fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     sym == swift_token_colon
 }
 
+fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+    }
+  }
+}
+
 fn swift_primitive_fact_map_4(
   axis0: Symbol,
   fact0: Node,
@@ -916,7 +929,7 @@ fn swift_primitive_fact_map_4(
   map_insert(
     map_insert(
       map_insert(
-        map_insert(empty_map(), axis0, fact0),
+        map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
         axis1,
         fact1
       ),
@@ -938,7 +951,7 @@ fn swift_primitive_fact_map_3(
 ) -> Map<Symbol, Node> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), axis0, fact0),
+      map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
       axis1,
       fact1
     ),
@@ -954,7 +967,7 @@ fn swift_primitive_fact_map_2(
   fact1: Node
 ) -> Map<Symbol, Node> {
   map_insert(
-    map_insert(empty_map(), axis0, fact0),
+    map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
     axis1,
     fact1
   )

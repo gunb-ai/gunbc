@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics, Symbol, LeanIntKind, LeanIntWidth, LeanScalar, LeanPrimitiveFacts, LeanLanguageModel, lean_*_facts, lean_*_inhabitant_node, lean_bool_grounding.
+// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics, LeanIntKind, LeanIntWidth, LeanScalar, LeanPrimitiveFacts, LeanLanguageModel, lean_*_facts, lean_*_inhabitant_node, lean_bool_grounding.
 // Consumes: List, Set, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.std.node.
 // Status: D2-REV; PROOF-1 termination slice carries Lean scalar fact-bundles into ModelCore wave-1; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md classifier = LeanScalar.BoolScalar).
 
@@ -28,12 +28,9 @@ import v4.std.node {
   Edge,
   Named,
   Node,
+  Symbol,
   TypeNode
 }
-
-
-// Twin of `v4.std.node.Symbol` — M1(2.7) compile_to_dag import lowering; local L-2 atom until `v4.std.node` import lowering lands (/ P2).
-type Symbol
 
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/

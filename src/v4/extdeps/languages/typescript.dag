@@ -644,7 +644,8 @@ fn ts_grammar_production_mvp1_fn_add() -> GrammarProduction {
 }
 
 fn ts_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: ts_grammar_production_mvp1_fn_add() }
+  let start = ts_grammar_production_mvp1_fn_add()
+  GrammarRoot { start: ts_production_mvp1_fn_add, productions: [start] }
 }
 
 fn ts_wave1_grammar() -> Grammar {

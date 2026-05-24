@@ -43,6 +43,8 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -70,6 +72,8 @@ jobs:
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
     steps:
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -90,6 +94,8 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -264,6 +270,8 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -314,6 +322,8 @@ jobs:
       run: |
         echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
         echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       uses: actions/checkout@v4
       with:
@@ -532,6 +542,9 @@ jobs:
           exit 1
         fi
         echo "Gate evidence validated; ratchet may proceed."
+    - name: Clear inherited GitHub auth header (shared runner HOME)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: actions/checkout@v4

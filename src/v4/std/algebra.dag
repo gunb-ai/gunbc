@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -229,6 +229,46 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
     for_all(xs: xs, predicate: fn(item) {
       count_equal(xs: xs, item: item, eq: eq) == count_equal(xs: ys, item: item, eq: eq)
     })
+  }
+}
+
+
+// 🟢 terminal — no richer substrate to dissolve into; this IS the canonical two-list zip-equality.
+fn zip_eq<T>(
+  a: FreeMonoid<T>,
+  b: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match a {
+    Empty =>
+      match b {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => false
+        Cons { head: hb, tail: tb } =>
+          eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
+      }
+  }
+}
+
+
+// 🟢 terminal — no richer substrate to dissolve into; this IS the canonical prefix-fold primitive.
+fn is_prefix_of<T>(
+  prefix: FreeMonoid<T>,
+  xs: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match xs {
+        Empty => false
+        Cons { head: h_xs, tail: t_xs } =>
+          eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
+      }
   }
 }
 

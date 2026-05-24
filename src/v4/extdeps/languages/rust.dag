@@ -1215,7 +1215,8 @@ fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
 }
 
 fn rust_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: rust_grammar_production_mvp1_fn_add() }
+  let start = rust_grammar_production_mvp1_fn_add()
+  GrammarRoot { start: rust_production_mvp1_fn_add, productions: [start] }
 }
 
 fn rust_wave1_grammar() -> Grammar {
