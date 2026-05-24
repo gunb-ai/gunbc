@@ -22,13 +22,15 @@ worker.
 ### Critical path — sets time-to-done
 
 ```
-T-1 → T-2 → T-3 → T-6 → T-7 → T-8 → T-9 → T-10 → T-11 → T-16 → T-15
+T-1 → T-2 → T-3 → T-6 → T-7 → T-8 → T-9 → T-10 → T-11 → T-16 ─┐
+                                            └─ T-36 ───────────────┴→ T-15
 ```
 
 `T-1 → T-2 → T-3` is serial and unavoidable — the substrate foundation.
 After T-3 the spine is the serial compiler pipeline
-`T-6 → T-7 → T-8 → T-9 → T-10`, then emit specialization + the omni demo,
-closing at T-15.
+`T-6 → T-7 → T-8 → T-9 → T-10`, then two parallel T-15 gates:
+`T-11 → T-16` (full-stack omni-emission demo) and `T-36` (ingest round-trip
+fidelity claim, needs only T-10). Both must be complete before T-15.
 
 ```
   T-1   std/node.dag                     [BLOCKS: all]
