@@ -671,7 +671,7 @@ data hash_combine_contract: PrimitiveContract = {
   work: "1",
   output_size: "1",
   certainty: Proven,
-  notes: "FNV-1a 64-bit digest over NUL-separated pair; opaque Hash carrier"
+  notes: "returns opaque Hash carrier (not String); FNV-1a 64-bit content-addressing fingerprint — digest equality is cache lookup, not proof-grade structural injectivity (docs/thesis/what-else-falls-out.md §Content-hash caching)"
 }
 
 data atom_identity_hash_contract: PrimitiveContract = {
@@ -679,5 +679,5 @@ data atom_identity_hash_contract: PrimitiveContract = {
   work: "n",
   output_size: "1",
   certainty: Proven,
-  notes: "n = opaque Symbol spelling length at runtime boundary"
+  notes: "returns opaque Hash carrier (not String); n = Symbol spelling length at runtime boundary"
 }
