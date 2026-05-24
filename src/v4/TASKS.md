@@ -384,7 +384,11 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
 **Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
-*Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
+*Theme-A #9 resolved:* `src/v4/compiler/07_target_carriers.dag` is the
+single carrier authority: `type LanguageModel = Node`. Read
+**`LexRules` / `Grammar` as lexical and syntax projections** on that
+same grammar-as-data `Node`, not as second authorities beside the
+conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
@@ -406,7 +410,9 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches **`compiler/02_parse.dag` `Owns`** (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
 *Ingest tie-in (`00_compile.dag` `Owns` today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
-*Theme-A #9:* Same projection reading as T-6 — `Grammar` is the syntax-side parameter until the named `LanguageModel` bundles lex + grammar explicitly.
+*Theme-A #9 resolved:* Same projection reading as T-6 — `Grammar` is the
+syntax-side projection of the landed `LanguageModel = Node` authority in
+`src/v4/compiler/07_target_carriers.dag`.
 
 **Modeling decisions**:
 - The grammar **production data schema** as `Node` — a declarative
@@ -1191,12 +1197,13 @@ kernel-ambient exemption is already pinned in tests and docs).
   net-new modeling is only what the v3 contract did not cover, and the v3
   files are retired into the v4 one (no dual representation left
   standing).
-- **#9 — `LanguageModel` / `TargetModel` named type.** `00_compile.dag`
-  prose (B2-OMNI) is parameterized over "declarative LanguageModels" but
-  no `type LanguageModel` is declared. Disposition: T-6/T-10 either
-  declare the carrier type, or the B2-OMNI header states formally "a
-  LanguageModel IS a `Node` — no separate type." A naming-clarity fix in
-  existing scope, not a new task.
+- **#9 — `LanguageModel` / `TargetModel` named type — RESOLVED.**
+  `src/v4/compiler/07_target_carriers.dag` is the single carrier
+  authority: `type LanguageModel = Node`, with `TargetModel` owned there
+  as the target bundle. The earlier open-item fork ("declare the carrier"
+  vs "a model IS a `Node`") is settled as the latter through the named
+  carrier alias, so downstream T-32 work must consume this authority
+  rather than reopen Theme-A #9.
 - **#12 — ExecuteCommand TestClaims.** THESIS facet 3 names
   `ExecuteCommand`-based `TestClaim`s; v4 models the boundary via a
   simulator `Node` + the closed 4 `AssertKind`s. Disposition:
