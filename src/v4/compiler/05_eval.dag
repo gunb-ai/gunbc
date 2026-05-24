@@ -15,7 +15,7 @@ import v4.compiler.infer {
   inferred_facts_inhabitance_well_grounded,
   inferred_facts_resolved_type_matches
 }
-import v4.std.algebra { Cons, Empty }
+import v4.std.algebra { fold_list }
 import v4.std.collection { List, Map }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
@@ -300,6 +300,18 @@ type RuntimeValueAcceptanceWitness {
 }
 
 
+type EvalRuntimeArgumentLookup {
+  index: Int
+  value: Outcome<RuntimeValue>
+}
+
+
+type EvalEdgeLookup {
+  index: Int
+  value: Outcome<Edge>
+}
+
+
 fn eval_runtime_value_acceptance_witness(
   node: Node,
   facts: InferredFacts,
@@ -353,67 +365,108 @@ fn eval_accept_runtime_value_with_facts(
 }
 
 
+fn eval_nth_runtime_argument(
+  args: List<RuntimeValue>,
+  wanted: Int,
+  node: Node,
+  absent_reason: Symbol
+) -> Outcome<RuntimeValue> {
+  fold_list(
+    xs: args,
+    empty: EvalRuntimeArgumentLookup {
+      index: 0,
+      value: outcome_rejected(d: eval_diagnostic(reason: absent_reason, node: node))
+    },
+    cons: fn(acc, item) {
+      EvalRuntimeArgumentLookup {
+        index: acc.index + 1,
+        value: if acc.index == wanted {
+          Accepted { value: item, diagnostics: None }
+        } else {
+          acc.value
+        }
+      }
+    }
+  ).value
+}
+
+
+fn eval_nth_edge(
+  edges: List<Edge>,
+  wanted: Int,
+  node: Node,
+  absent_reason: Symbol
+) -> Outcome<Edge> {
+  fold_list(
+    xs: edges,
+    empty: EvalEdgeLookup {
+      index: 0,
+      value: outcome_rejected(d: eval_diagnostic(reason: absent_reason, node: node))
+    },
+    cons: fn(acc, item) {
+      EvalEdgeLookup {
+        index: acc.index + 1,
+        value: if acc.index == wanted {
+          Accepted { value: item, diagnostics: None }
+        } else {
+          acc.value
+        }
+      }
+    }
+  ).value
+}
+
+
 fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
-  match args {
-    Cons { head: v, tail: _ } => Accepted { value: v, diagnostics: None }
-    Empty => outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_branch_argument_absent, node: node)
-    )
-  }
+  eval_nth_runtime_argument(
+    args: args,
+    wanted: 0,
+    node: node,
+    absent_reason: eval_rejected_branch_argument_absent
+  )
 }
 
 
 fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
-  match node.children {
-    Cons { head: e, tail: _ } =>
+  bind_outcome(
+    o: eval_nth_edge(
+      edges: node.children,
+      wanted: 0,
+      node: node,
+      absent_reason: eval_rejected_bind_children_absent
+    ),
+    f: fn(e) {
       Accepted {
         value: EnvironmentBindingKey { declaration: e.target },
         diagnostics: None
       }
-    Empty => outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-    )
-  }
+    }
+  )
 }
 
 
 fn eval_bind_value_arg(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
-  match args {
-    Cons { head: _, tail: rest } =>
-      match rest {
-        Cons { head: v, tail: _ } => Accepted { value: v, diagnostics: None }
-        Empty => outcome_rejected(
-          d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-        )
-      }
-    Empty =>
-      outcome_rejected(
-        d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-      )
-  }
+  eval_nth_runtime_argument(
+    args: args,
+    wanted: 1,
+    node: node,
+    absent_reason: eval_rejected_bind_children_absent
+  )
 }
 
 
 fn eval_bind_body(node: Node) -> Outcome<Node> {
-  match node.children {
-    Cons { head: _, tail: rest1 } =>
-      match rest1 {
-        Cons { head: _, tail: rest2 } =>
-          match rest2 {
-            Cons { head: e, tail: _ } => Accepted { value: e.target, diagnostics: None }
-            Empty => outcome_rejected(
-              d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-            )
-          }
-        Empty => outcome_rejected(
-          d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-        )
-      }
-    Empty =>
-      outcome_rejected(
-        d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
-      )
-  }
+  bind_outcome(
+    o: eval_nth_edge(
+      edges: node.children,
+      wanted: 2,
+      node: node,
+      absent_reason: eval_rejected_bind_children_absent
+    ),
+    f: fn(e) {
+      Accepted { value: e.target, diagnostics: None }
+    }
+  )
 }
 
 
