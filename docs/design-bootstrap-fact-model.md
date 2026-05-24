@@ -252,27 +252,22 @@ T-20 expansion); the runtime model (§2) is the accumulation of
 complete execution substrate. None of it dispatches before the operator
 ratifies this layer model as the Phase-1 definition.
 
-## 8. Yellow items for operator ratification
+## 8. Operator-ratified Phase-1 decisions
 
-These are not Phase-2 dispatch items. They are the explicit Phase-1
-operator decisions this layer model needs ratified before seed-reduction
-work starts:
+These are the Phase-1 operator decisions ratified for seed-reduction
+scoping. Phase 2 consumes these decisions; it does not reopen them.
 
-- 🟡 **Frozen-sub-model declaration surface.** §2 and §4 use the landed
-  `LanguageModel = Node` authority. Ratify where T-32 declares the
-  frozen `seed_capability` subset and its equality gate with `footprint`
-  so Phase 2 has one substrate home for the boundary rather than a
-  planning-doc-only definition.
-- 🟡 **Projection-input sufficiency gate.** §2 names the seed projection
-  inputs and their live state: `rust.dag`, wave-1 `machine_code.dag`, and
-  `posix.dag` are modeled; `file_system.dag` remains a Wave-2
-  fail-closed boundary scaffold. Ratify the completeness criterion Phase
-  2 must apply to these inputs before re-emitting a seed, so the seed
-  cannot depend on ambient target or runtime assumptions outside the
-  footprint fold.
-- 🟡 **Seed-honesty discharge placement.** §6 defines diverse
-  double-compilation as the discharge witness for the seed-honesty axiom.
-  Ratify where that witness lives in the v4 substrate/workflow boundary
-  (`workflow/bootstrap.dag`, the T-15 fixed-point gate, or a dedicated
-  T-32 witness surface) so Phase 2 does not collapse honesty into the
-  bit-identical reproduction check.
+- ✅ **Frozen-sub-model declaration surface.** The `seed_capability`
+  substrate home is `src/v4/workflow/bootstrap.dag`, not `std/`. The
+  `footprint == seed_capability` equality gate also lives there.
+  `workflow/bootstrap.dag` is the sole bootstrap authority for this
+  boundary.
+- ✅ **Projection-input sufficiency gate.** Phase 2 cannot start until
+  `src/v4/extdeps/file_system.dag` is filled. `rust.dag`, wave-1
+  `machine_code.dag`, and `posix.dag` are already sufficient for the
+  projection-input side of this Phase-1 model; `file_system.dag` must
+  land (PR #3605) before seed-reduction begins.
+- ✅ **Seed-honesty discharge placement.** `workflow/bootstrap.dag` holds
+  the diverse double-compilation witness as a **distinct assertion** from
+  the T-15 bit-identical fixed-point check. The seed-honesty discharge
+  must not collapse into the reproduction witness.
