@@ -63,7 +63,7 @@ type YamlAnchorNodeMarkedWithAmpersandWitness {}
 
 type YamlAliasNodeMarkedWithAsteriskWitness {}
 
-type YamlAliasMustResolveToPriorAnchorWitness {}
+type YamlAliasResolvesToMostRecentSameAnchorWitness {}
 
 type YamlUnresolvableAliasFailClosedWitness {}
 
@@ -76,7 +76,7 @@ type YamlAliasFreeProjectionByConstructionWitness {}
 type YamlAnchorAliasResolutionFacts {
   anchor_node_marked_with_ampersand: YamlAnchorNodeMarkedWithAmpersandWitness,
   alias_node_marked_with_asterisk: YamlAliasNodeMarkedWithAsteriskWitness,
-  alias_must_resolve_to_prior_anchor: YamlAliasMustResolveToPriorAnchorWitness,
+  alias_resolves_to_most_recent_same_anchor: YamlAliasResolvesToMostRecentSameAnchorWitness,
   unresolvable_alias_fail_closed: YamlUnresolvableAliasFailClosedWitness,
   representation_graph_alias_cycle_permitted: YamlRepresentationGraphAliasCyclePermittedWitness,
   alias_free_projection_alias_cycle_rejected: YamlAliasFreeProjectionAliasCycleRejectedWitness,
