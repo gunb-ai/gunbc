@@ -131,7 +131,6 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
             "algebra-law generated corpus must not consume {forbidden}"
         );
     }
-    );
 }
 
 #[test]
