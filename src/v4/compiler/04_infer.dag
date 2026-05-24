@@ -2,7 +2,7 @@
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: T-9 modeled — coercion substrate in std/coercion.dag; RULING-1 dissolved on AlgebraRef/InferredFacts/InferredTree.
+// Status: T-9 modeled — coercion substrate in std/coercion.dag.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -49,7 +49,7 @@ import v4.std.node {
 import v4.std.witness { Holds, Violates, Witness }
 
 
-// T-9 modeled: AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
+// AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
   algebra: Node
   witness: Node
