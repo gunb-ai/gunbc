@@ -44,7 +44,14 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+<<<<<<< HEAD
   manual_claim_anchor
+=======
+  impossible_bug_reason_force_unwrap,
+  impossible_bug_reason_unhandled_division,
+  impossible_bug_reason_unhandled_index,
+  t19_manual_claim_anchor
+>>>>>>> 5d9e24064 (WIP: T-18: fill lens/coverage.dag meta-lens (L6/L7/impossible-bug/testgen cov)
 }
 
 
@@ -119,7 +126,7 @@ data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
   input: falsification_division_by_zero_unhandled,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_unhandled_division,
+        reason: impossible_bug_reason_unhandled_division,
         at: node_locus(node: falsification_division_by_zero_unhandled),
         correction: Suggested { node: total_division_input }
       }
@@ -134,7 +141,7 @@ data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
   input: falsification_oob_index_unhandled,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_unhandled_index,
+        reason: impossible_bug_reason_unhandled_index,
         at: node_locus(node: falsification_oob_index_unhandled),
         correction: Suggested { node: checked_index_input }
       }
@@ -149,7 +156,7 @@ data claim_force_unwrap_count_zero: TestClaim = DiagnosticClaim {
   input: falsification_force_unwrap_survives,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_force_unwrap,
+        reason: impossible_bug_reason_force_unwrap,
         at: node_locus(node: falsification_force_unwrap_survives),
         correction: Suggested { node: total_unwrap_input }
       }
