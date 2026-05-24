@@ -201,7 +201,16 @@ fn v4_lens_testgen_wave0_outcome_return_surfaces() {
 #[test]
 fn v4_lens_testgen_wave0_generator_anchor_field_is_claim_anchor_key() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
-    let anchor_ty = generator_anchor_field_ty(&testgen).expect("Generator should declare `anchor`");
+    let kind_ty = generator_field_ty(&testgen, "kind").expect("Generator should declare `kind`");
+    assert!(
+        matches!(
+            kind_ty,
+            SurfaceType::Named { name: n, .. } if n == "TestClaimCoproductVariant"
+        ),
+        "Generator.kind must carry the TestClaim coproduct variant authority; got {kind_ty:?}"
+    );
+    let anchor_ty =
+        generator_field_ty(&testgen, "anchor").expect("Generator should declare `anchor`");
     assert!(
         matches!(
             anchor_ty,
@@ -222,6 +231,10 @@ fn v4_lens_testgen_wave0_concept_projection_matches_claim_anchor() {
 
 #[test]
 fn v4_lens_testgen_wave0_generator_carries_claim_classification_and_anchor() {
+    assert!(
+        TESTGEN_DAG.contains("kind: test_claim_coproduct_variant(c: claim)"),
+        "Generator must take claim kind from manual TestClaim via substrate helper"
+    );
     assert!(
         TESTGEN_DAG.contains("classification: test_claim_classification(c: claim)"),
         "Generator must take classification from manual TestClaim via substrate helper"
@@ -260,7 +273,7 @@ fn v4_lens_testgen_nat_substrate_carries_algebra_law_subject_symbols() {
 
 #[test]
 fn v4_lens_testgen_testgen_carries_six_nat_algebra_law_scheduling_arms() {
-    assert_six_algebra_law_constructor_sites_in_testgen(TESTGEN_DAG);
+    assert_six_algebra_law_subject_paths_in_testgen(TESTGEN_DAG);
 }
 
 fn assert_nat_manual_claim_blocks_use_compiles_stub(nat_law_src: &str) {
@@ -299,18 +312,64 @@ fn assert_nat_algebra_law_subject_symbols_in_substrate(nat_src: &str) {
             "{needle}: missing nat substrate AlgebraLawSubject Symbol ground"
         );
     }
+    for forbidden in [
+        "nat_algebra_law_subject_symbol_add_operation",
+        "nat_algebra_law_subject_symbol_mul_operation",
+        "nat_algebra_law_subject_symbol_zero_value",
+        "nat_algebra_law_subject_symbol_one_value",
+        "nat_algebra_law_subject_symbol_two_value",
+        "nat_algebra_law_subject_symbol_three_value",
+    ] {
+        assert!(
+            !nat_src.contains(forbidden),
+            "{forbidden}: Nat substrate must not export operation/value mirror symbols"
+        );
+    }
 }
 
-/// Count `value: AlgebraLaw {` sites in `testgen.dag` (file-wide; currently exactly six nat scheduling arms).
-fn assert_six_algebra_law_constructor_sites_in_testgen(testgen_src: &str) {
+/// Pin the six Nat algebra-law anchors while allowing a single helper-owned AlgebraLaw constructor.
+fn assert_six_algebra_law_subject_paths_in_testgen(testgen_src: &str) {
     assert!(
         testgen_src.contains("fn testgen_concept_for_manual_claim"),
         "testgen_concept_for_manual_claim must exist for Wave-0 nat scheduling slice"
     );
-    let n = testgen_src.matches("value: AlgebraLaw {").count();
+    assert!(
+        testgen_src.contains(
+            "fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject>"
+        ),
+        "testgen must project Nat algebra-law subjects through one checked helper"
+    );
+    assert!(
+        testgen_src.contains("match algebra_law_subject_for_manual_anchor(anchor: manual_anchor)"),
+        "testgen_concept_for_manual_claim must consume the shared Nat algebra-law subject helper"
+    );
+    assert_eq!(
+        testgen_src.matches("value: AlgebraLaw {").count(),
+        1,
+        "AlgebraLaw construction should be centralized after helper projection"
+    );
+    let helper = between(
+        testgen_src,
+        "fn algebra_law_subject_for_manual_anchor",
+        "fn algebra_law_subject_atom",
+    );
+    for anchor in [
+        "ManualNatAddLeftIdentity",
+        "ManualNatAddRightIdentity",
+        "ManualNatAddAssociativity",
+        "ManualNatMulLeftIdentity",
+        "ManualNatMulAnnihilator",
+        "ManualNatMulAssociativity",
+    ] {
+        assert!(
+            helper.contains(anchor),
+            "shared algebra-law subject helper must cover {anchor}"
+        );
+    }
+    let n = helper.matches("value: AlgebraLawSubject {").count();
     assert_eq!(
         n, 6,
-        "expected six nat `value: AlgebraLaw {{...}}` constructor sites in testgen.dag; got {n}"
+        "expected six Nat AlgebraLawSubject projection arms in the shared helper; got {n}"
     );
 }
 
@@ -358,9 +417,16 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
 }
 
-fn generator_anchor_field_ty(
-    module: &v3_compiler::parse_surface::SurfaceModule,
-) -> Option<&SurfaceType> {
+fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
+    text.split_once(start)
+        .and_then(|(_, tail)| tail.split_once(end).map(|(middle, _)| middle))
+        .unwrap_or_else(|| panic!("missing expected span from {start:?} to {end:?}"))
+}
+
+fn generator_field_ty<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    field_name: &str,
+) -> Option<&'a SurfaceType> {
     for item in &module.items {
         let SurfaceItem::TypeRecord {
             name,
@@ -375,7 +441,7 @@ fn generator_anchor_field_ty(
             continue;
         }
         for field in fields {
-            if field.name == "anchor" {
+            if field.name == field_name {
                 return Some(&field.ty);
             }
         }
