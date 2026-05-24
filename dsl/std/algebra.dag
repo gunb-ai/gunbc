@@ -556,8 +556,11 @@ data kernel_algebra_profile: Map<String, AlgebraProfile> = {
   "Bool": BooleanAlgebraProfile,
   "String": FreeMonoidScalarProfile,
   "List": FreeMonoidCollectionProfile,
+  "FreeMonoid": FreeMonoidCollectionProfile,
   "Set": BooleanAlgebraCollectionProfile,
-  "Map": PartialFunctionProfile
+  "BooleanAlgebra": BooleanAlgebraCollectionProfile,
+  "Map": PartialFunctionProfile,
+  "PartialFunction": PartialFunctionProfile
 }
 
 fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {

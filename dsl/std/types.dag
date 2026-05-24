@@ -77,7 +77,12 @@ fn is_kernel_type(name: String) -> Bool {
 // Container types: parameterized types that stay unexpanded at resolve time.
 // Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
-  "List": 1, "Set": 1, "Map": 2
+  "List": 1,
+  "FreeMonoid": 1,
+  "Set": 1,
+  "BooleanAlgebra": 1,
+  "Map": 2,
+  "PartialFunction": 2
 }
 
 fn is_container_type(name: String) -> Bool {
@@ -112,7 +117,8 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
 // FreeMonoid-based collections preserve insertion order.
 // Set-based collections are unordered — no positional access.
 data ordered_element_collections: Map<String, Bool> = {
-  "List": true
+  "List": true,
+  "FreeMonoid": true
 }
 
 fn is_ordered_element_collection(name: String) -> Bool {

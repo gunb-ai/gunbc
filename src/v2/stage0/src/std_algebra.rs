@@ -273,8 +273,14 @@ pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
             __m.insert("Bool".to_string(), AlgebraProfile::BooleanAlgebraProfile);
             __m.insert("String".to_string(), AlgebraProfile::FreeMonoidScalarProfile);
             __m.insert("List".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
+            __m.insert("FreeMonoid".to_string(), AlgebraProfile::FreeMonoidCollectionProfile);
             __m.insert("Set".to_string(), AlgebraProfile::BooleanAlgebraCollectionProfile);
+            __m.insert(
+                "BooleanAlgebra".to_string(),
+                AlgebraProfile::BooleanAlgebraCollectionProfile,
+            );
             __m.insert("Map".to_string(), AlgebraProfile::PartialFunctionProfile);
+            __m.insert("PartialFunction".to_string(), AlgebraProfile::PartialFunctionProfile);
             Rc::new(__m)
         };
     }
