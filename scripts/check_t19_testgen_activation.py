@@ -48,6 +48,12 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
         raise SystemExit(f"{label}: missing required substrings: {missing!r}")
 
 
+def _forbid_substrings(label: str, text: str, needles: tuple[str, ...]) -> None:
+    present = [n for n in needles if n in text]
+    if present:
+        raise SystemExit(f"{label}: forbidden substrings present: {present!r}")
+
+
 def main() -> None:
     for path in (
         TESTGEN,
@@ -214,22 +220,35 @@ def main() -> None:
         algebra,
         (
             "testgen_emit_algebra_law_claim",
-            "nat_algebra_law_subject_symbol_add_operation",
-            "nat_algebra_law_subject_symbol_mul_operation",
-            "nat_algebra_law_subject_symbol_zero_value",
+            "Nat,",
+            "nat_add,",
+            "nat_mul",
+            "feature:t19-nat-expression-node-encoding",
             "generated_nat_add_left_identity_claim",
             "generated_nat_add_associativity_claim",
             "generated_nat_mul_annihilator_claim",
             "fn t19_generated_nat_add",
             "fn t19_generated_nat_mul",
-            "operation: nat_algebra_law_subject_symbol_add_operation",
-            "operation: nat_algebra_law_subject_symbol_mul_operation",
-            "lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one())",
+            "operation: algebra_law_generated_nat_add_application",
+            "operation: algebra_law_generated_nat_mul_application",
+            "result: nat_add(a: t19_generated_nat_zero_value(), b: t19_generated_nat_one_value())",
             "rhs: t19_generated_nat_one()",
-            "lhs: t19_generated_nat_mul(left: t19_generated_nat_zero(), right: t19_generated_nat_three())",
+            "result: nat_mul(a: t19_generated_nat_zero_value(), b: t19_generated_nat_three_value())",
             "rhs: t19_generated_nat_zero()",
             "fn generated_algebra_law_claim_rows",
             "length(xs: generated_algebra_law_claim_rows()) == 3",
+        ),
+    )
+    _forbid_substrings(
+        "algebra_law_conformance.dag",
+        algebra,
+        (
+            "nat_algebra_law_subject_symbol_add_operation",
+            "nat_algebra_law_subject_symbol_mul_operation",
+            "nat_algebra_law_subject_symbol_zero_value",
+            "nat_algebra_law_subject_symbol_one_value",
+            "nat_algebra_law_subject_symbol_two_value",
+            "nat_algebra_law_subject_symbol_three_value",
         ),
     )
 

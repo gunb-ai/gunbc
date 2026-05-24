@@ -92,9 +92,10 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
     );
     assert!(
         ALGEBRA_LAW_GENERATED_DAG.contains("testgen_emit_algebra_law_claim")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_add_operation")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_mul_operation")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_zero_value")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("Nat,")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_add,")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_mul")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("feature:t19-nat-expression-node-encoding")
             && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_left_identity_claim")
             && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_associativity_claim")
             && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_mul_annihilator_claim")
@@ -106,16 +107,30 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
         ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_add")
             && ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_mul")
             && ALGEBRA_LAW_GENERATED_DAG
-                .contains("operation: nat_algebra_law_subject_symbol_add_operation")
+                .contains("operation: algebra_law_generated_nat_add_application")
             && ALGEBRA_LAW_GENERATED_DAG
-                .contains("operation: nat_algebra_law_subject_symbol_mul_operation")
+                .contains("operation: algebra_law_generated_nat_mul_application")
             && ALGEBRA_LAW_GENERATED_DAG
-                .contains("lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one())")
+                .contains("result: nat_add(a: t19_generated_nat_zero_value(), b: t19_generated_nat_one_value())")
             && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_one()")
             && ALGEBRA_LAW_GENERATED_DAG
-                .contains("lhs: t19_generated_nat_mul(left: t19_generated_nat_zero(), right: t19_generated_nat_three())")
+                .contains("result: nat_mul(a: t19_generated_nat_zero_value(), b: t19_generated_nat_three_value())")
             && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_zero()"),
-        "algebra-law samples must assert concrete Nat expression equalities, not wrapper-vs-wrapper non-identity"
+        "algebra-law samples must route generated Nat expression results through canonical nat_add/nat_mul, not exported operation/value mirror symbols"
+    );
+    for forbidden in [
+        "nat_algebra_law_subject_symbol_add_operation",
+        "nat_algebra_law_subject_symbol_mul_operation",
+        "nat_algebra_law_subject_symbol_zero_value",
+        "nat_algebra_law_subject_symbol_one_value",
+        "nat_algebra_law_subject_symbol_two_value",
+        "nat_algebra_law_subject_symbol_three_value",
+    ] {
+        assert!(
+            !ALGEBRA_LAW_GENERATED_DAG.contains(forbidden),
+            "algebra-law generated corpus must not consume {forbidden}"
+        );
+    }
     );
 }
 
