@@ -2,7 +2,7 @@
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: Wave-3-A T-9 — descent via std/cardinality termination_proof_witness_for_node (#3559); SPI-3 remaps propagation Violates reason to infer_descent_not_derived while preserving upstream diagnostic.at (P2 facts-flow-forward).
+// Status: T-9 modeled — coercion substrate in std/coercion.dag.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -49,14 +49,13 @@ import v4.std.node {
 import v4.std.witness { Holds, Violates, Witness }
 
 
-// RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
+// AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
   algebra: Node
   witness: Node
 }
 
 
-// RULING-1: needs-more-work — inhabitance coordinates remain T-9 bridged.
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
@@ -65,7 +64,6 @@ type InferredFacts {
 }
 
 
-// RULING-1: needs-more-work — per-node fact table shape is present; producer semantics are T-9.
 type InferredTree {
   root: Node
   facts: Map<Node, InferredFacts>
