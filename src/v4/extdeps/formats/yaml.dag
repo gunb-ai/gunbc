@@ -21,43 +21,43 @@ type YamlValue
   | YamlMapping { entries: Map<YamlValue, YamlValue> }
 
 
-type YamlIntBase10DecimalFormWitness {}
+type YamlIntBase10DecimalOptionalSignWitness {}
 
-type YamlIntBase8Octal0oPrefixWitness {}
+type YamlIntBase8Octal0oPrefixNoSignWitness {}
 
-type YamlIntBase16Hex0xPrefixWitness {}
-
-type YamlIntOptionalSignPrefixWitness {}
+type YamlIntBase16Hex0xPrefixNoSignWitness {}
 
 type YamlIntLexemeFacts {
-  base10_decimal_form: YamlIntBase10DecimalFormWitness,
-  base8_octal_0o_prefix: YamlIntBase8Octal0oPrefixWitness,
-  base16_hex_0x_prefix: YamlIntBase16Hex0xPrefixWitness,
-  optional_sign_prefix: YamlIntOptionalSignPrefixWitness,
+  base10_decimal_optional_sign: YamlIntBase10DecimalOptionalSignWitness,
+  base8_octal_0o_prefix_no_sign: YamlIntBase8Octal0oPrefixNoSignWitness,
+  base16_hex_0x_prefix_no_sign: YamlIntBase16Hex0xPrefixNoSignWitness,
 }
 
-type YamlFloatDecimalOrExponentFormWitness {}
+type YamlFloatDecimalOrExponentOptionalSignWitness {}
 
-type YamlFloatSpecialInfNanLexemeWitness {}
+type YamlFloatPositiveInfLexemeWitness {}
 
-type YamlFloatOptionalSignPrefixWitness {}
+type YamlFloatNegativeInfLexemeWitness {}
+
+type YamlFloatNanLexemeNoSignWitness {}
 
 type YamlFloatLexemeFacts {
-  decimal_or_exponent_form: YamlFloatDecimalOrExponentFormWitness,
-  special_inf_nan_lexeme: YamlFloatSpecialInfNanLexemeWitness,
-  optional_sign_prefix: YamlFloatOptionalSignPrefixWitness,
+  decimal_or_exponent_optional_sign: YamlFloatDecimalOrExponentOptionalSignWitness,
+  positive_inf_lexeme: YamlFloatPositiveInfLexemeWitness,
+  negative_inf_lexeme: YamlFloatNegativeInfLexemeWitness,
+  nan_lexeme_no_sign: YamlFloatNanLexemeNoSignWitness,
 }
 
 type YamlMappingKeyEqualityByTagAndCanonicalContentWitness {}
 
 type YamlSameTagCanonicallyEqualDuplicateKeysRejectedWitness {}
 
-type YamlLexemeIdenticalKeysMapStructuralDedupWitness {}
+type YamlDuplicateMappingKeyRejectedFailClosedWitness {}
 
 type YamlCanonicalKeyProfileFacts {
   key_equality_by_tag_and_canonical_content: YamlMappingKeyEqualityByTagAndCanonicalContentWitness,
   same_tag_canonically_equal_duplicates_rejected: YamlSameTagCanonicallyEqualDuplicateKeysRejectedWitness,
-  lexeme_identical_keys_map_structural_dedup: YamlLexemeIdenticalKeysMapStructuralDedupWitness,
+  duplicate_mapping_key_rejected_fail_closed: YamlDuplicateMappingKeyRejectedFailClosedWitness,
 }
 
 type YamlAnchorNodeMarkedWithAmpersandWitness {}
