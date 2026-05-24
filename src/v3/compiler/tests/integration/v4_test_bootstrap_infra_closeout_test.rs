@@ -34,6 +34,7 @@ const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
+const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
@@ -252,10 +253,11 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
     );
     assert!(
-        EVAL_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
+        RUNTIME_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
+            && RUNTIME_DAG.contains("runtime_value_resolved_type(value: value)")
             && EVAL_DAG.contains("fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node>")
             && EVAL_DAG.contains("runtime_value_node(value: value)"),
-        "eval_node must project eval's Outcome<RuntimeValue> through the runtime-value-to-Node projection"
+        "eval_node must project eval's Outcome<RuntimeValue> through the std/runtime RuntimeValue-to-Node projection"
     );
     assert!(
         !EVAL_DAG.contains("eval_node_unrealized")
