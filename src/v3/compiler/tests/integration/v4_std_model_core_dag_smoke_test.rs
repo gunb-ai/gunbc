@@ -143,6 +143,8 @@ fn v4_std_model_core_declares_ratified_q1_carriers() {
         "PrimitiveFactBundle",
         "AlgebraInhabitanceDecl",
         "AlgebraLawObligation",
+        "EffectSignature",
+        "ResourceAccess",
         "EffectSemanticsDecl",
         "PartialitySemanticsDecl",
     ] {
@@ -197,9 +199,14 @@ fn v4_std_model_core_algebra_law_obligation_structural() {
 #[test]
 fn v4_std_model_core_effect_partiality_ops_use_node_authority() {
     let module = model_core_surface_or_panic();
-    for (type_name, field_name) in [
-        ("PrimitiveOperationRef", "operation"),
-        ("PartialOperationDecl", "operation"),
+    for (type_name, field_name, expected_type) in [
+        ("PrimitiveOperationRef", "operation", "Node"),
+        (
+            "PrimitiveOperationRef",
+            "effect_signature",
+            "EffectSignature",
+        ),
+        ("PartialOperationDecl", "operation", "Node"),
     ] {
         let fields: Vec<(String, String)> = type_record_fields(&module, type_name)
             .iter()
@@ -211,10 +218,33 @@ fn v4_std_model_core_effect_partiality_ops_use_node_authority() {
             .map(|(_, t)| t.as_str())
             .unwrap_or("missing");
         assert_eq!(
-            ty, "Node",
-            "{type_name}.{field_name} must reference modeled operation Node authority, not Symbol"
+            ty, expected_type,
+            "{type_name}.{field_name} must use its ModelCore substrate authority"
         );
     }
+}
+
+#[test]
+fn v4_std_model_core_effect_signature_resource_access_shape() {
+    let module = model_core_surface_or_panic();
+    let signature_fields: Vec<(String, String)> = type_record_fields(&module, "EffectSignature")
+        .iter()
+        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+        .collect();
+    assert_eq!(
+        signature_fields,
+        vec![("signature".to_string(), "Node".to_string())],
+        "EffectSignature must own effect identity only; BoundaryAllowance.resource is the single resource authority"
+    );
+    let resource_fields: Vec<(String, String)> = type_record_fields(&module, "ResourceAccess")
+        .iter()
+        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+        .collect();
+    assert_eq!(
+        resource_fields,
+        vec![("resource".to_string(), "Node".to_string())],
+        "ResourceAccess must be the ModelCore-owned minimal resource carrier"
+    );
 }
 
 #[test]
