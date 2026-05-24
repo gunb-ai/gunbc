@@ -1110,88 +1110,6 @@ fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
 }
 
 
-fn testgen_scheduled_algebra_law_subjects() -> List<AlgebraLawSubject> {
-  [
-    AlgebraLawSubject {
-      algebra: nat_algebra_law_subject_symbol_additive_monoid,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_add_left_identity,
-    },
-    AlgebraLawSubject {
-      algebra: nat_algebra_law_subject_symbol_additive_monoid,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_add_right_identity,
-    },
-    AlgebraLawSubject {
-      algebra: nat_algebra_law_subject_symbol_additive_monoid,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_add_associativity,
-    },
-    AlgebraLawSubject {
-      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_mul_left_identity,
-    },
-    AlgebraLawSubject {
-      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_mul_annihilator,
-    },
-    AlgebraLawSubject {
-      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-      law: law_nat_mul_associativity,
-    },
-  ]
-}
-
-
-fn testgen_algebra_law_subject_from_scheduled_generator(
-  generator: Generator<TestgenConcept>
-) -> Outcome<AlgebraLawSubject> {
-  match generator.slot {
-    AlgebraLaw { subject: subject } =>
-      Accepted { value: subject, diagnostics: None }
-    TypeConstruction { subject: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
-        )
-      }
-    DiagnosticExhaustiveness { omitted_variant: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
-        )
-      }
-    LensApplicability { subject: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
-        )
-      }
-    BidirectionalRoundtrip { subject: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
-        )
-      }
-    LanguageBehaviorEquivalence { subject: _, mock: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
-        )
-      }
-    RefinementPreservation { subject: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
-        )
-      }
-  }
-}
-
-
 fn testgen_scheduled_algebra_law_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
@@ -1261,6 +1179,99 @@ fn testgen_scheduled_algebra_law_generators() -> List<Generator<TestgenConcept>>
       },
     },
   ]
+}
+
+
+fn testgen_algebra_law_subject_from_scheduled_generator(
+  generator: Generator<TestgenConcept>
+) -> Outcome<AlgebraLawSubject> {
+  match generator.slot {
+    AlgebraLaw { subject: subject } =>
+      Accepted { value: subject, diagnostics: None }
+    TypeConstruction { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    DiagnosticExhaustiveness { omitted_variant: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LensApplicability { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    BidirectionalRoundtrip { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LanguageBehaviorEquivalence { subject: _, mock: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    RefinementPreservation { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+  }
+}
+
+
+fn append_algebra_law_subject_from_scheduled_generator(
+  acc: List<AlgebraLawSubject>,
+  generator: Generator<TestgenConcept>
+) -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_algebra_law_subject_from_scheduled_generator(generator: generator),
+    f: fn(subject) {
+      Accepted {
+        value: Cons { head: subject, tail: acc },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_subjects_from_scheduled_generators(
+  generators: List<Generator<TestgenConcept>>
+) -> Outcome<List<AlgebraLawSubject>> {
+  fold_list_right(
+    xs: generators,
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, generator) {
+      bind_outcome(
+        o: o,
+        f: fn(acc) {
+          append_algebra_law_subject_from_scheduled_generator(
+            acc: acc,
+            generator: generator
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn testgen_scheduled_algebra_law_subjects() -> List<AlgebraLawSubject> {
+  match testgen_algebra_law_subjects_from_scheduled_generators(
+    generators: testgen_scheduled_algebra_law_generators()
+  ) {
+    Accepted { value: subjects, diagnostics: None } => subjects
+    Rejected { diagnostics: _ } => Empty
+  }
 }
 
 
