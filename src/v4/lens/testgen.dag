@@ -338,7 +338,7 @@ type CorpusLensDriver<C> = fn(
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
 
-fn lbe_label_conj_dag_surface() -> String {
+data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
 
 data lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
@@ -1253,13 +1253,10 @@ fn testgen_algebra_law_subjects_from_scheduled_generators(
 }
 
 
-fn testgen_scheduled_algebra_law_subjects() -> List<AlgebraLawSubject> {
-  match testgen_algebra_law_subjects_from_scheduled_generators(
+fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
+  testgen_algebra_law_subjects_from_scheduled_generators(
     generators: testgen_scheduled_algebra_law_generators()
-  ) {
-    Accepted { value: subjects, diagnostics: None } => subjects
-    Rejected { diagnostics: _ } => Empty
-  }
+  )
 }
 
 

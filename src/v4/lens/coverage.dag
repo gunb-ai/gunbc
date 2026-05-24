@@ -1,7 +1,7 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
 // Owns: corpus coverage meta-lens (L6/L7/impossible-bug/testgen gap detection)
-// Consumes: std/node std/witness std/diagnostic std/verification std/algebra
+// Consumes: std/node std/witness std/diagnostic std/verification std/algebra std/nat
 //           extdeps/languages/dag lens/testgen
 // Status: T-18 filled — substrate-derived expected sets + corpus gap read for L6/L7/testgen/impossible-bug.
 
@@ -33,10 +33,13 @@ import v4.lens.testgen {
   TestgenConcept,
   TypeConstructionSubject,
   testgen_concept_for_manual_claim,
-  testgen_scheduled_algebra_law_subjects,
   testgen_scheduled_coproduct_exhaustiveness_generators,
   testgen_scheduled_language_behavior_generators,
   Generator
+}
+import v4.std.nat {
+  NatAlgebraLawObligation,
+  nat_declared_algebra_law_obligations
 }
 import v4.std.algebra {
   Cons,
@@ -510,6 +513,8 @@ fn missing_coverage<C>(
 }
 
 
+// 🟡 gated — feature:l6-k1-dag-language-surface-only — bind task: src/v4/TASKS.md#t-18-lenscoveragedag--meta-lens-for-coverage-discipline
+// dissolve-on-arrival: bootstrap_l6_language_surfaces projects extdeps/languages scheduled L6 surfaces; forbidden: reporting K-1 single-language bootstrap as full L6 completeness.
 fn bootstrap_l6_language_surfaces() -> List<Symbol> {
   [dag_language_model_surface_id]
 }
@@ -591,24 +596,43 @@ fn expected_l6_coverage_keys() -> List<L6CoverageKey> {
 }
 
 
-fn expected_l7_coverage_keys() -> List<L7CoverageKey> {
-  testgen_scheduled_algebra_law_subjects()
+fn l7_coverage_key_from_nat_obligation(o: NatAlgebraLawObligation) -> L7CoverageKey {
+  AlgebraLawSubject {
+    algebra: o.algebra,
+    inhabitant: o.inhabitant,
+    law: o.law,
+  }
 }
 
 
-fn algebra_law_testgen_key_from_subject(subject: AlgebraLawSubject) -> TestgenCoverageKey {
-  AlgebraLaw { subject: subject }
+fn expected_l7_coverage_keys() -> List<L7CoverageKey> {
+  fold_list_right(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Empty,
+    snoc: fn(acc, obligation) {
+      dedupe_snoc(
+        acc: acc,
+        item: l7_coverage_key_from_nat_obligation(o: obligation),
+        eq: l7_coverage_key_eq
+      )
+    }
+  )
+}
+
+
+fn algebra_law_testgen_key_from_nat_obligation(o: NatAlgebraLawObligation) -> TestgenCoverageKey {
+  AlgebraLaw { subject: l7_coverage_key_from_nat_obligation(o: o) }
 }
 
 
 fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
   fold_list_right(
-    xs: testgen_scheduled_algebra_law_subjects(),
+    xs: nat_declared_algebra_law_obligations(),
     empty: Empty,
-    snoc: fn(acc, subject) {
+    snoc: fn(acc, obligation) {
       dedupe_snoc(
         acc: acc,
-        item: algebra_law_testgen_key_from_subject(subject: subject),
+        item: algebra_law_testgen_key_from_nat_obligation(o: obligation),
         eq: testgen_coverage_key_eq
       )
     }
