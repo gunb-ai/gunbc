@@ -155,15 +155,18 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
             && COORDINATION_DAG.contains("coordination_effect_obligation(effect: PubSub)\n  ]"),
         "WIRECONTRACT-OBLIGATION-TABLE-T4.8 must use the v4 list literal surface and enumerate every effect arm"
     );
-    assert!(
-        COORDINATION_DAG.contains("Http => CoordinationEffectObligation")
-            && COORDINATION_DAG.contains("required_exchange: RequestReply")
-            && COORDINATION_DAG.contains("Queue => CoordinationEffectObligation")
-            && COORDINATION_DAG.contains("required_exchange: FireAndForget")
-            && COORDINATION_DAG.contains("Stream => CoordinationEffectObligation")
-            && COORDINATION_DAG.contains("required_exchange: StreamExchange")
-            && COORDINATION_DAG.contains("PubSub => CoordinationEffectObligation")
-            && COORDINATION_DAG.contains("required_exchange: PublishSubscribe"),
-        "CoordinationEffectKind arms must each route through executable obligation rows with their exchange facts"
-    );
+    for (effect, exchange) in [
+        ("Http", "RequestReply"),
+        ("Queue", "FireAndForget"),
+        ("Stream", "StreamExchange"),
+        ("PubSub", "PublishSubscribe"),
+    ] {
+        let expected = format!(
+            "{effect} => CoordinationEffectObligation {{\n      effect: {effect},\n      required_exchange: {exchange},"
+        );
+        assert!(
+            COORDINATION_DAG.contains(&expected),
+            "CoordinationEffectKind arm {effect} must route through its executable obligation row with exchange fact {exchange}"
+        );
+    }
 }
