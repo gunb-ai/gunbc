@@ -95,11 +95,11 @@ fn v4_extdeps_coordination_wire_contract_uses_decomposed_facts() {
     assert_eq!(record_field_type(facts, "exchange"), "ExchangePattern");
     assert_eq!(
         record_field_type(facts, "settlement"),
-        "SettlementGuarantee"
+        "SettlementGuarantee<SettleBound>"
     );
     assert_eq!(
         record_field_type(facts, "consistency"),
-        "ConsistencyGuarantee"
+        "ConsistencyGuarantee<ConvergeBound>"
     );
 
     let wire = type_record_fields(&module, "WireContract");
@@ -126,24 +126,31 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
     );
     assert_eq!(
         record_field_type(obligation, "required_settlement"),
-        "SettlementGuarantee"
+        "SettlementGuarantee<RequiredSettleBound>"
     );
     assert_eq!(
         record_field_type(obligation, "required_consistency"),
-        "ConsistencyGuarantee"
+        "ConsistencyGuarantee<RequiredConvergeBound>"
     );
 
     assert!(
-        COORDINATION_DAG.contains("type SettleBoundSource")
-            && COORDINATION_DAG.contains("RequiredSettleBound")
-            && COORDINATION_DAG.contains("DeclaredSettleBound"),
-        "settlement obligations must route through SettlementGuarantee without fabricated concrete bounds"
+        COORDINATION_DAG.contains("type SettlementGuarantee<Bound>")
+            && COORDINATION_DAG.contains("settlement: SettlementGuarantee<SettleBound>")
+            && COORDINATION_DAG
+                .contains("required_settlement: SettlementGuarantee<RequiredSettleBound>"),
+        "settlement obligations must share the guarantee discriminant while keeping requirement bounds out of WireContractFacts"
     );
     assert!(
-        COORDINATION_DAG.contains("type ConvergeBoundSource")
-            && COORDINATION_DAG.contains("RequiredConvergeBound")
-            && COORDINATION_DAG.contains("DeclaredConvergeBound"),
-        "consistency obligations must route through ConsistencyGuarantee without fabricated concrete bounds"
+        COORDINATION_DAG.contains("type ConsistencyGuarantee<Bound>")
+            && COORDINATION_DAG.contains("consistency: ConsistencyGuarantee<ConvergeBound>")
+            && COORDINATION_DAG
+                .contains("required_consistency: ConsistencyGuarantee<RequiredConvergeBound>"),
+        "consistency obligations must share the guarantee discriminant while keeping requirement bounds out of WireContractFacts"
+    );
+    assert!(
+        COORDINATION_DAG.contains("fn wire_contract_obligation_table_t4_8")
+            && COORDINATION_DAG.contains("[\n    coordination_effect_obligation(effect: Http),"),
+        "WIRECONTRACT-OBLIGATION-TABLE-T4.8 must use the v4 list literal surface, not undeclared raw constructors"
     );
     assert!(
         COORDINATION_DAG.contains("fn coordination_effect_obligation"),

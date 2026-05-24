@@ -1,6 +1,6 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, SettleBoundSource, ConvergeBoundSource, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, CoordinationEffectObligation, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit, coordination_effect_obligation, wire_contract_obligation_table_t4_8.
+// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, RequiredSettleBound, RequiredConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, CoordinationEffectObligation, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit, coordination_effect_obligation, wire_contract_obligation_table_t4_8.
 // Consumes: std/node.dag, std/collection.dag, std/nat.dag, std/network.dag.
 // Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows.
 
@@ -43,15 +43,9 @@ type ConvergeBound {
   steps: Nat
 }
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
-type SettleBoundSource
-  = DeclaredSettleBound { bound: SettleBound }
-  | RequiredSettleBound
+type RequiredSettleBound {}
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
-type ConvergeBoundSource
-  = DeclaredConvergeBound { bound: ConvergeBound }
-  | RequiredConvergeBound
+type RequiredConvergeBound {}
 
 // Anchor: https://en.wikipedia.org/wiki/Messaging_pattern
 // 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
@@ -62,15 +56,15 @@ type ExchangePattern
   | PublishSubscribe
 
 // 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
-type SettlementGuarantee
+type SettlementGuarantee<Bound>
   = ImmediateSettlement
-  | SettlesWithin { bound: SettleBoundSource }
+  | SettlesWithin { bound: Bound }
 
 // Anchor: https://en.wikipedia.org/wiki/Eventual_consistency
 // 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
-type ConsistencyGuarantee
+type ConsistencyGuarantee<Bound>
   = NoReplicaConvergence
-  | EventuallyConsistent { bound: ConvergeBoundSource }
+  | EventuallyConsistent { bound: Bound }
 
 // 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type CoordinationEffectKind
@@ -82,8 +76,8 @@ type CoordinationEffectKind
 type CoordinationEffectObligation {
   effect: CoordinationEffectKind,
   required_exchange: ExchangePattern,
-  required_settlement: SettlementGuarantee,
-  required_consistency: ConsistencyGuarantee
+  required_settlement: SettlementGuarantee<RequiredSettleBound>,
+  required_consistency: ConsistencyGuarantee<RequiredConvergeBound>
 }
 
 fn coordination_effect_obligation(effect: CoordinationEffectKind) -> CoordinationEffectObligation {
@@ -97,38 +91,31 @@ fn coordination_effect_obligation(effect: CoordinationEffectKind) -> Coordinatio
     Queue => CoordinationEffectObligation {
       effect: Queue,
       required_exchange: FireAndForget,
-      required_settlement: SettlesWithin { bound: RequiredSettleBound },
-      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound }
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
     }
     Stream => CoordinationEffectObligation {
       effect: Stream,
       required_exchange: StreamExchange,
-      required_settlement: SettlesWithin { bound: RequiredSettleBound },
-      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound }
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
     }
     PubSub => CoordinationEffectObligation {
       effect: PubSub,
       required_exchange: PublishSubscribe,
-      required_settlement: SettlesWithin { bound: RequiredSettleBound },
-      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound }
+      required_settlement: SettlesWithin { bound: RequiredSettleBound {} },
+      required_consistency: EventuallyConsistent { bound: RequiredConvergeBound {} }
     }
   }
 }
 
 fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
-  Cons {
-    head: coordination_effect_obligation(effect: Http),
-    tail: Cons {
-      head: coordination_effect_obligation(effect: Queue),
-      tail: Cons {
-        head: coordination_effect_obligation(effect: Stream),
-        tail: Cons {
-          head: coordination_effect_obligation(effect: PubSub),
-          tail: Empty
-        }
-      }
-    }
-  }
+  [
+    coordination_effect_obligation(effect: Http),
+    coordination_effect_obligation(effect: Queue),
+    coordination_effect_obligation(effect: Stream),
+    coordination_effect_obligation(effect: PubSub)
+  ]
 }
 
 // coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
@@ -145,8 +132,8 @@ type WireContractFacts {
   from: EndpointRef,
   to: EndpointRef,
   exchange: ExchangePattern,
-  settlement: SettlementGuarantee,
-  consistency: ConsistencyGuarantee
+  settlement: SettlementGuarantee<SettleBound>,
+  consistency: ConsistencyGuarantee<ConvergeBound>
 }
 
 // Anchor: https://en.wikipedia.org/wiki/Inter-process_communication
