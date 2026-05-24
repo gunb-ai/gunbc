@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_algebra_law_subjects testgen_algebra_law_subject_from_scheduled_generator testgen_scheduled_algebra_law_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.std.effects v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
 
@@ -8,7 +8,7 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List }
-import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, non_empty }
+import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, non_empty, list_snoc_item }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -37,15 +37,21 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
+  outcome_accepted,
   outcome_rejected,
   rejected_with_pending
 }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
-  nat_algebra_law_subject_symbol_additive_monoid,
-  nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat
+  NatAlgebraLawObligation,
+  nat_declared_algebra_law_obligations,
+  law_nat_add_associativity,
+  law_nat_add_left_identity,
+  law_nat_add_right_identity,
+  law_nat_mul_annihilator,
+  law_nat_mul_associativity,
+  law_nat_mul_left_identity
 }
 import v4.std.node {
   Atom,
@@ -214,7 +220,7 @@ type TestgenConcept
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness
+  | DiagnosticExhaustiveness { omitted_variant: TestClaimCoproductVariant }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -331,24 +337,6 @@ type CorpusLensDriver<C> = fn(
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
 
-data law_nat_add_left_identity: Symbol = law_nat_add_left_identity
-
-
-data law_nat_add_right_identity: Symbol = law_nat_add_right_identity
-
-
-data law_nat_add_associativity: Symbol = law_nat_add_associativity
-
-
-data law_nat_mul_left_identity: Symbol = law_nat_mul_left_identity
-
-
-data law_nat_mul_annihilator: Symbol = law_nat_mul_annihilator
-
-
-data law_nat_mul_associativity: Symbol = law_nat_mul_associativity
-
-
 data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
 
@@ -369,6 +357,9 @@ data testgen_lens_file: Symbol = testgen_lens_file
 
 
 data manual_anchor_absent_bootstrap: Symbol = manual_anchor_absent_bootstrap
+
+
+data testgen_non_algebra_law_scheduled_slot: Symbol = testgen_non_algebra_law_scheduled_slot
 
 
 data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
@@ -1097,6 +1088,377 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
 }
 
 
+fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: testgen_non_algebra_law_scheduled_slot,
+    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+type NatAlgebraLawScheduleRow {
+  obligation: NatAlgebraLawObligation
+  anchor: ManualAnchorKey
+}
+
+
+// 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete algebra_law_subject_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/testgen.
+fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
+  AlgebraLawSubject {
+    algebra: o.algebra,
+    inhabitant: o.inhabitant,
+    law: o.law,
+  }
+}
+
+
+fn append_nat_obligation_if_law_matches(
+  found: Outcome<NatAlgebraLawObligation>,
+  obligation: NatAlgebraLawObligation,
+  law: Symbol
+) -> Outcome<NatAlgebraLawObligation> {
+  match found {
+    Accepted { value: _, diagnostics: None } => found
+    Rejected { diagnostics: _ } =>
+      if obligation.law == law {
+        Accepted { value: obligation, diagnostics: None }
+      } else {
+        found
+      }
+  }
+}
+
+
+fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: testgen_non_algebra_law_scheduled_slot,
+          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_obligation_if_law_matches(
+        found: found,
+        obligation: obligation,
+        law: law
+      )
+    }
+  )
+}
+
+
+// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+// dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
+fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
+  if law == law_nat_add_left_identity {
+    Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
+  } else if law == law_nat_add_right_identity {
+    Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
+  } else if law == law_nat_add_associativity {
+    Accepted { value: ManualNatAddAssociativity, diagnostics: None }
+  } else if law == law_nat_mul_left_identity {
+    Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
+  } else if law == law_nat_mul_annihilator {
+    Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
+  } else if law == law_nat_mul_associativity {
+    Accepted { value: ManualNatMulAssociativity, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    }
+  }
+}
+
+
+fn testgen_manual_anchor_from_nat_obligation(
+  o: NatAlgebraLawObligation
+) -> Outcome<ManualAnchorKey> {
+  testgen_manual_anchor_for_law(law: o.law)
+}
+
+
+fn nat_algebra_law_schedule_row_from_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  bind_outcome(
+    o: testgen_manual_anchor_for_law(law: obligation.law),
+    f: fn(anchor) {
+      Accepted {
+        value: NatAlgebraLawScheduleRow { obligation: obligation, anchor: anchor },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
+fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
+  match a {
+    ManualNatAddLeftIdentity =>
+      match b {
+        ManualNatAddLeftIdentity => true
+        _ => false
+      }
+    ManualNatAddRightIdentity =>
+      match b {
+        ManualNatAddRightIdentity => true
+        _ => false
+      }
+    ManualNatAddAssociativity =>
+      match b {
+        ManualNatAddAssociativity => true
+        _ => false
+      }
+    ManualNatMulLeftIdentity =>
+      match b {
+        ManualNatMulLeftIdentity => true
+        _ => false
+      }
+    ManualNatMulAnnihilator =>
+      match b {
+        ManualNatMulAnnihilator => true
+        _ => false
+      }
+    ManualNatMulAssociativity =>
+      match b {
+        ManualNatMulAssociativity => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+fn append_nat_algebra_law_schedule_row_if_anchor_matches(
+  found: Outcome<NatAlgebraLawScheduleRow>,
+  obligation: NatAlgebraLawObligation,
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  match found {
+    Accepted { value: _, diagnostics: _ } => found
+    Rejected { diagnostics: _ } =>
+      bind_outcome(
+        o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
+        f: fn(row) {
+          if nat_manual_anchor_key_eq(a: row.anchor, b: anchor) {
+            Accepted { value: row, diagnostics: None }
+          } else {
+            found
+          }
+        }
+      )
+  }
+}
+
+
+fn nat_algebra_law_schedule_row_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_algebra_law_schedule_row_if_anchor_matches(
+        found: found,
+        obligation: obligation,
+        anchor: anchor
+      )
+    }
+  )
+}
+
+
+fn testgen_algebra_law_generator_from_nat_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<Generator<TestgenConcept>> {
+  bind_outcome(
+    o: testgen_manual_anchor_from_nat_obligation(o: obligation),
+    f: fn(anchor) {
+      Accepted {
+        value: Generator {
+          classification: TestClassification { tier: Tier1, layer: Unit },
+          anchor: manual_claim_anchor(anchor: anchor),
+          slot: AlgebraLaw {
+            subject: algebra_law_subject_from_nat_obligation(o: obligation),
+          },
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn append_algebra_law_generator_from_nat_obligation(
+  acc: Outcome<List<Generator<TestgenConcept>>>,
+  obligation: NatAlgebraLawObligation
+) -> Outcome<List<Generator<TestgenConcept>>> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc) {
+      bind_outcome(
+        o: testgen_algebra_law_generator_from_nat_obligation(obligation: obligation),
+        f: fn(generator) {
+          Accepted {
+            value: list_snoc_item(xs: acc, item: generator),
+            diagnostics: None,
+          }
+        }
+      )
+    }
+  )
+}
+
+
+fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  fold_list_right(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, obligation) {
+      append_algebra_law_generator_from_nat_obligation(
+        acc: o,
+        obligation: obligation
+      )
+    }
+  )
+}
+
+
+fn nat_algebra_law_obligation_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawObligation> {
+  bind_outcome(
+    o: nat_algebra_law_schedule_row_for_manual_anchor(anchor: anchor),
+    f: fn(row) {
+      Accepted { value: row.obligation, diagnostics: None }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_concept_for_manual_nat_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<TestgenConcept> {
+  bind_outcome(
+    o: nat_algebra_law_obligation_for_manual_anchor(anchor: anchor),
+    f: fn(obligation) {
+      Accepted {
+        value: AlgebraLaw {
+          subject: algebra_law_subject_from_nat_obligation(o: obligation),
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_subject_from_scheduled_generator(
+  generator: Generator<TestgenConcept>
+) -> Outcome<AlgebraLawSubject> {
+  match generator.slot {
+    AlgebraLaw { subject: subject } =>
+      Accepted { value: subject, diagnostics: None }
+    TypeConstruction { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    DiagnosticExhaustiveness { omitted_variant: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LensApplicability { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    BidirectionalRoundtrip { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LanguageBehaviorEquivalence { subject: _, mock: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    RefinementPreservation { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+  }
+}
+
+
+fn append_algebra_law_subject_from_scheduled_generator(
+  acc: List<AlgebraLawSubject>,
+  generator: Generator<TestgenConcept>
+) -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_algebra_law_subject_from_scheduled_generator(generator: generator),
+    f: fn(subject) {
+      Accepted {
+        value: Cons { head: subject, tail: acc },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_subjects_from_scheduled_generators(
+  generators: List<Generator<TestgenConcept>>
+) -> Outcome<List<AlgebraLawSubject>> {
+  fold_list_right(
+    xs: generators,
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, generator) {
+      bind_outcome(
+        o: o,
+        f: fn(acc) {
+          append_algebra_law_subject_from_scheduled_generator(
+            acc: acc,
+            generator: generator
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_scheduled_algebra_law_generators(),
+    f: fn(generators) {
+      testgen_algebra_law_subjects_from_scheduled_generators(generators: generators)
+    }
+  )
+}
+
+
 fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> GeneratedAnchorKey {
   GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
 }
@@ -1196,28 +1558,28 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
     },
   ]
 }
@@ -1333,53 +1695,17 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
           subject: ConnectiveKernel { connective: Conj },
         }, diagnostics: None }
     ManualClaimAnchor { manual_anchor: ManualNatAddLeftIdentity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_additive_monoid,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: law_nat_add_left_identity,
-          },
-        }, diagnostics: None }
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddLeftIdentity)
     ManualClaimAnchor { manual_anchor: ManualNatAddRightIdentity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_additive_monoid,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: law_nat_add_right_identity,
-          },
-        }, diagnostics: None }
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddRightIdentity)
     ManualClaimAnchor { manual_anchor: ManualNatAddAssociativity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_additive_monoid,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: law_nat_add_associativity,
-          },
-        }, diagnostics: None }
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddAssociativity)
     ManualClaimAnchor { manual_anchor: ManualNatMulLeftIdentity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: law_nat_mul_left_identity,
-          },
-        }, diagnostics: None }
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulLeftIdentity)
     ManualClaimAnchor { manual_anchor: ManualNatMulAnnihilator } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: law_nat_mul_annihilator,
-          },
-        }, diagnostics: None }
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulAnnihilator)
     ManualClaimAnchor { manual_anchor: ManualNatMulAssociativity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: law_nat_mul_associativity,
-          },
-        }, diagnostics: None }
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulAssociativity)
     ManualClaimAnchor { manual_anchor: ManualLbeConjDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
@@ -1404,9 +1730,9 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: v } } =>
       Accepted {
-        value: DiagnosticExhaustiveness,
+        value: DiagnosticExhaustiveness { omitted_variant: v },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>

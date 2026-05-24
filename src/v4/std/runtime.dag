@@ -10,12 +10,8 @@ import v4.std.collection { List, Map }
 import v4.std.diagnostic { Diagnostic, Outcome }
 import v4.std.logic { Bool }
 import v4.std.machine { Byte }
-import v4.std.model_core { ModelCore, PrimitiveOperationRef }
+import v4.std.model_core { ModelCore, PrimitiveOperationRef, ResourceAccess }
 import v4.std.node { Behavior, Node, Symbol }
-
-type ResourceAccess {
-  resource: Node
-}
 
 type RuntimeIdentity {
   identity: Symbol
