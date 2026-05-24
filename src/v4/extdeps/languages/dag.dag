@@ -32,7 +32,6 @@ import v4.compiler.tokenize {
   StringTextChar,
   TokenRule,
   TriviaRule,
-  VoidLexRules,
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
@@ -217,11 +216,6 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
 
 fn dag_wave1_lex() -> LexRules {
   ModeledLexRules { root: dag_wave1_lex_rules() }
-}
-
-
-fn dag_wave1_e0_void_lex() -> LexRules {
-  VoidLexRules
 }
 
 
