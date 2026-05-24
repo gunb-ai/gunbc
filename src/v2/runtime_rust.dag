@@ -287,6 +287,29 @@ fn rt_filesystem() -> String {
     "}\n")
 }
 
+fn rt_hash_ops() -> String {
+  concat(
+    "const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;\n",
+    "const FNV1A64_PRIME: u64 = 0x100000001b3;\n\n",
+    "fn fnv1a64(bytes: &[u8]) -> u64 {\n",
+    "    let mut hash = FNV1A64_OFFSET;\n",
+    "    for b in bytes {\n",
+    "        hash ^= *b as u64;\n",
+    "        hash = hash.wrapping_mul(FNV1A64_PRIME);\n",
+    "    }\n",
+    "    hash\n",
+    "}\n\n",
+    "pub fn atom_identity_hash(s: String) -> String {\n",
+    "    format!(\"{:016x}\", fnv1a64(s.as_bytes()))\n",
+    "}\n\n",
+    "pub fn hash_combine(a: String, b: String) -> String {\n",
+    "    let mut bytes = a.into_bytes();\n",
+    "    bytes.push(0);\n",
+    "    bytes.extend_from_slice(b.as_bytes());\n",
+    "    format!(\"{:016x}\", fnv1a64(&bytes))\n",
+    "}\n\n")
+}
+
 fn rust_runtime_source() -> String {
   concat(
     rt_header(),
@@ -296,5 +319,6 @@ fn rust_runtime_source() -> String {
     rt_rc_container_ops(),
     rt_scanner_ops(),
     rt_unicode_ops(),
+    rt_hash_ops(),
     rt_filesystem())
 }

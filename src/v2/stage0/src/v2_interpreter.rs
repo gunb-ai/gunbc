@@ -2546,6 +2546,18 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        "atom_identity_hash" => {
+            let s = expect_str(positional.first().copied(), "atom_identity_hash")?;
+            Ok(Some(Value::Str(v2_rt::atom_identity_hash(s))))
+        }
+
+        "hash_combine" => match positional.as_slice() {
+            [Value::Str(a), Value::Str(b)] => {
+                Ok(Some(Value::Str(v2_rt::hash_combine(a.clone(), b.clone()))))
+            }
+            _ => Ok(None),
+        },
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

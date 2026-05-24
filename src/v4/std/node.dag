@@ -211,6 +211,77 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
+// Canonical Hash tags for content_hash init-fold over NodeKind / EdgeLabel variants.
+data canonical_hash_conj: Hash = canonical_hash_conj
+data canonical_hash_disj: Hash = canonical_hash_disj
+data canonical_hash_arrow: Hash = canonical_hash_arrow
+data canonical_hash_cardinality: Hash = canonical_hash_cardinality
+data canonical_hash_instantiation: Hash = canonical_hash_instantiation
+data canonical_hash_value: Hash = canonical_hash_value
+data canonical_hash_transform: Hash = canonical_hash_transform
+data canonical_hash_branch: Hash = canonical_hash_branch
+data canonical_hash_loop: Hash = canonical_hash_loop
+data canonical_hash_bind: Hash = canonical_hash_bind
+data canonical_hash_positional_edge: Hash = canonical_hash_positional_edge
+
+
+fn canonical_hash_of_connective(c: Connective) -> Hash {
+  match c {
+    Atom { identity: sym } => atom_identity_hash(s: sym)
+    Conj => canonical_hash_conj
+    Disj => canonical_hash_disj
+    Arrow => canonical_hash_arrow
+    Cardinality => canonical_hash_cardinality
+    Instantiation => canonical_hash_instantiation
+  }
+}
+
+
+fn canonical_hash_of_behavior(b: Behavior) -> Hash {
+  match b {
+    Value => canonical_hash_value
+    Transform => canonical_hash_transform
+    Branch => canonical_hash_branch
+    Loop => canonical_hash_loop
+    Bind => canonical_hash_bind
+  }
+}
+
+
+fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
+  match kind {
+    TypeNode { connective: c } => canonical_hash_of_connective(c: c)
+    ComputationNode { behavior: b } => canonical_hash_of_behavior(b: b)
+  }
+}
+
+
+fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
+  match label {
+    Named { name: sym } => atom_identity_hash(s: sym)
+    Positional => canonical_hash_positional_edge
+  }
+}
+
+
+// B1-CANON: content_hash = merkle_fold ∘ canonical — structural equality key (T-9/T-17/T-24).
+// Merkle step combines node-kind init, each edge label, and each child digest in list order.
+fn content_hash(n: Node) -> Hash {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
+      step: fn(acc, e, child_hash) {
+        hash_combine(
+          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+          b: child_hash
+        )
+      }
+    }
+  )
+}
+
+
 type Path {
   steps: List<Symbol>
 }
