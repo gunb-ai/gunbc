@@ -1593,4 +1593,4 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Normalization budget: what exactly is "bit-identical"? Comment stripping? Whitespace normalization? Declare the normalization explicitly as C5 `Declared-normalized` facts in the fixture header, not silently absorbed
 - Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
 
-**Sequencing:** dispatch after T-6 and T-7 merge; prerequisites include a concrete dag.dag lex/grammar fill, not just the type schema. Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
+**Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
