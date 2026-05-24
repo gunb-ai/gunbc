@@ -208,6 +208,83 @@ fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
+
+fn absorb_outcome_diagnostics<T, U>(
+  acc: Outcome<T>,
+  child: Outcome<U>,
+  policy: StageDiagnosticPolicy
+) -> Outcome<T> {
+  match policy.accumulation {
+    ShortCircuit => match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: v, diagnostics: ad } => match child {
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: v,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+    }
+    Accumulate => match acc {
+      Accepted { value: v, diagnostics: ad } => match child {
+        Accepted { value: _, diagnostics: cd } =>
+          Accepted {
+            value: v,
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+      }
+      Rejected { diagnostics: r } => match child {
+        Accepted { value: _, diagnostics: cd } =>
+          Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: non_empty_diagnostics_append(a: r, b: cr) }
+      }
+    }
+  }
+}
+
+fn append_outcome_value<T>(
+  acc: Outcome<List<T>>,
+  child: Outcome<T>,
+  policy: StageDiagnosticPolicy
+) -> Outcome<List<T>> {
+  match policy.accumulation {
+    ShortCircuit => match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: values, diagnostics: ad } => match child {
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+        Accepted { value: child_value, diagnostics: cd } =>
+          Accepted {
+            value: list_push(values, child_value),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+      }
+    }
+    Accumulate => match acc {
+      Accepted { value: values, diagnostics: ad } => match child {
+        Accepted { value: child_value, diagnostics: cd } =>
+          Accepted {
+            value: list_push(values, child_value),
+            diagnostics: diagnostics_merge(outer: ad, inner: cd)
+          }
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: cr) }
+      }
+      Rejected { diagnostics: r } => match child {
+        Accepted { value: _, diagnostics: cd } =>
+          Rejected { diagnostics: rejected_with_pending(pending: cd, rejected: r) }
+        Rejected { diagnostics: cr } =>
+          Rejected { diagnostics: non_empty_diagnostics_append(a: r, b: cr) }
+      }
+    }
+  }
+}
+
 // Collect a list of outcomes into an outcome of a list, respecting the stage
 // diagnostic policy. ShortCircuit: first Rejected absorbs (pending warnings
 // from earlier Accepted results are prepended). Accumulate: all Rejected
@@ -253,3 +330,16 @@ fn sequence_outcome<T>(
 // traverse_outcome / traverse_node / sequence_node deferred: v2 bootstrap rejects
 // fn(T) -> Outcome<U> and fn(Node) -> Outcome<R> in higher-order parameter types
 // (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.
+fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } =>
+        payload_eq(av, bv) && diagnostics_eq(a: ad, b: bd)
+      Rejected { diagnostics: _ } => false
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => false
+      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
+    }
+  }
+}

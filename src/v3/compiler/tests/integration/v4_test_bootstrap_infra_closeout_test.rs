@@ -5,6 +5,11 @@
 //! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
+//! **P5 receipt for same-path expansion:** explicit deferral to `ROADMAP.md`
+//! § "Nine lanes" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; this
+//! file remains inside the SG-0 T-PB-B test subset and dissolves when these
+//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
+//! harness coverage.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -34,6 +39,7 @@ const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
+const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
@@ -252,13 +258,23 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
     );
     assert!(
-        EVAL_DAG.contains("eval_node_unrealized"),
-        "eval_node must surface an explicit unrealized-eval diagnostic until eval's Outcome<RuntimeValue> projects to Outcome<Node>"
+        RUNTIME_DAG.contains("type RuntimeValueNodeProjection")
+            && RUNTIME_DAG.contains("RuntimeValueNodeUnrepresentable")
+            && RUNTIME_DAG.contains("fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection")
+            && EVAL_DAG.contains("fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node>")
+            && EVAL_DAG.contains("runtime_value_node_projection(value: value)")
+            && EVAL_DAG.contains("eval_rejected_runtime_value_node_unrepresentable"),
+        "eval_node must consume std/runtime RuntimeValue-to-Node projection and fail closed when no faithful Node projection exists"
     );
     assert!(
-        EVAL_DAG.contains("nd.head.reason == eval_node_unrealized")
-            && EVAL_DAG.contains("Deferred { actual: actual, diagnostic: nd.head }"),
-        "run_test_claim_assert must short-circuit to Verdict.Deferred when actual is Rejected with eval_node_unrealized — across ALL TestClaim variants — so CompilesClaim/EqualsClaim can't Pass and DiagnosticClaim can't trivially-match the unrealized signal"
+        !RUNTIME_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
+            && !EVAL_DAG.contains("runtime_value_node(value: value)"),
+        "eval_node must not accept a hollow RuntimeValue-to-type alias as a realized Node"
+    );
+    assert!(
+        !EVAL_DAG.contains("eval_node_unrealized")
+            && !EVAL_DAG.contains("nd.head.reason == eval_node_unrealized"),
+        "eval_node_unrealized fail-closed scaffold must dissolve once eval_node projects RuntimeValue into Node"
     );
 }
 

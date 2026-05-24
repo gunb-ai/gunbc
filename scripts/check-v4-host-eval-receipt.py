@@ -169,7 +169,7 @@ def check_generated_eval(eval_rs: Path) -> None:
             "pub fn eval(tree: &Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: &Rc<Inputs>) -> Rc<Outcome>",
             "well_formed(tree.root.clone())",
             "well_formed(inputs.root.clone())",
-            "eval_runtime_node(inputs.root.clone(), tree.clone(), interpretation, empty_evaluation_environment())",
+            "eval_runtime_node(inputs.root.clone(), tree.clone(), interpretation, empty_evaluation_environment(), eval_runtime())",
         ],
         eval_rs,
         "compiled eval(tree, interpretation, inputs) dispatch",
@@ -196,7 +196,8 @@ def check_generated_eval(eval_rs: Path) -> None:
             "child_values: Rc::new(Outcome::Accepted",
             "value: if ((node.children.clone().len() as i64) == 0)",
             "eval_interpret_node",
-            "eval_pending_children",
+            "outcome_rejected",
+            "eval_rejected_pending_children",
         ],
         eval_rs,
         "compiled leaf evaluation posture",
@@ -219,13 +220,44 @@ def check_generated_eval(eval_rs: Path) -> None:
     require_order(
         computation_body,
         [
-            "Behavior::Value => v2_rt::allocate_literal",
-            "Behavior::Transform => v2_rt::call_primitive",
-            "bind_outcome",
+            "interpretation_behavior_dispatch(interpretation.clone(), behavior)",
+            "RuntimeBehaviorInterpreter::ValueRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::TransformRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::BranchRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::LoopRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::BindRuntimeInterpreter",
+            "environment",
+            "runtime",
             "eval_accept_runtime_value_with_facts",
         ],
         eval_rs,
-        "compiled behavior dispatch through InterpretationAlgebra",
+        "compiled behavior dispatch through runtime-owned InterpretationAlgebra",
+    )
+
+    branch_body = generated_function(source, "eval_branch_node", eval_rs)
+    require_order(
+        branch_body,
+        [
+            "eval_first_runtime_argument",
+            "v2_rt::choose_branch",
+            "eval_runtime_node(chosen.clone(), tree.clone(), interpretation.clone(), environment.clone(), runtime.clone())",
+        ],
+        eval_rs,
+        "compiled Branch interpreter chooses and resumes through selected subgraph",
+    )
+
+    bind_body = generated_function(source, "eval_bind_node", eval_rs)
+    require_order(
+        bind_body,
+        [
+            "eval_bind_key",
+            "eval_bind_value_argument",
+            "v2_rt::bind_value",
+            "eval_bind_body",
+            "eval_runtime_node(body.clone(), tree.clone(), interpretation.clone(), bound_environment.clone(), runtime.clone())",
+        ],
+        eval_rs,
+        "compiled Bind interpreter extends environment and resumes through body",
     )
 
 
