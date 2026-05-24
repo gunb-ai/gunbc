@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
 // Consumes: v4.std.collection, v4.std.node
 // Status: T-33 modeled.
 
@@ -60,9 +60,19 @@ type AlgebraLawObligation {
 }
 
 
+type ResourceAccess {
+  resource: Node
+}
+
+
+type EffectSignature {
+  signature: Node
+}
+
+
 type PrimitiveOperationRef {
   operation: Node
-  effect_signature: Node
+  effect_signature: EffectSignature
 }
 
 
