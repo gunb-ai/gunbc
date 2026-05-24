@@ -275,6 +275,65 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
+// Canonical Symbol tags for content_hash init-fold over NodeKind and EdgeLabel variants.
+data canonical_hash_conj: Symbol = canonical_hash_conj
+data canonical_hash_disj: Symbol = canonical_hash_disj
+data canonical_hash_arrow: Symbol = canonical_hash_arrow
+data canonical_hash_cardinality: Symbol = canonical_hash_cardinality
+data canonical_hash_instantiation: Symbol = canonical_hash_instantiation
+data canonical_hash_value: Symbol = canonical_hash_value
+data canonical_hash_transform: Symbol = canonical_hash_transform
+data canonical_hash_branch: Symbol = canonical_hash_branch
+data canonical_hash_loop: Symbol = canonical_hash_loop
+data canonical_hash_bind: Symbol = canonical_hash_bind
+data canonical_hash_positional_edge: Symbol = canonical_hash_positional_edge
+
+
+fn canonical_symbol_of_connective(c: Connective) -> Symbol {
+  match c {
+    Atom { identity: sym } => sym
+    Conj => canonical_hash_conj
+    Disj => canonical_hash_disj
+    Arrow => canonical_hash_arrow
+    Cardinality => canonical_hash_cardinality
+    Instantiation => canonical_hash_instantiation
+  }
+}
+
+
+fn canonical_symbol_of_behavior(b: Behavior) -> Symbol {
+  match b {
+    Value => canonical_hash_value
+    Transform => canonical_hash_transform
+    Branch => canonical_hash_branch
+    Loop => canonical_hash_loop
+    Bind => canonical_hash_bind
+  }
+}
+
+
+fn canonical_symbol_of_node_kind(kind: NodeKind) -> Symbol {
+  match kind {
+    TypeNode { connective: c } => canonical_symbol_of_connective(c: c)
+    ComputationNode { behavior: b } => canonical_symbol_of_behavior(b: b)
+  }
+}
+
+
+// B1-CANON: content_hash = merkle_fold ∘ canonical — structural equality key for Node identity (T-9/T-17/T-24).
+// init = canonical_symbol_of_node_kind; step is a bridge — hash-combine over child Symbols requires a substrate primitive.
+// 🟡 feature:b1-canon-hash-combine — step acc-only bridge; dissolve-on: merkle_fold hash-combine substrate primitive landed.
+fn content_hash(n: Node) -> Symbol {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { canonical_symbol_of_node_kind(kind: n0.kind) },
+      step: fn(acc, _e, _child_hash) { acc }
+    }
+  )
+}
+
+
 type Path {
   steps: List<Symbol>
 }
