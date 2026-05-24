@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_algebra_law_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_algebra_law_subjects testgen_algebra_law_subject_from_scheduled_generator testgen_scheduled_algebra_law_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.std.effects v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
 
@@ -369,6 +369,9 @@ data testgen_lens_file: Symbol = testgen_lens_file
 
 
 data manual_anchor_absent_bootstrap: Symbol = manual_anchor_absent_bootstrap
+
+
+data testgen_non_algebra_law_scheduled_slot: Symbol = testgen_non_algebra_law_scheduled_slot
 
 
 data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
@@ -1094,6 +1097,97 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       },
     },
   ]
+}
+
+
+fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: testgen_non_algebra_law_scheduled_slot,
+    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn testgen_scheduled_algebra_law_subjects() -> List<AlgebraLawSubject> {
+  [
+    AlgebraLawSubject {
+      algebra: nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_add_left_identity,
+    },
+    AlgebraLawSubject {
+      algebra: nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_add_right_identity,
+    },
+    AlgebraLawSubject {
+      algebra: nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_add_associativity,
+    },
+    AlgebraLawSubject {
+      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_mul_left_identity,
+    },
+    AlgebraLawSubject {
+      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_mul_annihilator,
+    },
+    AlgebraLawSubject {
+      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_mul_associativity,
+    },
+  ]
+}
+
+
+fn testgen_algebra_law_subject_from_scheduled_generator(
+  generator: Generator<TestgenConcept>
+) -> Outcome<AlgebraLawSubject> {
+  match generator.slot {
+    AlgebraLaw { subject: subject } =>
+      Accepted { value: subject, diagnostics: None }
+    TypeConstruction { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    DiagnosticExhaustiveness { omitted_variant: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LensApplicability { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    BidirectionalRoundtrip { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LanguageBehaviorEquivalence { subject: _, mock: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    RefinementPreservation { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+  }
 }
 
 

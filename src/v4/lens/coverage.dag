@@ -33,7 +33,7 @@ import v4.lens.testgen {
   TestgenConcept,
   TypeConstructionSubject,
   testgen_concept_for_manual_claim,
-  testgen_scheduled_algebra_law_generators,
+  testgen_scheduled_algebra_law_subjects,
   testgen_scheduled_coproduct_exhaustiveness_generators,
   testgen_scheduled_language_behavior_generators,
   Generator
@@ -591,39 +591,27 @@ fn expected_l6_coverage_keys() -> List<L6CoverageKey> {
 }
 
 
-fn append_l7_key_from_generator(
-  acc: List<L7CoverageKey>,
-  generator: Generator<TestgenConcept>
-) -> List<L7CoverageKey> {
-  match generator.slot {
-    AlgebraLaw { subject: subject } =>
-      dedupe_snoc(acc: acc, item: subject, eq: l7_coverage_key_eq)
-    TypeConstruction { subject: _ } => acc
-    DiagnosticExhaustiveness { omitted_variant: _ } => acc
-    LensApplicability { subject: _ } => acc
-    BidirectionalRoundtrip { subject: _ } => acc
-    LanguageBehaviorEquivalence { subject: _, mock: _ } => acc
-    RefinementPreservation { subject: _ } => acc
-  }
-}
-
-
-fn l7_coverage_keys_from_scheduled_generators(
-  generators: List<Generator<TestgenConcept>>
-) -> List<L7CoverageKey> {
-  fold_list_right(
-    xs: generators,
-    empty: Empty,
-    snoc: fn(acc, generator) {
-      append_l7_key_from_generator(acc: acc, generator: generator)
-    }
-  )
-}
-
-
 fn expected_l7_coverage_keys() -> List<L7CoverageKey> {
-  l7_coverage_keys_from_scheduled_generators(
-    generators: testgen_scheduled_algebra_law_generators()
+  testgen_scheduled_algebra_law_subjects()
+}
+
+
+fn algebra_law_testgen_key_from_subject(subject: AlgebraLawSubject) -> TestgenCoverageKey {
+  AlgebraLaw { subject: subject }
+}
+
+
+fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
+  fold_list_right(
+    xs: testgen_scheduled_algebra_law_subjects(),
+    empty: Empty,
+    snoc: fn(acc, subject) {
+      dedupe_snoc(
+        acc: acc,
+        item: algebra_law_testgen_key_from_subject(subject: subject),
+        eq: testgen_coverage_key_eq
+      )
+    }
   )
 }
 
@@ -671,13 +659,6 @@ fn expected_type_construction_testgen_keys() -> List<TestgenCoverageKey> {
         eq: testgen_coverage_key_eq
       )
     }
-  )
-}
-
-
-fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
-  testgen_coverage_keys_from_scheduled_generators(
-    generators: testgen_scheduled_algebra_law_generators()
   )
 }
 
