@@ -1,7 +1,7 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
 // Owns: TomlValue, TomlTable, TomlRootTable, TomlDocument, TomlParseAxis, TomlEmitAxis,
-//       TomlIntegerLexeme, TomlFloatLexeme, TomlDatetimeLexeme,
+//       TomlTablePath, TomlIntegerLexeme, TomlFloatLexeme, TomlDatetimeLexeme,
 //       TomlUniqueNameProfile, TomlTableSyntaxProfile.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
@@ -102,9 +102,15 @@ type TomlTableSyntax
   | TomlArrayOfTablesElement
 
 
+type TomlTablePath {
+  head: String,
+  tail: List<String>,
+}
+
+
 type TomlTableSyntaxProfile {
   syntax: TomlTableSyntax,
-  path: List<String>,
+  path: TomlTablePath,
 }
 
 
@@ -148,7 +154,6 @@ type TomlParseAxis {
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 type TomlEmitAxis {
   document: TomlDocument,
-  canonical_table_syntax: TomlTableSyntaxProfile,
 }
 
 
