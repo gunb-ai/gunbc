@@ -151,7 +151,6 @@ type TestClaimRun<S, A> {
 
 type EvalFoldState {
   node: Node
-  processed_children: Int
   progress: EvalProgress
   structural: Outcome<Node>
   child_values: Outcome<List<RuntimeValue>>
@@ -160,7 +159,7 @@ type EvalFoldState {
 
 
 type EvalProgress
-  = AwaitingChildren
+  = AwaitingChildren { processed: Int }
   | ReadyToInterpret
   | Interpreted
 
@@ -757,7 +756,6 @@ fn eval_fold_init(
   let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren }
   EvalFoldState {
     node: node,
-    processed_children: 0,
     progress: progress,
     structural: eval_structural_node_for_eval(tree: tree, node: node),
     child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
@@ -805,6 +803,18 @@ fn eval_maybe_complete_node(
 }
 
 
+fn eval_advance_progress(progress: EvalProgress, node: Node) -> EvalProgress {
+  match progress {
+    AwaitingChildren { processed: p } => {
+      let processed = p + 1
+      if processed == count(node.children) { ReadyToInterpret } else { AwaitingChildren { processed: processed } }
+    }
+    ReadyToInterpret => Interpreted
+    Interpreted => Interpreted
+  }
+}
+
+
 fn eval_fold_step(
   acc: EvalFoldState,
   edge: Edge,
@@ -820,11 +830,9 @@ fn eval_fold_step(
   } else {
     eval_absorb_child_diagnostics(acc: acc.child_values, child: child.structural)
   }
-  let processed_children = acc.processed_children + 1
-  let progress = if processed_children == count(acc.node.children) { ReadyToInterpret } else { AwaitingChildren }
+  let progress = eval_advance_progress(progress: acc.progress, node: acc.node)
   EvalFoldState {
     node: acc.node,
-    processed_children: processed_children,
     progress: progress,
     structural: structural,
     child_values: next_args,
