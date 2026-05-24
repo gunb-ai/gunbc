@@ -104,6 +104,8 @@ data dag_production_fn_decl: Symbol = dag_production_fn_decl
 data dag_production_qualified_name: Symbol = dag_production_qualified_name
 data dag_production_param_list: Symbol = dag_production_param_list
 data dag_production_type_expr: Symbol = dag_production_type_expr
+data dag_production_type_variant: Symbol = dag_production_type_variant
+data dag_production_type_alias_rhs: Symbol = dag_production_type_alias_rhs
 data dag_production_block: Symbol = dag_production_block
 data dag_production_data_value: Symbol = dag_production_data_value
 
@@ -117,6 +119,8 @@ data dag_surface_fn_decl: Symbol = dag_surface_fn_decl
 data dag_surface_qualified_name: Symbol = dag_surface_qualified_name
 data dag_surface_param_list: Symbol = dag_surface_param_list
 data dag_surface_type_expr: Symbol = dag_surface_type_expr
+data dag_surface_type_variant: Symbol = dag_surface_type_variant
+data dag_surface_type_alias_rhs: Symbol = dag_surface_type_alias_rhs
 data dag_surface_block: Symbol = dag_surface_block
 data dag_surface_data_value: Symbol = dag_surface_data_value
 
@@ -415,12 +419,41 @@ fn dag_grammar_import_decl_expr() -> GrammarExpr {
 }
 
 
+fn dag_grammar_type_variant_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: dag_token_ident),
+    right: dag_grammar_optional(element: dag_grammar_nonterminal(production: dag_production_block))
+  )
+}
+
+
+fn dag_grammar_type_alias_rhs_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: dag_production_type_variant),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_pipe),
+        right: dag_grammar_nonterminal(production: dag_production_type_variant)
+      )
+    )
+  )
+}
+
+
 fn dag_grammar_type_decl_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: dag_token_kw_type),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: dag_token_ident),
-      right: dag_grammar_optional(element: dag_grammar_nonterminal(production: dag_production_block))
+      right: dag_grammar_optional(
+        element: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: dag_production_block),
+          right: dag_grammar_sequence(
+            left: dag_grammar_terminal(token_class: dag_token_eq),
+            right: dag_grammar_nonterminal(production: dag_production_type_alias_rhs)
+          )
+        )
+      )
     )
   )
 }
@@ -555,6 +588,16 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
     expression: dag_grammar_type_expr(),
     emitted: dag_surface_type_expr
   )
+  let type_variant = dag_grammar_production(
+    name: dag_production_type_variant,
+    expression: dag_grammar_type_variant_expr(),
+    emitted: dag_surface_type_variant
+  )
+  let type_alias_rhs = dag_grammar_production(
+    name: dag_production_type_alias_rhs,
+    expression: dag_grammar_type_alias_rhs_expr(),
+    emitted: dag_surface_type_alias_rhs
+  )
   let block = dag_grammar_production(
     name: dag_production_block,
     expression: dag_grammar_block_expr(),
@@ -578,6 +621,8 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
       qualified_name,
       param_list,
       type_expr,
+      type_variant,
+      type_alias_rhs,
       block,
       data_value
     ]
