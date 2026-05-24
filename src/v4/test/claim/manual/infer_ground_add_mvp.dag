@@ -14,11 +14,9 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   TestClaimTypedInput,
-  Verdict,
-  Fail,
-  Pass,
   test_claim_cache_receipt
 }
+import v4.std.verdict { Verdict, Fail, Pass }
 import v4.compiler.infer {
   infer,
   infer_descent_not_derived_diagnostic,

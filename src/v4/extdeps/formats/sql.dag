@@ -2,7 +2,7 @@
 // Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
 // Owns: SqlDialect, SqlIdentifier, SqlDataType, SqlColumnConstraints, SqlColumnDefault, SqlColumnDefinition, SqlTableConstraint, SqlPrimaryKeySlot, SqlTableDefinition, SqlSchemaOperation, SqlMigrationStep, SqlMigrationScript, SqlMigrationEmissionTarget, SqlStatementKind, SqlParameterStyle, SqlTransactionMode, SqlResultFormat, SqlTransportConfig, SqlIntegerPrimitiveFacts, SqlFloatPrimitiveFacts, SqlNonNumericPrimitiveFacts, sql_facts_*, sql_*_facts_catalog, sql_wave1_primitive_fact_bundles
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/cardinality.dag, std/model_core.dag
-// Status: T-4.6 scaffold + SqlDataType primitive fact-bundle wave-1.
+// Status: T-4.6 — DDL/relational facts + numeric lexeme (wave-1 bundles) landed; parse/emit axes + identifier/unique-name profile gated (SL-3229-T4-FORMAT-T6T7, SL-3229-SQL-IDENTIFIER-UNIQUENESS).
 // Anchor: https://www.iso.org/standard/76583.html
 
 module v4.extdeps.formats.sql
