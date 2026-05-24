@@ -693,10 +693,11 @@ value semantics (RFC 3339 / TOML §Date-Time four sub-kinds) dissolve on
   `ExchangePattern` + `SettlementGuarantee` + `ConsistencyGuarantee` facts
   on `WireContractFacts`, plus `CoordinationEffectKind` on
   `CoordinationBind`.
-- WIRECONTRACT-OBLIGATION-TABLE-T4.8: `CoordinationEffectKind` is closed over
+- WIRECONTRACT-OBLIGATION-TABLE-T4.8: `CoordinationEffectKind` is tracked over
   `Http` / `Queue` / `Stream` / `PubSub`; each arm has an executable
   `CoordinationEffectObligation` row mapping it to required exchange,
-  settlement, and consistency facts.
+  settlement, and consistency facts. The label bridge dissolves when
+  `CoordinationBind` references canonical obligation rows directly.
 - Effect-typing: the effect kind is intrinsic to `CoordinationBind`, not a
   separate annotation layer.
 - Failure-at-boundary modeling (composes with std/diagnostic.dag — no silent partial-failure)

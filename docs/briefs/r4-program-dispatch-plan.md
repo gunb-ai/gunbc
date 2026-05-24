@@ -160,8 +160,9 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **T-4.7/T-4.8 coordination update:** T-4.7 is satisfied on this tree
   (`src/v4/extdeps/frameworks/react.dag` plus its v3 smoke ratchet). T-4.8 is
   modeled against the decomposed PR #3207 interface: `WireContractFacts`
-  carries exchange / settlement / consistency; `CoordinationBind` carries
-  `CoordinationEffectKind`; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` is present as
+  carries exchange / settlement / consistency; `CoordinationBind` carries the
+  tracked `CoordinationEffectKind` bridge until binds reference canonical
+  obligation rows directly; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` is present as
   per-effect obligation rows. T-4.6 does not gate T-4.8, but T-16 still
   consumes both `WireContract`/`DeploymentUnit` and format-backed artifacts.
 

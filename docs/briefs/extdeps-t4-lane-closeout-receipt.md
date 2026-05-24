@@ -36,7 +36,7 @@ Both headers claim **T-4.5 modeled 2026-05-16** with POSIX anchors; `file_system
 ### T-4.7 / T-4.8
 
 - `frameworks/react.dag` — **superseded after this receipt**: T-4.7 landed via PR #3206 / `31a23422a` with `v4_extdeps_react_dag` passing; treat the dependency as satisfied for T-4.8 coordination.
-- `coordination.dag` — **T-4.8 modeled** under the decomposed PR #3207 shape: `WireContractFacts` owns `ExchangePattern` / `SettlementGuarantee` / `ConsistencyGuarantee`; `CoordinationBind` owns `CoordinationEffectKind`; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` is represented by executable per-effect `CoordinationEffectObligation` rows. T-4.6 remains a T-16 contract-shape alignment dependency, not a T-4.8 start blocker.
+- `coordination.dag` — **T-4.8 modeled** under the decomposed PR #3207 shape: `WireContractFacts` owns `ExchangePattern` / `SettlementGuarantee` / `ConsistencyGuarantee`; `CoordinationBind` owns the tracked `CoordinationEffectKind` bridge until binds reference canonical obligation rows directly; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` is represented by executable per-effect `CoordinationEffectObligation` rows. T-4.6 remains a T-16 contract-shape alignment dependency, not a T-4.8 start blocker.
 
 ### T-4.9 … T-4.14 (stress / probe lanes)
 

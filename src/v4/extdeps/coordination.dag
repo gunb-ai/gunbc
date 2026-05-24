@@ -2,7 +2,7 @@
 // Scope: Multi-program coordination as effect-typed Bind composition.
 // Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, RequiredSettleBound, RequiredConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, CoordinationEffectObligation, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit, coordination_effect_obligation, wire_contract_obligation_table_t4_8.
 // Consumes: std/node.dag, std/collection.dag, std/nat.dag, std/network.dag.
-// Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows.
+// Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows, with CoordinationEffectKind retained as a tracked bridge until binds reference canonical obligation rows directly.
 
 module v4.extdeps.coordination
 
@@ -66,7 +66,7 @@ type ConsistencyGuarantee<Bound>
   = NoReplicaConvergence
   | EventuallyConsistent { bound: Bound }
 
-// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
+// 🟡 coproduct dissolution — consumer:coordination-bind-obligation-row-authority; dissolves when CoordinationBind references canonical CoordinationEffectObligation rows directly.
 type CoordinationEffectKind
   = Http
   | Queue

@@ -149,15 +149,21 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
     );
     assert!(
         COORDINATION_DAG.contains("fn wire_contract_obligation_table_t4_8")
-            && COORDINATION_DAG.contains("[\n    coordination_effect_obligation(effect: Http),"),
-        "WIRECONTRACT-OBLIGATION-TABLE-T4.8 must use the v4 list literal surface, not undeclared raw constructors"
+            && COORDINATION_DAG.contains("[\n    coordination_effect_obligation(effect: Http),")
+            && COORDINATION_DAG.contains("coordination_effect_obligation(effect: Queue),")
+            && COORDINATION_DAG.contains("coordination_effect_obligation(effect: Stream),")
+            && COORDINATION_DAG.contains("coordination_effect_obligation(effect: PubSub)\n  ]"),
+        "WIRECONTRACT-OBLIGATION-TABLE-T4.8 must use the v4 list literal surface and enumerate every effect arm"
     );
     assert!(
-        COORDINATION_DAG.contains("fn coordination_effect_obligation"),
-        "CoordinationEffectKind arms must route through executable obligation rows"
-    );
-    assert!(
-        COORDINATION_DAG.contains("fn wire_contract_obligation_table_t4_8"),
-        "WIRECONTRACT-OBLIGATION-TABLE-T4.8 table must be present"
+        COORDINATION_DAG.contains("Http => CoordinationEffectObligation")
+            && COORDINATION_DAG.contains("required_exchange: RequestReply")
+            && COORDINATION_DAG.contains("Queue => CoordinationEffectObligation")
+            && COORDINATION_DAG.contains("required_exchange: FireAndForget")
+            && COORDINATION_DAG.contains("Stream => CoordinationEffectObligation")
+            && COORDINATION_DAG.contains("required_exchange: StreamExchange")
+            && COORDINATION_DAG.contains("PubSub => CoordinationEffectObligation")
+            && COORDINATION_DAG.contains("required_exchange: PublishSubscribe"),
+        "CoordinationEffectKind arms must each route through executable obligation rows with their exchange facts"
     );
 }
