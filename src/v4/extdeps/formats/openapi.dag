@@ -656,9 +656,7 @@ fn openapi_http_status_code_value(
   tens: OpenApiStatusDigit,
   ones: OpenApiStatusDigit
 ) -> Nat {
-  openapi_status_hundreds_value(hundreds: hundreds)
-    + (openapi_status_digit_value(digit: tens) * 10)
-    + openapi_status_digit_value(digit: ones)
+  openapi_status_hundreds_value(hundreds: hundreds) + (openapi_status_digit_value(digit: tens) * 10) + openapi_status_digit_value(digit: ones)
 }
 
 
