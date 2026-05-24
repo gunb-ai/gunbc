@@ -33,7 +33,8 @@ import v4.compiler.tokenize {
   TokenRule,
   TriviaRule,
   VoidLexRules,
-  WhitespaceChar
+  WhitespaceChar,
+  lex_rule_set_token_class_member
 }
 import v4.std.node { Symbol }
 import v4.std.logic { Bool }
@@ -279,37 +280,8 @@ fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
 
 
 fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == dag_token_kw_module ||
-    sym == dag_token_kw_import ||
-    sym == dag_token_kw_type ||
-    sym == dag_token_kw_data ||
-    sym == dag_token_kw_fn ||
-    sym == dag_token_kw_let ||
-    sym == dag_token_kw_match ||
-    sym == dag_token_kw_if ||
-    sym == dag_token_kw_else ||
-    sym == dag_token_kw_true ||
-    sym == dag_token_kw_false ||
-    sym == dag_token_ident ||
-    sym == dag_token_int_literal ||
-    sym == dag_token_string_literal ||
-    sym == dag_token_arrow ||
-    sym == dag_token_fat_arrow ||
-    sym == dag_token_eq_eq ||
-    sym == dag_token_or_or ||
-    sym == dag_token_and_and ||
-    sym == dag_token_bang ||
-    sym == dag_token_eq ||
-    sym == dag_token_colon ||
-    sym == dag_token_comma ||
-    sym == dag_token_dot ||
-    sym == dag_token_pipe ||
-    sym == dag_token_lbrace ||
-    sym == dag_token_rbrace ||
-    sym == dag_token_lparen ||
-    sym == dag_token_rparen ||
-    sym == dag_token_lbracket ||
-    sym == dag_token_rbracket ||
-    sym == dag_token_lt ||
-    sym == dag_token_gt
+  lex_rule_set_token_class_member(
+    rules: dag_wave1_lex_rules(),
+    token_class: sym
+  )
 }

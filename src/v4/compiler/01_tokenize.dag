@@ -12,8 +12,9 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, Textual, UserInputBoundary, WholeFile, Accepted, None, diagnostics_singleton}
 import v4.std.node { Symbol }
-import v4.std.algebra { is_empty }
+import v4.std.algebra { fold_list, is_empty }
 import v4.std.text { Char, String }
+import v4.std.logic { Bool }
 
 // 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
 type LexCharClass
@@ -72,6 +73,25 @@ type TokenStream {
 data tokenize_lexical_walk_not_realized: Symbol = tokenize_lexical_walk_not_realized
 
 data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
+
+
+fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
+  match rule {
+    TokenRule { token_class: c, pattern: _ } => c == token_class
+    TriviaRule { pattern: _ } => false
+  }
+}
+
+
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  fold_list(
+    xs: rules.rules,
+    empty: false,
+    cons: fn(acc, rule) {
+      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
+    }
+  )
+}
 
 
 fn tokenize_lexical_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
