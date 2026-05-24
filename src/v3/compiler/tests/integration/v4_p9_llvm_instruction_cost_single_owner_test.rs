@@ -10,14 +10,21 @@
 //! (registry exclusivity) with a corpus scan for shadow `fn llvm_instruction_cost`
 //! definitions outside the canonical owner module.
 //!
+//! **TESTING.md:** M1(2.7) tokenize/parse surface scan (`SurfaceItem::Fn` /
+//! `FnExternalBody`); per-file isolation matches peer v4 smoke harness posture.
+//!
 //! **ROADMAP:** T-PB-B / `pb_rust_tests_outside_residual_zero`; dissolves when M2
 //! reflection or generated harness executes the `.dag` claim over the full corpus.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use v3_compiler::parse_for_test;
+use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::tokenize_for_test;
+
 const CANONICAL_OWNER: &str = "src/v4/lens/cost.dag";
-const FN_DEF_NEEDLE: &str = "fn llvm_instruction_cost";
+const TARGET_FN_NAME: &str = "llvm_instruction_cost";
 
 fn workspace_root() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -28,24 +35,22 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn dag_line_without_trailing_line_comment(line: &str) -> &str {
-    let trimmed = line.trim_start();
-    if trimmed.starts_with("//") || trimmed.is_empty() {
-        return "";
-    }
-    let bytes = line.as_bytes();
-    let mut i = 0usize;
-    while i + 1 < bytes.len() {
-        if bytes[i] == b'/' && bytes[i + 1] == b'/' {
-            if i >= 1 && bytes[i - 1] == b':' {
-                i += 2;
-                continue;
-            }
-            return line[..i].trim_end();
+fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens =
+        tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
+    parse_for_test(&tokens, path).unwrap_or_else(|e| panic!("{path}: parse: {e:?}"))
+}
+
+fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn {
+            name: item_name, ..
         }
-        i += 1;
-    }
-    line.trim_end()
+        | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
 }
 
 fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -85,33 +90,27 @@ fn v4_p9_llvm_instruction_cost_defined_only_in_lens_cost_dag() {
 
     let mut defs = Vec::new();
     for path in paths {
+        let rel = rel_path(&root, &path);
         let source =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        for (line_no, line) in source.lines().enumerate() {
-            let code = dag_line_without_trailing_line_comment(line);
-            if code.contains(FN_DEF_NEEDLE) {
-                defs.push(format!(
-                    "{}:{}: {}",
-                    rel_path(&root, &path),
-                    line_no + 1,
-                    line.trim_end()
-                ));
-            }
+        let module = parse_module(&source, &rel);
+        if surface_declares_fn(&module, TARGET_FN_NAME) {
+            defs.push(rel);
         }
     }
 
     assert_eq!(
         defs.len(),
         1,
-        "P9 single-owner: `{FN_DEF_NEEDLE}` must appear exactly once under src/v4/ \
+        "P9 single-owner: `fn {TARGET_FN_NAME}` must be declared exactly once under src/v4/ \
          (canonical owner `{CANONICAL_OWNER}`); whole-tree parse does not substitute. \
-         Found {} definition(s):\n{}",
+         Found {} module(s):\n{}",
         defs.len(),
         defs.join("\n")
     );
-    assert!(
-        defs[0].starts_with(CANONICAL_OWNER),
-        "P9 single-owner: `{FN_DEF_NEEDLE}` must live in `{CANONICAL_OWNER}`; got:\n{}",
+    assert_eq!(
+        defs[0], CANONICAL_OWNER,
+        "P9 single-owner: `fn {TARGET_FN_NAME}` must live in `{CANONICAL_OWNER}`; got: {}",
         defs[0]
     );
 }
@@ -120,10 +119,12 @@ fn v4_p9_llvm_instruction_cost_defined_only_in_lens_cost_dag() {
 fn v4_p9_llvm_instruction_cost_absent_from_llvm_ir_dag() {
     let root = workspace_root();
     let llvm_ir = root.join("src/v4/extdeps/languages/llvm_ir.dag");
+    let rel = rel_path(&root, &llvm_ir);
     let source =
         fs::read_to_string(&llvm_ir).unwrap_or_else(|e| panic!("read {}: {e}", llvm_ir.display()));
+    let module = parse_module(&source, &rel);
     assert!(
-        !source.contains(FN_DEF_NEEDLE),
-        "P9: `{FN_DEF_NEEDLE}` must not be re-authored in llvm_ir.dag (cost authority is v4.lens.cost only)"
+        !surface_declares_fn(&module, TARGET_FN_NAME),
+        "P9: `fn {TARGET_FN_NAME}` must not be declared in llvm_ir.dag (cost authority is v4.lens.cost only)"
     );
 }

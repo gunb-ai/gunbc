@@ -8,6 +8,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
+import v4.std.algebra { contains }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
@@ -277,12 +278,10 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 
 
 fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
-  fold(
-    lens_frontier_dependency_kinds(),
-    init: false,
-    f: fn(found, policy_kind) {
-      found || (kind == policy_kind)
-    }
+  contains(
+    xs: lens_frontier_dependency_kinds(),
+    item: kind,
+    eq: fn(left, right) { left == right }
   )
 }
 
