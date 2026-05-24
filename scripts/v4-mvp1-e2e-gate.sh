@@ -27,7 +27,7 @@
 #
 # Env:
 #   V2_COMPILER   — path to v2-compiler binary (default: target/release/v2-compiler)
-#   MVP1_OUT_DIR  — compile output directory (default: /tmp/v4-mvp1-out)
+#   MVP1_OUT_DIR  — compile output directory (default: unique /tmp/v4-mvp1-out.XXXXXX)
 
 set -euo pipefail
 
@@ -50,10 +50,19 @@ if [[ ! -f "${entry_root}/add.dag" ]]; then
   exit 1
 fi
 
-out="${MVP1_OUT_DIR:-/tmp/v4-mvp1-out}"
-log="${MVP1_LOG:-/tmp/v4-mvp1.log}"
-rm -rf "$out"
-mkdir -p "$out"
+cleanup_out=""
+if [[ -n "${MVP1_OUT_DIR:-}" ]]; then
+  out="$MVP1_OUT_DIR"
+  rm -rf "$out"
+  mkdir -p "$out"
+else
+  out="$(mktemp -d "${TMPDIR:-/tmp}/v4-mvp1-out.XXXXXX")"
+  cleanup_out="$out"
+fi
+if [[ -n "$cleanup_out" ]]; then
+  trap 'rm -rf "$cleanup_out"' EXIT
+fi
+log="${MVP1_LOG:-${out}/v4-mvp1.log}"
 
 echo "=== MVP-1: compile ${entry_root}/add.dag (--target rust) ==="
 set +e
