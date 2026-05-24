@@ -29,6 +29,7 @@ import v4.std.runtime {
   BranchInterpreter,
   CallSemantics,
   ControlSemantics,
+  Continue,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationCall,
@@ -37,10 +38,12 @@ import v4.std.runtime {
   ExecutionSemantics,
   InterpretationAlgebra,
   LoopInterpreter,
+  Raise,
   ResourceAccess,
   ResourceEffectBoundary,
   Return,
   RuntimeValue,
+  Suspend,
   TransformInterpreter,
   ValueInterpreter,
   ValueRepresentationModel
@@ -114,6 +117,13 @@ fn v4_eval_wave1_empty_environment() -> EvaluationEnvironment {
   }
 }
 
+fn v4_eval_wave1_empty_frame() -> EvaluationFrame {
+  EvaluationFrame {
+    current: v4_eval_wave1_unit_type_node(),
+    environment: v4_eval_wave1_empty_environment()
+  }
+}
+
 fn v4_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
 }
@@ -167,8 +177,17 @@ fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-fn v4_eval_wave1_transfer(_control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
-  Accepted { value: frame, diagnostics: None }
+fn v4_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+  match control {
+    Continue { value: _ } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
+    Return { value: _ } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
+    Raise { diagnostic: _ } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
+    Suspend { continuation: c } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: c.current))
+  }
 }
 
 fn v4_eval_wave1_boundary_allowance(allowed: Bool) -> BoundaryAllowance {

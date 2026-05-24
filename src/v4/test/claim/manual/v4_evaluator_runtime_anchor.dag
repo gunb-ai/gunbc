@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/v4_evaluator_runtime_anchor.dag
 // Scope: T-34 compile anchor — v4_evaluator.dag concrete runtime bundle and carrier wiring.
-// Owns: v4_evaluator_anchor_runtime, carrier slice anchors, witness_v4_evaluator_runtime_identity, claim_v4_evaluator_runtime_bundle.
+// Owns: v4_evaluator_anchor_runtime, carrier slice anchors, fail-closed witnesses, TestClaim receipts.
 // Consumes: extdeps/runtimes/v4_evaluator.dag, std/model_core.dag, std/runtime.dag, std/verification.dag.
 // Status: manual T-34 acceptance receipt.
 
@@ -10,6 +10,8 @@ import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
   v4_eval_wave1_call_primitive,
   v4_eval_wave1_empty_environment,
+  v4_eval_wave1_empty_frame,
+  v4_eval_wave1_transfer,
   v4_eval_wave1_unit_type_node,
   v4_evaluator_boundary_wave1,
   v4_evaluator_execution_wave1,
@@ -22,10 +24,12 @@ import v4.extdeps.runtimes.v4_evaluator {
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
 import v4.std.model_core { ModelCore }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.runtime {
   ExecutionSemantics,
   InterpretationAlgebra,
   ResourceEffectBoundary,
+  Suspend,
   ValueRepresentationModel
 }
 import v4.std.verification {
@@ -37,6 +41,8 @@ import v4.std.verification {
   Unit,
   t19_manual_claim_anchor
 }
+
+data v4_evaluator_witness_fail_atom: Symbol = v4_evaluator_witness_fail_atom
 
 type v4_evaluator_anchor_runtime_type = V4EvaluatorRuntime
 
@@ -73,10 +79,49 @@ data witness_v4_evaluator_semantics_fail_closed: Bool = match v4_eval_wave1_call
   _ => false
 }
 
+data witness_v4_evaluator_transfer_fail_closed: Bool = match v4_eval_wave1_transfer(
+  control: Suspend { continuation: v4_eval_wave1_empty_frame() },
+  frame: v4_eval_wave1_empty_frame()
+) {
+  Rejected { diagnostics: _ } => true
+  _ => false
+}
+
+fn v4_evaluator_witness_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: v4_evaluator_witness_fail_atom } },
+    children: []
+  }
+}
+
+fn v4_evaluator_witness_claim_input(ok: Bool) -> Node {
+  if ok {
+    v4_eval_wave1_unit_type_node()
+  } else {
+    v4_evaluator_witness_fail_node()
+  }
+}
+
 data claim_v4_evaluator_runtime_bundle: TestClaim = CompilesClaim {
   label: "T-34 v4 evaluator concrete runtime bundle constructs and carriers wire",
   t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   input: v4_eval_wave1_unit_type_node(),
+  expected_value: v4_eval_wave1_unit_type_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_v4_evaluator_semantics_fail_closed: TestClaim = CompilesClaim {
+  label: "T-34 v4 evaluator wave-1 call_primitive rejects deferred semantics",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: v4_evaluator_witness_claim_input(ok: witness_v4_evaluator_semantics_fail_closed),
+  expected_value: v4_eval_wave1_unit_type_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_v4_evaluator_transfer_fail_closed: TestClaim = CompilesClaim {
+  label: "T-34 v4 evaluator wave-1 transfer rejects deferred control",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  input: v4_evaluator_witness_claim_input(ok: witness_v4_evaluator_transfer_fail_closed),
   expected_value: v4_eval_wave1_unit_type_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
