@@ -2,7 +2,7 @@
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
 // Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiDocumentWireContractFacts, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiHttpMethodBridgeFacts, OpenApiHttpStatusClassBounds, OpenApiHttpStatusCodeFacts, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiNumericLexemeFacts, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOperationWireContractFacts, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiRequestReplyExchangeWitness, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardBridgeFacts, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiUniqueNameProfileFacts, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
-// Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 + info.version),
+// Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
 //         document/operation wire-contract facts.
 // Anchor: https://spec.openapis.org/oas/v3.1.0
@@ -471,12 +471,9 @@ type OpenApiOpenapi31MajorMinorFixedWitness {}
 
 type OpenApiOpenapi31PatchNatCarrierWitness {}
 
-type OpenApiInfoVersionSemverLexemeWitness {}
-
 type OpenApiNumericLexemeFacts {
   openapi_field_major_minor_fixed_3_1: OpenApiOpenapi31MajorMinorFixedWitness,
   openapi_field_patch_nat_carrier: OpenApiOpenapi31PatchNatCarrierWitness,
-  info_version_semver_lexeme: OpenApiInfoVersionSemverLexemeWitness,
 }
 
 
@@ -668,9 +665,8 @@ fn openapi_http_status_code_value(
 type OpenApiRequestReplyExchangeWitness {}
 
 type OpenApiOperationWireContractFacts {
-  method: OpenApiHttpMethod,
+  http_method_bridge: OpenApiHttpMethodBridgeFacts,
   path_template: OpenApiPathTemplateKey,
-  network_method: HttpMethod,
   exchange: OpenApiRequestReplyExchangeWitness,
 }
 
