@@ -43,10 +43,12 @@ type ConvergeBound {
   steps: Nat
 }
 
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type SettleBoundSource
   = DeclaredSettleBound { bound: SettleBound }
   | RequiredSettleBound
 
+// 🟢 coproduct dissolution — #coordination-coproduct-ledgers.
 type ConvergeBoundSource
   = DeclaredConvergeBound { bound: ConvergeBound }
   | RequiredConvergeBound
