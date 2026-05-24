@@ -561,7 +561,7 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// 🟡 T-28 cross-file namespace bridge — graph entries not yet merged; dissolve-on: walks ModuleGraph.entries, extracts each entry's exported symbols, and unions them into the returned Namespace (full T-28 compile-unit realization).
+// 🟡 gated — consumer: T-28 full cross-file namespace merge not yet realized — bind node://adhoc-243cb99b-672 — dissolve-on-arrival: walks ModuleGraph.entries, extracts each entry's exported symbols, and unions them into the returned Namespace (node://adhoc-243cb99b-672).
 fn namespace_from_tree_and_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,
