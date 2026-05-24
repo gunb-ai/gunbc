@@ -1,0 +1,71 @@
+// src/v4/test/claim/manual/posix_output_capture.dag
+// Scope: POSIX CapturedOutputPipes structural witnesses — stdout and stderr as separate capture axes.
+// Owns: empty_captured_pipes, claim_captured_output_pipes_stdout_empty, claim_captured_output_pipes_stderr_empty.
+// Consumes: v4.extdeps.posix, v4.std.verification, connective stubs.
+// Status: T-4.5 capture pipe modeling witness; eval T-22.
+
+
+module v4.test.claim.manual.posix_output_capture
+
+
+import v4.extdeps.posix { CapturedByteStream, CapturedOutputPipes }
+import v4.std.node { Node }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  T19ManualAnchorAbsent,
+  t19_manual_claim_anchor
+}
+import v4.test.claim.manual.connective_anchors { stub_empty_conj, stub_empty_disj }
+
+
+data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
+  stdout: [],
+  stderr: []
+}
+
+
+fn witness_captured_pipes_stdout_is_empty() -> Bool {
+  match empty_captured_pipes.stdout {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+
+fn witness_captured_pipes_stderr_is_empty() -> Bool {
+  match empty_captured_pipes.stderr {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+
+fn claim_input(ok: Bool) -> Node {
+  if ok {
+    stub_empty_conj
+  } else {
+    stub_empty_disj
+  }
+}
+
+
+data claim_captured_output_pipes_stdout_empty: TestClaim = EqualsClaim {
+  label: "manual/posix: CapturedOutputPipes.stdout is independently empty",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: claim_input(ok: witness_captured_pipes_stdout_is_empty()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_captured_output_pipes_stderr_empty: TestClaim = EqualsClaim {
+  label: "manual/posix: CapturedOutputPipes.stderr is independently empty",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: claim_input(ok: witness_captured_pipes_stderr_is_empty()),
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

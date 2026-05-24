@@ -1032,39 +1032,19 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 
 **New PROPOSED tasks (the "missing substrate" Theme-A gaps):**
 
-### T-25 — std/ value-predicate refinement substrate  [SCHEDULED]
-**Gap:** `PositiveInt` (PID), `NonNegativeInt` (exit code), non-empty
-`String` (paths/keys), `NonEmptyList` (`AbsolutePath`), and a general
-`where`-clause / phantom-bound on records — needed by T-4.5
-posix/file_system, T-4.6 json/toml, rust.dag and others; no substrate
-exists (`integer.dag` explicitly states "no `where`-clause").
-**Disposition — SCHEDULED (operator ruling 2026-05-17; no rule-out). DECOMPOSE into core + tail:**
-- **T-25-core** — a refinement modeled as a **base type + a fail-closed
-  validation obligation**: a refined value is its base carrier plus a
-  named validation that must discharge at a constructor boundary, failing
-  closed (Diagnostic) when it cannot. This IS the audit's missing fourth
-  coercion *outcome* — "can't prove ⇒ fail-closed" (T-9's `Outcome::Rejected`
-  branch — the failure outcome, not a quality tag). `docs/coercion-design.md`
-  Category 6 already designed this shape: chain to the base carrier + a
-  validation at a named constructor boundary. T-25-core sits **near T-3**
-  (the cardinality area) and is a **hard prerequisite** of the extdeps
-  tasks that ground refinement-bearing carriers — **T-4** (the per-language
-  fact-bundles, e.g. rust.dag), **T-4.5** (posix/file_system — `PositiveInt`
-  PID, `NonNegativeInt` exit code, `NonEmptyList` `AbsolutePath`), and
-  **T-4.6** (the format models — non-empty json/toml keys). Those tasks
-  carry T-25-core in their `[needs]`.
-- **T-25-tail** — the **predicate prover** that *erases* a refinement once
-  its predicate is proven (a pure optimization: a proven refinement need
-  not re-validate downstream). Placed **after T-9**; never dropped.
-**Independent sub-bug — decoupled from the T-25 schedule:**
-`file_system.dag`'s header `Consumes` cites `std/collection NonEmptyList`,
-a type `collection.dag` does not declare. This is a dangling-`Consumes`
-bug independent of T-25 — the header cites a non-existent type today,
-before any refinement substrate lands — so it is NOT gated on T-25. It is
-routed standalone to the `file_system.dag` owner (T-4.5 / PR #3209) to
-correct the header; the dangling `Consumes` stands on the PR-head tree
-until that PR lands. (`NonEmptyList` itself, once T-25-core lands, is a
-`List` refinement — `List<T> where non_empty` — not a separate carrier.)
+### T-25 — std/ value-predicate refinement substrate  [SUBSTRATE LANDED]
+**Status:** Both T-25 components are landed on `main`.
+- **T-25-core** — `src/v4/std/refinement.dag` (`Validation<B>`, `Refined<B>`, `refine`, `refined_base`).
+  Landed **PR #3354**. Consumed by posix.dag (ProcessId/ExitCode/SignalNum per PR #3507).
+- **T-25-tail** — predicate prover (`constraint_satisfaction` + `exact_structural_equality_zip_fold`
+  semantics) in `src/v4/std/find_witness.dag` and `src/v4/std/constraint_satisfaction_predicate.dag`;
+  dissolves identity-MVP scaffolds. Landed **PR #3531**.
+**Residual (not T-25):** RFC 3986 validated-component refinements remain the
+`src/v4/std/network.dag` **`feature:T-25-core`** yellow row; `NonEmptyList` witness
+in `src/v4/test/claim/manual/refinement_nonempty_list.dag` (acceptance witness, T-22 exec).
+**Independent sub-bug (resolved):** `file_system.dag` header dangling-`Consumes`
+(cited `std/collection NonEmptyList` before T-25-core landed) is corrected — the header
+no longer cites a non-existent type.
 
 ### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SUBSTRATE LANDED]
 **Operator ruling 2026-05-17 — disposition unchanged (no fork); authority lives in `std/`.**
@@ -1117,7 +1097,11 @@ integer widths without it; hence the `T-4 [needs … T-29]` edge). It is a
 T-29, T-25-core} → T-4 → T-9` side branch goes critical. Low-dependency
 ≠ low-priority.
 
-### T-30 — std/ structural fact-density / hollow-alias gate  [SCHEDULED]
+### T-30 — std/ structural fact-density / hollow-alias gate  [SUBSTRATE LANDED]
+**Status:** Landed **PR #3359**. `src/v4/lens/fact_density.dag` is the substrate authority
+(`carrier_spec_fact`, `SourceSpecReadFact`, kernel-ambient exemption). Hand-Rust bootstrap
+mirror at `src/v3/compiler/src/v4_hollow_alias_gate.rs` (P5(b) interim; dissolves when
+generated `.dag` checker runs during bootstrap). TestClaims in `src/v4/test/claim/lens_fact_density/`.
 **Operator ruling 2026-05-17 (codex 13403, via the D2-reversal Phase-1
 resolution).** A generated structural checker — a pure function
 `Node -> Outcome` — that **fails closed on a hollow alias**: a carrier
