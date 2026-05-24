@@ -8,16 +8,23 @@
 module v4.lens.coverage
 
 
-import v4.extdeps.languages.dag { dag_language_model_surface_id }
+import v4.extdeps.languages.dag {
+  dag_c3_surface_sugar_type,
+  dag_language_model_surface_id
+}
 import v4.lens.testgen {
   AlgebraLawSubject,
   BehaviorValueSubject,
+  BidirectionalRoundtripSubject,
   ConnectiveKernel,
   DiagnosticExhaustiveness,
   LanguageBehaviorEquivalence,
+  LanguageBehaviorEquivalenceSubject,
   FrozenLanguageBehaviorSnapshot,
   LanguageBehaviorIoMock,
+  LensApplicabilitySubject,
   RefinementPreservation,
+  RefinementPreservationSubject,
   TestgenConcept,
   TypeConstructionSubject,
   lbe_io_mock_conj_dag_surface,
@@ -62,6 +69,7 @@ import v4.std.nat {
   nat_algebra_law_subject_symbol_commutative_semiring,
   nat_algebra_law_subject_symbol_inhabitant_nat
 }
+import v4.std.refinement { Refined }
 import v4.std.node {
   Arrow,
   Atom,
@@ -570,18 +578,22 @@ fn expected_impossible_bug_coverage_keys() -> List<ImpossibleBugCoverageKey> {
 }
 
 
+fn type_construction_testgen_key(subject: TypeConstructionSubject) -> TestgenCoverageKey {
+  TypeConstruction { subject: subject }
+}
+
+
 fn expected_type_construction_testgen_keys() -> List<TestgenCoverageKey> {
-  [
-    TypeConstruction { subject: ConnectiveKernel { connective: Conj } },
-    TypeConstruction { subject: ConnectiveKernel { connective: Disj } },
-    TypeConstruction { subject: ConnectiveKernel { connective: Arrow } },
-    TypeConstruction { subject: ConnectiveKernel { connective: Cardinality } },
-    TypeConstruction { subject: ConnectiveKernel { connective: Instantiation } },
-    TypeConstruction { subject: BehaviorValueSubject { behavior: Transform } },
-    TypeConstruction { subject: BehaviorValueSubject { behavior: Branch } },
-    TypeConstruction { subject: BehaviorValueSubject { behavior: Loop } },
-    TypeConstruction { subject: BehaviorValueSubject { behavior: Bind } },
-  ]
+  fold_list_right(
+    xs: bootstrap_type_construction_subjects(),
+    empty: Empty,
+    snoc: fn(acc, subject) {
+      Cons {
+        head: type_construction_testgen_key(subject: subject),
+        tail: acc
+      }
+    }
+  )
 }
 
 
