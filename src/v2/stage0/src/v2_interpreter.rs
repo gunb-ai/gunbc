@@ -2546,16 +2546,20 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
-        "atom_identity_hash" => {
-            let s = expect_str(positional.first().copied(), "atom_identity_hash")?;
-            Ok(Some(Value::Str(v2_rt::atom_identity_hash(s))))
-        }
+        "atom_identity_hash" => match positional.as_slice() {
+            [Value::Str(s)] => Ok(Some(Value::Str(v2_rt::atom_identity_hash(s.clone())))),
+            _ => Err(InterpError::TypeError {
+                msg: "atom_identity_hash requires exactly one string argument".to_string(),
+            }),
+        },
 
         "hash_combine" => match positional.as_slice() {
-            [Value::Str(a), Value::Str(b)] => {
+            [Value::Str(a), Value::Str(b)] if positional.len() == 2 => {
                 Ok(Some(Value::Str(v2_rt::hash_combine(a.clone(), b.clone()))))
             }
-            _ => Ok(None),
+            _ => Err(InterpError::TypeError {
+                msg: "hash_combine requires exactly two string arguments".to_string(),
+            }),
         },
 
         // Not a built-in — fall through to user-defined function lookup

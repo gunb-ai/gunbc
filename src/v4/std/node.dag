@@ -211,6 +211,7 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
+data canonical_tag_atom: Symbol = canonical_tag_atom
 data canonical_tag_conj: Symbol = canonical_tag_conj
 data canonical_tag_disj: Symbol = canonical_tag_disj
 data canonical_tag_arrow: Symbol = canonical_tag_arrow
@@ -221,12 +222,19 @@ data canonical_tag_transform: Symbol = canonical_tag_transform
 data canonical_tag_branch: Symbol = canonical_tag_branch
 data canonical_tag_loop: Symbol = canonical_tag_loop
 data canonical_tag_bind: Symbol = canonical_tag_bind
+data canonical_tag_type_node: Symbol = canonical_tag_type_node
+data canonical_tag_computation_node: Symbol = canonical_tag_computation_node
+data canonical_tag_named_edge: Symbol = canonical_tag_named_edge
 data canonical_tag_positional_edge: Symbol = canonical_tag_positional_edge
 
 
 fn canonical_hash_of_connective(c: Connective) -> Hash {
   match c {
-    Atom { identity: sym } => atom_identity_hash(s: sym)
+    Atom { identity: sym } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_atom),
+        b: atom_identity_hash(s: sym)
+      )
     Conj => atom_identity_hash(s: canonical_tag_conj)
     Disj => atom_identity_hash(s: canonical_tag_disj)
     Arrow => atom_identity_hash(s: canonical_tag_arrow)
@@ -249,15 +257,27 @@ fn canonical_hash_of_behavior(b: Behavior) -> Hash {
 
 fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
   match kind {
-    TypeNode { connective: c } => canonical_hash_of_connective(c: c)
-    ComputationNode { behavior: b } => canonical_hash_of_behavior(b: b)
+    TypeNode { connective: c } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_type_node),
+        b: canonical_hash_of_connective(c: c)
+      )
+    ComputationNode { behavior: b } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_computation_node),
+        b: canonical_hash_of_behavior(b: b)
+      )
   }
 }
 
 
 fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
   match label {
-    Named { name: sym } => atom_identity_hash(s: sym)
+    Named { name: sym } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_named_edge),
+        b: atom_identity_hash(s: sym)
+      )
     Positional => atom_identity_hash(s: canonical_tag_positional_edge)
   }
 }

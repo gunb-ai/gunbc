@@ -1,0 +1,42 @@
+//! B1-CANON hash primitives: runtime combine/identity behavior and domain separation.
+
+use v2_compiler::v2_rt::{atom_identity_hash, hash_combine};
+
+fn sym(name: &str) -> String {
+    name.to_string()
+}
+
+#[test]
+fn atom_identity_hash_is_stable_and_distinct() {
+    let a = atom_identity_hash(sym("canonical_tag_conj"));
+    let b = atom_identity_hash(sym("canonical_tag_atom"));
+    assert_ne!(a, b);
+    assert_eq!(a, atom_identity_hash(sym("canonical_tag_conj")));
+}
+
+#[test]
+fn hash_combine_separates_tag_and_payload_namespaces() {
+    let conj = atom_identity_hash(sym("canonical_tag_conj"));
+    let atom_tagged = hash_combine(
+        atom_identity_hash(sym("canonical_tag_atom")),
+        atom_identity_hash(sym("canonical_tag_conj")),
+    );
+    assert_ne!(conj, atom_tagged);
+}
+
+#[test]
+fn hash_combine_separates_named_and_positional_edge_tags() {
+    let positional = atom_identity_hash(sym("canonical_tag_positional_edge"));
+    let named_tagged = hash_combine(
+        atom_identity_hash(sym("canonical_tag_named_edge")),
+        atom_identity_hash(sym("canonical_tag_positional_edge")),
+    );
+    assert_ne!(positional, named_tagged);
+}
+
+#[test]
+fn hash_combine_is_sensitive_to_pair_order() {
+    let ab = hash_combine(sym("a"), sym("b"));
+    let ba = hash_combine(sym("b"), sym("a"));
+    assert_ne!(ab, ba);
+}
