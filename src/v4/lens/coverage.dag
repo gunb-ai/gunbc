@@ -18,7 +18,6 @@ import v4.lens.testgen {
   ConnectiveKernel,
   DiagnosticExhaustiveness,
   LanguageBehaviorEquivalence,
-  LanguageBehaviorIoMock,
   RefinementPreservation,
   TestgenConcept,
   TypeConstructionSubject,
@@ -49,7 +48,6 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
-  NonEmptyDiagnostics,
   Rejected,
   Outcome,
   Textual,
@@ -419,7 +417,10 @@ fn missing_keys<C>(
   eq: fn(C, C) -> Bool
 ) -> List<C> {
   filter(xs: expected, predicate: fn(key) {
-    !contains(xs: actual, item: key, eq: eq)
+    match contains(xs: actual, item: key, eq: eq) {
+      true => false
+      false => true
+    }
   })
 }
 
