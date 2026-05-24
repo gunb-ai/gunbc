@@ -6,8 +6,19 @@
 
 module v4.extdeps.runtimes.v4_evaluator
 
-import v4.std.collection { List }
-import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.std.collection { List, Map, map_insert }
+import v4.std.diagnostic {
+  Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_rejected,
+  port_locus
+}
 import v4.std.logic { Bool }
 import v4.std.model_core { ModelCore, PrimitiveOperationRef, wave1_void }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -18,7 +29,6 @@ import v4.std.runtime {
   BranchInterpreter,
   CallSemantics,
   ControlSemantics,
-  Continue,
   ControlTransfer,
   EnvironmentBindingKey,
   EvaluationCall,
@@ -30,18 +40,19 @@ import v4.std.runtime {
   ResourceAccess,
   ResourceEffectBoundary,
   Return,
-  RuntimeUnit,
-  RuntimeUnitValue,
   RuntimeValue,
   TransformInterpreter,
   ValueInterpreter,
   ValueRepresentationModel
 }
+import v4.std.witness { Violates, Witness }
 
 data v4_evaluator_runtime_id: Symbol = v4_evaluator_runtime_id
 data v4_eval_wave1_unit_type_symbol: Symbol = v4_eval_wave1_unit_type_symbol
 data v4_eval_wave1_boundary_operation_symbol: Symbol = v4_eval_wave1_boundary_operation_symbol
 data v4_eval_wave1_boundary_effect_symbol: Symbol = v4_eval_wave1_boundary_effect_symbol
+data v4_eval_wave1_semantics_deferred: Symbol = v4_eval_wave1_semantics_deferred
+data v4_eval_wave1_binding_miss: Symbol = v4_eval_wave1_binding_miss
 
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
@@ -73,16 +84,38 @@ fn v4_eval_wave1_effect_signature_node() -> Node {
   }
 }
 
-fn v4_eval_wave1_unit_value() -> RuntimeValue {
-  RuntimeUnit {
-    value: RuntimeUnitValue {
-      unit_type: v4_eval_wave1_unit_type_node()
+fn v4_eval_wave1_runtime_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: v4_eval_wave1_semantics_deferred,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn v4_eval_wave1_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: v4_eval_wave1_binding_miss,
+      at: port_locus(port: v4_eval_wave1_binding_miss),
+      correction: Unavailable { reason: AmbiguousIntent }
     }
   }
 }
 
-fn v4_eval_wave1_represent_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  Accepted { value: v4_eval_wave1_unit_value(), diagnostics: None }
+fn v4_eval_wave1_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  Map {
+    lookup: v4_eval_wave1_binding_lookup_miss
+  }
+}
+
+fn v4_eval_wave1_empty_environment() -> EvaluationEnvironment {
+  EvaluationEnvironment {
+    bindings: v4_eval_wave1_empty_bindings()
+  }
+}
+
+fn v4_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
 }
 
 fn v4_eval_wave1_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
@@ -94,35 +127,40 @@ fn v4_eval_wave1_allocate_literal(node: Node, env: EvaluationEnvironment) -> Out
 }
 
 fn v4_eval_wave1_call_primitive(
-  _node: Node,
+  node: Node,
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  Accepted { value: v4_eval_wave1_unit_value(), diagnostics: None }
+  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
 }
 
-fn v4_eval_wave1_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: v4_eval_wave1_unit_type_node(), diagnostics: None }
+fn v4_eval_wave1_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
 }
 
-fn v4_eval_wave1_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  Accepted { value: Continue { value: v4_eval_wave1_unit_value() }, diagnostics: None }
+fn v4_eval_wave1_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
 }
 
 fn v4_eval_wave1_bind_value(
-  _key: EnvironmentBindingKey,
-  _value: RuntimeValue,
+  key: EnvironmentBindingKey,
+  value: RuntimeValue,
   env: EvaluationEnvironment
 ) -> Outcome<EvaluationEnvironment> {
-  Accepted { value: env, diagnostics: None }
+  Accepted {
+    value: EvaluationEnvironment {
+      bindings: map_insert(m: env.bindings, key: key, value: value)
+    },
+    diagnostics: None
+  }
 }
 
 fn v4_eval_wave1_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn v4_eval_wave1_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
-  Accepted { value: Return { value: v4_eval_wave1_unit_value() }, diagnostics: None }
+fn v4_eval_wave1_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: call.callee))
 }
 
 fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
@@ -167,6 +205,7 @@ fn v4_evaluator_value_representation_wave1() -> ValueRepresentationModel {
   }
 }
 
+// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes non-deferred interpretation hooks (ledger: T-34 · TASKS.md §T-34)
 fn v4_evaluator_interpretation_wave1() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
