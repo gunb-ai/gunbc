@@ -57,7 +57,7 @@ type Namespace {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension goes through resolve_with_graph, not a third Scope arm.
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
@@ -561,8 +561,7 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// T-28 cross-file binding surface (bridge: initial impl delegates to single-file resolution;
-// graph is the extension point for callers that enrich the namespace with imported module bindings).
+// 🟡 T-28 cross-file binding bridge — graph not yet consumed; dissolve-on: resolver walks ModuleGraph.entries to enrich Namespace with imported-module bindings (full T-28 compile-unit realization).
 fn resolve_with_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,
