@@ -491,11 +491,13 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
                 .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
             && BOOTSTRAP_DAG
                 .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest")
-            && BOOTSTRAP_DAG.contains("bootstrap_fixpt_holds(f: p.fixpt)")
+            && BOOTSTRAP_DAG.contains("match bootstrap_fixpt_witness(f: p.fixpt).result")
+            && BOOTSTRAP_DAG.contains("Holds { value: _ } =>")
             && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: BootstrapFixptWitness")
             && BOOTSTRAP_DAG.contains("result: Witness<FixptStage1Stage2>")
+            && !BOOTSTRAP_DAG.contains("fn bootstrap_fixpt_holds")
             && !BOOTSTRAP_DAG.contains("p.fixpt.witness"),
-        "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields and derive the witness from that record (A2+A3/P2)"
+        "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields and consume the derived witness directly (A2+A3/P2)"
     );
     assert!(
         !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
