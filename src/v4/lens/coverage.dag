@@ -25,11 +25,6 @@ import v4.lens.testgen {
   LensApplicabilitySubject,
   RefinementPreservation,
   RefinementPreservationSubject,
-  TestClaimCompilesClaimVariant,
-  TestClaimCoproductVariant,
-  TestClaimDiagnosticClaimVariant,
-  TestClaimEqualsClaimVariant,
-  TestClaimRoundTripClaimVariant,
   TestgenConcept,
   TypeConstructionSubject,
   testgen_concept_for_manual_claim,
@@ -77,6 +72,11 @@ import v4.std.verification {
   RoundTripClaim,
   SuboptimalComplexity,
   TestClaim,
+  TestClaimCompilesClaimVariant,
+  TestClaimCoproductVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
   TransportTypeDrift,
   UnenumeratedEffects,
   UnhandledDiagnosticPaths,
@@ -1105,14 +1105,18 @@ fn collect_l6_coverage_keys(corpus: List<TestClaim>) -> List<L6CoverageKey> {
 }
 
 
-fn impossible_bug_coverage_keys_from_claim(c: TestClaim) -> List<ImpossibleBugCoverageKey> {
-  match c {
-    DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
-      match impossible_bug_coverage_keys_from_diagnostics(d: d) {
-        Accepted { value: keys, diagnostics: None } => keys
-        Rejected { diagnostics: _ } => Empty
-      }
-    _ => Empty
+fn append_impossible_bug_key_from_claim(
+  acc: List<ImpossibleBugCoverageKey>,
+  claim: TestClaim
+) -> List<ImpossibleBugCoverageKey> {
+  match impossible_bug_coverage_key_from_claim(c: claim) {
+    Accepted { value: key, diagnostics: None } =>
+      dedupe_snoc(
+        acc: acc,
+        item: key,
+        eq: impossible_bug_coverage_key_eq
+      )
+    Rejected { diagnostics: _ } => acc
   }
 }
 
@@ -1122,10 +1126,7 @@ fn collect_impossible_bug_coverage_keys(corpus: List<TestClaim>) -> List<Impossi
     xs: corpus,
     empty: Empty,
     cons: fn(acc, claim) {
-      append_impossible_bug_keys(
-        acc: acc,
-        keys: impossible_bug_coverage_keys_from_claim(c: claim)
-      )
+      append_impossible_bug_key_from_claim(acc: acc, claim: claim)
     }
   )
 }
