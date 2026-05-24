@@ -45,6 +45,7 @@ import v4.std.algebra {
 }
 import v4.std.cardinality {
   cardinality_loop_bound_ambiguous,
+  cardinality_loop_bound_malformed,
   loop_bound_measure,
   loop_bound_witness_for_node,
   NonZeroNat
@@ -212,6 +213,10 @@ fn unknown_cost_for_loop_bound_diagnostic(d: Diagnostic) -> SymbolicCost {
   if d.reason == cardinality_loop_bound_ambiguous {
     unknown_cost(
       reason: "loop-bound-ambiguous: Loop node declares more than one loop_bound_edge"
+    )
+  } else if d.reason == cardinality_loop_bound_malformed {
+    unknown_cost(
+      reason: "loop-bound-malformed: Loop node violates Loop edge discipline"
     )
   } else {
     unknown_cost(

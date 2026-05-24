@@ -1,7 +1,7 @@
 // src/v4/std/cardinality.dag
 // Scope: cardinality, inhabitance, bounded-natural refinement, descent evidence.
 // Anchor: https://en.wikipedia.org/wiki/Cardinality
-// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, PositiveNatLeWitness, PositiveUpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, positive_nat_le_witness_lower, positive_nat_le_witness_upper, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_value, positive_upper_bounded_nat_inclusive_max, nat_le_witness_well_formed, upper_bounded_nat_well_formed, positive_nat_le_witness_well_formed, positive_upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, LoopBound, loop_bound_measure, loop_bound_witness_for_node, Multiplicity, primitive multiplicity declarations, termination_proof_witness_for_node.
+// Owns: Never, Unit, NonZeroNat, NatLeWitness, UpperBoundedNat, PositiveNatLeWitness, PositiveUpperBoundedNat, nat_le_witness_lower, nat_le_witness_upper, positive_nat_le_witness_lower, positive_nat_le_witness_upper, upper_bounded_nat_value, upper_bounded_nat_inclusive_max, positive_upper_bounded_nat_value, positive_upper_bounded_nat_inclusive_max, nat_le_witness_well_formed, upper_bounded_nat_well_formed, positive_nat_le_witness_well_formed, positive_upper_bounded_nat_well_formed, DescentEvidence, RankingDimension, TerminationProof, LoopBound, loop_bound_measure, loop_bound_witness_for_node, Multiplicity, primitive multiplicity declarations, termination_proof_witness_for_node, cardinality_loop_bound_malformed.
 // Consumes: std collection, std nat, std node.
 // Status: T-3 modeled; Wave-A2 inhabitance + bounded-natural refinement carriers.
 
@@ -135,6 +135,7 @@ type LoopBound {
 
 data cardinality_loop_bound_undeclared: Symbol = cardinality_loop_bound_undeclared
 data cardinality_loop_bound_ambiguous: Symbol = cardinality_loop_bound_ambiguous
+data cardinality_loop_bound_malformed: Symbol = cardinality_loop_bound_malformed
 
 fn loop_bound_measure(bound: LoopBound) -> Node {
   bound.measure
@@ -156,13 +157,21 @@ fn loop_bound_ambiguous_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+fn loop_bound_malformed_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: cardinality_loop_bound_malformed,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 fn loop_measure_node(n: Node) -> Witness<Node> {
   if name_occurrences(name: loop_bound_edge, children: n.children) == 0 {
     Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
   } else if name_occurrences(name: loop_bound_edge, children: n.children) > 1 {
     Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
   } else if !loop_behavior_edges_conform(children: n.children) {
-    Violates { diagnostic: loop_bound_ambiguous_diagnostic(n: n) }
+    Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
   } else {
     fold(
       n.children,
