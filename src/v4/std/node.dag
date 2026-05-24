@@ -211,7 +211,6 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
-// Canonical Hash tags for content_hash init-fold over NodeKind / EdgeLabel variants.
 data canonical_hash_conj: Hash = canonical_hash_conj
 data canonical_hash_disj: Hash = canonical_hash_disj
 data canonical_hash_arrow: Hash = canonical_hash_arrow
@@ -264,8 +263,6 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
-// B1-CANON: content_hash = merkle_fold ∘ canonical — structural equality key (T-9/T-17/T-24).
-// Merkle step combines node-kind init, each edge label, and each child digest in list order.
 fn content_hash(n: Node) -> Hash {
   fold_node(
     n: n,

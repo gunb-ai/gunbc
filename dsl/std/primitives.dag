@@ -666,8 +666,6 @@ data hash_contract: PrimitiveContract = {
   notes: "n = serialized size of value; output is fixed-length hash string"
 }
 
-// hash_combine(a: Hash, b: Hash) -> Hash
-// Deterministic Merkle pair combiner for B1-CANON content_hash folds.
 data hash_combine_contract: PrimitiveContract = {
   name: "hash_combine",
   work: "1",
@@ -676,8 +674,6 @@ data hash_combine_contract: PrimitiveContract = {
   notes: "FNV-1a 64-bit digest over NUL-separated pair; opaque Hash carrier"
 }
 
-// atom_identity_hash(s: Symbol) -> Hash
-// Canonicalize an opaque Symbol identity into a Hash for B1-CANON folds.
 data atom_identity_hash_contract: PrimitiveContract = {
   name: "atom_identity_hash",
   work: "n",
