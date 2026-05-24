@@ -37,10 +37,7 @@ type BootstrapHashPin {
 
 // RULING-1: 🟢 pretty-much-done — fixed-point equality witness; BitIdentical is the property proved by digest equality, not an AssertKind.
 type BootstrapFixptWitness {
-  left_hash: BootstrapHashPin
-  right_hash: BootstrapHashPin
-  pinned_hash: BootstrapHashPin
-  proves: Symbol
+  property: Symbol
 }
 
 // RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
@@ -58,7 +55,6 @@ type FixptStage1Stage2 {
   right: Symbol
   right_hash: BootstrapHashPin
   pinned_hash: BootstrapHashPin
-  via: Symbol
   witness: BootstrapFixptWitness
 }
 
@@ -125,14 +121,7 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
        && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
        && (p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest)
-       && (p.fixpt.via == bit_identical_check)
-       && (p.fixpt.witness.proves == bit_identical_check)
-       && (p.fixpt.witness.left_hash.digest == p.fixpt.left_hash.digest)
-       && (p.fixpt.witness.left_hash.pin == p.fixpt.left_hash.pin)
-       && (p.fixpt.witness.right_hash.digest == p.fixpt.right_hash.digest)
-       && (p.fixpt.witness.right_hash.pin == p.fixpt.right_hash.pin)
-       && (p.fixpt.witness.pinned_hash.digest == p.fixpt.pinned_hash.digest)
-       && (p.fixpt.witness.pinned_hash.pin == p.fixpt.pinned_hash.pin) {
+       && (p.fixpt.witness.property == bit_identical_check) {
     Accepted { value: p, diagnostics: None }
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: bootstrap_mis_wired)) }
@@ -165,13 +154,7 @@ data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = boot
     right: v4_stage2_binary,
     right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
     pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
-    via: bit_identical_check,
-    witness: BootstrapFixptWitness {
-      left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
-      right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin },
-      pinned_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin },
-      proves: bit_identical_check
-    }
+    witness: BootstrapFixptWitness { property: bit_identical_check }
   }
 })
 
@@ -201,12 +184,6 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     right: v4_stage2_binary,
     right_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
     pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin },
-    via: bit_identical_check,
-    witness: BootstrapFixptWitness {
-      left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
-      right_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
-      pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin },
-      proves: bit_identical_check
-    }
+    witness: BootstrapFixptWitness { property: bit_identical_check }
   }
 })
