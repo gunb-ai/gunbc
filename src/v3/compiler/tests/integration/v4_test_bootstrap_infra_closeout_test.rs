@@ -680,9 +680,10 @@ fn claim_anchor_name(body: &SurfaceExpr) -> &str {
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
         SurfaceExpr::Call { target, args, .. } if target == "manual_claim_anchor" => {
-            let SurfaceExpr::Record { fields, .. } = args.first().unwrap_or_else(|| {
-                panic!("manual_claim_anchor must take one named-arg record")
-            }) else {
+            let SurfaceExpr::Record { fields, .. } = args
+                .first()
+                .unwrap_or_else(|| panic!("manual_claim_anchor must take one named-arg record"))
+            else {
                 panic!(
                     "manual_claim_anchor args must desugar to Record, got {:?}",
                     args.first()
