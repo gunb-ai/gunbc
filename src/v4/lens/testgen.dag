@@ -45,9 +45,6 @@ import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
   NatAlgebraLawObligation,
-  nat_algebra_law_subject_symbol_additive_monoid,
-  nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat,
   nat_declared_algebra_law_obligations,
   law_nat_add_associativity,
   law_nat_add_left_identity,
