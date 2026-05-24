@@ -11,11 +11,9 @@ import v4.extdeps.cpp_abi {
   CppDataModelFamilyILP32,
   CppDataModelFamilyLP64,
   CppFundamentalWidthRoleLong,
+  CppFundamentalWidthSelectionWitness,
   CppILP32IntegerWidths,
-  CppILP32WidthSelectionWitnesses,
-  CppIntegerWidthSelectionWitness,
   CppLP64IntegerWidths,
-  CppLP64WidthSelectionWitnesses,
   CppPlainCharSignedness,
   CppTargetDataModel,
   CppTargetProfile,
@@ -36,14 +34,12 @@ type cpp_anchor_data_model = CppTargetDataModel<CppDataModelFamilyILP32, CppILP3
 type cpp_anchor_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_data_model>
 type cpp_anchor_lp64_data_model = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSignedness, CppWcharTSignedness>
 type cpp_anchor_lp64_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_lp64_data_model>
-type cpp_anchor_ilp32_width_witnesses = CppILP32WidthSelectionWitnesses
-type cpp_anchor_lp64_width_witnesses = CppLP64WidthSelectionWitnesses
-data cpp_anchor_ilp32_long_width_witness: CppIntegerWidthSelectionWitness = cpp_select_width_witness(
-  witnesses: CppILP32WidthSelectionWitnesses,
+data cpp_anchor_ilp32_long_width_witness: CppFundamentalWidthSelectionWitness = cpp_select_width_witness(
+  widths: CppILP32IntegerWidths,
   role: LongFundamentalWidth { tag: CppFundamentalWidthRoleLong }
 )
-data cpp_anchor_lp64_long_width_witness: CppIntegerWidthSelectionWitness = cpp_select_width_witness(
-  witnesses: CppLP64WidthSelectionWitnesses,
+data cpp_anchor_lp64_long_width_witness: CppFundamentalWidthSelectionWitness = cpp_select_width_witness(
+  widths: CppLP64IntegerWidths,
   role: LongFundamentalWidth { tag: CppFundamentalWidthRoleLong }
 )
 type cpp_anchor_signed_width_selection = CppSignedIntegerWidthSelection { spelling: CppSignedIntegerSurfaceSpelling, target_profile: cpp_anchor_target_profile }
