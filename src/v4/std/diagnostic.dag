@@ -216,7 +216,7 @@ fn sequence_outcome<T>(
   xs: List<Outcome<T>>,
   policy: StageDiagnosticPolicy
 ) -> Outcome<List<T>> {
-  fold(xs, init: Accepted { value: [], diagnostics: None }, f: fn(acc, o) {
+  fold(xs, init: Accepted { value: Empty, diagnostics: None }, f: fn(acc, o) {
     match policy.accumulation {
       ShortCircuit => match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
