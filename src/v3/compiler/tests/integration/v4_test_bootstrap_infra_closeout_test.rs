@@ -70,28 +70,27 @@ fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
         TESTGEN_DAG.contains("fn testgen_emit_algebra_law_claim")
             && TESTGEN_DAG.contains("if lhs == rhs")
             && TESTGEN_DAG.contains("t19_algebra_law_tautological_sides")
+            && TESTGEN_DAG
+                .contains("type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }")
             && TESTGEN_DAG.contains(
                 "fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node"
             )
-            && TESTGEN_DAG.contains("lhs: algebra_law_claim_term(subject: subject, expression: lhs)")
-            && TESTGEN_DAG.contains("rhs: algebra_law_claim_term(subject: subject, expression: rhs)")
+            && TESTGEN_DAG
+                .contains("fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase>")
+            && TESTGEN_DAG.contains("match algebra_law_manual_claim_case(anchor: anchor)")
+            && TESTGEN_DAG
+                .contains("lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs)")
+            && TESTGEN_DAG
+                .contains("rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs)")
             && TESTGEN_DAG.contains("Rejected {")
             && TESTGEN_DAG.contains("value: EqualsClaim {"),
-        "testgen must reject tautological algebra-law sides and carry AlgebraLawSubject into emitted EqualsClaim terms"
+        "testgen must reject tautological algebra-law sides and derive AlgebraLawSubject from the checked algebra-law anchor"
     );
     assert!(
         ALGEBRA_LAW_GENERATED_DAG.contains("testgen_emit_algebra_law_claim")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("subject: AlgebraLawSubject")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_additive_monoid")
-            && ALGEBRA_LAW_GENERATED_DAG
-                .contains("nat_algebra_law_subject_symbol_commutative_semiring")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_inhabitant_nat")
             && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_add_operation")
             && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_mul_operation")
             && ALGEBRA_LAW_GENERATED_DAG.contains("nat_algebra_law_subject_symbol_zero_value")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("law_nat_add_left_identity")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("law_nat_add_associativity")
-            && ALGEBRA_LAW_GENERATED_DAG.contains("law_nat_mul_annihilator")
             && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_left_identity_claim")
             && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_associativity_claim")
             && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_mul_annihilator_claim")

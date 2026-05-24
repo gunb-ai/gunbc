@@ -172,6 +172,9 @@ type TypeConstructionSubject
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
 
 
+type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }
+
+
 type DiagnosticExhaustivenessSubject { reason: Symbol }
 
 
@@ -670,7 +673,6 @@ fn testgen_emit_language_behavior_equivalence_claim(
 fn testgen_emit_algebra_law_claim(
   anchor: ManualAnchorKey,
   label: String,
-  subject: AlgebraLawSubject,
   lhs: Node,
   rhs: Node,
   classification: TestClassification
@@ -686,14 +688,14 @@ fn testgen_emit_algebra_law_claim(
       )
     }
   } else {
-    match algebra_law_manual_claim_anchor(anchor: anchor) {
-      Accepted { value: checked_anchor, diagnostics: None } =>
+    match algebra_law_manual_claim_case(anchor: anchor) {
+      Accepted { value: law_case, diagnostics: None } =>
         Accepted {
           value: EqualsClaim {
             label: label,
-            anchor: checked_anchor,
-            lhs: algebra_law_claim_term(subject: subject, expression: lhs),
-            rhs: algebra_law_claim_term(subject: subject, expression: rhs),
+            anchor: law_case.anchor,
+            lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs),
+            rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs),
             classification: classification,
           },
           diagnostics: None,
@@ -705,14 +707,80 @@ fn testgen_emit_algebra_law_claim(
 }
 
 
-fn algebra_law_manual_claim_anchor(anchor: ManualAnchorKey) -> Outcome<ClaimAnchorKey> {
+fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
   match anchor {
-    ManualNatAddLeftIdentity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
-    ManualNatAddRightIdentity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
-    ManualNatAddAssociativity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
-    ManualNatMulLeftIdentity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
-    ManualNatMulAnnihilator => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
-    ManualNatMulAssociativity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    ManualNatAddLeftIdentity =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: law_nat_add_left_identity,
+          },
+        },
+        diagnostics: None,
+      }
+    ManualNatAddRightIdentity =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: law_nat_add_right_identity,
+          },
+        },
+        diagnostics: None,
+      }
+    ManualNatAddAssociativity =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_additive_monoid,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: law_nat_add_associativity,
+          },
+        },
+        diagnostics: None,
+      }
+    ManualNatMulLeftIdentity =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: law_nat_mul_left_identity,
+          },
+        },
+        diagnostics: None,
+      }
+    ManualNatMulAnnihilator =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: law_nat_mul_annihilator,
+          },
+        },
+        diagnostics: None,
+      }
+    ManualNatMulAssociativity =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: AlgebraLawSubject {
+            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+            law: law_nat_mul_associativity,
+          },
+        },
+        diagnostics: None,
+      }
     _ =>
       Rejected {
         diagnostics: diagnostics_singleton(

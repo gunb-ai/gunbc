@@ -8,10 +8,6 @@ module v4.test.claim.generated.algebra_law_conformance
 
 
 import v4.lens.testgen {
-  AlgebraLawSubject,
-  law_nat_add_associativity,
-  law_nat_add_left_identity,
-  law_nat_mul_annihilator,
   testgen_emit_algebra_law_claim
 }
 import v4.std.algebra { length }
@@ -19,9 +15,6 @@ import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.nat {
-  nat_algebra_law_subject_symbol_additive_monoid,
-  nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat,
   nat_algebra_law_subject_symbol_add_operation,
   nat_algebra_law_subject_symbol_mul_operation,
   nat_algebra_law_subject_symbol_zero_value,
@@ -101,11 +94,6 @@ fn t19_generated_nat_mul(left: Node, right: Node) -> Node {
 data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddLeftIdentity,
   label: "generated/algebra_law: Nat addition left identity",
-  subject: AlgebraLawSubject {
-    algebra: nat_algebra_law_subject_symbol_additive_monoid,
-    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-    law: law_nat_add_left_identity,
-  },
   lhs: t19_generated_nat_add(left: t19_generated_nat_zero(), right: t19_generated_nat_one()),
   rhs: t19_generated_nat_one(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -115,11 +103,6 @@ data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_al
 data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatAddAssociativity,
   label: "generated/algebra_law: Nat addition associativity",
-  subject: AlgebraLawSubject {
-    algebra: nat_algebra_law_subject_symbol_additive_monoid,
-    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-    law: law_nat_add_associativity,
-  },
   lhs: t19_generated_nat_add(
     left: t19_generated_nat_add(left: t19_generated_nat_one(), right: t19_generated_nat_two()),
     right: t19_generated_nat_three()
@@ -135,11 +118,6 @@ data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_al
 data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
   anchor: ManualNatMulAnnihilator,
   label: "generated/algebra_law: Nat multiplication annihilator",
-  subject: AlgebraLawSubject {
-    algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-    inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-    law: law_nat_mul_annihilator,
-  },
   lhs: t19_generated_nat_mul(left: t19_generated_nat_zero(), right: t19_generated_nat_three()),
   rhs: t19_generated_nat_zero(),
   classification: TestClassification { tier: Tier1, layer: Unit }
