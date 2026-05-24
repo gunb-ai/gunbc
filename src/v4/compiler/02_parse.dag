@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar, GrammarExpr, GrammarProduction, GrammarRoot, ParseTree, ParseExprResult, GrammarProductionLookup, grammar_*_node_projection symbols, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_atom, grammar_named_edge, grammar_empty_node, grammar_expr_to_node, grammar_production_to_node, grammar_root_to_node, grammar_to_node, parse_expr, parse.
+// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions.
 // Consumes: std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
 
