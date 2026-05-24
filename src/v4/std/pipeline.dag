@@ -1,17 +1,16 @@
 // src/v4/std/pipeline.dag
 // Scope: compiler pipeline substrate and stage policy values.
 // Owns: CarrierKind, PipelineStage, Pipeline, stage diagnostic policy rows.
-// Consumes: v4.std.node.
-// Status: Wave-2-A substrate; StageDiagnosticPolicy reconciles with Wave-2-BC3.
+// Consumes: v4.std.diagnostic (StageDiagnosticPolicy authority), v4.std.node.
+// Status: Wave-2-A substrate; StageDiagnosticPolicy authority consolidated in diagnostic.dag (AI-1).
 
 module v4.std.pipeline
 
 import v4.std.collection { List }
+import v4.std.diagnostic { Accumulate, ShortCircuit, StageDiagnosticPolicy }
 import v4.std.node { Node, Symbol }
 
-type StageDiagnosticPolicy
-
-// 🟢 coproduct dissolution
+// 🟢 closed set — v4 pipeline boundary carriers.
 type CarrierKind
   = SurfaceNode
   | CoreNode
@@ -33,5 +32,5 @@ type Pipeline {
   stages: List<PipelineStage>
 }
 
-data accumulate_stage_diagnostics: StageDiagnosticPolicy = accumulate_stage_diagnostics
-data reject_on_first_stage_diagnostic: StageDiagnosticPolicy = reject_on_first_stage_diagnostic
+data accumulate_stage_diagnostics: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: Accumulate }
+data reject_on_first_stage_diagnostic: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: ShortCircuit }

@@ -9,7 +9,7 @@ module v4.extdeps.languages.kotlin
 
 import v4.compiler.parse { Grammar, VoidGrammar }
 import v4.compiler.tokenize { LexRules, VoidLexRules }
-import v4.std.collection { List, Map, Set, list_append, list_snoc_item }
+import v4.std.collection { List, Map, Set }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
@@ -24,7 +24,7 @@ import v4.std.model_core {
 import v4.std.witness { Holds, Violates }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
 
 // Kotlin's specification defines only signed built-in integer types; unsigned
 // integers are not built-in classifier types in this spec section.

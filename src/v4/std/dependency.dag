@@ -1,11 +1,12 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
 // Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
-// Consumes: std/collection.dag; std/logic.dag; std/node.dag.
-// Status: Wave-2-A substrate.
+// Consumes: v4.std.algebra (list_append), v4.std.collection, v4.std.node.
+// Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
 
 module v4.std.dependency
 
+import v4.std.algebra { list_append }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -114,9 +115,7 @@ fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
 }
 
 fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
+  list_append(left: left, right: right)
 }
 
 fn dependency_fold_init(n: Node) -> DependencyFoldState {
@@ -203,9 +202,7 @@ fn ready_set(graph_node: Node) -> List<Node> {
 }
 
 fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
+  list_append(left: left, right: right)
 }
 
 fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
@@ -250,7 +247,5 @@ fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
 }
 
 fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
+  list_append(left: left, right: right)
 }

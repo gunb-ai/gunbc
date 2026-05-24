@@ -78,8 +78,8 @@ import v4.std.target_model {
   target_model_edge_serialize_source,
   target_model_edge_translation_rules
 }
-import v4.std.collection { List, Map, empty_map, list_append, list_snoc_item }
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import v4.std.collection { List, Map, empty_map }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
 import v4.std.text { String }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution
