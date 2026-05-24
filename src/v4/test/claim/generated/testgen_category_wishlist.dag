@@ -125,7 +125,7 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
 fn dispatched_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimDiagnosticClaimVariant,
-    classification: TestClassification { tier: Tier2, layer: Unit },
+    classification: TestClassification { tier: Tier1, layer: Unit },
     anchor: generated_claim_anchor(
       anchor: GeneratedCoproductExhaustiveness {
         omitted_variant: TestClaimDiagnosticClaimVariant,

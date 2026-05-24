@@ -352,6 +352,11 @@ def main() -> None:
         raise SystemExit("dispatched AlgebraLaw wishlist row must carry the emitted algebra-law anchor")
     if "GeneratedCoproductExhaustiveness" not in wishlist:
         raise SystemExit("dispatched DiagnosticExhaustiveness wishlist row must carry the emitted generated anchor")
+    diagnostic_row = dispatched_rows.split("generator: dispatched_diagnostic_exhaustiveness_generator()")[1].split(
+        "TestgenWishlistRow {"
+    )[0]
+    if "classification: TestClassification { tier: Tier1, layer: Unit }" not in diagnostic_row:
+        raise SystemExit("dispatched DiagnosticExhaustiveness wishlist row must match emitted Tier1 classification")
     if "ManualRefinementNonEmptyListBase" not in wishlist:
         raise SystemExit("dispatched RefinementPreservation wishlist row must carry the emitted refinement anchor")
 
