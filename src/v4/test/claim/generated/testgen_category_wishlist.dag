@@ -27,7 +27,7 @@ import v4.lens.testgen {
   ConnectiveKernel,
   lbe_io_mock_conj_dag_surface,
   lbe_subject_conj_dag_surface,
-  t19_law_nat_add_associativity
+  law_nat_add_associativity
 }
 import v4.std.algebra { length }
 import v4.std.collection { List }
@@ -45,14 +45,14 @@ import v4.std.verification {
   TestClaimEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
   TestClassification,
-  T19ManualAnchorAbsent,
-  T19ManualLbeConjDagSurface,
+  ManualAnchorAbsent,
+  ManualLbeConjDagSurface,
   Tier1,
   Tier2,
   Tier3,
   Unit,
   Integration,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 import v4.std.refinement { Refined }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
@@ -93,7 +93,7 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimCompilesClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: TypeConstruction {
       subject: ConnectiveKernel { connective: Conj },
     }
@@ -105,12 +105,12 @@ fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimEqualsClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: AlgebraLaw {
       subject: AlgebraLawSubject {
         algebra: nat_algebra_law_subject_symbol_additive_monoid,
         inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-        law: t19_law_nat_add_associativity,
+        law: law_nat_add_associativity,
       },
     }
   }
@@ -121,7 +121,7 @@ fn wishlist_diagnostic_exhaustiveness_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimDiagnosticClaimVariant,
     classification: TestClassification { tier: Tier2, layer: Unit },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: DiagnosticExhaustiveness {
       subject: DiagnosticExhaustivenessSubject {
         reason: t19_generator_wishlist_unexpected_deferred_roundtrip,
@@ -135,7 +135,7 @@ fn wishlist_lens_applicability_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimCompilesClaimVariant,
     classification: TestClassification { tier: Tier2, layer: Integration },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: LensApplicability {
       subject: LensApplicabilitySubject {
         lens: t19_generator_wishlist_lens_structural_resolution,
@@ -150,7 +150,7 @@ fn wishlist_bidirectional_roundtrip_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimRoundTripClaimVariant,
     classification: TestClassification { tier: Tier3, layer: Integration },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: BidirectionalRoundtrip {
       subject: BidirectionalRoundtripSubject {
         language: dag_language_model_surface_id,
@@ -165,7 +165,7 @@ fn dispatched_language_behavior_equivalence_generator() -> Generator<TestgenConc
   Generator {
     kind: TestClaimCompilesClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeConjDagSurface),
+    anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
     slot: LanguageBehaviorEquivalence {
       subject: lbe_subject_conj_dag_surface(),
       mock: lbe_io_mock_conj_dag_surface(),
@@ -178,7 +178,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimEqualsClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     slot: RefinementPreservation {
       subject: RefinementPreservationSubject {
         refined: Refined { base: [stub_empty_conj] },
@@ -268,7 +268,7 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
 
 data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
   label: "generated/testgen_category_wishlist: four pending non-tautological generator categories and three dispatched categories",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: testgen_wishlist_count_node(),
   rhs: testgen_wishlist_count_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
