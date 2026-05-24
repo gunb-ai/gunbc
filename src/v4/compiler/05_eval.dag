@@ -1,7 +1,7 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, Verdict, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
-// Consumes: v4.compiler.infer, v4.std.runtime, v4.std.node, v4.std.diagnostic, v4.std.verification.
+// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
+// Consumes: v4.compiler.infer, v4.std.runtime, v4.std.node, v4.std.diagnostic, v4.std.verification, v4.std.verdict (Verdict, verdict_fold).
 // Status: T-22 eval and TestClaim runner consume decomposed runtime interpretation algebra. Local control terminalization, runtime-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
 // CompilesClaim: run_test_claim_runtime_assert compares actual to expected_value through runtime evaluation (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 
@@ -15,8 +15,8 @@ import v4.compiler.infer {
   inferred_facts_inhabitance_well_grounded,
   inferred_facts_resolved_type_matches
 }
-import v4.std.algebra { non_empty }
 import v4.std.collection { List, Map }
+import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
   Continue,
@@ -118,15 +118,6 @@ type TestClaimCacheKey<T> {
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
-
-
-// RULING-1: pretty-much-done — verdict carrier preserves actual Outcome in non-pass states.
-// 🟢 coproduct dissolution — T22-EVAL-VERDICT.
-type Verdict<T>
-// 🟢 coproduct dissolution — T22-EVAL-VERDICT
-  = Pass
-  | Fail { actual: Outcome<T> }
-  | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
 
 // RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
@@ -745,27 +736,16 @@ fn run_test_claim_runtime_assert(
 
 
 // Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
-// When acc is already Deferred, the first Deferred's diagnostic wins (no accumulation).
+// Empty-case policy: Fail with eval_empty_verdict_list diagnostic (context-specific at-node).
 fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
-  if non_empty(xs: rs) {
-    fold(rs, init: Pass, f: fn(acc, v) {
-      match acc {
-        Fail { actual: a } => Fail { actual: a }
-        Deferred { actual: a, diagnostic: d } => match v {
-          Fail { actual: ra } => Fail { actual: ra }
-          Deferred { actual: _, diagnostic: _ } => Deferred { actual: a, diagnostic: d }
-          Pass => Deferred { actual: a, diagnostic: d }
-        }
-        Pass => v
-      }
-    })
-  } else {
-    Fail {
+  verdict_fold(
+    rs: rs,
+    empty_verdict: Fail {
       actual: outcome_rejected(
         d: eval_diagnostic(reason: eval_empty_verdict_list, node: at)
       )
     }
-  }
+  )
 }
 
 
