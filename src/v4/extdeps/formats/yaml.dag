@@ -68,17 +68,20 @@ type YamlAliasMustResolveToPriorAnchorWitness {}
 
 type YamlUnresolvableAliasFailClosedWitness {}
 
-type YamlAliasCycleFailClosedWitness {}
+type YamlRepresentationGraphAliasCyclePermittedWitness {}
 
-type YamlParsedValueAliasFreeByConstructionWitness {}
+type YamlAliasFreeProjectionAliasCycleRejectedWitness {}
+
+type YamlAliasFreeProjectionByConstructionWitness {}
 
 type YamlAnchorAliasResolutionFacts {
   anchor_node_marked_with_ampersand: YamlAnchorNodeMarkedWithAmpersandWitness,
   alias_node_marked_with_asterisk: YamlAliasNodeMarkedWithAsteriskWitness,
   alias_must_resolve_to_prior_anchor: YamlAliasMustResolveToPriorAnchorWitness,
   unresolvable_alias_fail_closed: YamlUnresolvableAliasFailClosedWitness,
-  alias_cycle_fail_closed: YamlAliasCycleFailClosedWitness,
-  parsed_value_alias_free_by_construction: YamlParsedValueAliasFreeByConstructionWitness,
+  representation_graph_alias_cycle_permitted: YamlRepresentationGraphAliasCyclePermittedWitness,
+  alias_free_projection_alias_cycle_rejected: YamlAliasFreeProjectionAliasCycleRejectedWitness,
+  alias_free_projection_by_construction: YamlAliasFreeProjectionByConstructionWitness,
 }
 
 
@@ -86,3 +89,4 @@ type YamlAnchorAliasResolutionFacts {
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: canonical-key profile parse enforcement binding (YamlCanonicalKeyProfileFacts consumption at parse boundary) — SL-3229-YAML-CANONICAL-KEYS.
 // 🟡 gated — feature: anchor/alias resolution parse binding (YamlAnchorAliasResolutionFacts consumption at parse boundary) — SL-3229-YAML-ANCHOR-ALIAS.
+// 🟡 gated — feature: YAML representation graph carrier (node identity, anchors, aliases; cycles permitted per §6/§7) — SL-3229-YAML-REPRESENTATION-GRAPH.
