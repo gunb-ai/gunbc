@@ -22,7 +22,6 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -32,7 +31,7 @@ import v4.std.dependency {
   dependency_binds_to_edge
 }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+import v4.std.witness { Holds }
 
 data sr_use_symbol: Symbol = sr_use_symbol
 data sr_decl_symbol: Symbol = sr_decl_symbol

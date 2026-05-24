@@ -24,7 +24,6 @@ import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -96,8 +95,6 @@ import v4.std.verification {
 }
 import v4.std.witness {
   Holds,
-  StructuralPropertyWitness,
-  Violates,
   Witness
 }
 

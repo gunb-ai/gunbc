@@ -38,7 +38,6 @@ import v4.lens.subsumption {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map, Set }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -88,7 +87,7 @@ import v4.std.verification {
   Integration,
   t19_manual_claim_anchor
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+import v4.std.witness { Holds, Witness }
 
 
 data rust_language_model_emit_subsumption_receipt_node: Symbol = rust_language_model_emit_subsumption_receipt_node

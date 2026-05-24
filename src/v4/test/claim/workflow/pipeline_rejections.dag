@@ -74,11 +74,10 @@ import v4.std.verification {
   t19_manual_claim_anchor
 }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
+import v4.std.witness { Holds, Violates }
 import v4.workflow.bootstrap { v4_stage0_binary }
 import v4.workflow.ci {
   BootstrapStageCompile,

@@ -55,11 +55,10 @@ import v4.std.runtime {
   ValueInterpreter
 }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
+import v4.std.witness { Holds, Violates }
 import v4.extdeps.languages.dag { dag_language_model_surface_id }
 import v4.lens.testgen {
   LanguageBehaviorIoMock,
