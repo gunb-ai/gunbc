@@ -1,5 +1,6 @@
 //! B1-CANON hash primitives: runtime combine/identity behavior and domain separation.
 
+use v2_compiler::v2_compiler_runtime_rust::rt_hash_ops;
 use v2_compiler::v2_rt::{atom_identity_hash, hash_combine, is_hash_digest};
 
 fn sym(name: &str) -> String {
@@ -55,4 +56,13 @@ fn hash_combine_rejects_non_carrier_inputs() {
 #[should_panic(expected = "16-char hex Hash digest")]
 fn hash_combine_rejects_pair_framing_ambiguous_raw_strings() {
     let _ = hash_combine(sym("a\0b"), sym("c"));
+}
+
+#[test]
+fn emitted_runtime_hash_ops_preserves_hash_carrier_boundary() {
+    let emitted = rt_hash_ops();
+    assert!(emitted.contains("pub type Hash = String;"));
+    assert!(emitted.contains("fn expect_hash_digest"));
+    assert!(emitted.contains("pub fn hash_combine(a: Hash, b: Hash) -> Hash"));
+    assert!(!emitted.contains("pub fn hash_combine(a: String, b: String)"));
 }
