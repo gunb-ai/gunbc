@@ -78,13 +78,31 @@ fn dissolution_subsumption_first_row_is_mechanical_reverification() {
         panic!("{SUBSUMPTION_PATH}: TestClaimId.id must name a symbolic claim handle, got {id:?}");
     };
     assert_eq!(
-        name, "affected_set_irt1_mechanical_reverification_claim",
+        name, "affected_set_irt1_leaf_claim_suite",
         "{SUBSUMPTION_PATH}: first subsumption row test claim drifted"
     );
 }
 
+const IRT1_LEAF_CLAIM_SUITE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag");
+const IRT1_LEAF_CLAIM_SUITE_PATH: &str =
+    "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag";
+
 #[test]
-fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_five_leaves() {
+fn affected_set_irt1_leaf_claim_suite_authored_for_mechanical_reverification() {
+    let _ = parse_module(IRT1_LEAF_CLAIM_SUITE_DAG, IRT1_LEAF_CLAIM_SUITE_PATH);
+    assert!(
+        IRT1_LEAF_CLAIM_SUITE_DAG.contains("data claim_affected_set_irt1_leaf_claim_suite: TestClaim"),
+        "{IRT1_LEAF_CLAIM_SUITE_PATH}: MechanicalReverification target must have a runnable TestClaim row"
+    );
+    assert!(
+        IRT1_LEAF_CLAIM_SUITE_DAG.contains("affected_set_irt1_leaf_claim_suite"),
+        "{IRT1_LEAF_CLAIM_SUITE_PATH}: suite claim must name affected_set_irt1_leaf_claim_suite handle"
+    );
+}
+
+#[test]
+fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_six_leaves() {
     let module = parse_module(SUBSUMPTION_DAG, SUBSUMPTION_PATH);
     let (body_start, body_end) = module
         .items
@@ -109,16 +127,17 @@ fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_five_leaves(
     // is a fn body and parse-surface doesn't expose a stable `||`-chain
     // iterator yet. Each leaf is asserted in a `d.id ==` comparison position
     // (not just a bare mention in a stray comment) and the total count of
-    // `d.id ==` clauses is pinned to 5, so an off-by-one regression — extra
+    // `d.id ==` clauses is pinned to 6, so an off-by-one regression — extra
     // comparison, missing comparison, or a leaf mentioned only in surrounding
     // prose — fails the ratchet.
     let body_source = &SUBSUMPTION_DAG[body_start as usize..body_end as usize];
     let expected = [
-        "affected_set_hash_receipt_leaf_fix",
         "affected_set_boundary_receipt_leaf_fix",
         "affected_set_dimension_receipt_leaf_fix",
         "affected_set_propagation_receipt_leaf_fix",
-        "affected_set_frontier_receipt_leaf_fix",
+        "affected_set_pending_escalation_leaf_fix",
+        "affected_set_fail_closed_absorption_leaf_fix",
+        "affected_set_empty_diff_leaf_fix",
     ];
     for leaf in expected {
         let needle = format!("d.id == {leaf}");
