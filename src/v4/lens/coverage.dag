@@ -83,7 +83,9 @@ import v4.std.node {
   Node,
   Symbol,
   Transform,
-  Value
+  Value,
+  behavior_coproduct_variants,
+  connective_coproduct_variants
 }
 import v4.std.verification {
   CompilesClaim,
@@ -499,19 +501,12 @@ fn bootstrap_l6_language_surfaces() -> List<Symbol> {
 
 
 fn substrate_connective_kernels() -> List<Connective> {
-  [
-    Atom { identity: dag_c3_surface_sugar_type },
-    Conj,
-    Disj,
-    Arrow,
-    Cardinality,
-    Instantiation,
-  ]
+  connective_coproduct_variants(atom_identity: dag_c3_surface_sugar_type)
 }
 
 
 fn substrate_behavior_subjects() -> List<Behavior> {
-  [Value, Transform, Branch, Loop, Bind]
+  behavior_coproduct_variants()
 }
 
 
