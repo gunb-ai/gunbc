@@ -126,13 +126,25 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
     );
     assert_eq!(
         record_field_type(obligation, "required_settlement"),
-        "CoordinationSettlementRequirement"
+        "SettlementGuarantee"
     );
     assert_eq!(
         record_field_type(obligation, "required_consistency"),
-        "CoordinationConsistencyRequirement"
+        "ConsistencyGuarantee"
     );
 
+    assert!(
+        COORDINATION_DAG.contains("type SettleBoundSource")
+            && COORDINATION_DAG.contains("RequiredSettleBound")
+            && COORDINATION_DAG.contains("DeclaredSettleBound"),
+        "settlement obligations must route through SettlementGuarantee without fabricated concrete bounds"
+    );
+    assert!(
+        COORDINATION_DAG.contains("type ConvergeBoundSource")
+            && COORDINATION_DAG.contains("RequiredConvergeBound")
+            && COORDINATION_DAG.contains("DeclaredConvergeBound"),
+        "consistency obligations must route through ConsistencyGuarantee without fabricated concrete bounds"
+    );
     assert!(
         COORDINATION_DAG.contains("fn coordination_effect_obligation"),
         "CoordinationEffectKind arms must route through executable obligation rows"
