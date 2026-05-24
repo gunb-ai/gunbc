@@ -312,7 +312,10 @@ def main() -> None:
     )[0]
     if dispatched_rows.count("TestgenWishlistRow {") != 2:
         raise SystemExit("generator wishlist must carry exactly two dispatched rows")
-    if "slot: LanguageBehaviorEquivalence" not in dispatched_rows or "slot: AlgebraLaw" not in dispatched_rows:
+    if (
+        "generator: dispatched_language_behavior_equivalence_generator()" not in dispatched_rows
+        or "generator: dispatched_algebra_law_generator()" not in dispatched_rows
+    ):
         raise SystemExit("dispatched wishlist rows must include LBE and AlgebraLaw")
 
     if algebra.count("data generated_nat_") < 3:
