@@ -2,15 +2,13 @@
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
 // Owns: Symbol, Hash, Connective, ConnectiveCoproductVariant, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
-// Consumes: v4.std.collection
+// Consumes: none (List return types use language surface; explicit v4.std.collection import introduces compile-cycle via collection→…→node).
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 // Note: bind_outcome + Outcome helpers live in v4.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
 // (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
 
 
 module v4.std.node
-
-import v4.std.collection { List }
 type Symbol
 type Hash
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
