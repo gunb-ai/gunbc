@@ -1,9 +1,9 @@
 // src/v4/compiler/07_target_carriers.dag
 // Scope: Shared compile-stage language/target carriers — breaks compile ↔ emit import cycle.
-// Owns: LanguageModel, TargetModel, TargetSource.
-// Consumes: std/node.dag, std/text.dag.
-// Status: Wave-5-A — single authority for target projection carriers (P3 Stage 5a/5b).
-// Anchor: docs/design-v4-compiler-homomorphism.md TargetSource / TargetModel
+// Owns: LanguageModel, TargetModel, TargetModelBundle, TargetSource.
+// Consumes: compiler/01_tokenize.dag; std/collection.dag; std/node.dag; std/text.dag.
+// Status: Wave-5-A — single authority for target projection carriers.
+// Anchor: docs/design-v4-compiler-homomorphism.md
 
 
 module v4.compiler.target_carriers
@@ -14,23 +14,14 @@ import v4.std.collection { Map, empty_map }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 
-
-// 🟢 grounded — source-side language model bundle (Node projection per Theme-A #9).
 type LanguageModel = Node
 
-
-// 🟢 grounded — target language model bundle (Node projection per Theme-A #9).
 type TargetModelBundle {
   bundle: Node
-  // Lexical projection for grammar-inverse emit (Theme-A #9 — same facts as LanguageModel.lex).
   lex: LexRules
-  // Bound-terminal spellings keyed by grammar-relation binding symbols.
   binding_spellings: Map<Symbol, String>
-  // Grammar-derived authority text (authored with the model, not emit-time templates).
   authority_source_text: String
 }
 type TargetModel = TargetModelBundle
 
-
-// 🟢 grounded — serialized target text (bytes-as-data terminal for TranslateTo).
 type TargetSource = String

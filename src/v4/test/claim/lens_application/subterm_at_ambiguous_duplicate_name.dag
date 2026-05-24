@@ -1,0 +1,71 @@
+// src/v4/test/claim/lens_application/subterm_at_ambiguous_duplicate_name.dag
+// Scope: T-23 worked claim — duplicate named edges fail-closed in subterm_at.
+// Owns: claim_subterm_at_ambiguous_duplicate_name.
+// Consumes: v4.lens.application (subterm_at), v4.std.node (Path), std verification.
+// Status: compile-only ratchet for D1 ambiguous path rejection.
+
+module v4.test.claim.lens_application.subterm_at_ambiguous_duplicate_name
+
+import v4.lens.application { subterm_at }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  T19ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  t19_manual_claim_anchor
+}
+
+data ambiguous_dup_step: Symbol = ambiguous_dup_step
+data ambiguous_leaf_a_symbol: Symbol = ambiguous_leaf_a_symbol
+data ambiguous_leaf_b_symbol: Symbol = ambiguous_leaf_b_symbol
+
+data ambiguous_leaf_a: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ambiguous_leaf_a_symbol } },
+  children: []
+}
+
+data ambiguous_leaf_b: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ambiguous_leaf_b_symbol } },
+  children: []
+}
+
+data ambiguous_duplicate_name_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ambiguous_dup_step },
+      target: ambiguous_leaf_a
+    },
+    Edge {
+      label: Named { name: ambiguous_dup_step },
+      target: ambiguous_leaf_b
+    }
+  ]
+}
+
+fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool {
+  match subterm_at(
+    root: ambiguous_duplicate_name_root,
+    path: Path { steps: [ambiguous_dup_step] }
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+fn subterm_at_ambiguous_duplicate_name_claim_rhs() -> Bool {
+  subterm_at_ambiguous_duplicate_name_claim_holds()
+}
+
+data claim_subterm_at_ambiguous_duplicate_name: TestClaim = EqualsClaim {
+  label: "lens_application/subterm_at_ambiguous_duplicate_name: duplicate named edge rejects",
+  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  lhs: subterm_at_ambiguous_duplicate_name_claim_rhs(),
+  rhs: true,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

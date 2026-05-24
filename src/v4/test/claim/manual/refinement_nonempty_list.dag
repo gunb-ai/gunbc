@@ -9,7 +9,8 @@ module v4.test.claim.manual.refinement_nonempty_list
 
 
 import v4.std.refinement { Refined, Validation, refine }
-import v4.std.collection { List, non_empty }
+import v4.std.algebra { non_empty }
+import v4.std.collection { List }
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 type NonEmptyList<T> = Refined<List<T>>
