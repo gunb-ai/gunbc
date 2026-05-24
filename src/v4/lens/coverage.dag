@@ -1,6 +1,6 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: corpus coverage meta-lens (L6/L7/impossible-bug/testgen gap detection)
+// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageReading CoverageDefectKey CoverageDefectAcceptanceKey CoverageDefectAcceptance coverage_reading coverage_lens
 // Consumes: std/node std/witness std/diagnostic std/verification std/algebra std/nat
 //           extdeps/languages/dag lens/testgen
 // Status: T-18 filled — substrate-derived expected sets + corpus gap read for L6/L7/testgen/impossible-bug.
@@ -715,10 +715,6 @@ fn expected_coproduct_exhaustiveness_testgen_keys() -> List<TestgenCoverageKey> 
 // dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
 // 🟡 gated — feature:testgen-refinement-preservation-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
 // dissolve-on-arrival: RefinementPreservation enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
-// Covered Wave-1 expected arms: TypeConstruction (substrate connective/behavior fold), AlgebraLaw (manual nat-law anchors),
-// LanguageBehaviorEquivalence (testgen_scheduled_language_behavior_generators),
-// DiagnosticExhaustiveness (testgen_scheduled_coproduct_exhaustiveness_generators; omitted_variant per arm).
-// Deferred until T-19 schedules generators: LensApplicability, BidirectionalRoundtrip, RefinementPreservation.
 // 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag
 // dissolve-on-arrival: replace hand-assembled expected slices with full manifest + scheduled-generator projection.
 fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {

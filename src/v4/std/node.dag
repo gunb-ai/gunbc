@@ -28,8 +28,8 @@ type Behavior
   | Bind
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bind task: src/v4/TASKS.md#t-19-lenstestgendag
-// dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection; delete these mirrors.
+// 🟡 gated — feature:coproduct-variant-enumeration — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root
+// dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 fn connective_coproduct_variants(atom_identity: Symbol) -> List<Connective> {
   [
