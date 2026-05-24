@@ -206,7 +206,7 @@ fn base_cost_for_behavior(b: Behavior) -> SymbolicCost {
     Value => zero_cost()
     Transform => unit_cost()
     Branch => unit_cost()
-    Loop => unknown_cost(reason: "T-9-not-landed: loop bound")
+    Loop => unknown_cost(reason: "loop-bound-undeclared: Loop behavior carries no iteration bound in std/node.dag; structurally unknowable until bound is declared")
     Bind => zero_cost()
   }
 }
