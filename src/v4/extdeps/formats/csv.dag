@@ -32,18 +32,11 @@ type CsvRfc4180FieldTextProfile {
 }
 
 
-type CsvRfc4180RecordShapeProfile {
-  records_should_have_same_field_count: CsvRfc4180RecordsSameFieldCountWitness,
-  header_should_have_same_field_count_as_records: CsvRfc4180HeaderSameFieldCountAsRecordsWitness,
-}
-
-
 type CsvAxisProfile {
   delimiter: CsvRfc4180DelimiterProfile,
   quote: CsvRfc4180QuoteProfile,
   line_terminator: CsvRfc4180LineTerminatorProfile,
   field_text: CsvRfc4180FieldTextProfile,
-  record_shape: CsvRfc4180RecordShapeProfile,
   header_row: CsvRfc4180HeaderRowOptional,
   registered_mime: CsvRfc4180RegisteredTextCsvMime,
 }
@@ -58,6 +51,14 @@ type CsvNumericLexemeProfile {
 type CsvUniqueNameProfile {
   header_names_are_not_required_unique_by_rfc4180: CsvHeaderNamesNotRequiredUniqueByRfc4180Witness,
   duplicate_header_name_policy_is_consumer_defined: CsvDuplicateHeaderNamePolicyConsumerDefinedWitness,
+}
+
+
+type CsvRecordShapeProfile {
+  records_same_field_count_rfc4180_should: CsvRfc4180RecordsShouldHaveSameFieldCountWitness,
+  rectangular_record_enforcement_is_consumer_defined: CsvRectangularRecordEnforcementConsumerDefinedWitness,
+  header_same_field_count_as_records_rfc4180_should: CsvRfc4180HeaderShouldMatchRecordFieldCountWitness,
+  header_width_enforcement_is_consumer_defined: CsvHeaderWidthEnforcementConsumerDefinedWitness,
 }
 
 
@@ -105,9 +106,13 @@ type CsvRfc4180RecordLineBreak {
   generator_should_emit_crlf_between_records_per_rfc4180: CsvRfc4180GeneratorEmitsCrlfBetweenRecordsWitness,
 }
 
-type CsvRfc4180RecordsSameFieldCountWitness {}
+type CsvRfc4180RecordsShouldHaveSameFieldCountWitness {}
 
-type CsvRfc4180HeaderSameFieldCountAsRecordsWitness {}
+type CsvRectangularRecordEnforcementConsumerDefinedWitness {}
+
+type CsvRfc4180HeaderShouldMatchRecordFieldCountWitness {}
+
+type CsvHeaderWidthEnforcementConsumerDefinedWitness {}
 
 type CsvRfc4180LastRecordEndingLineBreakOptional {}
 
@@ -140,6 +145,7 @@ type CsvDocument {
   dialect: CsvDialect,
   numeric_lexeme_profile: CsvNumericLexemeProfile,
   unique_name_profile: CsvUniqueNameProfile,
+  record_shape_profile: CsvRecordShapeProfile,
   header: CsvHeaderPresence,
   records: List<CsvRow>,
 }
