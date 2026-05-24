@@ -20,6 +20,8 @@ use v3_compiler::tokenize_for_test;
 
 const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
+const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
+const CI_YML_PATH: &str = ".github/workflows/ci.yml";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
@@ -110,6 +112,7 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "ci_select_from_rerun_nodes",
         "ci_select_from_affected_set",
         "test_claim_in_rerun_frontier",
+        "ci_all_gate_run_policies_resolve",
     ] {
         assert!(
             surface_declares_fn(&module, name),
@@ -151,6 +154,36 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
     assert!(
         CI_DAG.contains("test_claim_ci_selection_fail_closed(c: claim)"),
         "{CI_DAG_PATH}: DiagnosticClaim rows must bypass narrow filter via fail-closed guard"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_bootstrap_gate_skip_policy_is_modeled() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::TypeSum { name, .. } if name == "CiGateRunPolicy"
+        )),
+        "{CI_DAG_PATH}: must model live gate run policy"
+    );
+    assert!(
+        CI_DAG.contains("| RequiresJobAttempt { job: Symbol }"),
+        "{CI_DAG_PATH}: gate run policy must carry the required attempted job"
+    );
+    assert!(
+        CI_DAG.contains("run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }"),
+        "{CI_DAG_PATH}: structural v2 compile gate must require the bootstrap compile attempt"
+    );
+    assert!(
+        CI_DAG.contains("ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs)"),
+        "{CI_DAG_PATH}: ci_pipeline_well_formed must reject dangling gate run-policy jobs"
+    );
+    assert!(
+        CI_YML.contains(
+            "if: always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'"
+        ),
+        "{CI_YML_PATH}: bootstrap gate result skip guard must stay projected from modeled gate run policy"
     );
 }
 

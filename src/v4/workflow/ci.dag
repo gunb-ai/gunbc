@@ -59,7 +59,12 @@ type CiJob {
 type CiGate {
   id: Symbol
   job: Symbol
+  run_policy: CiGateRunPolicy
 }
+
+type CiGateRunPolicy
+  = Always
+  | RequiresJobAttempt { job: Symbol }
 
 type CiPipeline {
   jobs: List<CiJob>
@@ -108,8 +113,16 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     }
   ],
   gates: [
-    CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
-    CiGate { id: lens_ci_registry_signal, job: lens_ci_registry_execution }
+    CiGate {
+      id: structural_v2_compile,
+      job: v2_compile_src_v4,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    },
+    CiGate {
+      id: lens_ci_registry_signal,
+      job: lens_ci_registry_execution,
+      run_policy: Always
+    }
   ]
 })
 
@@ -147,6 +160,15 @@ fn ci_gate_job_ids(gates: List<CiGate>) -> List<Symbol> {
   })
 }
 
+fn ci_gate_run_policy_job_ids(gates: List<CiGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    match g.run_policy {
+      Always => acc
+      RequiresJobAttempt { job } => concat([job], acc)
+    }
+  })
+}
+
 fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
   count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
@@ -173,6 +195,12 @@ fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
   for_all(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+    ci_symbol_resolves(s: job_sym, jobs: jobs)
+  })
+}
+
+fn ci_all_gate_run_policies_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
+  for_all(xs: ci_gate_run_policy_job_ids(gates: gates), predicate: fn(job_sym) {
     ci_symbol_resolves(s: job_sym, jobs: jobs)
   })
 }
@@ -231,14 +259,18 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
     if ci_all_gate_ids_unique(gates: p.gates) {
       if ci_all_needs_resolve(jobs: p.jobs) {
         if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
-          if ci_acyclic(jobs: p.jobs) {
-            if ci_all_commands_authority_ok(jobs: p.jobs) {
-              Accepted { value: p, diagnostics: None }
+          if ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs) {
+            if ci_acyclic(jobs: p.jobs) {
+              if ci_all_commands_authority_ok(jobs: p.jobs) {
+                Accepted { value: p, diagnostics: None }
+              } else {
+                Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
+              }
             } else {
-              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
+              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle)) }
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle)) }
+            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference)) }
           }
         } else {
           Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference)) }
