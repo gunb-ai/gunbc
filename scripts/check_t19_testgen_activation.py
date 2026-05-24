@@ -302,14 +302,18 @@ def main() -> None:
     pending_rows = wishlist.split("fn testgen_pending_non_tautological_generator_wishlist")[1].split(
         "fn testgen_dispatched_non_tautological_generators"
     )[0]
-    if pending_rows.count("TestgenWishlistRow {") != 5:
-        raise SystemExit("generator wishlist must carry exactly five pending non-LBE rows")
+    if pending_rows.count("TestgenWishlistRow {") != 4:
+        raise SystemExit("generator wishlist must carry exactly four pending non-dispatched rows")
+    if "slot: AlgebraLaw" in pending_rows:
+        raise SystemExit("AlgebraLaw has generated rows and must stay out of pending wishlist rows")
 
     dispatched_rows = wishlist.split("fn testgen_dispatched_non_tautological_generators")[1].split(
-        "fn pending_non_tautological_generator_count_is_five"
+        "fn pending_non_tautological_generator_count_is_four"
     )[0]
-    if dispatched_rows.count("TestgenWishlistRow {") != 1:
-        raise SystemExit("generator wishlist must carry exactly one dispatched LBE row")
+    if dispatched_rows.count("TestgenWishlistRow {") != 2:
+        raise SystemExit("generator wishlist must carry exactly two dispatched rows")
+    if "slot: LanguageBehaviorEquivalence" not in dispatched_rows or "slot: AlgebraLaw" not in dispatched_rows:
+        raise SystemExit("dispatched wishlist rows must include LBE and AlgebraLaw")
 
     if algebra.count("data generated_nat_") < 3:
         raise SystemExit("algebra-law generator must produce at least three sample TestClaim rows")

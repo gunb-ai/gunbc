@@ -141,12 +141,11 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
     );
     assert_eq!(
         pending.matches("TestgenWishlistRow {").count(),
-        5,
-        "wishlist must dispatch the five pending non-LBE TestgenConcept categories"
+        4,
+        "wishlist must dispatch the four pending non-dispatched TestgenConcept categories"
     );
     for generator in [
         "generator: wishlist_type_construction_generator()",
-        "generator: wishlist_algebra_law_generator()",
         "generator: wishlist_diagnostic_exhaustiveness_generator()",
         "generator: wishlist_lens_applicability_generator()",
         "generator: wishlist_bidirectional_roundtrip_generator()",
@@ -160,21 +159,30 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
         !pending.contains("slot: LanguageBehaviorEquivalence"),
         "LBE has already shipped generated runner receipts and must stay out of pending wishlist rows"
     );
+    assert!(
+        !pending.contains("slot: AlgebraLaw"),
+        "AlgebraLaw has generated corpus rows and must stay out of pending wishlist rows"
+    );
 
     let dispatched = between(
         TESTGEN_WISHLIST_DAG,
         "fn testgen_dispatched_non_tautological_generators",
-        "fn pending_non_tautological_generator_count_is_five",
+        "fn pending_non_tautological_generator_count_is_four",
     );
     assert_eq!(
         dispatched.matches("TestgenWishlistRow {").count(),
-        1,
-        "wishlist must record the one already-dispatched LBE generator row"
+        2,
+        "wishlist must record the two already-dispatched generator rows"
     );
     assert!(
         dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
             && dispatched.contains("oracle: FrozenIoSnapshot"),
         "dispatched row must keep LBE tied to the frozen I/O snapshot oracle"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_algebra_law_generator()")
+            && dispatched.contains("oracle: AlgebraLawWitness"),
+        "dispatched row must keep AlgebraLaw tied to the algebra-law witness oracle"
     );
 }
 

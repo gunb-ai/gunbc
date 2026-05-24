@@ -73,11 +73,11 @@ type TestgenWishlistRow {
 
 
 data t19_wishlist_type_construction_dispatch: Symbol = t19_wishlist_type_construction_dispatch
-data t19_wishlist_algebra_law_dispatch: Symbol = t19_wishlist_algebra_law_dispatch
 data t19_wishlist_diagnostic_exhaustiveness_dispatch: Symbol = t19_wishlist_diagnostic_exhaustiveness_dispatch
 data t19_wishlist_lens_applicability_dispatch: Symbol = t19_wishlist_lens_applicability_dispatch
 data t19_wishlist_bidirectional_roundtrip_dispatch: Symbol = t19_wishlist_bidirectional_roundtrip_dispatch
 data t19_dispatched_language_behavior_equivalence: Symbol = t19_dispatched_language_behavior_equivalence
+data t19_dispatched_algebra_law: Symbol = t19_dispatched_algebra_law
 data t19_generator_wishlist_lens_structural_resolution: Symbol = t19_generator_wishlist_lens_structural_resolution
 data t19_generator_wishlist_unexpected_deferred_roundtrip: Symbol = t19_generator_wishlist_unexpected_deferred_roundtrip
 data t19_generator_wishlist_dag_surface_production: Symbol = t19_generator_wishlist_dag_surface_production
@@ -96,7 +96,7 @@ fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
 }
 
 
-fn wishlist_algebra_law_generator() -> Generator<TestgenConcept> {
+fn dispatched_algebra_law_generator() -> Generator<TestgenConcept> {
   Generator {
     kind: TestClaimEqualsClaimVariant,
     classification: TestClassification { tier: Tier1, layer: Unit },
@@ -177,11 +177,6 @@ fn testgen_pending_non_tautological_generator_wishlist() -> List<TestgenWishlist
       dispatch_key: t19_wishlist_type_construction_dispatch,
     },
     TestgenWishlistRow {
-      generator: wishlist_algebra_law_generator(),
-      oracle: AlgebraLawWitness,
-      dispatch_key: t19_wishlist_algebra_law_dispatch,
-    },
-    TestgenWishlistRow {
       generator: wishlist_diagnostic_exhaustiveness_generator(),
       oracle: DiagnosticNegativeFixture,
       dispatch_key: t19_wishlist_diagnostic_exhaustiveness_dispatch,
@@ -207,17 +202,22 @@ fn testgen_dispatched_non_tautological_generators() -> List<TestgenWishlistRow> 
       oracle: FrozenIoSnapshot,
       dispatch_key: t19_dispatched_language_behavior_equivalence,
     },
+    TestgenWishlistRow {
+      generator: dispatched_algebra_law_generator(),
+      oracle: AlgebraLawWitness,
+      dispatch_key: t19_dispatched_algebra_law,
+    },
   ]
 }
 
 
-fn pending_non_tautological_generator_count_is_five() -> Bool {
-  length(xs: testgen_pending_non_tautological_generator_wishlist()) == 5
+fn pending_non_tautological_generator_count_is_four() -> Bool {
+  length(xs: testgen_pending_non_tautological_generator_wishlist()) == 4
 }
 
 
-fn dispatched_non_tautological_generator_count_is_one() -> Bool {
-  length(xs: testgen_dispatched_non_tautological_generators()) == 1
+fn dispatched_non_tautological_generator_count_is_two() -> Bool {
+  length(xs: testgen_dispatched_non_tautological_generators()) == 2
 }
 
 
@@ -230,7 +230,7 @@ fn testgen_wishlist_count_node() -> Node {
 
 
 fn testgen_wishlist_count_claim_rhs() -> Node {
-  if pending_non_tautological_generator_count_is_five() && dispatched_non_tautological_generator_count_is_one() {
+  if pending_non_tautological_generator_count_is_four() && dispatched_non_tautological_generator_count_is_two() {
     testgen_wishlist_count_node()
   } else {
     Node {
@@ -242,7 +242,7 @@ fn testgen_wishlist_count_claim_rhs() -> Node {
 
 
 data claim_testgen_wishlist_formalized: TestClaim = EqualsClaim {
-  label: "generated/testgen_category_wishlist: five pending non-tautological generator categories and one dispatched LBE category",
+  label: "generated/testgen_category_wishlist: four pending non-tautological generator categories and two dispatched categories",
   t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
   lhs: testgen_wishlist_count_node(),
   rhs: testgen_wishlist_count_claim_rhs(),
