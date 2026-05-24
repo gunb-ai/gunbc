@@ -27,14 +27,10 @@ type JsonValue
 
 type JsonNumberLeadingMinusOptionalPrefixWitness {}
 
-type JsonNumberIntegerZeroWitness {}
-
-type JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness {}
-
 // 🟢 coproduct dissolution — T-4.6-P4-JsonNumberIntegerLexeme.
 type JsonNumberIntegerLexemeWitness
   = JsonNumberIntegerZeroWitness
-  | JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness {}
+  | JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness
 
 // frac = decimal-point 1*DIGIT — the decimal point must be followed by ≥1 digit;
 // bare trailing dot (e.g. "1.") is not a valid JSON number.
