@@ -1566,7 +1566,7 @@ fn rust_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   ]
 }
 
-fn rust_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   rust_list_append(
     left: rust_list_append(
       left: rust_integer_algebra_inhabitance_decls(),
@@ -1576,7 +1576,7 @@ fn rust_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn rust_law_obligation(witness: Node, law: Symbol) -> AlgebraLawObligation {
+fn rust_model_core_law_obligation(witness: Node, law: Symbol) -> AlgebraLawObligation {
   AlgebraLawObligation {
     inhabitance_witness: witness,
     law: rust_symbol_node(id: law)
@@ -1586,28 +1586,28 @@ fn rust_law_obligation(witness: Node, law: Symbol) -> AlgebraLawObligation {
 fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
   let witness = rust_integer_algebra_witness_node(facts: facts)
   [
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_associative_when_representable),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_commutative_when_representable),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_associative_when_representable),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_commutative_when_representable),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_distributive_when_representable),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_total_order_over_representable_values)
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_associative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_commutative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_associative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_commutative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_distributive_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_total_order_over_representable_values)
   ]
 }
 
 fn rust_float_law_obligations(facts: RustFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
   let witness = rust_float_algebra_witness_node(facts: facts)
   [
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_ieee754_rounding),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754)
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_ieee754_rounding),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754)
   ]
 }
 
 fn rust_bool_algebra_laws() -> List<AlgebraLawObligation> {
   let witness = rust_bool_algebra_witness_node()
   [
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_bounded_lattice),
-    rust_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_complement)
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_bounded_lattice),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_complement)
   ]
 }
 
@@ -1631,7 +1631,7 @@ fn rust_float_algebra_laws() -> List<AlgebraLawObligation> {
   )
 }
 
-fn rust_algebra_law_obligations() -> List<AlgebraLawObligation> {
+fn rust_model_core_law_obligations() -> List<AlgebraLawObligation> {
   rust_list_append(
     left: rust_list_append(
       left: rust_integer_algebra_laws(),
@@ -1744,8 +1744,8 @@ fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 fn rust_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: rust_wave1_primitive_fact_bundles(),
-    inhabitance: rust_algebra_inhabitance_decls(),
-    laws: rust_algebra_law_obligations(),
+    inhabitance: rust_model_core_inhabitance_decls(),
+    laws: rust_model_core_law_obligations(),
     effects: rust_effect_semantics_wave2(),
     partiality: rust_partiality_semantics_wave2()
   }
