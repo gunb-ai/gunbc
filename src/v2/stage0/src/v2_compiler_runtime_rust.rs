@@ -100,6 +100,63 @@ pub fn rt_filesystem() -> String {
     )
 }
 
+pub fn rt_hash_ops() -> String {
+    v2_rt::concat(
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                "const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;\n"
+                                                    .to_string(),
+                                                "const FNV1A64_PRIME: u64 = 0x100000001b3;\n\n"
+                                                    .to_string(),
+                                            ),
+                                            "fn fnv1a64(bytes: &[u8]) -> u64 {\n".to_string(),
+                                        ),
+                                        "    let mut hash = FNV1A64_OFFSET;\n".to_string(),
+                                    ),
+                                    "    for b in bytes {\n".to_string(),
+                                ),
+                                "        hash ^= *b as u64;\n".to_string(),
+                            ),
+                            "        hash = hash.wrapping_mul(FNV1A64_PRIME);\n".to_string(),
+                        ),
+                        "    }\n".to_string(),
+                    ),
+                    "    hash\n".to_string(),
+                ),
+                "}\n\n".to_string(),
+            ),
+            "pub fn atom_identity_hash(s: String) -> String {\n".to_string(),
+        ),
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                "    format!(\"{:016x}\", fnv1a64(s.as_bytes()))\n".to_string(),
+                                "}\n\n".to_string(),
+                            ),
+                            "pub fn hash_combine(a: String, b: String) -> String {\n".to_string(),
+                        ),
+                        "    let mut bytes = a.into_bytes();\n".to_string(),
+                    ),
+                    "    bytes.push(0);\n".to_string(),
+                ),
+                "    bytes.extend_from_slice(b.as_bytes());\n".to_string(),
+            ),
+            "    format!(\"{:016x}\", fnv1a64(&bytes))\n}\n\n".to_string(),
+        ),
+    )
+}
+
 pub fn rust_runtime_source() -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -107,16 +164,19 @@ pub fn rust_runtime_source() -> String {
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
-                            v2_rt::concat(rt_header(), rt_concat_trait()),
-                            rt_string_ops(),
+                            v2_rt::concat(
+                                v2_rt::concat(rt_header(), rt_concat_trait()),
+                                rt_string_ops(),
+                            ),
+                            rt_collection_ops(),
                         ),
-                        rt_collection_ops(),
+                        rt_rc_container_ops(),
                     ),
-                    rt_rc_container_ops(),
+                    rt_scanner_ops(),
                 ),
-                rt_scanner_ops(),
+                rt_unicode_ops(),
             ),
-            rt_unicode_ops(),
+            rt_hash_ops(),
         ),
         rt_filesystem(),
     )
