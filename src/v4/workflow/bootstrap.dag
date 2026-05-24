@@ -112,7 +112,6 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
        && (p.fixpt.left_hash.pin == v4_stage1_hash_pin)
        && (p.fixpt.right_hash.pin == v4_stage2_hash_pin)
        && (p.fixpt.pinned_hash.pin == pinned_v4_fixed_point_hash_pin)
-       // 🟡 T-15 staging: digest equalities below prove placeholder wiring only until B1 content_hash lands; they do NOT assert stage1/stage2 binaries differ before fixpt.
        && (p.self0.produces_hash.digest == p.self1.produces_hash.digest)
        && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
        && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
@@ -155,9 +154,6 @@ data bootstrap_plan_fixpt_digest_mismatch_rejects: Outcome<BootstrapPlan> = boot
 })
 
 
-// 🟡 T-15 staging: self1.produces_hash, fixpt.right_hash, and fixpt.pinned_hash share
-// v4_stage1_hash digest — placeholder wiring only; distinct pin Symbols identify
-// carrier slots. NOT proof of fixed-point convergence until B1 content_hash lands.
 data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: BootstrapPlan {
   seed: CompileStage {
     consumes: [v4_dag_source],
