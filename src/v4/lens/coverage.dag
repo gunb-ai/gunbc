@@ -39,7 +39,9 @@ import v4.lens.testgen {
   law_nat_mul_annihilator,
   law_nat_mul_associativity,
   law_nat_mul_left_identity,
-  testgen_concept_for_manual_claim
+  testgen_concept_for_manual_claim,
+  testgen_scheduled_language_behavior_generators,
+  Generator
 }
 import v4.std.algebra {
   Cons,
@@ -659,26 +661,37 @@ fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
 }
 
 
-fn expected_language_behavior_equivalence_testgen_keys() -> List<TestgenCoverageKey> {
-  [
-    LanguageBehaviorEquivalence {
-      subject: lbe_subject_conj_dag_surface(),
-      mock: lbe_io_mock_conj_dag_surface(),
-    },
-    LanguageBehaviorEquivalence {
-      subject: lbe_subject_disj_dag_surface(),
-      mock: lbe_io_mock_disj_dag_surface(),
-    },
-    LanguageBehaviorEquivalence {
-      subject: lbe_subject_transform_dag_surface(),
-      mock: lbe_io_mock_transform_dag_surface(),
-    },
-  ]
+fn testgen_coverage_keys_from_scheduled_generators(
+  generators: List<Generator<TestgenConcept>>
+) -> List<TestgenCoverageKey> {
+  fold_list_right(
+    xs: generators,
+    empty: Empty,
+    snoc: fn(acc, generator) {
+      dedupe_snoc(acc: acc, item: generator.slot, eq: testgen_coverage_key_eq)
+    }
+  )
 }
 
 
+fn expected_language_behavior_equivalence_testgen_keys() -> List<TestgenCoverageKey> {
+  testgen_coverage_keys_from_scheduled_generators(
+    generators: testgen_scheduled_language_behavior_generators()
+  )
+}
+
+
+// 🟡 gated — feature:testgen-lens-applicability-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
+// dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
+// 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
+// dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
+// 🟡 gated — feature:testgen-refinement-preservation-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
+// dissolve-on-arrival: RefinementPreservation enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
+// Covered Wave-1 expected arms: TypeConstruction (substrate connective/behavior fold), AlgebraLaw (manual nat-law anchors),
+// LanguageBehaviorEquivalence (testgen_scheduled_language_behavior_generators), DiagnosticExhaustiveness (singleton variant).
+// Deferred until T-19 schedules generators: LensApplicability, BidirectionalRoundtrip, RefinementPreservation.
 // 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag
-// dissolve-on-arrival: project expected TestgenConcept rows from manual-anchor manifest + scheduled generators.
+// dissolve-on-arrival: replace hand-assembled expected slices with full manifest + scheduled-generator projection.
 fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
   fold_list_right(
     xs: expected_type_construction_testgen_keys(),
