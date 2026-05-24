@@ -506,35 +506,53 @@ type OpenApiUniqueNameProfileFacts {
 }
 
 
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethodBridgeFacts.
-type OpenApiHttpMethodBridgeFacts
-  = OpenApiHttpMethodBridgeGet
-  | OpenApiHttpMethodBridgePut
-  | OpenApiHttpMethodBridgePost
-  | OpenApiHttpMethodBridgeDelete
-  | OpenApiHttpMethodBridgeOptions
-  | OpenApiHttpMethodBridgeHead
-  | OpenApiHttpMethodBridgePatch
-  | OpenApiHttpMethodBridgeTrace
+type OpenApiHttpMethodBridgeRow {
+  oas_method: OpenApiHttpMethod,
+  network_method: HttpMethod,
+}
 
 
-data openapi_http_method_bridge_get: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeGet
+data openapi_http_method_bridge_get: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiGet,
+  network_method: GET,
+}
 
-data openapi_http_method_bridge_put: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgePut
+data openapi_http_method_bridge_put: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiPut,
+  network_method: PUT,
+}
 
-data openapi_http_method_bridge_post: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgePost
+data openapi_http_method_bridge_post: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiPost,
+  network_method: POST,
+}
 
-data openapi_http_method_bridge_delete: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeDelete
+data openapi_http_method_bridge_delete: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiDelete,
+  network_method: DELETE,
+}
 
-data openapi_http_method_bridge_options: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeOptions
+data openapi_http_method_bridge_options: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiOptions,
+  network_method: OPTIONS,
+}
 
-data openapi_http_method_bridge_head: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeHead
+data openapi_http_method_bridge_head: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiHead,
+  network_method: HEAD,
+}
 
-data openapi_http_method_bridge_patch: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgePatch
+data openapi_http_method_bridge_patch: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiPatch,
+  network_method: PATCH,
+}
 
-data openapi_http_method_bridge_trace: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeTrace
+data openapi_http_method_bridge_trace: OpenApiHttpMethodBridgeRow = {
+  oas_method: OpenApiTrace,
+  network_method: TRACE,
+}
 
-data openapi_http_method_bridge_catalog: List<OpenApiHttpMethodBridgeFacts> = [
+data openapi_http_method_bridge_catalog: List<OpenApiHttpMethodBridgeRow> = [
   openapi_http_method_bridge_get,
   openapi_http_method_bridge_put,
   openapi_http_method_bridge_post,
@@ -544,32 +562,6 @@ data openapi_http_method_bridge_catalog: List<OpenApiHttpMethodBridgeFacts> = [
   openapi_http_method_bridge_patch,
   openapi_http_method_bridge_trace,
 ]
-
-fn openapi_http_method_bridge_oas_method(bridge: OpenApiHttpMethodBridgeFacts) -> OpenApiHttpMethod {
-  match bridge {
-    OpenApiHttpMethodBridgeGet => OpenApiGet
-    OpenApiHttpMethodBridgePut => OpenApiPut
-    OpenApiHttpMethodBridgePost => OpenApiPost
-    OpenApiHttpMethodBridgeDelete => OpenApiDelete
-    OpenApiHttpMethodBridgeOptions => OpenApiOptions
-    OpenApiHttpMethodBridgeHead => OpenApiHead
-    OpenApiHttpMethodBridgePatch => OpenApiPatch
-    OpenApiHttpMethodBridgeTrace => OpenApiTrace
-  }
-}
-
-fn openapi_http_method_bridge_network_method(bridge: OpenApiHttpMethodBridgeFacts) -> HttpMethod {
-  match bridge {
-    OpenApiHttpMethodBridgeGet => GET
-    OpenApiHttpMethodBridgePut => PUT
-    OpenApiHttpMethodBridgePost => POST
-    OpenApiHttpMethodBridgeDelete => DELETE
-    OpenApiHttpMethodBridgeOptions => OPTIONS
-    OpenApiHttpMethodBridgeHead => HEAD
-    OpenApiHttpMethodBridgePatch => PATCH
-    OpenApiHttpMethodBridgeTrace => TRACE
-  }
-}
 
 
 type OpenApiHttpStatusCodeBoundedRangeWitness {}
@@ -581,57 +573,6 @@ type OpenApiHttpStatusCodeFacts {
   bounded_100_to_599: OpenApiHttpStatusCodeBoundedRangeWitness,
 }
 
-
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiResponseKeyWildcardBridgeFacts.
-type OpenApiResponseKeyWildcardBridgeFacts
-  = OpenApiResponseKeyWildcardBridge1xx
-  | OpenApiResponseKeyWildcardBridge2xx
-  | OpenApiResponseKeyWildcardBridge3xx
-  | OpenApiResponseKeyWildcardBridge4xx
-  | OpenApiResponseKeyWildcardBridge5xx
-
-
-data openapi_wildcard_bridge_1xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridge1xx
-
-data openapi_wildcard_bridge_2xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridge2xx
-
-data openapi_wildcard_bridge_3xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridge3xx
-
-data openapi_wildcard_bridge_4xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridge4xx
-
-data openapi_wildcard_bridge_5xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridge5xx
-
-data openapi_response_key_wildcard_bridge_catalog: List<OpenApiResponseKeyWildcardBridgeFacts> = [
-  openapi_wildcard_bridge_1xx,
-  openapi_wildcard_bridge_2xx,
-  openapi_wildcard_bridge_3xx,
-  openapi_wildcard_bridge_4xx,
-  openapi_wildcard_bridge_5xx,
-]
-
-fn openapi_wildcard_bridge_kind(bridge: OpenApiResponseKeyWildcardBridgeFacts) -> OpenApiResponseKeyWildcardKind {
-  match bridge {
-    OpenApiResponseKeyWildcardBridge1xx => OpenApiWildcard1xx
-    OpenApiResponseKeyWildcardBridge2xx => OpenApiWildcard2xx
-    OpenApiResponseKeyWildcardBridge3xx => OpenApiWildcard3xx
-    OpenApiResponseKeyWildcardBridge4xx => OpenApiWildcard4xx
-    OpenApiResponseKeyWildcardBridge5xx => OpenApiWildcard5xx
-  }
-}
-
-fn openapi_wildcard_bridge_low(bridge: OpenApiResponseKeyWildcardBridgeFacts) -> Nat {
-  match bridge {
-    OpenApiResponseKeyWildcardBridge1xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds1)
-    OpenApiResponseKeyWildcardBridge2xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds2)
-    OpenApiResponseKeyWildcardBridge3xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds3)
-    OpenApiResponseKeyWildcardBridge4xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds4)
-    OpenApiResponseKeyWildcardBridge5xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds5)
-  }
-}
-
-fn openapi_wildcard_bridge_high(bridge: OpenApiResponseKeyWildcardBridgeFacts) -> Nat {
-  openapi_wildcard_bridge_low(bridge: bridge) + 99
-}
 
 fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> Nat {
   match digit {
