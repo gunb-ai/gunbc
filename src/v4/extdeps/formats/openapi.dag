@@ -599,6 +599,51 @@ fn openapi_status_hundreds_value(hundreds: OpenApiStatusHundreds) -> Nat {
   }
 }
 
+type OpenApiResponseKeyWildcardBridgeRow {
+  kind: OpenApiResponseKeyWildcardKind,
+  low: Nat,
+  high: Nat,
+}
+
+
+data openapi_wildcard_bridge_1xx: OpenApiResponseKeyWildcardBridgeRow = {
+  kind: OpenApiWildcard1xx,
+  low: openapi_status_hundreds_value(hundreds: OpenApiHundreds1),
+  high: openapi_status_hundreds_value(hundreds: OpenApiHundreds1) + 99,
+}
+
+data openapi_wildcard_bridge_2xx: OpenApiResponseKeyWildcardBridgeRow = {
+  kind: OpenApiWildcard2xx,
+  low: openapi_status_hundreds_value(hundreds: OpenApiHundreds2),
+  high: openapi_status_hundreds_value(hundreds: OpenApiHundreds2) + 99,
+}
+
+data openapi_wildcard_bridge_3xx: OpenApiResponseKeyWildcardBridgeRow = {
+  kind: OpenApiWildcard3xx,
+  low: openapi_status_hundreds_value(hundreds: OpenApiHundreds3),
+  high: openapi_status_hundreds_value(hundreds: OpenApiHundreds3) + 99,
+}
+
+data openapi_wildcard_bridge_4xx: OpenApiResponseKeyWildcardBridgeRow = {
+  kind: OpenApiWildcard4xx,
+  low: openapi_status_hundreds_value(hundreds: OpenApiHundreds4),
+  high: openapi_status_hundreds_value(hundreds: OpenApiHundreds4) + 99,
+}
+
+data openapi_wildcard_bridge_5xx: OpenApiResponseKeyWildcardBridgeRow = {
+  kind: OpenApiWildcard5xx,
+  low: openapi_status_hundreds_value(hundreds: OpenApiHundreds5),
+  high: openapi_status_hundreds_value(hundreds: OpenApiHundreds5) + 99,
+}
+
+data openapi_response_key_wildcard_bridge_catalog: List<OpenApiResponseKeyWildcardBridgeRow> = [
+  openapi_wildcard_bridge_1xx,
+  openapi_wildcard_bridge_2xx,
+  openapi_wildcard_bridge_3xx,
+  openapi_wildcard_bridge_4xx,
+  openapi_wildcard_bridge_5xx,
+]
+
 fn openapi_http_status_code_value(
   hundreds: OpenApiStatusHundreds,
   tens: OpenApiStatusDigit,
@@ -611,7 +656,7 @@ fn openapi_http_status_code_value(
 data openapi_operation_exchange_request_reply: ExchangePattern = RequestReply
 
 type OpenApiOperationWireContractFacts {
-  http_method_bridge: OpenApiHttpMethodBridgeFacts,
+  http_method_bridge: OpenApiHttpMethodBridgeRow,
   path_template: OpenApiPathTemplateKey,
 }
 
