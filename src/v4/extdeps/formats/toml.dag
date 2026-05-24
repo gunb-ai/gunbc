@@ -67,17 +67,11 @@ type TomlFloatLexeme {
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type TomlDatetimeKind
-  = TomlOffsetDateTime
-  | TomlLocalDateTime
-  | TomlLocalDate
-  | TomlLocalTime
-
-
-type TomlDatetimeLexeme {
-  lexeme: String,
-  kind: TomlDatetimeKind,
-}
+type TomlDatetimeLexeme
+  = TomlOffsetDateTimeLexeme { lexeme: String }
+  | TomlLocalDateTimeLexeme { lexeme: String }
+  | TomlLocalDateLexeme { lexeme: String }
+  | TomlLocalTimeLexeme { lexeme: String }
 
 
 type TomlDottedKeysDefineTablesFact {}
