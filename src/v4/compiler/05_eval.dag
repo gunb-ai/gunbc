@@ -626,6 +626,7 @@ fn eval_computation_node(
           args: args,
           facts: facts,
           tree: tree,
+          interpretation: interpretation,
           interpreter: dispatch,
           environment: environment,
           runtime: runtime
@@ -646,6 +647,7 @@ fn eval_computation_node(
           args: args,
           facts: facts,
           tree: tree,
+          interpretation: interpretation,
           interpreter: dispatch,
           environment: environment,
           runtime: runtime
