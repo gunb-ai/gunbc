@@ -354,6 +354,9 @@ data law_nat_mul_annihilator: Symbol = law_nat_mul_annihilator
 data law_nat_mul_associativity: Symbol = law_nat_mul_associativity
 
 
+data t19_algebra_law_anchor_mismatch: Symbol = t19_algebra_law_anchor_mismatch
+
+
 data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
 
@@ -683,16 +686,43 @@ fn testgen_emit_algebra_law_claim(
       )
     }
   } else {
-    Accepted {
-      value: EqualsClaim {
-        label: label,
-        anchor: manual_claim_anchor(anchor: anchor),
-        lhs: algebra_law_claim_term(subject: subject, expression: lhs),
-        rhs: algebra_law_claim_term(subject: subject, expression: rhs),
-        classification: classification,
-      },
-      diagnostics: None,
+    match algebra_law_manual_claim_anchor(anchor: anchor) {
+      Accepted { value: checked_anchor, diagnostics: None } =>
+        Accepted {
+          value: EqualsClaim {
+            label: label,
+            anchor: checked_anchor,
+            lhs: algebra_law_claim_term(subject: subject, expression: lhs),
+            rhs: algebra_law_claim_term(subject: subject, expression: rhs),
+            classification: classification,
+          },
+          diagnostics: None,
+        }
+      Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d }
     }
+  }
+}
+
+
+fn algebra_law_manual_claim_anchor(anchor: ManualAnchorKey) -> Outcome<ClaimAnchorKey> {
+  match anchor {
+    ManualNatAddLeftIdentity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    ManualNatAddRightIdentity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    ManualNatAddAssociativity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    ManualNatMulLeftIdentity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    ManualNatMulAnnihilator => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    ManualNatMulAssociativity => Accepted { value: manual_claim_anchor(anchor: anchor), diagnostics: None }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: t19_algebra_law_anchor_mismatch,
+            at: Textual { file: testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
   }
 }
 
