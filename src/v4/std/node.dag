@@ -323,7 +323,7 @@ fn canonical_symbol_of_node_kind(kind: NodeKind) -> Symbol {
 // B1-CANON surface: target contract is merkle_fold ∘ canonical — structural equality key for Node identity (T-9/T-17/T-24).
 // WARNING — current bridge returns root-kind Symbol only; child hashes are discarded (step is acc-only).
 // Consumers MUST NOT rely on this for structural identity until hash-combine lands.
-// 🟡 feature:b1-canon-hash-combine — step acc-only bridge; dissolve-on: merkle_fold hash-combine substrate primitive landed; step then combines acc with child Symbols to produce a Merkle hash.
+// 🟡 feature:b1-canon-hash-combine — step acc-only bridge; dissolve-on: merkle_fold hash-combine substrate primitive landed; step then combines acc with edge.label Hash and child Hash (Merkle fold over edge labels and children) to produce a structural identity key.
 fn content_hash(n: Node) -> Symbol {
   fold_node(
     n: n,
