@@ -16,6 +16,7 @@ module v4.test.claim.manual.llvm_ir_b2_omni_in_b_probe
 import v4.extdeps.languages.llvm_ir {
   BasicBlock,
   ConditionalBr,
+  Defined,
   FunctionBody,
   LlvmType,
   LocalRef,
