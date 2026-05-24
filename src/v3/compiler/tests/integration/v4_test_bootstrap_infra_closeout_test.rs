@@ -403,14 +403,13 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             ("right", "Symbol"),
             ("right_hash", "BootstrapHashPin"),
             ("pinned_hash", "BootstrapHashPin"),
-            ("witness", "BootstrapFixptWitness"),
         ]),
-        "FixptStage1Stage2 must carry both compared hashes, the fixed-point pin, and the witness"
+        "FixptStage1Stage2 must carry only the canonical compared hashes and fixed-point pin"
     );
     assert_eq!(
-        record_field_type_map(type_record(&module, "BootstrapFixptWitness")),
-        expected_field_type_map(&[("property", "Symbol")]),
-        "BootstrapFixptWitness must not duplicate FixptStage1Stage2 hash authority"
+        type_alias_name(&module, "BootstrapFixptWitness"),
+        "Witness<FixptStage1Stage2>",
+        "BootstrapFixptWitness must use the canonical Witness over the canonical fixpt record"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "BootstrapPlan")),
@@ -493,11 +492,11 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
                 .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
             && BOOTSTRAP_DAG
                 .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest")
-            && BOOTSTRAP_DAG.contains("p.fixpt.witness.property == bit_identical_check")
-            && !BOOTSTRAP_DAG.contains("p.fixpt.witness.left_hash")
-            && !BOOTSTRAP_DAG.contains("p.fixpt.witness.right_hash")
-            && !BOOTSTRAP_DAG.contains("p.fixpt.witness.pinned_hash"),
-        "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields without duplicating them in the witness (A2+A3/P2)"
+            && BOOTSTRAP_DAG.contains("bootstrap_fixpt_holds(f: p.fixpt)")
+            && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: BootstrapFixptWitness")
+            && BOOTSTRAP_DAG.contains("type BootstrapFixptWitness = Witness<FixptStage1Stage2>")
+            && !BOOTSTRAP_DAG.contains("p.fixpt.witness"),
+        "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields and derive the witness from that record (A2+A3/P2)"
     );
     assert!(
         !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
