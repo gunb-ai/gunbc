@@ -15,6 +15,8 @@ import v4.lens.testgen {
   ConnectiveKernel,
   DiagnosticExhaustiveness,
   LanguageBehaviorEquivalence,
+  FrozenLanguageBehaviorSnapshot,
+  LanguageBehaviorIoMock,
   RefinementPreservation,
   TestgenConcept,
   TypeConstructionSubject,
@@ -72,6 +74,7 @@ import v4.std.node {
   Disj,
   Instantiation,
   Loop,
+  Node,
   Symbol,
   Transform,
   Value
@@ -360,6 +363,22 @@ fn impossible_bug_coverage_key_eq(a: ImpossibleBugCoverageKey, b: ImpossibleBugC
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace frozen_language_behavior_snapshot_eq / language_behavior_io_mock_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field LBE mock equality table drift from lens/testgen.dag.
+fn frozen_language_behavior_snapshot_eq(
+  a: FrozenLanguageBehaviorSnapshot,
+  b: FrozenLanguageBehaviorSnapshot
+) -> Bool {
+  a.language == b.language &&
+    a.input_node == b.input_node &&
+    a.expected_value == b.expected_value
+}
+
+
+fn language_behavior_io_mock_eq(a: LanguageBehaviorIoMock, b: LanguageBehaviorIoMock) -> Bool {
+  frozen_language_behavior_snapshot_eq(a: a.snapshot, b: b.snapshot)
+}
+
+
 // 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace testgen_coverage_key_eq call sites with the substrate TestgenConcept equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestgenConcept equality table drift from lens/testgen.dag.
 fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool {
   match a {
@@ -389,11 +408,12 @@ fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool
         BidirectionalRoundtrip { subject: _ } => true
         _ => false
       }
-    LanguageBehaviorEquivalence { subject: as, mock: _ } =>
+    LanguageBehaviorEquivalence { subject: as, mock: am } =>
       match b {
-        LanguageBehaviorEquivalence { subject: bs, mock: _ } =>
+        LanguageBehaviorEquivalence { subject: bs, mock: bm } =>
           type_construction_subject_eq(a: as.subject, b: bs.subject) &&
-            as.language == bs.language
+            as.language == bs.language &&
+            language_behavior_io_mock_eq(a: am, b: bm)
         _ => false
       }
     RefinementPreservation { subject: _ } =>
