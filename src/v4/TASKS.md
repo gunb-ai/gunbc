@@ -22,13 +22,15 @@ worker.
 ### Critical path — sets time-to-done
 
 ```
-T-1 → T-2 → T-3 → T-6 → T-7 → T-8 → T-9 → T-10 → T-11 → T-16 → T-15
+T-1 → T-2 → T-3 → T-6 → T-7 → T-8 → T-9 → T-10 → T-11 → T-16 ─┐
+                                            └─ T-36 ───────────────┴→ T-15
 ```
 
 `T-1 → T-2 → T-3` is serial and unavoidable — the substrate foundation.
 After T-3 the spine is the serial compiler pipeline
-`T-6 → T-7 → T-8 → T-9 → T-10`, then emit specialization + the omni demo,
-closing at T-15.
+`T-6 → T-7 → T-8 → T-9 → T-10`, then two parallel T-15 gates:
+`T-11 → T-16` (full-stack omni-emission demo) and `T-36` (ingest round-trip
+fidelity claim, needs only T-10). Both must be complete before T-15.
 
 ```
   T-1   std/node.dag                     [BLOCKS: all]
@@ -47,6 +49,11 @@ closing at T-15.
         (T-4.8 coordination.dag is load-bearing — T-16 uses it for
         endpoint partitioning; facts must flow forward from the
         coordination substrate into the flagship demo)
+  T-36  Omni ingest demo: `.dag` source → Node → emit → source (round-trip)
+        [needs T-6, T-7, T-8, T-9, T-10; dag.dag lex/grammar data from T-6/T-7]
+        One executable claim: parse a known `.dag` program, emit it back,
+        assert bit-identical. Validates `ingest = emit⁻¹` (C5) is not
+        just a property claim but a checked, executable fact before T-15.
   T-15  bin/main.dag + bootstrap glue + self-host fixed-point validation
         + PROOF-1: the external trust-discharge for A3 — a lens =
           (evidence read: A2 descent, the coercion-fold chain, cost,
@@ -328,6 +335,24 @@ flat — dispatch in waves):
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
 - **Declare every surface feature's disposition (C5-fidelity).** For each feature: `Modeled` (∈ F, Node-bearing, round-trips both ways — e.g. Python indentation IS block structure) | `Declared-normalized` (deliberately not in F; `emit∘ingest` canonicalizes — Go/C++ insignificant whitespace; a *declared*, reviewable loss, never silent) | `Fail-closed` (encountered but neither → Diagnostic, no-engine). F = the spec's own meaning-vs-lexical distinction, not worker judgment. Round-trip fidelity = declared model completeness.
 - **A language file FACT-BUNDLES each primitive (fact-bundle reseed — operator-ratified 2026-05-17, supersedes D2).** For each primitive the file authors a **fact-bundle**: the facts read from that language's *own spec* — width, signedness, representation, overflow / NaN-Inf disposition, surface spelling — each a real modeled carrier grounding into the shared `std/` vocabulary (T-3). It does NOT bare-alias to the `std/` carrier: `type RustI32 = Int32` models *nothing about Rust* — it asserts an unproven identity while reading zero facts. A bundle deduplicates against a `std/` carrier ONLY where the identity is **proven** — a compiler-verified coincidence of the language bundle with the `std/` bundle, cited as evidence. `extdeps/` models systems we do not control: default to separate, honest modeling; reuse `std/` only on evidenced identity. A per-language `OrderedRing<<lang>Prim, …>` re-declaration is still the parallel-*algebra* substrate INVARIANTS P1:42 forbids — model the facts, never a duplicate algebra and never a hollow alias. See `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED" and `docs/modeling-discipline.md`.
+
+**Ingest support by language (scheduled — operator-ratified 2026-05-24):**
+Each language model activates bidirectional ingest when its lex/grammar DATA is filled. `dag.dag` is the first-class language — T-6/T-7 fill its lex/grammar schema AND the dag.dag data in the same commit trains. Other languages follow in T-4 Wave 2a (distinct from Wave 2b type-deepening):
+```
+  dag (dag.dag)      : ingest activated by T-6 + T-7 fill — CRITICAL PATH
+  rust (rust.dag)    : lex/grammar shape landed (Wave 1); 🟡 gate dissolves on T-10
+                       bidirectional round-trip; Wave 2a = confirm/extend ingest data
+  python / go / cpp / typescript : Wave 2a lex/grammar data fill (after T-4 + T-6/T-7 schema)
+  format models (json/yaml/csv/toml/sql): these model DATA FORMAT shapes AND their
+      syntax grammar. Ingest of format text (e.g. `{"k": 1}` → Node) requires lex/grammar
+      data in extdeps/formats/ (same pattern as dag.dag/rust.dag). Grammar wave for
+      formats is T-4.6 Wave 2 — scheduled after T-6/T-7 define the LexRules/Grammar schemas.
+      `[needs T-6, T-7]`
+```
+**T-4 Wave 2a** (lex/grammar data per language): extend DATA on each language model after
+T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4]` (T-4 = fact-bundle authoring; Wave 2a adds lex/grammar data on top).
+**T-4 Wave 2b** (type deepening): inhabitance + algebra laws + effects + partiality per language.
+Scheduled in parallel with Wave 2a. `[needs T-4, T-33]` (T-4 = fact-bundle authoring).
 
 **Modeling decisions**:
 - Per-language primitive **grounding** (fact-bundle, per DECISIONS.md "D2 REVERSAL + FACT-BUNDLE RESEED"): the bundle of spec-read facts for each primitive — width / signedness / representation / overflow disposition / surface spelling — grounding into the shared `std/` vocabulary (T-3). Libraries such as `std::vector` are NOT modeled per L-2 — they are ordinary `Node`s. Deduplicate to a `std/` carrier only on proven identity; never a bare alias, never a re-declared algebra inhabitance (INVARIANTS P1:42)
@@ -1545,3 +1570,27 @@ as the brief.
 work until the operator reviews and ratifies the Phase-1 definition.
 Parallel fill — adjacent to T-15 (self-host fixed-point gate) and T-20
 (`workflow/bootstrap.dag`); **not** on the pipeline critical path.
+
+---
+
+### T-36 — Omni ingest demo: round-trip fidelity claim  [SCHEDULED]
+
+**File**: `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` (new)
+**Why**: `ingest = emit⁻¹` (C5, THESIS §B2-OMNI) is the central bidirectionality property.
+T-6 fills the tokenizer, T-7 fills the parser — but without a checked executable claim the property remains aspirational. T-36 closes that gap: one worked claim that the full round-trip holds on a known `.dag` program.
+
+**Scope:** ONE TestClaim:
+- Input: a short, self-contained `.dag` program (hand-authored, committed as fixture in `test/fixture/`)
+- Forward pass: `ingest(source, dag_language_model()) -> Node` (T-6 lex → T-7 parse → T-8/T-9 normalize/resolve/infer)
+- Inverse pass: `emit(node, dag_language_model()) -> String`
+- Claim: the emitted string is identical to the original source (or identifies exactly which declared-normalized differences apply per C5-fidelity)
+- Assert kind: `EqualsClaim` (lhs: original source, rhs: re-emitted source; bit-identical) or `RoundTripClaim` if the claim is fidelity-up-to-declared-normalization; Tier1, Integration layer
+
+**Dependencies**: `[needs T-6, T-7, T-8, T-9, T-10; dag.dag lex/grammar data from T-6/T-7 fill]`
+
+**Modeling decisions:**
+- Input fixture selection: a program that exercises enough of the dag surface to be non-trivial but is fully within the T-6/T-7 grammar fill scope — ideally a TestClaim definition itself (self-referential, closed-form)
+- Normalization budget: what exactly is "bit-identical"? Comment stripping? Whitespace normalization? The normalization disposition is a C5 `Declared-normalized` fact in the `dag.dag` language model — the T-36 fixture must reference or assert the expected canonical output derived from that model, not author new C5 facts in the fixture header (single authority: facts flow from the language model, not from the test)
+- Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
+
+**Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).

@@ -22,9 +22,7 @@ import v4.std.diagnostic {
 import v4.std.nat {
   nat_algebra_law_subject_symbol_additive_monoid,
   nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat
-}
-import v4.lens.testgen {
+  nat_algebra_law_subject_symbol_inhabitant_nat,
   law_nat_add_left_identity,
   law_nat_add_right_identity,
   law_nat_add_associativity,
