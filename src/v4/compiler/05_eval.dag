@@ -630,13 +630,13 @@ fn run_test_claim_assert_decided(
   at: Node
 ) -> Verdict<Node> {
   match claim {
-    EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } =>
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       if outcome_node_eq(a: actual, b: Accepted { value: rhs, diagnostics: None }) {
         Pass
       } else {
         Fail { actual: actual }
       }
-    CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } =>
+    CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } =>
       if outcome_node_eq(
         a: actual,
         b: Accepted { value: expected, diagnostics: None }
@@ -645,12 +645,12 @@ fn run_test_claim_assert_decided(
       } else {
         Fail { actual: actual }
       }
-    RoundTripClaim { input: input, label: _, t19_anchor: _, classification: _ } =>
+    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
       Deferred {
         actual: actual,
         diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
       }
-    DiagnosticClaim { expected_rejection: expected, input: input, label: _, t19_anchor: _, classification: _ } =>
+    DiagnosticClaim { expected_rejection: expected, input: input, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
           if outcome_node_eq(a: actual, b: Rejected { diagnostics: expected }) {
@@ -700,7 +700,7 @@ fn run_test_claim_runtime_assert(
   at: Node
 ) -> Verdict<RuntimeValue> {
   match claim {
-    EqualsClaim { rhs: rhs, label: _, t19_anchor: _, lhs: _, classification: _ } => {
+    EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: rhs })
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
         Pass
@@ -708,7 +708,7 @@ fn run_test_claim_runtime_assert(
         Fail { actual: actual }
       }
     }
-    CompilesClaim { expected_value: expected, label: _, t19_anchor: _, input: _, classification: _ } => {
+    CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
       let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: Inputs { root: expected })
       if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
         Pass
@@ -716,12 +716,12 @@ fn run_test_claim_runtime_assert(
         Fail { actual: actual }
       }
     }
-    RoundTripClaim { input: input, label: _, t19_anchor: _, classification: _ } =>
+    RoundTripClaim { input: input, label: _, anchor: _, classification: _ } =>
       Deferred {
         actual: actual,
         diagnostic: eval_diagnostic(reason: eval_rejected_roundtrip_deferred, node: input)
       }
-    DiagnosticClaim { expected_rejection: expected, input: _, label: _, t19_anchor: _, classification: _ } =>
+    DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
           if outcome_runtime_value_eq(a: actual, b: Rejected { diagnostics: expected }) {

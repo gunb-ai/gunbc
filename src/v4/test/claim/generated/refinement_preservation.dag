@@ -11,7 +11,7 @@ import v4.lens.testgen {
   RefinementPreservationSubject,
   refinement_preservation_list_node,
   refinement_preservation_subject_nonempty_list_base,
-  t19_refinement_label_nonempty_list_base,
+  refinement_label_nonempty_list_base,
   testgen_emit_refinement_preservation_claim
 }
 import v4.std.diagnostic {
@@ -24,7 +24,7 @@ import v4.std.node { Node }
 import v4.std.refinement { refined_base }
 import v4.std.verification {
   TestClaim,
-  T19ManualRefinementNonEmptyListBase
+  ManualRefinementNonEmptyListBase
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj
@@ -35,8 +35,8 @@ fn refinement_preservation_claim_from_testgen_emit(
   subject: RefinementPreservationSubject
 ) -> Outcome<TestClaim> {
   testgen_emit_refinement_preservation_claim(
-    anchor: T19ManualRefinementNonEmptyListBase,
-    label: t19_refinement_label_nonempty_list_base,
+    anchor: ManualRefinementNonEmptyListBase,
+    label: refinement_label_nonempty_list_base,
     subject: subject
   )
 }

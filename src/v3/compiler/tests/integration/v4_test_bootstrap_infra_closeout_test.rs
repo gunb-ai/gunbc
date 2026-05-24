@@ -27,9 +27,9 @@ const CONNECTIVE_ANCHORS_PATH: &str = "src/v4/test/claim/manual/connective_ancho
 const NAT_LAW_ANCHORS_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_LAW_ANCHORS_PATH: &str = "src/v4/test/claim/manual/nat_law_anchors.dag";
-const T19_MANIFEST_DAG: &str =
-    include_str!("../../../../v4/test/claim/manual/t19_manual_anchor_manifest.dag");
-const T19_MANIFEST_PATH: &str = "src/v4/test/claim/manual/t19_manual_anchor_manifest.dag";
+const MANIFEST_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/manual_anchor_manifest.dag");
+const MANIFEST_PATH: &str = "src/v4/test/claim/manual/manual_anchor_manifest.dag";
 const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
@@ -52,24 +52,24 @@ const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
 const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
 
 #[test]
-fn t19_language_behavior_equivalence_generated_claims_parse() {
+fn language_behavior_equivalence_generated_claims_parse() {
     parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
 }
 
 #[test]
-fn t19_refinement_preservation_generated_claims_parse() {
+fn refinement_preservation_generated_claims_parse() {
     parse_module(REFINEMENT_GENERATED_DAG, REFINEMENT_GENERATED_PATH);
 }
 
 #[test]
-fn t19_refinement_preservation_receipts_present() {
+fn refinement_preservation_receipts_present() {
     assert!(
         TESTGEN_DAG.contains("RefinementPreservation { subject: RefinementPreservationSubject }")
             && TESTGEN_DAG.contains("fn testgen_emit_refinement_preservation_claim")
             && TESTGEN_DAG.contains("-> Outcome<RefinementPreservationSubject>")
             && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
             && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
-            && TESTGEN_DAG.contains("T19ManualRefinementNonEmptyListBase")
+            && TESTGEN_DAG.contains("ManualRefinementNonEmptyListBase")
             && REFINEMENT_GENERATED_DAG
                 .contains("refinement_preservation_subject_nonempty_list_base()")
             && REFINEMENT_GENERATED_DAG
@@ -85,7 +85,7 @@ fn t19_refinement_preservation_receipts_present() {
 }
 
 #[test]
-fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
+fn idempotent_operation_generated_claims_parse_and_pin_emission() {
     parse_module(EFFECTS_DAG, EFFECTS_PATH);
     parse_module(
         IDEMPOTENT_OPERATION_GENERATED_DAG,
@@ -108,8 +108,8 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
             && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_label_only_skip_is_rejected")
             && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("import v4.std.node { Symbol }")
             && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("Accepted { value: _, diagnostics: _ } => false")
-            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_idempotent_operation_tautology_skip")
-            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("t19_sample_label_only_subject")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("idempotent_operation_tautology_skip")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("sample_label_only_subject")
             && EFFECTS_DAG.contains("type ComposableIdempotentOperationSubject")
             && EFFECTS_DAG.contains("Composable(ComposableIdempotentOperationSubject)")
             && EFFECTS_DAG.contains("LabelOnlyIdempotentInhabitance")
@@ -117,7 +117,7 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
             && EFFECTS_DAG.contains("fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject)")
             && EFFECTS_DAG.contains("ComputationNode { behavior: Transform }")
             && EFFECTS_DAG.contains("key_source_path_param_value_field")
-            && TESTGEN_DAG.contains("idempotent_operation_apply_twice(state: t19_sample_state"),
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice(state: sample_state"),
         "idempotent-operation claims must model f(f(x))==f(x) via nested Transform application in v4.std.effects, with an explicit label-only skip path in the generated corpus"
     );
     assert!(
@@ -140,7 +140,7 @@ fn t19_idempotent_operation_generated_claims_parse_and_pin_emission() {
 }
 
 #[test]
-fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
+fn language_behavior_equivalence_run_test_claim_receipts_present() {
     assert!(
         LBE_GENERATED_DAG.contains("run_test_claim(")
             && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
@@ -164,13 +164,13 @@ fn t19_language_behavior_equivalence_run_test_claim_receipts_present() {
         TESTGEN_DAG.contains("LanguageBehaviorEquivalence {")
             && TESTGEN_DAG.contains("type FrozenLanguageBehaviorSnapshot")
             && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim")
-            && TESTGEN_DAG.contains("t19_lbe_label_conj_dag_surface"),
+            && TESTGEN_DAG.contains("lbe_label_conj_dag_surface"),
         "testgen lens must emit LBE claims with frozen snapshot + I/O mock carriers"
     );
 }
 
 #[test]
-fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
+fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
     parse_module(
         COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
         COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
@@ -184,12 +184,12 @@ fn t19_coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
             && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
             && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness")
             && TESTGEN_DAG.contains("value: DiagnosticClaim {")
-            && TESTGEN_DAG.contains("t19_anchor: t19_generated_claim_anchor(anchor: anchor)"),
+            && TESTGEN_DAG.contains("anchor: generated_claim_anchor(anchor: anchor)"),
         "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
     );
     assert!(
-        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_input(anchor: T19GeneratedAnchorKey) -> Node")
-            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: T19GeneratedAnchorKey) -> TestClaimCoproductVariant")
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant")
             && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(")
             && TESTGEN_DAG.contains("anchor: anchor")
             && TESTGEN_DAG.contains("at: node_locus(node: input)")
@@ -263,7 +263,7 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
 }
 
 #[test]
-fn t19_testgen_concept_surface_stays_closed_and_classified() {
+fn testgen_concept_surface_stays_closed_and_classified() {
     let module = parse_module(TESTGEN_DAG, TESTGEN_PATH);
 
     assert_eq!(
@@ -283,7 +283,7 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
             ("classification", "TestClassification"),
-            ("t19_anchor", "T19ClaimAnchorKey"),
+            ("anchor", "ClaimAnchorKey"),
             ("slot", "C"),
         ]),
         "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
@@ -291,10 +291,10 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
 }
 
 #[test]
-fn t19_manual_manifest_matches_claim_anchor_discriminants() {
+fn manual_manifest_matches_claim_anchor_discriminants() {
     let connective = parse_module(CONNECTIVE_ANCHORS_DAG, CONNECTIVE_ANCHORS_PATH);
     let nat_laws = parse_module(NAT_LAW_ANCHORS_DAG, NAT_LAW_ANCHORS_PATH);
-    let manifest = parse_module(T19_MANIFEST_DAG, T19_MANIFEST_PATH);
+    let manifest = parse_module(MANIFEST_DAG, MANIFEST_PATH);
 
     let manifest_keys = manifest_anchor_values(&manifest);
     let claim_keys = claim_anchor_values(&[&connective, &nat_laws]);
@@ -306,16 +306,16 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     );
     assert_eq!(
         claim_keys, manifest_keys,
-        "manual TestClaim.t19_anchor values must join to the manifest by the same T19ManualAnchorKey discriminants"
+        "manual TestClaim.anchor values must join to the manifest by the same ManualAnchorKey discriminants"
     );
     assert!(
-        !claim_keys.contains("T19ManualAnchorAbsent"),
+        !claim_keys.contains("ManualAnchorAbsent"),
         "the seventeen live manual anchors must not route through the absent sentinel"
     );
 }
 
 #[test]
-fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
+fn claim_corpus_has_no_direct_manual_anchor_assignments() {
     let root = workspace_root().join("src/v4/test/claim");
     let mut dag_files = Vec::new();
     collect_dag_files(&root, &mut dag_files);
@@ -325,24 +325,37 @@ fn t19_claim_corpus_has_no_direct_manual_anchor_assignments() {
     for path in dag_files {
         let source =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        for (idx, line) in source.lines().enumerate() {
-            let trimmed = line.trim();
-            if !trimmed.starts_with("//") && trimmed.contains("t19_anchor: T19Manual") {
-                offenders.push(format!(
-                    "{}:{}: {}",
-                    path.strip_prefix(workspace_root())
-                        .unwrap_or(path.as_path())
-                        .display(),
-                    idx + 1,
-                    trimmed
-                ));
+        let file_str = path
+            .strip_prefix(workspace_root())
+            .unwrap_or(path.as_path())
+            .to_str()
+            .unwrap_or("")
+            .to_string();
+        let Ok(tokens) = tokenize_for_test(&source, &file_str) else {
+            continue;
+        };
+        let Ok(module) = parse_for_test(&tokens, &file_str) else {
+            continue;
+        };
+        for item in &module.items {
+            let SurfaceItem::Data {
+                name: data_name,
+                ty: SurfaceType::Named { name: ty_name, .. },
+                body: Some(body),
+                ..
+            } = item
+            else {
+                continue;
+            };
+            if ty_name == "TestClaim" && testclaim_anchor_is_direct_var(body) {
+                offenders.push(format!("{file_str}: data {data_name}"));
             }
         }
     }
 
     assert!(
         offenders.is_empty(),
-        "TestClaim.t19_anchor fields must use t19_manual_claim_anchor(...) after the T19ClaimAnchorKey split:\n{}",
+        "TestClaim.anchor fields must use manual_claim_anchor(...) after the ClaimAnchorKey split:\n{}",
         offenders.join("\n")
     );
 }
@@ -484,6 +497,23 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
     );
 }
 
+/// Returns true when a `data x: TestClaim = …` body directly assigns a ManualAnchorKey
+/// variant to the `anchor` field (not wrapped in `manual_claim_anchor`).
+/// Helper-function bodies (arity_rejection_claim, testgen_emit_*, etc.) are Call
+/// expressions and are never flagged — they wrap the anchor internally.
+fn testclaim_anchor_is_direct_var(body: &SurfaceExpr) -> bool {
+    let SurfaceExpr::VariantRecord { fields, .. } = body else {
+        return false;
+    };
+    let Some(anchor_expr) = fields
+        .iter()
+        .find_map(|f| (f.name == "anchor").then_some(&f.value))
+    else {
+        return false;
+    };
+    matches!(anchor_expr, SurfaceExpr::Var { .. })
+}
+
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
@@ -607,7 +637,7 @@ fn manifest_anchor_values(module: &SurfaceModule) -> BTreeSet<&str> {
                 ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(SurfaceExpr::Var { name, .. }),
                 ..
-            } if ty_name == "T19ManualAnchorKey" => Some(name.as_str()),
+            } if ty_name == "ManualAnchorKey" => Some(name.as_str()),
             _ => None,
         })
         .collect()
@@ -622,15 +652,15 @@ fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
                 ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(body),
                 ..
-            } if ty_name == "TestClaim" => Some(claim_t19_anchor_name(body)),
+            } if ty_name == "TestClaim" => Some(claim_anchor_name(body)),
             _ => None,
         })
         .collect()
 }
 
-fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
+fn claim_anchor_name(body: &SurfaceExpr) -> &str {
     let anchor_expr = match body {
-        SurfaceExpr::VariantRecord { fields, .. } => record_field_expr(fields, "t19_anchor"),
+        SurfaceExpr::VariantRecord { fields, .. } => record_field_expr(fields, "anchor"),
         SurfaceExpr::Call { target, args, .. } if target == "arity_rejection_claim" => {
             let SurfaceExpr::Record { fields, .. } = args
                 .first()
@@ -649,12 +679,13 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
     };
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
-        SurfaceExpr::Call { target, args, .. } if target == "t19_manual_claim_anchor" => {
-            let SurfaceExpr::Record { fields, .. } = args.first().unwrap_or_else(|| {
-                panic!("t19_manual_claim_anchor must take one named-arg record")
-            }) else {
+        SurfaceExpr::Call { target, args, .. } if target == "manual_claim_anchor" => {
+            let SurfaceExpr::Record { fields, .. } = args
+                .first()
+                .unwrap_or_else(|| panic!("manual_claim_anchor must take one named-arg record"))
+            else {
                 panic!(
-                    "t19_manual_claim_anchor args must desugar to Record, got {:?}",
+                    "manual_claim_anchor args must desugar to Record, got {:?}",
                     args.first()
                 );
             };
@@ -665,7 +696,7 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
                 ),
             }
         }
-        other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
+        other => panic!("TestClaim.anchor must be a discriminant var, got {other:?}"),
     }
 }
 

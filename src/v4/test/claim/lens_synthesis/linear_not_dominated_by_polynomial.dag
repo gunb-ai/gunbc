@@ -21,10 +21,10 @@ import v4.std.verification {
   EqualsClaim,
   TestClaim,
   TestClassification,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   Tier1,
   Unit,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 
 data synthesis_lin_poly_x_symbol: Symbol = synthesis_lin_poly_x_symbol
@@ -61,7 +61,7 @@ fn linear_not_dominated_by_polynomial_claim_rhs() -> Node {
 
 data claim_linear_not_dominated_by_polynomial: TestClaim = EqualsClaim {
   label: "lens_synthesis/linear_not_dominated_by_polynomial: ClassLinear does not dominate ClassPolynomial",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_lin_poly_x,
   rhs: linear_not_dominated_by_polynomial_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

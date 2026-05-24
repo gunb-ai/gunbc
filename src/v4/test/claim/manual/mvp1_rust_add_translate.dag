@@ -21,7 +21,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.verification {T19ManualAnchorAbsent,
+import v4.std.verification {ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -30,7 +30,7 @@ import v4.std.verification {T19ManualAnchorAbsent,
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 data mvp_add_int_atom: Symbol = mvp_add_int_atom
 fn mvp_int_node() -> Node {
@@ -49,14 +49,14 @@ data mvp_add_arrow_node: Node = Node {
 }
 data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: translate stage module + coercion_fold call-site compiles",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp_add_arrow_node,
   expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: emit stage module (serialize_target o translate) compiles",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp_add_arrow_node,
   expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }

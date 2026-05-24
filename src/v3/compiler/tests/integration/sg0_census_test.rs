@@ -865,7 +865,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Paired with the CI semantic `ci.dag` entry-root compile using `--target rust`
     // (not known-hanging `--target dag`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
-    // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — T19ManualAnchorKey-driven
+    // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — ManualAnchorKey-driven
     // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
     // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
     // for closed `TestClaim` schema only (no std present-key helper).
