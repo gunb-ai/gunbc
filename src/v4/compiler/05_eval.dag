@@ -15,7 +15,8 @@ import v4.compiler.infer {
   inferred_facts_inhabitance_well_grounded,
   inferred_facts_resolved_type_matches
 }
-import v4.std.collection { List, Map, non_empty }
+import v4.std.algebra { non_empty }
+import v4.std.collection { List, Map }
 import v4.std.runtime {
   EnvironmentBindingKey,
   Continue,
