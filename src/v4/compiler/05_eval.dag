@@ -100,6 +100,7 @@ import v4.std.verification {
 import v4.std.witness { Holds, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
+  v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_wave1
 }
 
@@ -233,6 +234,11 @@ fn empty_evaluation_environment() -> EvaluationEnvironment {
 
 fn eval_runtime() -> V4EvaluatorRuntime {
   v4_evaluator_runtime_wave1()
+}
+
+
+fn eval_default_interpretation() -> InterpretationAlgebra {
+  v4_evaluator_interpretation_wave1()
 }
 
 
@@ -904,7 +910,7 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
 
 fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   bind_outcome(
-    o: eval(tree: tree, interpretation: eval_runtime().interpretation, inputs: inputs),
+    o: eval(tree: tree, interpretation: eval_default_interpretation(), inputs: inputs),
     f: fn(value) {
       match runtime_value_node_projection(value: value) {
         RuntimeValueNodeProjected { node: n } =>

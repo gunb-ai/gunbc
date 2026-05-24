@@ -61,7 +61,6 @@ type V4EvaluatorRuntime {
   runtime_identity: Symbol
   core: ModelCore
   values: ValueRepresentationModel
-  interpretation: InterpretationAlgebra
   execution: ExecutionSemantics
   boundary: ResourceEffectBoundary
 }
@@ -283,7 +282,6 @@ fn v4_evaluator_runtime_wave1() -> V4EvaluatorRuntime {
     runtime_identity: v4_evaluator_runtime_id,
     core: v4_evaluator_model_core_wave1(),
     values: v4_evaluator_value_representation_wave1(),
-    interpretation: v4_evaluator_interpretation_wave1(),
     execution: v4_evaluator_execution_wave1(),
     boundary: v4_evaluator_boundary_wave1()
   }
