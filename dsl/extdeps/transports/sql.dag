@@ -12,13 +12,6 @@
 // Configuration schema for service operations bound to relational database
 // access. A service operation with `transport sql { ... }` executes a
 // parameterized SQL statement through the configured database connection.
-//
-// **Single authority (P2):** SqlStatementKind, SqlParameterStyle,
-// SqlTransactionMode, and SqlTransportConfig are owned ONLY here. v4
-// `src/v4/extdeps/formats/sql.dag` models ISO DDL/migration shape and
-// deliberately does NOT redeclare this transport fact family (TASKS.md
-// §T-4.6 / #3224 port-reconcile ruling). Retire this file when the v4
-// port subsumes the full SQL split.
 
 module extdeps.transports.sql
 
