@@ -1,6 +1,6 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: Coverage Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageReading CoverageMissingDiagnosticsFold CoverageDefectKey CoverageDefectAcceptanceKey CoverageDefectAcceptance SoleImpossibleBugKeyFold coverage_reading coverage_lens coverage_defect_* acceptance rows
+// Owns: Coverage Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageReading CoverageMissingDiagnosticsFold CoverageSliceProjection CoverageDefectKey CoverageDefectAcceptanceKey CoverageDefectAcceptance SoleImpossibleBugKeyFold coverage_reading coverage_lens coverage_defect_* acceptance rows
 // Consumes: v4.std.node v4.std.nat v4.std.algebra v4.std.diagnostic v4.std.verification v4.extdeps.languages.dag v4.lens.testgen
 // Status: T-18 filled.
 
@@ -903,201 +903,209 @@ fn impossible_bug_coverage_keys_from_diagnostics(d: NonEmptyDiagnostics) -> Outc
 }
 
 
-fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
-  match c {
-    DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
-      bind_outcome(
-        o: impossible_bug_coverage_keys_from_diagnostics(d: d),
-        f: fn(keys) {
-          sole_impossible_bug_coverage_key(keys: keys)
-        }
-      )
-    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
+fn append_coverage_slice_projection<C>(
+  acc: Outcome<List<C>>,
+  projection: CoverageSliceProjection<C>,
+  eq: fn(C, C) -> Bool
+) -> Outcome<List<C>> {
+  bind_outcome(
+    o: acc,
+    f: fn(keys) {
+      match projection {
+        CoverageSliceNotApplicable =>
+          outcome_accepted(value: keys)
+        CoverageSlicePresent { key: key } =>
+          outcome_accepted(value: dedupe_snoc(acc: keys, item: key, eq: eq))
+        CoverageSliceInvalid { diagnostics: d } =>
+          Rejected { diagnostics: d }
       }
-    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
-      }
-    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: Diagnostic {
-            reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-            at: Textual { file: coverage_virtual_file, extent: WholeFile },
-            correction: Unavailable { reason: UserInputBoundary }
-          }
-        )
+    }
+  )
+}
+
+
+fn l7_coverage_projection_from_claim(c: TestClaim) -> CoverageSliceProjection<L7CoverageKey> {
+  match testgen_coverage_key_from_claim(c: c) {
+    Rejected { diagnostics: d } =>
+      CoverageSliceInvalid { diagnostics: d }
+    Accepted { value: concept, diagnostics: None } =>
+      match concept {
+        AlgebraLaw { subject: subject } =>
+          CoverageSlicePresent { key: subject }
+        _ => CoverageSliceNotApplicable
       }
   }
 }
 
 
-fn testgen_coverage_keys_from_claim(c: TestClaim) -> List<TestgenCoverageKey> {
+fn l6_coverage_projection_from_claim(c: TestClaim) -> CoverageSliceProjection<L6CoverageKey> {
+  match testgen_coverage_key_from_claim(c: c) {
+    Rejected { diagnostics: d } =>
+      CoverageSliceInvalid { diagnostics: d }
+    Accepted { value: concept, diagnostics: None } =>
+      match concept {
+        TypeConstruction { subject: subject } =>
+          CoverageSlicePresent {
+            key: l6_coverage_key(
+              subject: subject,
+              language: dag_language_model_surface_id
+            )
+          }
+        LanguageBehaviorEquivalence { subject: subject, mock: _ } =>
+          CoverageSlicePresent {
+            key: l6_coverage_key(subject: subject.subject, language: subject.language)
+          }
+        _ => CoverageSliceNotApplicable
+      }
+  }
+}
+
+
+fn testgen_coverage_projection_from_claim(
+  c: TestClaim
+) -> CoverageSliceProjection<TestgenCoverageKey> {
   match testgen_coverage_key_from_claim(c: c) {
     Accepted { value: key, diagnostics: None } =>
-      list_snoc_item(xs: Empty, item: key)
-    Rejected { diagnostics: _ } => Empty
+      CoverageSlicePresent { key: key }
+    Rejected { diagnostics: d } =>
+      CoverageSliceInvalid { diagnostics: d }
   }
 }
 
 
-fn append_testgen_keys_from_claim(
-  acc: List<TestgenCoverageKey>,
-  claim: TestClaim
-) -> List<TestgenCoverageKey> {
-  fold_list_right(
-    xs: testgen_coverage_keys_from_claim(c: claim),
-    empty: acc,
-    snoc: fn(a, key) {
-      dedupe_snoc(acc: a, item: key, eq: testgen_coverage_key_eq)
-    }
-  )
-}
-
-
-fn collect_testgen_coverage_keys(corpus: List<TestClaim>) -> List<TestgenCoverageKey> {
-  fold_list(
-    xs: corpus,
-    empty: Empty,
-    cons: fn(acc, claim) {
-      append_testgen_keys_from_claim(acc: acc, claim: claim)
-    }
-  )
-}
-
-
-fn l7_coverage_keys_from_claim(c: TestClaim) -> List<L7CoverageKey> {
-  match l7_coverage_key_from_claim(c: c) {
-    Accepted { value: key, diagnostics: None } =>
-      list_snoc_item(xs: Empty, item: key)
-    Rejected { diagnostics: _ } => Empty
+fn impossible_bug_coverage_projection_from_claim(
+  c: TestClaim
+) -> CoverageSliceProjection<ImpossibleBugCoverageKey> {
+  match c {
+    DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
+      match impossible_bug_coverage_keys_from_diagnostics(d: d) {
+        Accepted { value: keys, diagnostics: None } =>
+          match sole_impossible_bug_coverage_key(keys: keys) {
+            Accepted { value: key, diagnostics: None } =>
+              CoverageSlicePresent { key: key }
+            Rejected { diagnostics: rd } =>
+              CoverageSliceInvalid { diagnostics: rd }
+          }
+        Rejected { diagnostics: rd } =>
+          CoverageSliceInvalid { diagnostics: rd }
+      }
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      CoverageSliceNotApplicable
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      CoverageSliceNotApplicable
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      CoverageSliceNotApplicable
   }
 }
 
 
-fn append_l7_keys_from_claim(
-  acc: List<L7CoverageKey>,
-  claim: TestClaim
-) -> List<L7CoverageKey> {
-  fold_list_right(
-    xs: l7_coverage_keys_from_claim(c: claim),
-    empty: acc,
-    snoc: fn(a, key) {
-      dedupe_snoc(acc: a, item: key, eq: l7_coverage_key_eq)
-    }
-  )
-}
-
-
-fn collect_l7_coverage_keys(corpus: List<TestClaim>) -> List<L7CoverageKey> {
+fn collect_l6_coverage_keys(corpus: List<TestClaim>) -> Outcome<List<L6CoverageKey>> {
   fold_list(
     xs: corpus,
-    empty: Empty,
-    cons: fn(acc, claim) {
-      append_l7_keys_from_claim(acc: acc, claim: claim)
+    empty: outcome_accepted(value: Empty),
+    cons: fn(o, claim) {
+      append_coverage_slice_projection(
+        acc: o,
+        projection: l6_coverage_projection_from_claim(c: claim),
+        eq: l6_coverage_key_eq
+      )
     }
   )
 }
 
 
-fn l6_coverage_keys_from_claim(c: TestClaim) -> List<L6CoverageKey> {
-  match l6_coverage_key_from_claim(c: c) {
-    Accepted { value: key, diagnostics: None } =>
-      list_snoc_item(xs: Empty, item: key)
-    Rejected { diagnostics: _ } => Empty
-  }
-}
-
-
-fn append_l6_keys_from_claim(
-  acc: List<L6CoverageKey>,
-  claim: TestClaim
-) -> List<L6CoverageKey> {
-  fold_list_right(
-    xs: l6_coverage_keys_from_claim(c: claim),
-    empty: acc,
-    snoc: fn(a, key) {
-      dedupe_snoc(acc: a, item: key, eq: l6_coverage_key_eq)
-    }
-  )
-}
-
-
-fn collect_l6_coverage_keys(corpus: List<TestClaim>) -> List<L6CoverageKey> {
+fn collect_l7_coverage_keys(corpus: List<TestClaim>) -> Outcome<List<L7CoverageKey>> {
   fold_list(
     xs: corpus,
-    empty: Empty,
-    cons: fn(acc, claim) {
-      append_l6_keys_from_claim(acc: acc, claim: claim)
+    empty: outcome_accepted(value: Empty),
+    cons: fn(o, claim) {
+      append_coverage_slice_projection(
+        acc: o,
+        projection: l7_coverage_projection_from_claim(c: claim),
+        eq: l7_coverage_key_eq
+      )
     }
   )
 }
 
 
-fn append_impossible_bug_key_from_claim(
-  acc: List<ImpossibleBugCoverageKey>,
-  claim: TestClaim
-) -> List<ImpossibleBugCoverageKey> {
-  match impossible_bug_coverage_key_from_claim(c: claim) {
-    Accepted { value: key, diagnostics: None } =>
-      dedupe_snoc(
-        acc: acc,
-        item: key,
+fn collect_impossible_bug_coverage_keys(
+  corpus: List<TestClaim>
+) -> Outcome<List<ImpossibleBugCoverageKey>> {
+  fold_list(
+    xs: corpus,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(o, claim) {
+      append_coverage_slice_projection(
+        acc: o,
+        projection: impossible_bug_coverage_projection_from_claim(c: claim),
         eq: impossible_bug_coverage_key_eq
       )
-    Rejected { diagnostics: _ } => acc
-  }
-}
-
-
-fn collect_impossible_bug_coverage_keys(corpus: List<TestClaim>) -> List<ImpossibleBugCoverageKey> {
-  fold_list(
-    xs: corpus,
-    empty: Empty,
-    cons: fn(acc, claim) {
-      append_impossible_bug_key_from_claim(acc: acc, claim: claim)
     }
   )
 }
 
 
-fn coverage_reading(corpus: List<TestClaim>) -> CoverageReading {
-  CoverageReading {
-    l6_missing: missing_coverage(
-      expected: expected_l6_coverage_keys(),
-      actual: collect_l6_coverage_keys(corpus: corpus),
-      eq: l6_coverage_key_eq
-    ),
-    l7_missing: missing_coverage(
-      expected: expected_l7_coverage_keys(),
-      actual: collect_l7_coverage_keys(corpus: corpus),
-      eq: l7_coverage_key_eq
-    ),
-    impossible_bug_missing: missing_coverage(
-      expected: expected_impossible_bug_coverage_keys(),
-      actual: collect_impossible_bug_coverage_keys(corpus: corpus),
-      eq: impossible_bug_coverage_key_eq
-    ),
-    testgen_missing: missing_coverage(
-      expected: expected_testgen_coverage_keys(),
-      actual: collect_testgen_coverage_keys(corpus: corpus),
-      eq: testgen_coverage_key_eq
-    ),
-  }
+fn collect_testgen_coverage_keys(corpus: List<TestClaim>) -> Outcome<List<TestgenCoverageKey>> {
+  fold_list(
+    xs: corpus,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(o, claim) {
+      append_coverage_slice_projection(
+        acc: o,
+        projection: testgen_coverage_projection_from_claim(c: claim),
+        eq: testgen_coverage_key_eq
+      )
+    }
+  )
+}
+
+
+fn coverage_reading(corpus: List<TestClaim>) -> Outcome<CoverageReading> {
+  bind_outcome(
+    o: collect_l6_coverage_keys(corpus: corpus),
+    f: fn(l6_actual) {
+      bind_outcome(
+        o: collect_l7_coverage_keys(corpus: corpus),
+        f: fn(l7_actual) {
+          bind_outcome(
+            o: collect_impossible_bug_coverage_keys(corpus: corpus),
+            f: fn(impossible_bug_actual) {
+              bind_outcome(
+                o: collect_testgen_coverage_keys(corpus: corpus),
+                f: fn(testgen_actual) {
+                  outcome_accepted(
+                    value: CoverageReading {
+                      l6_missing: missing_coverage(
+                        expected: expected_l6_coverage_keys(),
+                        actual: l6_actual,
+                        eq: l6_coverage_key_eq
+                      ),
+                      l7_missing: missing_coverage(
+                        expected: expected_l7_coverage_keys(),
+                        actual: l7_actual,
+                        eq: l7_coverage_key_eq
+                      ),
+                      impossible_bug_missing: missing_coverage(
+                        expected: expected_impossible_bug_coverage_keys(),
+                        actual: impossible_bug_actual,
+                        eq: impossible_bug_coverage_key_eq
+                      ),
+                      testgen_missing: missing_coverage(
+                        expected: expected_testgen_coverage_keys(),
+                        actual: testgen_actual,
+                        eq: testgen_coverage_key_eq
+                      ),
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
 }
 
 
@@ -1229,10 +1237,14 @@ fn coverage_missing_diagnostics(r: CoverageReading) -> NonEmptyDiagnostics {
 
 
 fn coverage_lens(corpus: List<TestClaim>) -> Outcome<CoverageReading> {
-  let reading = coverage_reading(corpus: corpus)
-  if coverage_reading_complete(r: reading) {
-    outcome_accepted(value: reading)
-  } else {
-    Rejected { diagnostics: coverage_missing_diagnostics(r: reading) }
-  }
+  bind_outcome(
+    o: coverage_reading(corpus: corpus),
+    f: fn(reading) {
+      if coverage_reading_complete(r: reading) {
+        outcome_accepted(value: reading)
+      } else {
+        Rejected { diagnostics: coverage_missing_diagnostics(r: reading) }
+      }
+    }
+  )
 }
