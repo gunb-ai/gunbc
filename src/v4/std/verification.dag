@@ -95,6 +95,49 @@ data impossible_bug_reason_unhandled_index: Symbol = impossible_bug_reason_unhan
 data impossible_bug_reason_force_unwrap: Symbol = impossible_bug_reason_force_unwrap
 
 
+data impossible_bug_diagnostic_reason_unmapped: Symbol = impossible_bug_diagnostic_reason_unmapped
+
+
+fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: impossible_bug_diagnostic_reason_unmapped,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+// 🟡 gated — feature:impossible-bug-reason-projection — bind task: src/v4/TASKS.md#t-18-lenscoveragedag
+// dissolve-on-arrival: TestClaim carries ImpossibleBugClass directly; delete this reason→class bridge.
+fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
+  if reason == impossible_bug_reason_suboptimal_complexity ||
+    reason == impossible_bug_reason_suboptimal_inhabitance {
+    Accepted { value: SuboptimalComplexity, diagnostics: None }
+  } else if reason == impossible_bug_reason_idempotency_violation ||
+    reason == impossible_bug_reason_idempotency_repetition {
+    Accepted { value: IdempotencyContract, diagnostics: None }
+  } else if reason == impossible_bug_reason_transport_drift ||
+    reason == impossible_bug_reason_target_transport_drift {
+    Accepted { value: TransportTypeDrift, diagnostics: None }
+  } else if reason == impossible_bug_reason_nested_optional ||
+    reason == impossible_bug_reason_double_unwrap {
+    Accepted { value: NestedOptionalFlatten, diagnostics: None }
+  } else if reason == impossible_bug_reason_redundant_read {
+    Accepted { value: UnenumeratedEffects, diagnostics: None }
+  } else if reason == impossible_bug_reason_unhandled_division ||
+    reason == impossible_bug_reason_unhandled_index ||
+    reason == impossible_bug_reason_force_unwrap {
+    Accepted { value: UnhandledDiagnosticPaths, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: impossible_bug_diagnostic_reason_unmapped_diagnostic()
+      )
+    }
+  }
+}
+
+
 // RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
 // 🟡 coproduct dissolution — LB-P4-3212.
 type ManualAnchorKey
