@@ -63,9 +63,11 @@ import v4.compiler.tokenize {
   LexRules,
   LexRule,
   LexPattern,
+  KeywordPattern,
   LiteralPattern,
   ModeledLexRules,
   TokenRule,
+  TriviaRule,
   VoidLexRules
 }
 import v4.std.target_model {
@@ -369,6 +371,8 @@ fn lex_rule_literal_step(
             match pattern {
               LiteralPattern { text: text } =>
                 Accepted { value: text, diagnostics: None }
+              KeywordPattern { text: text } =>
+                Accepted { value: text, diagnostics: None }
               _ =>
                 Rejected {
                   diagnostics: diagnostics_singleton(
@@ -381,6 +385,7 @@ fn lex_rule_literal_step(
           } else {
             acc
           }
+        TriviaRule { pattern: _ } => acc
       }
   }
 }
