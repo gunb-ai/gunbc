@@ -1,9 +1,6 @@
 // src/v4/std/module_graph.dag
 // Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
-// Owns: ModulePathSegment, ModulePath, ModuleEntry, ModuleGraph, AncestorRelation,
-//       module_graph_ancestor_not_prefix, module_graph_entry_not_found,
-//       module_path_segment_eq, module_path_eq, module_is_prefix_of,
-//       module_ancestor_witness, module_graph_entry_for_path.
+// Owns: ModulePath, ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/node.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
@@ -19,6 +16,7 @@ import v4.std.diagnostic {
   Unavailable,
   port_locus
 }
+import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
