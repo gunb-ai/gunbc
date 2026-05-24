@@ -28,8 +28,7 @@ type Behavior
   | Bind
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root
-// dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
 // forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm

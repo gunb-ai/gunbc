@@ -80,8 +80,7 @@ type ImpossibleBugClass
   | UnhandledDiagnosticPaths
 
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack
-// dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct reflection in std/verification.dag; delete this mirror.
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct reflection in std/verification.dag; delete this mirror.
 // forbidden: parallel hand-enumerated ImpossibleBugClass universes outside std/verification.dag.
 fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
   [
