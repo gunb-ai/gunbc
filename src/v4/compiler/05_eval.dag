@@ -753,7 +753,7 @@ fn eval_fold_init(
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
 ) -> EvalFoldState {
-  let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren }
+  let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren { processed: 0 } }
   EvalFoldState {
     node: node,
     progress: progress,
@@ -798,7 +798,7 @@ fn eval_maybe_complete_node(
         runtime: runtime
       )
     Interpreted => pending
-    AwaitingChildren => pending
+    AwaitingChildren { processed: _ } => pending
   }
 }
 
