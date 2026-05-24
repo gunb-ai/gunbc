@@ -14,10 +14,10 @@ import v4.std.verification {
   EqualsClaim,
   TestClaim,
   TestClassification,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   Tier1,
   Unit,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 
 data application_subterm_symbol: Symbol = application_subterm_symbol
@@ -47,7 +47,7 @@ fn application_subterm_at_empty_path_claim_rhs() -> Node {
 
 data claim_application_subterm_at_empty_path: TestClaim = EqualsClaim {
   label: "lens_application/application_subterm_at_empty_path: empty Path resolves to root",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: application_subterm_root,
   rhs: application_subterm_at_empty_path_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

@@ -7,9 +7,9 @@ module v4.test.claim.generated.refinement_preservation_anchor_manifest
 
 
 import v4.std.verification {
-  T19ManualAnchorKey,
-  T19ManualRefinementNonEmptyListBase
+  ManualAnchorKey,
+  ManualRefinementNonEmptyListBase
 }
 
 
-data manual_anchor_refinement_nonempty_list_base: T19ManualAnchorKey = T19ManualRefinementNonEmptyListBase
+data manual_anchor_refinement_nonempty_list_base: ManualAnchorKey = ManualRefinementNonEmptyListBase

@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_algebra_law_subjects testgen_algebra_law_subject_from_scheduled_generator testgen_scheduled_algebra_law_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.std.effects v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
 
@@ -8,7 +8,7 @@ module v4.lens.testgen
 
 
 import v4.std.collection { List }
-import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, non_empty }
+import v4.std.algebra { FreeMonoid, Empty, Cons, fold_list, fold_list_right, non_empty, list_snoc_item }
 import v4.std.diagnostic {
   Outcome,
   Diagnostic,
@@ -37,15 +37,21 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
+  outcome_accepted,
   outcome_rejected,
   rejected_with_pending
 }
 import v4.std.witness { StructuralPropertyWitness }
 import v4.std.find_witness { PreservationPredicate, verify_witness }
 import v4.std.nat {
-  nat_algebra_law_subject_symbol_additive_monoid,
-  nat_algebra_law_subject_symbol_commutative_semiring,
-  nat_algebra_law_subject_symbol_inhabitant_nat
+  NatAlgebraLawObligation,
+  nat_declared_algebra_law_obligations,
+  law_nat_add_associativity,
+  law_nat_add_left_identity,
+  law_nat_add_right_identity,
+  law_nat_mul_annihilator,
+  law_nat_mul_associativity,
+  law_nat_mul_left_identity
 }
 import v4.std.node {
   Atom,
@@ -82,45 +88,45 @@ import v4.std.verification {
   RoundTripClaim,
   TestClaim,
   TestClassification,
-  T19ClaimAnchorKey,
-  T19GeneratedClaimAnchor,
-  T19GeneratedCoproductExhaustiveness,
+  ClaimAnchorKey,
+  GeneratedClaimAnchor,
+  GeneratedCoproductExhaustiveness,
   TestClaimCompilesClaimVariant,
   TestClaimCoproductVariant,
   TestClaimDiagnosticClaimVariant,
   TestClaimEqualsClaimVariant,
   TestClaimRoundTripClaimVariant,
-  T19ManualAnchorAbsent,
-  T19ManualAnchorKey,
-  T19ManualClaimAnchor,
-  T19ManualLbeConjDagSurface,
-  T19ManualLbeDisjDagSurface,
-  T19ManualLbeTransformDagSurface,
-  T19GeneratedAnchorKey,
-  T19ManualRefinementNonEmptyListBase,
-  T19ManualNatAddAssociativity,
-  T19ManualNatAddLeftIdentity,
-  T19ManualNatAddRightIdentity,
-  T19ManualNatMulAnnihilator,
-  T19ManualNatMulAssociativity,
-  T19ManualNatMulLeftIdentity,
-  T19ManualTcArrowTwoConj,
-  T19ManualTcCardinalityEmpty,
-  T19ManualTcConjEmpty,
-  T19ManualTcConjEqualsRefl,
-  T19ManualTcDisjEmpty,
-  T19ManualTcInstantiationEmpty,
-  T19ManualTcArrowEmpty,
-  T19ManualTcTransformEmpty,
-  T19ManualTcBranchEmpty,
-  T19ManualTcLoopEmpty,
-  T19ManualTcBindZeroChildren,
+  ManualAnchorAbsent,
+  ManualAnchorKey,
+  ManualClaimAnchor,
+  ManualLbeConjDagSurface,
+  ManualLbeDisjDagSurface,
+  ManualLbeTransformDagSurface,
+  GeneratedAnchorKey,
+  ManualRefinementNonEmptyListBase,
+  ManualNatAddAssociativity,
+  ManualNatAddLeftIdentity,
+  ManualNatAddRightIdentity,
+  ManualNatMulAnnihilator,
+  ManualNatMulAssociativity,
+  ManualNatMulLeftIdentity,
+  ManualTcArrowTwoConj,
+  ManualTcCardinalityEmpty,
+  ManualTcConjEmpty,
+  ManualTcConjEqualsRefl,
+  ManualTcDisjEmpty,
+  ManualTcInstantiationEmpty,
+  ManualTcArrowEmpty,
+  ManualTcTransformEmpty,
+  ManualTcBranchEmpty,
+  ManualTcLoopEmpty,
+  ManualTcBindZeroChildren,
   Tier1,
   Unit,
-  t19_generated_claim_anchor,
-  t19_manual_claim_anchor,
+  generated_claim_anchor,
+  manual_claim_anchor,
   test_claim_classification,
-  test_claim_t19_anchor
+  test_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
@@ -153,11 +159,11 @@ import v4.std.effects {
   LabelOnlyIdempotentInhabitance,
   idempotent_operation_apply_once,
   idempotent_operation_apply_twice,
-  t19_sample_delete_composable,
-  t19_sample_label_only_subject,
-  t19_sample_read_composable,
-  t19_sample_state,
-  t19_sample_upsert_composable
+  sample_delete_composable,
+  sample_label_only_subject,
+  sample_read_composable,
+  sample_state,
+  sample_upsert_composable
 }
 
 
@@ -214,7 +220,7 @@ type TestgenConcept
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness
+  | DiagnosticExhaustiveness { omitted_variant: TestClaimCoproductVariant }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -226,7 +232,7 @@ type TestgenConcept
 
 type Generator<C> {
   classification: TestClassification
-  t19_anchor: T19ClaimAnchorKey
+  anchor: ClaimAnchorKey
   slot: C
 }
 
@@ -331,68 +337,53 @@ type CorpusLensDriver<C> = fn(
 // RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
 
-data t19_law_nat_add_left_identity: Symbol = t19_law_nat_add_left_identity
+data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
 
-data t19_law_nat_add_right_identity: Symbol = t19_law_nat_add_right_identity
+data lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
 
 
-data t19_law_nat_add_associativity: Symbol = t19_law_nat_add_associativity
+data lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
 
 
-data t19_law_nat_mul_left_identity: Symbol = t19_law_nat_mul_left_identity
+data refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
+data idempotent_operation_tautology_skip: Symbol = idempotent_operation_tautology_skip
+data idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
+data idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
+data idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
 
 
-data t19_law_nat_mul_annihilator: Symbol = t19_law_nat_mul_annihilator
+data testgen_lens_file: Symbol = testgen_lens_file
 
 
-data t19_law_nat_mul_associativity: Symbol = t19_law_nat_mul_associativity
+data manual_anchor_absent_bootstrap: Symbol = manual_anchor_absent_bootstrap
 
 
-data t19_lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
+data testgen_non_algebra_law_scheduled_slot: Symbol = testgen_non_algebra_law_scheduled_slot
 
 
-data t19_lbe_label_disj_dag_surface: String = "generated/lbe: Disj type-node matches dag LanguageModel surface (frozen snapshot)"
+data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
 
 
-data t19_lbe_label_transform_dag_surface: String = "generated/lbe: Transform computation-node matches dag LanguageModel surface (frozen snapshot)"
+data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
 
 
-data t19_refinement_label_nonempty_list_base: String = "generated/refinement: NonEmptyList preserves List base after refine"
-data t19_idempotent_operation_tautology_skip: Symbol = t19_idempotent_operation_tautology_skip
-data t19_idempotent_label_read: String = "generated/idempotent_operation: ReadEffect f(f(x)) == f(x)"
-data t19_idempotent_label_upsert: String = "generated/idempotent_operation: UpsertEffect f(f(x)) == f(x)"
-data t19_idempotent_label_delete: String = "generated/idempotent_operation: DeleteEffect f(f(x)) == f(x)"
+data coproduct_exhaustiveness_diagnostic_claim_variant: Symbol = coproduct_exhaustiveness_diagnostic_claim_variant
 
 
-data t19_testgen_lens_file: Symbol = t19_testgen_lens_file
+data coproduct_exhaustiveness_compiles_claim_variant: Symbol = coproduct_exhaustiveness_compiles_claim_variant
 
 
-data t19_manual_anchor_absent_bootstrap: Symbol = t19_manual_anchor_absent_bootstrap
+data coproduct_exhaustiveness_equals_claim_variant: Symbol = coproduct_exhaustiveness_equals_claim_variant
 
 
-data t19_coproduct_exhaustiveness_missing_variant: Symbol = t19_coproduct_exhaustiveness_missing_variant
+data coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = coproduct_exhaustiveness_roundtrip_claim_variant
 
 
-data t19_coproduct_exhaustiveness_testclaim_variant: Symbol = t19_coproduct_exhaustiveness_testclaim_variant
+data coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
 
 
-data t19_coproduct_exhaustiveness_diagnostic_claim_variant: Symbol = t19_coproduct_exhaustiveness_diagnostic_claim_variant
-
-
-data t19_coproduct_exhaustiveness_compiles_claim_variant: Symbol = t19_coproduct_exhaustiveness_compiles_claim_variant
-
-
-data t19_coproduct_exhaustiveness_equals_claim_variant: Symbol = t19_coproduct_exhaustiveness_equals_claim_variant
-
-
-data t19_coproduct_exhaustiveness_roundtrip_claim_variant: Symbol = t19_coproduct_exhaustiveness_roundtrip_claim_variant
-
-
-data t19_coproduct_exhaustiveness_label: String = "generated/diagnostic-exhaustiveness: TestClaim coproduct missing arm rejects"
-
-
-data t19_coproduct_exhaustiveness_omitted_variant_edge: Symbol = t19_coproduct_exhaustiveness_omitted_variant_edge
+data coproduct_exhaustiveness_omitted_variant_edge: Symbol = coproduct_exhaustiveness_omitted_variant_edge
 
 
 data refinement_preservation_empty_list_reason: Symbol = refinement_preservation_empty_list_reason
@@ -521,16 +512,16 @@ fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPre
 
 
 fn testgen_emit_refinement_preservation_claim(
-  anchor: T19ManualAnchorKey,
+  anchor: ManualAnchorKey,
   label: String,
   subject: RefinementPreservationSubject
 ) -> Outcome<TestClaim> {
   match anchor {
-    T19ManualRefinementNonEmptyListBase =>
+    ManualRefinementNonEmptyListBase =>
       Accepted {
         value: EqualsClaim {
           label: label,
-          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
+          anchor: manual_claim_anchor(anchor: anchor),
           lhs: refinement_preservation_list_node(
             xs: refined_base(r: subject.refined)
           ),
@@ -541,7 +532,7 @@ fn testgen_emit_refinement_preservation_claim(
       }
     _ =>
       Rejected {
-        diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
   }
 }
@@ -555,9 +546,9 @@ fn testgen_emit_idempotent_operation_equals_claim(
   Accepted {
     value: EqualsClaim {
       label: label,
-      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
-      lhs: idempotent_operation_apply_twice(state: t19_sample_state, subject: subject),
-      rhs: idempotent_operation_apply_once(state: t19_sample_state, subject: subject),
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      lhs: idempotent_operation_apply_twice(state: sample_state, subject: subject),
+      rhs: idempotent_operation_apply_once(state: sample_state, subject: subject),
       classification: classification,
     },
     diagnostics: None,
@@ -575,8 +566,8 @@ fn testgen_emit_idempotent_operation_claim(
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: t19_idempotent_operation_tautology_skip,
-            at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+            reason: idempotent_operation_tautology_skip,
+            at: Textual { file: testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
         )
@@ -593,47 +584,47 @@ fn testgen_emit_idempotent_operation_claim(
 
 fn testgen_scheduled_idempotent_operation_subjects() -> List<ComposableIdempotentOperationSubject> {
   [
-    t19_sample_read_composable,
-    t19_sample_upsert_composable,
-    t19_sample_delete_composable,
+    sample_read_composable,
+    sample_upsert_composable,
+    sample_delete_composable,
   ]
 }
 
 
 fn testgen_emit_language_behavior_equivalence_claim(
-  anchor: T19ManualAnchorKey,
+  anchor: ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
 ) -> Outcome<TestClaim> {
   let snap = mock.snapshot
   match anchor {
-    T19ManualLbeConjDagSurface =>
+    ManualLbeConjDagSurface =>
       Accepted {
         value: CompilesClaim {
           label: label,
-          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
+          anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
           classification: TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
       }
-    T19ManualLbeDisjDagSurface =>
+    ManualLbeDisjDagSurface =>
       Accepted {
         value: CompilesClaim {
           label: label,
-          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
+          anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
           classification: TestClassification { tier: Tier1, layer: Unit },
         },
         diagnostics: None,
       }
-    T19ManualLbeTransformDagSurface =>
+    ManualLbeTransformDagSurface =>
       Accepted {
         value: CompilesClaim {
           label: label,
-          t19_anchor: t19_manual_claim_anchor(anchor: anchor),
+          anchor: manual_claim_anchor(anchor: anchor),
           input: snap.input_node,
           expected_value: snap.expected_value,
           classification: TestClassification { tier: Tier1, layer: Unit },
@@ -642,7 +633,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
       }
     _ =>
       Rejected {
-        diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()),
+        diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
   }
 }
@@ -1056,7 +1047,7 @@ fn testgen_emit_witness_validity_claim(
       Accepted {
         value: RoundTripClaim {
           label: label,
-          t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: input_node,
           classification: TestClassification { tier: Tier1, layer: Unit }
         },
@@ -1071,7 +1062,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
   [
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeConjDagSurface),
+      anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_conj_dag_surface(),
         mock: lbe_io_mock_conj_dag_surface(),
@@ -1079,7 +1070,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeDisjDagSurface),
+      anchor: manual_claim_anchor(anchor: ManualLbeDisjDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_disj_dag_surface(),
         mock: lbe_io_mock_disj_dag_surface(),
@@ -1087,7 +1078,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_manual_claim_anchor(anchor: T19ManualLbeTransformDagSurface),
+      anchor: manual_claim_anchor(anchor: ManualLbeTransformDagSurface),
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
@@ -1097,37 +1088,408 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
 }
 
 
-fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> T19GeneratedAnchorKey {
-  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
+fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: testgen_non_algebra_law_scheduled_slot,
+    at: Textual { file: testgen_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_compiles() -> T19GeneratedAnchorKey {
-  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant }
+
+type NatAlgebraLawScheduleRow {
+  obligation: NatAlgebraLawObligation
+  anchor: ManualAnchorKey
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_equals() -> T19GeneratedAnchorKey {
-  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant }
+
+// 🟡 gated — record-shape bridge interim (docs/modeling-discipline.md Practice 11) — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete algebra_law_subject_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/testgen.
+fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
+  AlgebraLawSubject {
+    algebra: o.algebra,
+    inhabitant: o.inhabitant,
+    law: o.law,
+  }
 }
 
-fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> T19GeneratedAnchorKey {
-  T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
+
+fn append_nat_obligation_if_law_matches(
+  found: Outcome<NatAlgebraLawObligation>,
+  obligation: NatAlgebraLawObligation,
+  law: Symbol
+) -> Outcome<NatAlgebraLawObligation> {
+  match found {
+    Accepted { value: _, diagnostics: None } => found
+    Rejected { diagnostics: _ } =>
+      if obligation.law == law {
+        Accepted { value: obligation, diagnostics: None }
+      } else {
+        found
+      }
+  }
+}
+
+
+fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawObligation> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: testgen_non_algebra_law_scheduled_slot,
+          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_obligation_if_law_matches(
+        found: found,
+        obligation: obligation,
+        law: law
+      )
+    }
+  )
+}
+
+
+// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
+// dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen reflection); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
+fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
+  if law == law_nat_add_left_identity {
+    Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
+  } else if law == law_nat_add_right_identity {
+    Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
+  } else if law == law_nat_add_associativity {
+    Accepted { value: ManualNatAddAssociativity, diagnostics: None }
+  } else if law == law_nat_mul_left_identity {
+    Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
+  } else if law == law_nat_mul_annihilator {
+    Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
+  } else if law == law_nat_mul_associativity {
+    Accepted { value: ManualNatMulAssociativity, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    }
+  }
+}
+
+
+fn testgen_manual_anchor_from_nat_obligation(
+  o: NatAlgebraLawObligation
+) -> Outcome<ManualAnchorKey> {
+  testgen_manual_anchor_for_law(law: o.law)
+}
+
+
+fn nat_algebra_law_schedule_row_from_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  bind_outcome(
+    o: testgen_manual_anchor_for_law(law: obligation.law),
+    f: fn(anchor) {
+      Accepted {
+        value: NatAlgebraLawScheduleRow { obligation: obligation, anchor: anchor },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
+fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
+  match a {
+    ManualNatAddLeftIdentity =>
+      match b {
+        ManualNatAddLeftIdentity => true
+        _ => false
+      }
+    ManualNatAddRightIdentity =>
+      match b {
+        ManualNatAddRightIdentity => true
+        _ => false
+      }
+    ManualNatAddAssociativity =>
+      match b {
+        ManualNatAddAssociativity => true
+        _ => false
+      }
+    ManualNatMulLeftIdentity =>
+      match b {
+        ManualNatMulLeftIdentity => true
+        _ => false
+      }
+    ManualNatMulAnnihilator =>
+      match b {
+        ManualNatMulAnnihilator => true
+        _ => false
+      }
+    ManualNatMulAssociativity =>
+      match b {
+        ManualNatMulAssociativity => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+
+fn append_nat_algebra_law_schedule_row_if_anchor_matches(
+  found: Outcome<NatAlgebraLawScheduleRow>,
+  obligation: NatAlgebraLawObligation,
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  match found {
+    Accepted { value: _, diagnostics: _ } => found
+    Rejected { diagnostics: _ } =>
+      bind_outcome(
+        o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
+        f: fn(row) {
+          if nat_manual_anchor_key_eq(a: row.anchor, b: anchor) {
+            Accepted { value: row, diagnostics: None }
+          } else {
+            found
+          }
+        }
+      )
+  }
+}
+
+
+fn nat_algebra_law_schedule_row_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawScheduleRow> {
+  fold_list(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    },
+    cons: fn(found, obligation) {
+      append_nat_algebra_law_schedule_row_if_anchor_matches(
+        found: found,
+        obligation: obligation,
+        anchor: anchor
+      )
+    }
+  )
+}
+
+
+fn testgen_algebra_law_generator_from_nat_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<Generator<TestgenConcept>> {
+  bind_outcome(
+    o: testgen_manual_anchor_from_nat_obligation(o: obligation),
+    f: fn(anchor) {
+      Accepted {
+        value: Generator {
+          classification: TestClassification { tier: Tier1, layer: Unit },
+          anchor: manual_claim_anchor(anchor: anchor),
+          slot: AlgebraLaw {
+            subject: algebra_law_subject_from_nat_obligation(o: obligation),
+          },
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn append_algebra_law_generator_from_nat_obligation(
+  acc: Outcome<List<Generator<TestgenConcept>>>,
+  obligation: NatAlgebraLawObligation
+) -> Outcome<List<Generator<TestgenConcept>>> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc) {
+      bind_outcome(
+        o: testgen_algebra_law_generator_from_nat_obligation(obligation: obligation),
+        f: fn(generator) {
+          Accepted {
+            value: list_snoc_item(xs: acc, item: generator),
+            diagnostics: None,
+          }
+        }
+      )
+    }
+  )
+}
+
+
+fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  fold_list_right(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, obligation) {
+      append_algebra_law_generator_from_nat_obligation(
+        acc: o,
+        obligation: obligation
+      )
+    }
+  )
+}
+
+
+fn nat_algebra_law_obligation_for_manual_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<NatAlgebraLawObligation> {
+  bind_outcome(
+    o: nat_algebra_law_schedule_row_for_manual_anchor(anchor: anchor),
+    f: fn(row) {
+      Accepted { value: row.obligation, diagnostics: None }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_concept_for_manual_nat_anchor(
+  anchor: ManualAnchorKey
+) -> Outcome<TestgenConcept> {
+  bind_outcome(
+    o: nat_algebra_law_obligation_for_manual_anchor(anchor: anchor),
+    f: fn(obligation) {
+      Accepted {
+        value: AlgebraLaw {
+          subject: algebra_law_subject_from_nat_obligation(o: obligation),
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_subject_from_scheduled_generator(
+  generator: Generator<TestgenConcept>
+) -> Outcome<AlgebraLawSubject> {
+  match generator.slot {
+    AlgebraLaw { subject: subject } =>
+      Accepted { value: subject, diagnostics: None }
+    TypeConstruction { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    DiagnosticExhaustiveness { omitted_variant: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LensApplicability { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    BidirectionalRoundtrip { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    LanguageBehaviorEquivalence { subject: _, mock: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+    RefinementPreservation { subject: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+        )
+      }
+  }
+}
+
+
+fn append_algebra_law_subject_from_scheduled_generator(
+  acc: List<AlgebraLawSubject>,
+  generator: Generator<TestgenConcept>
+) -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_algebra_law_subject_from_scheduled_generator(generator: generator),
+    f: fn(subject) {
+      Accepted {
+        value: Cons { head: subject, tail: acc },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn testgen_algebra_law_subjects_from_scheduled_generators(
+  generators: List<Generator<TestgenConcept>>
+) -> Outcome<List<AlgebraLawSubject>> {
+  fold_list_right(
+    xs: generators,
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, generator) {
+      bind_outcome(
+        o: o,
+        f: fn(acc) {
+          append_algebra_law_subject_from_scheduled_generator(
+            acc: acc,
+            generator: generator
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
+  bind_outcome(
+    o: testgen_scheduled_algebra_law_generators(),
+    f: fn(generators) {
+      testgen_algebra_law_subjects_from_scheduled_generators(generators: generators)
+    }
+  )
+}
+
+
+fn coproduct_exhaustiveness_subject_testclaim_diagnostic() -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant }
+}
+
+fn coproduct_exhaustiveness_subject_testclaim_compiles() -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant }
+}
+
+fn coproduct_exhaustiveness_subject_testclaim_equals() -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant }
+}
+
+fn coproduct_exhaustiveness_subject_testclaim_roundtrip() -> GeneratedAnchorKey {
+  GeneratedCoproductExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant }
 }
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace this hand-enumerated TestClaimCoproductVariant → Symbol projection with canonical arm-key → symbol mapping once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled arm-identity-to-symbol mapping outside the reflection primitive.
 fn test_claim_coproduct_variant_symbol(variant: TestClaimCoproductVariant) -> Symbol {
   match variant {
-    TestClaimCompilesClaimVariant => t19_coproduct_exhaustiveness_compiles_claim_variant
-    TestClaimDiagnosticClaimVariant => t19_coproduct_exhaustiveness_diagnostic_claim_variant
-    TestClaimEqualsClaimVariant => t19_coproduct_exhaustiveness_equals_claim_variant
-    TestClaimRoundTripClaimVariant => t19_coproduct_exhaustiveness_roundtrip_claim_variant
+    TestClaimCompilesClaimVariant => coproduct_exhaustiveness_compiles_claim_variant
+    TestClaimDiagnosticClaimVariant => coproduct_exhaustiveness_diagnostic_claim_variant
+    TestClaimEqualsClaimVariant => coproduct_exhaustiveness_equals_claim_variant
+    TestClaimRoundTripClaimVariant => coproduct_exhaustiveness_roundtrip_claim_variant
   }
 }
 
 
-fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: T19GeneratedAnchorKey) -> TestClaimCoproductVariant {
+fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant {
   match anchor {
-    T19GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
+    GeneratedCoproductExhaustiveness { omitted_variant } => omitted_variant
   }
 }
 
@@ -1142,14 +1504,14 @@ fn coproduct_exhaustiveness_variant_node(variant: TestClaimCoproductVariant) -> 
 }
 
 
-fn coproduct_exhaustiveness_input(anchor: T19GeneratedAnchorKey) -> Node {
+fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
-      connective: Atom { identity: t19_coproduct_exhaustiveness_testclaim_variant }
+      connective: Atom { identity: coproduct_exhaustiveness_testclaim_variant }
     },
     children: [
       Edge {
-        label: Named { name: t19_coproduct_exhaustiveness_omitted_variant_edge },
+        label: Named { name: coproduct_exhaustiveness_omitted_variant_edge },
         target: coproduct_exhaustiveness_variant_node(
           variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)
         )
@@ -1163,7 +1525,7 @@ fn coproduct_exhaustiveness_diagnostic(
   input: Node
 ) -> Diagnostic {
   Diagnostic {
-    reason: t19_coproduct_exhaustiveness_missing_variant,
+    reason: coproduct_exhaustiveness_missing_variant,
     at: node_locus(node: input),
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -1171,13 +1533,13 @@ fn coproduct_exhaustiveness_diagnostic(
 
 
 fn testgen_emit_coproduct_exhaustiveness_claim(
-  anchor: T19GeneratedAnchorKey
+  anchor: GeneratedAnchorKey
 ) -> Outcome<TestClaim> {
   let input = coproduct_exhaustiveness_input(anchor: anchor)
   Accepted {
     value: DiagnosticClaim {
-      label: t19_coproduct_exhaustiveness_label,
-      t19_anchor: t19_generated_claim_anchor(anchor: anchor),
+      label: coproduct_exhaustiveness_label,
+      anchor: generated_claim_anchor(anchor: anchor),
       input: input,
       expected_rejection: diagnostics_singleton(
         d: coproduct_exhaustiveness_diagnostic(input: input)
@@ -1193,89 +1555,89 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   [
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_generated_claim_anchor(
+      anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_generated_claim_anchor(
+      anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_generated_claim_anchor(
+      anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
-      t19_anchor: t19_generated_claim_anchor(
+      anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
     },
   ]
 }
 
 
-fn t19_manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
+fn manual_anchor_absent_bootstrap_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: t19_manual_anchor_absent_bootstrap,
-    at: Textual { file: t19_testgen_lens_file, extent: WholeFile },
+    reason: manual_anchor_absent_bootstrap,
+    at: Textual { file: testgen_lens_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestClaim> {
+fn manual_test_claim_for_manual_anchor(key: ManualAnchorKey) -> Outcome<TestClaim> {
   match key {
-    T19ManualAnchorAbsent =>
-      Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()) }
-    T19ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
-    T19ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
-    T19ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    T19ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
-    T19ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
-    T19ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
-    T19ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
-    T19ManualTcBranchEmpty => Accepted { value: claim_branch_empty_rejected, diagnostics: None }
-    T19ManualTcLoopEmpty => Accepted { value: claim_loop_empty_rejected, diagnostics: None }
-    T19ManualTcBindZeroChildren => Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
-    T19ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
-    T19ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
-    T19ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }
-    T19ManualNatAddAssociativity => Accepted { value: claim_nat_add_associativity, diagnostics: None }
-    T19ManualNatMulLeftIdentity => Accepted { value: claim_nat_mul_left_identity, diagnostics: None }
-    T19ManualNatMulAnnihilator => Accepted { value: claim_nat_mul_annihilator, diagnostics: None }
-    T19ManualNatMulAssociativity => Accepted { value: claim_nat_mul_associativity, diagnostics: None }
-    T19ManualLbeConjDagSurface =>
+    ManualAnchorAbsent =>
+      Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
+    ManualTcConjEmpty => Accepted { value: claim_conj_empty_compiles, diagnostics: None }
+    ManualTcDisjEmpty => Accepted { value: claim_disj_empty_compiles, diagnostics: None }
+    ManualTcArrowTwoConj => Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
+    ManualTcCardinalityEmpty => Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
+    ManualTcInstantiationEmpty => Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
+    ManualTcArrowEmpty => Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
+    ManualTcTransformEmpty => Accepted { value: claim_transform_empty_rejected, diagnostics: None }
+    ManualTcBranchEmpty => Accepted { value: claim_branch_empty_rejected, diagnostics: None }
+    ManualTcLoopEmpty => Accepted { value: claim_loop_empty_rejected, diagnostics: None }
+    ManualTcBindZeroChildren => Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
+    ManualTcConjEqualsRefl => Accepted { value: claim_conj_equals_refl, diagnostics: None }
+    ManualNatAddLeftIdentity => Accepted { value: claim_nat_add_left_identity, diagnostics: None }
+    ManualNatAddRightIdentity => Accepted { value: claim_nat_add_right_identity, diagnostics: None }
+    ManualNatAddAssociativity => Accepted { value: claim_nat_add_associativity, diagnostics: None }
+    ManualNatMulLeftIdentity => Accepted { value: claim_nat_mul_left_identity, diagnostics: None }
+    ManualNatMulAnnihilator => Accepted { value: claim_nat_mul_annihilator, diagnostics: None }
+    ManualNatMulAssociativity => Accepted { value: claim_nat_mul_associativity, diagnostics: None }
+    ManualLbeConjDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
-        anchor: T19ManualLbeConjDagSurface,
-        label: t19_lbe_label_conj_dag_surface,
+        anchor: ManualLbeConjDagSurface,
+        label: lbe_label_conj_dag_surface,
         mock: lbe_io_mock_conj_dag_surface()
       )
-    T19ManualLbeDisjDagSurface =>
+    ManualLbeDisjDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
-        anchor: T19ManualLbeDisjDagSurface,
-        label: t19_lbe_label_disj_dag_surface,
+        anchor: ManualLbeDisjDagSurface,
+        label: lbe_label_disj_dag_surface,
         mock: lbe_io_mock_disj_dag_surface()
       )
-    T19ManualLbeTransformDagSurface =>
+    ManualLbeTransformDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
-        anchor: T19ManualLbeTransformDagSurface,
-        label: t19_lbe_label_transform_dag_surface,
+        anchor: ManualLbeTransformDagSurface,
+        label: lbe_label_transform_dag_surface,
         mock: lbe_io_mock_transform_dag_surface()
       )
-    T19ManualRefinementNonEmptyListBase =>
+    ManualRefinementNonEmptyListBase =>
       match refinement_preservation_subject_nonempty_list_base() {
         Accepted { value: subject, diagnostics: None } =>
           testgen_emit_refinement_preservation_claim(
-            anchor: T19ManualRefinementNonEmptyListBase,
-            label: t19_refinement_label_nonempty_list_base,
+            anchor: ManualRefinementNonEmptyListBase,
+            label: refinement_label_nonempty_list_base,
             subject: subject
           )
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
@@ -1285,102 +1647,66 @@ fn manual_test_claim_for_manual_anchor(key: T19ManualAnchorKey) -> Outcome<TestC
 
 
 fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept> {
-  match test_claim_t19_anchor(c: claim) {
-    T19ManualClaimAnchor { manual_anchor: T19ManualAnchorAbsent } =>
-      Rejected { diagnostics: diagnostics_singleton(d: t19_manual_anchor_absent_bootstrap_diagnostic()) }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcConjEmpty } =>
+  match test_claim_anchor(c: claim) {
+    ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } =>
+      Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
+    ManualClaimAnchor { manual_anchor: ManualTcConjEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcDisjEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcDisjEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Disj },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcArrowTwoConj } =>
+    ManualClaimAnchor { manual_anchor: ManualTcArrowTwoConj } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcCardinalityEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcCardinalityEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Cardinality },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcInstantiationEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcInstantiationEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Instantiation },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcArrowEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcArrowEmpty } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcTransformEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcTransformEmpty } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Transform },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcBranchEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcBranchEmpty } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Branch },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcLoopEmpty } =>
+    ManualClaimAnchor { manual_anchor: ManualTcLoopEmpty } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Loop },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcBindZeroChildren } =>
+    ManualClaimAnchor { manual_anchor: ManualTcBindZeroChildren } =>
       Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Bind },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualTcConjEqualsRefl } =>
+    ManualClaimAnchor { manual_anchor: ManualTcConjEqualsRefl } =>
       Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
         }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualNatAddLeftIdentity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_additive_monoid,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: t19_law_nat_add_left_identity,
-          },
-        }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualNatAddRightIdentity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_additive_monoid,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: t19_law_nat_add_right_identity,
-          },
-        }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualNatAddAssociativity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_additive_monoid,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: t19_law_nat_add_associativity,
-          },
-        }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualNatMulLeftIdentity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: t19_law_nat_mul_left_identity,
-          },
-        }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualNatMulAnnihilator } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: t19_law_nat_mul_annihilator,
-          },
-        }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualNatMulAssociativity } =>
-      Accepted { value: AlgebraLaw {
-          subject: AlgebraLawSubject {
-            algebra: nat_algebra_law_subject_symbol_commutative_semiring,
-            inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
-            law: t19_law_nat_mul_associativity,
-          },
-        }, diagnostics: None }
-    T19ManualClaimAnchor { manual_anchor: T19ManualLbeConjDagSurface } =>
+    ManualClaimAnchor { manual_anchor: ManualNatAddLeftIdentity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddLeftIdentity)
+    ManualClaimAnchor { manual_anchor: ManualNatAddRightIdentity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddRightIdentity)
+    ManualClaimAnchor { manual_anchor: ManualNatAddAssociativity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddAssociativity)
+    ManualClaimAnchor { manual_anchor: ManualNatMulLeftIdentity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulLeftIdentity)
+    ManualClaimAnchor { manual_anchor: ManualNatMulAnnihilator } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulAnnihilator)
+    ManualClaimAnchor { manual_anchor: ManualNatMulAssociativity } =>
+      testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatMulAssociativity)
+    ManualClaimAnchor { manual_anchor: ManualLbeConjDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_conj_dag_surface(),
@@ -1388,7 +1714,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19ManualClaimAnchor { manual_anchor: T19ManualLbeDisjDagSurface } =>
+    ManualClaimAnchor { manual_anchor: ManualLbeDisjDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_disj_dag_surface(),
@@ -1396,7 +1722,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19ManualClaimAnchor { manual_anchor: T19ManualLbeTransformDagSurface } =>
+    ManualClaimAnchor { manual_anchor: ManualLbeTransformDagSurface } =>
       Accepted {
         value: LanguageBehaviorEquivalence {
           subject: lbe_subject_transform_dag_surface(),
@@ -1404,12 +1730,12 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    T19GeneratedClaimAnchor { generated_anchor: T19GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: v } } =>
       Accepted {
-        value: DiagnosticExhaustiveness,
+        value: DiagnosticExhaustiveness { omitted_variant: v },
         diagnostics: None,
       }
-    T19ManualClaimAnchor { manual_anchor: T19ManualRefinementNonEmptyListBase } =>
+    ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
       match refinement_preservation_subject_nonempty_list_base() {
         Accepted { value: subject, diagnostics: None } =>
           Accepted {
@@ -1425,7 +1751,7 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
 
 
 fn bootstrap_claim_generator_for_manual_anchor(
-  key: T19ManualAnchorKey
+  key: ManualAnchorKey
 ) -> Outcome<Generator<TestgenConcept>> {
   match manual_test_claim_for_manual_anchor(key: key) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -1437,7 +1763,7 @@ fn bootstrap_claim_generator_for_manual_anchor(
           Accepted {
             value: Generator {
               classification: test_claim_classification(c: claim),
-              t19_anchor: test_claim_t19_anchor(c: claim),
+              anchor: test_claim_anchor(c: claim),
               slot: slot
             },
             diagnostics: diagnostics_merge(outer: d0, inner: d1)

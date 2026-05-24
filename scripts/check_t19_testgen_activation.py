@@ -5,8 +5,8 @@ Verifies TestgenConcept arms, testgen emission helpers, and generated claim modu
 that exercise run_test_claim / run_test_claim_assert, refinement-preservation,
 and DiagnosticExhaustiveness coproduct-exhaustiveness emission.
 
-Run: python3 scripts/check_t19_testgen_activation.py
-Self-test: python3 scripts/test_check_t19_testgen_activation.py
+Run: python3 scripts/check_testgen_activation.py
+Self-test: python3 scripts/test_check_testgen_activation.py
 """
 
 from __future__ import annotations
@@ -82,14 +82,14 @@ def main() -> None:
             "fn testgen_scheduled_language_behavior_generators",
             "fn testgen_scheduled_idempotent_operation_subjects",
             "import v4.std.effects",
-            "idempotent_operation_apply_twice(state: t19_sample_state",
+            "idempotent_operation_apply_twice(state: sample_state",
             "idempotent_operation_apply_twice",
             "idempotent_operation_apply_once",
-            "t19_lbe_label_conj_dag_surface",
-            "T19ManualLbeConjDagSurface",
-            "T19ManualLbeDisjDagSurface",
-            "T19ManualLbeTransformDagSurface",
-            "T19ManualRefinementNonEmptyListBase",
+            "lbe_label_conj_dag_surface",
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
+            "ManualRefinementNonEmptyListBase",
             "dag_language_model_surface_id",
             "fn coproduct_exhaustiveness_subject_testclaim_compiles",
             "fn testgen_emit_coproduct_exhaustiveness_claim",
@@ -97,11 +97,11 @@ def main() -> None:
             "coproduct_exhaustiveness_subject_testclaim_diagnostic",
             "coproduct_exhaustiveness_subject_testclaim_equals",
             "coproduct_exhaustiveness_subject_testclaim_roundtrip",
-            "t19_coproduct_exhaustiveness_missing_variant",
+            "coproduct_exhaustiveness_missing_variant",
             "fn coproduct_exhaustiveness_anchor_omitted_variant",
             "variant: coproduct_exhaustiveness_anchor_omitted_variant(anchor: anchor)",
-            "t19_anchor: t19_generated_claim_anchor(anchor: anchor)",
-            "t19_coproduct_exhaustiveness_omitted_variant_edge",
+            "anchor: generated_claim_anchor(anchor: anchor)",
+            "coproduct_exhaustiveness_omitted_variant_edge",
             "node_locus(node: input)",
             "| RefinementPreservation { subject: RefinementPreservationSubject }",
             "type RefinementPreservationSubject",
@@ -112,7 +112,7 @@ def main() -> None:
             "original: List<Node>",
             "refine(",
             "refined_base(r: subject.refined)",
-            "t19_refinement_label_nonempty_list_base",
+            "refinement_label_nonempty_list_base",
         ),
     )
 
@@ -120,14 +120,14 @@ def main() -> None:
         "verification.dag",
         verification,
         (
-            "T19ManualLbeConjDagSurface",
-            "T19ManualLbeDisjDagSurface",
-            "T19ManualLbeTransformDagSurface",
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
             "type TestClaimCoproductVariant",
             "feature:testclaim-coproduct-reflection; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
             "follow-up: delete this mirror when T-19 projects arm keys from TestClaim",
-            "T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
-            "T19ManualRefinementNonEmptyListBase",
+            "GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }",
+            "ManualRefinementNonEmptyListBase",
         ),
     )
 
@@ -157,9 +157,9 @@ def main() -> None:
         "lbe_anchor_manifest.dag",
         manifest,
         (
-            "T19ManualLbeConjDagSurface",
-            "T19ManualLbeDisjDagSurface",
-            "T19ManualLbeTransformDagSurface",
+            "ManualLbeConjDagSurface",
+            "ManualLbeDisjDagSurface",
+            "ManualLbeTransformDagSurface",
         ),
     )
 
@@ -169,7 +169,7 @@ def main() -> None:
         (
             "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
             "testgen_emit_coproduct_exhaustiveness_claim",
-            "T19GeneratedCoproductExhaustiveness { omitted_variant: _ }",
+            "GeneratedCoproductExhaustiveness { omitted_variant: _ }",
             "witness_coproduct_exhaustiveness_diagnostic_claim",
             "witness_coproduct_exhaustiveness_uses_generated_anchor",
             "witness_coproduct_exhaustiveness_all_variants_emit",
@@ -190,14 +190,14 @@ def main() -> None:
             "refinement_preservation_subject_nonempty_list_base()",
             "data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim>",
             "witness_refinement_preserves_nonempty_list_base",
-            "T19ManualRefinementNonEmptyListBase",
+            "ManualRefinementNonEmptyListBase",
         ),
     )
 
     _require_substrings(
         "refinement_preservation_anchor_manifest.dag",
         refinement_manifest,
-        ("T19ManualRefinementNonEmptyListBase",),
+        ("ManualRefinementNonEmptyListBase",),
     )
 
     idempotent = _read(IDEMPOTENT_OPERATION_GENERATED)
@@ -213,11 +213,11 @@ def main() -> None:
             "generated_label_only_skip_pins_rejection",
             "generated_label_only_skip_is_rejected",
             "import v4.std.node { Symbol }",
-            "t19_idempotent_operation_tautology_skip",
-            "t19_sample_read_subject",
-            "t19_sample_upsert_subject",
-            "t19_sample_delete_subject",
-            "t19_sample_label_only_subject",
+            "idempotent_operation_tautology_skip",
+            "sample_read_subject",
+            "sample_upsert_subject",
+            "sample_delete_subject",
+            "sample_label_only_subject",
             "generated_idempotent_operation_sample_count_is_three",
         ),
     )
