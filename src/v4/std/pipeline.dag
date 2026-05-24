@@ -11,7 +11,7 @@ import v4.std.node { Node, Symbol }
 
 type StageDiagnosticPolicy
 
-// 🟢 closed set — v4 pipeline boundary carriers.
+// 🟢 coproduct dissolution
 type CarrierKind
   = SurfaceNode
   | CoreNode

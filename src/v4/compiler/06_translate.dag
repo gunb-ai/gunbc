@@ -83,7 +83,7 @@ import v4.std.collection { List, Map, empty_map, list_append, list_snoc_item }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
 import v4.std.text { String }
 type TargetNodeTree = Node
-// 🟢 coproduct dissolution — T-10 target-bundle named-edge lookup fold state (P3 fail-closed terminal).
+// 🟢 coproduct dissolution
 type TargetBundleChildLookup
   = BundleChildMissing
   | BundleChildFound { value: Node }
@@ -533,8 +533,6 @@ fn target_selection_priority_from_model(target: TargetModel) -> Outcome<Node> {
     }
   )
 }
-// `declared_inhabitants` edge names one Conj root on the target bundle; std/coercion flattens it
-// via declared_inhabitant_candidates; find_witness enumerates that closed list as-is (no Conj walk).
 fn coercion_candidates_from_target_model(
   target: TargetModel
 ) -> Outcome<CoercionCandidateSet> {
@@ -596,7 +594,6 @@ fn translate_fold_init(
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
-// Zip-fold child reattachment — mirrors exact_structural_equality_zip_fold_predicate step.
 fn translate_fold_step(
   acc: Outcome<Node>,
   edge: Edge,
@@ -641,7 +638,6 @@ fn translate_node(
     }
   )
 }
-// input_lang threaded at stage boundary (LanguageModel carrier); coercion uses TargetModel only.
 fn translate(
   tree: InferredTree,
   target: TargetModel,
