@@ -80,6 +80,7 @@ type DependencyFoldState {
   dependencies: List<DependencyView>
 }
 
+// 🟡 gated — feature:dependency-usage-classifier-consumes-resolve-ground-facts — dissolve-on: T-9 resolve stamps dependency_binds_to_edge / module / bootstrap labels inline
 fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
   if sym == dependency_binds_to_edge {
     match parent.kind {
@@ -238,7 +239,7 @@ fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
   state.layers
 }
 
-// 🟡 readiness-rank-layer-merge
+// 🟡 gated — feature:readiness-rank-layer-merge — dissolve-on: readiness-rank merge in topological_layers fold
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   readiness_fold_layers(
     state: fold_node(

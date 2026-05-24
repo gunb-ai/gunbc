@@ -62,7 +62,7 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
     }
   }
 }
-// 🟡 finite-set-uniqueness-witness
+// 🟡 needs-more-work — feature:finite-set-uniqueness-witness — dissolve-on: std/algebra derived unique: Witness<Holds> projection; FiniteSet binds structural unique field
 type FiniteSet<T> {
   head: T
   tail: List<T>
