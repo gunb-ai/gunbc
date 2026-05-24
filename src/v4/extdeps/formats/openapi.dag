@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiDocumentWireContractFacts, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiHttpMethodBridgeFacts, OpenApiHttpStatusCodeFacts, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiNumericLexemeFacts, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOperationWireContractFacts, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardBridgeFacts, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiUniqueNameProfileFacts, OpenApiWebhooks, OpenApiWebhooksSlot, openapi_http_method_bridge_catalog, openapi_http_method_bridge_network_method, openapi_http_method_bridge_oas_method, openapi_operation_exchange_request_reply, openapi_response_key_wildcard_bridge_catalog, openapi_wildcard_bridge_high, openapi_wildcard_bridge_kind, openapi_wildcard_bridge_low
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiDocumentWireContractFacts, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiHttpMethodBridgeFacts, OpenApiHttpStatusCodeFacts, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiNumericLexemeFacts, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOperationWireContractFacts, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardBridgeFacts, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiUniqueNameProfileFacts, OpenApiWebhooks, OpenApiWebhooksSlot, openapi_http_method_bridge_catalog, openapi_http_method_bridge_network_method, openapi_http_method_bridge_oas_method, openapi_http_status_code_value, openapi_operation_exchange_request_reply, openapi_response_key_wildcard_bridge_catalog, openapi_status_digit_value, openapi_status_hundreds_value, openapi_wildcard_bridge_high, openapi_wildcard_bridge_kind, openapi_wildcard_bridge_low
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
@@ -619,22 +619,16 @@ fn openapi_wildcard_bridge_kind(bridge: OpenApiResponseKeyWildcardBridgeFacts) -
 
 fn openapi_wildcard_bridge_low(bridge: OpenApiResponseKeyWildcardBridgeFacts) -> Nat {
   match bridge {
-    OpenApiResponseKeyWildcardBridge1xx => 100
-    OpenApiResponseKeyWildcardBridge2xx => 200
-    OpenApiResponseKeyWildcardBridge3xx => 300
-    OpenApiResponseKeyWildcardBridge4xx => 400
-    OpenApiResponseKeyWildcardBridge5xx => 500
+    OpenApiResponseKeyWildcardBridge1xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds1)
+    OpenApiResponseKeyWildcardBridge2xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds2)
+    OpenApiResponseKeyWildcardBridge3xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds3)
+    OpenApiResponseKeyWildcardBridge4xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds4)
+    OpenApiResponseKeyWildcardBridge5xx => openapi_status_hundreds_value(hundreds: OpenApiHundreds5)
   }
 }
 
 fn openapi_wildcard_bridge_high(bridge: OpenApiResponseKeyWildcardBridgeFacts) -> Nat {
-  match bridge {
-    OpenApiResponseKeyWildcardBridge1xx => 199
-    OpenApiResponseKeyWildcardBridge2xx => 299
-    OpenApiResponseKeyWildcardBridge3xx => 399
-    OpenApiResponseKeyWildcardBridge4xx => 499
-    OpenApiResponseKeyWildcardBridge5xx => 599
-  }
+  openapi_wildcard_bridge_low(bridge: bridge) + 99
 }
 
 fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> Nat {
