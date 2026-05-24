@@ -1052,9 +1052,11 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 - **T-25-tail** — predicate prover (`constraint_satisfaction` + `exact_structural_equality_zip_fold`
   semantics) in `src/v4/std/find_witness.dag` and `src/v4/std/constraint_satisfaction_predicate.dag`;
   dissolves identity-MVP scaffolds. Landed **PR #3531**.
-**Residual (not T-25):** RFC 3986 validated-component refinements remain the
-`src/v4/std/network.dag` **`feature:T-25-core`** yellow row; `NonEmptyList` witness
-in `src/v4/test/claim/manual/refinement_nonempty_list.dag` (acceptance witness, T-22 exec).
+**Residual (not T-25):** RFC 3986 validated-component refinements in
+`src/v4/std/network.dag` are now **unblocked** (T-25-core gate open); authoring is
+follow-on to T-26 (`feature:network-validated-components`), not gated on T-25-core.
+`NonEmptyList` witness in `src/v4/test/claim/manual/refinement_nonempty_list.dag`
+(acceptance witness, T-22 exec) is similarly unblocked.
 **Independent sub-bug (resolved):** `file_system.dag` header dangling-`Consumes`
 (cited `std/collection NonEmptyList` before T-25-core landed) is corrected — the header
 no longer cites a non-existent type.
@@ -1066,8 +1068,9 @@ structured RFC 3986 URI carriers (`Url`, `UriReference`, …), and
 `NetworkAddress { authority: UriAuthority }`. `extdeps/coordination.dag` and
 `extdeps/formats/openapi.dag` consume this module per M9 / DECISIONS Part 1
 (`std/network.dag` rows + coordination `NetworkAddress` dissolution row).
-**Residual (not T-26):** RFC 3986 validated-component refinements remain the
-`std/network.dag` **`feature:T-25-core`** yellow row; OpenAPI path verbs stay
+**Residual (not T-26):** RFC 3986 validated-component refinements in `std/network.dag`
+are now unblocked (T-25-core gate open); tracked as `feature:network-validated-components`
+(T-26 follow-on). OpenAPI path verbs stay
 `OpenApiHttpMethod` (OAS eight-verb closed set vs broader `HttpMethod`) per
 DECISIONS **T-4.6-P4-OpenApiHttpMethod**.
 
