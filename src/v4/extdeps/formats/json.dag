@@ -27,9 +27,6 @@ type JsonValue
 
 type JsonNumberLeadingMinusOptionalPrefixWitness {}
 
-// int = zero / ( digit1-9 *DIGIT ) — either the single zero production or a
-// non-zero leading digit followed by a digit run; multi-digit forms must not
-// start with "0" (e.g. "01" is not a valid JSON number).
 type JsonNumberIntegerZeroOrNonZeroLeadingDigitWitness {}
 type JsonNumberIntegerDigitRunWitness {}
 
