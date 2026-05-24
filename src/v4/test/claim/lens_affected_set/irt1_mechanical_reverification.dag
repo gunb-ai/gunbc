@@ -21,6 +21,7 @@ import v4.lens.affected_set {
   seed_edit_fold_acc
 }
 import v4.lens.affected_set_examples {
+  affected_set_claim_failure_node,
   affected_set_example_dimension,
   affected_set_example_edit,
   affected_set_example_hash,
@@ -153,10 +154,7 @@ fn irt1_mechanical_reverification_claim_rhs() -> Node {
   if irt1_mechanical_reverification_claim_holds() {
     affected_set_example_node
   } else {
-    Node {
-      kind: TypeNode { connective: Conj },
-      children: []
-    }
+    affected_set_claim_failure_node
   }
 }
 
