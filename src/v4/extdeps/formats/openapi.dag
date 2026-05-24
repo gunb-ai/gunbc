@@ -506,6 +506,7 @@ type OpenApiUniqueNameProfileFacts {
 }
 
 
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethodBridgeFacts.
 type OpenApiHttpMethodBridgeFacts
   = OpenApiHttpMethodBridgeGet
   | OpenApiHttpMethodBridgePut
@@ -581,6 +582,7 @@ type OpenApiHttpStatusCodeFacts {
 }
 
 
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiResponseKeyWildcardBridgeFacts.
 type OpenApiResponseKeyWildcardBridgeFacts
   = OpenApiResponseKeyWildcardBridge1xx
   | OpenApiResponseKeyWildcardBridge2xx
