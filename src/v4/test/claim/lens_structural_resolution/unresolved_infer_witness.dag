@@ -7,11 +7,11 @@
 module v4.test.claim.lens_structural_resolution.unresolved_infer_witness
 
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree,
   infer_descent_not_derived_diagnostic
 }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts }
 import v4.lens.structural_resolution {
   StructuralResolutionFact,
   UnresolvedInferWitness,
@@ -23,10 +23,8 @@ import v4.test.claim.lens_structural_resolution.claim_carrier {
   LensStructuralResolutionClaim,
   lens_structural_resolution_actual
 }
-import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -37,13 +35,12 @@ import v4.std.dependency {
 }
 import v4.std.diagnostic { node_locus }
 import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
+import v4.std.witness { Holds, Violates, Witness }
 
 data sr_infer_use_symbol: Symbol = sr_infer_use_symbol
 data sr_infer_decl_symbol: Symbol = sr_infer_decl_symbol
 data sr_infer_type_symbol: Symbol = sr_infer_type_symbol
 data sr_infer_algebra_symbol: Symbol = sr_infer_algebra_symbol
-data sr_infer_algebra_witness_symbol: Symbol = sr_infer_algebra_witness_symbol
 data sr_infer_descent_symbol: Symbol = sr_infer_descent_symbol
 data sr_infer_claim_hash: Hash = sr_infer_claim_hash
 
@@ -70,36 +67,16 @@ data sr_infer_dependency: DependencyView = DependencyView {
   usage_site: sr_infer_use
 }
 
-fn sr_infer_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
-  CanonicalGroundingWitness {
-    structural: StructuralPropertyWitness {
-      property: constraint_property_being_canonical,
-      evidence: resolved
-    },
-    closedness: StructuralPropertyWitness {
-      property: constraint_property_candidate_set_closedness,
-      evidence: resolved
-    }
-  }
+fn sr_infer_resolved_facts() -> InferredFacts {
+  claim_inferred_facts(
+    type_symbol: sr_infer_type_symbol,
+    algebra_symbol: sr_infer_algebra_symbol,
+    descent_symbol: sr_infer_descent_symbol,
+    canonical_structural_symbol: constraint_property_being_canonical,
+    canonical_closedness_symbol: constraint_property_candidate_set_closedness
+  )
 }
 
-fn sr_infer_resolved_facts() -> InferredFacts {
-  let resolved = sr_infer_claim_atom(s: sr_infer_type_symbol)
-  InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef {
-      algebra: sr_infer_claim_atom(s: sr_infer_algebra_symbol),
-      witness: sr_infer_claim_atom(s: sr_infer_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: sr_infer_descent_symbol }
-      }
-    },
-    canonical: sr_infer_canonical_witness(resolved: resolved)
-  }
-}
 
 fn sr_infer_usage_site_witness() -> Witness<InferredFacts> {
   Violates {

@@ -13,6 +13,7 @@
 // Status: W-T-11 — grammar-inverse lex walk in target_serialize_source_from_model;
 // live translate_node/coerce_grounded_node + child reattachment zip-fold;
 // authority_source_text retained on TargetModel as self-host anchor only.
+// 🟡 gated — feature:T-11-grammar-inverse-serializer — bind TASKS.md T-10/T-11 W-T-11 — dissolve-on: end-to-end compile TestClaims scoped to grammar-inverse path only when token_sequence_to_source is live for all targets; until then TargetModel.authority_source_text remains self-host anchor (not emit authority); forbidden: treating host/literal anchor as complete T-10 inverse emit.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -468,6 +469,7 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
     }
   )
 }
+// 🟡 gated — feature:T-11-grammar-inverse-serializer — bind TASKS.md T-10/T-11 — dissolve-on: grammar-inverse token_sequence_to_source is sole serialize authority; TargetModel.authority_source_text must not substitute for validated emitted Node serialization.
 fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node

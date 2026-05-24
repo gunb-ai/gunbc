@@ -17,14 +17,13 @@ import v4.compiler.eval {
   run_test_claim
 }
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree
 }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -96,8 +95,6 @@ import v4.std.verification {
 }
 import v4.std.witness {
   Holds,
-  StructuralPropertyWitness,
-  Violates,
   Witness
 }
 
@@ -324,14 +321,6 @@ fn eval_mvp2_diagnostic(n: Node) -> Diagnostic {
 }
 
 
-fn eval_mvp2_algebra_ref() -> AlgebraRef {
-  AlgebraRef {
-    algebra: eval_mvp2_algebra_node(),
-    witness: eval_mvp2_i64_node()
-  }
-}
-
-
 fn eval_mvp2_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
@@ -341,21 +330,13 @@ fn eval_mvp2_termination_proof() -> TerminationProof {
 
 
 fn eval_mvp2_facts() -> InferredFacts {
-  InferredFacts {
-    resolved_type: eval_mvp2_i64_node(),
-    inhabits: eval_mvp2_algebra_ref(),
-    descent: Holds { value: eval_mvp2_termination_proof() },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: eval_mvp2_algebra_node()
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: eval_mvp2_i64_node()
-      }
-    }
-  }
+  claim_inferred_facts_from_nodes(
+    resolved: eval_mvp2_i64_node(),
+    algebra: eval_mvp2_algebra_node(),
+    canonical_structural_symbol: constraint_property_being_canonical,
+    canonical_closedness_symbol: constraint_property_candidate_set_closedness,
+    descent: Holds { value: eval_mvp2_termination_proof() }
+  )
 }
 
 

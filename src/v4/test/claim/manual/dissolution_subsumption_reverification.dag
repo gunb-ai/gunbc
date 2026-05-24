@@ -16,10 +16,10 @@ import v4.compiler.eval {
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree
 }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.lens.subsumption {
   DiffId,
   DissolutionSubsumption,
@@ -35,7 +35,6 @@ import v4.lens.subsumption {
 import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { Map, Set }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
@@ -85,7 +84,7 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
+import v4.std.witness { Holds, Witness }
 
 
 data rust_language_model_emit_subsumption_receipt_node: Symbol = rust_language_model_emit_subsumption_receipt_node
@@ -407,14 +406,6 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
 }
 
 
-fn subsumption_algebra_ref(node: Node) -> AlgebraRef {
-  AlgebraRef {
-    algebra: node,
-    witness: node
-  }
-}
-
-
 fn subsumption_termination_proof() -> TerminationProof {
   TerminationProof {
     non_increasing: [],
@@ -424,21 +415,13 @@ fn subsumption_termination_proof() -> TerminationProof {
 
 
 fn subsumption_facts(node: Node) -> InferredFacts {
-  InferredFacts {
-    resolved_type: node,
-    inhabits: subsumption_algebra_ref(node: node),
-    descent: Holds { value: subsumption_termination_proof() },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: node
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: node
-      }
-    }
-  }
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: node,
+    canonical_structural_symbol: constraint_property_being_canonical,
+    canonical_closedness_symbol: constraint_property_candidate_set_closedness,
+    descent: Holds { value: subsumption_termination_proof() }
+  )
 }
 
 
