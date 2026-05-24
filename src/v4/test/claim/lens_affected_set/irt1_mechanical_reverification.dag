@@ -1,7 +1,7 @@
 // src/v4/test/claim/lens_affected_set/irt1_mechanical_reverification.dag
 // Scope: MechanicalReverification receipt for affected_set_irt1_subsumption (DissolutionSubsumption row).
 // Owns: claim_affected_set_irt1_mechanical_reverification.
-// Consumes: lens affected_set, lens affected_set_examples, std diagnostic, std node, std verification.
+// Consumes: lens affected_set, lens affected_set_examples, std diagnostic, std node, std verification, std witness.
 // Status: structural receipt — subsumption.dag TestClaimId handle affected_set_irt1_mechanical_reverification_claim.
 
 module v4.test.claim.lens_affected_set.irt1_mechanical_reverification
@@ -17,7 +17,8 @@ import v4.lens.affected_set {
   mark_boundary_excluded,
   mark_excluded,
   mark_rerun,
-  merge_seed_edit_fold_step
+  re_exec_frontier_from_diff,
+  seed_edit_fold_acc
 }
 import v4.lens.affected_set_examples {
   affected_set_example_dimension,
@@ -25,6 +26,10 @@ import v4.lens.affected_set_examples {
   affected_set_example_hash,
   affected_set_example_invalid_edit_diagnostic,
   affected_set_example_node,
+  affected_set_example_post_edit_accepts,
+  affected_set_example_post_edit_rejects,
+  affected_set_example_read,
+  affected_set_example_two_edit_diff,
   expected_affected_set_boundary_prune,
   expected_affected_set_dimension_seed,
   expected_affected_set_excluded_proofs,
@@ -42,6 +47,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v4.std.witness { Holds }
 
 fn irt1_boundary_prune_receipt_holds() -> Bool {
   mark_boundary_excluded(
@@ -97,16 +103,35 @@ fn irt1_pending_escalation_receipt_holds() -> Bool {
   ) == expected_affected_set_rejected_edit_fail_closed
 }
 
-fn irt1_fail_closed_absorbs_later_edits() -> Bool {
+fn irt1_seed_edit_fold_acc_absorbs_fail_closed() -> Bool {
   let fail_closed = AffectedFoldAcc {
     dag: affected_set_example_node,
     frontier: expected_affected_set_rejected_edit_fail_closed,
     pending: None
   }
-  merge_seed_edit_fold_step(
+  seed_edit_fold_acc(
+    read_model: affected_set_example_read,
+    post_edit_dag: affected_set_example_post_edit_accepts,
     acc: fail_closed,
-    live: empty_affected_fold_acc(dag: affected_set_example_node)
+    edit: affected_set_example_edit
   ) == fail_closed
+}
+
+fn irt1_re_exec_frontier_from_diff_absorbs_after_fail_closed() -> Bool {
+  match re_exec_frontier_from_diff(
+    read_model: affected_set_example_read,
+    post_edit_dag: affected_set_example_post_edit_rejects,
+    dag: affected_set_example_node,
+    diff: affected_set_example_two_edit_diff
+  ) {
+    Holds { value: frontier } => frontier == expected_affected_set_rejected_edit_fail_closed
+    _ => false
+  }
+}
+
+fn irt1_fail_closed_absorbs_later_edits() -> Bool {
+  irt1_seed_edit_fold_acc_absorbs_fail_closed()
+    && irt1_re_exec_frontier_from_diff_absorbs_after_fail_closed()
 }
 
 fn irt1_empty_diff_fold_is_empty_frontier() -> Bool {

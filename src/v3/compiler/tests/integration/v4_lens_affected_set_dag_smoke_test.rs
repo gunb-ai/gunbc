@@ -84,12 +84,12 @@ fn v4_lens_affected_set_module_authority_and_entrypoints() {
         "{AFFECTED_SET_PATH}: IRT-1 whole/changed-subgraph gate marker"
     );
     assert!(
-        surface_declares_fn(&module, "merge_seed_edit_fold_step"),
-        "{AFFECTED_SET_PATH}: merge_seed_edit_fold_step (IRT-1 fail-closed absorption step)"
+        AFFECTED_SET_DAG.contains("FailClosed { reason: _ } => acc"),
+        "{AFFECTED_SET_PATH}: seed_edit_fold_acc must short-circuit on FailClosed inline"
     );
     assert!(
-        surface_declares_fn(&module, "affected_fold_accepts_more_edits"),
-        "{AFFECTED_SET_PATH}: affected_fold_accepts_more_edits (canonical fold gate query)"
+        !AFFECTED_SET_DAG.contains("fn affected_fold_accepts_more_edits"),
+        "{AFFECTED_SET_PATH}: no parallel ReExecFrontier variant-discriminator predicate"
     );
     assert!(
         surface_declares_fn(&module, "frontier_from_fold_acc"),
@@ -106,8 +106,9 @@ fn v4_lens_affected_set_irt1_claim_wiring() {
     assert!(
         IRT1_CLAIM_DAG.contains("claim_affected_set_irt1_mechanical_reverification")
             && IRT1_CLAIM_DAG.contains("irt1_mechanical_reverification_claim_holds")
-            && IRT1_CLAIM_DAG.contains("affected_fold_accepts_more_edits")
-            && IRT1_CLAIM_DAG.contains("re_exec_frontier_from_diff") == false,
-        "{IRT1_CLAIM_PATH}: IRT-1 mechanical reverification claim composes leaf receipt checks"
+            && IRT1_CLAIM_DAG.contains("seed_edit_fold_acc")
+            && IRT1_CLAIM_DAG.contains("re_exec_frontier_from_diff")
+            && !IRT1_CLAIM_DAG.contains("affected_fold_accepts_more_edits"),
+        "{IRT1_CLAIM_PATH}: IRT-1 claim exercises canonical fold entrypoints only"
     );
 }
