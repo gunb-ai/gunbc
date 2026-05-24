@@ -30,6 +30,8 @@ import v4.std.runtime {
   RuntimePrimitive,
   RuntimeReference,
   RuntimeUnit,
+  RuntimeValueNodeProjected,
+  RuntimeValueNodeUnrepresentable,
   RuntimeBehaviorInterpreter,
   ValueRuntimeInterpreter,
   TransformRuntimeInterpreter,
@@ -40,7 +42,7 @@ import v4.std.runtime {
   ControlTransfer,
   RuntimeValue,
   interpretation_behavior_dispatch,
-  runtime_value_node,
+  runtime_value_node_projection,
   runtime_value_resolved_type
 }
 import v4.std.node {
@@ -75,15 +77,15 @@ import v4.std.diagnostic {
   Rejected,
   ShortCircuit,
   StageDiagnosticPolicy,
+  absorb_outcome_diagnostics,
+  append_outcome_value,
   bind_outcome,
   diagnostics_eq,
-  diagnostics_merge,
   diagnostics_singleton,
   non_empty_diagnostics_eq,
   outcome_eq,
   outcome_node_eq,
   outcome_rejected,
-  rejected_with_pending,
   sequence_outcome
 }
 import v4.std.verification {
@@ -189,6 +191,7 @@ data eval_rejected_runtime_binding_lookup_miss: Symbol = eval_rejected_runtime_b
 data eval_rejected_resolved_type_mismatch: Symbol = eval_rejected_resolved_type_mismatch
 data eval_rejected_inhabitance_mismatch: Symbol = eval_rejected_inhabitance_mismatch
 data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
+data eval_rejected_runtime_value_node_unrepresentable: Symbol = eval_rejected_runtime_value_node_unrepresentable
 data eval_rejected_branch_argument_absent: Symbol = eval_rejected_branch_argument_absent
 data eval_rejected_bind_key_absent: Symbol = eval_rejected_bind_key_absent
 data eval_rejected_bind_value_absent: Symbol = eval_rejected_bind_value_absent
@@ -270,21 +273,11 @@ fn eval_absorb_structural_child(
   acc: Outcome<Node>,
   child: Outcome<Node>
 ) -> Outcome<Node> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: n, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: cr } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-          }
-        Accepted { value: _, diagnostics: cd } =>
-          Accepted {
-            value: n,
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
-      }
-  }
+  absorb_outcome_diagnostics(
+    acc: acc,
+    child: child,
+    policy: eval_short_circuit_policy()
+  )
 }
 
 
@@ -706,21 +699,11 @@ fn eval_absorb_child_diagnostics(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<Node>
 ) -> Outcome<List<RuntimeValue>> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: values, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: cr } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-          }
-        Accepted { value: _, diagnostics: cd } =>
-          Accepted {
-            value: values,
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
-      }
-  }
+  absorb_outcome_diagnostics(
+    acc: acc,
+    child: child,
+    policy: eval_short_circuit_policy()
+  )
 }
 
 
@@ -728,21 +711,11 @@ fn eval_append_child_value(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<RuntimeValue>
 ) -> Outcome<List<RuntimeValue>> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: values, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: cr } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-          }
-        Accepted { value: child_value, diagnostics: cd } =>
-          Accepted {
-            value: list_push(values, child_value),
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
-      }
-  }
+  append_outcome_value(
+    acc: acc,
+    child: child,
+    policy: eval_short_circuit_policy()
+  )
 }
 
 

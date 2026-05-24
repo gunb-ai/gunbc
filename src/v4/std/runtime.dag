@@ -67,6 +67,10 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
+type RuntimeValueNodeProjection
+  = RuntimeValueNodeProjected { node: Node }
+  | RuntimeValueNodeUnrepresentable
+
 fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   match value {
     RuntimePrimitive { value: p } => p.primitive_type
@@ -77,8 +81,14 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   }
 }
 
-fn runtime_value_node(value: RuntimeValue) -> Node {
-  runtime_value_resolved_type(value: value)
+fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection {
+  match value {
+    RuntimePrimitive { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeAggregate { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeReference { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeClosure { value: _ } => RuntimeValueNodeUnrepresentable
+    RuntimeUnit { value: _ } => RuntimeValueNodeUnrepresentable
+  }
 }
 
 type ValueRepresentationModel {
