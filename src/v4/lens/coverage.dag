@@ -55,6 +55,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  NonEmptyDiagnostics,
   Rejected,
   Outcome,
   Textual,
