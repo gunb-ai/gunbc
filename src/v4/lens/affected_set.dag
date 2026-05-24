@@ -1,8 +1,10 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetReading, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetReading, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set, re_exec_frontier_from_diff, affected_set_from_diff.
 // Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView, InferredTree; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
+// Status: T-21 IRT-1 filled — changed-subgraph frontier fold over Diff.edits via re_exec_frontier_from_diff;
+//   purity-aware boundary prune + dimension propagation receipts inject through AffectedSetRead;
+//   AffectedSet edit/rebuild path (affected_set_from_diff) + node-precision closure for CI/T-24.
 
 module v4.lens.affected_set
 
@@ -795,6 +797,15 @@ fn seed_edit_fold_acc(
 }
 
 
+// IRT-1 fail-closed absorption predicate: once frontier is FailClosed, seed_edit_fold_acc is idempotent.
+fn affected_fold_accepts_more_edits(acc: AffectedFoldAcc) -> Bool {
+  match acc.frontier {
+    FailClosed { reason: _ } => false
+    ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => true
+  }
+}
+
+
 fn expand_affected_dimension(
   read_model: AffectedSetRead,
   dag: Dag,
@@ -963,6 +974,28 @@ fn affected_set_from_diff(
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
         seed_affected_set_fold_acc_live(
+          read_model: read_model,
+          post_edit_dag: post_edit_dag,
+          acc: acc,
+          edit: edit
+        )
+      })
+    )
+  }
+}
+
+
+// IRT-1 canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
+fn re_exec_frontier_from_diff(
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  dag: Dag,
+  diff: Diff
+) -> Witness<ReExecFrontier> {
+  Holds {
+    value: frontier_from_fold_acc(
+      acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
+        seed_edit_fold_acc(
           read_model: read_model,
           post_edit_dag: post_edit_dag,
           acc: acc,

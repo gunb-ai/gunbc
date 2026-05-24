@@ -857,6 +857,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
     // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
+    // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
     // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
     // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
