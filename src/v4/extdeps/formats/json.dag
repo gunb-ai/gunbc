@@ -31,6 +31,7 @@ type JsonNumberIntegerZeroWitness {}
 
 type JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness {}
 
+// 🟢 coproduct dissolution — T-4.6-P4-JsonNumberIntegerLexeme.
 type JsonNumberIntegerLexemeWitness
   = JsonNumberIntegerZeroWitness
   | JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness {}
