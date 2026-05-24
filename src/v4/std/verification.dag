@@ -1,7 +1,7 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey.
 // Owns: TestClassification ImpossibleBugClass impossible_bug_class_coproduct_variants TestClaimCoproductVariant ManualAnchorKey GeneratedAnchorKey ClaimAnchorKey TestClaim
-// Consumes: v4.std.node v4.std.diagnostic
+// Consumes: v4.std.algebra v4.std.collection v4.std.diagnostic v4.std.node
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification

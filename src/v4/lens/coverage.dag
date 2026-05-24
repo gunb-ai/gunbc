@@ -973,21 +973,59 @@ fn testgen_coverage_projection_from_claim(
 }
 
 
+fn diagnostic_reason_is_canonical_impossible_bug(reason: Symbol) -> Bool {
+  match impossible_bug_class_from_diagnostic_reason(reason: reason) {
+    Accepted { value: _, diagnostics: None } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn append_if_canonical_impossible_bug_diagnostic(
+  found: Bool,
+  diagnostic: Diagnostic
+) -> Bool {
+  if found {
+    true
+  } else {
+    diagnostic_reason_is_canonical_impossible_bug(reason: diagnostic.reason)
+  }
+}
+
+
+fn non_empty_diagnostics_targets_impossible_bug_slice(d: NonEmptyDiagnostics) -> Bool {
+  fold_list(
+    xs: d.tail,
+    empty: diagnostic_reason_is_canonical_impossible_bug(reason: d.head.reason),
+    cons: fn(found, diagnostic) {
+      append_if_canonical_impossible_bug_diagnostic(
+        found: found,
+        diagnostic: diagnostic
+      )
+    }
+  )
+}
+
+
 fn impossible_bug_coverage_projection_from_claim(
   c: TestClaim
 ) -> CoverageSliceProjection<ImpossibleBugCoverageKey> {
   match c {
     DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
-      match impossible_bug_coverage_keys_from_diagnostics(d: d) {
-        Accepted { value: keys, diagnostics: None } =>
-          match sole_impossible_bug_coverage_key(keys: keys) {
-            Accepted { value: key, diagnostics: None } =>
-              CoverageSlicePresent { key: key }
-            Rejected { diagnostics: rd } =>
-              CoverageSliceInvalid { diagnostics: rd }
-          }
-        Rejected { diagnostics: rd } =>
-          CoverageSliceInvalid { diagnostics: rd }
+      if non_empty_diagnostics_targets_impossible_bug_slice(d: d) {
+        match impossible_bug_coverage_keys_from_diagnostics(d: d) {
+          Accepted { value: keys, diagnostics: None } =>
+            match sole_impossible_bug_coverage_key(keys: keys) {
+              Accepted { value: key, diagnostics: None } =>
+                CoverageSlicePresent { key: key }
+              Rejected { diagnostics: rd } =>
+                CoverageSliceInvalid { diagnostics: rd }
+            }
+          Rejected { diagnostics: rd } =>
+            CoverageSliceInvalid { diagnostics: rd }
+        }
+      } else {
+        CoverageSliceNotApplicable
       }
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       CoverageSliceNotApplicable
