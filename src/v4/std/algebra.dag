@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -205,6 +205,34 @@ fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   })
   state.unique
 }
+// FreeMonoid concatenation: the canonical monoid operation on lists.
+// Implemented via fold_list_right so head order is preserved.
+fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
+  fold_list_right(xs: left, empty: right, snoc: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+
+// Append a single element at the tail (snoc).
+fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
+  list_append(left: xs, right: Cons { head: item, tail: Empty })
+}
+
+
+// Bag (multiset) equality: order-insensitive; equal lengths AND per-element
+// occurrence counts match. O(n^2) in the length of xs.
+fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  if length(xs: xs) != length(xs: ys) {
+    false
+  } else {
+    for_all(xs: xs, predicate: fn(item) {
+      count_equal(xs: xs, item: item, eq: eq) == count_equal(xs: ys, item: item, eq: eq)
+    })
+  }
+}
+
+
 type PointwisePower<T> {
   member: fn(T) -> Bool
 }

@@ -151,6 +151,7 @@ type CaptureSource
 
 
 // Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
+// Opaque OS resource — analogous to Filesystem; internal representation is platform-defined.
 type ProcessTable
 
 type ProcessResources {
@@ -161,7 +162,12 @@ type ProcessResources {
 // coincides: finite POSIX pipe byte sequence.
 type CapturedByteStream = FreeMonoid<Byte>
 
-type CapturedOutputPipes
+// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/pipe.html
+// stdout and stderr are separate capture axes — P2 single authority per stream.
+type CapturedOutputPipes {
+  stdout: CapturedByteStream
+  stderr: CapturedByteStream
+}
 
 type SpawnProcessRequest {
   resources: ProcessResources
@@ -188,8 +194,7 @@ type WaitedProcess {
 type WaitProcessResult = Outcome<WaitedProcess>
 
 type CapturedProcessOutput {
-  stdout: CapturedByteStream
-  stderr: CapturedByteStream
+  output: CapturedOutputPipes
   resources: ProcessResources
   process: TerminatedProcess
 }
