@@ -1,9 +1,9 @@
 // src/v4/std/constraint_satisfaction_predicate.dag
-// Scope: mechanical constraint-satisfaction preservation check (leaf — no find_witness import).
-// Anchor: design-v4-compiler-homomorphism.md M10; consumed by std/constraints + std/find_witness.
+// Scope: mechanical constraint-satisfaction preservation check.
 // Owns: constraint_satisfaction_preservation_holds.
-// Consumes: std node.
-// Status: T-25-tail predicate prover — algebra-bound candidate must coincide with source facts.
+// Consumes: std/node.dag.
+// Status: T-25-tail predicate prover.
+// Anchor: docs/design-v4-compiler-homomorphism.md
 
 
 module v4.std.constraint_satisfaction_predicate

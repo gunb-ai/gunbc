@@ -9,7 +9,7 @@ module v4.std.artifact
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
 
-// 🟢 coproduct dissolution — Wave-2-A artifact categories; bootstrap arms are 🟡 feature:bootstrap-substrate-landed.
+// 🟢 coproduct dissolution
 type ArtifactKind
   = SourceFile
   | GeneratedSource
