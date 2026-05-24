@@ -52,13 +52,13 @@ type Grammar
 
 type ParseTree = Node
 
-// 🟡 coproduct dissolution — CP-1b/T-7 parse-walk result carrier; walker realization remains gated.
+// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; bound task: src/v4/TASKS.md#t-7-compiler02_parsedag; follow-up: dissolve when parse_expr recursive walk lands with termination/ambiguity certificate (see parse_expr gate at line 298).
 type ParseExprResult
   = ParseExprAccepted { remaining: List<Token> }
   | ParseExprRejected
 
 
-// 🟡 coproduct dissolution — CP-1b/T-7 production lookup carrier over GrammarRoot.productions.
+// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; bound task: src/v4/TASKS.md#t-7-compiler02_parsedag; follow-up: dissolve when production lookup is indexed at parse-walk realization instead of linear fold over GrammarRoot.productions.
 type GrammarProductionLookup
   = GrammarProductionFound { production: GrammarProduction }
   | GrammarProductionMissing

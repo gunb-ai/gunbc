@@ -319,11 +319,32 @@ fn dag_grammar_qualified_name_expr() -> GrammarExpr {
 }
 
 
+fn dag_grammar_typed_param_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: dag_token_ident),
+    right: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: dag_token_colon),
+      right: dag_grammar_nonterminal(production: dag_production_type_expr)
+    )
+  )
+}
+
+
 fn dag_grammar_param_list_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: dag_token_lparen),
     right: dag_grammar_sequence(
-      left: dag_grammar_repeat(element: dag_grammar_terminal(token_class: dag_token_ident)),
+      left: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_typed_param_expr(),
+          right: dag_grammar_repeat(
+            element: dag_grammar_sequence(
+              left: dag_grammar_terminal(token_class: dag_token_comma),
+              right: dag_grammar_typed_param_expr()
+            )
+          )
+        )
+      ),
       right: dag_grammar_terminal(token_class: dag_token_rparen)
     )
   )
@@ -332,16 +353,23 @@ fn dag_grammar_param_list_expr() -> GrammarExpr {
 
 fn dag_grammar_type_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: dag_token_ident),
-    right: dag_grammar_repeat(
-      element: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: dag_token_dot),
-        right: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: dag_token_lt),
-          right: dag_grammar_choice(
-            left: dag_grammar_terminal(token_class: dag_token_gt),
-            right: dag_grammar_terminal(token_class: dag_token_comma)
-          )
+    left: dag_grammar_nonterminal(production: dag_production_qualified_name),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_lt),
+        right: dag_grammar_sequence(
+          left: dag_grammar_optional(
+            element: dag_grammar_sequence(
+              left: dag_grammar_nonterminal(production: dag_production_type_expr),
+              right: dag_grammar_repeat(
+                element: dag_grammar_sequence(
+                  left: dag_grammar_terminal(token_class: dag_token_comma),
+                  right: dag_grammar_nonterminal(production: dag_production_type_expr)
+                )
+              )
+            )
+          ),
+          right: dag_grammar_terminal(token_class: dag_token_gt)
         )
       )
     )
