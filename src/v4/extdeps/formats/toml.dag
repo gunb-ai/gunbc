@@ -65,7 +65,7 @@ type TomlIntegerLexeme = TomlIntegerLexemeProfile
 type TomlFloatLexeme = TomlFloatLexemeProfile
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟡 coproduct dissolution — feature:v4-temporal-substrate — SL-3229-T4-FORMAT-TOML-DATETIME.
 type TomlDatetimeLexeme
   = TomlOffsetDateTimeLexeme { lexeme: String }
   | TomlLocalDateTimeLexeme { lexeme: String }
@@ -115,7 +115,6 @@ type TomlInlineTableSyntaxProfile {
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlTable {
   syntax: TomlTableHeaderSyntaxProfile,
   entries: Map<String, TomlValue>,
