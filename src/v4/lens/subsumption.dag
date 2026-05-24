@@ -12,12 +12,13 @@ import v4.std.node { Symbol }
 
 
 data affected_set_irt1_frontier_root_fix: Symbol = affected_set_irt1_frontier_root_fix
-data affected_set_hash_receipt_leaf_fix: Symbol = affected_set_hash_receipt_leaf_fix
 data affected_set_boundary_receipt_leaf_fix: Symbol = affected_set_boundary_receipt_leaf_fix
 data affected_set_dimension_receipt_leaf_fix: Symbol = affected_set_dimension_receipt_leaf_fix
 data affected_set_propagation_receipt_leaf_fix: Symbol = affected_set_propagation_receipt_leaf_fix
-data affected_set_frontier_receipt_leaf_fix: Symbol = affected_set_frontier_receipt_leaf_fix
-data affected_set_irt1_mechanical_reverification_claim: Symbol = affected_set_irt1_mechanical_reverification_claim
+data affected_set_pending_escalation_leaf_fix: Symbol = affected_set_pending_escalation_leaf_fix
+data affected_set_fail_closed_absorption_leaf_fix: Symbol = affected_set_fail_closed_absorption_leaf_fix
+data affected_set_empty_diff_leaf_fix: Symbol = affected_set_empty_diff_leaf_fix
+data affected_set_irt1_leaf_claim_suite: Symbol = affected_set_irt1_leaf_claim_suite
 data rust_language_model_emit_root_fix: Symbol = rust_language_model_emit_root_fix
 data emit_rust_template_leaf_fix: Symbol = emit_rust_template_leaf_fix
 data emit_rust_name_dispatch_leaf_fix: Symbol = emit_rust_name_dispatch_leaf_fix
@@ -55,11 +56,12 @@ type DissolutionSubsumption {
 fn affected_set_irt1_subsumed_fixes_value() -> Set<DiffId> {
   Set {
     member: fn(d) {
-      d.id == affected_set_hash_receipt_leaf_fix ||
-        d.id == affected_set_boundary_receipt_leaf_fix ||
+      d.id == affected_set_boundary_receipt_leaf_fix ||
         d.id == affected_set_dimension_receipt_leaf_fix ||
         d.id == affected_set_propagation_receipt_leaf_fix ||
-        d.id == affected_set_frontier_receipt_leaf_fix
+        d.id == affected_set_pending_escalation_leaf_fix ||
+        d.id == affected_set_fail_closed_absorption_leaf_fix ||
+        d.id == affected_set_empty_diff_leaf_fix
     }
   }
 }
@@ -72,7 +74,7 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: affected_set_irt1_frontier_root_fix },
   subsumed_fixes: affected_set_irt1_subsumed_fixes,
   verification: MechanicalReverification {
-    test_claim: TestClaimId { id: affected_set_irt1_mechanical_reverification_claim }
+    test_claim: TestClaimId { id: affected_set_irt1_leaf_claim_suite }
   }
 }
 
