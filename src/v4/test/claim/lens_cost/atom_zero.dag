@@ -13,10 +13,10 @@ import v4.std.verification {
   EqualsClaim,
   TestClaim,
   TestClassification,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   Tier1,
   Unit,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 import v4.std.witness { Holds }
 
@@ -47,7 +47,7 @@ fn atom_zero_claim_rhs() -> Node {
 
 data claim_atom_zero: TestClaim = EqualsClaim {
   label: "lens_cost/atom_zero: bare atom has zero symbolic cost",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: atom_zero_input,
   rhs: atom_zero_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

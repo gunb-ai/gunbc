@@ -1,6 +1,6 @@
 // src/v4/std/nat.dag
 // Scope: Natural numbers (Part 6 nat rows; external Natural_number anchor out of Lane-B header).
-// Owns: Nat nat_cata nat_add nat_mul nat_compare is_zero nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat
+// Owns: Nat nat_cata nat_add nat_mul nat_compare is_zero nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat NatAlgebraLawObligation nat_declared_algebra_law_obligations law_nat_add_left_identity law_nat_add_right_identity law_nat_add_associativity law_nat_mul_left_identity law_nat_mul_annihilator law_nat_mul_associativity
 // Consumes: v4.std.algebra v4.std.node
 // Status: T-3 modeled.
 
@@ -18,6 +18,7 @@ import v4.std.algebra {
   Greater,
 }
 import v4.std.node { Symbol }
+import v4.std.collection { List }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Nat
   = Zero
@@ -79,3 +80,64 @@ data nat_algebra_law_subject_symbol_commutative_semiring: Symbol = nat_algebra_l
 
 
 data nat_algebra_law_subject_symbol_inhabitant_nat: Symbol = nat_algebra_law_subject_symbol_inhabitant_nat
+
+
+data law_nat_add_left_identity: Symbol = law_nat_add_left_identity
+
+
+data law_nat_add_right_identity: Symbol = law_nat_add_right_identity
+
+
+data law_nat_add_associativity: Symbol = law_nat_add_associativity
+
+
+data law_nat_mul_left_identity: Symbol = law_nat_mul_left_identity
+
+
+data law_nat_mul_annihilator: Symbol = law_nat_mul_annihilator
+
+
+data law_nat_mul_associativity: Symbol = law_nat_mul_associativity
+
+
+type NatAlgebraLawObligation {
+  algebra: Symbol
+  inhabitant: Symbol
+  law: Symbol
+}
+
+
+fn nat_declared_algebra_law_obligations() -> List<NatAlgebraLawObligation> {
+  [
+    NatAlgebraLawObligation {
+      algebra: nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_add_left_identity,
+    },
+    NatAlgebraLawObligation {
+      algebra: nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_add_right_identity,
+    },
+    NatAlgebraLawObligation {
+      algebra: nat_algebra_law_subject_symbol_additive_monoid,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_add_associativity,
+    },
+    NatAlgebraLawObligation {
+      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_mul_left_identity,
+    },
+    NatAlgebraLawObligation {
+      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_mul_annihilator,
+    },
+    NatAlgebraLawObligation {
+      algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+      inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+      law: law_nat_mul_associativity,
+    },
+  ]
+}

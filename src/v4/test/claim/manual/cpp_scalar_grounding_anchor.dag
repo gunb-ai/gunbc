@@ -8,11 +8,11 @@ module v4.test.claim.manual.cpp_scalar_grounding_anchor
 
 import v4.extdeps.cpp_abi {
   CppAbiModelItaniumCxxAbi186,
+  CppDataModelFamilyILP32,
   CppILP32IntegerWidths,
   CppPlainCharSignedness,
   CppTargetDataModel,
   CppTargetProfile,
-  CppDataModelFamilyILP32,
   CppWcharTSignedness
 }
 import v4.extdeps.languages.cpp {
