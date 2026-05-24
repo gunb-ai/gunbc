@@ -194,8 +194,7 @@ type WaitedProcess {
 type WaitProcessResult = Outcome<WaitedProcess>
 
 type CapturedProcessOutput {
-  stdout: CapturedByteStream
-  stderr: CapturedByteStream
+  output: CapturedOutputPipes
   resources: ProcessResources
   process: TerminatedProcess
 }
