@@ -56,7 +56,7 @@ data v4_evaluator_anchor_values: ValueRepresentationModel = v4_evaluator_anchor_
 
 data v4_evaluator_anchor_values_standalone: ValueRepresentationModel = v4_evaluator_value_representation_wave1()
 
-data v4_evaluator_anchor_interpretation: InterpretationAlgebra = v4_evaluator_anchor_runtime.interpretation
+data v4_evaluator_anchor_interpretation: InterpretationAlgebra = v4_evaluator_interpretation_wave1()
 
 data v4_evaluator_anchor_interpretation_standalone: InterpretationAlgebra = v4_evaluator_interpretation_wave1()
 
