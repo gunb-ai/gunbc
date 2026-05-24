@@ -37,14 +37,12 @@ type ModuleEntry {
 }
 
 
-// The full module graph for a compilation unit — a flat registry of all known modules.
 // 🟡 feature:T-28-carrier-level-uniqueness — FreeMonoid<ModuleEntry> admits duplicate paths at carrier level; module_graph_from_entries is the canonical construction path that enforces path uniqueness — dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_entries as the sole construction path.
 type ModuleGraph {
   entries: FreeMonoid<ModuleEntry>
 }
 
 
-// Typed receipt of an ancestor-relation proof: `ancestor.segments` is a prefix of `descendant.segments`.
 // 🟡 feature:opaque-proof-constructor — AncestorRelation is a plain record; non-prefix pairs are constructible outside module_ancestor_witness; dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_ancestor_witness as the sole construction path.
 type AncestorRelation {
   ancestor: ModulePath
@@ -84,7 +82,6 @@ fn module_graph_duplicate_path_diagnostic() -> Diagnostic {
 }
 
 
-// Fold state for uniqueness-enforced entry lookup. Arms are fixed (not-found / found-once / duplicate).
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ModuleEntryFindState
   = EntryNotFound
@@ -129,7 +126,6 @@ fn module_segments_is_prefix_of(
 }
 
 
-// True if `ancestor.segments` is a prefix of (or equal to) `descendant.segments`.
 fn module_is_prefix_of(ancestor: ModulePath, descendant: ModulePath) -> Bool {
   module_segments_is_prefix_of(
     prefix: ancestor.segments,
@@ -138,9 +134,6 @@ fn module_is_prefix_of(ancestor: ModulePath, descendant: ModulePath) -> Bool {
 }
 
 
-// Witnesses that `ancestor` is a module-path prefix of (or equal to) `descendant`.
-// Primary predicate for pub(in path) visibility and cross-file binding checks in
-// compiler/03_resolve.dag.
 fn module_ancestor_witness(
   ancestor: ModulePath,
   descendant: ModulePath
@@ -184,7 +177,6 @@ fn module_graph_entry_for_path_fold(
 }
 
 
-// Look up a module entry by exact path match. Fails with a duplicate-path diagnostic if path is not unique in the graph.
 fn module_graph_entry_for_path(
   graph: ModuleGraph,
   path: ModulePath
@@ -199,7 +191,6 @@ fn module_graph_entry_for_path(
 }
 
 
-// Fold state for uniqueness-enforced graph construction. Arms are fixed (valid / duplicate).
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ModuleGraphBuildState
   = BuildValid { seen: FreeMonoid<ModuleEntry> }
@@ -235,8 +226,6 @@ fn module_graph_build_fold(
 }
 
 
-// Canonical validated constructor for ModuleGraph — enforces path uniqueness at construction time.
-// Returns Violates if any two entries share the same ModulePath.
 fn module_graph_from_entries(
   entries: FreeMonoid<ModuleEntry>
 ) -> Witness<ModuleGraph> {
