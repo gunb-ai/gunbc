@@ -1146,20 +1146,84 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
 }
 
 
-fn testgen_manual_anchor_from_nat_obligation(o: NatAlgebraLawObligation) -> ManualAnchorKey {
+fn testgen_manual_anchor_from_nat_obligation(
+  o: NatAlgebraLawObligation
+) -> Outcome<ManualAnchorKey> {
   if o.law == law_nat_add_left_identity {
-    ManualNatAddLeftIdentity
+    Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
   } else if o.law == law_nat_add_right_identity {
-    ManualNatAddRightIdentity
+    Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
   } else if o.law == law_nat_add_associativity {
-    ManualNatAddAssociativity
+    Accepted { value: ManualNatAddAssociativity, diagnostics: None }
   } else if o.law == law_nat_mul_left_identity {
-    ManualNatMulLeftIdentity
+    Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
   } else if o.law == law_nat_mul_annihilator {
-    ManualNatMulAnnihilator
+    Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
+  } else if o.law == law_nat_mul_associativity {
+    Accepted { value: ManualNatMulAssociativity, diagnostics: None }
   } else {
-    ManualNatMulAssociativity
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: testgen_non_algebra_law_scheduled_slot_diagnostic()
+      )
+    }
   }
+}
+
+
+fn testgen_algebra_law_generator_from_nat_obligation(
+  obligation: NatAlgebraLawObligation
+) -> Outcome<Generator<TestgenConcept>> {
+  bind_outcome(
+    o: testgen_manual_anchor_from_nat_obligation(o: obligation),
+    f: fn(anchor) {
+      Accepted {
+        value: Generator {
+          classification: TestClassification { tier: Tier1, layer: Unit },
+          anchor: manual_claim_anchor(anchor: anchor),
+          slot: AlgebraLaw {
+            subject: algebra_law_subject_from_nat_obligation(o: obligation),
+          },
+        },
+        diagnostics: None,
+      }
+    }
+  )
+}
+
+
+fn append_algebra_law_generator_from_nat_obligation(
+  acc: Outcome<List<Generator<TestgenConcept>>>,
+  obligation: NatAlgebraLawObligation
+) -> Outcome<List<Generator<TestgenConcept>>> {
+  bind_outcome(
+    o: acc,
+    f: fn(acc) {
+      bind_outcome(
+        o: testgen_algebra_law_generator_from_nat_obligation(obligation: obligation),
+        f: fn(generator) {
+          Accepted {
+            value: list_snoc_item(xs: acc, item: generator),
+            diagnostics: None,
+          }
+        }
+      )
+    }
+  )
+}
+
+
+fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
+  fold_list_right(
+    xs: nat_declared_algebra_law_obligations(),
+    empty: outcome_accepted(value: Empty),
+    snoc: fn(o, obligation) {
+      append_algebra_law_generator_from_nat_obligation(
+        acc: o,
+        obligation: obligation
+      )
+    }
+  )
 }
 
 
@@ -1215,46 +1279,6 @@ fn testgen_algebra_law_concept_for_manual_nat_anchor(
         },
         diagnostics: None,
       }
-    }
-  )
-}
-
-
-fn testgen_algebra_law_generator_from_nat_obligation(
-  obligation: NatAlgebraLawObligation
-) -> Generator<TestgenConcept> {
-  Generator {
-    classification: TestClassification { tier: Tier1, layer: Unit },
-    anchor: manual_claim_anchor(
-      anchor: testgen_manual_anchor_from_nat_obligation(o: obligation)
-    ),
-    slot: AlgebraLaw {
-      subject: algebra_law_subject_from_nat_obligation(o: obligation),
-    },
-  }
-}
-
-
-fn append_algebra_law_generator_from_nat_obligation(
-  acc: List<Generator<TestgenConcept>>,
-  obligation: NatAlgebraLawObligation
-) -> List<Generator<TestgenConcept>> {
-  list_snoc_item(
-    xs: acc,
-    item: testgen_algebra_law_generator_from_nat_obligation(obligation: obligation)
-  )
-}
-
-
-fn testgen_scheduled_algebra_law_generators() -> List<Generator<TestgenConcept>> {
-  fold_list_right(
-    xs: nat_declared_algebra_law_obligations(),
-    empty: Empty,
-    snoc: fn(acc, obligation) {
-      append_algebra_law_generator_from_nat_obligation(
-        acc: acc,
-        obligation: obligation
-      )
     }
   )
 }
@@ -1344,8 +1368,11 @@ fn testgen_algebra_law_subjects_from_scheduled_generators(
 
 
 fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> {
-  testgen_algebra_law_subjects_from_scheduled_generators(
-    generators: testgen_scheduled_algebra_law_generators()
+  bind_outcome(
+    o: testgen_scheduled_algebra_law_generators(),
+    f: fn(generators) {
+      testgen_algebra_law_subjects_from_scheduled_generators(generators: generators)
+    }
   )
 }
 
