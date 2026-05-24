@@ -63,7 +63,7 @@ data while_external_condition_diagnostic: Diagnostic = Diagnostic {
 
 data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   input: while_external_condition_input,
-  expected_cost: UnknownCost { reason: "loop-bound-undeclared: Loop behavior carries no iteration bound in std/node.dag; structurally unknowable until bound is declared" },
+  expected_cost: UnknownCost { reason: "loop-bound-undeclared: Loop node missing Named edge cardinality_loop_bound_edge" },
   expected_complexity: unknown_complexity_with_diagnostic(
     diagnostic: while_external_condition_diagnostic
   ),

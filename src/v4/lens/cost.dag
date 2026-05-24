@@ -43,7 +43,7 @@ import v4.std.algebra {
   Monoid,
   Semigroup
 }
-import v4.std.cardinality { NonZeroNat }
+import v4.std.cardinality { loop_bound_measure, loop_bound_witness_for_node, NonZeroNat }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
@@ -201,12 +201,23 @@ fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
   }
 }
 
-fn base_cost_for_behavior(b: Behavior) -> SymbolicCost {
+fn base_cost_for_loop(n: Node) -> SymbolicCost {
+  match loop_bound_witness_for_node(n: n) {
+    Holds { value: bound } =>
+      linear_in_node(n: loop_bound_measure(bound: bound))
+    Violates { diagnostic: _ } =>
+      unknown_cost(
+        reason: "loop-bound-undeclared: Loop node missing Named edge cardinality_loop_bound_edge"
+      )
+  }
+}
+
+fn base_cost_for_behavior(b: Behavior, n: Node) -> SymbolicCost {
   match b {
     Value => zero_cost()
     Transform => unit_cost()
     Branch => unit_cost()
-    Loop => unknown_cost(reason: "loop-bound-undeclared: Loop behavior carries no iteration bound in std/node.dag; structurally unknowable until bound is declared")
+    Loop => base_cost_for_loop(n: n)
     Bind => zero_cost()
   }
 }
@@ -242,7 +253,7 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
     ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_behavior(b: b),
-        cost: base_cost_for_behavior(b: b)
+        cost: base_cost_for_behavior(b: b, n: n)
       }
   }
 }
