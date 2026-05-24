@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Owns: TomlValue, TomlTable, TomlDocument, TomlParseAxis, TomlEmitAxis,
+// Owns: TomlValue, TomlTable, TomlRootTable, TomlDocument, TomlParseAxis, TomlEmitAxis,
 //       TomlIntegerLexeme, TomlFloatLexeme, TomlDatetimeLexeme,
 //       TomlUniqueNameProfile, TomlTableSyntaxProfile.
 // Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
@@ -15,13 +15,6 @@ type TomlSign
   = TomlSignAbsent
   | TomlSignPlus
   | TomlSignMinus
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type TomlFloatSpecial
-  = TomlFloatFinite
-  | TomlFloatInf
-  | TomlFloatNan
 
 
 type TomlUnderscoreSeparatedDigitsProfile {}
@@ -47,11 +40,18 @@ type TomlIntegerLexemeProfile
     }
 
 
-type TomlFloatLexemeProfile {
-  sign: TomlSign,
-  special: TomlFloatSpecial,
-  underscores: TomlUnderscoreSeparatedDigitsProfile,
-}
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type TomlFloatLexemeProfile
+  = TomlFiniteFloatLexemeProfile {
+      sign: TomlSign,
+      underscores: TomlUnderscoreSeparatedDigitsProfile,
+    }
+  | TomlInfFloatLexemeProfile {
+      sign: TomlSign,
+    }
+  | TomlNanFloatLexemeProfile {
+      sign: TomlSign,
+    }
 
 
 type TomlIntegerLexeme {
@@ -115,6 +115,11 @@ type TomlTable {
 }
 
 
+type TomlRootTable {
+  entries: Map<String, TomlValue>,
+}
+
+
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlValue
   = TomlString { value: String }
@@ -128,7 +133,7 @@ type TomlValue
 
 
 type TomlDocument {
-  root: TomlTable,
+  root: TomlRootTable,
   unique_names: TomlUniqueNameProfile,
 }
 
