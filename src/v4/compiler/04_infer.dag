@@ -2,7 +2,7 @@
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: T-9 modeled — coercion substrate in std/coercion.dag; RULING-1 dissolved on AlgebraRef/InferredFacts/InferredTree; content_hash B1-CANON landed in std/node.dag.
+// Status: T-9 modeled — coercion substrate in std/coercion.dag; RULING-1 dissolved on AlgebraRef/InferredFacts/InferredTree; content_hash B1-CANON surface scaffolded in std/node.dag (🟡 feature:b1-canon-hash-combine acc-only bridge; full Merkle fold pending hash-combine primitive).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
