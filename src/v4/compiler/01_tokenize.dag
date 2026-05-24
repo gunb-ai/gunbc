@@ -15,29 +15,34 @@ import v4.std.node { Symbol }
 import v4.std.algebra { is_empty }
 import v4.std.text { Char, String }
 
-// 🟡 coproduct dissolution — CP-1b item 13a (LexCharClass).
 type LexCharClass
   = WhitespaceChar
   | DigitChar
+  | HexDigitChar
   | IdentStartChar
   | IdentContinueChar
+  | StringTextChar
+  | LineCommentTextChar
+  | BlockCommentTextChar
 
 
-// 🟡 coproduct dissolution — CP-1b item 13b (LexPattern).
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
+  | KeywordPattern { text: String }
   | CharPattern { char: Char }
   | CharClassPattern { class: LexCharClass }
   | SequencePattern { left: LexPattern, right: LexPattern }
   | ChoicePattern { left: LexPattern, right: LexPattern }
   | OptionalPattern { element: LexPattern }
   | RepeatPattern { element: LexPattern }
+  | OneOrMorePattern { element: LexPattern }
+  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13c (LexRule).
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule { pattern: LexPattern }
 
 
 type LexRuleSet {
@@ -45,7 +50,6 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13d (LexRules).
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }

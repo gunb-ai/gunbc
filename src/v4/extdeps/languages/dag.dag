@@ -3,7 +3,7 @@
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
 // Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_wave1_*; dag_language_model_wave1_void; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set.
 // Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag.
-// Status: scaffold — TASKS T-4/T-6/T-7.
+// Status: T-6 modeled lex rules; T-7 grammar remains scaffolded.
 // Anchor: docs/v3-spec.md
 
 module v4.extdeps.languages.dag
@@ -11,8 +11,32 @@ module v4.extdeps.languages.dag
 
 import v4.std.collection { Set }
 import v4.compiler.parse { Grammar, ModeledGrammar, VoidGrammar }
-import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
+import v4.compiler.tokenize {
+  BlockCommentTextChar,
+  CharClassPattern,
+  DelimitedPattern,
+  DigitChar,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LineCommentTextChar,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  StringTextChar,
+  TokenRule,
+  TriviaRule,
+  VoidLexRules,
+  WhitespaceChar
+}
 import v4.std.node { Symbol }
+import v4.std.logic { Bool }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service

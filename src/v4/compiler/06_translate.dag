@@ -63,6 +63,7 @@ import v4.compiler.tokenize {
   LexRules,
   LexRule,
   LexPattern,
+  KeywordPattern,
   LiteralPattern,
   ModeledLexRules,
   TokenRule,
@@ -368,6 +369,8 @@ fn lex_rule_literal_step(
           if c == token_class {
             match pattern {
               LiteralPattern { text: text } =>
+                Accepted { value: text, diagnostics: None }
+              KeywordPattern { text: text } =>
                 Accepted { value: text, diagnostics: None }
               _ =>
                 Rejected {
