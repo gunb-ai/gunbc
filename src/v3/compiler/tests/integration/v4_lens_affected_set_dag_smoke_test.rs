@@ -21,6 +21,11 @@ const IRT1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/lens_affected_set/irt1_mechanical_reverification.dag");
 const IRT1_CLAIM_PATH: &str =
     "src/v4/test/claim/lens_affected_set/irt1_mechanical_reverification.dag";
+const FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG: &str = include_str!(
+    "../../../../v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag"
+);
+const FAIL_CLOSED_PENDING_ESCALATION_CLAIM_PATH: &str =
+    "src/v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -57,6 +62,10 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
 fn v4_lens_affected_set_dag_tokenizes_and_parses() {
     let _ = parse_module(AFFECTED_SET_DAG, AFFECTED_SET_PATH);
     let _ = parse_module(IRT1_CLAIM_DAG, IRT1_CLAIM_PATH);
+    let _ = parse_module(
+        FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG,
+        FAIL_CLOSED_PENDING_ESCALATION_CLAIM_PATH,
+    );
 }
 
 #[test]
@@ -110,5 +119,29 @@ fn v4_lens_affected_set_irt1_claim_wiring() {
             && IRT1_CLAIM_DAG.contains("re_exec_frontier_from_diff")
             && !IRT1_CLAIM_DAG.contains("affected_fold_accepts_more_edits"),
         "{IRT1_CLAIM_PATH}: IRT-1 claim exercises canonical fold entrypoints only"
+    );
+}
+
+#[test]
+fn v4_lens_affected_set_fail_closed_pending_escalation_claim_wiring() {
+    let module = parse_module(
+        FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG,
+        FAIL_CLOSED_PENDING_ESCALATION_CLAIM_PATH,
+    );
+    assert_eq!(
+        module_path(&module),
+        vec![
+            "v4",
+            "test",
+            "claim",
+            "lens_affected_set",
+            "fail_closed_pending_escalation"
+        ],
+        "{FAIL_CLOSED_PENDING_ESCALATION_CLAIM_PATH}: module path"
+    );
+    assert!(
+        FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG.contains("claim_fail_closed_pending_escalation")
+            && FAIL_CLOSED_PENDING_ESCALATION_CLAIM_DAG.contains("frontier_from_fold_acc"),
+        "{FAIL_CLOSED_PENDING_ESCALATION_CLAIM_PATH}: pending-escalation scaffold claim wiring"
     );
 }
