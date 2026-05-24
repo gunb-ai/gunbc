@@ -654,6 +654,11 @@ fn expected_algebra_law_testgen_keys() -> List<TestgenCoverageKey> {
 }
 
 
+fn testgen_coverage_key_from_generator(generator: Generator<TestgenConcept>) -> TestgenCoverageKey {
+  generator.slot
+}
+
+
 fn testgen_coverage_keys_from_scheduled_generators(
   generators: List<Generator<TestgenConcept>>
 ) -> List<TestgenCoverageKey> {
@@ -661,7 +666,11 @@ fn testgen_coverage_keys_from_scheduled_generators(
     xs: generators,
     empty: Empty,
     snoc: fn(acc, generator) {
-      dedupe_snoc(acc: acc, item: generator.slot, eq: testgen_coverage_key_eq)
+      dedupe_snoc(
+        acc: acc,
+        item: testgen_coverage_key_from_generator(generator: generator),
+        eq: testgen_coverage_key_eq
+      )
     }
   )
 }
