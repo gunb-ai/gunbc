@@ -27,8 +27,13 @@ type JsonValue
 
 type JsonNumberLeadingMinusOptionalPrefixWitness {}
 
-type JsonNumberIntegerZeroOrNonZeroLeadingDigitWitness {}
-type JsonNumberIntegerDigitRunWitness {}
+type JsonNumberIntegerZeroWitness {}
+
+type JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness {}
+
+type JsonNumberIntegerLexemeWitness
+  = JsonNumberIntegerZeroWitness
+  | JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness {}
 
 // frac = decimal-point 1*DIGIT — the decimal point must be followed by ≥1 digit;
 // bare trailing dot (e.g. "1.") is not a valid JSON number.
@@ -43,8 +48,7 @@ type JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness {}
 
 type JsonNumberLexemeFacts {
   leading_minus_optional_prefix: JsonNumberLeadingMinusOptionalPrefixWitness,
-  integer_zero_or_nonzero_leading_digit: JsonNumberIntegerZeroOrNonZeroLeadingDigitWitness,
-  integer_digit_run: JsonNumberIntegerDigitRunWitness,
+  integer_lexeme: JsonNumberIntegerLexemeWitness,
   frac_decimal_point_separator: JsonNumberFracDecimalPointSeparatorWitness,
   frac_requires_at_least_one_digit_after_point: JsonNumberFracRequiresAtLeastOneDigitAfterPointWitness,
   exp_e_or_capital_e_marker: JsonNumberExpEOrCapitalEMarkerWitness,
