@@ -406,11 +406,10 @@ pub fn is_hash_digest(s: &str) -> bool {
     s.len() == HASH_DIGEST_LEN && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-fn expect_hash_digest(s: &str, arg: &str) -> &str {
+fn expect_hash_digest(s: &str, arg: &str) {
     if !is_hash_digest(s) {
         panic!("{arg} must be a 16-char hex Hash digest");
     }
-    s
 }
 
 pub fn atom_identity_hash(s: String) -> Hash {
@@ -418,9 +417,9 @@ pub fn atom_identity_hash(s: String) -> Hash {
 }
 
 pub fn hash_combine(a: Hash, b: Hash) -> Hash {
-    let a = expect_hash_digest(&a, "a");
-    let b = expect_hash_digest(&b, "b");
-    let mut bytes = a.as_bytes().to_vec();
+    expect_hash_digest(&a, "a");
+    expect_hash_digest(&b, "b");
+    let mut bytes = a.into_bytes();
     bytes.push(0);
     bytes.extend_from_slice(b.as_bytes());
     format!("{:016x}", fnv1a64(&bytes))
