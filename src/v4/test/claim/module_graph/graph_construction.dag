@@ -83,12 +83,10 @@ fn graph_violates(w: Witness<ModuleGraph>) -> Bool {
 }
 
 
-data witness_graph_from_unique_holds: Bool =
-  graph_holds(w: module_graph_from_entries(entries: build_entries_unique()))
+data witness_graph_from_unique_holds: Bool = graph_holds(w: module_graph_from_entries(entries: build_entries_unique()))
 
 
-data witness_graph_from_duplicate_violates: Bool =
-  graph_violates(w: module_graph_from_entries(entries: build_entries_duplicate()))
+data witness_graph_from_duplicate_violates: Bool = graph_violates(w: module_graph_from_entries(entries: build_entries_duplicate()))
 
 
 data claim_graph_from_unique_holds: TestClaim = CompilesClaim {

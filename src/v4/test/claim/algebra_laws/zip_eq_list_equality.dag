@@ -46,33 +46,28 @@ fn zip_eq_claim_input(ok: Bool) -> Node {
 }
 
 
-data witness_zip_eq_empty_empty: Bool =
-  zip_eq(a: sym_list_empty(), b: sym_list_empty(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) })
+data witness_zip_eq_empty_empty: Bool = zip_eq(a: sym_list_empty(), b: sym_list_empty(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) })
 
 
-data witness_zip_eq_same_single: Bool =
-  zip_eq(a: sym_list_a(), b: sym_list_a(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) })
+data witness_zip_eq_same_single: Bool = zip_eq(a: sym_list_a(), b: sym_list_a(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) })
 
 
-data witness_zip_eq_different_single: Bool =
-  match zip_eq(a: sym_list_a(), b: sym_list_b(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
-    true => false
-    false => true
-  }
+data witness_zip_eq_different_single: Bool = match zip_eq(a: sym_list_a(), b: sym_list_b(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
+  true => false
+  false => true
+}
 
 
-data witness_zip_eq_left_longer: Bool =
-  match zip_eq(a: sym_list_ab(), b: sym_list_a(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
-    true => false
-    false => true
-  }
+data witness_zip_eq_left_longer: Bool = match zip_eq(a: sym_list_ab(), b: sym_list_a(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
+  true => false
+  false => true
+}
 
 
-data witness_zip_eq_right_longer: Bool =
-  match zip_eq(a: sym_list_a(), b: sym_list_ab(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
-    true => false
-    false => true
-  }
+data witness_zip_eq_right_longer: Bool = match zip_eq(a: sym_list_a(), b: sym_list_ab(), eq: fn(x, y) { zip_sym_eq(a: x, b: y) }) {
+  true => false
+  false => true
+}
 
 
 data claim_zip_eq_empty_empty_true: TestClaim = CompilesClaim {

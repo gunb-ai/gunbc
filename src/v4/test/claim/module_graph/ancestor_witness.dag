@@ -71,16 +71,13 @@ fn ancestor_violates(w: Witness<AncestorRelation>) -> Bool {
 }
 
 
-data witness_ancestor_prefix_holds: Bool =
-  ancestor_holds(w: module_ancestor_witness(ancestor: anc_path_x(), descendant: anc_path_xy()))
+data witness_ancestor_prefix_holds: Bool = ancestor_holds(w: module_ancestor_witness(ancestor: anc_path_x(), descendant: anc_path_xy()))
 
 
-data witness_ancestor_equal_holds: Bool =
-  ancestor_holds(w: module_ancestor_witness(ancestor: anc_path_x(), descendant: anc_path_x()))
+data witness_ancestor_equal_holds: Bool = ancestor_holds(w: module_ancestor_witness(ancestor: anc_path_x(), descendant: anc_path_x()))
 
 
-data witness_ancestor_non_prefix_violates: Bool =
-  ancestor_violates(w: module_ancestor_witness(ancestor: anc_path_y(), descendant: anc_path_xy()))
+data witness_ancestor_non_prefix_violates: Bool = ancestor_violates(w: module_ancestor_witness(ancestor: anc_path_y(), descendant: anc_path_xy()))
 
 
 data claim_ancestor_prefix_holds: TestClaim = CompilesClaim {

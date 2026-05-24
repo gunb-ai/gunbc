@@ -82,16 +82,13 @@ fn entry_violates(w: Witness<ModuleEntry>) -> Bool {
 }
 
 
-data witness_entry_lookup_unique_holds: Bool =
-  entry_holds(w: module_graph_entry_for_path(graph: graph_unique_x(), path: path_x()))
+data witness_entry_lookup_unique_holds: Bool = entry_holds(w: module_graph_entry_for_path(graph: graph_unique_x(), path: path_x()))
 
 
-data witness_entry_lookup_missing_violates: Bool =
-  entry_violates(w: module_graph_entry_for_path(graph: graph_unique_x(), path: path_y()))
+data witness_entry_lookup_missing_violates: Bool = entry_violates(w: module_graph_entry_for_path(graph: graph_unique_x(), path: path_y()))
 
 
-data witness_entry_lookup_duplicate_violates: Bool =
-  entry_violates(w: module_graph_entry_for_path(graph: graph_duplicate_x(), path: path_x()))
+data witness_entry_lookup_duplicate_violates: Bool = entry_violates(w: module_graph_entry_for_path(graph: graph_duplicate_x(), path: path_x()))
 
 
 data claim_entry_lookup_unique_holds: TestClaim = CompilesClaim {
