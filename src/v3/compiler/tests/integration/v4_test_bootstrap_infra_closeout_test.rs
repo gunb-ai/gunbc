@@ -253,11 +253,18 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
         "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
     );
     assert!(
-        RUNTIME_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
-            && RUNTIME_DAG.contains("runtime_value_resolved_type(value: value)")
+        RUNTIME_DAG.contains("type RuntimeValueNodeProjection")
+            && RUNTIME_DAG.contains("RuntimeValueNodeUnrepresentable")
+            && RUNTIME_DAG.contains("fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection")
             && EVAL_DAG.contains("fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node>")
-            && EVAL_DAG.contains("runtime_value_node(value: value)"),
-        "eval_node must project eval's Outcome<RuntimeValue> through the std/runtime RuntimeValue-to-Node projection"
+            && EVAL_DAG.contains("runtime_value_node_projection(value: value)")
+            && EVAL_DAG.contains("eval_rejected_runtime_value_node_unrepresentable"),
+        "eval_node must consume std/runtime RuntimeValue-to-Node projection and fail closed when no faithful Node projection exists"
+    );
+    assert!(
+        !RUNTIME_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
+            && !EVAL_DAG.contains("runtime_value_node(value: value)"),
+        "eval_node must not accept a hollow RuntimeValue-to-type alias as a realized Node"
     );
     assert!(
         !EVAL_DAG.contains("eval_node_unrealized")

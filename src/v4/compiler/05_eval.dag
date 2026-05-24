@@ -892,7 +892,17 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   bind_outcome(
     o: eval(tree: tree, interpretation: eval_runtime().interpretation, inputs: inputs),
     f: fn(value) {
-      Accepted { value: runtime_value_node(value: value), diagnostics: None }
+      match runtime_value_node_projection(value: value) {
+        RuntimeValueNodeProjected { node: n } =>
+          Accepted { value: n, diagnostics: None }
+        RuntimeValueNodeUnrepresentable =>
+          outcome_rejected(
+            d: eval_diagnostic(
+              reason: eval_rejected_runtime_value_node_unrepresentable,
+              node: inputs.root
+            )
+          )
+      }
     }
   )
 }
