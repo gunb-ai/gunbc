@@ -23,11 +23,6 @@
 module v4.test.claim.impossible_bug.unhandled_diagnostic_paths
 
 
-import v4.lens.coverage {
-  coverage_impossible_bug_reason_force_unwrap,
-  coverage_impossible_bug_reason_unhandled_division,
-  coverage_impossible_bug_reason_unhandled_index
-}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,

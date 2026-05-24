@@ -35,10 +35,6 @@
 module v4.test.claim.impossible_bug.idempotency_contract
 
 
-import v4.lens.coverage {
-  coverage_impossible_bug_reason_idempotency_repetition,
-  coverage_impossible_bug_reason_idempotency_violation
-}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -60,6 +56,8 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+  impossible_bug_reason_idempotency_repetition,
+  impossible_bug_reason_idempotency_violation,
   manual_claim_anchor
 }
 
@@ -112,7 +110,7 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = Diagnostic
   input: falsification_repeated_append_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_idempotency_repetition,
+        reason: impossible_bug_reason_idempotency_repetition,
         at: node_locus(node: falsification_repeated_append_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
@@ -127,7 +125,7 @@ data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticCl
   input: falsification_nonidempotent_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_idempotency_violation,
+        reason: impossible_bug_reason_idempotency_violation,
         at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }

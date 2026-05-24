@@ -21,10 +21,6 @@
 module v4.test.claim.impossible_bug.nested_optional_flatten
 
 
-import v4.lens.coverage {
-  coverage_impossible_bug_reason_double_unwrap,
-  coverage_impossible_bug_reason_nested_optional
-}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,

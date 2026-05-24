@@ -21,10 +21,6 @@
 module v4.test.claim.impossible_bug.transport_type_drift
 
 
-import v4.lens.coverage {
-  coverage_impossible_bug_reason_target_transport_drift,
-  coverage_impossible_bug_reason_transport_drift
-}
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -46,6 +42,8 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+  impossible_bug_reason_target_transport_drift,
+  impossible_bug_reason_transport_drift,
   manual_claim_anchor
 }
 
@@ -106,7 +104,7 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   input: falsification_target_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_target_transport_drift,
+        reason: impossible_bug_reason_target_transport_drift,
         at: node_locus(node: falsification_target_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }
@@ -121,7 +119,7 @@ data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   input: falsification_wire_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: coverage_impossible_bug_reason_transport_drift,
+        reason: impossible_bug_reason_transport_drift,
         at: node_locus(node: falsification_wire_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }

@@ -24,7 +24,6 @@
 module v4.test.claim.impossible_bug.unenumerated_effects
 
 
-import v4.lens.coverage { coverage_impossible_bug_reason_redundant_read }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
