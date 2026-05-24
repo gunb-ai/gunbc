@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvParseAxis, CsvEmitAxis, CsvNumericLexemeProfile, CsvUniqueNameProfile, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180RecordShapeProfile, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
+// Owns: CsvDialect, CsvHeaderPresence, CsvRow, CsvDocument, CsvAxisProfile, CsvNumericLexemeProfile, CsvUniqueNameProfile, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180RecordShapeProfile, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
@@ -38,18 +38,7 @@ type CsvRfc4180RecordShapeProfile {
 }
 
 
-type CsvParseAxis {
-  delimiter: CsvRfc4180DelimiterProfile,
-  quote: CsvRfc4180QuoteProfile,
-  line_terminator: CsvRfc4180LineTerminatorProfile,
-  field_text: CsvRfc4180FieldTextProfile,
-  record_shape: CsvRfc4180RecordShapeProfile,
-  header_row: CsvRfc4180HeaderRowOptional,
-  registered_mime: CsvRfc4180RegisteredTextCsvMime,
-}
-
-
-type CsvEmitAxis {
+type CsvAxisProfile {
   delimiter: CsvRfc4180DelimiterProfile,
   quote: CsvRfc4180QuoteProfile,
   line_terminator: CsvRfc4180LineTerminatorProfile,
@@ -73,8 +62,8 @@ type CsvUniqueNameProfile {
 
 
 type CsvDialect {
-  parse_axis: CsvParseAxis,
-  emit_axis: CsvEmitAxis,
+  parse_axis: CsvAxisProfile,
+  emit_axis: CsvAxisProfile,
 }
 
 // 🟡 coproduct dissolution — T-4.6-P4-CsvHeaderPresence.
