@@ -1,6 +1,6 @@
 // src/v4/std/module_graph.dag
 // Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
-// Owns: ModulePath, ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup.
+// Owns: ModulePath, ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup; validated graph constructor.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
@@ -41,6 +41,7 @@ type ModuleEntry {
 
 
 // The full module graph for a compilation unit — a flat registry of all known modules.
+// 🟡 feature:T-28-carrier-level-uniqueness — FreeMonoid<ModuleEntry> admits duplicate paths at carrier level; module_graph_from_entries is the canonical construction path that enforces path uniqueness — dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_entries as the sole construction path.
 type ModuleGraph {
   entries: FreeMonoid<ModuleEntry>
 }
@@ -198,4 +199,52 @@ fn module_graph_entry_for_path(
       acc: EntryNotFound
     )
   )
+}
+
+
+// Fold state for uniqueness-enforced graph construction. Arms are fixed (valid / duplicate).
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ModuleGraphBuildState
+  = BuildValid { seen: FreeMonoid<ModuleEntry> }
+  | BuildDuplicate
+
+
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — same v2 bootstrap limitation as module_graph_entry_for_path_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleEntry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+fn module_graph_build_fold(
+  entries: FreeMonoid<ModuleEntry>,
+  acc: ModuleGraphBuildState
+) -> ModuleGraphBuildState {
+  match entries {
+    Empty => acc
+    Cons { head: entry, tail: rest } =>
+      match acc {
+        BuildDuplicate =>
+          module_graph_build_fold(entries: rest, acc: BuildDuplicate)
+        BuildValid { seen: prior } =>
+          module_graph_build_fold(
+            entries: rest,
+            acc: match module_graph_entry_for_path_fold(
+              entries: prior,
+              path: entry.path,
+              acc: EntryNotFound
+            ) {
+              EntryNotFound => BuildValid { seen: Cons { head: entry, tail: prior } }
+              EntryFoundOnce { found: _ } => BuildDuplicate
+              EntryFoundDuplicate => BuildDuplicate
+            }
+          )
+      }
+  }
+}
+
+
+// Canonical validated constructor for ModuleGraph — enforces path uniqueness at construction time.
+// Returns Violates if any two entries share the same ModulePath.
+fn module_graph_from_entries(
+  entries: FreeMonoid<ModuleEntry>
+) -> Witness<ModuleGraph> {
+  match module_graph_build_fold(entries: entries, acc: BuildValid { seen: Empty }) {
+    BuildValid { seen: _ } => Holds { value: ModuleGraph { entries: entries } }
+    BuildDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
+  }
 }
