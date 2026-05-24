@@ -578,92 +578,6 @@ fn eval_bind_node(
 }
 
 
-fn eval_branch_runtime_node(
-  node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
-) -> Outcome<RuntimeValue> {
-  bind_outcome(
-    o: eval_branch_condition_edge(node: node),
-    f: fn(condition_edge) {
-      bind_outcome(
-        o: eval_runtime_node(
-          node: condition_edge.target,
-          tree: tree,
-          interpretation: interpretation,
-          environment: environment,
-          runtime: runtime
-        ),
-        f: fn(condition) {
-          bind_outcome(
-            o: interpretation.branch.choose_branch(node, condition, environment),
-            f: fn(chosen) {
-              eval_runtime_node(
-                node: chosen,
-                tree: tree,
-                interpretation: interpretation,
-                environment: environment,
-                runtime: runtime
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-
-fn eval_bind_runtime_node(
-  node: Node,
-  tree: InferredTree,
-  interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment,
-  runtime: V4EvaluatorRuntime
-) -> Outcome<RuntimeValue> {
-  bind_outcome(
-    o: eval_bind_key(node: node),
-    f: fn(key) {
-      bind_outcome(
-        o: eval_bind_value_edge(node: node),
-        f: fn(value_edge) {
-          bind_outcome(
-            o: eval_runtime_node(
-              node: value_edge.target,
-              tree: tree,
-              interpretation: interpretation,
-              environment: environment,
-              runtime: runtime
-            ),
-            f: fn(bound_value) {
-              bind_outcome(
-                o: interpretation.bind.bind_value(key, bound_value, environment),
-                f: fn(bound_environment) {
-                  bind_outcome(
-                    o: eval_bind_body(node: node),
-                f: fn(body) {
-                  eval_runtime_node(
-                        node: body,
-                        tree: tree,
-                        interpretation: interpretation,
-                        environment: bound_environment,
-                        runtime: runtime
-                      )
-                }
-              )
-            }
-          )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-
 fn eval_computation_node(
   behavior: Behavior,
   node: Node,
@@ -674,19 +588,63 @@ fn eval_computation_node(
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
+  let dispatch = interpretation_behavior_dispatch(
+    interpretation: interpretation,
+    behavior: behavior
+  )
   bind_outcome(
-    o: eval_behavior_dispatch(behavior: behavior).interpret(
-      node,
-      args,
-      facts,
-      tree,
-      interpretation_behavior_dispatch(
-        interpretation: interpretation,
-        behavior: behavior
-      ),
-      environment,
-      runtime
-    ),
+    o: match dispatch {
+      ValueRuntimeInterpreter { interpreter: _ } =>
+        eval_value_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+      TransformRuntimeInterpreter { interpreter: _ } =>
+        eval_transform_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+      BranchRuntimeInterpreter { interpreter: _ } =>
+        eval_branch_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+      LoopRuntimeInterpreter { interpreter: _ } =>
+        eval_loop_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+      BindRuntimeInterpreter { interpreter: _ } =>
+        eval_bind_node(
+          node: node,
+          args: args,
+          facts: facts,
+          tree: tree,
+          interpreter: dispatch,
+          environment: environment,
+          runtime: runtime
+        )
+    },
     f: fn(value) {
       eval_accept_runtime_value_with_facts(node: node, facts: facts, value: value)
     }
@@ -901,52 +859,32 @@ fn eval_runtime_node(
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
-  match node.kind {
-    ComputationNode { behavior: Branch } =>
-      eval_branch_runtime_node(
-        node: node,
-        tree: tree,
-        interpretation: interpretation,
-        environment: environment,
-        runtime: runtime
-      )
-    ComputationNode { behavior: Bind } =>
-      eval_bind_runtime_node(
-        node: node,
-        tree: tree,
-        interpretation: interpretation,
-        environment: environment,
-        runtime: runtime
-      )
-    _ => {
-      let folded = fold_node(
-        n: node,
-        algebra: NodeFold {
-          init: fn(n0) {
-            eval_fold_init(
-              node: n0,
-              tree: tree,
-              interpretation: interpretation,
-              environment: environment,
-              runtime: runtime
-            )
-          },
-          step: fn(acc, e, child) {
-            eval_fold_step(
-              acc: acc,
-              edge: e,
-              child: child,
-              tree: tree,
-              interpretation: interpretation,
-              environment: environment,
-              runtime: runtime
-            )
-          }
-        }
-      )
-      eval_fold_state_value(state: folded)
+  let folded = fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) {
+        eval_fold_init(
+          node: n0,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime
+        )
+      },
+      step: fn(acc, e, child) {
+        eval_fold_step(
+          acc: acc,
+          edge: e,
+          child: child,
+          tree: tree,
+          interpretation: interpretation,
+          environment: environment,
+          runtime: runtime
+        )
       }
-  }
+    }
+  )
+  eval_fold_state_value(state: folded)
 }
 
 
