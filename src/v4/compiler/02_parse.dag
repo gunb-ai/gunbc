@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar, GrammarExpr, GrammarProduction, GrammarRoot, ParseTree, grammar_*_node_projection symbols, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_atom, grammar_named_edge, grammar_empty_node, grammar_expr_to_node, grammar_production_to_node, grammar_root_to_node, grammar_to_node, parse.
+// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions.
 // Consumes: std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
 
@@ -9,15 +9,18 @@
 module v4.compiler.parse
 
 
-import v4.compiler.tokenize { TokenStream }
+import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.collection { List }
+import v4.std.algebra { Empty, fold_list, is_empty, length, list_snoc_item }
 
 
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
 type GrammarExpr
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
   = Terminal { token_class: Symbol }
+  | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
   | Optional { element: GrammarExpr }
@@ -32,7 +35,8 @@ type GrammarProduction {
 
 
 type GrammarRoot {
-  start: GrammarProduction
+  start: Symbol
+  productions: List<GrammarProduction>
 }
 
 
@@ -45,8 +49,20 @@ type Grammar
 
 type ParseTree = Node
 
+// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; bound task: src/v4/TASKS.md#t-7-compiler02_parsedag; follow-up: dissolve when parse_expr recursive walk lands with termination/ambiguity certificate (see parse_expr gate at line 298).
+type ParseExprResult
+  = ParseExprAccepted { remaining: List<Token> }
+  | ParseExprRejected
+
+
+// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; bound task: src/v4/TASKS.md#t-7-compiler02_parsedag; follow-up: dissolve when production lookup is indexed at parse-walk realization instead of linear fold over GrammarRoot.productions.
+type GrammarProductionLookup
+  = GrammarProductionFound { production: GrammarProduction }
+  | GrammarProductionMissing
+
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
+data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
 data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
 data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
 data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
@@ -57,6 +73,7 @@ data grammar_production_name_node_projection: Symbol = grammar_production_name_n
 data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
 data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
+data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
@@ -133,6 +150,15 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
         ]
       }
+    Nonterminal { production: production } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
+        ]
+      }
     Sequence { left: left, right: right } =>
       Node {
         kind: TypeNode {
@@ -189,13 +215,41 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
 }
 
 
+fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProduction) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: grammar_named_edge(
+      name: production.name,
+      target: grammar_production_to_node(production: production)
+    )
+  )
+}
+
+
+fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: fold_list(
+      xs: productions,
+      empty: Empty,
+      cons: fn(acc, production) {
+        grammar_production_to_list_step(acc: acc, production: production)
+      }
+    )
+  }
+}
+
+
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_production_to_node(production: root.start))
+      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
+      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
     ]
   }
 }
@@ -209,9 +263,58 @@ fn grammar_to_node(grammar: Grammar) -> Node {
 }
 
 
+fn grammar_lookup_production_step(
+  acc: GrammarProductionLookup,
+  production: GrammarProduction,
+  name: Symbol
+) -> GrammarProductionLookup {
+  match acc {
+    GrammarProductionFound { production: _ } => acc
+    GrammarProductionMissing =>
+      if production.name == name {
+        GrammarProductionFound { production: production }
+      } else {
+        acc
+      }
+  }
+}
+
+
+fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProductionLookup {
+  fold_list(
+    xs: root.productions,
+    empty: GrammarProductionMissing,
+    cons: fn(acc, production) {
+      grammar_lookup_production_step(acc: acc, production: production, name: name)
+    }
+  )
+}
+
+
+fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
+  // 🟡 gated — feature:T-7-parse-walk-realization — bind TASKS.md T-7 — dissolve-on: T-8/T-9 normalize/resolve integrates parse_expr into pipeline fold; bootstrap lacks fold-on-demand token consumption and termination certificates for recursive descent
+  ParseExprRejected
+}
+
+
+fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
+  let at = port_locus(port: parse_stage_locus_port)
+  match parse_expr(expr: production.expression, tokens: tokens, root: root) {
+    ParseExprAccepted { remaining: remaining } =>
+      if is_empty(xs: remaining) {
+        Accepted { value: production.emitted, diagnostics: None }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+      }
+    ParseExprRejected =>
+      Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+  }
+}
+
+
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  let ntok = count(tokens.tokens)
+  let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if !well_formed(n: grammar_node) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
@@ -223,8 +326,13 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
         } else {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
-      ModeledGrammar { root: _ } =>
-        Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+      ModeledGrammar { root: root } =>
+        match grammar_lookup_production(root: root, name: root.start) {
+          GrammarProductionFound { production: start } =>
+            parse_production(tokens: tokens.tokens, root: root, production: start)
+          GrammarProductionMissing =>
+            Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+        }
     }
   }
 }
