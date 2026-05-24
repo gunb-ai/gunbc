@@ -76,10 +76,12 @@ import v4.std.constraints {
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
 import v4.workflow.bootstrap { v4_stage0_binary }
 import v4.workflow.ci {
+  Always,
   BootstrapStageCompile,
   CiGate,
   CiJob,
   CiPipeline,
+  RequiresJobAttempt,
   ci_bootstrap_authority_violation,
   ci_dangling_reference,
   ci_dependency_cycle,
@@ -360,7 +362,7 @@ data case_dangling_bootstrap_output: PipelineRejectionCase = PipelineRejectionCa
       }
     ],
     gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
     ]
   }
 }
@@ -388,7 +390,7 @@ data case_duplicate_job_id: PipelineRejectionCase = PipelineRejectionCase {
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
     ],
     gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
     ]
   }
 }
@@ -415,8 +417,8 @@ data case_duplicate_gate_id: PipelineRejectionCase = PipelineRejectionCase {
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
     ],
     gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always },
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
     ]
   }
 }
@@ -443,7 +445,7 @@ data case_dangling_need: PipelineRejectionCase = PipelineRejectionCase {
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [alternate_job] }
     ],
     gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always }
     ]
   }
 }
@@ -470,7 +472,7 @@ data case_dangling_gate_job: PipelineRejectionCase = PipelineRejectionCase {
       CiJob { id: v2_compile_src_v4, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [] }
     ],
     gates: [
-      CiGate { id: structural_v2_compile, job: alternate_job }
+      CiGate { id: structural_v2_compile, job: alternate_job, run_policy: Always }
     ]
   }
 }
@@ -498,8 +500,8 @@ data case_dependency_cycle: PipelineRejectionCase = PipelineRejectionCase {
       CiJob { id: alternate_job, command: BootstrapStageCompile { produces: v4_stage0_binary }, needs: [v2_compile_src_v4] }
     ],
     gates: [
-      CiGate { id: structural_v2_compile, job: v2_compile_src_v4 },
-      CiGate { id: alternate_gate, job: alternate_job }
+      CiGate { id: structural_v2_compile, job: v2_compile_src_v4, run_policy: Always },
+      CiGate { id: alternate_gate, job: alternate_job, run_policy: Always }
     ]
   }
 }
