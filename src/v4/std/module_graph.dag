@@ -9,7 +9,7 @@
 module v4.std.module_graph
 
 
-import v4.std.algebra { Empty, Cons, FreeMonoid }
+import v4.std.algebra { Empty, Cons, FreeMonoid, is_prefix_of, zip_eq }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
