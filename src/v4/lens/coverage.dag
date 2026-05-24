@@ -1,6 +1,6 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey
+// Owns: corpus coverage meta-lens (L6/L7/impossible-bug/testgen gap detection)
 //       CoverageDefectKey CoverageDefectAcceptanceKey CoverageReading coverage_lens
 //       expected_l6_coverage_keys expected_l7_coverage_keys expected_impossible_bug_coverage_keys
 //       expected_testgen_coverage_keys
