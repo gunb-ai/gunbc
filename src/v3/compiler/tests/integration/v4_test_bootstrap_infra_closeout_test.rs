@@ -404,8 +404,19 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             ("right_hash", "BootstrapHashPin"),
             ("pinned_hash", "BootstrapHashPin"),
             ("via", "Symbol"),
+            ("witness", "BootstrapFixptWitness"),
         ]),
-        "FixptStage1Stage2 must carry both compared hashes and the fixed-point pin"
+        "FixptStage1Stage2 must carry both compared hashes, the fixed-point pin, and the witness"
+    );
+    assert_eq!(
+        record_field_type_map(type_record(&module, "BootstrapFixptWitness")),
+        expected_field_type_map(&[
+            ("left_hash", "BootstrapHashPin"),
+            ("right_hash", "BootstrapHashPin"),
+            ("pinned_hash", "BootstrapHashPin"),
+            ("proves", "Symbol"),
+        ]),
+        "BootstrapFixptWitness must keep the checked hashes and proof property as structured fields"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "BootstrapPlan")),
@@ -487,8 +498,15 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG
                 .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
             && BOOTSTRAP_DAG
-                .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest"),
-        "bootstrap_plan_well_formed must enforce digest convergence via stage outputs, not data aliases (A2+A3)"
+                .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest")
+            && BOOTSTRAP_DAG.contains("p.fixpt.witness.proves == bit_identical_check")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.witness.left_hash.digest == p.fixpt.left_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.witness.right_hash.digest == p.fixpt.right_hash.digest")
+            && BOOTSTRAP_DAG
+                .contains("p.fixpt.witness.pinned_hash.digest == p.fixpt.pinned_hash.digest"),
+        "bootstrap_plan_well_formed must enforce digest convergence via stage outputs and bind the structured fixed-point witness (A2+A3)"
     );
     assert!(
         !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
@@ -795,6 +813,50 @@ fn assert_fixpt(
         "FixptStage1Stage2.pinned_hash",
     );
     assert_eq!(var_name(record_field_expr(fields, "via")), expected_via);
+    assert_fixpt_witness(
+        record_field_expr(fields, "witness"),
+        expected_left_hash,
+        expected_right_hash,
+        expected_pinned_hash,
+        expected_via,
+    );
+}
+
+fn assert_fixpt_witness(
+    expr: &SurfaceExpr,
+    expected_left_hash: (&str, &str),
+    expected_right_hash: (&str, &str),
+    expected_pinned_hash: (&str, &str),
+    expected_proves: &str,
+) {
+    let fields = match expr {
+        SurfaceExpr::VariantRecord { target, fields, .. } => {
+            assert_eq!(target, "BootstrapFixptWitness");
+            fields
+        }
+        other => panic!("expected BootstrapFixptWitness record, got {other:?}"),
+    };
+
+    assert_hash_pin(
+        record_field_expr(fields, "left_hash"),
+        expected_left_hash,
+        "BootstrapFixptWitness.left_hash",
+    );
+    assert_hash_pin(
+        record_field_expr(fields, "right_hash"),
+        expected_right_hash,
+        "BootstrapFixptWitness.right_hash",
+    );
+    assert_hash_pin(
+        record_field_expr(fields, "pinned_hash"),
+        expected_pinned_hash,
+        "BootstrapFixptWitness.pinned_hash",
+    );
+    assert_eq!(
+        var_name(record_field_expr(fields, "proves")),
+        expected_proves,
+        "BootstrapFixptWitness.proves drifted"
+    );
 }
 
 fn assert_hash_pin(expr: &SurfaceExpr, expected: (&str, &str), label: &str) {
