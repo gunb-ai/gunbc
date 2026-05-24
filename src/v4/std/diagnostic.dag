@@ -5,7 +5,7 @@
 //       bind_outcome, diagnostics_merge, rejected_with_pending,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
 //       diagnostics_eq, non_empty_diagnostics_append,
-//       sequence_outcome, traverse_outcome,
+//       sequence_outcome,
 //       Locus, Extent, Correction, NoCorrectionReason.
 // Consumes: std node, std algebra (list_append, bag_eq — avoids diagnostic↔collection cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
@@ -249,46 +249,6 @@ fn sequence_outcome<T>(
     }
   })
 }
-// Map each element to an Outcome and collect, respecting the stage diagnostic policy.
-// Equivalent to sequence_outcome applied to the mapped list; inlined to avoid
-// a separate intermediate allocation.
-fn traverse_outcome<T, U>(
-  xs: List<T>,
-  f: fn(T) -> Outcome<U>,
-  policy: StageDiagnosticPolicy
-) -> Outcome<List<U>> {
-  fold(xs, init: Accepted { value: [], diagnostics: None }, f: fn(acc, item) {
-    match policy.accumulation {
-      ShortCircuit => match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
-        Accepted { value: vs, diagnostics: ad } => match f(item) {
-          Rejected { diagnostics: r } =>
-            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
-          Accepted { value: u, diagnostics: od } =>
-            Accepted {
-              value: list_push(vs, u),
-              diagnostics: diagnostics_merge(outer: ad, inner: od)
-            }
-        }
-      }
-      Accumulate => match acc {
-        Accepted { value: vs, diagnostics: ad } => match f(item) {
-          Accepted { value: u, diagnostics: od } =>
-            Accepted {
-              value: list_push(vs, u),
-              diagnostics: diagnostics_merge(outer: ad, inner: od)
-            }
-          Rejected { diagnostics: r } =>
-            Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
-        }
-        Rejected { diagnostics: ra } => match f(item) {
-          Accepted { value: _, diagnostics: _ } => Rejected { diagnostics: ra }
-          Rejected { diagnostics: rb } =>
-            Rejected { diagnostics: non_empty_diagnostics_append(a: ra, b: rb) }
-        }
-      }
-    }
-  })
-}
-// traverse_node / sequence_node deferred: v2 bootstrap rejects fn(Node) -> Outcome<R> in
-// parameter types (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.
+// traverse_outcome / traverse_node / sequence_node deferred: v2 bootstrap rejects
+// fn(T) -> Outcome<U> and fn(Node) -> Outcome<R> in higher-order parameter types
+// (Ratified Q4); land with fold_node-derived combinator when W-T-* consumes it.
