@@ -13,7 +13,7 @@
 module v4.std.collection
 
 
-import v4.std.algebra { FreeMonoid, PointwisePower, is_empty }
+import v4.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
 import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
@@ -21,6 +21,10 @@ type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
+}
+type IndexedLookup<T> {
+  index: Int
+  value: Witness<T>
 }
 data map_key_absent: Symbol = map_key_absent
 data map_lookup_port: Symbol = map_lookup_port
@@ -47,6 +51,25 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
       }
     }
   }
+}
+fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
+  fold_list(
+    xs: xs,
+    empty: IndexedLookup {
+      index: 0,
+      value: Violates { diagnostic: absent }
+    },
+    cons: fn(acc, item) {
+      IndexedLookup {
+        index: acc.index + 1,
+        value: if acc.index == wanted {
+          Holds { value: item }
+        } else {
+          acc.value
+        }
+      }
+    }
+  ).value
 }
 // 🟡 needs-more-work — feature:finite-set-uniqueness-witness — dissolve-on: std/algebra derived unique: Witness<Holds> projection; FiniteSet binds structural unique field
 type FiniteSet<T> {
