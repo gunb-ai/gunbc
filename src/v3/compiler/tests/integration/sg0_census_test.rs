@@ -848,6 +848,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
+    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
+    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
+    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.

@@ -705,9 +705,20 @@ value semantics (RFC 3339 / TOML §Date-Time four sub-kinds) dissolve on
 **Modeling decisions**:
 - Endpoint shape (NetworkAddress + LanguageRef + optional FrameworkRef)
 - DeploymentUnit = collection of Endpoints + WireContracts between them
-- WireContract = typed interface between two endpoints + CoordinationSemantics
-- CoordinationSemantics = Sync | Async(SettleBound) | Stream | PubSub | EventuallyConsistent(ConvergeBound) (closed enum — operator-ratified C1 closure per node.dag discipline; non-immediate-settlement variants carry their bound as a STRUCTURAL field per operator fork 2026-05-15, read deterministically by the testgen simulator arm — see coordination.dag header)
-- Effect-typing: HttpEffect, QueueEffect, StreamEffect, PubSubEffect — each is a typed parameter to Bind
+- WireContract = typed interface between two endpoints + `WireContractFacts` +
+  `CoordinationBind`.
+- Drift note (PR #3207): the older `CoordinationSemantics` /
+  `HttpEffect` / `QueueEffect` wording is superseded by the decomposed
+  `ExchangePattern` + `SettlementGuarantee` + `ConsistencyGuarantee` facts
+  on `WireContractFacts`, plus `CoordinationEffectKind` on
+  `CoordinationBind`.
+- WIRECONTRACT-OBLIGATION-TABLE-T4.8: `CoordinationEffectKind` is tracked over
+  `Http` / `Queue` / `Stream` / `PubSub`; each arm has an executable
+  `CoordinationEffectObligation` row mapping it to required exchange,
+  settlement, and consistency facts. The label bridge dissolves when
+  `CoordinationBind` references canonical obligation rows directly.
+- Effect-typing: the effect kind is intrinsic to `CoordinationBind`, not a
+  separate annotation layer.
 - Failure-at-boundary modeling (composes with std/diagnostic.dag — no silent partial-failure)
 - Idempotency at endpoint (composes with lens/idempotency.dag)
 
@@ -1380,8 +1391,8 @@ does not exist on main; this task is its first authoring. The
   composed homomorphism, NOT a string template (no-templating
   principle).
 - Relationship to T-4.8 `coordination.dag`'s `WireContract` /
-  `CoordinationSemantics` (HTTP / REST is the immediate consumer in
-  omni-stack scenarios).
+  decomposed `WireContractFacts` + `CoordinationBind` shape (HTTP / REST is
+  the immediate consumer in omni-stack scenarios).
 
 **Dependencies — `[needs T-3, T-26]`. Language-orthogonal per P4.**
 Numeric and string vocabulary from T-3 for wire-format primitives;
