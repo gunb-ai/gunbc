@@ -1,8 +1,10 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiWebhooks, OpenApiWebhooksSlot
+// Owns: OpenApiComponents, OpenApiComponentsDeferredKey, OpenApiComponentsMapKey, OpenApiComponentsPathItemsSlot, OpenApiComponentsSchemasSlot, OpenApiComponentsSlot, OpenApiContact, OpenApiContactSlot, OpenApiDocument, OpenApiDocumentRoot, OpenApiDocumentWireContractFacts, OpenApiHeaderContentSingle, OpenApiHeaderDeferredKey, OpenApiHeaderDeprecatedSlot, OpenApiHeaderObject, OpenApiHeaderOrReference, OpenApiHeaderPayloadSlot, OpenApiHeaderRequiredSlot, OpenApiHeadersSlot, OpenApiHttpMethod, OpenApiHttpMethodBridgeFacts, OpenApiHttpStatusClassBounds, OpenApiHttpStatusCodeFacts, OpenApiInfo, OpenApiLicense, OpenApiLicenseSlot, OpenApiLicenseUrlOrIdentifierSlot, OpenApiLinkDeferredKey, OpenApiLinkObject, OpenApiLinkOrReference, OpenApiLinkTarget, OpenApiMediaType, OpenApiMediaTypeDeferredKey, OpenApiMediaTypeSchemaSlot, OpenApiNumericLexemeFacts, OpenApiOpenapiField3_1, OpenApiOpenapiObjectDeferredKey, OpenApiOperation, OpenApiOperationDeferredKey, OpenApiOperationWireContractFacts, OpenApiOptionalString, OpenApiPathItem, OpenApiPathItemDeferredKey, OpenApiPathItemOrReference, OpenApiPathTemplateKey, OpenApiPaths, OpenApiPathsSlot, OpenApiReferenceObject, OpenApiRequestReplyExchangeWitness, OpenApiResponse, OpenApiResponseContentSlot, OpenApiResponseKey, OpenApiResponseKeyNonDefault, OpenApiResponseKeyWildcardBridgeFacts, OpenApiResponseKeyWildcardKind, OpenApiResponseOrReference, OpenApiResponses, OpenApiResponsesDefaultSlot, OpenApiResponsesPrimaryEntry, OpenApiSchema, OpenApiSchemaOasMemberKey, OpenApiSpecificationExtensionKey, OpenApiStatusDigit, OpenApiStatusHundreds, OpenApiUniqueNameProfileFacts, OpenApiWebhooks, OpenApiWebhooksSlot
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
-// Status: scaffold — TASKS.md T-4.6
+// Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
+//         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
+//         document/operation wire-contract facts.
 // Anchor: https://spec.openapis.org/oas/v3.1.0
 
 module v4.extdeps.formats.openapi
@@ -10,7 +12,18 @@ module v4.extdeps.formats.openapi
 
 import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
-import v4.std.network { UriReference }
+import v4.std.network {
+  DELETE,
+  GET,
+  HEAD,
+  HttpMethod,
+  OPTIONS,
+  PATCH,
+  POST,
+  PUT,
+  TRACE,
+  UriReference
+}
 import v4.std.nat { Nat }
 
 
@@ -452,3 +465,219 @@ type OpenApiDocument {
   root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, JsonValue>,
   root_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
+
+
+type OpenApiOpenapi31MajorMinorFixedWitness {}
+
+type OpenApiOpenapi31PatchNatCarrierWitness {}
+
+type OpenApiNumericLexemeFacts {
+  openapi_field_major_minor_fixed_3_1: OpenApiOpenapi31MajorMinorFixedWitness,
+  openapi_field_patch_nat_carrier: OpenApiOpenapi31PatchNatCarrierWitness,
+}
+
+
+type OpenApiPathsRouteKeysUniqueWitness {}
+
+type OpenApiPathItemHttpMethodsUniqueWitness {}
+
+type OpenApiComponentsMapKeysUniqueWitness {}
+
+type OpenApiResponsesStatusKeysUniqueWitness {}
+
+type OpenApiWebhooksRouteKeysUniqueWitness {}
+
+type OpenApiResponseContentMediaTypeKeysUniqueWitness {}
+
+type OpenApiResponseHeadersKeysUniqueWitness {}
+
+type OpenApiResponseLinksKeysUniqueWitness {}
+
+type OpenApiUniqueNameProfileFacts {
+  paths_route_keys_unique: OpenApiPathsRouteKeysUniqueWitness,
+  path_item_http_methods_unique: OpenApiPathItemHttpMethodsUniqueWitness,
+  components_map_keys_unique: OpenApiComponentsMapKeysUniqueWitness,
+  responses_status_keys_unique: OpenApiResponsesStatusKeysUniqueWitness,
+  webhooks_route_keys_unique: OpenApiWebhooksRouteKeysUniqueWitness,
+  response_content_media_type_keys_unique: OpenApiResponseContentMediaTypeKeysUniqueWitness,
+  response_headers_keys_unique: OpenApiResponseHeadersKeysUniqueWitness,
+  response_links_keys_unique: OpenApiResponseLinksKeysUniqueWitness,
+}
+
+
+type OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiHttpMethod,
+  network_method: HttpMethod,
+}
+
+
+data openapi_http_method_bridge_get: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiGet,
+  network_method: GET,
+}
+
+data openapi_http_method_bridge_put: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiPut,
+  network_method: PUT,
+}
+
+data openapi_http_method_bridge_post: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiPost,
+  network_method: POST,
+}
+
+data openapi_http_method_bridge_delete: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiDelete,
+  network_method: DELETE,
+}
+
+data openapi_http_method_bridge_options: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiOptions,
+  network_method: OPTIONS,
+}
+
+data openapi_http_method_bridge_head: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiHead,
+  network_method: HEAD,
+}
+
+data openapi_http_method_bridge_patch: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiPatch,
+  network_method: PATCH,
+}
+
+data openapi_http_method_bridge_trace: OpenApiHttpMethodBridgeFacts = OpenApiHttpMethodBridgeFacts {
+  oas_method: OpenApiTrace,
+  network_method: TRACE,
+}
+
+data openapi_http_method_bridge_catalog: List<OpenApiHttpMethodBridgeFacts> = [
+  openapi_http_method_bridge_get,
+  openapi_http_method_bridge_put,
+  openapi_http_method_bridge_post,
+  openapi_http_method_bridge_delete,
+  openapi_http_method_bridge_options,
+  openapi_http_method_bridge_head,
+  openapi_http_method_bridge_patch,
+  openapi_http_method_bridge_trace,
+]
+
+
+type OpenApiHttpStatusCodeBoundedRangeWitness {}
+
+type OpenApiHttpStatusCodeFacts {
+  hundreds: OpenApiStatusHundreds,
+  tens: OpenApiStatusDigit,
+  ones: OpenApiStatusDigit,
+  bounded_100_to_599: OpenApiHttpStatusCodeBoundedRangeWitness,
+}
+
+
+type OpenApiHttpStatusClassBounds {
+  low: Nat,
+  high: Nat,
+}
+
+
+type OpenApiResponseKeyWildcardClassCoverWitness {}
+
+type OpenApiResponseKeyWildcardBridgeFacts {
+  kind: OpenApiResponseKeyWildcardKind,
+  class_bounds: OpenApiHttpStatusClassBounds,
+  disjoint_class_cover: OpenApiResponseKeyWildcardClassCoverWitness,
+}
+
+
+data openapi_wildcard_bridge_1xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridgeFacts {
+  kind: OpenApiWildcard1xx,
+  class_bounds: OpenApiHttpStatusClassBounds { low: 100, high: 199 },
+  disjoint_class_cover: OpenApiResponseKeyWildcardClassCoverWitness {},
+}
+
+data openapi_wildcard_bridge_2xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridgeFacts {
+  kind: OpenApiWildcard2xx,
+  class_bounds: OpenApiHttpStatusClassBounds { low: 200, high: 299 },
+  disjoint_class_cover: OpenApiResponseKeyWildcardClassCoverWitness {},
+}
+
+data openapi_wildcard_bridge_3xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridgeFacts {
+  kind: OpenApiWildcard3xx,
+  class_bounds: OpenApiHttpStatusClassBounds { low: 300, high: 399 },
+  disjoint_class_cover: OpenApiResponseKeyWildcardClassCoverWitness {},
+}
+
+data openapi_wildcard_bridge_4xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridgeFacts {
+  kind: OpenApiWildcard4xx,
+  class_bounds: OpenApiHttpStatusClassBounds { low: 400, high: 499 },
+  disjoint_class_cover: OpenApiResponseKeyWildcardClassCoverWitness {},
+}
+
+data openapi_wildcard_bridge_5xx: OpenApiResponseKeyWildcardBridgeFacts = OpenApiResponseKeyWildcardBridgeFacts {
+  kind: OpenApiWildcard5xx,
+  class_bounds: OpenApiHttpStatusClassBounds { low: 500, high: 599 },
+  disjoint_class_cover: OpenApiResponseKeyWildcardClassCoverWitness {},
+}
+
+data openapi_response_key_wildcard_bridge_catalog: List<OpenApiResponseKeyWildcardBridgeFacts> = [
+  openapi_wildcard_bridge_1xx,
+  openapi_wildcard_bridge_2xx,
+  openapi_wildcard_bridge_3xx,
+  openapi_wildcard_bridge_4xx,
+  openapi_wildcard_bridge_5xx,
+]
+
+fn openapi_status_digit_value(digit: OpenApiStatusDigit) -> Nat {
+  match digit {
+    OpenApiDigit0 => 0
+    OpenApiDigit1 => 1
+    OpenApiDigit2 => 2
+    OpenApiDigit3 => 3
+    OpenApiDigit4 => 4
+    OpenApiDigit5 => 5
+    OpenApiDigit6 => 6
+    OpenApiDigit7 => 7
+    OpenApiDigit8 => 8
+    OpenApiDigit9 => 9
+  }
+}
+
+fn openapi_status_hundreds_value(hundreds: OpenApiStatusHundreds) -> Nat {
+  match hundreds {
+    OpenApiHundreds1 => 100
+    OpenApiHundreds2 => 200
+    OpenApiHundreds3 => 300
+    OpenApiHundreds4 => 400
+    OpenApiHundreds5 => 500
+  }
+}
+
+fn openapi_http_status_code_value(
+  hundreds: OpenApiStatusHundreds,
+  tens: OpenApiStatusDigit,
+  ones: OpenApiStatusDigit
+) -> Nat {
+  openapi_status_hundreds_value(hundreds: hundreds)
+    + (openapi_status_digit_value(digit: tens) * 10)
+    + openapi_status_digit_value(digit: ones)
+}
+
+
+type OpenApiRequestReplyExchangeWitness {}
+
+type OpenApiOperationWireContractFacts {
+  http_method_bridge: OpenApiHttpMethodBridgeFacts,
+  path_template: OpenApiPathTemplateKey,
+  exchange: OpenApiRequestReplyExchangeWitness,
+}
+
+type OpenApiDocumentWireContractFacts {
+  openapi_version: OpenApiOpenapiField3_1,
+  paths: OpenApiPathsSlot,
+  unique_names: OpenApiUniqueNameProfileFacts,
+}
+
+
+// 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
+// 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
+// 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
+// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_http_method_bridge_catalog + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
