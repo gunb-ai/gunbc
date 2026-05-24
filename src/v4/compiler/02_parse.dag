@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar, GrammarExpr, GrammarProduction, GrammarRoot, ParseTree, grammar_*_node_projection symbols, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_atom, grammar_named_edge, grammar_empty_node, grammar_expr_to_node, grammar_production_to_node, grammar_root_to_node, grammar_to_node, parse.
+// Owns: Grammar, GrammarExpr, GrammarProduction, GrammarRoot, ParseTree, ParseExprResult, GrammarProductionLookup, grammar_*_node_projection symbols, parse_stage_locus_port, parse_walk_not_realized, parse_grammar_not_well_formed, parse_g0_tokens_remain, parse_walk_not_realized_diagnostic, parse_grammar_not_well_formed_diagnostic, parse_g0_tokens_remain_diagnostic, grammar_atom, grammar_named_edge, grammar_empty_node, grammar_expr_to_node, grammar_production_to_node, grammar_root_to_node, grammar_to_node, parse_expr, parse.
 // Consumes: std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
 
@@ -9,21 +9,27 @@
 module v4.compiler.parse
 
 
-import v4.compiler.tokenize { TokenStream }
+import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.collection { List }
+import v4.std.algebra { Cons, Empty, fold_list, is_empty, length, list_snoc_item }
 
 
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
 type GrammarExpr
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
   = Terminal { token_class: Symbol }
+  | Nonterminal { production: Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
   | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
 
 
+// A GrammarProduction is the single bidirectional concrete-syntax <-> Node datum:
+// parse reads `expression` forward and returns `emitted`; emit reads `emitted`
+// backward and serializes the same `expression`.
 type GrammarProduction {
   name: Symbol
   expression: GrammarExpr
@@ -33,6 +39,7 @@ type GrammarProduction {
 
 type GrammarRoot {
   start: GrammarProduction
+  productions: List<GrammarProduction>
 }
 
 
@@ -45,8 +52,18 @@ type Grammar
 
 type ParseTree = Node
 
+type ParseExprResult
+  = ParseExprAccepted { remaining: List<Token> }
+  | ParseExprRejected
+
+
+type GrammarProductionLookup
+  = GrammarProductionFound { production: GrammarProduction }
+  | GrammarProductionMissing
+
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
+data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
 data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
 data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
 data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
@@ -57,6 +74,7 @@ data grammar_production_name_node_projection: Symbol = grammar_production_name_n
 data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
 data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
+data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
@@ -133,6 +151,15 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
           grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
         ]
       }
+    Nonterminal { production: production } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
+        ]
+      }
     Sequence { left: left, right: right } =>
       Node {
         kind: TypeNode {
@@ -189,13 +216,36 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
 }
 
 
+fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: fold_list(
+      xs: productions,
+      empty: Empty,
+      cons: fn(acc, production) {
+        list_snoc_item(
+          xs: acc,
+          item: grammar_named_edge(
+            name: production.name,
+            target: grammar_production_to_node(production: production)
+          )
+        )
+      }
+    )
+  }
+}
+
+
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_production_to_node(production: root.start))
+      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_production_to_node(production: root.start)),
+      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
     ]
   }
 }
@@ -205,6 +255,103 @@ fn grammar_to_node(grammar: Grammar) -> Node {
   match grammar {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
+  }
+}
+
+
+fn grammar_lookup_production_step(
+  acc: GrammarProductionLookup,
+  production: GrammarProduction,
+  name: Symbol
+) -> GrammarProductionLookup {
+  match acc {
+    GrammarProductionFound { production: _ } => acc
+    GrammarProductionMissing =>
+      if production.name == name {
+        GrammarProductionFound { production: production }
+      } else {
+        acc
+      }
+  }
+}
+
+
+fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProductionLookup {
+  if root.start.name == name {
+    GrammarProductionFound { production: root.start }
+  } else {
+    fold_list(
+      xs: root.productions,
+      empty: GrammarProductionMissing,
+      cons: fn(acc, production) {
+        grammar_lookup_production_step(acc: acc, production: production, name: name)
+      }
+    )
+  }
+}
+
+
+fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
+  match expr {
+    Terminal { token_class: token_class } =>
+      match tokens {
+        Empty => ParseExprRejected
+        Cons { head: token, tail: remaining } =>
+          if token.class == token_class {
+            ParseExprAccepted { remaining: remaining }
+          } else {
+            ParseExprRejected
+          }
+      }
+    Nonterminal { production: production } =>
+      match grammar_lookup_production(root: root, name: production) {
+        GrammarProductionFound { production: found } =>
+          parse_expr(expr: found.expression, tokens: tokens, root: root)
+        GrammarProductionMissing => ParseExprRejected
+      }
+    Sequence { left: left, right: right } =>
+      match parse_expr(expr: left, tokens: tokens, root: root) {
+        ParseExprAccepted { remaining: after_left } =>
+          parse_expr(expr: right, tokens: after_left, root: root)
+        ParseExprRejected => ParseExprRejected
+      }
+    Choice { left: left, right: right } =>
+      match parse_expr(expr: left, tokens: tokens, root: root) {
+        ParseExprAccepted { remaining: remaining } =>
+          ParseExprAccepted { remaining: remaining }
+        ParseExprRejected => parse_expr(expr: right, tokens: tokens, root: root)
+      }
+    Optional { element: element } =>
+      match parse_expr(expr: element, tokens: tokens, root: root) {
+        ParseExprAccepted { remaining: remaining } =>
+          ParseExprAccepted { remaining: remaining }
+        ParseExprRejected => ParseExprAccepted { remaining: tokens }
+      }
+    Repeat { element: element } =>
+      match parse_expr(expr: element, tokens: tokens, root: root) {
+        ParseExprAccepted { remaining: remaining } =>
+          if length(xs: remaining) == length(xs: tokens) {
+            ParseExprAccepted { remaining: remaining }
+          } else {
+            parse_expr(expr: Repeat { element: element }, tokens: remaining, root: root)
+          }
+        ParseExprRejected => ParseExprAccepted { remaining: tokens }
+      }
+  }
+}
+
+
+fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
+  let at = port_locus(port: parse_stage_locus_port)
+  match parse_expr(expr: production.expression, tokens: tokens, root: root) {
+    ParseExprAccepted { remaining: remaining } =>
+      if is_empty(xs: remaining) {
+        Accepted { value: production.emitted, diagnostics: None }
+      } else {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+      }
+    ParseExprRejected =>
+      Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
   }
 }
 
@@ -223,8 +370,8 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
         } else {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
-      ModeledGrammar { root: _ } =>
-        Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+      ModeledGrammar { root: root } =>
+        parse_production(tokens: tokens.tokens, root: root, production: root.start)
     }
   }
 }
