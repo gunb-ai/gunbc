@@ -25,7 +25,7 @@
 //   - std/node.dag, std/witness.dag, std/algebra.dag
 //   - extdeps/languages/*.dag: per-target realization cost
 //
-// Status: scaffold — fill per TASKS.md T-12
+// Status: T-12 filled — SymbolicCost lattice + cost_lens + asymptotic projection surface + llvm_instruction_cost per-target realization.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator
 // ratification (substrate extension = stop signal).
