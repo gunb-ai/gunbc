@@ -792,6 +792,7 @@ fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> 
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:testgen-scheduled-anchor-absent — bind task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: L6/L7/testgen slice NotApplicable for ManualAnchorAbsent rows reads testgen_concept_for_manual_claim rejection taxonomy from lens/testgen + std/verification; delete claim_is_outside_testgen_scheduled_anchor in that same PR; forbidden: permanent lens-owned ClaimAnchorKey ManualAnchorAbsent predicate drift from std/verification.
 fn claim_is_outside_testgen_scheduled_anchor(c: TestClaim) -> Bool {
   match test_claim_anchor(c: c) {
     ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } => true
@@ -998,6 +999,7 @@ fn testgen_coverage_projection_from_claim(
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:impossible-bug-reason-projection — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack — dissolve-on-arrival: impossible-bug slice gate reads canonical DiagnosticClaim reason membership from std/verification impossible_bug_class_from_diagnostic_reason when TestClaim carries ImpossibleBugClass directly; delete diagnostic_reason_is_canonical_impossible_bug and append_if_canonical_impossible_bug_diagnostic / non_empty_diagnostics_targets_impossible_bug_slice Bool wrappers in that same PR; forbidden: permanent lens-owned Outcome→Bool reason classifier outside impossible_bug_coverage_projection_from_claim.
 fn diagnostic_reason_is_canonical_impossible_bug(reason: Symbol) -> Bool {
   match impossible_bug_class_from_diagnostic_reason(reason: reason) {
     Accepted { value: _, diagnostics: None } => true
