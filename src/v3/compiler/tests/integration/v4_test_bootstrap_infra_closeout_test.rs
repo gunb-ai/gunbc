@@ -475,7 +475,6 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "v4_stage2_binary",
         ("v4_stage1_hash", "v4_stage2_hash_pin"),
         ("v4_stage1_hash", "pinned_v4_fixed_point_hash_pin"),
-        "bit_identical_check",
     );
     assert!(
         BOOTSTRAP_DAG.contains("data v4_stage2_hash: Hash = v4_stage2_hash")
@@ -775,7 +774,6 @@ fn assert_fixpt(
     expected_right: &str,
     expected_right_hash: (&str, &str),
     expected_pinned_hash: (&str, &str),
-    expected_property: &str,
 ) {
     let fields = match expr {
         SurfaceExpr::VariantRecord { target, fields, .. } => {
@@ -802,7 +800,6 @@ fn assert_fixpt(
         expected_pinned_hash,
         "FixptStage1Stage2.pinned_hash",
     );
-    assert_eq!(expected_property, "bit_identical_check");
 }
 
 fn assert_hash_pin(expr: &SurfaceExpr, expected: (&str, &str), label: &str) {

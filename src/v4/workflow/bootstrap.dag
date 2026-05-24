@@ -20,7 +20,6 @@ data v4_stage0_binary: Symbol = v4_stage0_binary
 data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
-data bit_identical_check: Symbol = bit_identical_check
 data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
