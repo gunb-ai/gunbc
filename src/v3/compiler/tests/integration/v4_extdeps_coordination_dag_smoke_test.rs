@@ -126,11 +126,11 @@ fn v4_extdeps_coordination_effect_kind_has_obligation_table() {
     );
     assert_eq!(
         record_field_type(obligation, "required_settlement"),
-        "SettlementGuarantee"
+        "CoordinationSettlementRequirement"
     );
     assert_eq!(
         record_field_type(obligation, "required_consistency"),
-        "ConsistencyGuarantee"
+        "CoordinationConsistencyRequirement"
     );
 
     assert!(

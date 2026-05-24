@@ -1,6 +1,6 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, CoordinationEffectObligation, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit, coordination_effect_obligation, wire_contract_obligation_table_t4_8.
+// Owns: LanguageRef, FrameworkRef, FrameworkBinding, EndpointRef, Endpoint, SettleBound, ConvergeBound, ExchangePattern, SettlementGuarantee, ConsistencyGuarantee, CoordinationEffectKind, CoordinationSettlementRequirement, CoordinationConsistencyRequirement, CoordinationEffectObligation, BindRef, CoordinationBind, WireContractFacts, WireContract, DeploymentUnit, coordination_effect_obligation, wire_contract_obligation_table_t4_8.
 // Consumes: std/node.dag, std/collection.dag, std/nat.dag, std/network.dag.
 // Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows.
 
@@ -69,11 +69,19 @@ type CoordinationEffectKind
   | Stream
   | PubSub
 
+type CoordinationSettlementRequirement
+  = RequiresImmediateSettlement
+  | RequiresBoundedSettlement
+
+type CoordinationConsistencyRequirement
+  = RequiresNoReplicaConvergence
+  | RequiresEventualConsistency
+
 type CoordinationEffectObligation {
   effect: CoordinationEffectKind,
   required_exchange: ExchangePattern,
-  required_settlement: SettlementGuarantee,
-  required_consistency: ConsistencyGuarantee
+  required_settlement: CoordinationSettlementRequirement,
+  required_consistency: CoordinationConsistencyRequirement
 }
 
 fn coordination_effect_obligation(effect: CoordinationEffectKind) -> CoordinationEffectObligation {
@@ -81,26 +89,26 @@ fn coordination_effect_obligation(effect: CoordinationEffectKind) -> Coordinatio
     Http => CoordinationEffectObligation {
       effect: Http,
       required_exchange: RequestReply,
-      required_settlement: ImmediateSettlement,
-      required_consistency: NoReplicaConvergence
+      required_settlement: RequiresImmediateSettlement,
+      required_consistency: RequiresNoReplicaConvergence
     }
     Queue => CoordinationEffectObligation {
       effect: Queue,
       required_exchange: FireAndForget,
-      required_settlement: SettlesWithin { bound: SettleBound { steps: 1 } },
-      required_consistency: EventuallyConsistent { bound: ConvergeBound { steps: 1 } }
+      required_settlement: RequiresBoundedSettlement,
+      required_consistency: RequiresEventualConsistency
     }
     Stream => CoordinationEffectObligation {
       effect: Stream,
       required_exchange: StreamExchange,
-      required_settlement: SettlesWithin { bound: SettleBound { steps: 1 } },
-      required_consistency: EventuallyConsistent { bound: ConvergeBound { steps: 1 } }
+      required_settlement: RequiresBoundedSettlement,
+      required_consistency: RequiresEventualConsistency
     }
     PubSub => CoordinationEffectObligation {
       effect: PubSub,
       required_exchange: PublishSubscribe,
-      required_settlement: SettlesWithin { bound: SettleBound { steps: 1 } },
-      required_consistency: EventuallyConsistent { bound: ConvergeBound { steps: 1 } }
+      required_settlement: RequiresBoundedSettlement,
+      required_consistency: RequiresEventualConsistency
     }
   }
 }
