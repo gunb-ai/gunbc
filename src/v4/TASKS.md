@@ -1582,7 +1582,7 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Forward pass: `ingest(source, dag_language_model()) -> Node` (T-6 lex → T-7 parse → T-8/T-9 normalize/resolve/infer)
 - Inverse pass: `emit(node, dag_language_model()) -> String`
 - Claim: the emitted string is identical to the original source (or identifies exactly which declared-normalized differences apply per C5-fidelity)
-- Assert kind: `EqualsClaim` (or `WitnessClaim` if the claim is fidelity-up-to-canonical-form); Tier1, Integration layer
+- Assert kind: `EqualsClaim` (lhs: original source, rhs: re-emitted source; bit-identical) or `RoundTripClaim` if the claim is fidelity-up-to-declared-normalization; Tier1, Integration layer
 
 **Dependencies**: `[needs T-6, T-7, T-8, T-9, T-10; dag.dag lex/grammar data from T-6/T-7 fill]`
 
