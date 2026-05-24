@@ -1106,42 +1106,6 @@ fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> Algebr
 }
 
 
-fn nat_obligation_law_eq(o: NatAlgebraLawObligation, law: Symbol) -> Bool {
-  match o.law {
-    law_nat_add_left_identity =>
-      match law {
-        law_nat_add_left_identity => true
-        _ => false
-      }
-    law_nat_add_right_identity =>
-      match law {
-        law_nat_add_right_identity => true
-        _ => false
-      }
-    law_nat_add_associativity =>
-      match law {
-        law_nat_add_associativity => true
-        _ => false
-      }
-    law_nat_mul_left_identity =>
-      match law {
-        law_nat_mul_left_identity => true
-        _ => false
-      }
-    law_nat_mul_annihilator =>
-      match law {
-        law_nat_mul_annihilator => true
-        _ => false
-      }
-    law_nat_mul_associativity =>
-      match law {
-        law_nat_mul_associativity => true
-        _ => false
-      }
-  }
-}
-
-
 fn append_nat_obligation_if_law_matches(
   found: Outcome<NatAlgebraLawObligation>,
   obligation: NatAlgebraLawObligation,
@@ -1150,7 +1114,7 @@ fn append_nat_obligation_if_law_matches(
   match found {
     Accepted { value: _, diagnostics: None } => found
     Rejected { diagnostics: _ } =>
-      if nat_obligation_law_eq(o: obligation, law: law) {
+      if obligation.law == law {
         Accepted { value: obligation, diagnostics: None }
       } else {
         found
@@ -1183,13 +1147,18 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
 
 
 fn testgen_manual_anchor_from_nat_obligation(o: NatAlgebraLawObligation) -> ManualAnchorKey {
-  match o.law {
-    law_nat_add_left_identity => ManualNatAddLeftIdentity
-    law_nat_add_right_identity => ManualNatAddRightIdentity
-    law_nat_add_associativity => ManualNatAddAssociativity
-    law_nat_mul_left_identity => ManualNatMulLeftIdentity
-    law_nat_mul_annihilator => ManualNatMulAnnihilator
-    law_nat_mul_associativity => ManualNatMulAssociativity
+  if o.law == law_nat_add_left_identity {
+    ManualNatAddLeftIdentity
+  } else if o.law == law_nat_add_right_identity {
+    ManualNatAddRightIdentity
+  } else if o.law == law_nat_add_associativity {
+    ManualNatAddAssociativity
+  } else if o.law == law_nat_mul_left_identity {
+    ManualNatMulLeftIdentity
+  } else if o.law == law_nat_mul_annihilator {
+    ManualNatMulAnnihilator
+  } else {
+    ManualNatMulAssociativity
   }
 }
 
