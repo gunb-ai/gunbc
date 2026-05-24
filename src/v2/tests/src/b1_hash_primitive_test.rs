@@ -1,6 +1,6 @@
 //! B1-CANON hash primitives: runtime combine/identity behavior and domain separation.
 
-use v2_compiler::v2_rt::{atom_identity_hash, hash_combine};
+use v2_compiler::v2_rt::{atom_identity_hash, hash_combine, is_hash_digest};
 
 fn sym(name: &str) -> String {
     name.to_string()
@@ -12,6 +12,7 @@ fn atom_identity_hash_is_stable_and_distinct() {
     let b = atom_identity_hash(sym("canonical_tag_atom"));
     assert_ne!(a, b);
     assert_eq!(a, atom_identity_hash(sym("canonical_tag_conj")));
+    assert!(is_hash_digest(&a));
 }
 
 #[test]
@@ -36,7 +37,22 @@ fn hash_combine_separates_named_and_positional_edge_tags() {
 
 #[test]
 fn hash_combine_is_sensitive_to_pair_order() {
-    let ab = hash_combine(sym("a"), sym("b"));
-    let ba = hash_combine(sym("b"), sym("a"));
+    let ha = atom_identity_hash(sym("a"));
+    let hb = atom_identity_hash(sym("b"));
+    let ab = hash_combine(ha.clone(), hb.clone());
+    let ba = hash_combine(hb, ha);
     assert_ne!(ab, ba);
+}
+
+#[test]
+fn hash_combine_rejects_non_carrier_inputs() {
+    assert!(!is_hash_digest("a"));
+    assert!(!is_hash_digest("a\0b"));
+    assert!(!is_hash_digest("not-a-hash-digest"));
+}
+
+#[test]
+#[should_panic(expected = "16-char hex Hash digest")]
+fn hash_combine_rejects_pair_framing_ambiguous_raw_strings() {
+    let _ = hash_combine(sym("a\0b"), sym("c"));
 }

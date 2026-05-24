@@ -398,12 +398,29 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     hash
 }
 
-pub fn atom_identity_hash(s: String) -> String {
+pub type Hash = String;
+
+const HASH_DIGEST_LEN: usize = 16;
+
+pub fn is_hash_digest(s: &str) -> bool {
+    s.len() == HASH_DIGEST_LEN && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn expect_hash_digest(s: &str, arg: &str) -> &str {
+    if !is_hash_digest(s) {
+        panic!("{arg} must be a 16-char hex Hash digest");
+    }
+    s
+}
+
+pub fn atom_identity_hash(s: String) -> Hash {
     format!("{:016x}", fnv1a64(s.as_bytes()))
 }
 
-pub fn hash_combine(a: String, b: String) -> String {
-    let mut bytes = a.into_bytes();
+pub fn hash_combine(a: Hash, b: Hash) -> Hash {
+    let a = expect_hash_digest(&a, "a");
+    let b = expect_hash_digest(&b, "b");
+    let mut bytes = a.as_bytes().to_vec();
     bytes.push(0);
     bytes.extend_from_slice(b.as_bytes());
     format!("{:016x}", fnv1a64(&bytes))

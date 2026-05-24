@@ -283,7 +283,7 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
-// 🟡 bootstrap digest — feature:b1-hash-combine-substrate — B1 merkle_fold over canonical Node form; Hash is opaque content-addressing fingerprint (FNV-1a via hash_combine), not claimed proof-grade injectivity — structural identity authority remains canonical Node form, digest is lookup mechanism (docs/thesis/what-else-falls-out.md §Content-hash caching).
+// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form via fold_node; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
   fold_node(
     n: n,

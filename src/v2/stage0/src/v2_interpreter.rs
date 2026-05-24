@@ -2555,10 +2555,15 @@ fn eval_builtin(
 
         "hash_combine" => match positional.as_slice() {
             [Value::Str(a), Value::Str(b)] if positional.len() == 2 => {
+                if !v2_rt::is_hash_digest(a) || !v2_rt::is_hash_digest(b) {
+                    return Err(InterpError::TypeError {
+                        msg: "hash_combine requires exactly two Hash arguments".to_string(),
+                    });
+                }
                 Ok(Some(Value::Str(v2_rt::hash_combine(a.clone(), b.clone()))))
             }
             _ => Err(InterpError::TypeError {
-                msg: "hash_combine requires exactly two string arguments".to_string(),
+                msg: "hash_combine requires exactly two Hash arguments".to_string(),
             }),
         },
 
