@@ -8,6 +8,7 @@
 
 module v4.std.cardinality
 
+import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Diagnostic,
@@ -173,10 +174,10 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
   } else if !loop_behavior_edges_conform(children: n.children) {
     Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
   } else {
-    fold(
-      n.children,
-      init: Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) },
-      f: fn(acc, e) {
+    fold_list(
+      xs: n.children,
+      empty: Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) },
+      cons: fn(acc, e) {
         match e.label {
           Named { name: sym } =>
             if sym == loop_bound_edge {

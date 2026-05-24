@@ -6,7 +6,7 @@
 
 module v4.test.claim.lens_cost.loop_linear
 
-import v4.lens.cost { LinearCost, SizeVariable, cost_lens, loop_bound_edge }
+import v4.lens.cost { LinearCost, cost_lens, loop_bound_edge }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
@@ -63,7 +63,10 @@ data loop_linear_input: Node = Node {
 fn loop_linear_claim_holds() -> Bool {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
-      actual == LinearCost { variable: SizeVariable { source: loop_linear_measure_leaf } }
+      match actual {
+        LinearCost { variable: sv } => sv.source == loop_linear_measure_leaf
+        _ => false
+      }
     _ => false
   }
 }

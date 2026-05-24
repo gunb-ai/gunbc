@@ -9,6 +9,8 @@
 
 
 module v4.std.node
+
+import v4.std.algebra { fold_list }
 type Symbol
 type Hash
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -49,7 +51,7 @@ type NodeFold<R> {
   step: fn(R, Edge, R) -> R
 }
 fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
-  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
+  fold_list(xs: n.children, empty: algebra.init(n), cons: fn(acc, e) {
     algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
 }
@@ -84,18 +86,18 @@ fn is_positional(e: Edge) -> Bool {
 }
 
 fn all_edges_named(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
+  fold_list(xs: children, empty: true, cons: fn(acc, e) {
     acc && is_named(e: e)
   })
 }
 
 fn all_edges_positional(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
+  fold_list(xs: children, empty: true, cons: fn(acc, e) {
     acc && is_positional(e: e)
   })
 }
 fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
-  fold(children, init: 0, f: fn(acc, e) {
+  fold_list(xs: children, empty: 0, cons: fn(acc, e) {
     match e.label {
       Named { name: n } => if n == name { acc + 1 } else { acc }
       Positional => acc
@@ -104,7 +106,7 @@ fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
 fn loop_positional_child_count(children: List<Edge>) -> Int {
-  fold(children, init: 0, f: fn(acc, e) {
+  fold_list(xs: children, empty: 0, cons: fn(acc, e) {
     match e.label {
       Positional => acc + 1
       Named { name: _ } => acc
@@ -113,7 +115,7 @@ fn loop_positional_child_count(children: List<Edge>) -> Int {
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
+  fold_list(xs: children, empty: true, cons: fn(acc, e) {
     match e.label {
       Positional => acc
       Named { name: sym } => acc && (sym == loop_bound_edge)
@@ -135,7 +137,7 @@ fn loop_edge_contributes_to_iteration_fold(e: Edge) -> Bool {
   }
 }
 fn all_names_distinct(children: List<Edge>) -> Bool {
-  fold(children, init: true, f: fn(acc, e) {
+  fold_list(xs: children, empty: true, cons: fn(acc, e) {
     match e.label {
       Named { name: n } => acc && (name_occurrences(name: n, children: children) == 1)
       Positional => acc
