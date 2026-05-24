@@ -129,11 +129,19 @@ fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query; forbidden: consumer-local loop_bound_edge skip predicates.
-fn loop_edge_contributes_to_iteration_fold(e: Edge) -> Bool {
-  match e.label {
-    Positional => true
-    Named { name: sym } => sym != loop_bound_edge
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
+fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Loop } =>
+      match e.label {
+        Positional => true
+        Named { name: sym } => sym != loop_bound_edge
+      }
+    _ =>
+      match e.label {
+        Positional => true
+        Named { name: _ } => true
+      }
   }
 }
 fn all_names_distinct(children: List<Edge>) -> Bool {

@@ -46,6 +46,7 @@ import v4.std.algebra {
 import v4.std.cardinality {
   cardinality_loop_bound_ambiguous,
   cardinality_loop_bound_malformed,
+  cardinality_loop_bound_not_loop,
   loop_bound_measure,
   loop_bound_witness_for_node,
   NonZeroNat
@@ -144,6 +145,7 @@ type CostCompositionMode
 type SymbolicCostFoldState {
   mode: CostCompositionMode
   cost: SymbolicCost
+  parent: Node
 }
 
 fn constant_cost(value: Nat) -> SymbolicCost {
@@ -219,6 +221,10 @@ fn unknown_cost_for_loop_bound_diagnostic(d: Diagnostic) -> SymbolicCost {
     unknown_cost(
       reason: "loop-bound-malformed: Loop node violates Loop edge discipline"
     )
+  } else if d.reason == cardinality_loop_bound_not_loop {
+    unknown_cost(
+      reason: "loop-bound-not-loop: loop_bound_edge witness requested on non-Loop node"
+    )
   } else {
     unknown_cost(
       reason: "loop-bound-undeclared: Loop node missing loop_bound_edge Named attachment"
@@ -271,12 +277,14 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
     TypeNode { connective: c } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_connective(c: c),
-        cost: base_cost_for_connective(c: c, n: n)
+        cost: base_cost_for_connective(c: c, n: n),
+        parent: n
       }
     ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_behavior(b: b),
-        cost: base_cost_for_behavior(b: b, n: n)
+        cost: base_cost_for_behavior(b: b, n: n),
+        parent: n
       }
   }
 }
@@ -430,10 +438,11 @@ fn cost_fold_step(
   e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  if loop_edge_contributes_to_iteration_fold(e: e) {
+  if loop_edge_contributes_to_iteration_fold(parent: acc.parent, e: e) {
     SymbolicCostFoldState {
       mode: acc.mode,
-      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost)
+      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
+      parent: acc.parent
     }
   } else {
     acc
