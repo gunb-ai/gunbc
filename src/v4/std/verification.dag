@@ -1,14 +1,14 @@
 // src/v4/std/verification.dag
-// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, T19ManualAnchorKey, T19GeneratedAnchorKey, T19ClaimAnchorKey.
-// Owns: TestClassification ImpossibleBugClass TestClaimCoproductVariant T19ManualAnchorKey T19GeneratedAnchorKey T19ClaimAnchorKey TestClaim
-// Consumes: v4.std.node v4.std.diagnostic
+// Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey.
+// Owns: TestClassification ImpossibleBugClass impossible_bug_class_coproduct_variants TestClaimCoproductVariant ManualAnchorKey GeneratedAnchorKey ClaimAnchorKey TestClaim
+// Consumes: v4.std.algebra v4.std.collection v4.std.diagnostic v4.std.node
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
 module v4.std.verification
 
 
-import v4.std.algebra { Empty, any, fold_list }
-import v4.std.collection { List, list_append, list_snoc_item }
+import v4.std.algebra { Empty, any, fold_list, list_append, list_snoc_item }
+import v4.std.collection { List }
 import v4.std.node { Node, NodeFold, Symbol, fold_node }
 import v4.std.diagnostic {
   Accepted,
@@ -80,33 +80,105 @@ type ImpossibleBugClass
   | UnhandledDiagnosticPaths
 
 
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack — dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct reflection in std/verification.dag; delete this mirror.
+// forbidden: parallel hand-enumerated ImpossibleBugClass universes outside std/verification.dag.
+fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
+  [
+    SuboptimalComplexity,
+    IdempotencyContract,
+    TransportTypeDrift,
+    NestedOptionalFlatten,
+    UnenumeratedEffects,
+    UnhandledDiagnosticPaths,
+  ]
+}
+
+
+// Canonical Diagnostic.reason symbols for impossible-bug TestClaim rows (THESIS §392-413).
+data impossible_bug_reason_suboptimal_complexity: Symbol = impossible_bug_reason_suboptimal_complexity
+data impossible_bug_reason_suboptimal_inhabitance: Symbol = impossible_bug_reason_suboptimal_inhabitance
+data impossible_bug_reason_idempotency_violation: Symbol = impossible_bug_reason_idempotency_violation
+data impossible_bug_reason_idempotency_repetition: Symbol = impossible_bug_reason_idempotency_repetition
+data impossible_bug_reason_transport_drift: Symbol = impossible_bug_reason_transport_drift
+data impossible_bug_reason_target_transport_drift: Symbol = impossible_bug_reason_target_transport_drift
+data impossible_bug_reason_nested_optional: Symbol = impossible_bug_reason_nested_optional
+data impossible_bug_reason_double_unwrap: Symbol = impossible_bug_reason_double_unwrap
+data impossible_bug_reason_redundant_read: Symbol = impossible_bug_reason_redundant_read
+data impossible_bug_reason_unhandled_division: Symbol = impossible_bug_reason_unhandled_division
+data impossible_bug_reason_unhandled_index: Symbol = impossible_bug_reason_unhandled_index
+data impossible_bug_reason_force_unwrap: Symbol = impossible_bug_reason_force_unwrap
+
+
+data impossible_bug_diagnostic_reason_unmapped: Symbol = impossible_bug_diagnostic_reason_unmapped
+
+
+fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: impossible_bug_diagnostic_reason_unmapped,
+    at: Textual { file: v4_std_verification_file, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+// 🟡 gated — feature:impossible-bug-reason-projection — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack
+// dissolve-on-arrival: TestClaim/DiagnosticClaim carries ImpossibleBugClass directly in verification.dag; delete this reason→class bridge.
+fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
+  if reason == impossible_bug_reason_suboptimal_complexity ||
+    reason == impossible_bug_reason_suboptimal_inhabitance {
+    Accepted { value: SuboptimalComplexity, diagnostics: None }
+  } else if reason == impossible_bug_reason_idempotency_violation ||
+    reason == impossible_bug_reason_idempotency_repetition {
+    Accepted { value: IdempotencyContract, diagnostics: None }
+  } else if reason == impossible_bug_reason_transport_drift ||
+    reason == impossible_bug_reason_target_transport_drift {
+    Accepted { value: TransportTypeDrift, diagnostics: None }
+  } else if reason == impossible_bug_reason_nested_optional ||
+    reason == impossible_bug_reason_double_unwrap {
+    Accepted { value: NestedOptionalFlatten, diagnostics: None }
+  } else if reason == impossible_bug_reason_redundant_read {
+    Accepted { value: UnenumeratedEffects, diagnostics: None }
+  } else if reason == impossible_bug_reason_unhandled_division ||
+    reason == impossible_bug_reason_unhandled_index ||
+    reason == impossible_bug_reason_force_unwrap {
+    Accepted { value: UnhandledDiagnosticPaths, diagnostics: None }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: impossible_bug_diagnostic_reason_unmapped_diagnostic()
+      )
+    }
+  }
+}
+
+
 // RULING-1: needs-more-work — manual anchor bridge until generated corpus coverage owns all rows.
 // 🟡 coproduct dissolution — LB-P4-3212.
-type T19ManualAnchorKey
+type ManualAnchorKey
 // 🟡 coproduct dissolution — LB-P4-3212
 // RULING-1: 🟢 pretty-much-done
-  = T19ManualTcConjEmpty
-  | T19ManualTcDisjEmpty
-  | T19ManualTcArrowTwoConj
-  | T19ManualTcCardinalityEmpty
-  | T19ManualTcInstantiationEmpty
-  | T19ManualTcArrowEmpty
-  | T19ManualTcTransformEmpty
-  | T19ManualTcBranchEmpty
-  | T19ManualTcLoopEmpty
-  | T19ManualTcBindZeroChildren
-  | T19ManualTcConjEqualsRefl
-  | T19ManualNatAddLeftIdentity
-  | T19ManualNatAddRightIdentity
-  | T19ManualNatAddAssociativity
-  | T19ManualNatMulLeftIdentity
-  | T19ManualNatMulAnnihilator
-  | T19ManualNatMulAssociativity
-  | T19ManualLbeConjDagSurface
-  | T19ManualLbeDisjDagSurface
-  | T19ManualLbeTransformDagSurface
-  | T19ManualRefinementNonEmptyListBase
-  | T19ManualAnchorAbsent
+  = ManualTcConjEmpty
+  | ManualTcDisjEmpty
+  | ManualTcArrowTwoConj
+  | ManualTcCardinalityEmpty
+  | ManualTcInstantiationEmpty
+  | ManualTcArrowEmpty
+  | ManualTcTransformEmpty
+  | ManualTcBranchEmpty
+  | ManualTcLoopEmpty
+  | ManualTcBindZeroChildren
+  | ManualTcConjEqualsRefl
+  | ManualNatAddLeftIdentity
+  | ManualNatAddRightIdentity
+  | ManualNatAddAssociativity
+  | ManualNatMulLeftIdentity
+  | ManualNatMulAnnihilator
+  | ManualNatMulAssociativity
+  | ManualLbeConjDagSurface
+  | ManualLbeDisjDagSurface
+  | ManualLbeTransformDagSurface
+  | ManualRefinementNonEmptyListBase
+  | ManualAnchorAbsent
 
 
 // RULING-1: needs-more-work — generated coproduct-exhaustiveness mirrors TestClaim arms until .dag reflection can project from TestClaim directly.
@@ -119,16 +191,16 @@ type TestClaimCoproductVariant
   | TestClaimRoundTripClaimVariant
 
 
-type T19GeneratedAnchorKey
-  = T19GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
+type GeneratedAnchorKey
+  = GeneratedCoproductExhaustiveness { omitted_variant: TestClaimCoproductVariant }
 
 
 // RULING-1: needs-more-work — claim anchors stay partitioned by manual vs generated authority.
-// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this union when generated TestClaim corpora use a type that does not share t19_anchor with manual rows.
-type T19ClaimAnchorKey
+// 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate; follow-up: delete this union when generated TestClaim corpora use a type that does not share anchor with manual rows.
+type ClaimAnchorKey
 // 🟡 coproduct dissolution — feature:t19-claim-anchor-split; bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate
-  = T19ManualClaimAnchor { manual_anchor: T19ManualAnchorKey }
-  | T19GeneratedClaimAnchor { generated_anchor: T19GeneratedAnchorKey }
+  = ManualClaimAnchor { manual_anchor: ManualAnchorKey }
+  | GeneratedClaimAnchor { generated_anchor: GeneratedAnchorKey }
 
 
 // RULING-1: pretty-much-done — assertion shape is the variant tag (Practice 4).
@@ -137,28 +209,28 @@ type TestClaim
 // 🟢 coproduct dissolution — LB-P4-3212
   = CompilesClaim {
       label: String
-      t19_anchor: T19ClaimAnchorKey
+      anchor: ClaimAnchorKey
       input: Node
       expected_value: Node
       classification: TestClassification
     }
   | DiagnosticClaim {
       label: String
-      t19_anchor: T19ClaimAnchorKey
+      anchor: ClaimAnchorKey
       input: Node
       expected_rejection: NonEmptyDiagnostics
       classification: TestClassification
     }
   | EqualsClaim {
       label: String
-      t19_anchor: T19ClaimAnchorKey
+      anchor: ClaimAnchorKey
       lhs: Node
       rhs: Node
       classification: TestClassification
     }
   | RoundTripClaim {
       label: String
-      t19_anchor: T19ClaimAnchorKey
+      anchor: ClaimAnchorKey
       input: Node
       classification: TestClassification
     }
@@ -166,10 +238,10 @@ type TestClaim
 
 fn test_claim_input(c: TestClaim) -> Node {
   match c {
-    CompilesClaim { input: n, label: _, t19_anchor: _, expected_value: _, classification: _ } => n
-    DiagnosticClaim { input: n, label: _, t19_anchor: _, expected_rejection: _, classification: _ } => n
-    EqualsClaim { lhs: n, label: _, t19_anchor: _, rhs: _, classification: _ } => n
-    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } => n
+    CompilesClaim { input: n, label: _, anchor: _, expected_value: _, classification: _ } => n
+    DiagnosticClaim { input: n, label: _, anchor: _, expected_rejection: _, classification: _ } => n
+    EqualsClaim { lhs: n, label: _, anchor: _, rhs: _, classification: _ } => n
+    RoundTripClaim { input: n, label: _, anchor: _, classification: _ } => n
   }
 }
 
@@ -221,16 +293,16 @@ fn non_empty_diagnostics_evaluation_nodes(d: NonEmptyDiagnostics) -> List<Node> 
 // All Nodes whose mutation invalidates claim evaluation (IRT-4 / CI rerun frontier).
 fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   match c {
-    EqualsClaim { lhs: l, rhs: r, label: _, t19_anchor: _, classification: _ } =>
+    EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
-    CompilesClaim { input: n, expected_value: e, label: _, t19_anchor: _, classification: _ } =>
+    CompilesClaim { input: n, expected_value: e, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
-    DiagnosticClaim { input: n, expected_rejection: e, label: _, t19_anchor: _, classification: _ } =>
+    DiagnosticClaim { input: n, expected_rejection: e, label: _, anchor: _, classification: _ } =>
       list_append(
         left: list_snoc_item(xs: Empty, item: n),
         right: non_empty_diagnostics_evaluation_nodes(d: e)
       )
-    RoundTripClaim { input: n, label: _, t19_anchor: _, classification: _ } =>
+    RoundTripClaim { input: n, label: _, anchor: _, classification: _ } =>
       list_snoc_item(xs: Empty, item: n)
   }
 }
@@ -279,38 +351,38 @@ fn test_claim_evaluation_touches_rerun_frontier(c: TestClaim, frontier: List<Nod
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: t21-t24-ci-selection-diagnostic-fail-closed — consumer: v4.workflow.ci ci_select_from_rerun_nodes — bind TASKS.md T-24 — dissolve-on-arrival: delete when workflow/ci.dag ci_select consumes TestClaimCacheKey from 05_eval (IRT-4 cache-key boundary); forbidden: permanent untagged Bool coproduct-arm CI policy in std/verification.
 fn test_claim_ci_selection_fail_closed(c: TestClaim) -> Bool {
   match c {
-    DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_rejection: _, classification: _ } =>
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
       true
-    CompilesClaim { label: _, t19_anchor: _, input: _, expected_value: _, classification: _ } =>
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       false
-    EqualsClaim { label: _, t19_anchor: _, lhs: _, rhs: _, classification: _ } => false
-    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } => false
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => false
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => false
   }
 }
 
-fn test_claim_t19_anchor(c: TestClaim) -> T19ClaimAnchorKey {
+fn test_claim_anchor(c: TestClaim) -> ClaimAnchorKey {
   match c {
-    CompilesClaim { t19_anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
-    DiagnosticClaim { t19_anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
-    EqualsClaim { t19_anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
-    RoundTripClaim { t19_anchor: k, label: _, input: _, classification: _ } => k
+    CompilesClaim { anchor: k, label: _, input: _, expected_value: _, classification: _ } => k
+    DiagnosticClaim { anchor: k, label: _, input: _, expected_rejection: _, classification: _ } => k
+    EqualsClaim { anchor: k, label: _, lhs: _, rhs: _, classification: _ } => k
+    RoundTripClaim { anchor: k, label: _, input: _, classification: _ } => k
   }
 }
 
-fn t19_manual_claim_anchor(anchor: T19ManualAnchorKey) -> T19ClaimAnchorKey {
-  T19ManualClaimAnchor { manual_anchor: anchor }
+fn manual_claim_anchor(anchor: ManualAnchorKey) -> ClaimAnchorKey {
+  ManualClaimAnchor { manual_anchor: anchor }
 }
 
-fn t19_generated_claim_anchor(anchor: T19GeneratedAnchorKey) -> T19ClaimAnchorKey {
-  T19GeneratedClaimAnchor { generated_anchor: anchor }
+fn generated_claim_anchor(anchor: GeneratedAnchorKey) -> ClaimAnchorKey {
+  GeneratedClaimAnchor { generated_anchor: anchor }
 }
 
 fn test_claim_classification(c: TestClaim) -> TestClassification {
   match c {
-    CompilesClaim { classification: c, label: _, t19_anchor: _, input: _, expected_value: _ } => c
-    DiagnosticClaim { classification: c, label: _, t19_anchor: _, input: _, expected_rejection: _ } => c
-    EqualsClaim { classification: c, label: _, t19_anchor: _, lhs: _, rhs: _ } => c
-    RoundTripClaim { classification: c, label: _, t19_anchor: _, input: _ } => c
+    CompilesClaim { classification: c, label: _, anchor: _, input: _, expected_value: _ } => c
+    DiagnosticClaim { classification: c, label: _, anchor: _, input: _, expected_rejection: _ } => c
+    EqualsClaim { classification: c, label: _, anchor: _, lhs: _, rhs: _ } => c
+    RoundTripClaim { classification: c, label: _, anchor: _, input: _ } => c
   }
 }
 
@@ -318,22 +390,22 @@ fn test_claim_classification(c: TestClaim) -> TestClassification {
 // eval authority (05_eval.dag) routes it to Deferred — do not synthesize an Outcome<Node> here.
 fn test_claim_expected_outcome(c: TestClaim) -> Outcome<Outcome<Node>> {
   match c {
-    CompilesClaim { expected_value: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+    CompilesClaim { expected_value: e, label: _, anchor: _, input: _, classification: _ } =>
       Accepted {
         value: Accepted { value: e, diagnostics: None },
         diagnostics: None
       }
-    DiagnosticClaim { expected_rejection: e, label: _, t19_anchor: _, input: _, classification: _ } =>
+    DiagnosticClaim { expected_rejection: e, label: _, anchor: _, input: _, classification: _ } =>
       Accepted {
         value: Rejected { diagnostics: e },
         diagnostics: None
       }
-    EqualsClaim { rhs: r, label: _, t19_anchor: _, lhs: _, classification: _ } =>
+    EqualsClaim { rhs: r, label: _, anchor: _, lhs: _, classification: _ } =>
       Accepted {
         value: Accepted { value: r, diagnostics: None },
         diagnostics: None
       }
-    RoundTripClaim { label: _, t19_anchor: _, input: _, classification: _ } =>
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(d: test_claim_expected_outcome_undeclared_diagnostic())
       }

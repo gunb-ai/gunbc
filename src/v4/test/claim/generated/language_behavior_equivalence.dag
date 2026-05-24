@@ -12,15 +12,12 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   TestClaimTypedInput,
-  Verdict,
-  Deferred,
-  Fail,
-  Pass,
   eval_diagnostic,
   run_test_claim,
   run_test_claim_assert,
   test_claim_cache_receipt
 }
+import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
   AlgebraRef,
   InferredFacts,
@@ -66,25 +63,25 @@ import v4.lens.testgen {
   lbe_io_mock_conj_dag_surface,
   lbe_io_mock_disj_dag_surface,
   lbe_io_mock_transform_dag_surface,
-  t19_lbe_label_conj_dag_surface,
-  t19_lbe_label_disj_dag_surface,
-  t19_lbe_label_transform_dag_surface,
+  lbe_label_conj_dag_surface,
+  lbe_label_disj_dag_surface,
+  lbe_label_transform_dag_surface,
   testgen_emit_language_behavior_equivalence_claim,
   testgen_scheduled_language_behavior_generators
 }
 import v4.std.verification {
   DiagnosticClaim,
   TestClaim,
-  T19ManualAnchorKey,
-  T19ManualAnchorAbsent,
-  T19ManualLbeConjDagSurface,
-  T19ManualLbeDisjDagSurface,
-  T19ManualLbeTransformDagSurface,
+  ManualAnchorKey,
+  ManualAnchorAbsent,
+  ManualLbeConjDagSurface,
+  ManualLbeDisjDagSurface,
+  ManualLbeTransformDagSurface,
   TestClassification,
   Tier1,
   Unit,
   test_claim_input,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors {
   stub_empty_conj,
@@ -214,7 +211,7 @@ fn lbe_eval_context() -> EvalContext {
 
 
 fn lbe_claim_from_testgen_emit(
-  anchor: T19ManualAnchorKey,
+  anchor: ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
 ) -> Outcome<TestClaim> {
@@ -249,7 +246,7 @@ fn lbe_emit_rejection_sentinel_claim(
 ) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: mock.snapshot.input_node,
     expected_rejection: expected,
     classification: TestClassification { tier: Tier1, layer: Unit }
@@ -272,7 +269,7 @@ fn lbe_rejected_emit_cache_receipt(
 
 
 fn lbe_run_test_claim_assert_from_emit(
-  anchor: T19ManualAnchorKey,
+  anchor: ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
 ) -> Verdict<Node> {
@@ -286,7 +283,7 @@ fn lbe_run_test_claim_assert_from_emit(
 
 
 fn lbe_test_claim_run_from_emit(
-  anchor: T19ManualAnchorKey,
+  anchor: ManualAnchorKey,
   label: String,
   mock: LanguageBehaviorIoMock
 ) -> TestClaimRun<Node, RuntimeValue> {
@@ -323,8 +320,8 @@ fn lbe_run_test_claim_assert_from_mock(
 
 
 data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
-  anchor: T19ManualLbeConjDagSurface,
-  label: t19_lbe_label_conj_dag_surface,
+  anchor: ManualLbeConjDagSurface,
+  label: lbe_label_conj_dag_surface,
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   Pass => true
@@ -334,8 +331,8 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
 
 
 data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
-  anchor: T19ManualLbeDisjDagSurface,
-  label: t19_lbe_label_disj_dag_surface,
+  anchor: ManualLbeDisjDagSurface,
+  label: lbe_label_disj_dag_surface,
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   Pass => true
@@ -345,8 +342,8 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
 
 
 data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
-  anchor: T19ManualLbeTransformDagSurface,
-  label: t19_lbe_label_transform_dag_surface,
+  anchor: ManualLbeTransformDagSurface,
+  label: lbe_label_transform_dag_surface,
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   Pass => true
@@ -356,22 +353,22 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
 
 
 data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(
-  anchor: T19ManualLbeConjDagSurface,
-  label: t19_lbe_label_conj_dag_surface,
+  anchor: ManualLbeConjDagSurface,
+  label: lbe_label_conj_dag_surface,
   mock: lbe_io_mock_conj_dag_surface()
 )
 
 
 data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(
-  anchor: T19ManualLbeDisjDagSurface,
-  label: t19_lbe_label_disj_dag_surface,
+  anchor: ManualLbeDisjDagSurface,
+  label: lbe_label_disj_dag_surface,
   mock: lbe_io_mock_disj_dag_surface()
 )
 
 
 data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(
-  anchor: T19ManualLbeTransformDagSurface,
-  label: t19_lbe_label_transform_dag_surface,
+  anchor: ManualLbeTransformDagSurface,
+  label: lbe_label_transform_dag_surface,
   mock: lbe_io_mock_transform_dag_surface()
 )
 

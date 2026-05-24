@@ -9,7 +9,7 @@ module v4.std.projection
 import v4.std.artifact { ArtifactKind }
 import v4.std.node { Node, Symbol }
 
-// 🟢 closed set — projection kinds named by v4 architecture.
+// 🟢 coproduct dissolution
 type ProjectionKind
   = TestClaimLens
   | BoundaryTestLens

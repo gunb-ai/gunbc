@@ -13,15 +13,12 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   TestClaimTypedInput,
-  Verdict,
-  Deferred,
-  Fail,
-  Pass,
   aggregate_verdicts,
   eval_diagnostic,
   eval_rejected_roundtrip_deferred,
   test_claim_cache_receipt
 }
+import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
   AlgebraRef,
   InferredFacts,
@@ -62,14 +59,14 @@ import v4.std.runtime {
 }
 import v4.std.verification {
   DiagnosticClaim,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
   Unit,
   test_claim_expected_outcome,
   test_claim_input,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 import v4.std.constraints {
   CanonicalGroundingWitness,
@@ -115,7 +112,7 @@ fn run_pipeline_assert(
   match test_claim_expected_outcome(c: claim) {
     Accepted { value: expected, diagnostics: _ } =>
       match claim {
-        DiagnosticClaim { label: _, t19_anchor: _, input: _, expected_rejection: _, classification: _ } =>
+        DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
           match actual {
             Rejected { diagnostics: r } => {
               let comparable = Rejected { diagnostics: r }
@@ -304,7 +301,7 @@ fn workflow_inferred_tree(root: Node) -> InferredTree {
 fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol) -> TestClaim {
   DiagnosticClaim {
     label: label,
-    t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_rejection: diagnostics_singleton(d: ci_diagnostic(reason: expected_reason)),
     classification: TestClassification { tier: Tier1, layer: Unit }

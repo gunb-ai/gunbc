@@ -14,11 +14,9 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   TestClaimTypedInput,
-  Verdict,
-  Fail,
-  Pass,
   test_claim_cache_receipt
 }
+import v4.std.verdict { Verdict, Fail, Pass }
 import v4.compiler.infer {
   infer,
   infer_descent_not_derived_diagnostic,
@@ -54,7 +52,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.verification {
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -63,7 +61,7 @@ import v4.std.verification {
   DiagnosticClaim,
   test_claim_expected_outcome,
   test_claim_input,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 import v4.std.runtime {
   BindInterpreter,
@@ -221,7 +219,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
     } =>
       DiagnosticClaim {
         label: label,
-        t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+        anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
         expected_rejection: r,
         classification: TestClassification { tier: Tier1, layer: Unit }
@@ -234,7 +232,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
     } =>
       CompilesClaim {
         label: label,
-        t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+        anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
         input: input,
         expected_value: v,
         classification: TestClassification { tier: Tier1, layer: Unit }

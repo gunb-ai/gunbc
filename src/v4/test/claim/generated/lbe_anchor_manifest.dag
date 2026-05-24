@@ -7,17 +7,17 @@ module v4.test.claim.generated.lbe_anchor_manifest
 
 
 import v4.std.verification {
-  T19ManualAnchorKey,
-  T19ManualLbeConjDagSurface,
-  T19ManualLbeDisjDagSurface,
-  T19ManualLbeTransformDagSurface
+  ManualAnchorKey,
+  ManualLbeConjDagSurface,
+  ManualLbeDisjDagSurface,
+  ManualLbeTransformDagSurface
 }
 
 
-data manual_anchor_lbe_conj_dag_surface: T19ManualAnchorKey = T19ManualLbeConjDagSurface
+data manual_anchor_lbe_conj_dag_surface: ManualAnchorKey = ManualLbeConjDagSurface
 
 
-data manual_anchor_lbe_disj_dag_surface: T19ManualAnchorKey = T19ManualLbeDisjDagSurface
+data manual_anchor_lbe_disj_dag_surface: ManualAnchorKey = ManualLbeDisjDagSurface
 
 
-data manual_anchor_lbe_transform_dag_surface: T19ManualAnchorKey = T19ManualLbeTransformDagSurface
+data manual_anchor_lbe_transform_dag_surface: ManualAnchorKey = ManualLbeTransformDagSurface

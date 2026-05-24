@@ -41,51 +41,40 @@ import v4.std.text { String }
 import v4.std.witness { Witness }
 
 
-// 🟢 grounded — post-normalize substrate graph; Theme-A #9 forward until named ModelCore bundle lands.
 type CoreNode = Node
 
-
-// 🟢 grounded — concrete runtime extdep target; Eval terminal only.
 type RuntimeTarget = Node
 
-
-// 🟢 grounded — pre-ingest text slot; legacy staging only (not compile-core).
 type Source = String
 
-
-// 🟢 coproduct dissolution — ratified compile-core terminal modes (P1/P2).
+// 🟢 coproduct dissolution
 type CompileMode
   = TranslateTo { target: TargetModel }
   | Eval { runtime: RuntimeTarget }
 
 
-// 🟢 coproduct dissolution — mode-dependent compile-core output (Output in design doc).
+// 🟢 coproduct dissolution
 type CompileOutput
   = TranslateResult { source: TargetSource }
   | EvalResult { value: Node }
 
 
-// 🟢 grounded — compile-pipeline lens gate (P3 side-channel on InferredTree).
-// Orthogonal to v4.lens.application `Lens<Output>.read` + section-scoped `apply_lens` (T-23 substrate);
-// adapter wiring is a follow-on — see application.dag header P2 boundary.
 type CompileLens {
   gate: fn(InferredTree) -> Outcome<Witness<Node>>
 }
 
 
-// 🟢 coproduct dissolution — compile gate mode until introspect demotion lands in application.dag.
+// 🟢 coproduct dissolution
 type CompileLensMode
   = CompileLensEnforce
   | CompileLensIntrospect
 
 
-// 🟢 grounded — lens gate witness cites substrate Witness (Practice 3; not parallel fact payload).
 type LensGateWitness {
   witness: Witness<Node>
 }
 
 
-// 🟢 grounded — public terminal carrier; discharged only by validate_then_compile (P3 commitment 6).
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
@@ -125,8 +114,6 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// Compile-pipeline gate runner (NOT v4.lens.application::apply_lens — different root + carrier).
-// CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion is application-layer.
 fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
@@ -139,7 +126,6 @@ fn apply_compile_lens(
 }
 
 
-// list_push is kernel/prelude (see std/diagnostic.dag); not exported from std/collection.
 fn append_lens_gate_witness(
   witnesses: List<LensGateWitness>,
   witness: Witness<Node>
@@ -226,7 +212,6 @@ fn compile_inferred(
 }
 
 
-// Internal/advanced compile-core (P3 commitment 6). Not the public terminal — use validate_then_compile.
 fn compile(
   source: CoreNode,
   input_lang: LanguageModel,
@@ -252,7 +237,6 @@ fn validated_from_compile_output(
 }
 
 
-// Public terminal (P3 commitment 6): infer → required-lens gates on InferredTree → compile_inferred.
 fn validate_then_compile(
   source: CoreNode,
   input_lang: LanguageModel,
@@ -287,7 +271,6 @@ fn validate_then_compile(
 }
 
 
-// Legacy Wave-1 ingest orchestrator (Source text path). Staging until ingest lands on compile-core.
 fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
     diagnostics: diagnostics_singleton(
