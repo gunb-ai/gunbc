@@ -1,6 +1,6 @@
 // src/v4/std/verification.dag
 // Scope: Closed TestClaim schema — assertion-shape coproduct, TestgenTier/Layer, TestClassification, ImpossibleBugClass, ManualAnchorKey, GeneratedAnchorKey, ClaimAnchorKey.
-// Owns: TestClassification ImpossibleBugClass TestClaimCoproductVariant ManualAnchorKey GeneratedAnchorKey ClaimAnchorKey TestClaim
+// Owns: TestClassification ImpossibleBugClass impossible_bug_class_coproduct_variants TestClaimCoproductVariant ManualAnchorKey GeneratedAnchorKey ClaimAnchorKey TestClaim
 // Consumes: v4.std.node v4.std.diagnostic
 // Status: T-3 modeled; substrate extension or file split = operator STOP.
 
@@ -78,6 +78,21 @@ type ImpossibleBugClass
   | NestedOptionalFlatten
   | UnenumeratedEffects
   | UnhandledDiagnosticPaths
+
+
+// 🟡 gated — feature:coproduct-variant-enumeration — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack
+// dissolve-on-arrival: derive ImpossibleBugClass variant list from coproduct reflection in std/verification.dag; delete this mirror.
+// forbidden: parallel hand-enumerated ImpossibleBugClass universes outside std/verification.dag.
+fn impossible_bug_class_coproduct_variants() -> List<ImpossibleBugClass> {
+  [
+    SuboptimalComplexity,
+    IdempotencyContract,
+    TransportTypeDrift,
+    NestedOptionalFlatten,
+    UnenumeratedEffects,
+    UnhandledDiagnosticPaths,
+  ]
+}
 
 
 // Canonical Diagnostic.reason symbols for impossible-bug TestClaim rows (THESIS §392-413).

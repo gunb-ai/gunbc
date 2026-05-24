@@ -1,6 +1,6 @@
 // src/v4/lens/testgen.dag
 // Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
+// Owns: Generator TestgenConcept manual_test_claim_for_manual_anchor testgen_concept_for_manual_claim testgen_emit_language_behavior_equivalence_claim testgen_emit_witness_validity_claim witness_validity_subject_node witness_validity_outcome_node witness_validity_predicate_node witness_validity_witness_node witness_validity_symbol_atom_node witness_validity_field_oracle_outcome testgen_emit_idempotent_operation_claim testgen_scheduled_language_behavior_generators testgen_scheduled_algebra_law_generators testgen_scheduled_idempotent_operation_subjects testgen_emit_coproduct_exhaustiveness_claim testgen_scheduled_coproduct_exhaustiveness_generators TypeConstructionSubject AlgebraLawSubject LensApplicabilitySubject BidirectionalRoundtripSubject LanguageBehaviorEquivalenceSubject FrozenLanguageBehaviorSnapshot LanguageBehaviorIoMock CorpusEntry CorpusTraversalScope CorpusTraversalOrder CorpusDuplicatePolicy CorpusTraversalPolicy CorpusEnumerationRequest CorpusEnumerationResult CorpusEnumerator CorpusEntryIngestResult CorpusEntryIngestor CorpusLensReadResult<C> CorpusLensReader<C> CorpusLensObservation<C> CorpusLensDriveResult<C> CorpusLensDriver<C>
 // Consumes: v4.std.diagnostic v4.std.nat v4.std.node v4.std.witness v4.std.find_witness v4.std.verification v4.std.effects v4.extdeps.file_system v4.test.claim.manual.connective_anchors v4.test.claim.manual.nat_law_anchors
 // Status: Manual-anchor + LBE + witness-validity (T-19 silent-deer-669) + idempotent-operation + coproduct-exhaustiveness testgen (subjects: v4.std.effects / v4.std.verification); new TestgenConcept arms = operator STOP.
 
@@ -1091,6 +1091,78 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       slot: LanguageBehaviorEquivalence {
         subject: lbe_subject_transform_dag_surface(),
         mock: lbe_io_mock_transform_dag_surface(),
+      },
+    },
+  ]
+}
+
+
+fn testgen_scheduled_algebra_law_generators() -> List<Generator<TestgenConcept>> {
+  [
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatAddLeftIdentity),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_add_left_identity,
+        },
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatAddRightIdentity),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_add_right_identity,
+        },
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_add_associativity,
+        },
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatMulLeftIdentity),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_mul_left_identity,
+        },
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatMulAnnihilator),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_mul_annihilator,
+        },
+      },
+    },
+    Generator {
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      anchor: manual_claim_anchor(anchor: ManualNatMulAssociativity),
+      slot: AlgebraLaw {
+        subject: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_mul_associativity,
+        },
       },
     },
   ]
