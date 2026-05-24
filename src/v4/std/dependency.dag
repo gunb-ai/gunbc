@@ -1,6 +1,6 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
-// Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers, classified_source, classified_dependent, classified_usage_site, classified_dependency_view_eq, dependency_binds_to_edge, dependency_module_import_edge, dependency_bootstrap_depends_edge, classify_named_edge_usage, classify_node_edge_usage, dependency_view_for_edge, append_dependency_views, dependency_fold_init, dependency_fold_step, dependency_fold_algebra, dependency_fold_dependencies, dependency_lens, ReadinessLayer, readiness_fold_init, ready_set_fold_step, ready_set_algebra, readiness_fold_ready, ready_set, append_nodes, topological_layers_fold_init, topological_layers_fold_step, topological_layers_algebra, readiness_fold_layers, topological_layers, append_readiness_layers.
+// Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
 // Consumes: std/collection.dag; std/logic.dag; std/node.dag.
 // Status: Wave-2-A substrate.
 
