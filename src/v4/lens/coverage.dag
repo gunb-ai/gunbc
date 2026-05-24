@@ -391,18 +391,7 @@ fn bidirectional_roundtrip_subject_eq(
 
 
 fn node_list_eq(a: List<Node>, b: List<Node>) -> Bool {
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
-    Cons { head: ah, tail: at } =>
-      match b {
-        Empty => false
-        Cons { head: bh, tail: bt } => ah == bh && node_list_eq(a: at, b: bt)
-      }
-  }
+  a == b
 }
 
 
@@ -471,10 +460,9 @@ fn coverage_of<C>(key: C) -> Coverage<C> {
 
 
 fn dedupe_snoc<C>(acc: List<C>, item: C, eq: fn(C, C) -> Bool) -> List<C> {
-  if contains(xs: acc, item: item, eq: eq) {
-    acc
-  } else {
-    list_snoc_item(xs: acc, item: item)
+  match contains(xs: acc, item: item, eq: eq) {
+    true => acc
+    false => list_snoc_item(xs: acc, item: item)
   }
 }
 
@@ -872,39 +860,47 @@ fn impossible_bug_coverage_keys_from_diagnostics(d: NonEmptyDiagnostics) -> Outc
 }
 
 
+fn list_sole_item<C>(xs: List<C>) -> Outcome<C> {
+  fold_list(
+    xs: xs,
+    empty: Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+          at: Textual { file: coverage_virtual_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    },
+    cons: fn(o, item) {
+      match o {
+        Accepted { value: _, diagnostics: None } =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: Diagnostic {
+                reason: coverage_reason_impossible_bug_diagnostic_unmapped,
+                at: Textual { file: coverage_virtual_file, extent: WholeFile },
+                correction: Unavailable { reason: UserInputBoundary }
+              }
+            )
+          }
+        Rejected { diagnostics: _ } =>
+          Accepted { value: item, diagnostics: None }
+      }
+    }
+  )
+}
+
+
 fn impossible_bug_coverage_key_from_claim(c: TestClaim) -> Outcome<ImpossibleBugCoverageKey> {
   match c {
     DiagnosticClaim { expected_rejection: d, label: _, anchor: _, input: _, classification: _ } =>
-      match impossible_bug_coverage_keys_from_diagnostics(d: d) {
-        Accepted { value: keys, diagnostics: None } =>
-          match keys {
-            Empty =>
-              Rejected {
-                diagnostics: diagnostics_singleton(
-                  d: Diagnostic {
-                    reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-                    at: Textual { file: coverage_virtual_file, extent: WholeFile },
-                    correction: Unavailable { reason: UserInputBoundary }
-                  }
-                )
-              }
-            Cons { head: key, tail: rest } =>
-              match rest {
-                Empty => Accepted { value: key, diagnostics: None }
-                Cons { head: _, tail: _ } =>
-                  Rejected {
-                    diagnostics: diagnostics_singleton(
-                      d: Diagnostic {
-                        reason: coverage_reason_impossible_bug_diagnostic_unmapped,
-                        at: Textual { file: coverage_virtual_file, extent: WholeFile },
-                        correction: Unavailable { reason: UserInputBoundary }
-                      }
-                    )
-                  }
-              }
-          }
-        Rejected { diagnostics: rd } => Rejected { diagnostics: rd }
-      }
+      bind_outcome(
+        o: impossible_bug_coverage_keys_from_diagnostics(d: d),
+        f: fn(keys) {
+          list_sole_item(xs: keys)
+        }
+      )
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
       Rejected {
         diagnostics: diagnostics_singleton(
