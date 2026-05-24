@@ -67,6 +67,7 @@ import v4.compiler.tokenize {
   LiteralPattern,
   ModeledLexRules,
   TokenRule,
+  TriviaRule,
   VoidLexRules
 }
 import v4.std.target_model {
@@ -384,6 +385,7 @@ fn lex_rule_literal_step(
           } else {
             acc
           }
+        TriviaRule { pattern: _ } => acc
       }
   }
 }

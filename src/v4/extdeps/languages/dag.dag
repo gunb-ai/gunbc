@@ -32,7 +32,6 @@ import v4.compiler.tokenize {
   StringTextChar,
   TokenRule,
   TriviaRule,
-  VoidLexRules,
   WhitespaceChar
 }
 import v4.std.node { Symbol }
@@ -47,6 +46,40 @@ data dag_c3_surface_sugar_operation: Symbol = dag_c3_surface_sugar_operation
 
 data dag_language_model_surface_id: Symbol = dag_language_model_surface_id
 
+data dag_token_kw_module: Symbol = dag_token_kw_module
+data dag_token_kw_import: Symbol = dag_token_kw_import
+data dag_token_kw_type: Symbol = dag_token_kw_type
+data dag_token_kw_data: Symbol = dag_token_kw_data
+data dag_token_kw_fn: Symbol = dag_token_kw_fn
+data dag_token_kw_let: Symbol = dag_token_kw_let
+data dag_token_kw_match: Symbol = dag_token_kw_match
+data dag_token_kw_if: Symbol = dag_token_kw_if
+data dag_token_kw_else: Symbol = dag_token_kw_else
+data dag_token_kw_true: Symbol = dag_token_kw_true
+data dag_token_kw_false: Symbol = dag_token_kw_false
+data dag_token_ident: Symbol = dag_token_ident
+data dag_token_int_literal: Symbol = dag_token_int_literal
+data dag_token_string_literal: Symbol = dag_token_string_literal
+data dag_token_arrow: Symbol = dag_token_arrow
+data dag_token_fat_arrow: Symbol = dag_token_fat_arrow
+data dag_token_eq_eq: Symbol = dag_token_eq_eq
+data dag_token_or_or: Symbol = dag_token_or_or
+data dag_token_and_and: Symbol = dag_token_and_and
+data dag_token_bang: Symbol = dag_token_bang
+data dag_token_eq: Symbol = dag_token_eq
+data dag_token_colon: Symbol = dag_token_colon
+data dag_token_comma: Symbol = dag_token_comma
+data dag_token_dot: Symbol = dag_token_dot
+data dag_token_pipe: Symbol = dag_token_pipe
+data dag_token_lbrace: Symbol = dag_token_lbrace
+data dag_token_rbrace: Symbol = dag_token_rbrace
+data dag_token_lparen: Symbol = dag_token_lparen
+data dag_token_rparen: Symbol = dag_token_rparen
+data dag_token_lbracket: Symbol = dag_token_lbracket
+data dag_token_rbracket: Symbol = dag_token_rbracket
+data dag_token_lt: Symbol = dag_token_lt
+data dag_token_gt: Symbol = dag_token_gt
+
 
 type DagLanguageModel {
   lex: LexRules
@@ -56,8 +89,137 @@ type DagLanguageModel {
 }
 
 
+fn dag_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: KeywordPattern { text: text }
+  }
+}
+
+
+fn dag_literal_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+
+fn dag_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+
+fn dag_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: dag_token_ident,
+    pattern: dag_ident_lex_pattern()
+  }
+}
+
+
+fn dag_int_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: dag_token_int_literal,
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+  }
+}
+
+
+fn dag_string_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: dag_token_string_literal,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "\"" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "\"" }
+    }
+  }
+}
+
+
+fn dag_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  }
+}
+
+
+fn dag_line_comment_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: SequencePattern {
+      left: LiteralPattern { text: "//" },
+      right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
+    }
+  }
+}
+
+
+fn dag_block_comment_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "/*" },
+      body: RepeatPattern { element: CharClassPattern { class: BlockCommentTextChar } },
+      close: LiteralPattern { text: "*/" }
+    }
+  }
+}
+
+
+fn dag_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      dag_whitespace_trivia_rule(),
+      dag_line_comment_trivia_rule(),
+      dag_block_comment_trivia_rule(),
+      dag_keyword_lex_rule(token_class: dag_token_kw_module, text: "module"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_import, text: "import"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_type, text: "type"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_data, text: "data"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_fn, text: "fn"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_let, text: "let"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_match, text: "match"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_if, text: "if"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_else, text: "else"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_true, text: "true"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_false, text: "false"),
+      dag_string_literal_lex_rule(),
+      dag_int_literal_lex_rule(),
+      dag_ident_lex_rule(),
+      dag_literal_lex_rule(token_class: dag_token_arrow, text: "->"),
+      dag_literal_lex_rule(token_class: dag_token_fat_arrow, text: "=>"),
+      dag_literal_lex_rule(token_class: dag_token_eq_eq, text: "=="),
+      dag_literal_lex_rule(token_class: dag_token_or_or, text: "||"),
+      dag_literal_lex_rule(token_class: dag_token_and_and, text: "&&"),
+      dag_literal_lex_rule(token_class: dag_token_bang, text: "!"),
+      dag_literal_lex_rule(token_class: dag_token_eq, text: "="),
+      dag_literal_lex_rule(token_class: dag_token_colon, text: ":"),
+      dag_literal_lex_rule(token_class: dag_token_comma, text: ","),
+      dag_literal_lex_rule(token_class: dag_token_dot, text: "."),
+      dag_literal_lex_rule(token_class: dag_token_pipe, text: "|"),
+      dag_literal_lex_rule(token_class: dag_token_lbrace, text: "{"),
+      dag_literal_lex_rule(token_class: dag_token_rbrace, text: "}"),
+      dag_literal_lex_rule(token_class: dag_token_lparen, text: "("),
+      dag_literal_lex_rule(token_class: dag_token_rparen, text: ")"),
+      dag_literal_lex_rule(token_class: dag_token_lbracket, text: "["),
+      dag_literal_lex_rule(token_class: dag_token_rbracket, text: "]"),
+      dag_literal_lex_rule(token_class: dag_token_lt, text: "<"),
+      dag_literal_lex_rule(token_class: dag_token_gt, text: ">")
+    ]
+  }
+}
+
+
+fn dag_wave1_lex() -> LexRules {
+  ModeledLexRules { root: dag_wave1_lex_rules() }
+}
+
+
 fn dag_wave1_e0_void_lex() -> LexRules {
-  VoidLexRules
+  dag_wave1_lex()
 }
 
 
@@ -73,7 +235,8 @@ fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
       sym == dag_c3_surface_sugar_service ||
         sym == dag_c3_surface_sugar_fn ||
         sym == dag_c3_surface_sugar_type ||
-        sym == dag_c3_surface_sugar_operation
+        sym == dag_c3_surface_sugar_operation ||
+        dag_wave1_lex_token_symbol(sym: sym)
     }
   }
 }
@@ -90,7 +253,7 @@ fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
 
 fn dag_language_model_wave1_void() -> DagLanguageModel {
   DagLanguageModel {
-    lex: dag_wave1_e0_void_lex(),
+    lex: dag_wave1_lex(),
     grammar: dag_wave1_g0_void_grammar(),
     language_identity: dag_language_model_surface_id,
     canonical_symbols: dag_language_model_surface_prelude_atoms()
@@ -101,7 +264,7 @@ fn dag_language_model_wave1_void() -> DagLanguageModel {
 // compile-anchor empty prelude; same language_identity as wave1_void (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
   DagLanguageModel {
-    lex: dag_wave1_e0_void_lex(),
+    lex: dag_wave1_lex(),
     grammar: dag_wave1_g0_void_grammar(),
     language_identity: dag_language_model_surface_id,
     canonical_symbols: dag_language_model_empty_canonical_symbol_set()
@@ -111,4 +274,41 @@ fn dag_language_model_surface_empty_prelude() -> DagLanguageModel {
 
 fn dag_language_model_canonical_symbols(lm: DagLanguageModel) -> Set<Symbol> {
   lm.canonical_symbols
+}
+
+
+fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == dag_token_kw_module ||
+    sym == dag_token_kw_import ||
+    sym == dag_token_kw_type ||
+    sym == dag_token_kw_data ||
+    sym == dag_token_kw_fn ||
+    sym == dag_token_kw_let ||
+    sym == dag_token_kw_match ||
+    sym == dag_token_kw_if ||
+    sym == dag_token_kw_else ||
+    sym == dag_token_kw_true ||
+    sym == dag_token_kw_false ||
+    sym == dag_token_ident ||
+    sym == dag_token_int_literal ||
+    sym == dag_token_string_literal ||
+    sym == dag_token_arrow ||
+    sym == dag_token_fat_arrow ||
+    sym == dag_token_eq_eq ||
+    sym == dag_token_or_or ||
+    sym == dag_token_and_and ||
+    sym == dag_token_bang ||
+    sym == dag_token_eq ||
+    sym == dag_token_colon ||
+    sym == dag_token_comma ||
+    sym == dag_token_dot ||
+    sym == dag_token_pipe ||
+    sym == dag_token_lbrace ||
+    sym == dag_token_rbrace ||
+    sym == dag_token_lparen ||
+    sym == dag_token_rparen ||
+    sym == dag_token_lbracket ||
+    sym == dag_token_rbracket ||
+    sym == dag_token_lt ||
+    sym == dag_token_gt
 }
