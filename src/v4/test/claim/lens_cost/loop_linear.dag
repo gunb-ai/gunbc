@@ -19,7 +19,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  loop_bound_edge
 }
 import v4.std.verification {
   EqualsClaim,
@@ -34,7 +35,6 @@ import v4.std.witness { Holds }
 
 data loop_linear_body_atom: Symbol = loop_linear_body_atom
 data loop_linear_measure_atom: Symbol = loop_linear_measure_atom
-data loop_linear_bound_edge: Symbol = loop_bound_edge
 
 data loop_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: loop_linear_body_atom } },
@@ -57,7 +57,7 @@ data loop_linear_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_linear_body },
-    Edge { label: Named { name: loop_linear_bound_edge }, target: loop_linear_measure_leaf }
+    Edge { label: Named { name: loop_bound_edge }, target: loop_linear_measure_leaf }
   ]
 }
 

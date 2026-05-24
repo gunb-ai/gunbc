@@ -187,7 +187,10 @@ fn loop_measure_node(n: Node) -> Witness<Node> {
       } else if !loop_behavior_edges_conform(children: n.children) {
         Violates { diagnostic: loop_bound_malformed_diagnostic(n: n) }
       } else {
-        Holds { value: loop_bound_measure_target(children: n.children) }
+        match loop_bound_measure_target(children: n.children) {
+          Found { target: measure } => Holds { value: measure }
+          Absent => Violates { diagnostic: loop_bound_undeclared_diagnostic(n: n) }
+        }
       }
     }
     _ => Violates { diagnostic: loop_bound_not_loop_diagnostic(n: n) }

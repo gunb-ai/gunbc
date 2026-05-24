@@ -18,7 +18,8 @@ import v4.std.node {
   Node,
   Positional,
   Symbol,
-  TypeNode
+  TypeNode,
+  loop_bound_edge
 }
 import v4.std.verification {
   EqualsClaim,
@@ -33,7 +34,6 @@ import v4.std.verification {
 data loop_illegal_named_body_atom: Symbol = loop_illegal_named_body_atom
 data loop_illegal_named_measure_atom: Symbol = loop_illegal_named_measure_atom
 data loop_illegal_named_extra_atom: Symbol = loop_illegal_named_extra_atom
-data loop_illegal_named_bound_edge: Symbol = loop_bound_edge
 
 data loop_illegal_named_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: loop_illegal_named_body_atom } },
@@ -54,7 +54,7 @@ data loop_illegal_named_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
     Edge { label: Positional, target: loop_illegal_named_body_leaf },
-    Edge { label: Named { name: loop_illegal_named_bound_edge }, target: loop_illegal_named_measure_leaf },
+    Edge { label: Named { name: loop_bound_edge }, target: loop_illegal_named_measure_leaf },
     Edge { label: Named { name: loop_illegal_named_extra_atom }, target: loop_illegal_named_extra_leaf }
   ]
 }
