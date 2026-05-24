@@ -196,7 +196,7 @@ def check_generated_eval(eval_rs: Path) -> None:
             "child_values: Rc::new(Outcome::Accepted",
             "value: if ((node.children.clone().len() as i64) == 0)",
             "eval_interpret_node",
-            "Outcome::Rejected",
+            "outcome_rejected",
             "eval_rejected_pending_children",
         ],
         eval_rs,
