@@ -36,15 +36,15 @@ Operator wishlist examples route through those seven arms rather than extending 
 
 `RefinementPreservation` is dispatched by `testgen_emit_refinement_preservation_claim` and the generated corpus at `src/v4/test/claim/generated/refinement_preservation.dag`. The dispatch ledger records the landed nonempty-list base-preservation slice; remaining work is broadening the corpus beyond that first refinement subject.
 
-`src/v4/test/claim/generated/testgen_category_wishlist.dag` records pending or dispatched rows through the canonical `Generator` shape: `kind`, `t19_anchor`, `classification`, and `slot`. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed seven-arm scheduling coproduct remains `src/v4/lens/testgen.dag`.
+`src/v4/test/claim/generated/testgen_category_wishlist.dag` records pending or dispatched rows through the canonical `Generator` shape: `kind`, `classification`, `anchor`, and `slot`. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed seven-arm scheduling coproduct remains `src/v4/lens/testgen.dag`.
 
 ## Worked Samples
 
 Cross-target LBE samples:
 
-- `T19ManualLbeConjDagSurface` checks a `Conj` type-node against the `.dag` language model surface snapshot.
-- `T19ManualLbeDisjDagSurface` checks a `Disj` type-node against the same language-model authority.
-- `T19ManualLbeTransformDagSurface` checks a `Transform` computation-node snapshot.
+- `ManualLbeConjDagSurface` checks a `Conj` type-node against the `.dag` language model surface snapshot.
+- `ManualLbeDisjDagSurface` checks a `Disj` type-node against the same language-model authority.
+- `ManualLbeTransformDagSurface` checks a `Transform` computation-node snapshot.
 
 Algebra-law samples:
 
