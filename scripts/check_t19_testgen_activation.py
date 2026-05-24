@@ -212,6 +212,9 @@ def main() -> None:
             "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
             "dissolve-on-arrival: delete TestgenOracleBasis",
             "data claim_testgen_wishlist_formalized: TestClaim",
+            "generated_claim_anchor",
+            "GeneratedCoproductExhaustiveness",
+            "t19_coproduct_exhaustiveness_missing_variant",
         ),
     )
 
@@ -327,24 +330,28 @@ def main() -> None:
     pending_rows = wishlist.split("fn testgen_pending_non_tautological_generator_wishlist")[1].split(
         "fn testgen_dispatched_non_tautological_generators"
     )[0]
-    if pending_rows.count("TestgenWishlistRow {") != 4:
-        raise SystemExit("generator wishlist must carry exactly four pending non-dispatched rows")
-    if "slot: AlgebraLaw" in pending_rows:
-        raise SystemExit("AlgebraLaw has generated rows and must stay out of pending wishlist rows")
+    if pending_rows.count("TestgenWishlistRow {") != 3:
+        raise SystemExit("generator wishlist must carry exactly three pending non-dispatched rows")
+    for shipped_slot in ("slot: AlgebraLaw", "slot: DiagnosticExhaustiveness"):
+        if shipped_slot in pending_rows:
+            raise SystemExit(f"{shipped_slot} has generated rows and must stay out of pending wishlist rows")
 
     dispatched_rows = wishlist.split("fn testgen_dispatched_non_tautological_generators")[1].split(
-        "fn pending_non_tautological_generator_count_is_four"
+        "fn pending_non_tautological_generator_count_is_three"
     )[0]
-    if dispatched_rows.count("TestgenWishlistRow {") != 3:
-        raise SystemExit("generator wishlist must carry exactly three dispatched rows")
+    if dispatched_rows.count("TestgenWishlistRow {") != 4:
+        raise SystemExit("generator wishlist must carry exactly four dispatched rows")
     if (
         "generator: dispatched_language_behavior_equivalence_generator()" not in dispatched_rows
         or "generator: dispatched_algebra_law_generator()" not in dispatched_rows
+        or "generator: dispatched_diagnostic_exhaustiveness_generator()" not in dispatched_rows
         or "generator: dispatched_refinement_preservation_generator()" not in dispatched_rows
     ):
-        raise SystemExit("dispatched wishlist rows must include LBE, AlgebraLaw, and RefinementPreservation")
+        raise SystemExit("dispatched wishlist rows must include LBE, AlgebraLaw, DiagnosticExhaustiveness, and RefinementPreservation")
     if "ManualNatAddAssociativity" not in wishlist:
         raise SystemExit("dispatched AlgebraLaw wishlist row must carry the emitted algebra-law anchor")
+    if "GeneratedCoproductExhaustiveness" not in wishlist:
+        raise SystemExit("dispatched DiagnosticExhaustiveness wishlist row must carry the emitted generated anchor")
     if "ManualRefinementNonEmptyListBase" not in wishlist:
         raise SystemExit("dispatched RefinementPreservation wishlist row must carry the emitted refinement anchor")
 

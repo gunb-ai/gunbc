@@ -155,6 +155,12 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
             && TESTGEN_WISHLIST_DAG.contains("dispatch_key: Symbol"),
         "T-19 wishlist rows must name an independent oracle basis plus a dispatch key"
     );
+    assert!(
+        TESTGEN_WISHLIST_DAG.contains("generated_claim_anchor")
+            && TESTGEN_WISHLIST_DAG.contains("GeneratedCoproductExhaustiveness")
+            && TESTGEN_WISHLIST_DAG.contains("t19_coproduct_exhaustiveness_missing_variant"),
+        "DiagnosticExhaustiveness dispatched row must use the generated coproduct-exhaustiveness anchor and reason"
+    );
 
     let pending = between(
         TESTGEN_WISHLIST_DAG,
@@ -163,12 +169,11 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
     );
     assert_eq!(
         pending.matches("TestgenWishlistRow {").count(),
-        4,
-        "wishlist must dispatch the four pending non-dispatched TestgenConcept categories"
+        3,
+        "wishlist must dispatch the three pending non-dispatched TestgenConcept categories"
     );
     for generator in [
         "generator: wishlist_type_construction_generator()",
-        "generator: wishlist_diagnostic_exhaustiveness_generator()",
         "generator: wishlist_lens_applicability_generator()",
         "generator: wishlist_bidirectional_roundtrip_generator()",
     ] {
@@ -185,16 +190,20 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
         !pending.contains("slot: AlgebraLaw"),
         "AlgebraLaw has generated corpus rows and must stay out of pending wishlist rows"
     );
+    assert!(
+        !pending.contains("slot: DiagnosticExhaustiveness"),
+        "DiagnosticExhaustiveness has generated corpus rows and must stay out of pending wishlist rows"
+    );
 
     let dispatched = between(
         TESTGEN_WISHLIST_DAG,
         "fn testgen_dispatched_non_tautological_generators",
-        "fn pending_non_tautological_generator_count_is_four",
+        "fn pending_non_tautological_generator_count_is_three",
     );
     assert_eq!(
         dispatched.matches("TestgenWishlistRow {").count(),
-        3,
-        "wishlist must record the three already-dispatched generator rows"
+        4,
+        "wishlist must record the four already-dispatched generator rows"
     );
     assert!(
         dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
@@ -206,6 +215,12 @@ fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
             && dispatched.contains("oracle: AlgebraLawWitness")
             && TESTGEN_WISHLIST_DAG.contains("anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity)"),
         "dispatched row must keep AlgebraLaw tied to the emitted algebra-law anchor and witness oracle"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_diagnostic_exhaustiveness_generator()")
+            && dispatched.contains("oracle: DiagnosticNegativeFixture")
+            && dispatched.contains("dispatch_key: t19_dispatched_diagnostic_exhaustiveness"),
+        "dispatched row must keep DiagnosticExhaustiveness tied to the emitted diagnostic oracle"
     );
     assert!(
         dispatched.contains("generator: dispatched_refinement_preservation_generator()")

@@ -36,6 +36,8 @@ Operator wishlist examples route through those seven arms rather than extending 
 
 `RefinementPreservation` is dispatched by `testgen_emit_refinement_preservation_claim` and the generated corpus at `src/v4/test/claim/generated/refinement_preservation.dag`. The dispatch ledger records the landed nonempty-list base-preservation slice; remaining work is broadening the corpus beyond that first refinement subject.
 
+`DiagnosticExhaustiveness` is dispatched by `testgen_emit_coproduct_exhaustiveness_claim` and the generated corpus at `src/v4/test/claim/generated/coproduct_exhaustiveness.dag`. The dispatch ledger records the landed coproduct-exhaustiveness diagnostic slice under `GeneratedCoproductExhaustiveness`; remaining diagnostic work is broadening beyond that first missing-variant fixture, not a pending category slot.
+
 `src/v4/test/claim/generated/testgen_category_wishlist.dag` records pending or dispatched rows through the canonical `Generator` shape: `kind`, `classification`, `anchor`, and `slot`. That file is a dispatch artifact, not a second authority for `TestgenConcept`; the closed seven-arm scheduling coproduct remains `src/v4/lens/testgen.dag`.
 
 ## Worked Samples
@@ -61,4 +63,4 @@ The next generator PRs should land one category at a time and include:
 - a structural test or script guard proving the rows are generated through the category emission helper;
 - an explicit tautology-skip path, preferably represented as a negative fixture or count witness.
 
-Recommended order by canonical arm: `LensApplicability` witness-validity instance, `DiagnosticExhaustiveness` coproduct-exhaustiveness instance, `LensApplicability` idempotent-operation instance, and `RefinementPreservation` generated-corpus broadening. Algebra-law broadening from the Nat sample to all algebra carriers can proceed in parallel under the existing `AlgebraLaw` arm.
+Recommended order by canonical arm: `LensApplicability` witness-validity instance, `LensApplicability` idempotent-operation instance, `DiagnosticExhaustiveness` generated-corpus broadening beyond the first coproduct-exhaustiveness slice, and `RefinementPreservation` generated-corpus broadening. Algebra-law broadening from the Nat sample to all algebra carriers can proceed in parallel under the existing `AlgebraLaw` arm.
