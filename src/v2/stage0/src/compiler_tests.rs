@@ -850,6 +850,48 @@ mod compiler_tests {
     }
 
     #[test]
+    fn freemonoid_registered_for_container_param_and_algebra_profile() {
+        use crate::std_algebra::{kernel_algebra_profile, AlgebraProfile};
+        use crate::std_types::{container_expected_arity, container_param_name, is_container_type};
+        assert_eq!(
+            v2_rt::map_get(&kernel_algebra_profile(), "FreeMonoid".to_string()),
+            Some(AlgebraProfile::FreeMonoidCollectionProfile)
+        );
+        assert_eq!(container_expected_arity("FreeMonoid".to_string()), Some(1));
+        assert!(is_container_type("FreeMonoid".to_string()));
+        assert_eq!(
+            container_param_name("FreeMonoid".to_string(), 0),
+            Some("T".to_string())
+        );
+    }
+
+    #[test]
+    fn make_keyed_container_type_preserves_partial_function_carrier() {
+        use crate::v2_compiler_infer_types::{
+            make_keyed_container_type, make_map_type, type_variable_node,
+        };
+        use crate::v2_compiler_parse::authored_name_at;
+        use crate::v2_rt::rc_empty_map as empty_map;
+        let key = type_variable_node("K".to_string());
+        let value = type_variable_node("V".to_string());
+        let pf = make_keyed_container_type(
+            &"PartialFunction".to_string(),
+            key.clone(),
+            value.clone(),
+        );
+        let map = make_map_type(key, value);
+        let indices = empty_map();
+        assert_eq!(
+            authored_name_at(indices.clone(), &pf.ty),
+            "PartialFunction".to_string()
+        );
+        assert_eq!(
+            authored_name_at(indices, &map.ty),
+            "Map".to_string()
+        );
+    }
+
+    #[test]
     fn coercion_is_copy_from_checkpoint() {
         use crate::v2_compiler_coercion::*;
         assert_eq!(is_copy(RenderTarget::Rust, "Int".into()), Some(true));

@@ -408,14 +408,18 @@ pub fn make_container_type(kind_name: &String, element: Rc<Node>) -> Rc<KernelTy
     }
 }
 
-pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
-    match container_param_name("Map".to_string(), 0) {
-        Some(key_name) => match container_param_name("Map".to_string(), 1) {
+pub fn make_keyed_container_type(
+    kind_name: &String,
+    key: Rc<Node>,
+    value: Rc<Node>,
+) -> Rc<KernelTypeBuild> {
+    match container_param_name(kind_name.clone(), 0) {
+        Some(key_name) => match container_param_name(kind_name.clone(), 1) {
             Some(val_name) => Rc::new(KernelTypeBuild {
                 ty: Rc::new(Node {
-                    name: "Map".to_string(),
-                    span: kernel_span(&"Map".to_string()),
-                    ident_span: Some(kernel_span(&"Map".to_string())),
+                    name: kind_name.clone(),
+                    span: kernel_span(kind_name),
+                    ident_span: Some(kernel_span(kind_name)),
                     children: Rc::new(vec![
                         Rc::new(Node {
                             name: key_name.clone(),
@@ -476,19 +480,23 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                 diagnostics: Rc::new(vec![]),
             }),
             None => Rc::new(KernelTypeBuild {
-                ty: missing_kernel_container_profile_type("Map".to_string()),
+                ty: missing_kernel_container_profile_type(kind_name.clone()),
                 diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
-                    "Map".to_string(),
+                    kind_name.clone(),
                 )]),
             }),
         },
         None => Rc::new(KernelTypeBuild {
-            ty: missing_kernel_container_profile_type("Map".to_string()),
+            ty: missing_kernel_container_profile_type(kind_name.clone()),
             diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
-                "Map".to_string(),
+                kind_name.clone(),
             )]),
         }),
     }
+}
+
+pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
+    make_keyed_container_type(&"Map".to_string(), key, value)
 }
 
 pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
@@ -1210,7 +1218,7 @@ pub fn apply_type_substitution(
                                     Some(v) => v.clone(),
                                     None => type_variable_node("V".to_string()),
                                 };
-                                make_map_type(key.clone(), val)
+                                make_keyed_container_type(&receiver_name_str, key.clone(), val)
                             }
                             None => Rc::new(KernelTypeBuild {
                                 ty: receiver.clone(),

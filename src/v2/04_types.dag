@@ -238,13 +238,13 @@ fn make_container_type(kind_name: String, element: Node) -> KernelTypeBuild {
   }
 }
 
-fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
-  match container_param_name(kind_name: "Map", index: 0) {
+fn make_keyed_container_type(kind_name: String, key: Node, value: Node) -> KernelTypeBuild {
+  match container_param_name(kind_name: kind_name, index: 0) {
     Some { value: key_name } =>
-      match container_param_name(kind_name: "Map", index: 1) {
+      match container_param_name(kind_name: kind_name, index: 1) {
         Some { value: val_name } =>
           KernelTypeBuild {
-            ty: Node { name: "Map", span: kernel_span(name: "Map"), ident_span: Some { value: kernel_span(name: "Map") }, children: [
+            ty: Node { name: kind_name, span: kernel_span(name: kind_name), ident_span: Some { value: kernel_span(name: kind_name) }, children: [
               Node { name: key_name, span: kernel_span(name: key_name), ident_span: Some { value: kernel_span(name: key_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: key } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
               Node { name: val_name, span: kernel_span(name: val_name), ident_span: Some { value: kernel_span(name: val_name) }, children: [], connective: NoConnective, params: [], inferred: Some { value: Resolved { node: value } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
             ], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
@@ -252,16 +252,20 @@ fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
           }
         None =>
           KernelTypeBuild {
-            ty: missing_kernel_container_profile_type(kind_name: "Map"),
-            diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: "Map")]
+            ty: missing_kernel_container_profile_type(kind_name: kind_name),
+            diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: kind_name)]
           }
       }
     None =>
       KernelTypeBuild {
-        ty: missing_kernel_container_profile_type(kind_name: "Map"),
-        diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: "Map")]
+        ty: missing_kernel_container_profile_type(kind_name: kind_name),
+        diagnostics: [kernel_container_profile_miss_diagnostic(kind_name: kind_name)]
       }
   }
+}
+
+fn make_map_type(key: Node, value: Node) -> KernelTypeBuild {
+  make_keyed_container_type(kind_name: "Map", key: key, value: value)
 }
 
 fn make_callable_type(func_params: List<Node>, ret: Node) -> Node {
@@ -508,14 +512,14 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       if is_bare {
         let arity = container_expected_arity(name: receiver_name_str)
         if arity == Some { value: 2 } {
-          // Keyed container (Map): enrich from __key__ and __value__ bindings.
+          // Keyed container (Map, PartialFunction, …): preserve receiver carrier name.
           match map_get(subst, "__key__") {
             Some { value: key } =>
               let val = match map_get(subst, "__value__") {
                 Some { value: v } => v
                 None => type_variable_node(id: "V")
               }
-              make_map_type(key: key, value: val)
+              make_keyed_container_type(kind_name: receiver_name_str, key: key, value: val)
             None => KernelTypeBuild { ty: receiver, diagnostics: [] }
           }
         } else if arity == Some { value: 1 } {

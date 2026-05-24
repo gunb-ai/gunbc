@@ -2014,7 +2014,7 @@ fn v3_kernel_algebra_profile_reads_lowered_dag_map_authority() {
             decl.value_body
         );
     };
-    assert_eq!(entries.entries().len(), 7);
+    assert_eq!(entries.entries().len(), 10);
     assert_eq!(
         dag.kernel_algebra_profile("Int"),
         Some(AlgebraProfile::OrderedRingProfile)
@@ -2041,6 +2041,18 @@ fn v3_kernel_algebra_profile_reads_lowered_dag_map_authority() {
     );
     assert_eq!(
         dag.kernel_algebra_profile("Map"),
+        Some(AlgebraProfile::PartialFunctionProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("FreeMonoid"),
+        Some(AlgebraProfile::FreeMonoidCollectionProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("BooleanAlgebra"),
+        Some(AlgebraProfile::BooleanAlgebraCollectionProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("PartialFunction"),
         Some(AlgebraProfile::PartialFunctionProfile)
     );
     assert_eq!(dag.kernel_algebra_profile("UserType"), None);
