@@ -83,6 +83,24 @@ fn dissolution_subsumption_first_row_is_mechanical_reverification() {
     );
 }
 
+const IRT1_LEAF_CLAIM_SUITE_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag");
+const IRT1_LEAF_CLAIM_SUITE_PATH: &str =
+    "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag";
+
+#[test]
+fn affected_set_irt1_leaf_claim_suite_authored_for_mechanical_reverification() {
+    let _ = parse_module(IRT1_LEAF_CLAIM_SUITE_DAG, IRT1_LEAF_CLAIM_SUITE_PATH);
+    assert!(
+        IRT1_LEAF_CLAIM_SUITE_DAG.contains("data claim_affected_set_irt1_leaf_claim_suite: TestClaim"),
+        "{IRT1_LEAF_CLAIM_SUITE_PATH}: MechanicalReverification target must have a runnable TestClaim row"
+    );
+    assert!(
+        IRT1_LEAF_CLAIM_SUITE_DAG.contains("affected_set_irt1_leaf_claim_suite"),
+        "{IRT1_LEAF_CLAIM_SUITE_PATH}: suite claim must name affected_set_irt1_leaf_claim_suite handle"
+    );
+}
+
 #[test]
 fn affected_set_irt1_subsumed_fixes_membership_predicate_enumerates_six_leaves() {
     let module = parse_module(SUBSUMPTION_DAG, SUBSUMPTION_PATH);

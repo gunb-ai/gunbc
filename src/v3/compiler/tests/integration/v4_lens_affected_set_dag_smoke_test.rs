@@ -18,6 +18,11 @@ use v3_compiler::tokenize_for_test;
 const AFFECTED_SET_DAG: &str = include_str!("../../../../v4/lens/affected_set.dag");
 const AFFECTED_SET_PATH: &str = "src/v4/lens/affected_set.dag";
 
+const IRT1_LEAF_CLAIM_SUITE: (&str, &str) = (
+    include_str!("../../../../v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag"),
+    "src/v4/test/claim/lens_affected_set/irt1_leaf_claim_suite.dag",
+);
+
 const IRT1_LEAF_CLAIMS: &[(&str, &str)] = &[
     (
         include_str!("../../../../v4/test/claim/lens_affected_set/irt1_boundary_prune_receipt.dag"),
@@ -87,6 +92,7 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
 #[test]
 fn v4_lens_affected_set_dag_tokenizes_and_parses() {
     let _ = parse_module(AFFECTED_SET_DAG, AFFECTED_SET_PATH);
+    let _ = parse_module(IRT1_LEAF_CLAIM_SUITE.0, IRT1_LEAF_CLAIM_SUITE.1);
     for (source, path) in IRT1_LEAF_CLAIMS {
         let _ = parse_module(source, path);
     }
@@ -152,6 +158,28 @@ fn v4_lens_affected_set_irt1_leaf_claim_wiring() {
         assert!(
             source.contains("affected_set_claim_failure_node"),
             "{path}: distinct failure sentinel on false branch"
+        );
+    }
+}
+
+#[test]
+fn v4_lens_affected_set_irt1_leaf_claim_suite_wiring() {
+    let (source, path) = IRT1_LEAF_CLAIM_SUITE;
+    assert!(
+        source.contains("data claim_affected_set_irt1_leaf_claim_suite: TestClaim"),
+        "{path}: aggregate suite TestClaim row for subsumption MechanicalReverification"
+    );
+    for leaf_hold in [
+        "irt1_boundary_prune_receipt_claim_holds",
+        "irt1_dimension_seed_receipt_claim_holds",
+        "irt1_excluded_propagation_receipt_claim_holds",
+        "fail_closed_pending_escalation_claim_holds",
+        "irt1_fail_closed_absorption_receipt_claim_holds",
+        "irt1_empty_diff_frontier_receipt_claim_holds",
+    ] {
+        assert!(
+            source.contains(leaf_hold),
+            "{path}: suite must conjoin leaf hold fn {leaf_hold}"
         );
     }
 }
