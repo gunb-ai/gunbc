@@ -9,7 +9,7 @@
 module v4.std.module_graph
 
 
-import v4.std.algebra { Empty, Cons, FreeMonoid, fold_list }
+import v4.std.algebra { Empty, Cons, FreeMonoid }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -182,17 +182,19 @@ fn module_ancestor_witness(
 }
 
 
-// Look up a module entry by exact path match. Fails with a duplicate-path diagnostic if path is not unique in the graph.
-fn module_graph_entry_for_path(
-  graph: ModuleGraph,
-  path: ModulePath
-) -> Witness<ModuleEntry> {
-  module_entry_find_state_to_witness(
-    state: fold_list(
-      xs: graph.entries,
-      empty: EntryNotFound,
-      cons: fn(acc, entry) {
-        if module_path_eq(a: entry.path, b: path) {
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list generic dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 compiler resolves nested user-defined generic type parameters correctly; forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
+fn module_graph_entry_for_path_fold(
+  entries: FreeMonoid<ModuleEntry>,
+  path: ModulePath,
+  acc: ModuleEntryFindState
+) -> ModuleEntryFindState {
+  match entries {
+    Empty => acc
+    Cons { head: entry, tail: rest } =>
+      module_graph_entry_for_path_fold(
+        entries: rest,
+        path: path,
+        acc: if module_path_eq(a: entry.path, b: path) {
           match acc {
             EntryNotFound => EntryFoundOnce { found: entry }
             EntryFoundOnce { found: _ } => EntryFoundDuplicate
@@ -201,7 +203,21 @@ fn module_graph_entry_for_path(
         } else {
           acc
         }
-      }
+      )
+  }
+}
+
+
+// Look up a module entry by exact path match. Fails with a duplicate-path diagnostic if path is not unique in the graph.
+fn module_graph_entry_for_path(
+  graph: ModuleGraph,
+  path: ModulePath
+) -> Witness<ModuleEntry> {
+  module_entry_find_state_to_witness(
+    state: module_graph_entry_for_path_fold(
+      entries: graph.entries,
+      path: path,
+      acc: EntryNotFound
     )
   )
 }
