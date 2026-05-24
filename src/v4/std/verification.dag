@@ -107,8 +107,8 @@ fn impossible_bug_diagnostic_reason_unmapped_diagnostic() -> Diagnostic {
 }
 
 
-// 🟡 gated — feature:impossible-bug-reason-projection — bind task: src/v4/TASKS.md#t-18-lenscoveragedag
-// dissolve-on-arrival: TestClaim carries ImpossibleBugClass directly; delete this reason→class bridge.
+// 🟡 gated — feature:impossible-bug-reason-projection — bind task: src/v4/TASKS.md#t-3-std-supporting-cardinality-witness-diagnostic-collection-verification--the-scalarnumeric-stack
+// dissolve-on-arrival: TestClaim/DiagnosticClaim carries ImpossibleBugClass directly in verification.dag; delete this reason→class bridge.
 fn impossible_bug_class_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugClass> {
   if reason == impossible_bug_reason_suboptimal_complexity ||
     reason == impossible_bug_reason_suboptimal_inhabitance {
