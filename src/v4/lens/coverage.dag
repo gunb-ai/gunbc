@@ -68,6 +68,9 @@ import v4.std.verification {
   EqualsClaim,
   IdempotencyContract,
   ImpossibleBugClass,
+  GeneratedClaimAnchor,
+  ManualAnchorAbsent,
+  ManualClaimAnchor,
   NestedOptionalFlatten,
   RoundTripClaim,
   SuboptimalComplexity,
@@ -81,7 +84,8 @@ import v4.std.verification {
   UnenumeratedEffects,
   UnhandledDiagnosticPaths,
   impossible_bug_class_coproduct_variants,
-  impossible_bug_class_from_diagnostic_reason
+  impossible_bug_class_from_diagnostic_reason,
+  test_claim_anchor
 }
 import v4.std.node {
   Arrow,
@@ -785,6 +789,20 @@ fn testgen_coverage_key_from_claim(c: TestClaim) -> Outcome<TestgenCoverageKey> 
     Rejected { diagnostics: d } =>
       Rejected { diagnostics: d }
   }
+}
+
+
+fn claim_is_outside_testgen_scheduled_anchor(c: TestClaim) -> Bool {
+  match test_claim_anchor(c: c) {
+    ManualClaimAnchor { manual_anchor: ManualAnchorAbsent } => true
+    ManualClaimAnchor { manual_anchor: _ } => false
+    GeneratedClaimAnchor { generated_anchor: _ } => false
+  }
+}
+
+
+fn testgen_coverage_rejection_not_applicable(c: TestClaim) -> Bool {
+  claim_is_outside_testgen_scheduled_anchor(c: c)
 }
 
 
