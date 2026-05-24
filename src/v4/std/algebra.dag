@@ -233,8 +233,6 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
 }
 
 
-// Ordered (structural) list equality: both lists have the same length and each pair of elements
-// is equal under `eq`. O(n). Two-list operation — not expressible as a one-list fold_list fold.
 // 🟢 terminal — no richer substrate to dissolve into; this IS the canonical two-list zip-equality.
 fn zip_eq<T>(
   a: FreeMonoid<T>,
@@ -257,8 +255,6 @@ fn zip_eq<T>(
 }
 
 
-// Structural prefix check: `prefix` is an element-wise prefix of (or equal to) `xs` under `eq`.
-// O(|prefix|). Two-list operation — not expressible as a one-list fold_list fold.
 // 🟢 terminal — no richer substrate to dissolve into; this IS the canonical prefix-fold primitive.
 fn is_prefix_of<T>(
   prefix: FreeMonoid<T>,

@@ -21,19 +21,16 @@ import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
 
-// A single segment in a dotted module path (e.g. "std" in "v4.std.node").
 type ModulePathSegment {
   name: Symbol
 }
 
 
-// An ordered list of path segments forming a fully-qualified module path.
 type ModulePath {
   segments: FreeMonoid<ModulePathSegment>
 }
 
 
-// A module entry: its declared path and the resolved Node tree rooted at that module.
 type ModuleEntry {
   path: ModulePath
   root: Node
