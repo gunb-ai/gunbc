@@ -13,7 +13,7 @@ import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.collection { List }
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, length, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, is_empty, length, list_snoc_item }
 
 
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
@@ -38,7 +38,7 @@ type GrammarProduction {
 
 
 type GrammarRoot {
-  start: GrammarProduction
+  start: Symbol
   productions: List<GrammarProduction>
 }
 
@@ -53,7 +53,7 @@ type Grammar
 type ParseTree = Node
 
 type ParseExprResult
-  = ParseExprAccepted { remaining: FreeMonoid<Token> }
+  = ParseExprAccepted { remaining: List<Token> }
   | ParseExprRejected
 
 
@@ -216,10 +216,13 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
 }
 
 
-fn grammar_production_named_edge(production: GrammarProduction) -> Edge {
-  grammar_named_edge(
-    name: production.name,
-    target: grammar_production_to_node(production: production)
+fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProduction) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: grammar_named_edge(
+      name: production.name,
+      target: grammar_production_to_node(production: production)
+    )
   )
 }
 
@@ -232,11 +235,8 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
     children: fold_list(
       xs: productions,
       empty: Empty,
-      cons: fn(acc, item) {
-        list_snoc_item(
-          xs: acc,
-          item: grammar_production_named_edge(production: item)
-        )
+      cons: fn(acc, production) {
+        grammar_production_to_list_step(acc: acc, production: production)
       }
     )
   }
@@ -249,7 +249,7 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
       connective: Conj
     },
     children: [
-      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_production_to_node(production: root.start)),
+      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
       grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
     ]
   }
@@ -282,85 +282,23 @@ fn grammar_lookup_production_step(
 
 
 fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProductionLookup {
-  if root.start.name == name {
-    GrammarProductionFound { production: root.start }
-  } else {
-    fold_list(
-      xs: root.productions,
-      empty: GrammarProductionMissing,
-      cons: fn(acc, production) {
-        grammar_lookup_production_step(acc: acc, production: production, name: name)
-      }
-    )
-  }
-}
-
-
-fn parse_expr_fueled(expr: GrammarExpr, tokens: FreeMonoid<Token>, root: GrammarRoot, fuel: Int) -> ParseExprResult {
-  if fuel <= 0 {
-    ParseExprRejected
-  } else {
-    match expr {
-      Terminal { token_class: token_class } =>
-        match tokens {
-          Empty => ParseExprRejected
-          Cons { head: token, tail: remaining } =>
-            if token.class == token_class {
-              ParseExprAccepted { remaining: remaining }
-            } else {
-              ParseExprRejected
-            }
-        }
-      Nonterminal { production: production } =>
-        match grammar_lookup_production(root: root, name: production) {
-          GrammarProductionFound { production: found } =>
-            parse_expr_fueled(expr: found.expression, tokens: tokens, root: root, fuel: fuel - 1)
-          GrammarProductionMissing => ParseExprRejected
-        }
-      Sequence { left: left, right: right } =>
-        match parse_expr_fueled(expr: left, tokens: tokens, root: root, fuel: fuel - 1) {
-          ParseExprAccepted { remaining: after_left } =>
-            parse_expr_fueled(expr: right, tokens: after_left, root: root, fuel: fuel - 1)
-          ParseExprRejected => ParseExprRejected
-        }
-      Choice { left: left, right: right } =>
-        match parse_expr_fueled(expr: left, tokens: tokens, root: root, fuel: fuel - 1) {
-          ParseExprAccepted { remaining: remaining } =>
-            ParseExprAccepted { remaining: remaining }
-          ParseExprRejected => parse_expr_fueled(expr: right, tokens: tokens, root: root, fuel: fuel - 1)
-        }
-      Optional { element: element } =>
-        match parse_expr_fueled(expr: element, tokens: tokens, root: root, fuel: fuel - 1) {
-          ParseExprAccepted { remaining: remaining } =>
-            ParseExprAccepted { remaining: remaining }
-          ParseExprRejected => ParseExprAccepted { remaining: tokens }
-        }
-      Repeat { element: element } =>
-        match parse_expr_fueled(expr: element, tokens: tokens, root: root, fuel: fuel - 1) {
-          ParseExprAccepted { remaining: remaining } =>
-            if length(xs: remaining) == length(xs: tokens) {
-              ParseExprAccepted { remaining: remaining }
-            } else {
-              parse_expr_fueled(expr: Repeat { element: element }, tokens: remaining, root: root, fuel: fuel - 1)
-            }
-          ParseExprRejected => ParseExprAccepted { remaining: tokens }
-        }
+  fold_list(
+    xs: root.productions,
+    empty: GrammarProductionMissing,
+    cons: fn(acc, production) {
+      grammar_lookup_production_step(acc: acc, production: production, name: name)
     }
-  }
-}
-
-
-fn parse_expr(expr: GrammarExpr, tokens: FreeMonoid<Token>, root: GrammarRoot) -> ParseExprResult {
-  parse_expr_fueled(
-    expr: expr,
-    tokens: tokens,
-    root: root,
-    fuel: length(xs: tokens) + 64
   )
 }
 
 
-fn parse_production(tokens: FreeMonoid<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
+fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
+  // 🟡 gated — feature:T-7-parse-walk-realization — bind TASKS.md T-7 — dissolve-on: T-8/T-9 normalize/resolve integrates parse_expr into pipeline fold; bootstrap lacks fold-on-demand token consumption and termination certificates for recursive descent
+  ParseExprRejected
+}
+
+
+fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   match parse_expr(expr: production.expression, tokens: tokens, root: root) {
     ParseExprAccepted { remaining: remaining } =>
@@ -390,7 +328,12 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
       ModeledGrammar { root: root } =>
-        parse_production(tokens: tokens.tokens, root: root, production: root.start)
+        match grammar_lookup_production(root: root, name: root.start) {
+          GrammarProductionFound { production: start } =>
+            parse_production(tokens: tokens.tokens, root: root, production: start)
+          GrammarProductionMissing =>
+            Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+        }
     }
   }
 }
