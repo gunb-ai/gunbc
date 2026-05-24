@@ -1,7 +1,7 @@
 // src/v4/extdeps/cpp_abi.dag
 // Scope: C++ ABI / target data-model facts for implementation-defined fundamental widths.
 // Anchor: ISO/IEC 14882:2024 [basic.fundamental] + Itanium C++ ABI revision 1.86.
-// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppWcharTSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel<plain_char_signedness,wchar_t_signedness>, CppFundamentalWidthRole, Cpp{Char,Short,Int,Long,LongLong,Pointer,WcharT}WidthSelectionWitness, CppFundamentalWidthSelectionWitness, cpp_select_width_witness.
+// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppWcharTSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel<plain_char_signedness,wchar_t_signedness>, Cpp{Char,Short,Int,Long,LongLong,Pointer,WcharT}WidthSelectionWitness, Cpp{ILP32,LP64}LongWidthSelectionWitness.
 // Consumes: std/machine.dag vocabulary by coincidence index only: MachineWidth<Word8/16/32/64>.
 // Status: T-29 modeled 2026-05-18.
 
@@ -126,25 +126,7 @@ type CppILP64IntegerWidths = CppCoreIntegerWidthModel {
 }
 type CppILP64DataModel<plain_char_signedness, wchar_t_signedness> = CppTargetDataModel<CppDataModelFamilyILP64, CppILP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
 
-// 🟢 coproduct dissolution — T29-ABI.
-type CppFundamentalWidthRole
-  = CharFundamentalWidth { tag: CppFundamentalWidthRoleChar }
-  | ShortFundamentalWidth { tag: CppFundamentalWidthRoleShort }
-  | IntFundamentalWidth { tag: CppFundamentalWidthRoleInt }
-  | LongFundamentalWidth { tag: CppFundamentalWidthRoleLong }
-  | LongLongFundamentalWidth { tag: CppFundamentalWidthRoleLongLong }
-  | PointerFundamentalWidth { tag: CppFundamentalWidthRolePointer }
-  | WcharTFundamentalWidth { tag: CppFundamentalWidthRoleWcharT }
-
-type CppFundamentalWidthRoleChar
-type CppFundamentalWidthRoleShort
-type CppFundamentalWidthRoleInt
-type CppFundamentalWidthRoleLong
-type CppFundamentalWidthRoleLongLong
-type CppFundamentalWidthRolePointer
-type CppFundamentalWidthRoleWcharT
-
-// 🟢 pretty-much-done — role-indexed width witness projected from CppCoreIntegerWidthModel; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+// 🟢 pretty-much-done — slot-specific width witness; role is the type name; selected_width projects a CppCoreIntegerWidthModel field; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppCharWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppShortWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppIntWidthSelectionWitness { selected_width: CppIntegerWidth }
@@ -153,48 +135,10 @@ type CppLongLongWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppPointerWidthSelectionWitness { selected_width: CppIntegerWidth }
 type CppWcharTWidthSelectionWitness { selected_width: CppIntegerWidth }
 
-// 🟢 coproduct dissolution — T29-ABI.
-type CppFundamentalWidthSelectionWitness
-  = CharFundamentalWidthSelection { witness: CppCharWidthSelectionWitness }
-  | ShortFundamentalWidthSelection { witness: CppShortWidthSelectionWitness }
-  | IntFundamentalWidthSelection { witness: CppIntWidthSelectionWitness }
-  | LongFundamentalWidthSelection { witness: CppLongWidthSelectionWitness }
-  | LongLongFundamentalWidthSelection { witness: CppLongLongWidthSelectionWitness }
-  | PointerFundamentalWidthSelection { witness: CppPointerWidthSelectionWitness }
-  | WcharTFundamentalWidthSelection { witness: CppWcharTWidthSelectionWitness }
-
-fn cpp_select_width_witness(
-  widths: CppCoreIntegerWidthModel,
-  role: CppFundamentalWidthRole
-) -> CppFundamentalWidthSelectionWitness {
-  match role {
-    CharFundamentalWidth { tag: _ } =>
-      CharFundamentalWidthSelection {
-        witness: CppCharWidthSelectionWitness { selected_width: widths.char_width }
-      }
-    ShortFundamentalWidth { tag: _ } =>
-      ShortFundamentalWidthSelection {
-        witness: CppShortWidthSelectionWitness { selected_width: widths.short_width }
-      }
-    IntFundamentalWidth { tag: _ } =>
-      IntFundamentalWidthSelection {
-        witness: CppIntWidthSelectionWitness { selected_width: widths.int_width }
-      }
-    LongFundamentalWidth { tag: _ } =>
-      LongFundamentalWidthSelection {
-        witness: CppLongWidthSelectionWitness { selected_width: widths.long_width }
-      }
-    LongLongFundamentalWidth { tag: _ } =>
-      LongLongFundamentalWidthSelection {
-        witness: CppLongLongWidthSelectionWitness { selected_width: widths.long_long_width }
-      }
-    PointerFundamentalWidth { tag: _ } =>
-      PointerFundamentalWidthSelection {
-        witness: CppPointerWidthSelectionWitness { selected_width: widths.pointer_width }
-      }
-    WcharTFundamentalWidth { tag: _ } =>
-      WcharTFundamentalWidthSelection {
-        witness: CppWcharTWidthSelectionWitness { selected_width: widths.wchar_t_width }
-      }
-  }
+// 🟢 pretty-much-done — long-width witness aliases project CppILP32IntegerWidths.long_width / CppLP64IntegerWidths.long_width; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
+type CppILP32LongWidthSelectionWitness = CppLongWidthSelectionWitness {
+  selected_width: CppIntegerWidth32
+}
+type CppLP64LongWidthSelectionWitness = CppLongWidthSelectionWitness {
+  selected_width: CppIntegerWidth64
 }

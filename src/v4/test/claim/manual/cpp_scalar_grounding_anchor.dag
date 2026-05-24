@@ -10,15 +10,14 @@ import v4.extdeps.cpp_abi {
   CppAbiModelItaniumCxxAbi186,
   CppDataModelFamilyILP32,
   CppDataModelFamilyLP64,
-  CppFundamentalWidthRoleLong,
-  CppFundamentalWidthSelectionWitness,
   CppILP32IntegerWidths,
+  CppILP32LongWidthSelectionWitness,
   CppLP64IntegerWidths,
+  CppLP64LongWidthSelectionWitness,
   CppPlainCharSignedness,
   CppTargetDataModel,
   CppTargetProfile,
-  CppWcharTSignedness,
-  cpp_select_width_witness
+  CppWcharTSignedness
 }
 import v4.extdeps.languages.cpp {
   CppRepresentableResultRequired,
@@ -34,14 +33,8 @@ type cpp_anchor_data_model = CppTargetDataModel<CppDataModelFamilyILP32, CppILP3
 type cpp_anchor_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_data_model>
 type cpp_anchor_lp64_data_model = CppTargetDataModel<CppDataModelFamilyLP64, CppLP64IntegerWidths, CppPlainCharSignedness, CppWcharTSignedness>
 type cpp_anchor_lp64_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_lp64_data_model>
-data cpp_anchor_ilp32_long_width_witness: CppFundamentalWidthSelectionWitness = cpp_select_width_witness(
-  widths: CppILP32IntegerWidths,
-  role: LongFundamentalWidth { tag: CppFundamentalWidthRoleLong }
-)
-data cpp_anchor_lp64_long_width_witness: CppFundamentalWidthSelectionWitness = cpp_select_width_witness(
-  widths: CppLP64IntegerWidths,
-  role: LongFundamentalWidth { tag: CppFundamentalWidthRoleLong }
-)
+type cpp_anchor_ilp32_long_width_witness = CppILP32LongWidthSelectionWitness
+type cpp_anchor_lp64_long_width_witness = CppLP64LongWidthSelectionWitness
 type cpp_anchor_signed_width_selection = CppSignedIntegerWidthSelection { spelling: CppSignedIntegerSurfaceSpelling, target_profile: cpp_anchor_target_profile }
 type cpp_anchor_wchar_t_width_selection = CppWcharTWidthSelection { spelling: CppWcharTSurfaceSpelling, target_profile: cpp_anchor_target_profile }
 type cpp_anchor_signed_scalar = SignedIntegerScalar { width_selection: cpp_anchor_signed_width_selection, signed_representation: CppTwosComplement, overflow_disposition: CppRepresentableResultRequired }
