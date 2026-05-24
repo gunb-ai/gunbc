@@ -241,7 +241,8 @@ fn sequence_outcome<T>(
             Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
         }
         Rejected { diagnostics: ra } => match o {
-          Accepted { value: _, diagnostics: _ } => Rejected { diagnostics: ra }
+          Accepted { value: _, diagnostics: od } =>
+            Rejected { diagnostics: rejected_with_pending(pending: od, rejected: ra) }
           Rejected { diagnostics: rb } =>
             Rejected { diagnostics: non_empty_diagnostics_append(a: ra, b: rb) }
         }
