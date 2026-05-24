@@ -45,6 +45,7 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+  impossible_bug_reason_redundant_read,
   manual_claim_anchor
 }
 
@@ -52,7 +53,6 @@ import v4.std.verification {
 data read_signature_symbol: Symbol = read_signature_symbol
 data write_signature_symbol: Symbol = write_signature_symbol
 data explicit_reread_symbol: Symbol = explicit_reread_symbol
-data redundant_read_reason: Symbol = redundant_read_reason
 data effect_signature_field: Symbol = effect_signature_field
 data effect_body_field: Symbol = effect_body_field
 data effect_read_subject_field: Symbol = effect_read_subject_field
@@ -126,7 +126,7 @@ data claim_redundant_read_caught: TestClaim = DiagnosticClaim {
   input: falsification_redundant_read,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: redundant_read_reason,
+        reason: impossible_bug_reason_redundant_read,
         at: node_locus(node: falsification_redundant_read),
         correction: Suggested { node: explicit_reread_input }
       }

@@ -42,6 +42,8 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+  impossible_bug_reason_target_transport_drift,
+  impossible_bug_reason_transport_drift,
   manual_claim_anchor
 }
 
@@ -50,8 +52,6 @@ data shared_wire_contract_symbol: Symbol = shared_wire_contract_symbol
 data client_field_int_symbol: Symbol = client_field_int_symbol
 data server_field_string_symbol: Symbol = server_field_string_symbol
 data target_field_bool_symbol: Symbol = target_field_bool_symbol
-data transport_drift_reason: Symbol = transport_drift_reason
-data target_transport_drift_reason: Symbol = target_transport_drift_reason
 data client_field: Symbol = client_field
 data server_field: Symbol = server_field
 data target_field: Symbol = target_field
@@ -104,7 +104,7 @@ data claim_target_contract_drift_impossible: TestClaim = DiagnosticClaim {
   input: falsification_target_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: target_transport_drift_reason,
+        reason: impossible_bug_reason_target_transport_drift,
         at: node_locus(node: falsification_target_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }
@@ -119,7 +119,7 @@ data claim_wire_contract_drift_impossible: TestClaim = DiagnosticClaim {
   input: falsification_wire_contract_drift,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: transport_drift_reason,
+        reason: impossible_bug_reason_transport_drift,
         at: node_locus(node: falsification_wire_contract_drift),
         correction: Suggested { node: shared_wire_contract_input }
       }

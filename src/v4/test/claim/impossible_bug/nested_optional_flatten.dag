@@ -42,6 +42,8 @@ import v4.std.verification {
   DiagnosticClaim,
   EqualsClaim,
   RoundTripClaim,
+  impossible_bug_reason_double_unwrap,
+  impossible_bug_reason_nested_optional,
   manual_claim_anchor
 }
 
@@ -49,8 +51,6 @@ import v4.std.verification {
 data optional_value_symbol: Symbol = optional_value_symbol
 data flattened_optional_symbol: Symbol = flattened_optional_symbol
 data double_unwrap_symbol: Symbol = double_unwrap_symbol
-data nested_optional_reason: Symbol = nested_optional_reason
-data double_unwrap_reason: Symbol = double_unwrap_reason
 data optional_inner: Symbol = optional_inner
 data optional_outer: Symbol = optional_outer
 
@@ -102,7 +102,7 @@ data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
   input: falsification_optional_double_unwrap,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: double_unwrap_reason,
+        reason: impossible_bug_reason_double_unwrap,
         at: node_locus(node: falsification_optional_double_unwrap),
         correction: Suggested { node: flattened_optional_input }
       }
@@ -117,7 +117,7 @@ data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
   input: falsification_nested_optional,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: nested_optional_reason,
+        reason: impossible_bug_reason_nested_optional,
         at: node_locus(node: falsification_nested_optional),
         correction: Suggested { node: flattened_optional_input }
       }
