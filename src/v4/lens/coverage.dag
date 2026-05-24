@@ -69,7 +69,6 @@ import v4.std.nat {
   nat_algebra_law_subject_symbol_commutative_semiring,
   nat_algebra_law_subject_symbol_inhabitant_nat
 }
-import v4.std.refinement { Refined }
 import v4.std.node {
   Arrow,
   Atom,
@@ -387,6 +386,44 @@ fn language_behavior_io_mock_eq(a: LanguageBehaviorIoMock, b: LanguageBehaviorIo
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace lens_applicability_subject_eq / bidirectional_roundtrip_subject_eq / node_list_eq / refinement_preservation_subject_eq call sites with the substrate equality primitive and delete these helpers in that same PR; forbidden: permanent per-field TestgenConcept subject equality table drift from lens/testgen.dag.
+fn lens_applicability_subject_eq(a: LensApplicabilitySubject, b: LensApplicabilitySubject) -> Bool {
+  a.lens == b.lens && a.program == b.program
+}
+
+
+fn bidirectional_roundtrip_subject_eq(
+  a: BidirectionalRoundtripSubject,
+  b: BidirectionalRoundtripSubject
+) -> Bool {
+  a.language == b.language && a.production == b.production
+}
+
+
+fn node_list_eq(a: List<Node>, b: List<Node>) -> Bool {
+  match a {
+    Empty =>
+      match b {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: ah, tail: at } =>
+      match b {
+        Empty => false
+        Cons { head: bh, tail: bt } => ah == bh && node_list_eq(a: at, b: bt)
+      }
+  }
+}
+
+
+fn refinement_preservation_subject_eq(
+  a: RefinementPreservationSubject,
+  b: RefinementPreservationSubject
+) -> Bool {
+  a.refined.base == b.refined.base && node_list_eq(a: a.original, b: b.original)
+}
+
+
 // 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace testgen_coverage_key_eq call sites with the substrate TestgenConcept equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestgenConcept equality table drift from lens/testgen.dag.
 fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool {
   match a {
@@ -406,14 +443,14 @@ fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool
         DiagnosticExhaustiveness => true
         _ => false
       }
-    LensApplicability { subject: _ } =>
+    LensApplicability { subject: as } =>
       match b {
-        LensApplicability { subject: _ } => true
+        LensApplicability { subject: bs } => lens_applicability_subject_eq(a: as, b: bs)
         _ => false
       }
-    BidirectionalRoundtrip { subject: _ } =>
+    BidirectionalRoundtrip { subject: as } =>
       match b {
-        BidirectionalRoundtrip { subject: _ } => true
+        BidirectionalRoundtrip { subject: bs } => bidirectional_roundtrip_subject_eq(a: as, b: bs)
         _ => false
       }
     LanguageBehaviorEquivalence { subject: as, mock: am } =>
@@ -424,9 +461,9 @@ fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool
             language_behavior_io_mock_eq(a: am, b: bm)
         _ => false
       }
-    RefinementPreservation { subject: _ } =>
+    RefinementPreservation { subject: as } =>
       match b {
-        RefinementPreservation { subject: _ } => true
+        RefinementPreservation { subject: bs } => refinement_preservation_subject_eq(a: as, b: bs)
         _ => false
       }
   }
