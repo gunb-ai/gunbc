@@ -13,7 +13,7 @@ import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.collection { List }
-import v4.std.algebra { Cons, Empty, fold_list, is_empty, length, list_snoc_item }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, length, list_snoc_item }
 
 
 // 🟡 coproduct dissolution — CP-1b/T-7 grammar-as-data; typed production alternatives, Node projection only.
@@ -53,7 +53,7 @@ type Grammar
 type ParseTree = Node
 
 type ParseExprResult
-  = ParseExprAccepted { remaining: List<Token> }
+  = ParseExprAccepted { remaining: FreeMonoid<Token> }
   | ParseExprRejected
 
 
@@ -216,6 +216,14 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
 }
 
 
+fn grammar_production_named_edge(production: GrammarProduction) -> Edge {
+  grammar_named_edge(
+    name: production.name,
+    target: grammar_production_to_node(production: production)
+  )
+}
+
+
 fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
   Node {
     kind: TypeNode {
@@ -224,13 +232,10 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
     children: fold_list(
       xs: productions,
       empty: Empty,
-      cons: fn(acc, production) {
+      cons: fn(acc, item) {
         list_snoc_item(
           xs: acc,
-          item: grammar_named_edge(
-            name: production.name,
-            target: grammar_production_to_node(production: production)
-          )
+          item: grammar_production_named_edge(production: item)
         )
       }
     )
@@ -291,57 +296,71 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProducti
 }
 
 
-fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
-  match expr {
-    Terminal { token_class: token_class } =>
-      match tokens {
-        Empty => ParseExprRejected
-        Cons { head: token, tail: remaining } =>
-          if token.class == token_class {
+fn parse_expr_fueled(expr: GrammarExpr, tokens: FreeMonoid<Token>, root: GrammarRoot, fuel: Int) -> ParseExprResult {
+  if fuel <= 0 {
+    ParseExprRejected
+  } else {
+    match expr {
+      Terminal { token_class: token_class } =>
+        match tokens {
+          Empty => ParseExprRejected
+          Cons { head: token, tail: remaining } =>
+            if token.class == token_class {
+              ParseExprAccepted { remaining: remaining }
+            } else {
+              ParseExprRejected
+            }
+        }
+      Nonterminal { production: production } =>
+        match grammar_lookup_production(root: root, name: production) {
+          GrammarProductionFound { production: found } =>
+            parse_expr_fueled(expr: found.expression, tokens: tokens, root: root, fuel: fuel - 1)
+          GrammarProductionMissing => ParseExprRejected
+        }
+      Sequence { left: left, right: right } =>
+        match parse_expr_fueled(expr: left, tokens: tokens, root: root, fuel: fuel - 1) {
+          ParseExprAccepted { remaining: after_left } =>
+            parse_expr_fueled(expr: right, tokens: after_left, root: root, fuel: fuel - 1)
+          ParseExprRejected => ParseExprRejected
+        }
+      Choice { left: left, right: right } =>
+        match parse_expr_fueled(expr: left, tokens: tokens, root: root, fuel: fuel - 1) {
+          ParseExprAccepted { remaining: remaining } =>
             ParseExprAccepted { remaining: remaining }
-          } else {
-            ParseExprRejected
-          }
-      }
-    Nonterminal { production: production } =>
-      match grammar_lookup_production(root: root, name: production) {
-        GrammarProductionFound { production: found } =>
-          parse_expr(expr: found.expression, tokens: tokens, root: root)
-        GrammarProductionMissing => ParseExprRejected
-      }
-    Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, root: root) {
-        ParseExprAccepted { remaining: after_left } =>
-          parse_expr(expr: right, tokens: after_left, root: root)
-        ParseExprRejected => ParseExprRejected
-      }
-    Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, root: root) {
-        ParseExprAccepted { remaining: remaining } =>
-          ParseExprAccepted { remaining: remaining }
-        ParseExprRejected => parse_expr(expr: right, tokens: tokens, root: root)
-      }
-    Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, root: root) {
-        ParseExprAccepted { remaining: remaining } =>
-          ParseExprAccepted { remaining: remaining }
-        ParseExprRejected => ParseExprAccepted { remaining: tokens }
-      }
-    Repeat { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, root: root) {
-        ParseExprAccepted { remaining: remaining } =>
-          if length(xs: remaining) == length(xs: tokens) {
+          ParseExprRejected => parse_expr_fueled(expr: right, tokens: tokens, root: root, fuel: fuel - 1)
+        }
+      Optional { element: element } =>
+        match parse_expr_fueled(expr: element, tokens: tokens, root: root, fuel: fuel - 1) {
+          ParseExprAccepted { remaining: remaining } =>
             ParseExprAccepted { remaining: remaining }
-          } else {
-            parse_expr(expr: Repeat { element: element }, tokens: remaining, root: root)
-          }
-        ParseExprRejected => ParseExprAccepted { remaining: tokens }
-      }
+          ParseExprRejected => ParseExprAccepted { remaining: tokens }
+        }
+      Repeat { element: element } =>
+        match parse_expr_fueled(expr: element, tokens: tokens, root: root, fuel: fuel - 1) {
+          ParseExprAccepted { remaining: remaining } =>
+            if length(xs: remaining) == length(xs: tokens) {
+              ParseExprAccepted { remaining: remaining }
+            } else {
+              parse_expr_fueled(expr: Repeat { element: element }, tokens: remaining, root: root, fuel: fuel - 1)
+            }
+          ParseExprRejected => ParseExprAccepted { remaining: tokens }
+        }
+    }
   }
 }
 
 
-fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
+fn parse_expr(expr: GrammarExpr, tokens: FreeMonoid<Token>, root: GrammarRoot) -> ParseExprResult {
+  parse_expr_fueled(
+    expr: expr,
+    tokens: tokens,
+    root: root,
+    fuel: length(xs: tokens) + 64
+  )
+}
+
+
+fn parse_production(tokens: FreeMonoid<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   match parse_expr(expr: production.expression, tokens: tokens, root: root) {
     ParseExprAccepted { remaining: remaining } =>
