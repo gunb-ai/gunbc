@@ -43,12 +43,17 @@ import v4.std.algebra {
   Monoid,
   Semigroup
 }
-import v4.std.cardinality { NonZeroNat }
+import v4.std.cardinality {
+  loop_bound_measure,
+  loop_bound_witness_for_node,
+  NonZeroNat
+}
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
-  node_locus,
-  Unavailable
+  Textual,
+  Unavailable,
+  WholeFile
 }
 import v4.std.node {
   Arrow,
@@ -64,6 +69,9 @@ import v4.std.node {
   Edge,
   Instantiation,
   Loop,
+  loop_bound_edge,
+  loop_edge_contributes_to_iteration_fold,
+  Named,
   Node,
   NodeFold,
   Symbol,
@@ -77,7 +85,7 @@ import v4.std.witness { Holds, Violates, Witness }
 
 
 data cost_reason_unmodeled_symbolic_cost: Symbol = cost_reason_unmodeled_symbolic_cost
-data cost_lattice_top_reason: String = "lattice-top-unknown-cost"
+data cost_lattice_top_virtual_file: Symbol = cost_lattice_top_virtual_file
 
 // U2/T-12: this is the single cost carrier. Complexity imports the
 // `asymptotic_class_of_cost` projection below and does not re-walk `Node`.
@@ -109,7 +117,7 @@ type SymbolicCost
   | FactorialCost { variable: SizeVariable }
   | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
-  | UnknownCost { reason: String }
+  | UnknownCost { diagnostic: Diagnostic }
 
 // 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type AsymptoticClass
@@ -135,6 +143,7 @@ type CostCompositionMode
 type SymbolicCostFoldState {
   mode: CostCompositionMode
   cost: SymbolicCost
+  parent: Node
 }
 
 fn constant_cost(value: Nat) -> SymbolicCost {
@@ -169,22 +178,20 @@ fn linear_in_node(n: Node) -> SymbolicCost {
   LinearCost { variable: size_of_node(n: n) }
 }
 
-fn unknown_cost(reason: String) -> SymbolicCost {
-  UnknownCost { reason: reason }
+data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
+  reason: cost_reason_unmodeled_symbolic_cost,
+  at: Textual { file: cost_lattice_top_virtual_file, extent: WholeFile },
+  correction: Unavailable { reason: AmbiguousIntent }
 }
 
-fn symbolic_cost_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: cost_reason_unmodeled_symbolic_cost,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
+fn unknown_cost(diagnostic: Diagnostic) -> SymbolicCost {
+  UnknownCost { diagnostic: diagnostic }
 }
 
 fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
   match c {
-    UnknownCost { reason: _ } =>
-      Violates { diagnostic: symbolic_cost_diagnostic(n: n) }
+    UnknownCost { diagnostic: d } =>
+      Violates { diagnostic: d }
     _ =>
       Holds { value: c }
   }
@@ -201,12 +208,21 @@ fn base_cost_for_connective(c: Connective, n: Node) -> SymbolicCost {
   }
 }
 
-fn base_cost_for_behavior(b: Behavior) -> SymbolicCost {
+fn base_cost_for_loop(n: Node) -> SymbolicCost {
+  match loop_bound_witness_for_node(n: n) {
+    Holds { value: bound } =>
+      linear_in_node(n: loop_bound_measure(bound: bound))
+    Violates { diagnostic: d } =>
+      unknown_cost(diagnostic: d)
+  }
+}
+
+fn base_cost_for_behavior(b: Behavior, n: Node) -> SymbolicCost {
   match b {
     Value => zero_cost()
     Transform => unit_cost()
     Branch => unit_cost()
-    Loop => unknown_cost(reason: "loop-bound-undeclared: Loop behavior carries no iteration bound in std/node.dag; structurally unknowable until bound is declared")
+    Loop => base_cost_for_loop(n: n)
     Bind => zero_cost()
   }
 }
@@ -237,12 +253,14 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
     TypeNode { connective: c } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_connective(c: c),
-        cost: base_cost_for_connective(c: c, n: n)
+        cost: base_cost_for_connective(c: c, n: n),
+        parent: n
       }
     ComputationNode { behavior: b } =>
       SymbolicCostFoldState {
         mode: cost_mode_for_behavior(b: b),
-        cost: base_cost_for_behavior(b: b)
+        cost: base_cost_for_behavior(b: b, n: n),
+        parent: n
       }
   }
 }
@@ -250,11 +268,11 @@ fn cost_fold_init(n: Node) -> SymbolicCostFoldState {
 fn symbolic_sequential(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => b
-    UnknownCost { reason: _ } => a
+    UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => a
-        UnknownCost { reason: _ } => b
+        UnknownCost { diagnostic: _ } => b
         _ => SumCost { lhs: a, rhs: b }
       }
   }
@@ -264,12 +282,12 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => zero_cost()
     ConstantCost { value: Succ { prev: Zero } } => b
-    UnknownCost { reason: _ } => a
+    UnknownCost { diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => zero_cost()
         ConstantCost { value: Succ { prev: Zero } } => a
-        UnknownCost { reason: _ } => b
+        UnknownCost { diagnostic: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
       }
   }
@@ -393,12 +411,17 @@ fn compose_child_cost(
 
 fn cost_fold_step(
   acc: SymbolicCostFoldState,
-  _: Edge,
+  e: Edge,
   child: SymbolicCostFoldState
 ) -> SymbolicCostFoldState {
-  SymbolicCostFoldState {
-    mode: acc.mode,
-    cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost)
+  if loop_edge_contributes_to_iteration_fold(parent: acc.parent, e: e) {
+    SymbolicCostFoldState {
+      mode: acc.mode,
+      cost: compose_child_cost(mode: acc.mode, acc: acc.cost, child: child.cost),
+      parent: acc.parent
+    }
+  } else {
+    acc
   }
 }
 
@@ -613,7 +636,7 @@ fn asymptotic_class_of_cost(cost: SymbolicCost) -> AsymptoticClass {
         a: asymptotic_class_of_cost(cost: lhs),
         b: asymptotic_class_of_cost(cost: rhs)
       )
-    UnknownCost { reason: _ } => ClassUnknown
+    UnknownCost { diagnostic: _ } => ClassUnknown
   }
 }
 
@@ -639,7 +662,7 @@ data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
     meet: cost_lattice_meet,
     join: cost_lattice_join
   },
-  top: UnknownCost { reason: cost_lattice_top_reason },
+  top: UnknownCost { diagnostic: cost_lattice_top_diagnostic },
   bottom: ConstantCost { value: Zero }
 }
 
