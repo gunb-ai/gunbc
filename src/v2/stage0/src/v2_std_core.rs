@@ -3047,6 +3047,34 @@ pub fn string_type() -> Rc<Node> {
     CACHED.with(|c| c.clone())
 }
 
+pub fn hash_type() -> Rc<Node> {
+    thread_local! {
+            static CACHED: Rc<Node> = {
+                Rc::new(Node {
+        name: "Hash".to_string(),
+        span: kernel_span(&"Hash".to_string()),
+        ident_span: Some(kernel_span(&"Hash".to_string())),
+        children: Rc::new(vec![]),
+        connective: Connective::NoConnective,
+        params: Rc::new(vec![]),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: Rc::new(vec![]),
+        body: None,
+        transport: None,
+        properties: Rc::new(vec![]),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    })
+            };
+        }
+    CACHED.with(|c| c.clone())
+}
+
 pub fn int_type() -> Rc<Node> {
     thread_local! {
             static CACHED: Rc<Node> = {
