@@ -341,15 +341,22 @@ flat — dispatch in waves):
 
 ---
 
-### T-4.5: extdeps/posix.dag + extdeps/file_system.dag
+### T-4.5: extdeps/posix.dag + extdeps/file_system.dag  [SUBSTRATE LANDED]
 
+**Status:** Both files landed. `posix.dag` models the POSIX process substrate
+(ProcessId/ExitCode/SignalNum via T-25-core refinement substrate — PR #3507;
+CapturedOutputPipes stdout/stderr axes, ProcessTable opaque OS resource).
+`file_system.dag` models file-system resource + modeled effects (ModeledFileEffects
+per Practice 11 companion; legacy FileSystemOperations P5-bridge dissolves when
+testgen transitions to ModeledFileEffects). TestClaims in `test/claim/manual/process_numeric_refinements.dag`
+and `test/claim/manual/posix_output_capture.dag`.
 **File**: 2 files in `src/v4/extdeps/`
 **Why bundled**: both are OS-interaction substrate; both are required for v4 to function as a self-hosting compiler (read source files, write emitted files, ExecuteCommand for boundary tests per THESIS facet 3).
 **Why anchored**: each file carries a `# Anchor:` to its canonical reference (Wikipedia/POSIX). Reviewers validate the modeling against the reference — no invented vocabulary.
 
-**Modeling decisions**:
-- `posix.dag`: how to model parent/child relationships? Signal handling depth (full POSIX signal set vs minimal {SIGTERM, SIGKILL, SIGINT})? Pipe model for capture (live-streaming vs buffered)?
-- `file_system.dag`: AbsolutePath vs RelativePath as Disj sum or refinement on Path? Symlink target as recursive Path or opaque? Read failure modes (NotFound vs PermissionDenied vs IOError) as distinct Diagnostic `reason` name-references (`Symbol`, per std/diagnostic.dag — `reason` is an opaque name-reference, not a closed enum).
+**Modeling decisions (resolved)**:
+- `posix.dag`: parent/child via `ProcessIdentity.parent: ProcessId`; signal handling minimal (`SignalNum` + `Termination` sum — no named SIGTERM/SIGKILL constants per T-4.5 modeling decision); pipe capture buffered via `CapturedOutputPipes { stdout, stderr: CapturedByteStream }`.
+- `file_system.dag`: `FilesystemPath = Absolute | Relative` (Disj sum); symlink target as `FileKind` discriminant (`FileKindResolutionPolicy = FollowSymlinks | DoNotFollowSymlinks`); read failure modes as opaque `Symbol` reason-references per std/diagnostic.dag.
 
 **Reference**:
 - Anchors in file headers (Wikipedia: Process, Wikipedia: File system, POSIX File and Directory Operations)
@@ -384,7 +391,11 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
 **Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
-*Theme-A #9:* Until `LanguageModel` is a **named** carrier (or merged `00_compile.dag` states formally that the model **IS** a `Node`), read **`LexRules` / `Grammar` as the model's lexical and syntax projections** on the same grammar-as-data — not a second authority beside the conceptual `(Source, LanguageModel)` spelling.
+*Theme-A #9 resolved:* `src/v4/compiler/07_target_carriers.dag` is the
+single carrier authority: `type LanguageModel = Node`. Read
+**`LexRules` / `Grammar` as lexical and syntax projections** on that
+same grammar-as-data `Node`, not as second authorities beside the
+conceptual `(Source, LanguageModel)` spelling.
 
 **Modeling decisions**:
 - The lexical-rule **data schema** on the `LanguageModel` — what a
@@ -406,7 +417,9 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches **`compiler/02_parse.dag` `Owns`** (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
 *Ingest tie-in (`00_compile.dag` `Owns` today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
-*Theme-A #9:* Same projection reading as T-6 — `Grammar` is the syntax-side parameter until the named `LanguageModel` bundles lex + grammar explicitly.
+*Theme-A #9 resolved:* Same projection reading as T-6 — `Grammar` is the
+syntax-side projection of the landed `LanguageModel = Node` authority in
+`src/v4/compiler/07_target_carriers.dag`.
 
 **Modeling decisions**:
 - The grammar **production data schema** as `Node` — a declarative
@@ -558,8 +571,14 @@ entry (wires `dependency_lens(root: tree.root)` internally).
 
 ---
 
-### T-14: test/claim/* + test/fixture/* — TestClaim corpus
+### T-14: test/claim/* + test/fixture/* — TestClaim corpus  [CORPUS FILLED]
 
+**Status:** Corpus filled **PR #3467**. All 6 impossible-bug classes landed
+(`suboptimal_complexity`, `idempotency_contract`, `transport_type_drift`,
+`nested_optional_flatten`, `unenumerated_effects`, `unhandled_diagnostic_paths`).
+`algebra_laws/nat_semiring.dag` and `diagnostic_correction/show_correct_code.dag` filled.
+Manual claims in `test/claim/manual/` (connective_anchors, nat_law_anchors, process_numeric_refinements,
+refinement_nonempty_list, posix_output_capture, and others). Execution deferred to T-22 runner.
 **Files**: `src/v4/test/claim/*` directories (6 impossible_bug + algebra_laws + diagnostic_correction + future categories) + `src/v4/test/fixture/*`
 **Operator-ratified additions 2026-05-15**: scaffolds for all 6 R1+R2+ impossible-bug classes already present (`test/claim/impossible_bug/{suboptimal_complexity,idempotency_contract,transport_type_drift,nested_optional_flatten,unenumerated_effects,unhandled_diagnostic_paths}.dag`); diagnostic_correction/ + algebra_laws/ directories ready for fill-in.
 
@@ -1032,39 +1051,21 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 
 **New PROPOSED tasks (the "missing substrate" Theme-A gaps):**
 
-### T-25 — std/ value-predicate refinement substrate  [SCHEDULED]
-**Gap:** `PositiveInt` (PID), `NonNegativeInt` (exit code), non-empty
-`String` (paths/keys), `NonEmptyList` (`AbsolutePath`), and a general
-`where`-clause / phantom-bound on records — needed by T-4.5
-posix/file_system, T-4.6 json/toml, rust.dag and others; no substrate
-exists (`integer.dag` explicitly states "no `where`-clause").
-**Disposition — SCHEDULED (operator ruling 2026-05-17; no rule-out). DECOMPOSE into core + tail:**
-- **T-25-core** — a refinement modeled as a **base type + a fail-closed
-  validation obligation**: a refined value is its base carrier plus a
-  named validation that must discharge at a constructor boundary, failing
-  closed (Diagnostic) when it cannot. This IS the audit's missing fourth
-  coercion *outcome* — "can't prove ⇒ fail-closed" (T-9's `Outcome::Rejected`
-  branch — the failure outcome, not a quality tag). `docs/coercion-design.md`
-  Category 6 already designed this shape: chain to the base carrier + a
-  validation at a named constructor boundary. T-25-core sits **near T-3**
-  (the cardinality area) and is a **hard prerequisite** of the extdeps
-  tasks that ground refinement-bearing carriers — **T-4** (the per-language
-  fact-bundles, e.g. rust.dag), **T-4.5** (posix/file_system — `PositiveInt`
-  PID, `NonNegativeInt` exit code, `NonEmptyList` `AbsolutePath`), and
-  **T-4.6** (the format models — non-empty json/toml keys). Those tasks
-  carry T-25-core in their `[needs]`.
-- **T-25-tail** — the **predicate prover** that *erases* a refinement once
-  its predicate is proven (a pure optimization: a proven refinement need
-  not re-validate downstream). Placed **after T-9**; never dropped.
-**Independent sub-bug — decoupled from the T-25 schedule:**
-`file_system.dag`'s header `Consumes` cites `std/collection NonEmptyList`,
-a type `collection.dag` does not declare. This is a dangling-`Consumes`
-bug independent of T-25 — the header cites a non-existent type today,
-before any refinement substrate lands — so it is NOT gated on T-25. It is
-routed standalone to the `file_system.dag` owner (T-4.5 / PR #3209) to
-correct the header; the dangling `Consumes` stands on the PR-head tree
-until that PR lands. (`NonEmptyList` itself, once T-25-core lands, is a
-`List` refinement — `List<T> where non_empty` — not a separate carrier.)
+### T-25 — std/ value-predicate refinement substrate  [SUBSTRATE LANDED]
+**Status:** Both T-25 components are landed on `main`.
+- **T-25-core** — `src/v4/std/refinement.dag` (`Validation<B>`, `Refined<B>`, `refine`, `refined_base`).
+  Landed **PR #3354**. Consumed by posix.dag (ProcessId/ExitCode/SignalNum per PR #3507).
+- **T-25-tail** — predicate prover (`constraint_satisfaction` + `exact_structural_equality_zip_fold`
+  semantics) in `src/v4/std/find_witness.dag` and `src/v4/std/constraint_satisfaction_predicate.dag`;
+  dissolves identity-MVP scaffolds. Landed **PR #3531**.
+**Residual (not T-25):** RFC 3986 validated-component refinements in
+`src/v4/std/network.dag` are now **unblocked** (T-25-core gate open); authoring is
+follow-on to T-26 (`feature:network-validated-components`), not gated on T-25-core.
+`NonEmptyList` witness in `src/v4/test/claim/manual/refinement_nonempty_list.dag`
+(acceptance witness, T-22 exec) is similarly unblocked.
+**Independent sub-bug (resolved):** `file_system.dag` header dangling-`Consumes`
+(cited `std/collection NonEmptyList` before T-25-core landed) is corrected — the header
+no longer cites a non-existent type.
 
 ### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SUBSTRATE LANDED]
 **Operator ruling 2026-05-17 — disposition unchanged (no fork); authority lives in `std/`.**
@@ -1073,8 +1074,9 @@ structured RFC 3986 URI carriers (`Url`, `UriReference`, …), and
 `NetworkAddress { authority: UriAuthority }`. `extdeps/coordination.dag` and
 `extdeps/formats/openapi.dag` consume this module per M9 / DECISIONS Part 1
 (`std/network.dag` rows + coordination `NetworkAddress` dissolution row).
-**Residual (not T-26):** RFC 3986 validated-component refinements remain the
-`std/network.dag` **`feature:T-25-core`** yellow row; OpenAPI path verbs stay
+**Residual (not T-26):** RFC 3986 validated-component refinements in `std/network.dag`
+are now unblocked (T-25-core gate open); tracked as `feature:network-validated-components`
+(T-26 follow-on). OpenAPI path verbs stay
 `OpenApiHttpMethod` (OAS eight-verb closed set vs broader `HttpMethod`) per
 DECISIONS **T-4.6-P4-OpenApiHttpMethod**.
 
@@ -1117,7 +1119,11 @@ integer widths without it; hence the `T-4 [needs … T-29]` edge). It is a
 T-29, T-25-core} → T-4 → T-9` side branch goes critical. Low-dependency
 ≠ low-priority.
 
-### T-30 — std/ structural fact-density / hollow-alias gate  [SCHEDULED]
+### T-30 — std/ structural fact-density / hollow-alias gate  [SUBSTRATE LANDED]
+**Status:** Landed **PR #3359**. `src/v4/lens/fact_density.dag` is the substrate authority
+(`carrier_spec_fact`, `SourceSpecReadFact`, kernel-ambient exemption). Hand-Rust bootstrap
+mirror at `src/v3/compiler/src/v4_hollow_alias_gate.rs` (P5(b) interim; dissolves when
+generated `.dag` checker runs during bootstrap). TestClaims in `src/v4/test/claim/lens_fact_density/`.
 **Operator ruling 2026-05-17 (codex 13403, via the D2-reversal Phase-1
 resolution).** A generated structural checker — a pure function
 `Node -> Outcome` — that **fails closed on a hollow alias**: a carrier
@@ -1191,12 +1197,13 @@ kernel-ambient exemption is already pinned in tests and docs).
   net-new modeling is only what the v3 contract did not cover, and the v3
   files are retired into the v4 one (no dual representation left
   standing).
-- **#9 — `LanguageModel` / `TargetModel` named type.** `00_compile.dag`
-  prose (B2-OMNI) is parameterized over "declarative LanguageModels" but
-  no `type LanguageModel` is declared. Disposition: T-6/T-10 either
-  declare the carrier type, or the B2-OMNI header states formally "a
-  LanguageModel IS a `Node` — no separate type." A naming-clarity fix in
-  existing scope, not a new task.
+- **#9 — `LanguageModel` / `TargetModel` named type — RESOLVED.**
+  `src/v4/compiler/07_target_carriers.dag` is the single carrier
+  authority: `type LanguageModel = Node`, with `TargetModel` owned there
+  as the target bundle. The earlier open-item fork ("declare the carrier"
+  vs "a model IS a `Node`") is settled as the latter through the named
+  carrier alias, so downstream T-32 work must consume this authority
+  rather than reopen Theme-A #9.
 - **#12 — ExecuteCommand TestClaims.** THESIS facet 3 names
   `ExecuteCommand`-based `TestClaim`s; v4 models the boundary via a
   simulator `Node` + the closed 4 `AssertKind`s. Disposition:

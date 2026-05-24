@@ -13,15 +13,12 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   TestClaimTypedInput,
-  Verdict,
-  Deferred,
-  Fail,
-  Pass,
   aggregate_verdicts,
   eval_diagnostic,
   eval_rejected_roundtrip_deferred,
   test_claim_cache_receipt
 }
+import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
   AlgebraRef,
   InferredFacts,
