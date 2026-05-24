@@ -3,13 +3,6 @@
 // Owns: claim_llvm_ir_b2_omni_in_b_probe.
 // Consumes: extdeps/languages/llvm_ir.dag, std/verification.dag, std/node.dag.
 // Status: PASS (IN-B) receipt; no pre-D2-reversal rework attempted.
-//
-// Conclusion: llvm_ir.dag already carries the wave-1 SSA/phi/CFG substrate:
-//   - SSA names are represented by result Symbol fields and LocalRef values.
-//   - phi is represented by PhiIncoming, PhiNode, and BasicBlock.phis.
-//   - CFG successor facts are projected by block_successors from Terminator.
-// Dominance is intentionally not asserted here; it is later consumer analysis
-// over CFG/predecessor facts, not part of this IN-B probe receipt.
 
 module v4.test.claim.manual.llvm_ir_b2_omni_in_b_probe
 
