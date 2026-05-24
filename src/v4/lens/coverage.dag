@@ -801,11 +801,6 @@ fn claim_is_outside_testgen_scheduled_anchor(c: TestClaim) -> Bool {
 }
 
 
-fn testgen_coverage_rejection_not_applicable(c: TestClaim) -> Bool {
-  claim_is_outside_testgen_scheduled_anchor(c: c)
-}
-
-
 fn impossible_bug_coverage_key_from_diagnostic_reason(reason: Symbol) -> Outcome<ImpossibleBugCoverageKey> {
   bind_outcome(
     o: impossible_bug_class_from_diagnostic_reason(reason: reason),
