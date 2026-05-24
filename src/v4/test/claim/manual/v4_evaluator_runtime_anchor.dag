@@ -58,11 +58,7 @@ data v4_evaluator_anchor_boundary: ResourceEffectBoundary = v4_evaluator_anchor_
 
 data v4_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v4_evaluator_boundary_wave1()
 
-<<<<<<< HEAD
-data witness_v4_evaluator_runtime_identity: Bool = (v4_evaluator_anchor_runtime.runtime_identity == v4_evaluator_runtime_id)
-=======
 data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == v4_evaluator_runtime_id
->>>>>>> a8a1427952978637d7ca22d417a7de250e10ef97
 
 data claim_v4_evaluator_runtime_bundle: TestClaim = CompilesClaim {
   label: "T-34 v4 evaluator concrete runtime bundle constructs and carriers wire",
