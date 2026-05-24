@@ -226,7 +226,6 @@ def check_generated_eval(eval_rs: Path) -> None:
             "RuntimeBehaviorInterpreter::BranchRuntimeInterpreter",
             "RuntimeBehaviorInterpreter::LoopRuntimeInterpreter",
             "RuntimeBehaviorInterpreter::BindRuntimeInterpreter",
-            "interpretation",
             "environment",
             "runtime",
             "eval_accept_runtime_value_with_facts",
@@ -252,7 +251,7 @@ def check_generated_eval(eval_rs: Path) -> None:
         bind_body,
         [
             "eval_bind_key",
-            "eval_bind_value_arg",
+            "eval_first_runtime_argument",
             "v2_rt::bind_value",
             "eval_bind_body",
             "eval_runtime_node(body.clone(), tree.clone(), runtime.interpretation.clone(), bound_environment.clone(), runtime.clone())",
