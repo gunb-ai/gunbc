@@ -54,7 +54,6 @@ import v4.std.cardinality {
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
-  ExternalContractUnknown,
   node_locus,
   Unavailable
 }
@@ -194,14 +193,6 @@ data cost_lattice_top_diagnostic: Diagnostic = Diagnostic {
 
 fn unknown_cost(reason: String, diagnostic: Diagnostic) -> SymbolicCost {
   UnknownCost { reason: reason, diagnostic: diagnostic }
-}
-
-fn symbolic_cost_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
-    reason: cost_reason_unmodeled_symbolic_cost,
-    at: node_locus(node: n),
-    correction: Unavailable { reason: AmbiguousIntent }
-  }
 }
 
 fn symbolic_cost_witness(c: SymbolicCost, n: Node) -> Witness<SymbolicCost> {
