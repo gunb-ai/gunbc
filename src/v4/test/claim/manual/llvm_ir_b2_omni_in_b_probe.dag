@@ -126,24 +126,29 @@ fn llvm_probe_receipt_holds() -> Bool {
 }
 
 
+fn llvm_probe_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: llvm_probe_pass_symbol } },
+    children: [
+      Edge { label: Named { name: llvm_probe_ssa_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_phi_result_symbol) },
+      Edge { label: Named { name: llvm_probe_phi_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_phi_axis_symbol) },
+      Edge { label: Named { name: llvm_probe_cfg_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_cfg_axis_symbol) },
+      Edge { label: Named { name: llvm_probe_dominance_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_dominance_axis_symbol) },
+    ]
+  }
+}
+
+
 fn llvm_probe_receipt_node() -> Node {
   if llvm_probe_receipt_holds() {
-    Node {
-      kind: TypeNode { connective: Atom { identity: llvm_probe_pass_symbol } },
-      children: [
-        Edge { label: Named { name: llvm_probe_ssa_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_phi_result_symbol) },
-        Edge { label: Named { name: llvm_probe_phi_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_phi_axis_symbol) },
-        Edge { label: Named { name: llvm_probe_cfg_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_cfg_axis_symbol) },
-        Edge { label: Named { name: llvm_probe_dominance_axis_symbol }, target: llvm_probe_atom(s: llvm_probe_dominance_axis_symbol) },
-      ]
-    }
+    llvm_probe_pass_node()
   } else {
     llvm_probe_atom(s: llvm_probe_fail_symbol)
   }
 }
 
 
-data llvm_probe_expected_node: Node = llvm_probe_receipt_node()
+data llvm_probe_expected_node: Node = llvm_probe_pass_node()
 
 data claim_llvm_ir_b2_omni_in_b_probe: TestClaim = EqualsClaim {
   label: "T-4.12 llvm_ir B2-OMNI IN-B probe: SSA, phi, CFG successors present; dominance derived",
