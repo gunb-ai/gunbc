@@ -374,6 +374,17 @@ fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<
 }
 
 
+fn eval_bind_value_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+  eval_witness_outcome(
+    witness: list_nth(
+      xs: args,
+      wanted: 1,
+      absent: eval_diagnostic(reason: eval_rejected_bind_value_absent, node: node)
+    )
+  )
+}
+
+
 fn eval_nth_child(node: Node, wanted: Int, absent_reason: Symbol) -> Outcome<Edge> {
   eval_witness_outcome(
     witness: list_nth(
@@ -473,6 +484,7 @@ fn eval_branch_node(
   args: List<RuntimeValue>,
   _facts: InferredFacts,
   tree: InferredTree,
+  interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
@@ -488,7 +500,7 @@ fn eval_branch_node(
               eval_runtime_node(
                 node: chosen,
                 tree: tree,
-                interpretation: runtime.interpretation,
+                interpretation: interpretation,
                 environment: environment,
                 runtime: runtime
               )
@@ -533,6 +545,7 @@ fn eval_bind_node(
   args: List<RuntimeValue>,
   _facts: InferredFacts,
   tree: InferredTree,
+  interpretation: InterpretationAlgebra,
   interpreter: RuntimeBehaviorInterpreter,
   environment: EvaluationEnvironment,
   runtime: V4EvaluatorRuntime
@@ -543,7 +556,7 @@ fn eval_bind_node(
         o: eval_bind_key(node: node),
         f: fn(key) {
           bind_outcome(
-            o: eval_first_runtime_argument(args: args, node: node),
+            o: eval_bind_value_argument(args: args, node: node),
             f: fn(bound_value) {
               bind_outcome(
                 o: bind.bind_value(key, bound_value, environment),
@@ -554,7 +567,7 @@ fn eval_bind_node(
                       eval_runtime_node(
                         node: body,
                         tree: tree,
-                        interpretation: runtime.interpretation,
+                        interpretation: interpretation,
                         environment: bound_environment,
                         runtime: runtime
                       )
