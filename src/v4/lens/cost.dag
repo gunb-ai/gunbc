@@ -322,12 +322,12 @@ fn symbolic_product(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost {
   match a {
     ConstantCost { value: Zero } => zero_cost()
     ConstantCost { value: Succ { prev: Zero } } => b
-    UnknownCost { reason: _ } => a
+    UnknownCost { reason: _, diagnostic: _ } => a
     _ =>
       match b {
         ConstantCost { value: Zero } => zero_cost()
         ConstantCost { value: Succ { prev: Zero } } => a
-        UnknownCost { reason: _ } => b
+        UnknownCost { reason: _, diagnostic: _ } => b
         _ => ProductCost { lhs: a, rhs: b }
       }
   }
@@ -676,7 +676,7 @@ fn asymptotic_class_of_cost(cost: SymbolicCost) -> AsymptoticClass {
         a: asymptotic_class_of_cost(cost: lhs),
         b: asymptotic_class_of_cost(cost: rhs)
       )
-    UnknownCost { reason: _ } => ClassUnknown
+    UnknownCost { reason: _, diagnostic: _ } => ClassUnknown
   }
 }
 
@@ -702,7 +702,7 @@ data symbolic_cost_lattice: BoundedLattice<SymbolicCost> = BoundedLattice {
     meet: cost_lattice_meet,
     join: cost_lattice_join
   },
-  top: UnknownCost { reason: cost_lattice_top_reason },
+  top: UnknownCost { reason: cost_lattice_top_reason, diagnostic: cost_lattice_top_diagnostic },
   bottom: ConstantCost { value: Zero }
 }
 

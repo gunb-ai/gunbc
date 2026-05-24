@@ -6,7 +6,8 @@
 
 module v4.test.claim.lens_cost.loop_illegal_named
 
-import v4.lens.cost { UnknownCost, symbolic_cost_of_node }
+import v4.lens.cost { cost_lens }
+import v4.std.cardinality { cardinality_loop_bound_malformed }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
@@ -30,6 +31,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v4.std.witness { Violates }
 
 data loop_illegal_named_body_atom: Symbol = loop_illegal_named_body_atom
 data loop_illegal_named_measure_atom: Symbol = loop_illegal_named_measure_atom
@@ -60,9 +62,8 @@ data loop_illegal_named_input: Node = Node {
 }
 
 fn loop_illegal_named_claim_holds() -> Bool {
-  match symbolic_cost_of_node(n: loop_illegal_named_input) {
-    UnknownCost { reason: r } =>
-      r == "loop-bound-malformed: Loop node violates Loop edge discipline"
+  match cost_lens(n: loop_illegal_named_input) {
+    Violates { diagnostic: d } => d.reason == cardinality_loop_bound_malformed
     _ => false
   }
 }

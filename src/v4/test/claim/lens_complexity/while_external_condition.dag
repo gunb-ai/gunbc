@@ -12,12 +12,15 @@ import v4.lens.complexity {
   unknown_complexity_with_diagnostic
 }
 import v4.lens.cost { SymbolicCost, UnknownCost, cost_lens }
+import v4.std.cardinality { cardinality_loop_bound_undeclared }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
+  ExternalContractUnknown,
   Textual,
   Unavailable,
-  WholeFile
+  WholeFile,
+  node_locus
 }
 import v4.std.node {
   Atom,
@@ -63,7 +66,14 @@ data while_external_condition_diagnostic: Diagnostic = Diagnostic {
 
 data while_external_condition_claim: LensComplexityClaim = LensComplexityClaim {
   input: while_external_condition_input,
-  expected_cost: UnknownCost { reason: "loop-bound-undeclared: Loop node missing loop_bound_edge Named attachment" },
+  expected_cost: UnknownCost {
+    reason: "loop-bound-undeclared: Loop node missing loop_bound_edge Named attachment",
+    diagnostic: Diagnostic {
+      reason: cardinality_loop_bound_undeclared,
+      at: node_locus(node: while_external_condition_input),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  },
   expected_complexity: unknown_complexity_with_diagnostic(
     diagnostic: while_external_condition_diagnostic
   ),
