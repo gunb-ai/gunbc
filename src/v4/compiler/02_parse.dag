@@ -52,11 +52,13 @@ type Grammar
 
 type ParseTree = Node
 
+// 🟡 coproduct dissolution — CP-1b/T-7 parse-walk result carrier; walker realization remains gated.
 type ParseExprResult
   = ParseExprAccepted { remaining: List<Token> }
   | ParseExprRejected
 
 
+// 🟡 coproduct dissolution — CP-1b/T-7 production lookup carrier over GrammarRoot.productions.
 type GrammarProductionLookup
   = GrammarProductionFound { production: GrammarProduction }
   | GrammarProductionMissing
