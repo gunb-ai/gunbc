@@ -87,12 +87,12 @@ import v4.std.node {
 }
 import v4.std.verification {
   EqualsClaim,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
   Unit,
-  t19_manual_claim_anchor
+  manual_claim_anchor
 }
 import v4.std.witness {
   Holds,
@@ -399,7 +399,7 @@ fn eval_mvp2_context() -> EvalContext {
 
 data claim_eval_mvp2_test_claim_route: TestClaim = EqualsClaim {
   label: "eval routes TestClaim through runtime interpretation",
-  t19_anchor: t19_manual_claim_anchor(anchor: T19ManualAnchorAbsent),
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: eval_mvp2_add_subgraph(),
   rhs: eval_mvp2_five_literal_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
