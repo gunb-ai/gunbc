@@ -32,6 +32,7 @@ import v4.compiler.tokenize {
   StringTextChar,
   TokenRule,
   TriviaRule,
+  VoidLexRules,
   WhitespaceChar
 }
 import v4.std.node { Symbol }
@@ -219,7 +220,7 @@ fn dag_wave1_lex() -> LexRules {
 
 
 fn dag_wave1_e0_void_lex() -> LexRules {
-  dag_wave1_lex()
+  VoidLexRules
 }
 
 

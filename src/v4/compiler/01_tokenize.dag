@@ -15,6 +15,7 @@ import v4.std.node { Symbol }
 import v4.std.algebra { is_empty }
 import v4.std.text { Char, String }
 
+// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -26,6 +27,7 @@ type LexCharClass
   | BlockCommentTextChar
 
 
+// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, walker witness remains gated.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -40,6 +42,7 @@ type LexPattern
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
 
+// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
@@ -50,6 +53,7 @@ type LexRuleSet {
 }
 
 
+// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk remains gated.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }
