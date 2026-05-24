@@ -591,9 +591,19 @@ fn expected_l6_coverage_keys() -> List<L6CoverageKey> {
 }
 
 
-fn l7_coverage_key_from_algebra_law_generator(generator: Generator<TestgenConcept>) -> L7CoverageKey {
+fn append_l7_key_from_generator(
+  acc: List<L7CoverageKey>,
+  generator: Generator<TestgenConcept>
+) -> List<L7CoverageKey> {
   match generator.slot {
-    AlgebraLaw { subject: subject } => subject
+    AlgebraLaw { subject: subject } =>
+      dedupe_snoc(acc: acc, item: subject, eq: l7_coverage_key_eq)
+    TypeConstruction { subject: _ } => acc
+    DiagnosticExhaustiveness { omitted_variant: _ } => acc
+    LensApplicability { subject: _ } => acc
+    BidirectionalRoundtrip { subject: _ } => acc
+    LanguageBehaviorEquivalence { subject: _, mock: _ } => acc
+    RefinementPreservation { subject: _ } => acc
   }
 }
 
@@ -605,11 +615,7 @@ fn l7_coverage_keys_from_scheduled_generators(
     xs: generators,
     empty: Empty,
     snoc: fn(acc, generator) {
-      dedupe_snoc(
-        acc: acc,
-        item: l7_coverage_key_from_algebra_law_generator(generator: generator),
-        eq: l7_coverage_key_eq
-      )
+      append_l7_key_from_generator(acc: acc, generator: generator)
     }
   )
 }
