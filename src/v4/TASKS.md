@@ -1566,3 +1566,27 @@ as the brief.
 work until the operator reviews and ratifies the Phase-1 definition.
 Parallel fill — adjacent to T-15 (self-host fixed-point gate) and T-20
 (`workflow/bootstrap.dag`); **not** on the pipeline critical path.
+
+---
+
+### T-36 — Omni ingest demo: round-trip fidelity claim  [SCHEDULED]
+
+**File**: `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` (new)
+**Why**: `ingest = emit⁻¹` (C5, THESIS §B2-OMNI) is the central bidirectionality property.
+T-6 fills the tokenizer, T-7 fills the parser — but without a checked executable claim the property remains aspirational. T-36 closes that gap: one worked claim that the full round-trip holds on a known `.dag` program.
+
+**Scope:** ONE TestClaim:
+- Input: a short, self-contained `.dag` program (hand-authored, committed as fixture in `test/fixture/`)
+- Forward pass: `ingest(source, dag_language_model()) -> Node` (T-6 lex → T-7 parse → T-8/T-9 normalize/resolve/infer)
+- Inverse pass: `emit(node, dag_language_model()) -> String`
+- Claim: the emitted string is identical to the original source (or identifies exactly which declared-normalized differences apply per C5-fidelity)
+- Assert kind: `EqualsClaim` (or `WitnessClaim` if the claim is fidelity-up-to-canonical-form); Tier1, Integration layer
+
+**Dependencies**: `[needs T-6, T-7, T-8, T-9, T-10; dag.dag lex/grammar data from T-6/T-7 fill]`
+
+**Modeling decisions:**
+- Input fixture selection: a program that exercises enough of the dag surface to be non-trivial but is fully within the T-6/T-7 grammar fill scope — ideally a TestClaim definition itself (self-referential, closed-form)
+- Normalization budget: what exactly is "bit-identical"? Comment stripping? Whitespace normalization? Declare the normalization explicitly as C5 `Declared-normalized` facts in the fixture header, not silently absorbed
+- Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
+
+**Sequencing:** dispatch after T-6 and T-7 merge; prerequisites include a concrete dag.dag lex/grammar fill, not just the type schema. Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
