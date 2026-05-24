@@ -37,6 +37,7 @@ import v4.std.diagnostic {
   diagnostics_merge,
   diagnostics_singleton,
   node_locus,
+  outcome_accepted,
   outcome_rejected,
   rejected_with_pending
 }
