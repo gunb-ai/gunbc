@@ -892,6 +892,7 @@ fn fold_diagnostic_tail_into_impossible_bug_keys(
 }
 
 
+// 🟢 coproduct dissolution — local fold state for fail-closed sole impossible-bug key selection.
 type SoleImpossibleBugKeyFold
   = NoImpossibleBugKey
   | OneImpossibleBugKey { key: ImpossibleBugCoverageKey }
