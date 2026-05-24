@@ -64,10 +64,7 @@ data loop_linear_input: Node = Node {
 fn loop_linear_claim_holds() -> Bool {
   match cost_lens(n: loop_linear_input) {
     Holds { value: actual } =>
-      actual
-        == LinearCost {
-          variable: SizeVariable { source: loop_linear_measure_leaf }
-        }
+      actual == LinearCost { variable: SizeVariable { source: loop_linear_measure_leaf } }
     _ => false
   }
 }
