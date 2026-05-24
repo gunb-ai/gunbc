@@ -21,11 +21,10 @@ import v4.compiler.parse {
   Optional,
   Repeat,
   Sequence,
-  Terminal,
-  VoidGrammar
+  Terminal
 }
 import v4.compiler.tokenize { LexRules, ModeledLexRules, VoidLexRules }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service

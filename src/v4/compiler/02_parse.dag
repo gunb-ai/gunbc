@@ -358,7 +358,7 @@ fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarP
 
 fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  let ntok = count(tokens.tokens)
+  let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if !well_formed(n: grammar_node) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
