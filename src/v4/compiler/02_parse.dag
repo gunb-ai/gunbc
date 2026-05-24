@@ -27,9 +27,6 @@ type GrammarExpr
   | Repeat { element: GrammarExpr }
 
 
-// A GrammarProduction is the single bidirectional concrete-syntax <-> Node datum:
-// parse reads `expression` forward and returns `emitted`; emit reads `emitted`
-// backward and serializes the same `expression`.
 type GrammarProduction {
   name: Symbol
   expression: GrammarExpr
