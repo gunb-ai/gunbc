@@ -21,9 +21,15 @@ import v4.std.runtime {
   EnvironmentBindingKey,
   Continue,
   EvaluationEnvironment,
+  EvaluationFrame,
   InterpretationAlgebra,
   Raise,
   Return,
+  RuntimeAggregate,
+  RuntimeClosure,
+  RuntimePrimitive,
+  RuntimeReference,
+  RuntimeUnit,
   Suspend,
   ControlTransfer,
   RuntimeValue,
@@ -59,14 +65,18 @@ import v4.std.diagnostic {
   Accepted,
   None,
   Rejected,
+  ShortCircuit,
+  StageDiagnosticPolicy,
   bind_outcome,
   diagnostics_eq,
   diagnostics_merge,
   diagnostics_singleton,
   non_empty_diagnostics_eq,
+  outcome_eq,
   outcome_node_eq,
   outcome_rejected,
-  rejected_with_pending
+  rejected_with_pending,
+  sequence_outcome
 }
 import v4.std.verification {
   CompilesClaim,
@@ -77,6 +87,10 @@ import v4.std.verification {
   test_claim_input
 }
 import v4.std.witness { Holds, Violates, Witness }
+import v4.extdeps.runtimes.v4_evaluator {
+  V4EvaluatorRuntime,
+  v4_evaluator_runtime_wave1
+}
 
 
 // RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
@@ -130,10 +144,17 @@ type TestClaimRun<S, A> {
 type EvalFoldState {
   node: Node
   processed_children: Int
+  progress: EvalProgress
   structural: Outcome<Node>
   child_values: Outcome<List<RuntimeValue>>
   value: Outcome<RuntimeValue>
 }
+
+
+type EvalProgress
+  = AwaitingChildren
+  | ReadyToInterpret
+  | Interpreted
 
 
 fn test_claim_cache_receipt<T>(
@@ -152,21 +173,17 @@ fn test_claim_cache_receipt<T>(
 
 
 data eval_rejected_invalid_node: Symbol = eval_rejected_invalid_node
-// 🟡 gated — feature:T22-eval-node-runtime-value-to-node-projection — bind node://adhoc-721e9758-07b — dissolve-on: eval_node projects eval's Outcome<RuntimeValue> through a runtime-value→Node projection so realized eval results flow into TestClaim assertions; forbidden: returning Accepted{value:inputs.root} as a stand-in for an unrealized eval, which fabricates Pass for CompilesClaim/EqualsClaim where expected==input.
-data eval_node_unrealized: Symbol = eval_node_unrealized
 data eval_rejected_roundtrip_deferred: Symbol = eval_rejected_roundtrip_deferred
 data eval_empty_verdict_list: Symbol = eval_empty_verdict_list
 data eval_rejected_type_node: Symbol = eval_rejected_type_node
-// 🟡 gated — feature:T22-eval-branch-realization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: BranchInterpreter chooses a realized successor Node and eval resumes through that chosen subgraph; forbidden: implicit success for branch nodes.
-data eval_rejected_branch_not_realized: Symbol = eval_rejected_branch_not_realized
-// 🟡 gated — feature:T22-eval-bind-realization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: BindInterpreter extends EvaluationEnvironment and eval resumes through the bound body; forbidden: implicit success for bind nodes.
-data eval_rejected_bind_not_realized: Symbol = eval_rejected_bind_not_realized
 data eval_rejected_pending_children: Symbol = eval_rejected_pending_children
 data eval_rejected_suspended_not_terminal: Symbol = eval_rejected_suspended_not_terminal
 data eval_rejected_runtime_binding_lookup_miss: Symbol = eval_rejected_runtime_binding_lookup_miss
 data eval_rejected_resolved_type_mismatch: Symbol = eval_rejected_resolved_type_mismatch
 data eval_rejected_inhabitance_mismatch: Symbol = eval_rejected_inhabitance_mismatch
 data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
+data eval_rejected_branch_argument_absent: Symbol = eval_rejected_branch_argument_absent
+data eval_rejected_bind_children_absent: Symbol = eval_rejected_bind_children_absent
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -200,6 +217,11 @@ fn empty_evaluation_environment() -> EvaluationEnvironment {
 }
 
 
+fn eval_runtime() -> V4EvaluatorRuntime {
+  v4_evaluator_runtime_wave1()
+}
+
+
 fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
   tree.facts.lookup(node)
 }
@@ -230,107 +252,302 @@ fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node
 }
 
 
-// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
+fn eval_short_circuit_policy() -> StageDiagnosticPolicy {
+  StageDiagnosticPolicy { accumulation: ShortCircuit }
+}
+
+
 fn eval_absorb_structural_child(
   acc: Outcome<Node>,
   child: Outcome<Node>
 ) -> Outcome<Node> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: n, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: cr } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-          }
-        Accepted { value: _, diagnostics: cd } =>
-          Accepted {
-            value: n,
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
+  bind_outcome(
+    o: sequence_outcome(xs: [acc, child], policy: eval_short_circuit_policy()),
+    f: fn(nodes) {
+      match first(nodes) {
+        Some { value: n } => Accepted { value: n, diagnostics: None }
+        None => child
       }
+    }
+  )
+}
+
+
+fn control_transfer_value(
+  control: ControlTransfer,
+  node: Node,
+  runtime: V4EvaluatorRuntime,
+  environment: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: runtime.execution.control.transfer(
+      control,
+      EvaluationFrame { current: node, environment: environment }
+    ),
+    f: fn(frame) {
+      frame.environment.bindings.lookup(EnvironmentBindingKey { declaration: frame.current })
+    }
+  )
+}
+
+
+type RuntimeValueAcceptanceWitness {
+  resolved_type: Witness<Node>
+  inhabitance: Witness<InferredFacts>
+  canonical: Witness<InferredFacts>
+}
+
+
+fn eval_runtime_value_acceptance_witness(
+  node: Node,
+  facts: InferredFacts,
+  value: RuntimeValue
+) -> RuntimeValueAcceptanceWitness {
+  RuntimeValueAcceptanceWitness {
+    resolved_type: if inferred_facts_resolved_type_matches(
+      facts: facts,
+      candidate_type: runtime_value_resolved_type(value: value)
+    ) {
+      Holds { value: runtime_value_resolved_type(value: value) }
+    } else {
+      Violates {
+        diagnostic: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
+      }
+    },
+    inhabitance: if inferred_facts_inhabitance_well_grounded(facts: facts) {
+      Holds { value: facts }
+    } else {
+      Violates {
+        diagnostic: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
+      }
+    },
+    canonical: if inferred_facts_canonical_well_grounded(facts: facts) {
+      Holds { value: facts }
+    } else {
+      Violates {
+        diagnostic: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
+      }
+    }
   }
 }
 
 
-// 🟡 gated — feature:T22-runtime-control-terminalization — bind node://adhoc-6a2e599a-cc2 — dissolve-on: ControlSemantics exposes terminalization/disposition for ControlTransfer; forbidden: each eval consumer locally deciding whether Continue/Return/Raise/Suspend is terminal.
-fn control_transfer_value(control: ControlTransfer, node: Node) -> Outcome<RuntimeValue> {
-  match control {
-    Continue { value: v } =>
-      Accepted { value: v, diagnostics: None }
-    Return { value: v } =>
-      Accepted { value: v, diagnostics: None }
-    Raise { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
-    Suspend { continuation: frame } =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: eval_diagnostic(reason: eval_rejected_suspended_not_terminal, node: frame.current)
-        )
-      }
-  }
-}
-
-
-// 🟡 gated — feature:T22-eval-runtime-value-acceptance-witness — bind node://adhoc-6a2e599a-cc2 — dissolve-on: eval consumes a modeled acceptance witness/product tying RuntimeValue resolved type, inhabitance, and canonical grounding to InferredFacts; forbidden: permanent Bool-ladder proof erasure.
 fn eval_accept_runtime_value_with_facts(
   node: Node,
   facts: InferredFacts,
   value: RuntimeValue
 ) -> Outcome<RuntimeValue> {
-  let candidate_type = runtime_value_resolved_type(value: value)
-  if !inferred_facts_resolved_type_matches(
-    facts: facts,
-    candidate_type: candidate_type
-  ) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
-    )
-  } else if !inferred_facts_inhabitance_well_grounded(facts: facts) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
-    )
-  } else if !inferred_facts_canonical_well_grounded(facts: facts) {
-    outcome_rejected(
-      d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
-    )
-  } else {
-    Accepted { value: value, diagnostics: None }
+  let witness = eval_runtime_value_acceptance_witness(node: node, facts: facts, value: value)
+  match witness.resolved_type {
+    Violates { diagnostic: d } => outcome_rejected(d: d)
+    Holds { value: _ } => match witness.inhabitance {
+      Violates { diagnostic: d } => outcome_rejected(d: d)
+      Holds { value: _ } => match witness.canonical {
+        Violates { diagnostic: d } => outcome_rejected(d: d)
+        Holds { value: _ } => Accepted { value: value, diagnostics: None }
+      }
+    }
   }
 }
 
 
-// 🟡 gated — feature:T22-runtime-behavior-interpreter-dispatch — bind node://adhoc-6a2e599a-cc2 — dissolve-on: InterpretationAlgebra exposes a canonical Behavior-indexed interpreter/disposition so eval builds one input and consumes the runtime-owned behavior algebra; forbidden: downstream consumers owning divergent Behavior match tables.
+fn eval_first_runtime_argument(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+  match first(args) {
+    Some { value: v } => Accepted { value: v, diagnostics: None }
+    None => outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_branch_argument_absent, node: node)
+    )
+  }
+}
+
+
+fn eval_bind_key(node: Node) -> Outcome<EnvironmentBindingKey> {
+  match first(node.children) {
+    Some { value: e } =>
+      Accepted {
+        value: EnvironmentBindingKey { declaration: e.target },
+        diagnostics: None
+      }
+    None => outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+    )
+  }
+}
+
+
+fn eval_bind_value_arg(args: List<RuntimeValue>, node: Node) -> Outcome<RuntimeValue> {
+  match first(skip(args, 1)) {
+    Some { value: v } => Accepted { value: v, diagnostics: None }
+    None => outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+    )
+  }
+}
+
+
+fn eval_bind_body(node: Node) -> Outcome<Node> {
+  match first(skip(node.children, 2)) {
+    Some { value: e } => Accepted { value: e.target, diagnostics: None }
+    None => outcome_rejected(
+      d: eval_diagnostic(reason: eval_rejected_bind_children_absent, node: node)
+    )
+  }
+}
+
+
+type RuntimeBehaviorInterpreterDispatch {
+  interpret: fn(Node, List<RuntimeValue>, InferredFacts, InferredTree, InterpretationAlgebra, EvaluationEnvironment, V4EvaluatorRuntime) -> Outcome<RuntimeValue>
+}
+
+
+fn eval_behavior_dispatch(behavior: Behavior) -> RuntimeBehaviorInterpreterDispatch {
+  match behavior {
+    Value => RuntimeBehaviorInterpreterDispatch { interpret: eval_value_node }
+    Transform => RuntimeBehaviorInterpreterDispatch { interpret: eval_transform_node }
+    Branch => RuntimeBehaviorInterpreterDispatch { interpret: eval_branch_node }
+    Loop => RuntimeBehaviorInterpreterDispatch { interpret: eval_loop_node }
+    Bind => RuntimeBehaviorInterpreterDispatch { interpret: eval_bind_node }
+  }
+}
+
+
+fn eval_value_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  _tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  _runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  interpretation.value.allocate_literal(node, environment)
+}
+
+
+fn eval_transform_node(
+  node: Node,
+  args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  _tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  _runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  interpretation.transform.call_primitive(node, args, environment)
+}
+
+
+fn eval_branch_node(
+  node: Node,
+  args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: eval_first_runtime_argument(args: args, node: node),
+    f: fn(condition) {
+      bind_outcome(
+        o: interpretation.branch.choose_branch(node, condition, environment),
+        f: fn(chosen) {
+          eval_runtime_node(
+            node: chosen,
+            tree: tree,
+            interpretation: interpretation,
+            environment: environment,
+            runtime: runtime
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn eval_loop_node(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  _tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: interpretation.loop.step_loop(node, environment),
+    f: fn(control) {
+      control_transfer_value(
+        control: control,
+        node: node,
+        runtime: runtime,
+        environment: environment
+      )
+    }
+  )
+}
+
+
+fn eval_bind_node(
+  node: Node,
+  args: List<RuntimeValue>,
+  _facts: InferredFacts,
+  tree: InferredTree,
+  interpretation: InterpretationAlgebra,
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
+) -> Outcome<RuntimeValue> {
+  bind_outcome(
+    o: eval_bind_key(node: node),
+    f: fn(key) {
+      bind_outcome(
+        o: eval_bind_value_arg(args: args, node: node),
+        f: fn(bound_value) {
+          bind_outcome(
+            o: interpretation.bind.bind_value(key, bound_value, environment),
+            f: fn(bound_environment) {
+              bind_outcome(
+                o: eval_bind_body(node: node),
+                f: fn(body) {
+                  eval_runtime_node(
+                    node: body,
+                    tree: tree,
+                    interpretation: interpretation,
+                    environment: bound_environment,
+                    runtime: runtime
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
 fn eval_computation_node(
   behavior: Behavior,
   node: Node,
   args: List<RuntimeValue>,
   facts: InferredFacts,
+  tree: InferredTree,
   interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
   bind_outcome(
-    o: match behavior {
-      Value =>
-        interpretation.value.allocate_literal(node, environment)
-      Transform =>
-        interpretation.transform.call_primitive(node, args, environment)
-      Branch =>
-        outcome_rejected(
-          d: eval_diagnostic(reason: eval_rejected_branch_not_realized, node: node)
-        )
-      Loop =>
-        bind_outcome(
-          o: interpretation.loop.step_loop(node, environment),
-          f: fn(control) {
-            control_transfer_value(control: control, node: node)
-          }
-        )
-      Bind =>
-        outcome_rejected(
-          d: eval_diagnostic(reason: eval_rejected_bind_not_realized, node: node)
-        )
-    },
+    o: eval_behavior_dispatch(behavior: behavior).interpret(
+      node,
+      args,
+      facts,
+      tree,
+      interpretation,
+      environment,
+      runtime
+    ),
     f: fn(value) {
       eval_accept_runtime_value_with_facts(node: node, facts: facts, value: value)
     }
@@ -343,7 +560,8 @@ fn eval_interpret_node(
   args: List<RuntimeValue>,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
@@ -355,8 +573,10 @@ fn eval_interpret_node(
             node: node,
             args: args,
             facts: facts,
+            tree: tree,
             interpretation: interpretation,
-            environment: environment
+            environment: environment,
+            runtime: runtime
           )
         TypeNode { connective: _ } =>
           outcome_rejected(
@@ -373,7 +593,6 @@ fn empty_runtime_values() -> List<RuntimeValue> {
 }
 
 
-// 🟡 gated — feature:T22-eval-runtime-edge-role — bind node://adhoc-6a2e599a-cc2 — dissolve-on: std/node exposes canonical EdgeLabel runtime-argument role query/accessor; forbidden: making Named structural edges into runtime arguments.
 fn eval_edge_is_runtime_argument(edge: Edge) -> Bool {
   match edge.label {
     Positional => true
@@ -387,30 +606,19 @@ fn eval_fold_state_value(state: EvalFoldState) -> Outcome<RuntimeValue> {
 }
 
 
-// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge; forbidden: local Rejected/Accepted ladders per eval accumulator.
 fn eval_absorb_child_diagnostics(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<Node>
 ) -> Outcome<List<RuntimeValue>> {
-  match acc {
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-    Accepted { value: values, diagnostics: ad } =>
-      match child {
-        Rejected { diagnostics: cr } =>
-          Rejected {
-            diagnostics: rejected_with_pending(pending: ad, rejected: cr)
-          }
-        Accepted { value: _, diagnostics: cd } =>
-          Accepted {
-            value: values,
-            diagnostics: diagnostics_merge(outer: ad, inner: cd)
-          }
-      }
-  }
+  bind_outcome(
+    o: sequence_outcome(xs: [child], policy: eval_short_circuit_policy()),
+    f: fn(_) {
+      acc
+    }
+  )
 }
 
 
-// 🟡 gated — feature:T22-outcome-accumulation-policy — bind node://adhoc-6a2e599a-cc2 — dissolve-on: Outcome traverse/zip accumulation policy carries rejected-with-pending diagnostics merge and list append combine; forbidden: local Rejected/Accepted ladders per eval accumulator.
 fn eval_append_child_value(
   acc: Outcome<List<RuntimeValue>>,
   child: Outcome<RuntimeValue>
@@ -433,23 +641,18 @@ fn eval_append_child_value(
 }
 
 
-// 🟡 gated — feature:T22-eval-node-progress-carrier — bind node://adhoc-6a2e599a-cc2 — dissolve-on: EvalFoldState carries an explicit progress carrier such as AwaitingChildren/ReadyToInterpret/Interpreted; forbidden: treating an internal not-ready state as a permanent diagnostic authority.
-fn eval_pending_children(node: Node) -> Outcome<RuntimeValue> {
-  outcome_rejected(
-    d: eval_diagnostic(reason: eval_rejected_pending_children, node: node)
-  )
-}
-
-
 fn eval_fold_init(
   node: Node,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
 ) -> EvalFoldState {
+  let progress = if count(node.children) == 0 { ReadyToInterpret } else { AwaitingChildren }
   EvalFoldState {
     node: node,
     processed_children: 0,
+    progress: progress,
     structural: eval_structural_node_for_eval(tree: tree, node: node),
     child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
     value: if count(node.children) == 0 {
@@ -458,10 +661,13 @@ fn eval_fold_init(
         args: empty_runtime_values(),
         tree: tree,
         interpretation: interpretation,
-        environment: environment
+        environment: environment,
+        runtime: runtime
       )
     } else {
-      eval_pending_children(node: node)
+      outcome_rejected(
+        d: eval_diagnostic(reason: eval_rejected_pending_children, node: node)
+      )
     }
   }
 }
@@ -474,6 +680,7 @@ fn eval_maybe_complete_node(
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime,
   pending: Outcome<RuntimeValue>
 ) -> Outcome<RuntimeValue> {
   if processed_children == count(node.children) {
@@ -482,7 +689,8 @@ fn eval_maybe_complete_node(
       args: args,
       tree: tree,
       interpretation: interpretation,
-      environment: environment
+      environment: environment,
+      runtime: runtime
     )
   } else {
     pending
@@ -496,7 +704,8 @@ fn eval_fold_step(
   child: EvalFoldState,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
 ) -> EvalFoldState {
   let structural = eval_absorb_structural_child(acc: acc.structural, child: child.structural)
   let next_args = if eval_edge_is_runtime_argument(edge: edge) {
@@ -508,6 +717,7 @@ fn eval_fold_step(
   EvalFoldState {
     node: acc.node,
     processed_children: processed_children,
+    progress: if processed_children == count(acc.node.children) { Interpreted } else { AwaitingChildren },
     structural: structural,
     child_values: next_args,
     value: bind_outcome(
@@ -523,6 +733,7 @@ fn eval_fold_step(
               tree: tree,
               interpretation: interpretation,
               environment: environment,
+              runtime: runtime,
               pending: acc.value
             )
           }
@@ -537,7 +748,8 @@ fn eval_runtime_node(
   node: Node,
   tree: InferredTree,
   interpretation: InterpretationAlgebra,
-  environment: EvaluationEnvironment
+  environment: EvaluationEnvironment,
+  runtime: V4EvaluatorRuntime
 ) -> Outcome<RuntimeValue> {
   let folded = fold_node(
     n: node,
@@ -547,7 +759,8 @@ fn eval_runtime_node(
           node: n0,
           tree: tree,
           interpretation: interpretation,
-          environment: environment
+          environment: environment,
+          runtime: runtime
         )
       },
       step: fn(acc, e, child) {
@@ -557,7 +770,8 @@ fn eval_runtime_node(
           child: child,
           tree: tree,
           interpretation: interpretation,
-          environment: environment
+          environment: environment,
+          runtime: runtime
         )
       }
     }
@@ -573,7 +787,8 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
         node: inputs.root,
         tree: tree,
         interpretation: interpretation,
-        environment: empty_evaluation_environment()
+        environment: empty_evaluation_environment(),
+        runtime: eval_runtime()
       )
     } else {
       Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
@@ -584,43 +799,24 @@ fn eval(tree: InferredTree, interpretation: InterpretationAlgebra, inputs: Input
 }
 
 
-// Fail-closed: well-formedness preconditions still short-circuit to invalid_node,
-// but a passing precondition does NOT fabricate Accepted{value:inputs.root} — eval_node
-// is not yet wired to project eval's Outcome<RuntimeValue> to Outcome<Node>, so the
-// honest verdict for a realized precondition is Rejected{eval_node_unrealized}.
-fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
-  if well_formed(n: tree.root) {
-    if well_formed(n: inputs.root) {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_node_unrealized, node: inputs.root)) }
-    } else {
-      Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: inputs.root)) }
-    }
-  } else {
-    Rejected { diagnostics: diagnostics_singleton(d: eval_diagnostic(reason: eval_rejected_invalid_node, node: tree.root)) }
+fn runtime_value_node(value: RuntimeValue) -> Node {
+  match value {
+    RuntimePrimitive { value: p } => p.primitive_type
+    RuntimeAggregate { value: a } => a.aggregate_type
+    RuntimeReference { value: r } => r.reference_type
+    RuntimeClosure { value: c } => c.arrow
+    RuntimeUnit { value: u } => u.unit_type
   }
 }
 
 
-// Fail-closed gate: if eval_node surfaces eval_node_unrealized, no TestClaim
-// variant may be decided — return Verdict.Deferred so aggregate_verdicts
-// blocks Pass. Prevents (a) CompilesClaim/EqualsClaim false-Pass on the
-// previous fake-Accepted echo, and (b) DiagnosticClaim trivial-Pass on any
-// Rejected matching the unrealized signal.
-fn run_test_claim_assert(
-  claim: TestClaim,
-  actual: Outcome<Node>,
-  at: Node
-) -> Verdict<Node> {
-  match actual {
-    Rejected { diagnostics: nd } =>
-      if nd.head.reason == eval_node_unrealized {
-        Deferred { actual: actual, diagnostic: nd.head }
-      } else {
-        run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
-      }
-    Accepted { value: _, diagnostics: _ } =>
-      run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
-  }
+fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
+  bind_outcome(
+    o: eval(tree: tree, interpretation: eval_runtime().interpretation, inputs: inputs),
+    f: fn(value) {
+      Accepted { value: runtime_value_node(value: value), diagnostics: None }
+    }
+  )
 }
 
 
@@ -671,16 +867,7 @@ fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
 
 // 🟡 gated — feature:T22-parameterized-outcome-eq — bind node://adhoc-c5a6fb4b-8cc — dissolve-on: v4.std.diagnostic owns a parameterized Outcome equality surface with payload comparator; forbidden: adding more payload-specific Outcome equality helpers.
 fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
-  match a {
-    Accepted { value: av, diagnostics: ad } => match b {
-      Accepted { value: bv, diagnostics: bd } => runtime_value_eq(a: av, b: bv) && diagnostics_eq(a: ad, b: bd)
-      Rejected { diagnostics: _ } => false
-    }
-    Rejected { diagnostics: ar } => match b {
-      Accepted { value: _, diagnostics: _ } => false
-      Rejected { diagnostics: br } => non_empty_diagnostics_eq(a: ar, b: br)
-    }
-  }
+  outcome_eq(a: a, b: b, payload_eq: runtime_value_eq)
 }
 
 
