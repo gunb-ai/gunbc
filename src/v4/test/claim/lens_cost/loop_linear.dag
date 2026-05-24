@@ -6,7 +6,7 @@
 
 module v4.test.claim.lens_cost.loop_linear
 
-import v4.lens.cost { LinearCost, cost_lens, loop_bound_edge }
+import v4.lens.cost { LinearCost, cost_lens }
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
@@ -19,7 +19,8 @@ import v4.std.node {
   Positional,
   Symbol,
   Transform,
-  TypeNode
+  TypeNode,
+  loop_bound_edge
 }
 import v4.std.verification {
   EqualsClaim,
