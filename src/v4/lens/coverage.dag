@@ -25,6 +25,11 @@ import v4.lens.testgen {
   LensApplicabilitySubject,
   RefinementPreservation,
   RefinementPreservationSubject,
+  TestClaimCompilesClaimVariant,
+  TestClaimCoproductVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
   TestgenConcept,
   TypeConstructionSubject,
   law_nat_add_associativity,
@@ -34,6 +39,7 @@ import v4.lens.testgen {
   law_nat_mul_associativity,
   law_nat_mul_left_identity,
   testgen_concept_for_manual_claim,
+  testgen_scheduled_coproduct_exhaustiveness_generators,
   testgen_scheduled_language_behavior_generators,
   Generator
 }
@@ -402,6 +408,33 @@ fn refinement_preservation_subject_eq(
 }
 
 
+// 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace test_claim_coproduct_variant_eq call sites with the substrate TestClaimCoproductVariant equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestClaimCoproductVariant equality table drift from std/verification.dag.
+fn test_claim_coproduct_variant_eq(a: TestClaimCoproductVariant, b: TestClaimCoproductVariant) -> Bool {
+  match a {
+    TestClaimCompilesClaimVariant =>
+      match b {
+        TestClaimCompilesClaimVariant => true
+        _ => false
+      }
+    TestClaimDiagnosticClaimVariant =>
+      match b {
+        TestClaimDiagnosticClaimVariant => true
+        _ => false
+      }
+    TestClaimEqualsClaimVariant =>
+      match b {
+        TestClaimEqualsClaimVariant => true
+        _ => false
+      }
+    TestClaimRoundTripClaimVariant =>
+      match b {
+        TestClaimRoundTripClaimVariant => true
+        _ => false
+      }
+  }
+}
+
+
 // 🟡 gated — derived-equality interim (docs/modeling-discipline.md Practice 10) — bound target: W-T-10 exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace testgen_coverage_key_eq call sites with the substrate TestgenConcept equality primitive and delete this helper in that same PR; forbidden: permanent per-variant TestgenConcept equality table drift from lens/testgen.dag.
 fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool {
   match a {
@@ -416,9 +449,10 @@ fn testgen_coverage_key_eq(a: TestgenCoverageKey, b: TestgenCoverageKey) -> Bool
         AlgebraLaw { subject: bs } => algebra_law_subject_eq(a: as, b: bs)
         _ => false
       }
-    DiagnosticExhaustiveness =>
+    DiagnosticExhaustiveness { omitted_variant: av } =>
       match b {
-        DiagnosticExhaustiveness => true
+        DiagnosticExhaustiveness { omitted_variant: bv } =>
+          test_claim_coproduct_variant_eq(a: av, b: bv)
         _ => false
       }
     LensApplicability { subject: as } =>
@@ -678,6 +712,13 @@ fn expected_language_behavior_equivalence_testgen_keys() -> List<TestgenCoverage
 }
 
 
+fn expected_coproduct_exhaustiveness_testgen_keys() -> List<TestgenCoverageKey> {
+  testgen_coverage_keys_from_scheduled_generators(
+    generators: testgen_scheduled_coproduct_exhaustiveness_generators()
+  )
+}
+
+
 // 🟡 gated — feature:testgen-lens-applicability-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
 // dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
 // 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
@@ -685,7 +726,8 @@ fn expected_language_behavior_equivalence_testgen_keys() -> List<TestgenCoverage
 // 🟡 gated — feature:testgen-refinement-preservation-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag
 // dissolve-on-arrival: RefinementPreservation enters expected_testgen_coverage_keys via testgen scheduled-generator projection.
 // Covered Wave-1 expected arms: TypeConstruction (substrate connective/behavior fold), AlgebraLaw (manual nat-law anchors),
-// LanguageBehaviorEquivalence (testgen_scheduled_language_behavior_generators), DiagnosticExhaustiveness (singleton variant).
+// LanguageBehaviorEquivalence (testgen_scheduled_language_behavior_generators),
+// DiagnosticExhaustiveness (testgen_scheduled_coproduct_exhaustiveness_generators; omitted_variant per arm).
 // Deferred until T-19 schedules generators: LensApplicability, BidirectionalRoundtrip, RefinementPreservation.
 // 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag
 // dissolve-on-arrival: replace hand-assembled expected slices with full manifest + scheduled-generator projection.
@@ -696,7 +738,7 @@ fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
       xs: expected_algebra_law_testgen_keys(),
       empty: fold_list_right(
         xs: expected_language_behavior_equivalence_testgen_keys(),
-        empty: [DiagnosticExhaustiveness],
+        empty: expected_coproduct_exhaustiveness_testgen_keys(),
         snoc: fn(acc, item) {
           dedupe_snoc(acc: acc, item: item, eq: testgen_coverage_key_eq)
         }

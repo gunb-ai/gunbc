@@ -214,7 +214,7 @@ type TestgenConcept
 // RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms; LBE = L6 form×language)
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness
+  | DiagnosticExhaustiveness { omitted_variant: TestClaimCoproductVariant }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -1196,28 +1196,28 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
     },
     Generator {
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
       ),
-      slot: DiagnosticExhaustiveness,
+      slot: DiagnosticExhaustiveness { omitted_variant: TestClaimRoundTripClaimVariant },
     },
   ]
 }
@@ -1404,9 +1404,9 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
         },
         diagnostics: None,
       }
-    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: _ } } =>
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { omitted_variant: v } } =>
       Accepted {
-        value: DiagnosticExhaustiveness,
+        value: DiagnosticExhaustiveness { omitted_variant: v },
         diagnostics: None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
