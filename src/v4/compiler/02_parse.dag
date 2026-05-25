@@ -70,7 +70,7 @@ type ParseExprResult
 
 type ParseSyncState {
   found_sync: Bool
-  result: List<Token>
+  result: FreeMonoid<Token>
 }
 
 // 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
