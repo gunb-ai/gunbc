@@ -2,7 +2,7 @@
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def; T-28 cross-file binding via ModuleGraph.
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_graph; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/algebra.dag (Cons, Empty),
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/algebra.dag (fold_list),
 //           std/module_graph.dag (ModuleGraph, ModuleEntry), compiler/03_normalize.dag,
 //           extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
 // Status: T-8 + T-28 realized — K-1 single-file resolution; resolve_with_graph cross-file binding wired.
