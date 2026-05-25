@@ -1026,16 +1026,6 @@ fn rust_mvp1_positional_token_edge(token: RustConcreteSyntaxToken) -> Edge {
   }
 }
 
-// Order-preserving local wrappers for the Rust slice; std.collection owns the list recursion.
-// Compile-time list helpers for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
-fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  list_snoc_item(xs: xs, item: item)
-}
-
-fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  list_append(left: left, right: right)
-}
-
 fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
   fold_list(
     xs: rust_mvp1_concrete_tokens(),

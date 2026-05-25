@@ -7,7 +7,7 @@
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.algebra { fold_list }
+import v4.std.algebra { fold_list, list_snoc_item }
 import v4.std.collection { List, Map }
 import v4.std.machine { Byte }
 import v4.std.model_core {
@@ -467,16 +467,6 @@ fn mc_integer_facts_node(facts: MachineIntegerPrimitiveFacts) -> Node {
       }
     ]
   }
-}
-
-fn mc_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  fold_list(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
 }
 
 fn mc_integer_spec_facts(facts: MachineIntegerPrimitiveFacts) -> Map<Symbol, Node> {

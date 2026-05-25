@@ -8,7 +8,7 @@
 module v4.extdeps.formats.sql
 
 
-import v4.std.algebra { fold_list }
+import v4.std.algebra { fold_list, list_append }
 import v4.std.collection { List, Map }
 import v4.std.nat { Nat }
 import v4.std.cardinality { NonZeroNat }
@@ -409,16 +409,6 @@ fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   )
 }
 
-fn sql_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  fold_list(
-    xs: sql_list_reverse(xs: left),
-    empty: right,
-    cons: fn(acc, item) {
-      Cons { head: item, tail: acc }
-    }
-  )
-}
-
 fn sql_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
   sql_list_map(
     xs: sql_integer_facts_catalog,
@@ -441,8 +431,8 @@ fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  sql_list_append(
-    left: sql_list_append(
+  list_append(
+    left: list_append(
       left: sql_primitive_bundles_from_integer_catalog(),
       right: sql_primitive_bundles_from_float_catalog()
     ),
