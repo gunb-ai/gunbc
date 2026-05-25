@@ -248,7 +248,7 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Value => count(children) == 0
     Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
-    Loop => loop_behavior_edges_conform(children: children)
+    Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
   }
 }
@@ -300,7 +300,7 @@ fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
     Value => NoEdges
     Transform => PositionalEdges
     Branch => PositionalEdges
-    Loop => PositionalEdges
+    Loop => LoopBoundEdges
     Bind => PositionalEdges
   }
 }
@@ -345,21 +345,18 @@ fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edg
   )
 }
 fn canonicalize_node_for_content_hash(n: Node) -> Node {
-  match n.kind {
-    ComputationNode { behavior: Loop } =>
+  match node_edge_discipline(n: n) {
+    LabeledEdges =>
+      Node {
+        kind: n.kind,
+        children: sort_by(n.children, e => named_edge_sort_key(e: e))
+      }
+    NoEdges => n
+    PositionalEdges => n
+    LoopBoundEdges =>
       Node {
         kind: n.kind,
         children: canonicalize_loop_children_for_content_hash(children: n.children)
-      }
-    _ =>
-      match node_edge_discipline(n: n) {
-        LabeledEdges =>
-          Node {
-            kind: n.kind,
-            children: sort_by(n.children, e => named_edge_sort_key(e: e))
-          }
-        NoEdges => n
-        PositionalEdges => n
       }
   }
 }
