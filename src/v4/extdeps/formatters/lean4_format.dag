@@ -1,6 +1,6 @@
 // src/v4/extdeps/formatters/lean4_format.dag
 // Scope: Lean 4 formatter configuration model — option space grounded in Lean master formatter/Lake option surfaces.
-// Owns: Lean4OptionValue, Lean4OptionAssignment, Lean4PositiveInt, Lean4NonNegativeInt, Lean4 numeric validations/constructors, Lean4FormatConfig, lean4_format_defaults, lean4_format_layer.
+// Owns: Lean4NameValue, Lean4SyntaxValue, Lean4NatValue, Lean4OptionValue, Lean4OptionAssignment, Lean4 numeric validation/constructor, Lean4FormatConfig, lean4_format_defaults, lean4_format_layer.
 // Consumes: Locus, Outcome, Symbol, Refined, Validation.
 // Status: T-4.16 scaffold — full documented Lean formatter-facing option surface.
 // Anchor: https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Format.lean
@@ -13,51 +13,38 @@ import v4.std.node { Symbol }
 import v4.std.refinement { Refined, Validation, refine }
 
 
-type Lean4PositiveInt = Refined<Int>
-type Lean4NonNegativeInt = Refined<Int>
+type Lean4NameValue
+type Lean4SyntaxValue
+type Lean4NatValue = Refined<Int>
 
 
-data lean4_positive_int_out_of_range: Symbol = lean4_positive_int_out_of_range
-data lean4_non_negative_int_out_of_range: Symbol = lean4_non_negative_int_out_of_range
+data lean4_nat_value_out_of_range: Symbol = lean4_nat_value_out_of_range
 
 
-fn lean4_positive_int_admits(value: Int) -> Bool {
-  value >= 1
-}
-
-
-fn lean4_non_negative_int_admits(value: Int) -> Bool {
+fn lean4_nat_value_admits(value: Int) -> Bool {
   value >= 0
 }
 
 
-data lean4_positive_int_validation: Validation<Int> = Validation {
-  reason: lean4_positive_int_out_of_range,
-  admits: lean4_positive_int_admits
+data lean4_nat_value_validation: Validation<Int> = Validation {
+  reason: lean4_nat_value_out_of_range,
+  admits: lean4_nat_value_admits
 }
 
 
-data lean4_non_negative_int_validation: Validation<Int> = Validation {
-  reason: lean4_non_negative_int_out_of_range,
-  admits: lean4_non_negative_int_admits
-}
-
-
-fn make_lean4_positive_int(value: Int, at: Locus) -> Outcome<Lean4PositiveInt> {
-  refine(base: value, by: lean4_positive_int_validation, at: at)
-}
-
-
-fn make_lean4_non_negative_int(value: Int, at: Locus) -> Outcome<Lean4NonNegativeInt> {
-  refine(base: value, by: lean4_non_negative_int_validation, at: at)
+fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
+  refine(base: value, by: lean4_nat_value_validation, at: at)
 }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Lean4OptionValue
-  = Lean4BoolOption { value: Bool }
-  | Lean4IntOption { value: Lean4NonNegativeInt }
-  | Lean4StringOption { value: String }
+  = Lean4StringOption { value: String }
+  | Lean4BoolOption { value: Bool }
+  | Lean4NameOption { value: Lean4NameValue }
+  | Lean4NatOption { value: Lean4NatValue }
+  | Lean4IntOption { value: Int }
+  | Lean4SyntaxOption { value: Lean4SyntaxValue }
 
 
 type Lean4OptionAssignment {
@@ -67,8 +54,8 @@ type Lean4OptionAssignment {
 
 
 type Lean4FormatConfig {
-  format_width: Lean4PositiveInt
-  format_indent: Lean4NonNegativeInt
+  format_width: Lean4NatValue
+  format_indent: Lean4NatValue
   format_unicode: Bool
   pp_oneline: Bool
   lake_lean_options: List<Lean4OptionAssignment> // 🟡 gated: lean4-option-closed-set — dissolves when Lean4 documents a fixed set of formatter-relevant set_option keys and each becomes a typed field
