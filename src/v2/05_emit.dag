@@ -979,13 +979,30 @@ fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, New
   render_node_type(n: n, target: target, shared_types: empty_set(), source_indices: source_indices)
 }
 
+fn named_type_vars_in_inferred(inferred: InferredNode?) -> List<String> {
+  match inferred {
+    Some { value: TypeVariable { id: var_id } } => [var_id]
+    Some { value: Resolved { node: rt } } => named_type_vars_in_node(n: rt)
+    _ => []
+  }
+}
+
+fn named_type_vars_in_node(n: Node) -> List<String> {
+  let self_vars = named_type_vars_in_inferred(inferred: n.inferred)
+  let child_vars = n.children |> flat_map(ch => named_type_vars_in_node(n: ch))
+  let param_vars = n.params |> flat_map(p => named_type_vars_in_node(n: param_node_type_expr(n: p)))
+  unique_strings(items: concat(self_vars, child_vars, param_vars))
+}
+
 fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
   let tn = authored_name_at(source_indices: source_indices, node: n)
   let base = coerce_primitive_type(target: target, dag_name: tn)
-  if n.params |> count == 0 {
+  let explicit_params = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
+  let inferred_params = if explicit_params |> count == 0 { named_type_vars_in_node(n: n) } else { [] }
+  let param_names = concat(explicit_params, inferred_params)
+  if param_names |> count == 0 {
     base
   } else {
-    let param_names = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
     let spec = language_spec(target: target)
     concat(base, spec.type_arg_open, param_names |> join(separator: ", "), spec.type_arg_close)
   }
