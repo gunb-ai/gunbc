@@ -96,7 +96,7 @@ def main() -> None:
             "type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }",
             "fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase>",
             "fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject>",
-            "t19_algebra_law_anchor_mismatch",
+            "algebra_law_anchor_mismatch",
             "match algebra_law_manual_claim_case(anchor: anchor)",
             "match algebra_law_subject_for_manual_anchor(anchor: manual_anchor)",
             "fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node",
