@@ -113,7 +113,7 @@ It may exist but produce wrong or empty output for any input.
 **Required work to reach M1:**
 - Fix v2 emitter to produce type-annotated, correct-arity Rust for all v4 constructs
   (target the E0282/E0107 categories first — highest count)
-- Add CI step to `cargo check` (or `cargo build`) the emitted crate and gate on success
+- Add CI step to `cargo build` the emitted crate (linking required — `cargo check` alone does not satisfy M1) and gate on success
 - This is v2 Rust codebase work, not v4 modeling work
 
 ---
