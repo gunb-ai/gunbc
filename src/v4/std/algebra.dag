@@ -281,7 +281,7 @@ type ListSkipState<T> {
 fn list_skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
   fold_list(
     xs: xs,
-    empty: ListSkipState { remaining: n, result: [] },
+    empty: ListSkipState { remaining: n, result: Empty },
     cons: fn(acc, item) {
       if acc.remaining != 0 {
         ListSkipState { remaining: acc.remaining - 1, result: acc.result }

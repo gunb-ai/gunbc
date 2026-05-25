@@ -441,7 +441,7 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: acc_nodes,
-      empty: [],
+      empty: Empty,
       cons: fn(acc, n) {
         list_snoc_item(
           xs: acc,
@@ -460,13 +460,13 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
 fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> List<Token> {
   fold_list(
     xs: tokens,
-    empty: ParseSyncState { found_sync: false, result: [] },
+    empty: ParseSyncState { found_sync: false, result: Empty },
     cons: fn(acc, tok) {
       match acc.found_sync {
         true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
         false =>
           match sync_tokens.member(tok.class) {
-            true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: [], item: tok) }
+            true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: Empty, item: tok) }
             false => ParseSyncState { found_sync: false, result: [] }
           }
       }
