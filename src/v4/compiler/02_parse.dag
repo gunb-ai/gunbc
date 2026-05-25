@@ -620,12 +620,12 @@ fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) ->
 }
 
 
-fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> List<Token> {
+fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyncState {
   fold_list(
     xs: tokens,
     empty: ParseSyncState { found_sync: false, result: Empty },
     cons: fn(acc, tok) { parse_sync_step(acc: acc, tok: tok, sync_tokens: sync_tokens) }
-  ).result
+  )
 }
 
 
@@ -651,14 +651,23 @@ fn parse_repeat_error_recover(
       right: Cons { head: parse_e1_repeat_recovery_diagnostic(at: at), tail: Empty }
     )
   )
-  match length(xs: synced) != length(xs: tokens) {
-    true =>
-      parse_repeat(element: element, tokens: synced, root: root, acc_nodes: acc_nodes, acc_diags: new_diags)
+  match synced.found_sync {
     false =>
       ParseExprAccepted {
         remaining: tokens,
         captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
         diagnostics: new_diags
+      }
+    true =>
+      match length(xs: synced.result) < length(xs: tokens) {
+        true =>
+          parse_repeat(element: element, tokens: synced.result, root: root, acc_nodes: acc_nodes, acc_diags: new_diags)
+        false =>
+          ParseExprAccepted {
+            remaining: tokens,
+            captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
+            diagnostics: new_diags
+          }
       }
   }
 }
@@ -727,6 +736,10 @@ fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> Pars
         TokenPeekFirst { value: tok } =>
           match tok.class == class {
             true =>
+              // 🟡 gated T-8: terminal node carries tok.class only — tok.lexeme, tok.file, tok.start, tok.end
+              // are staged for T-8 source-text anchoring. The node substrate has no String/Nat literal-value
+              // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
+              // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
               ParseExprAccepted {
                 remaining: list_skip(xs: tokens, n: 1),
                 captured: Node {
