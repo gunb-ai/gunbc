@@ -14,6 +14,7 @@ import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 type Char = Nat
 type String = FreeMonoid<Char>
+// 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type CharResult
   = CharFound { value: Char }
   | CharAbsent

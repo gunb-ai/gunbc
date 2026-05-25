@@ -3,7 +3,7 @@
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 // Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
 //       Node projection functions, left-recursion check, error-recovery helpers,
-//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error.
+//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error, expr_is_nullable.
 // Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
 // Status: T-7 parse walk realized; GrammarRoot carries sync_tokens for error recovery.
 //
@@ -72,6 +72,7 @@ type ParseSyncState {
   result: List<Token>
 }
 
+// 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type TokenPeek
   = TokenPeekAbsent
   | TokenPeekFirst { value: Token }
