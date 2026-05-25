@@ -5,7 +5,7 @@
 # cargo check on emitted output. Surfaces v2 Rust emitter / rustc gaps without
 # failing CI (probe mode exits 0 unless V4_M1_RUST_EMIT_PROBE_STRICT=1).
 #
-# Authority: docs/v4-compilation-milestones.md (Milestone 1 — Rust emit).
+# Authority: src/v4/workflow/ci.dag (T-24) + src/v4/TASKS.md T-24; r3 gates #98/#100 interim bridge.
 # Pattern: scripts/v4-bootstrap-viability.sh (compile + log receipt parsing).
 #
 # Env:

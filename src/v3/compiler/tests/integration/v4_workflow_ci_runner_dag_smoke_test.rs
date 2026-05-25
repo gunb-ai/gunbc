@@ -221,6 +221,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: M1 probe must be a CiCommand arm"
     );
     assert!(
+        CI_DAG.contains("feature:project-github-actions-landed")
+            && CI_DAG.contains("consumer:v4.workflow.ci m1_ci_live_workflow_signal")
+            && CI_DAG.contains("bind src/v4/TASKS.md T-24"),
+        "{CI_DAG_PATH}: M1 live-workflow bridge must carry checkable P5 dissolution tags"
+    );
+    assert!(
         surface_declares_fn(&module, "ci_command_authority_ok"),
         "{CI_DAG_PATH}: command authority must cover M1RustEmitProbeCommand"
     );

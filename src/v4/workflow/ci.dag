@@ -80,9 +80,7 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
-// 🟡 gated — live-workflow projection interim (M1 docs/v4-compilation-milestones.md) — dissolve-on-arrival:
-// emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` and this
-// carrier is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type M1CiLiveWorkflowSignal {
   step_name: String
   script_path: String

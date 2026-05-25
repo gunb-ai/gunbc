@@ -221,9 +221,9 @@ jobs:
         cp -R src/v4/. "${deps_root}/"
         rm "${deps_root}/workflow/ci.dag"
         target/release/v2-compiler compile --source-root "${entry_root}" --source-root "${deps_root}" --output-dir "${RUNNER_TEMP}/v4-lens-ci-rust" --target rust
-    # M1 (docs/v4-compilation-milestones.md): full-tree --target rust + rustc gap surface.
+    # M1: full-tree --target rust + rustc gap surface (TASKS.md T-24; r3 gates #98/#100 bridge).
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
-    # `m1_ci_live_workflow_signal` (T-24 live-workflow bridge; non-blocking).
+    # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; non-blocking).
     - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       continue-on-error: true
