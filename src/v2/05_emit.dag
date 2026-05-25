@@ -985,7 +985,7 @@ fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<Str
   if n.params |> count == 0 {
     base
   } else {
-    let param_names = n.params |> map(p => param_node_name_at(n: p, source_indices: source_indices))
+    let param_names = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: empty_set(), source_indices: source_indices))
     let spec = language_spec(target: target)
     concat(base, spec.type_arg_open, param_names |> join(separator: ", "), spec.type_arg_close)
   }
