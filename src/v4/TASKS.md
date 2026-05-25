@@ -1198,11 +1198,8 @@ integer widths without it; hence the `T-4 [needs … T-29]` edge). It is a
 T-29, T-25-core} → T-4 → T-9` side branch goes critical. Low-dependency
 ≠ low-priority.
 
-### T-30 — std/ structural fact-density / hollow-alias gate  [SUBSTRATE LANDED]
-**Status:** Landed **PR #3359**. `src/v4/lens/fact_density.dag` is the substrate authority
-(`carrier_spec_fact`, `SourceSpecReadFact`, kernel-ambient exemption). Hand-Rust bootstrap
-mirror at `src/v3/compiler/src/v4_hollow_alias_gate.rs` (P5(b) interim; dissolves when
-generated `.dag` checker runs during bootstrap). TestClaims in `src/v4/test/claim/lens_fact_density/`.
+### T-30 — std/ structural fact-density / hollow-alias gate  [ENFORCEMENT GATE LANDED]
+**Status:** Substrate landed **PR #3359**. Enforcement gate landed (operator-ratified mechanism 2026-05-25): `fact_density_hollow_alias_gate` + `fact_density_hollow_alias_lens: CompileLens` in `src/v4/lens/fact_density.dag`; three TestClaims in `src/v4/test/claim/lens_fact_density/` — `hollow_alias_compile_lens_rejects`, `fact_bundle_compile_lens_passes`, `hollow_alias_blocked_in_run_gates` — scaffold gate through `apply_compile_lens` / `run_required_lens_gates` (compile-only until T-22 execution). `carrier_spec_fact`, `SourceSpecReadFact`, kernel-ambient exemption remain substrate authority. Hand-Rust bootstrap mirror at `src/v3/compiler/src/v4_hollow_alias_gate.rs` (P5(b) interim; dissolves when generated `.dag` checker runs during bootstrap).
 **Operator ruling 2026-05-17 (codex 13403, via the D2-reversal Phase-1
 resolution).** A generated structural checker — a pure function
 `Node -> Outcome` — that **fails closed on a hollow alias**: a carrier
