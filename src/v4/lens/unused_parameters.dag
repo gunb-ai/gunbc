@@ -1,13 +1,14 @@
 // src/v4/lens/unused_parameters.dag
 // Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (T-13 family-shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (Practice 11 / single mechanism, two outputs).
 // Owns: UseRelation, UseClassificationFact, use_classification_fact, use_classification_witness, UnusedParameterFact, UnusedParametersFact, rollup_unused, unused_parameters_fact, unused_parameters_witness.
-// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Consumes: v4.std.algebra (bag_eq), v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
 // Status: T-13 family ratchet + registry split-contract.
 
 
 module v4.lens.unused_parameters
 
 import v4.compiler.infer { InferredTree }
+import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -29,7 +30,6 @@ import v4.std.dependency {
   VerifiedBy,
   classified_dependency_view_eq
 }
-import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.witness { Holds, Witness }
@@ -227,60 +227,14 @@ fn use_classification_classified_eq(
   classified_dependency_view_eq(a: a, b: b, classification_eq: use_relation_eq)
 }
 
-fn use_classification_count(
-  xs: List<ClassifiedDependencyView<UseRelation>>,
-  item: ClassifiedDependencyView<UseRelation>
-) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if use_classification_classified_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn use_classification_uses_eq(
-  left: List<ClassifiedDependencyView<UseRelation>>,
-  right: List<ClassifiedDependencyView<UseRelation>>
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (use_classification_count(xs: left, item: item) == use_classification_count(xs: right, item: item))
-    })
-  }
-}
-
 fn use_classification_fact_eq(a: UseClassificationFact, b: UseClassificationFact) -> Bool {
-  use_classification_uses_eq(left: a.uses, right: b.uses)
+  bag_eq(xs: a.uses, ys: b.uses, eq: use_classification_classified_eq)
 }
 
 fn unused_parameter_fact_eq(a: UnusedParameterFact, b: UnusedParameterFact) -> Bool {
   a.declaration == b.declaration
 }
 
-fn unused_parameter_count(xs: List<UnusedParameterFact>, item: UnusedParameterFact) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if unused_parameter_fact_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn unused_parameter_facts_eq(left: List<UnusedParameterFact>, right: List<UnusedParameterFact>) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (unused_parameter_count(xs: left, item: item) == unused_parameter_count(xs: right, item: item))
-    })
-  }
-}
-
 fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -> Bool {
-  unused_parameter_facts_eq(left: a.unused, right: b.unused)
+  bag_eq(xs: a.unused, ys: b.unused, eq: unused_parameter_fact_eq)
 }
