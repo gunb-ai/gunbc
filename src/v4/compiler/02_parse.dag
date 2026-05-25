@@ -4,7 +4,7 @@
 // Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
 //       Node projection functions, left-recursion check, error-recovery helpers,
 //       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error, expr_is_nullable,
-//       expr_has_undefined_nonterminal, grammar_has_undefined_nonterminals.
+//       expr_has_undefined_nonterminal, grammar_has_undefined_nonterminals, parse_sync_step.
 // Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
 // Status: T-7 parse walk realized; GrammarRoot carries sync_tokens for error recovery.
 //
@@ -70,7 +70,7 @@ type ParseExprResult
 
 type ParseSyncState {
   found_sync: Bool
-  result: FreeMonoid<Token>
+  result: List<Token>
 }
 
 // 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
@@ -544,20 +544,23 @@ fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
 
 
 // Skip tokens until a sync token is found (inclusive — returns stream starting at sync token).
+fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) -> ParseSyncState {
+  match acc.found_sync {
+    true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
+    false =>
+      match sync_tokens.member(tok.class) {
+        true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: Empty, item: tok) }
+        false => ParseSyncState { found_sync: false, result: Empty }
+      }
+  }
+}
+
+
 fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> List<Token> {
   fold_list(
     xs: tokens,
     empty: ParseSyncState { found_sync: false, result: Empty },
-    cons: fn(acc, tok) {
-      match acc.found_sync {
-        true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
-        false =>
-          match sync_tokens.member(tok.class) {
-            true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: Empty, item: tok) }
-            false => ParseSyncState { found_sync: false, result: Empty }
-          }
-      }
-    }
+    cons: fn(acc, tok) { parse_sync_step(acc: acc, tok: tok, sync_tokens: sync_tokens) }
   ).result
 }
 
