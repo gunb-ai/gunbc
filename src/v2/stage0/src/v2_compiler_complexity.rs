@@ -7091,10 +7091,13 @@ pub fn build_scc_index(
                                 members: Rc::new(vec![]),
                             }),
                         );
-                        let member_set = component.members.clone().iter().cloned().fold(
-                            v2_rt::rc_empty_set::<_>(),
-                            |inner: _, member: String| v2_rt::rc_set_insert(inner, member.clone()),
-                        );
+                        let member_set =
+                            component.members.clone().iter().cloned().fold(
+                                v2_rt::rc_empty_set::<_>(),
+                                |inner: _, member: String| {
+                                    v2_rt::rc_set_insert(inner, member.clone())
+                                },
+                            );
                         let members = Rc::new({
                             let mut __result = Vec::new();
                             for member in names.clone().iter().cloned() {

@@ -233,10 +233,13 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
-        let name_set = all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(),
-            |acc: _, n: String| v2_rt::rc_set_insert(acc, n.clone()),
-        );
+        let name_set = all_names
+            .clone()
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set::<_>(), |acc: _, n: String| {
+                v2_rt::rc_set_insert(acc, n.clone())
+            });
         let local_deps = compute_in_graph_deps(all_names.clone(), deps_map.clone(), name_set);
         let self_refs = Rc::new({
             let mut __result = Vec::new();
@@ -260,10 +263,12 @@ pub fn detect_type_cycles_kahn(
             __result
         });
         let cycle_members = kahn_remove_loop(&all_names, &local_deps);
-        let sr_set = self_refs.iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(),
-            |acc: _, n: String| v2_rt::rc_set_insert(acc, n.clone()),
-        );
+        let sr_set = self_refs
+            .iter()
+            .cloned()
+            .fold(v2_rt::rc_empty_set::<_>(), |acc: _, n: String| {
+                v2_rt::rc_set_insert(acc, n.clone())
+            });
         let cm_set = cycle_members
             .iter()
             .cloned()
