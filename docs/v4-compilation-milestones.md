@@ -156,17 +156,18 @@ T-9 is modeled but requires T-4 algebra grounding (formal TASKS.md prerequisite)
 
 ## Milestone 3 — Stage0 compiles the v4 pipeline itself (stage1 exists)
 
-**Definition:** The stage0 binary, given src/v4 as input, produces a new binary
-(stage1). stage1 is functionally complete: it can compile v4 programs, not just trivial ones.
+**Definition:** The stage0 binary, given src/v4 as input, produces a new stage1 binary
+that can itself compile a v4 program and emit valid, runnable output. Specifically:
+stage1 must pass the same compile→emit→rustc→run chain that M2 proves for stage0.
 
-**Evidence:** `v4-stage0-compiler compile src/v4 --output-dir /tmp/stage1 && rustc /tmp/stage1/main.rs -o v4-stage1 && v4-stage1 compile trivial.dag --target rust`
+**Evidence:** `v4-stage0-compiler compile src/v4 --output-dir /tmp/stage1 && rustc /tmp/stage1/main.rs -o v4-stage1 && v4-stage1 compile trivial.dag --output-dir /tmp/stage1-out && rustc /tmp/stage1-out/trivial.rs -o /tmp/stage1-trivial && /tmp/stage1-trivial`
 
-**What this proves:** The v4 compiler can compile itself — stage0 self-compilation,
-stage1 exists and can execute (not just link). The `v4-stage1 compile trivial.dag`
-smoke confirms the emitted binary is a working compiler, not merely a linkable artifact.
-This is NOT self-hosting. Self-hosting (the Pure Bootstrap Zero requirement) is the
-bit-identical fixed point at M4/T-15. Reaching M3 is a necessary step toward that
-target, not the target itself.
+**What this proves:** Stage0 can compile itself into a stage1 binary, and stage1
+produces valid, runnable Rust output — not merely a linkable or executable artifact.
+The evidence mirrors M2's chain applied one level up: stage1 must compile the trivial
+fixture, emit valid Rust, compile that Rust, and run it. This is NOT self-hosting.
+Self-hosting (the Pure Bootstrap Zero requirement) is the bit-identical fixed point at
+M4/T-15. Reaching M3 is a necessary step toward that target, not the target itself.
 
 **Known blockers (beyond M2):**
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
