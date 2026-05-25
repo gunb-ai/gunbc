@@ -31,39 +31,45 @@ type SubsecondLexeme {
 }
 
 
-type Year {
-  value: Refined<Nat>
+type ParsedFourDigitYearLexeme {
   lexeme: FourDigitYearLexeme
+  value: Nat
+}
+
+
+type ParsedTwoDigitFieldLexeme {
+  lexeme: TwoDigitFieldLexeme
+  value: Nat
+}
+
+
+type Year {
+  parsed: Refined<ParsedFourDigitYearLexeme>
 }
 
 
 type MonthOrdinal {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
 type DayOrdinal {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
 type HourOfDay {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
 type MinuteOfHour {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
 type SecondOfMinute {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
@@ -77,14 +83,17 @@ type SubsecondDigitCount {
 }
 
 
+type ParsedSubsecondLexeme {
+  lexeme: SubsecondLexeme
+  digit_count: SubsecondDigitCount
+  nanosecond_projection: Nanoseconds
+}
+
+
 // 🟢 coproduct dissolution — RFC 3339 secfrac is present or absent at the user-input boundary.
 type Subsecond
   = NoSubsecond
-  | NanosecondSubsecond {
-      nanoseconds: Nanoseconds,
-      digits: SubsecondDigitCount,
-      lexeme: SubsecondLexeme,
-    }
+  | FractionalSecond { parsed: ParsedSubsecondLexeme }
 
 
 // 🟢 coproduct dissolution — RFC 3339 numeric UTC offsets are explicitly signed.
@@ -94,14 +103,12 @@ type TzOffsetSign
 
 
 type TzOffsetHour {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
 type TzOffsetMinute {
-  value: Refined<Nat>
-  lexeme: TwoDigitFieldLexeme
+  parsed: Refined<ParsedTwoDigitFieldLexeme>
 }
 
 
@@ -118,18 +125,33 @@ type TzOffset
   | SignedOffset { offset: NumericTzOffset }
 
 
-type CalendarDate {
+type CalendarDateFields {
   year: Year
   month: MonthOrdinal
   day: DayOrdinal
 }
 
 
-type ClockTime {
+type CalendarDateValidity {
+  fields: CalendarDateFields
+}
+
+
+type CalendarDate {
+  validity: CalendarDateValidity
+}
+
+
+type ClockTimeFields {
   hour: HourOfDay
   minute: MinuteOfHour
   second: SecondOfMinute
   subsecond: Subsecond
+}
+
+
+type ClockTime {
+  fields: ClockTimeFields
 }
 
 
@@ -149,10 +171,22 @@ type LocalDateTime {
 }
 
 
-type Instant {
+// 🟢 coproduct dissolution — second 60 either is not present or is backed by leap-second evidence.
+type LeapSecondEvidence
+  = NoLeapSecond
+  | LeapSecondPermitted { authority: Symbol }
+
+
+type InstantValidity {
   date: CalendarDate
   time: ClockTime
   offset: TzOffset
+  leap_second: LeapSecondEvidence
+}
+
+
+type Instant {
+  validity: InstantValidity
 }
 
 
@@ -181,33 +215,33 @@ data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 
 
-fn year_admits(value: Nat) -> Bool {
-  (value >= 1) && (value <= 9999)
+fn year_admits(parsed: ParsedFourDigitYearLexeme) -> Bool {
+  (parsed.value >= 1) && (parsed.value <= 9999)
 }
 
 
-fn month_admits(value: Nat) -> Bool {
-  (value >= 1) && (value <= 12)
+fn month_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  (parsed.value >= 1) && (parsed.value <= 12)
 }
 
 
-fn day_admits(value: Nat) -> Bool {
-  (value >= 1) && (value <= 31)
+fn day_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  (parsed.value >= 1) && (parsed.value <= 31)
 }
 
 
-fn hour_admits(value: Nat) -> Bool {
-  value <= 23
+fn hour_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  parsed.value <= 23
 }
 
 
-fn minute_admits(value: Nat) -> Bool {
-  value <= 59
+fn minute_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  parsed.value <= 59
 }
 
 
-fn second_admits(value: Nat) -> Bool {
-  value <= 60
+fn second_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  parsed.value <= 60
 }
 
 
@@ -217,51 +251,51 @@ fn nanoseconds_admits(value: Nat) -> Bool {
 
 
 fn subsecond_digit_count_admits(value: Nat) -> Bool {
-  (value >= 1) && (value <= 9)
+  value >= 1
 }
 
 
-fn tz_offset_hour_admits(value: Nat) -> Bool {
-  value <= 23
+fn tz_offset_hour_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  parsed.value <= 23
 }
 
 
-fn tz_offset_minute_admits(value: Nat) -> Bool {
-  value <= 59
+fn tz_offset_minute_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
+  parsed.value <= 59
 }
 
 
-data year_validation: Validation<Nat> = Validation {
+data year_validation: Validation<ParsedFourDigitYearLexeme> = Validation {
   reason: year_out_of_range,
   admits: year_admits
 }
 
 
-data month_validation: Validation<Nat> = Validation {
+data month_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: month_out_of_range,
   admits: month_admits
 }
 
 
-data day_validation: Validation<Nat> = Validation {
+data day_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: day_out_of_range,
   admits: day_admits
 }
 
 
-data hour_validation: Validation<Nat> = Validation {
+data hour_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: hour_out_of_range,
   admits: hour_admits
 }
 
 
-data minute_validation: Validation<Nat> = Validation {
+data minute_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: minute_out_of_range,
   admits: minute_admits
 }
 
 
-data second_validation: Validation<Nat> = Validation {
+data second_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: second_out_of_range,
   admits: second_admits
 }
@@ -279,36 +313,32 @@ data subsecond_digit_count_validation: Validation<Nat> = Validation {
 }
 
 
-data tz_offset_hour_validation: Validation<Nat> = Validation {
+data tz_offset_hour_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
 }
 
 
-data tz_offset_minute_validation: Validation<Nat> = Validation {
+data tz_offset_minute_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
 }
 
 
-fn make_year(value: Nat, lexeme: FourDigitYearLexeme, at: Locus) -> Outcome<Year> {
-  match refine(base: value, by: year_validation, at: at) {
+fn make_year(parsed: ParsedFourDigitYearLexeme, at: Locus) -> Outcome<Year> {
+  match refine(base: parsed, by: year_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
-      Accepted { value: Year { value: refined, lexeme: lexeme }, diagnostics: diagnostics }
+      Accepted { value: Year { parsed: refined }, diagnostics: diagnostics }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
 
-fn make_month_ordinal(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<MonthOrdinal> {
-  match refine(base: value, by: month_validation, at: at) {
+fn make_month_ordinal(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<MonthOrdinal> {
+  match refine(base: parsed, by: month_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: MonthOrdinal { value: refined, lexeme: lexeme },
+        value: MonthOrdinal { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -316,15 +346,11 @@ fn make_month_ordinal(
 }
 
 
-fn make_day_ordinal(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<DayOrdinal> {
-  match refine(base: value, by: day_validation, at: at) {
+fn make_day_ordinal(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<DayOrdinal> {
+  match refine(base: parsed, by: day_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: DayOrdinal { value: refined, lexeme: lexeme },
+        value: DayOrdinal { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -332,15 +358,11 @@ fn make_day_ordinal(
 }
 
 
-fn make_hour_of_day(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<HourOfDay> {
-  match refine(base: value, by: hour_validation, at: at) {
+fn make_hour_of_day(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<HourOfDay> {
+  match refine(base: parsed, by: hour_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: HourOfDay { value: refined, lexeme: lexeme },
+        value: HourOfDay { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -348,15 +370,11 @@ fn make_hour_of_day(
 }
 
 
-fn make_minute_of_hour(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<MinuteOfHour> {
-  match refine(base: value, by: minute_validation, at: at) {
+fn make_minute_of_hour(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<MinuteOfHour> {
+  match refine(base: parsed, by: minute_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: MinuteOfHour { value: refined, lexeme: lexeme },
+        value: MinuteOfHour { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -364,15 +382,11 @@ fn make_minute_of_hour(
 }
 
 
-fn make_second_of_minute(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<SecondOfMinute> {
-  match refine(base: value, by: second_validation, at: at) {
+fn make_second_of_minute(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<SecondOfMinute> {
+  match refine(base: parsed, by: second_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: SecondOfMinute { value: refined, lexeme: lexeme },
+        value: SecondOfMinute { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -398,15 +412,16 @@ fn make_subsecond_digit_count(value: Nat, at: Locus) -> Outcome<SubsecondDigitCo
 }
 
 
-fn make_tz_offset_hour(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<TzOffsetHour> {
-  match refine(base: value, by: tz_offset_hour_validation, at: at) {
+fn make_subsecond(parsed: ParsedSubsecondLexeme) -> Subsecond {
+  FractionalSecond { parsed: parsed }
+}
+
+
+fn make_tz_offset_hour(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<TzOffsetHour> {
+  match refine(base: parsed, by: tz_offset_hour_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: TzOffsetHour { value: refined, lexeme: lexeme },
+        value: TzOffsetHour { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -414,17 +429,28 @@ fn make_tz_offset_hour(
 }
 
 
-fn make_tz_offset_minute(
-  value: Nat,
-  lexeme: TwoDigitFieldLexeme,
-  at: Locus,
-) -> Outcome<TzOffsetMinute> {
-  match refine(base: value, by: tz_offset_minute_validation, at: at) {
+fn make_tz_offset_minute(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<TzOffsetMinute> {
+  match refine(base: parsed, by: tz_offset_minute_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: TzOffsetMinute { value: refined, lexeme: lexeme },
+        value: TzOffsetMinute { parsed: refined },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
+}
+
+
+fn make_calendar_date(validity: CalendarDateValidity) -> CalendarDate {
+  CalendarDate { validity: validity }
+}
+
+
+fn make_clock_time(fields: ClockTimeFields) -> ClockTime {
+  ClockTime { fields: fields }
+}
+
+
+fn make_instant(validity: InstantValidity) -> Instant {
+  Instant { validity: validity }
 }
