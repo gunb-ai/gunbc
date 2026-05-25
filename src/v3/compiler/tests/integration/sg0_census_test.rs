@@ -846,6 +846,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
     // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
+    // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
+    // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.
+    "src/v3/compiler/tests/integration/v4_compiler_parse_table_dag_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,

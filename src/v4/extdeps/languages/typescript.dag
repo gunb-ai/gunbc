@@ -17,6 +17,7 @@ import v4.compiler.parse {
   ModeledGrammar,
   Sequence,
   Terminal,
+  grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.compiler.tokenize {
@@ -645,7 +646,7 @@ fn ts_grammar_production_mvp1_fn_add() -> GrammarProduction {
 
 fn ts_wave1_grammar_root() -> GrammarRoot {
   let start = ts_grammar_production_mvp1_fn_add()
-  GrammarRoot { start: ts_production_mvp1_fn_add, productions: [start] }
+  GrammarRoot { start: ts_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
 fn ts_wave1_grammar() -> Grammar {
