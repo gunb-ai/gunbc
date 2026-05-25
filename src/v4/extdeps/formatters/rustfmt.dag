@@ -4,11 +4,11 @@
 //       RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports,
 //       RustfmtImportsLayout, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition,
 //       RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtConfig, rustfmt_defaults,
-//       rustfmt_merge.
+//       rustfmt_layer.
 // Consumes: none (pure config substrate; no node/compiler dependency).
 // Status: T-4.16 scaffold — full option space grounded in rustfmt 1.x toml reference.
 // Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
-// Note: override composition — consumer folds List<RustfmtConfig> via rustfmt_merge; each
+// Note: layer composition — consumer folds List<RustfmtConfig> via rustfmt_layer; each
 //       layer is a complete config. Field-granularity patch substrate (partial overrides) is
 //       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
 //       per-field Override/Inherit variants replaces full-config layering.
@@ -187,7 +187,7 @@ type RustfmtConfig {
 }
 
 
-// Official rustfmt 1.x defaults as of edition 2021 / rustfmt 1.6.
+// Official rustfmt 1.6 defaults. edition field defaults to 2015 per rustfmt spec regardless of project edition.
 data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   indent_style: RustfmtIndentBlock,
   tab_spaces: 4,
@@ -244,8 +244,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
 }
 
 
-// Apply override: every field in `override` wins unconditionally.
-// Hierarchical layering: fold(patches, init: rustfmt_defaults, f: rustfmt_merge).
-fn rustfmt_merge(base: RustfmtConfig, override: RustfmtConfig) -> RustfmtConfig {
-  override
+// Apply one config layer over another: the outer layer wins unconditionally on every field.
+// Hierarchical layering: fold(layers, init: rustfmt_defaults, f: rustfmt_layer).
+fn rustfmt_layer(base: RustfmtConfig, outer: RustfmtConfig) -> RustfmtConfig {
+  outer
 }
