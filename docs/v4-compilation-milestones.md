@@ -100,18 +100,15 @@ an executable artifact.
 It may exist but produce wrong or empty output for any input.
 
 **Known blockers:**
-1. **T-10 (05_emit.dag) is 45 lines — a stub.** The `emit` function composes
-   `serialize_target ∘ translate` but the composition is skeletal. v2 can emit Rust
-   *for* the emit stage (turning it into a Rust function), but that Rust function
-   will also be a stub that produces no output for any real input.
-2. **Emitted Rust does not pass `cargo check`.** The T-22 host eval receipt already
+1. **Emitted Rust does not pass `cargo check`.** The T-22 host eval receipt already
    verifies zero v2 diagnostics on `--target rust src/v4`, but the emitted crate
    currently has ~4,900 `rustc` errors (PR #3654). Top categories: E0282 type
    annotations needed (~2,125), E0107 wrong generic arity (~792), E0308 type mismatch
    (~669). These are v2 emitter fidelity gaps, not v4 modeling gaps.
-3. **Dependency:** this milestone does NOT require T-6/T-7 algorithm walks to be real.
-   The Rust emitted from the stub implementations will compile once emitter gaps are
-   fixed; the stubs just won't do anything useful at runtime.
+2. **Dependency:** this milestone does NOT require T-6/T-7 algorithm walks or T-10
+   emit to produce semantically useful output — M1 only requires the emitted Rust to
+   link. The stubs compile to valid (if semantically empty) Rust functions once emitter
+   type/arity gaps are fixed. Semantic correctness is M2.
 
 **Required work to reach M1:**
 - Fix v2 emitter to produce type-annotated, correct-arity Rust for all v4 constructs
@@ -162,8 +159,10 @@ T-9 is modeled but requires T-4 algebra grounding (formal TASKS.md prerequisite)
 
 **Evidence:** `v4-stage0-compiler compile src/v4 --output-dir /tmp/stage1 && rustc /tmp/stage1/main.rs -o v4-stage1`
 
-**What this proves:** The v4 compiler can compile the v4 compiler. Self-hosting
-is structurally achieved (even if not yet bit-identical).
+**What this proves:** The v4 compiler can compile itself — stage0 self-compilation,
+stage1 exists. This is NOT self-hosting. Self-hosting (the Pure Bootstrap Zero
+requirement) is the bit-identical fixed point at M4/T-15. Reaching M3 is a necessary
+step toward that target, not the target itself.
 
 **Known blockers (beyond M2):**
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
