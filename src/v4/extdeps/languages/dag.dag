@@ -26,7 +26,6 @@ import v4.compiler.parse {
   grammar_carries_symbol
 }
 import v4.compiler.tokenize {
-  BlockCommentAfterStarChar,
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
@@ -210,13 +209,10 @@ fn dag_block_comment_trivia_rule() -> LexRule {
   TriviaRule {
     pattern: DelimitedPattern {
       open: LiteralPattern { text: "/*" },
-      body: RepeatPattern { element: ChoicePattern {
+      body: ChoicePattern {
         left: CharClassPattern { class: BlockCommentTextChar },
-        right: SequencePattern {
-          left: CharPattern { char: 42 },
-          right: CharClassPattern { class: BlockCommentAfterStarChar }
-        }
-      }},
+        right: CharPattern { char: 42 }
+      },
       close: LiteralPattern { text: "*/" }
     }
   }
@@ -744,10 +740,5 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
 
 // Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
 fn dag_language_model_wave1_modeled() -> DagLanguageModel {
-  DagLanguageModel {
-    lex: dag_wave1_lex(),
-    grammar: dag_wave1_grammar(),
-    language_identity: dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_wave1_canonical_symbols()
-  }
+  dag_language_model_wave1()
 }
