@@ -16,8 +16,6 @@ module v4.test.claim.parse.grammar_validation
 import v4.compiler.tokenize { Token }
 import v4.compiler.parse {
   GrammarProduction,
-  GrammarProductionFound,
-  GrammarProductionMissing,
   GrammarRoot,
   Nonterminal,
   Optional,
@@ -29,7 +27,6 @@ import v4.compiler.parse {
   grammar_has_duplicate_productions,
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
-  grammar_lookup_production,
   parse_production,
   parse_skip_to_sync
 }
