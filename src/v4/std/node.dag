@@ -379,16 +379,17 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 
 // 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
-  fold(
-    canonical_children_for_content_hash(n: n),
-    init: canonical_hash_of_node_kind(kind: n.kind),
-    f: fn(acc, e) {
-      hash_combine(
-        a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
-        b: content_hash(n: e.target)
-      )
-    }
-  )
+  let children = match node_edge_discipline(n: n) {
+    LabeledEdges => sort_by(n.children, e => named_edge_sort_key(e: e))
+    NoEdges => n.children
+    PositionalEdges => n.children
+  }
+  fold(children, init: canonical_hash_of_node_kind(kind: n.kind), f: fn(acc, e) {
+    hash_combine(
+      a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+      b: content_hash(n: e.target)
+    )
+  })
 }
 
 
