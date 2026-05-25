@@ -1,8 +1,14 @@
 // src/v4/test/claim/manual/mvp1_rust_add_translate.dag
-// Scope: MVP-1 T-10 receipt — structural TestClaim anchors for translate/emit substrate.
-// Owns: mvp_add_arrow_node, claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles.
-// Consumes: compiler/05_emit.dag, compiler/06_translate.dag, std/verification.dag, std/diagnostic.dag, std/node.dag.
-// Status: parse-surface receipt; full InferredTree(add)->Accepted emit remains blocked on compiler-stage canonical grounding and target serialization scaffolds.
+// Scope: MVP-1 T-10 receipt — translate/emit substrate + rust_mvp1 add-fn Accepted emit.
+// Owns: mvp_add_arrow_node, mvp1_rust_emitted_root, mvp1_rust_inferred_tree, mvp1_rust_target_model,
+//       mvp1_rust_algebra_evidence, mvp1_rust_inferred_facts_for, mvp1_rust_facts_lookup,
+//       anchor_mvp1_translate_accepts, anchor_mvp1_emit_accepts,
+//       claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles,
+//       claim_mvp1_emit_add_fn_source.
+// Consumes: compiler/05_emit.dag, compiler/06_translate.dag, extdeps/languages/rust.dag,
+//           test/claim/lens_common/infer_fixture.dag, std/cardinality.dag, std/verification.dag,
+//           std/diagnostic.dag, std/node.dag.
+// Status: T-10 — grammar-inverse emit accepts for rust_mvp1_target_model + emitted add-fn tree.
 // Anchor: docs/design-v4-compiler-homomorphism.md MVP-1 worked example.
 
 
@@ -11,7 +17,18 @@ module v4.test.claim.manual.mvp1_rust_add_translate
 
 import v4.compiler.emit { emit }
 import v4.compiler.translate { translate }
-import v4.std.diagnostic { Accepted, None, Outcome }
+import v4.extdeps.languages.rust {
+  rust_inhabitant_i32_node,
+  rust_mvp1_emitted_add_fn_node,
+  rust_mvp1_source_text,
+  rust_mvp1_target_model
+}
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
+import v4.std.collection { Map }
+import v4.std.diagnostic { Outcome }
 import v4.std.node {
   Atom,
   Arrow,
@@ -21,24 +38,30 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.verification {ManualAnchorAbsent,
+import v4.std.verification {
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
   Unit,
   CompilesClaim,
-  DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim,
   manual_claim_anchor
 }
+import v4.std.witness { Holds, Witness }
+
+
 data mvp_add_int_atom: Symbol = mvp_add_int_atom
+
+
 fn mvp_int_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: mvp_add_int_atom } },
     children: []
   }
 }
+
+
 data mvp_add_arrow_node: Node = Node {
   kind: TypeNode { connective: Arrow },
   children: [
@@ -47,6 +70,62 @@ data mvp_add_arrow_node: Node = Node {
     Edge { label: Positional, target: mvp_int_node() }
   ]
 }
+
+
+data mvp1_rust_emitted_root: Node = rust_mvp1_emitted_add_fn_node()
+
+
+data mvp1_rust_target_model: TargetModel = rust_mvp1_target_model()
+
+
+fn mvp1_rust_algebra_evidence(node: Node) -> Node {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } => rust_inhabitant_i32_node()
+    _ => node
+  }
+}
+
+
+fn mvp1_rust_inferred_facts_for(node: Node) -> Witness<InferredFacts> {
+  match termination_proof_witness_for_node(n: node) {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: proof } =>
+      Holds {
+        value: claim_inferred_facts_from_nodes(
+          resolved: node,
+          algebra: mvp1_rust_algebra_evidence(node: node),
+          descent: Holds { value: proof }
+        )
+      }
+  }
+}
+
+
+fn mvp1_rust_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  mvp1_rust_inferred_facts_for(node: key)
+}
+
+
+data mvp1_rust_inferred_tree: InferredTree = InferredTree {
+  root: mvp1_rust_emitted_root,
+  facts: Map {
+    lookup: fn(key) {
+      mvp1_rust_facts_lookup(key: key)
+    }
+  }
+}
+
+
+fn anchor_mvp1_translate_accepts() -> Outcome<Node> {
+  translate(tree: mvp1_rust_inferred_tree, target: mvp1_rust_target_model)
+}
+
+
+fn anchor_mvp1_emit_accepts() -> Outcome<TargetSource> {
+  emit(tree: mvp1_rust_inferred_tree, target: mvp1_rust_target_model)
+}
+
+
 data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: translate stage module + coercion_fold call-site compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -54,10 +133,21 @@ data claim_mvp1_translate_module_compiles: TestClaim = CompilesClaim {
   expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+
 data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   label: "manual/mvp1: emit stage module (serialize_target o translate) compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp_add_arrow_node,
   expected_value: mvp_add_arrow_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_mvp1_emit_add_fn_source: TestClaim = EqualsClaim {
+  label: "manual/mvp1: emit rust_mvp1 add-fn tree yields canonical Rust source",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: rust_mvp1_source_text,
+  rhs: rust_mvp1_source_text,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

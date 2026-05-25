@@ -1,15 +1,28 @@
 // src/v4/test/claim/manual/infer_emit_compile_anchor.dag
 // Scope: Tier-1 v2-compile anchor for T-9/T-10 interface freeze — `infer`/`emit`/`compile` Wave-1 boundary.
-// Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_stub_ranking_symbol, anchor_stub_algebra_ref, anchor_stub_ranking_dim, anchor_stub_termination_proof, anchor_stub_inferred_facts, anchor_stub_empty_facts_map, anchor_stub_inferred_tree, anchor_facts_map_lookup_not_realized, anchor_infer_rejects, anchor_emit_rejects, anchor_compile_rejects.
-// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, std/algebra.dag, std/cardinality.dag, std/collection.dag, std/diagnostic.dag, std/node.dag, std/witness.dag.
-// Status: scaffold — compile-only until T-22.
+// Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_stub_inferred_facts,
+//       anchor_stub_empty_facts_map, anchor_stub_inferred_tree, anchor_facts_map_lookup_not_realized,
+//       anchor_infer_rejects, anchor_emit_rejects, anchor_emit_mvp1_accepts, anchor_compile_inferred_mvp1_accepts,
+//       anchor_compile_rejects.
+// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag,
+//           test/claim/manual/mvp1_rust_add_translate.dag, std/algebra.dag, std/collection.dag,
+//           std/diagnostic.dag, std/node.dag, std/witness.dag.
+// Status: T-10 — stub targets fail-closed; rust_mvp1 fixture accepts emit + compile_inferred.
 // Anchor: https://en.wikipedia.org/wiki/Compiler
 
 
 module v4.test.claim.manual.infer_emit_compile_anchor
 
 
-import v4.compiler.compile { Source, compile_ingest_staging }
+import v4.compiler.compile {
+  CompileMode,
+  CompileOutput,
+  Source,
+  TranslateResult,
+  TranslateTo,
+  compile_inferred,
+  compile_ingest_staging
+}
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.tokenize { VoidLexRules }
 import v4.compiler.emit { emit }
@@ -17,6 +30,11 @@ import v4.compiler.infer {
   InferredFacts,
   InferredTree,
   infer
+}
+import v4.test.claim.manual.mvp1_rust_add_translate {
+  anchor_mvp1_emit_accepts,
+  mvp1_rust_inferred_tree,
+  mvp1_rust_target_model
 }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.algebra { Empty }
@@ -100,6 +118,19 @@ fn anchor_emit_rejects() -> Outcome<TargetSource> {
   emit(
     tree: anchor_stub_inferred_tree,
     target: anchor_stub_target_model
+  )
+}
+
+
+fn anchor_emit_mvp1_accepts() -> Outcome<TargetSource> {
+  anchor_mvp1_emit_accepts()
+}
+
+
+fn anchor_compile_inferred_mvp1_accepts() -> Outcome<CompileOutput> {
+  compile_inferred(
+    inferred: mvp1_rust_inferred_tree,
+    mode: TranslateTo { target: mvp1_rust_target_model }
   )
 }
 
