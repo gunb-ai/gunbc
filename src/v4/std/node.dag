@@ -313,15 +313,47 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
     Positional => canonical_tag_positional_edge
   }
 }
+// Loop well_formed permits mixed positional body edges plus one loop_bound_edge at any list index; content_hash canonicalizes bound last so placement does not affect digest.
+fn loop_collect_positional_children(children: List<Edge>) -> List<Edge> {
+  fold(children, init: [], f: fn(acc, e) {
+    match e.label {
+      Positional => list_push(acc, e)
+      Named { name: _ } => acc
+    }
+  })
+}
+fn loop_collect_bound_edge(children: List<Edge>) -> List<Edge> {
+  fold(children, init: [], f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == loop_bound_edge { list_push(acc, e) } else { acc }
+      Positional => acc
+    }
+  })
+}
+fn loop_content_hash_canonical_children(children: List<Edge>) -> List<Edge> {
+  append(
+    left: loop_collect_positional_children(children: children),
+    right: loop_collect_bound_edge(children: children)
+  )
+}
 fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
-  let n = match node_edge_discipline(n: n) {
-    LabeledEdges =>
+  let n = match n.kind {
+    ComputationNode { behavior: Loop } =>
       Node {
         kind: n.kind,
-        children: sort_by(n.children, e => named_edge_sort_key(e: e))
+        children: loop_content_hash_canonical_children(children: n.children)
       }
-    NoEdges => n
-    PositionalEdges => n
+    _ =>
+      match node_edge_discipline(n: n) {
+        LabeledEdges =>
+          Node {
+            kind: n.kind,
+            children: sort_by(n.children, e => named_edge_sort_key(e: e))
+          }
+        NoEdges => n
+        PositionalEdges => n
+      }
   }
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
     algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
@@ -384,7 +416,7 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
-// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
+// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized last; other PositionalEdges preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
     n: n,
