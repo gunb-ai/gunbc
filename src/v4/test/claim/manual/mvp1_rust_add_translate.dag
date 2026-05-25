@@ -4,7 +4,7 @@
 //       mvp1_rust_canonical_grounding, mvp1_rust_inferred_facts_for, mvp1_rust_facts_lookup,
 //       anchor_mvp1_translate_accepts, anchor_mvp1_emit_accepts,
 //       claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles,
-//       claim_mvp1_emit_add_fn_accepts, witness_mvp1_emit_accepts.
+//       mvp1_emit_receipt, witness_mvp1_emit_accepts.
 // Consumes: compiler/05_emit.dag, compiler/06_translate.dag, extdeps/languages/rust.dag,
 //           test/claim/lens_common/infer_fixture.dag, std/cardinality.dag, std/verification.dag,
 //           std/diagnostic.dag, std/node.dag, std/constraints.dag.
@@ -209,7 +209,7 @@ fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> 
     Holds {
       value: mvp1_rust_canonical_grounding(
         node: node,
-        algebra: mvp1_rust_i32_overflow_disposition_node()
+        algebra: rust_mvp1_i32_overflow_disposition_node()
       )
     }
   } else if node == rust_inhabitant_atom(id: rust_tag_scalar_int) {
@@ -316,32 +316,16 @@ fn anchor_mvp1_emit_accepts() -> Outcome<TargetSource> {
 }
 
 
-// Compile-time witness: anchor_mvp1_emit_accepts must return Accepted with canonical MVP-1 source.
-// T-22 eval receipt is needed for runtime TestClaimRun execution over Outcome<TargetSource> carriers.
-data witness_mvp1_emit_accepts: Bool = match anchor_mvp1_emit_accepts() {
+// Typed emit receipt — preserves Outcome<TargetSource> without Node fabrication.
+data mvp1_emit_receipt: Outcome<TargetSource> = anchor_mvp1_emit_accepts()
+
+
+// Compile-time witness: mvp1_emit_receipt must be Accepted with canonical MVP-1 source.
+// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> TestClaim eval receipt replaces Bool witness; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
+data witness_mvp1_emit_accepts: Bool = match mvp1_emit_receipt {
   Accepted { value: source, diagnostics: d } =>
     (source == rust_mvp1_source_text) && (d == None)
   Rejected { diagnostics: _ } => false
-}
-
-
-data mvp1_emit_witness_fail_atom: Symbol = mvp1_emit_witness_fail_atom
-
-
-fn mvp1_emit_witness_fail_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: mvp1_emit_witness_fail_atom } },
-    children: []
-  }
-}
-
-
-fn mvp1_emit_accepts_claim_input(ok: Bool) -> Node {
-  if ok {
-    mvp1_rust_emitted_root
-  } else {
-    mvp1_emit_witness_fail_node()
-  }
 }
 
 
@@ -359,14 +343,5 @@ data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp_add_arrow_node,
   expected_value: mvp_add_arrow_node,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-
-data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
-  label: "manual/mvp1: anchor_mvp1_emit_accepts Accepted on rust_mvp1 add-fn fixture (compile witness; T-22 for eval receipt)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: mvp1_emit_accepts_claim_input(ok: witness_mvp1_emit_accepts),
-  expected_value: mvp1_rust_emitted_root,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
