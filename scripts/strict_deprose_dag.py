@@ -290,6 +290,10 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "WasmConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+    if rel == "src/v4/std/float.dag":
+        # T-3B disposition carriers (absent at merge-base).
+        out.setdefault("NaNPropagation", ("🟢", "CP-3229-GREEN-TERMINAL"))
+        out.setdefault("InfPropagation", ("🟢", "CP-3229-GREEN-TERMINAL"))
     return out
 
 
@@ -600,7 +604,7 @@ def main() -> None:
         ),
         (
             "src/v4/std/float.dag",
-            "// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.",
+            "// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, ordered compare semantics, and exception disposition carriers.",
             "// Anchor: https://en.wikipedia.org/wiki/IEEE_754",
             "// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, is_zero, nat_compare).",
             "// Status: std float vocabulary (32/64, specials, IEEE-ordered compare).",
