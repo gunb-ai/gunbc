@@ -608,8 +608,6 @@ fn ts_ident_lex_rule() -> LexRule {
   }
 }
 
-// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "function " not "function").
-// Dissolves when T-6 supplies TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
 fn ts_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [

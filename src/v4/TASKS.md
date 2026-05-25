@@ -578,6 +578,12 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 **Modeling decisions**:
 - Per-target translation rules — **as grammar-as-data, never string templates** (no-templating principle, operator 2026-05-17). The per-target "translation tables" are the declarative bidirectional grammar relation (concrete-syntax ⟷ `Node`, the canonical non-templated form — see T-4 "Grammar encoding"), NOT fill-in-the-holes string templates. A string-template emit path is the emit-side D2 hollow alias: an artifact the compiler cannot ground and check. STOP if a translation rule cannot be expressed as grammar-data.
+- **Layout-in-literals bridge:** Rust, Java, TypeScript, Swift, and WASM
+  still encode inter-token layout inside `LiteralPattern.text` (for example
+  `"fn "`, `" + "`, `" { "`). This is not a terminal lex authority: it
+  dissolves when T-6 supplies `TokenLayout` / `TriviaPolicy`, T-11 strips
+  layout from token spellings, and `token_sequence_to_source` interleaves
+  spellings with layout from that carrier.
 - Target-specific optimizations (or absence thereof)
 
 ---
