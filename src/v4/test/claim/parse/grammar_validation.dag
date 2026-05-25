@@ -1,9 +1,10 @@
 // src/v4/test/claim/parse/grammar_validation.dag
 // Scope: TestClaim rows asserting grammar validation boundaries and sync-recovery fail-closed behavior.
-// Owns: claims for duplicate-name rejection, undefined-nonterminal rejection, and
-//       parse_skip_to_sync with empty sync set returning found_sync: false (no token drain).
+// Owns: claims for duplicate-name rejection, undefined-nonterminal rejection (missing-start and
+//       dangling-reference paths), and parse_skip_to_sync with empty sync set returning
+//       found_sync: false (no token drain).
 // Consumes: v4.compiler.tokenize v4.compiler.parse v4.std.algebra v4.std.collection
-//           v4.std.nat v4.std.node v4.std.logic v4.std.verification
+//           v4.std.node v4.std.logic v4.std.verification
 // Status: T-22 runner deferred — execution pending T-22 complexity fix
 //         (nat_monus/trusted_termination for expr_is_nullable/expr_reaches_nonterminal_left/parse).
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
@@ -16,6 +17,7 @@ import v4.compiler.tokenize { Token }
 import v4.compiler.parse {
   GrammarProduction,
   GrammarRoot,
+  Nonterminal,
   Terminal,
   grammar_atom,
   grammar_empty_sync_tokens,
@@ -25,7 +27,6 @@ import v4.compiler.parse {
 }
 import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
-import v4.std.nat { Nat, Zero }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.logic { Bool }
 import v4.std.verification {
@@ -65,7 +66,7 @@ fn validation_terminal_production(name: Symbol) -> GrammarProduction {
 
 
 fn validation_token(class: Symbol) -> Token {
-  Token { class: class, lexeme: Empty, file: validation_file, start: Zero, end: Zero }
+  Token { class: class, lexeme: Empty, file: validation_file, start: 0, end: 0 }
 }
 
 
@@ -88,6 +89,23 @@ data validation_missing_start_root: GrammarRoot = GrammarRoot {
 }
 
 
+// GrammarRoot where start is present but its expression references validation_other,
+// which is absent from productions. Exercises the expr_has_undefined_nonterminal fold path
+// (not the grammar_lookup_production(root.start) short-circuit).
+data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
+  start: validation_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: validation_start,
+      expression: Nonterminal { production: validation_other },
+      emitted: grammar_atom(identity: validation_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+
 // Non-empty token list for the sync-recovery claim.
 data validation_one_token_list: List<Token> =
   Cons { head: validation_token(class: validation_tok_class), tail: Empty }
@@ -106,6 +124,15 @@ data claim_undefined_nonterminal_detected: TestClaim = EqualsClaim {
   label: "grammar_has_undefined_nonterminals returns true for missing start production",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: grammar_has_undefined_nonterminals(root: validation_missing_start_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_dangling_nonterminal_in_expression_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_undefined_nonterminals returns true when start production references undefined nonterminal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_undefined_nonterminals(root: validation_dangling_ref_root)),
   rhs: validation_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
