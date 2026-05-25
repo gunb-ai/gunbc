@@ -110,7 +110,7 @@ type ModelCore {
 }
 
 
-// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: LanguageModel or concrete runtime extdep carries first non-empty ModelCore (T-4 / T-34)
+// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: (a) ModelCore is non-empty AND (b) every AlgebraInhabitanceDecl.algebra field is a grounded Node (not a bare Atom / bridge symbol). Condition (b) requires algebra.dag to export Node constructors (T-2) and T-4 Wave 2b to populate inhabitance with real algebra structure. A non-empty ModelCore that uses bridge-Symbol algebra fields does NOT satisfy this condition (T-4 / T-34).
 fn wave1_void() -> ModelCore {
   ModelCore {
     primitives: [],

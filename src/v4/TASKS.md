@@ -265,10 +265,13 @@ Close-the-loop + late substrate:
 **File**: `src/v4/std/algebra.dag`
 **Why critical**: the epistemic chain roots here. Without this, codegen has no walk path.
 
+**Deliverable (gate for T-4 Wave 2b)**: In addition to the typed algebra structures (`OrderedRing<T>`, `ApproximateField<T>`, `BooleanAlgebra<T>`, etc.), T-2 must export a **Node constructor for each algebra type** — e.g. `ordered_ring_node(inhabitant: Node) -> Node`, `approximate_field_node(inhabitant: Node) -> Node` — so that T-4 Wave 2b and runtime extdeps (T-34) can populate `AlgebraInhabitanceDecl.algebra` with a grounded, walkable Node rather than a bridge Symbol atom. T-4 Wave 2b is explicitly gated on this deliverable. Language files using bare-Atom bridge symbols as placeholders for algebra references (`rust_model_core_bridge_std_ordered_ring_representable_integer`, etc.) will fail-closed at T-9 (`infer_algebra_ref_ungrounded`) until these constructors exist and are used.
+
 **Modeling decisions**:
 - Inhabitance declaration shape (relation? predicate? typeclass-style?)
 - Composition: how do Sum/Product algebras compose for the cost lens?
 - Free constructions: FreeMonoid<T> as primitive vs derived?
+- Node constructor shape: Instantiation connective applying the algebra type to the inhabitant Node, or a named Atom with structured children? Must be walkable by the T-9 coercion fold.
 
 **Reference**:
 - v3: `dsl/std/algebra.dag` (study; expected substantive)
@@ -352,7 +355,7 @@ Each language model activates bidirectional ingest when its lex/grammar DATA is 
 **T-4 Wave 2a** (lex/grammar data per language): extend DATA on each language model after
 T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4]` (T-4 = fact-bundle authoring; Wave 2a adds lex/grammar data on top).
 **T-4 Wave 2b** (type deepening): inhabitance + algebra laws + effects + partiality per language.
-Scheduled in parallel with Wave 2a. `[needs T-4, T-33]` (T-4 = fact-bundle authoring).
+Scheduled in parallel with Wave 2a. `[needs T-4, T-33, T-2 Node constructors]` — T-4 = fact-bundle authoring; T-2 Node constructors = algebra.dag exports `ordered_ring_node() -> Node` etc., required so `AlgebraInhabitanceDecl.algebra` can be a grounded Node rather than a bridge Symbol atom. Wave 2b CANNOT ship while any bridge-Symbol algebra reference exists in any language file — these fail-closed at T-9 (`infer_algebra_ref_ungrounded`). The bridge symbols in rust.dag (e.g. `rust_model_core_bridge_std_ordered_ring_representable_integer`) are scaffolds that dissolve when T-2 Node constructors land and this wave replaces them.
 
 **Modeling decisions**:
 - Per-language primitive **grounding** (fact-bundle, per DECISIONS.md "D2 REVERSAL + FACT-BUNDLE RESEED"): the bundle of spec-read facts for each primitive — width / signedness / representation / overflow disposition / surface spelling — grounding into the shared `std/` vocabulary (T-3). Libraries such as `std::vector` are NOT modeled per L-2 — they are ordinary `Node`s. Deduplicate to a `std/` carrier only on proven identity; never a bare alias, never a re-declared algebra inhabitance (INVARIANTS P1:42)

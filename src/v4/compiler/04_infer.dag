@@ -1,8 +1,8 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
+// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node, algebra_ref_is_grounded, infer_algebra_ref_ungrounded, infer_algebra_ref_ungrounded_diagnostic.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: T-9 modeled — coercion substrate in std/coercion.dag.
+// Status: T-9 modeled — coercion substrate in std/coercion.dag. Option B: canonical_grounding_from_inferred_facts fails-closed on bare-Atom algebra references (bridge-symbol guard).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -39,10 +39,13 @@ import v4.std.diagnostic {
 }
 import v4.std.logic { Bool }
 import v4.std.node {
+  Atom,
+  ComputationNode,
   Edge,
   Node,
   NodeFold,
   Symbol,
+  TypeNode,
   fold_node,
   well_formed
 }
@@ -101,6 +104,15 @@ type InferredFactsEntry {
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
+// 🟡 gated — scaffold:T-4-wave-2b — feature:infer-algebra-ref-grounding-gate
+// Fired when InferredFacts.inhabits.algebra (AlgebraRef.algebra) is a bare Atom.
+// In the current identity-MVP solver, AlgebraRef.algebra = the node itself; for Atom leaf
+// nodes this means the guard fires, making canonical_grounding_for_node unusable for Atom
+// leaves until the solver is upgraded (T-4 Wave 2b / T-2 Node constructors).
+// dissolve-on: constraint solver reads ModelCore.inhabitance (T-4 Wave 2b) and populates
+// AlgebraRef.algebra from grounded algebra Node constructors (T-2); at that point bare-Atom
+// algebra evidence means an unharvested bridge symbol, not a scaffolded identity return.
+data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
@@ -115,6 +127,35 @@ fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
     reason: infer_canonical_grounding_incoherent,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: infer_algebra_ref_ungrounded,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
+// feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded
+// dissolve-on-arrival: std/node.dag or std/model_core.dag exports a canonical structural
+// query for "algebra Node is grounded" (non-bare-Atom TypeNode); until then, this is the
+// only guard site in canonical_grounding_from_inferred_facts.
+// Returns true only when `algebra` is a TypeNode with a non-Atom connective.
+// ComputationNode algebra evidence fails-closed — computation nodes are never valid
+// algebra types; only TypeNode shapes are (Conj, Arrow, Instantiation, etc.).
+fn algebra_ref_is_grounded(algebra: Node) -> Bool {
+  match algebra.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: _ } => false
+        _ => true
+      }
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -296,7 +337,9 @@ fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
-  if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+  if !algebra_ref_is_grounded(algebra: facts.inhabits.algebra) {
+    outcome_rejected(infer_algebra_ref_ungrounded_diagnostic(node: node))
+  } else if inferred_facts_canonical_grounding_coherent(facts: facts) {
     Accepted {
       value: facts.grounding,
       diagnostics: None
