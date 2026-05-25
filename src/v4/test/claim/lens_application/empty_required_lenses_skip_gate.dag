@@ -34,11 +34,6 @@ import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 
 data empty_lenses_claim_symbol: Symbol = empty_lenses_claim_symbol
 
-data empty_lenses_language_model_stub: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: []
-}
-
 data empty_lenses_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
@@ -67,7 +62,6 @@ fn non_empty_diagnostics_contain_reason(d: NonEmptyDiagnostics, reason: Symbol) 
 fn empty_required_lenses_skip_gate_claim_holds() -> Bool {
   match validate_then_compile(
     source: fixture_add_resolved_tree(),
-    input_lang: empty_lenses_language_model_stub,
     lenses: [],
     mode: TranslateTo { target: empty_lenses_target_model_stub }
   ) {
