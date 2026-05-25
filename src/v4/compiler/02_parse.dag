@@ -79,6 +79,11 @@ type ParseSyncState {
   result: List<Token>
 }
 
+type GrammarDupCheckState {
+  seen: Set<Symbol>
+  has_duplicate: Bool
+}
+
 // 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type TokenPeek
   = TokenPeekAbsent
@@ -97,6 +102,8 @@ data grammar_production_expression_node_projection: Symbol = grammar_production_
 data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
+data grammar_production_identity_node_projection: Symbol = grammar_production_identity_node_projection
+data grammar_production_captured_node_projection: Symbol = grammar_production_captured_node_projection
 
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
@@ -109,6 +116,8 @@ data parse_g0_tokens_remain: Symbol = parse_g0_tokens_remain
 data parse_grammar_left_recursive: Symbol = parse_grammar_left_recursive
 
 data parse_grammar_undefined_nonterminal: Symbol = parse_grammar_undefined_nonterminal
+
+data parse_grammar_duplicate_production: Symbol = parse_grammar_duplicate_production
 
 data parse_e1_repeat_recovery: Symbol = parse_e1_repeat_recovery
 
@@ -154,6 +163,15 @@ fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
 fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: parse_grammar_undefined_nonterminal,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_grammar_duplicate_production,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
