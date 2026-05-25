@@ -1027,12 +1027,17 @@ fn parse_table_fill_position(
 }
 
 
+fn parse_table_empty() -> ParseTable {
+  empty_map()
+}
+
+
 // Outer fold over positions high→low; inner fold over productions × passes at each position.
 // Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
 fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
   fold_list_right(
     xs: token_position_indices(tokens: all_tokens),
-    empty: empty_map<ParsePositionKey, ParseExprResult>(),
+    empty: parse_table_empty(),
     snoc: fn(acc, position) {
       parse_table_fill_position(
         table: acc,
