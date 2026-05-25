@@ -180,6 +180,41 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
       )
   }
 }
+fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        parent.children,
+        init: BundleChildMissing,
+        f: fn(acc, e) {
+          target_bundle_child_lookup_step(acc: acc, e: e, edge_name: edge_name)
+        }
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: Some { value: child }, diagnostics: None }
+        BundleChildMissing =>
+          Accepted { value: None, diagnostics: None }
+        BundleChildDuplicate =>
+          outcome_rejected(
+            Diagnostic {
+              reason: translate_target_bundle_duplicate_edge,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        BundleChildInvalidEdge =>
+          outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
+      }
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: translate_grammar_inverse_not_realized,
+          at: node_locus(node: parent),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
 fn translate_grammar_inverse_not_realized_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
     reason: translate_grammar_inverse_not_realized,
@@ -416,30 +451,38 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
       bind_outcome(
         o: node_atom_identity(node: class_node),
         f: fn(token_class) {
-          match conj_named_child(parent: token, edge_name: concrete_syntax_token_field_binding) {
-            Accepted { value: binding_node, diagnostics: _ } =>
-              bind_outcome(
-                o: node_atom_identity(node: binding_node),
-                f: fn(binding) {
-                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
-                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
-                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
-                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
-                  match map_get(target.binding_spellings, binding) {
-                    Some { value: spelling } =>
-                      Accepted { value: spelling, diagnostics: None }
-                    None =>
-                      Rejected {
-                        diagnostics: diagnostics_singleton(
-                          d: translate_binding_spelling_not_found_diagnostic(binding: binding)
-                        )
+          bind_outcome(
+            o: conj_optional_named_child(
+              parent: token,
+              edge_name: concrete_syntax_token_field_binding
+            ),
+            f: fn(binding_node) {
+              match binding_node {
+                Some { value: binding_node } =>
+                  bind_outcome(
+                    o: node_atom_identity(node: binding_node),
+                    f: fn(binding) {
+                      // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
+                      // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
+                      // Replace with binding_spellings.lookup(binding) / Holds / Violates when
+                      // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
+                      match map_get(target.binding_spellings, binding) {
+                        Some { value: spelling } =>
+                          Accepted { value: spelling, diagnostics: None }
+                        None =>
+                          Rejected {
+                            diagnostics: diagnostics_singleton(
+                              d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                            )
+                          }
                       }
-                  }
-                }
-              )
-            Rejected { diagnostics: _ } =>
-              lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-          }
+                    }
+                  )
+                None =>
+                  lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
+              }
+            }
+          )
         }
       )
     }
