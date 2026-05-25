@@ -7,12 +7,14 @@
 // Consumes: none (pure config substrate; no node/compiler dependency).
 // Status: T-4.16 scaffold — Prettier stable options per prettier.io/docs/options (v3 defaults).
 // Anchor: https://prettier.io/docs/options
+// PrettierConfig is a complete resolved .prettierrc / package.json "prettier" config — every field
+// is required and represents the fully materialized formatter state, not a partial patch.
 // Note: override composition — consumer folds List<PrettierConfig> via prettier_merge; each
 //       layer is a complete config. Field-granularity patch substrate (partial overrides) is
 //       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
 //       per-field Override/Inherit variants replaces full-config layering.
-// Note: `parser`, `filepath`, and `rangeStart`/`rangeEnd` are CLI/API-only per Prettier docs —
-//       omitted from PrettierConfig (use overrides[] at invocation time, not top-level config).
+// Config-file surface only: `parser`, `filepath`, `rangeStart`/`rangeEnd`, and `overrides[]`
+// are CLI/API-only or per-file override mechanisms per Prettier docs — omitted from PrettierConfig.
 
 module v4.extdeps.formatters.prettier
 

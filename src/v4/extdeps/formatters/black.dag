@@ -4,6 +4,7 @@
 // Consumes: v4.std.collection (List only; no node/compiler dependency).
 // Status: T-4.16 scaffold — pyproject.toml [tool.black] option space per Black 26.x docs.
 // Anchor: https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html
+//         https://github.com/psf/black/blob/main/src/black/const.py (DEFAULT_INCLUDES / DEFAULT_EXCLUDES)
 // Note: override composition — consumer folds List<BlackConfig> via black_merge; each
 //       layer is a complete config. Field-granularity patch substrate (partial overrides) is
 //       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
@@ -28,17 +29,17 @@ type BlackTargetVersion
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // Absent pyproject `target-version`: infer from `[project.requires-python]`, else per-file
-// auto-detection (Black 26.x docs — not a fixed py311 sentinel).
+// auto-detection (Black 26.x docs). Explicit arm mirrors pyproject's repeatable array.
 type BlackTargetVersionPolicy
-  = BlackTargetVersionInferFromProject
-  | BlackTargetVersionExplicit { versions: List<BlackTargetVersion> }
+  = BlackTargetVersionAbsent
+  | BlackTargetVersionExplicit { targets: List<BlackTargetVersion> }
 
 
 type BlackConfig {
   // Line length
   line_length: Int
 
-  // Python grammar / style target (pyproject `target-version` array or inferred).
+  // Python grammar / style target (pyproject `target-version` array or absent → infer).
   target_version: BlackTargetVersionPolicy
 
   // Require a specific Black version (pyproject `required-version`; empty = unset).
@@ -58,15 +59,14 @@ type BlackConfig {
 }
 
 
-// Black CLI / absent-key pyproject defaults (Black 26.x stable docs).
-// `target-version` omitted → BlackTargetVersionInferFromProject (not a pinned py311).
+// Black CLI / absent-key pyproject defaults (Black 26.x — black.const DEFAULT_*).
 data black_defaults: BlackConfig = BlackConfig {
   line_length: 88,
-  target_version: BlackTargetVersionInferFromProject,
+  target_version: BlackTargetVersionAbsent,
   required_version: "",
 
-  include: "\\.pyi?$",
-  exclude: "",
+  include: "(\\.pyi?|\\.ipynb)$",
+  exclude: "/(\\.direnv|\\.eggs|\\.git|\\.hg|\\.ipynb_checkpoints|\\.mypy_cache|\\.nox|\\.pytest_cache|\\.ruff_cache|\\.tox|\\.svn|\\.venv|\\.vscode|__pypackages__|_build|buck-out|build|dist|venv)/",
   extend_exclude: "",
   force_exclude: "",
 
