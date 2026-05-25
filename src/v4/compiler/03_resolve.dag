@@ -16,8 +16,9 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols
 }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.collection { Set }
-import v4.std.module_graph { ModuleGraph }
+import v4.std.module_graph { ModuleEntry, ModuleGraph }
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
