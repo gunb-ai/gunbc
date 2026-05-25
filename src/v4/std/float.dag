@@ -1,10 +1,10 @@
 // src/v4/std/float.dag
-// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.
-// Owns: Float32Interchange, Float64Interchange, FloatSpecial, FloatBody, Float32, Float64, Float, float_totalizer_reason_ieee754_nan_unordered, float_totalizer_port_ieee754_nan_totalizer, sign_rank_lex, ordering_invert, float_finite_unsigned_field_order, float_special_rank, float_body_is_nan, float_finite_magnitude_zero, float_body_compare_semantic_total, float_body_compare_ieee_ordered_outcome, float_ordered_compare_nan_rejected, float_ieee_ordered_compare_outcome, float_ordered_compare_tier2
+// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, ordered compare semantics, and language-facing disposition carriers.
+// Owns: Float32Interchange, Float64Interchange, FloatSpecial, FloatBody, Float32, Float64, Float, float_totalizer_reason_ieee754_nan_unordered, float_totalizer_port_ieee754_nan_totalizer, sign_rank_lex, ordering_invert, float_finite_unsigned_field_order, float_special_rank, float_body_is_nan, float_finite_magnitude_zero, float_body_compare_semantic_total, float_body_compare_ieee_ordered_outcome, float_ordered_compare_nan_rejected, float_ieee_ordered_compare_outcome, float_ordered_compare_tier2, NaNPropagation, InfPropagation, FloatExceptionDisposition
 // Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, is_zero, nat_compare).
-// Status: std float vocabulary (32/64, specials, IEEE-ordered compare).
+// Status: std float vocabulary (32/64, specials, IEEE-ordered compare, language disposition).
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
-// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL.
+// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-NOMINAL, SL-3229-FLOAT-DISPOSITION.
 // 🟢
 
 module v4.std.float
@@ -174,3 +174,28 @@ fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> Outcome<Ordering> {
 fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<Ordering> {
   float_ieee_ordered_compare_outcome(a: a, b: b)
 }
+
+
+// Anchor: https://en.wikipedia.org/wiki/IEEE_754#NaN
+// Language-facing fact: how a language propagates NaN through arithmetic operations.
+// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-disposition-language-binding — dissolve-on-arrival: T-4 language fact-bundles bind NaNPropagation axes for each target language.
+type NaNPropagation
+  = QuietNaNPropagation   // IEEE-754 §6.2 default: quiet NaN propagates silently without signaling
+  | SignalingNaNEnabled   // stub — IEEE-754 §6.2: signaling NaN traps on first use; no current target enables this
+
+
+// Anchor: https://en.wikipedia.org/wiki/IEEE_754#Infinities
+// Language-facing fact: how a language's arithmetic handles operations that produce IEEE-754 infinity.
+// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-disposition-language-binding — dissolve-on-arrival: T-4 language fact-bundles bind InfPropagation axes for each target language.
+type InfPropagation
+  = IEEEInfinityPropagation  // IEEE-754 §6.1 default: overflow produces ±infinity that propagates
+  | SaturatingInf            // stub — clamp to max finite value (non-IEEE, used in some DSP targets); no current target uses this
+
+
+// Anchor: https://en.wikipedia.org/wiki/IEEE_754#Exception_handling
+// Language-facing fact: how a language disposes of IEEE-754 exceptional conditions (overflow, div-by-zero, invalid).
+// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-disposition-language-binding — dissolve-on-arrival: T-4 language fact-bundles bind FloatExceptionDisposition axes for each target language.
+type FloatExceptionDisposition
+  = SilentDefaultResult  // IEEE-754 §7 default: return defined result, set sticky status flag
+  | TrapEnabled          // stub — IEEE-754 §7.1: invoke alternate exception handler; no current target enables this
+  | FastMathUndefined    // stub — language UB when fast-math flags relax IEEE-754 constraints (e.g. C -ffast-math)

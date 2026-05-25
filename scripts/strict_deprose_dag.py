@@ -84,7 +84,7 @@ EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
             "SL-3229-INTEGER-GROUP-COMPLETION",
         }
     ),
-    "src/v4/std/float.dag": frozenset({"SL-3229-FLOAT-NOMINAL"}),
+    "src/v4/std/float.dag": frozenset({"SL-3229-FLOAT-NOMINAL", "SL-3229-FLOAT-DISPOSITION"}),
 }
 
 
