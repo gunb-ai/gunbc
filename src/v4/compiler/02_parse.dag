@@ -802,8 +802,11 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
             match grammar_lookup_production(root: root, name: root.start) {
               GrammarProductionFound { production: start } =>
                 parse_production(tokens: tokens.tokens, root: root, production: start)
+              // 🟡 gated T-8: structurally unreachable — grammar_has_undefined_nonterminals above
+              // validates root.start; GrammarProductionMissing here is dead by construction.
+              // Kept for exhaustiveness; dissolve-on: T-8 or substrate-level totality proof.
               GrammarProductionMissing =>
-                Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+                Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
             }
           }
         }
