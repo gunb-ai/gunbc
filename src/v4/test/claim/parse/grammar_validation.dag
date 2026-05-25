@@ -18,10 +18,13 @@ import v4.compiler.parse {
   GrammarProduction,
   GrammarRoot,
   Nonterminal,
+  Optional,
+  Sequence,
   Terminal,
   grammar_atom,
   grammar_empty_sync_tokens,
   grammar_has_duplicate_productions,
+  grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
   parse_skip_to_sync
 }
@@ -43,6 +46,7 @@ import v4.std.verification {
 data validation_tok_class: Symbol = validation_tok_class
 data validation_start: Symbol = validation_start
 data validation_other: Symbol = validation_other
+data validation_rec_start: Symbol = validation_rec_start
 data validation_file: Symbol = validation_file
 data validation_bool_true: Symbol = validation_bool_true
 data validation_bool_false: Symbol = validation_bool_false
@@ -106,6 +110,44 @@ data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
 }
 
 
+// Left-recursive grammar: A = A "x" — grammar_has_left_recursion should detect this.
+data validation_left_recursive_root: GrammarRoot = GrammarRoot {
+  start: validation_rec_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: validation_rec_start,
+      expression: Sequence {
+        left: Nonterminal { production: validation_rec_start },
+        right: Terminal { token_class: validation_tok_class }
+      },
+      emitted: grammar_atom(identity: validation_rec_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+
+// Right-recursive grammar: A = "x" A? — not left-recursive; grammar_has_left_recursion returns false.
+// This exercises the validator boundary: right-recursive grammars are accepted and parse_expr
+// handles them via grammar_fuel measure (depth-bounded, not cycle-rejected).
+data validation_right_recursive_root: GrammarRoot = GrammarRoot {
+  start: validation_rec_start,
+  productions: Cons {
+    head: GrammarProduction {
+      name: validation_rec_start,
+      expression: Sequence {
+        left: Terminal { token_class: validation_tok_class },
+        right: Optional { element: Nonterminal { production: validation_rec_start } }
+      },
+      emitted: grammar_atom(identity: validation_rec_start)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+
 // Non-empty token list for the sync-recovery claim.
 data validation_one_token_list: List<Token> = Cons { head: validation_token(class: validation_tok_class), tail: Empty }
 
@@ -144,6 +186,24 @@ data claim_empty_sync_set_no_token_drain: TestClaim = EqualsClaim {
     tokens: validation_one_token_list,
     sync_tokens: grammar_empty_sync_tokens()
   ).found_sync),
+  rhs: validation_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_left_recursion_detected: TestClaim = EqualsClaim {
+  label: "grammar_has_left_recursion returns true for A = A 'x' (direct left recursion)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_left_recursion(root: validation_left_recursive_root)),
+  rhs: validation_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_right_recursion_not_left_recursive: TestClaim = EqualsClaim {
+  label: "grammar_has_left_recursion returns false for A = 'x' A? (right-recursive, non-left)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: validation_bool_atom(b: grammar_has_left_recursion(root: validation_right_recursive_root)),
   rhs: validation_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
