@@ -6,9 +6,9 @@
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
-//       compile_inferred, compile, validate_then_compile.
+//       compile_inferred, compile, validate_then_compile, fact_density_hollow_alias_lens.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
-//           std/collection.dag, std/diagnostic.dag,
+//           lens/fact_density.dag, std/collection.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag, std/witness.dag.
 // Status: Wave-5-A — validate_then_compile: infer once → lens gates on InferredTree → compile_inferred (TranslateTo: emit).
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
@@ -19,6 +19,7 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
+import v4.lens.fact_density { fact_density_hollow_alias_gate }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -265,6 +266,11 @@ fn validate_then_compile(
       )
     }
   )
+}
+
+
+data fact_density_hollow_alias_lens: CompileLens = CompileLens {
+  gate: fact_density_hollow_alias_gate
 }
 
 

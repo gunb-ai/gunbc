@@ -1,16 +1,15 @@
 // src/v4/lens/fact_density.dag
 // Scope: T-30 fact-density lens — classifies each type carrier by the spec facts it records; CompileLens gate that fails closed on hollow aliases (NoFact carriers) when wired into run_required_lens_gates.
-// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact, fact_density_hollow_alias_locus, fact_density_hollow_alias_gate, fact_density_hollow_alias_lens.
-// Consumes: std node, std nat, std cardinality, std diagnostic, std witness, compiler compile, compiler infer.
+// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact, fact_density_hollow_alias_locus, fact_density_hollow_alias_rejected, fact_density_hollow_alias_gate.
+// Consumes: std node, std nat, std cardinality, std diagnostic, std witness, compiler infer.
 // Status: T-30 lens + CompileLens gate — enforcement runs via run_required_lens_gates (mechanism operator-ratified 2026-05-25).
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
 
 module v4.lens.fact_density
 
 
-import v4.compiler.compile { CompileLens, compile_lens_gate_rejected_diagnostic }
 import v4.compiler.infer { InferredTree }
-import v4.std.diagnostic { Outcome, outcome_accepted, outcome_rejected, port_locus }
+import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, outcome_accepted, outcome_rejected, port_locus }
 import v4.std.node {
   Node,
   Edge,
@@ -103,24 +102,21 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
 
 
 data fact_density_hollow_alias_locus: Symbol = fact_density_hollow_alias_locus
+data fact_density_hollow_alias_rejected: Symbol = fact_density_hollow_alias_rejected
 
 
-// T-30 enforcement gate — fails closed on NoFact (hollow alias) carriers; passes KernelAmbientAtom and NamedFieldFacts; passes NotATypeCarrier (computation nodes are not type carriers).
 fn fact_density_hollow_alias_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   match carrier_spec_fact(carrier: tree.root) {
     NoFact =>
       outcome_rejected(
-        compile_lens_gate_rejected_diagnostic(
-          at: port_locus(port: fact_density_hollow_alias_locus)
-        )
+        Diagnostic {
+          reason: fact_density_hollow_alias_rejected,
+          at: port_locus(port: fact_density_hollow_alias_locus),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
       )
     NotATypeCarrier => outcome_accepted(value: Holds { value: tree.root })
     KernelAmbientAtom => outcome_accepted(value: Holds { value: tree.root })
     NamedFieldFacts { density: _ } => outcome_accepted(value: Holds { value: tree.root })
   }
-}
-
-
-data fact_density_hollow_alias_lens: CompileLens = CompileLens {
-  gate: fact_density_hollow_alias_gate
 }

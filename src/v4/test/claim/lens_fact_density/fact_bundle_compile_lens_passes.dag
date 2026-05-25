@@ -8,10 +8,10 @@ module v4.test.claim.lens_fact_density.fact_bundle_compile_lens_passes
 
 import v4.compiler.compile {
   CompileLensEnforce,
-  apply_compile_lens
+  apply_compile_lens,
+  fact_density_hollow_alias_lens
 }
 import v4.compiler.infer { InferredTree }
-import v4.lens.fact_density { fact_density_hollow_alias_lens }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
