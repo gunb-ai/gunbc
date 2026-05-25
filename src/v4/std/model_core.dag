@@ -1,7 +1,7 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
 // Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_model_core, wave1_void
-// Consumes: v4.std.collection, v4.std.node
+// Consumes: v4.std.collection, v4.std.logic, v4.std.node
 // Status: T-33 modeled.
 
 
@@ -9,7 +9,6 @@ module v4.std.model_core
 
 
 import v4.std.collection { List, Map }
-import v4.std.algebra { boolean_algebra_node, boolean_algebra_type_node }
 import v4.std.diagnostic {
   Diagnostic,
   Textual,
@@ -17,6 +16,7 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
+import v4.std.logic { bool_boolean_algebra_node, bool_boolean_algebra_type_node, bool_node }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -111,7 +111,6 @@ type ModelCore {
 }
 
 
-data model_core_wave1_bool: Symbol = model_core_wave1_bool
 data model_core_wave1_bool_width_one_bit: Symbol = model_core_wave1_bool_width_one_bit
 data model_core_wave1_bool_encoding_classical_two_valued: Symbol = model_core_wave1_bool_encoding_classical_two_valued
 // 🟡 needs-more-work — feature:model-core-law-expression-carrier — scaffold:T-33-wave2 · the law-kind symbols below are bounded schedule keys for BooleanAlgebra law obligations; the law Node also carries the structural algebra Node and inhabitance witness. dissolve-on: std/algebra exports typed law/equation Nodes for BooleanAlgebra laws, replacing these kind atoms with structural law expressions.
@@ -127,28 +126,6 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: []
-  }
-}
-
-
-fn model_core_wave1_bool_node() -> Node {
-  model_core_wave1_atom(id: model_core_wave1_bool)
-}
-
-
-fn model_core_wave1_bool_facts_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Named { name: primitive_fact_axis_width },
-        target: model_core_wave1_atom(id: model_core_wave1_bool_width_one_bit)
-      },
-      Edge {
-        label: Named { name: primitive_fact_axis_encoding },
-        target: model_core_wave1_atom(id: model_core_wave1_bool_encoding_classical_two_valued)
-      },
-    ]
   }
 }
 
@@ -173,19 +150,19 @@ fn model_core_wave1_bool_spec_facts() -> Map<Symbol, Node> {
 
 fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
   PrimitiveFactBundle {
-    substrate_carrier: model_core_wave1_bool_facts_node(),
+    substrate_carrier: bool_node(),
     spec_facts: model_core_wave1_bool_spec_facts()
   }
 }
 
 
 fn model_core_wave1_bool_inhabitance_witness() -> Node {
-  boolean_algebra_node(inhabitant: model_core_wave1_bool_node())
+  bool_boolean_algebra_node()
 }
 
 
 fn model_core_wave1_bool_algebra_node() -> Node {
-  boolean_algebra_type_node(inhabitant: model_core_wave1_bool_node())
+  bool_boolean_algebra_type_node()
 }
 
 
@@ -193,7 +170,7 @@ fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
   let witness = model_core_wave1_bool_inhabitance_witness()
   AlgebraInhabitanceDecl {
     algebra: model_core_wave1_bool_algebra_node(),
-    inhabitant: model_core_wave1_bool_node(),
+    inhabitant: bool_node(),
     witness: witness
   }
 }
