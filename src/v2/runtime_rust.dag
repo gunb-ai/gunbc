@@ -306,7 +306,7 @@ fn rt_hash_ops() -> String {
     "}\n\n",
     "fn expect_hash_digest(s: &str, arg: &str) {\n",
     "    if !is_hash_digest(s) {\n",
-    "        panic!(\"\\{arg\\} must be a 16-char hex Hash digest\");\n",
+    "        panic!(\"{} must be a 16-char hex Hash digest\", arg);\n",
     "    }\n",
     "}\n\n",
     "pub fn atom_identity_hash(s: String) -> Hash {\n",
