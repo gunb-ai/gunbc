@@ -328,12 +328,12 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 
 
-// 🟡 gated — P2-boundary-dissolution interim — feature: grammar-root-node-projection-completeness —
-// GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure { member: fn(Symbol) -> Bool };
-// the Node substrate has no edge kind for function values, so sync_tokens cannot be materialized
-// as a Node child. The projection constant grammar_root_sync_tokens_node_projection is declared
-// above to name the intended edge. Dissolve-on: substrate literal-value edge support for
-// predicate sets, or Set<Symbol> reified as an explicit membership list type.
+// 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
+// bind TASKS.md T-8 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
+// { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
+// sync_tokens cannot be materialized as a Node child here. grammar_root_sync_tokens_node_projection
+// names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership
+// list type (or substrate gains literal-value edge support), enabling the edge to be emitted.
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
