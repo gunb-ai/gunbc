@@ -144,6 +144,7 @@ type RustfmtTypePunctuationDensity
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // v1.6.0 documents skip_macro_invocations as macro name idents plus the special "*" selector (skip all).
 // List<String> would lose this structural distinction; model the two arms explicitly.
+// 🟡 gated — feature: rustfmt-macro-name-refinement — bind T-25-core — dissolve-on-arrival: replace name: String in RustfmtMacroNamed with Refined<String> whose predicate excludes "*" and non-identifier strings (name must be a valid Rust macro ident); forbidden: treating RustfmtMacroNamed.name as unconstrained — it must not admit the "*" sentinel representable by RustfmtMacroAll.
 type RustfmtMacroSelector
   = RustfmtMacroAll
   | RustfmtMacroNamed { name: String }
