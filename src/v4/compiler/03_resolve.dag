@@ -71,6 +71,16 @@ type BindEdgeAcc
   = BindEdgeAccMk { idx: Int, acc: Outcome<List<Edge>> }
 
 
+type DeclaredBinding {
+  name: Symbol
+}
+
+
+type MaybeDeclaredBinding
+  = HasDeclaredBinding { binding: DeclaredBinding }
+  | NoDeclaredBinding
+
+
 fn empty_edge_list() -> List<Edge> {
   []
 }
@@ -89,6 +99,14 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
     member: fn(_) {
       false
     }
+  }
+}
+
+
+fn try_edge_declared_binding(e: Edge) -> MaybeDeclaredBinding {
+  match e.label {
+    Named { name: sym } => HasDeclaredBinding { binding: DeclaredBinding { name: sym } }
+    Positional => NoDeclaredBinding
   }
 }
 
@@ -113,9 +131,9 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
-        match e.label {
-          Named { name: sym } => map_insert(a, sym, sym)
-          Positional => a
+        match try_edge_declared_binding(e: e) {
+          HasDeclaredBinding { binding: b } => map_insert(a, b.name, b.name)
+          NoDeclaredBinding => a
         }
       })
     _ => acc
