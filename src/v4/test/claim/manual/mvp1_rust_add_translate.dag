@@ -158,7 +158,7 @@ fn mvp1_rust_canonical_grounding(
 
 
 // Per-node canonical grounding derived from rust_facts_i32 / inhabitant constructors (no Atom→i32 fabrication).
-// 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind TASKS.md W-T-10 — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding; forbidden: generic algebra-evidence assignment across unrelated Atoms.
+// 🟡 gated — feature:W-T-10-mvp1-inferred-tree-grounding — bind TASKS.md T-10 (Tracked scaffolds) — dissolve-on: infer-authored facts replace hand-enumerated MVP fixture grounding; forbidden: generic algebra-evidence assignment across unrelated Atoms.
 fn mvp1_rust_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   if node == rust_mvp1_fixture_emitted_add_fn {
     Holds {
