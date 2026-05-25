@@ -1851,17 +1851,15 @@ pub fn render_node_type(
             && ((n.children.clone().len() as i64) == 0))
         {
             {
-                if (n_is_type_var.clone() && (tn.clone().as_str() != "".to_string().as_str())) {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::TypeVariable { id: var_id, .. }) => {
-                            if (tn.clone().as_str() == var_id.clone().as_str()) {
-                                return coerce_primitive_type(target.clone(), tn.clone());
-                            } else {
-                                "".to_string()
-                            }
-                        }
-                        _ => "".to_string(),
+                let is_named_type_var = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::TypeVariable { id: var_id, .. }) => {
+                        ((tn.clone().as_str() != "".to_string().as_str())
+                            && (tn.clone().as_str() == var_id.clone().as_str()))
                     }
+                    _ => false,
+                };
+                if (n_is_type_var.clone() && is_named_type_var) {
+                    return coerce_primitive_type(target.clone(), tn.clone());
                 }
                 let label = if n_is_error.clone() {
                     "CompilerError".to_string()

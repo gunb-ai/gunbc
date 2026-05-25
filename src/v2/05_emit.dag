@@ -1006,13 +1006,12 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
 
   // Error / unresolved type variable
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
-    if n_is_type_var && tn != "" {
-      match n.inferred {
-        Some { value: TypeVariable { id: var_id } } =>
-          if tn == var_id { return coerce_primitive_type(target: target, dag_name: tn) }
-          else { "" }
-        _ => ""
-      }
+    let is_named_type_var = match n.inferred {
+      Some { value: TypeVariable { id: var_id } } => tn != "" && tn == var_id
+      _ => false
+    }
+    if n_is_type_var && is_named_type_var {
+      return coerce_primitive_type(target: target, dag_name: tn)
     }
     let label = if n_is_error { "CompilerError" } else { "TypeVariable" }
     let spec = language_spec(target: target)
