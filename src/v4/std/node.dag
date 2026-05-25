@@ -103,6 +103,8 @@ type EdgeDiscipline
   = NoEdges
   | LabeledEdges
   | PositionalEdges
+  // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
+  | LoopBoundEdges
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => NoEdges
@@ -223,6 +225,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     LabeledEdges =>
       all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
+    LoopBoundEdges => loop_behavior_edges_conform(children: children)
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
@@ -245,7 +248,7 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Value => count(children) == 0
     Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
-    Loop => loop_behavior_edges_conform(children: children)
+    Loop => edges_conform(children: children, d: LoopBoundEdges)
     Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
   }
 }
@@ -275,6 +278,169 @@ fn is_empty_conj_root(n: Node) -> Bool {
     _ => false
   }
 }
+data canonical_tag_atom: Symbol = canonical_tag_atom
+data canonical_tag_conj: Symbol = canonical_tag_conj
+data canonical_tag_disj: Symbol = canonical_tag_disj
+data canonical_tag_arrow: Symbol = canonical_tag_arrow
+data canonical_tag_cardinality: Symbol = canonical_tag_cardinality
+data canonical_tag_instantiation: Symbol = canonical_tag_instantiation
+data canonical_tag_value: Symbol = canonical_tag_value
+data canonical_tag_transform: Symbol = canonical_tag_transform
+data canonical_tag_branch: Symbol = canonical_tag_branch
+data canonical_tag_loop: Symbol = canonical_tag_loop
+data canonical_tag_bind: Symbol = canonical_tag_bind
+data canonical_tag_type_node: Symbol = canonical_tag_type_node
+data canonical_tag_computation_node: Symbol = canonical_tag_computation_node
+data canonical_tag_named_edge: Symbol = canonical_tag_named_edge
+data canonical_tag_positional_edge: Symbol = canonical_tag_positional_edge
+
+
+fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
+  match b {
+    Value => NoEdges
+    Transform => PositionalEdges
+    Branch => PositionalEdges
+    Loop => LoopBoundEdges
+    Bind => PositionalEdges
+  }
+}
+fn node_edge_discipline(n: Node) -> EdgeDiscipline {
+  match n.kind {
+    TypeNode { connective: c } => connective_edge_discipline(c: c)
+    ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
+  }
+}
+fn named_edge_sort_key(e: Edge) -> Symbol {
+  match e.label {
+    Named { name: sym } => sym
+    Positional => canonical_tag_positional_edge
+  }
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
+fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
+}
+fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  filter(children, e => match e.label {
+    Named { name: sym } => sym == loop_bound_edge
+    Positional => false
+  })
+}
+fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  sort_by(
+    filter(children, e => match e.label {
+      Named { name: sym } => sym != loop_bound_edge
+      Positional => false
+    }),
+    e => named_edge_sort_key(e: e)
+  )
+}
+fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+  concat(
+    loop_body_edges_for_content_hash(children: children),
+    concat(
+      loop_other_named_edges_for_content_hash(children: children),
+      loop_bound_edges_for_content_hash(children: children)
+    )
+  )
+}
+fn canonicalize_node_for_content_hash(n: Node) -> Node {
+  match node_edge_discipline(n: n) {
+    LabeledEdges =>
+      Node {
+        kind: n.kind,
+        children: sort_by(n.children, e => named_edge_sort_key(e: e))
+      }
+    NoEdges => n
+    PositionalEdges => n
+    LoopBoundEdges =>
+      Node {
+        kind: n.kind,
+        children: canonicalize_loop_children_for_content_hash(children: n.children)
+      }
+  }
+}
+// 🟢 TERMINAL — B1 merkle_fold: canonicalize_node_for_content_hash at every recursive step (plain fold_node would skip nested LabeledEdges/Loop reorder).
+fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
+  let n = canonicalize_node_for_content_hash(n: n)
+  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
+  })
+}
+
+
+fn canonical_hash_of_connective(c: Connective) -> Hash {
+  match c {
+    Atom { identity: sym } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_atom),
+        b: atom_identity_hash(s: sym)
+      )
+    Conj => atom_identity_hash(s: canonical_tag_conj)
+    Disj => atom_identity_hash(s: canonical_tag_disj)
+    Arrow => atom_identity_hash(s: canonical_tag_arrow)
+    Cardinality => atom_identity_hash(s: canonical_tag_cardinality)
+    Instantiation => atom_identity_hash(s: canonical_tag_instantiation)
+  }
+}
+
+
+fn canonical_hash_of_behavior(b: Behavior) -> Hash {
+  match b {
+    Value => atom_identity_hash(s: canonical_tag_value)
+    Transform => atom_identity_hash(s: canonical_tag_transform)
+    Branch => atom_identity_hash(s: canonical_tag_branch)
+    Loop => atom_identity_hash(s: canonical_tag_loop)
+    Bind => atom_identity_hash(s: canonical_tag_bind)
+  }
+}
+
+
+fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
+  match kind {
+    TypeNode { connective: c } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_type_node),
+        b: canonical_hash_of_connective(c: c)
+      )
+    ComputationNode { behavior: b } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_computation_node),
+        b: canonical_hash_of_behavior(b: b)
+      )
+  }
+}
+
+
+fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
+  match label {
+    Named { name: sym } =>
+      hash_combine(
+        a: atom_identity_hash(s: canonical_tag_named_edge),
+        b: atom_identity_hash(s: sym)
+      )
+    Positional => atom_identity_hash(s: canonical_tag_positional_edge)
+  }
+}
+
+
+// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized after body; other positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
+fn content_hash(n: Node) -> Hash {
+  fold_node_content_hash(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
+      step: fn(acc, e, child_hash) {
+        hash_combine(
+          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+          b: child_hash
+        )
+      }
+    }
+  )
+}
+
+
 type Path {
   steps: List<Symbol>
 }
