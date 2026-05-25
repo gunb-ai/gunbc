@@ -8,6 +8,7 @@ module v4.test.claim.manual.model_core_wave1_anchor
 
 import v4.std.algebra { length }
 import v4.std.logic {
+  Bool,
   bool_encoding_fact_node,
   bool_node,
   bool_primitive_facts,
@@ -18,6 +19,8 @@ import v4.std.model_core {
   ModelCoreWave1BoolBoundedLatticeIdentities,
   ModelCoreWave1BoolComplementBounds,
   ModelCoreWave1BoolComplementInvolution,
+  model_core_wave1_bool_axis_fails_closed,
+  model_core_wave1_bool_fact_matches,
   model_core_wave1_bool_inhabitance,
   model_core_wave1_bool_law_obligation,
   model_core_wave1_bool_primitive_bundle,
@@ -37,7 +40,6 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v4.std.witness { Holds, Violates }
 
 data model_core_wave1_payload_fail_atom: Symbol = model_core_wave1_payload_fail_atom
 
@@ -49,24 +51,21 @@ fn model_core_wave1_payload_fail_node() -> Node {
 }
 
 fn wave1_model_core_bool_width_fact_holds() -> Bool {
-  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_width) {
-    Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
-    Violates { diagnostic: _ } => false
-  }
+  model_core_wave1_bool_fact_matches(
+    axis: primitive_fact_axis_width,
+    expected: bool_width_fact_node(width: bool_primitive_facts.width)
+  )
 }
 
 fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
-  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_encoding) {
-    Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
-    Violates { diagnostic: _ } => false
-  }
+  model_core_wave1_bool_fact_matches(
+    axis: primitive_fact_axis_encoding,
+    expected: bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
+  )
 }
 
 fn wave1_model_core_bool_unbound_axes_fail_closed() -> Bool {
-  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_signedness) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
-  }
+  model_core_wave1_bool_axis_fails_closed(axis: primitive_fact_axis_signedness)
 }
 
 fn wave1_model_core_primitives_contract() -> Bool {

@@ -19,10 +19,8 @@ import v4.std.algebra {
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Bool = True | False
-type BoolWidthFact
-  = BoolWidthOneBit
-type BoolEncodingFact
-  = BoolEncodingClassicalTwoValued
+type BoolWidthFact {}
+type BoolEncodingFact {}
 type BoolPrimitiveFacts {
   width: BoolWidthFact
   encoding: BoolEncodingFact
@@ -33,8 +31,8 @@ data bool_spec_fact_encoding_classical_two_valued: Symbol = bool_spec_fact_encod
 data bool_facts_field_width: Symbol = bool_facts_field_width
 data bool_facts_field_encoding: Symbol = bool_facts_field_encoding
 data bool_primitive_facts: BoolPrimitiveFacts = BoolPrimitiveFacts {
-  width: BoolWidthOneBit,
-  encoding: BoolEncodingClassicalTwoValued
+  width: BoolWidthFact {},
+  encoding: BoolEncodingFact {}
 }
 data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
   bounded_lattice: BoundedLattice {
@@ -87,17 +85,14 @@ fn bool_named_edge(name: Symbol, target: Node) -> Edge {
 
 // 🟡 needs-more-work — feature:bool-primitive-fact-nat-machine-node-carrier — scaffold:T-33-wave2 · Bool fact values are closed typed carriers in std.logic, then lowered to their canonical Node witnesses here. dissolve-on: std/machine or std/nat exports canonical bit-width and encoding Node constructors, replacing these variant witness atoms.
 fn bool_width_fact_node(width: BoolWidthFact) -> Node {
-  match width {
-    BoolWidthOneBit => bool_fact_atom(id: bool_spec_fact_width_one_bit)
-  }
+  let _width = width
+  bool_fact_atom(id: bool_spec_fact_width_one_bit)
 }
 
 
 fn bool_encoding_fact_node(encoding: BoolEncodingFact) -> Node {
-  match encoding {
-    BoolEncodingClassicalTwoValued =>
-      bool_fact_atom(id: bool_spec_fact_encoding_classical_two_valued)
-  }
+  let _encoding = encoding
+  bool_fact_atom(id: bool_spec_fact_encoding_classical_two_valued)
 }
 
 
