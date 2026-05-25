@@ -68,10 +68,10 @@ fidelity claim, needs only T-10). Both must be complete before T-15.
           that model (composition, not a new subsystem).
 ```
 
-### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` (watch item)
+### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33, T-19, T-21} → T-4 → T-9` (watch item)
 
 ```
-{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9
+{P1-KEYSTONE, T-30, T-29, T-25-core, T-33, T-19, T-21} → T-4 → T-9
 ```
 
 T-9 needs T-4 (the language fact-bundles) in addition to T-8. This branch
@@ -79,8 +79,8 @@ carries slack against the `T-6→T-7→T-8` pipeline branch **only if its
 feeders start immediately**. The D2 reversal CHANGED T-4's dependency set
 — the old alias model needed almost nothing; fact-bundle modeling needs
 the shared vocabulary (`T-3`, itself on the critical path) plus
-**five feeders that are not on the critical path and gate `T-4 → T-9`**:
-P1-KEYSTONE, T-30, T-29, T-25-core, T-33. Those five are **watch items**,
+**seven feeders that are not on the critical path and gate `T-4 → T-9`**:
+P1-KEYSTONE, T-30, T-29, T-25-core, T-33, T-19, T-21. Those seven are **watch items**,
 not slack-having parallel fill — if any slips, the side branch goes
 critical. T-4 is no longer a schedule-anytime leaf — see T-4.
 
@@ -115,8 +115,16 @@ critical. T-4 is no longer a schedule-anytime leaf — see T-4.
                 inhabitance + laws against ModelCore until the carrier file
                 exists. Low-dependency (needs only T-1, T-2, T-3) but a hard
                 T-4 prerequisite — see T-33.
+  T-19  lens/testgen.dag — **LanguageBehaviorEquivalence corpus emission**
+                authority for T-4 conformance (see T-19 detail). Low-
+                dependency (needs only T-1, T-2, T-3) but a hard T-4
+                prerequisite for the per-language conformance deliverable.
+  T-21  lens/affected_set.dag — **incremental re-test selection** over
+                T-4 conformance claims (IRT-2; see T-21 detail). Low-
+                dependency (needs only T-1, T-2, T-3) but a hard T-4
+                prerequisite for the per-language conformance deliverable.
   T-4   extdeps/languages/{rust,python,go,cpp,typescript}.dag
-        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33 — see T-4]
+        [needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33, T-19, T-21 — see T-4]
 ```
 
 ### Parallel fill — schedule the instant deps clear
@@ -166,10 +174,12 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Structural authority that replaces scripts/detect-affected-
         components.sh. Consumed by T-24 (ci) + eval (skip pure
         unchanged subgraphs).
-  T-24  workflow/ci.dag                  [needs T-21, T-20]
+  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23]
         CI pipeline AS DATA; .github/workflows/ci.yml derived. Closes
         v3's gate-#98 gap (hand-authored CI YAML). Consumes T-21 for
         job selection — the shell bridge dissolves once both land.
+        Consumes T-10/T-23 for lens verdict via `run_required_lens_gates`
+        (T-24 schedules; T-10 owns the orchestrator gate surface).
 
 Interpreter + lens dimensions (each needs T-9):
   T-22  compiler/05_eval.dag             [needs T-9, T-34]
@@ -330,7 +340,7 @@ flat — dispatch in waves):
 **File**: 5 files in `src/v4/extdeps/languages/` (operator-ratified 2026-05-15: cpp + typescript added; cpp subsumes C subset; Go retained)
 **Why bundled**: identical structural shape per language; the SHAPE is the work. Each file declares the language MODEL (grammar + types + semantics) — direction-agnostic; emit AND ingest are operations against the same model.
 
-**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17) + Ratified Q1 (operator-ratified 2026-05-20).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), `T-33` (the `std/model_core.dag` shared substrate that LanguageModel extends per Ratified Q1 — primitives + algebra inhabitance + laws ground against ModelCore, not re-declared per-language), and — for the cpp slice — the T-29 C++ ABI / target data-model. T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` side branch — its five feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed; T-33 is the 2026-05-20 Q1 addition.
+**Dependencies — re-gated by the D2 reversal (operator-ratified 2026-05-17) + Ratified Q1 (operator-ratified 2026-05-20) + conformance deliverable (operator-ratified 2026-05-25).** T-4 is no longer a schedule-anytime Phase-1 leaf: `[needs T-3, P1-KEYSTONE, T-29, T-30, T-25-core, T-33, T-19, T-21]`. The old alias model needed almost nothing — a bare alias reads no facts. Fact-bundle modeling needs T-3's shared-fact vocabulary (signedness/representation/numeric stack), the `P1-KEYSTONE` modeling-discipline rubric (the doc against which every bundle is authored and reviewed), the `T-30` structural fact-density / hollow-alias gate (the per-language rework does not run under convention-tier-only enforcement — see T-30), `T-25-core` (the refinement substrate — a language fact-bundle that grounds a refinement-bearing carrier needs the base-type + fail-closed-validation shape), `T-33` (the `std/model_core.dag` shared substrate that LanguageModel extends per Ratified Q1 — primitives + algebra inhabitance + laws ground against ModelCore, not re-declared per-language), and — for the cpp slice — the T-29 C++ ABI / target data-model. **T-19 + T-21** gate the per-language **`LanguageBehaviorEquivalence` conformance corpus** (T-19 emits; T-21 selects re-runs — see ownership rows under T-19/T-14/T-21). T-4 sits on the `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33, T-19, T-21} → T-4 → T-9` side branch — its feeders are watch items, not slack-having parallel fill; see the execution graph. The D2 reversal *changing this dependency set* is the single most consequential planning edit of the reseed; T-33 is the 2026-05-20 Q1 addition; T-19/T-21 is the 2026-05-25 conformance addition.
 
 **Note on T-33 edge scope.** Adding T-33 to `[needs …]` is a graph-edge update — it records that LanguageModel cannot be authored before ModelCore exists. It does **not** restructure the T-4 fact-bundle authoring contract (the body text above) to be expressed in terms of "LanguageModel extends ModelCore". That re-expression is its own commit train, after T-33 lands.
 
@@ -338,7 +348,7 @@ flat — dispatch in waves):
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
 - **Declare every surface feature's disposition (C5-fidelity).** For each feature: `Modeled` (∈ F, Node-bearing, round-trips both ways — e.g. Python indentation IS block structure) | `Declared-normalized` (deliberately not in F; `emit∘ingest` canonicalizes — Go/C++ insignificant whitespace; a *declared*, reviewable loss, never silent) | `Fail-closed` (encountered but neither → Diagnostic, no-engine). F = the spec's own meaning-vs-lexical distinction, not worker judgment. Round-trip fidelity = declared model completeness.
 - **A language file FACT-BUNDLES each primitive (fact-bundle reseed — operator-ratified 2026-05-17, supersedes D2).** For each primitive the file authors a **fact-bundle**: the facts read from that language's *own spec* — width, signedness, representation, overflow / NaN-Inf disposition, surface spelling — each a real modeled carrier grounding into the shared `std/` vocabulary (T-3). It does NOT bare-alias to the `std/` carrier: `type RustI32 = Int32` models *nothing about Rust* — it asserts an unproven identity while reading zero facts. A bundle deduplicates against a `std/` carrier ONLY where the identity is **proven** — a compiler-verified coincidence of the language bundle with the `std/` bundle, cited as evidence. `extdeps/` models systems we do not control: default to separate, honest modeling; reuse `std/` only on evidenced identity. A per-language `OrderedRing<<lang>Prim, …>` re-declaration is still the parallel-*algebra* substrate INVARIANTS P1:42 forbids — model the facts, never a duplicate algebra and never a hollow alias. See `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED" and `docs/modeling-discipline.md`.
-- **Per-language conformance test (operator-ratified 2026-05-25):** Each language slice ships a **`LanguageBehaviorEquivalence` TestClaim corpus** (`lens/testgen.dag` emits; `test/claim/generated/language_behavior_equivalence.dag` is the receipt pattern) proving the fact-bundle round-trips against a frozen behavior snapshot — an **explicit T-4 deliverable**, not a post-close follow-on. **`[needs T-19, T-21]`** — testgen produces the corpus; affected-set selects which claims re-run on change (IRT-2 incremental re-test).
+- **Per-language conformance test (operator-ratified 2026-05-25):** Each language slice ships a **`LanguageBehaviorEquivalence` TestClaim corpus** proving the fact-bundle round-trips against a frozen behavior snapshot — an **explicit T-4 deliverable**, not a post-close follow-on. **Single-authority split:** T-4 owns the per-language **model facts** under test; **T-19** owns corpus **emission** (`testgen_emit_language_behavior_equivalence_claim`); **T-14** owns the **`test/claim/generated/`** file home (`language_behavior_equivalence.dag` is the receipt pattern); **T-21** owns **incremental re-test selection** (IRT-2) over that corpus. T-4 does not hand-author generated claims — it closes when testgen rows exist for each language slice. **`[needs T-19, T-21]`** (also reflected in the graph edge above).
 
 **Ingest support by language (scheduled — operator-ratified 2026-05-24):**
 Each language model activates bidirectional ingest when its lex/grammar DATA is filled. `dag.dag` is the first-class language — T-6/T-7 fill its lex/grammar schema AND the dag.dag data in the same commit trains. Other languages follow in T-4 Wave 2a (distinct from Wave 2b type-deepening):
@@ -569,6 +579,7 @@ if any emission step cannot be expressed as inverse grammar-data.)
   discipline as `Outcome` in `std/diagnostic.dag`).
 - `00_compile.dag` `LanguageModel` / `TargetModel`: declare the carrier
   type, or state formally "a model IS a `Node`" (Theme-A audit #9).
+- **Lens gate orchestration (operator-ratified 2026-05-25):** `compiler/00_compile.dag` owns **`run_required_lens_gates`**, **`LensGateWitness`**, **`apply_compile_lens`**, and **`validate_then_compile`** — the compile-orchestrator lens verdict surface. T-24 schedules via `LensCiCommand`; T-23 supplies the Enforce application substrate consumed by `apply_compile_lens`. T-24 does **not** re-implement lens pass/fail.
 
 **Tracked scaffolds (this lane):**
 - **`feature:W-T-10-mvp1-exact-zip-closure`** — `src/v4/extdeps/languages/rust.dag`
@@ -641,6 +652,8 @@ Manual claims in `test/claim/manual/` (connective_anchors, nat_law_anchors, proc
 refinement_nonempty_list, posix_output_capture, and others). Execution deferred to T-22 runner.
 **Files**: `src/v4/test/claim/*` directories (6 impossible_bug + algebra_laws + diagnostic_correction + future categories) + `src/v4/test/fixture/*`
 **Operator-ratified additions 2026-05-15**: scaffolds for all 6 R1+R2+ impossible-bug classes already present (`test/claim/impossible_bug/{suboptimal_complexity,idempotency_contract,transport_type_drift,nested_optional_flatten,unenumerated_effects,unhandled_diagnostic_paths}.dag`); diagnostic_correction/ + algebra_laws/ directories ready for fill-in.
+
+**T-4 conformance file home (operator-ratified 2026-05-25):** T-14 owns the **`test/claim/generated/`** corpus directory — including `language_behavior_equivalence.dag` (T-19 emission receipt). T-4 references rows in that corpus as its conformance deliverable; T-14 owns the file tree, T-19 owns generation mechanics.
 
 **Why bundled**: TestClaim corpus is one cohesive workstream; the coverage lens (T-18) enforces completeness structurally.
 
@@ -907,6 +920,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Why early**: per operator "i want testgen to be working fairly early — for the compiler itself". Scheduling it early (parallel fill, deps clear after T-3) means T-6+ tasks consume testgen-derived TestClaims rather than hand-authoring.
 **Why solo**: testgen is a producer with cross-cutting consumption of every substrate file; one cohesive home.
 
+**T-4 conformance owner (operator-ratified 2026-05-25):** T-19 owns **`LanguageBehaviorEquivalence` corpus emission** — `testgen_emit_language_behavior_equivalence_claim` writes rows into `test/claim/generated/language_behavior_equivalence.dag` (file home: T-14). T-4's per-language conformance deliverable closes when testgen rows exist for each language slice; T-4 does not hand-author generated claims.
+
 **Modeling decisions**:
 - Generator<C> generic carrier shape — one lens, parameterized over substrate concept type
 - Per-substrate-kind testgen rules — closed six-way **`TestgenConcept`** in `lens/testgen.dag` (variants `TypeConstruction` / `AlgebraLaw` / `DiagnosticExhaustiveness` / `LensApplicability` / `BidirectionalRoundtrip` / `LanguageBehaviorEquivalence`; LBE pairs `TypeConstructionSubject` × target `language: Symbol` with `FrozenLanguageBehaviorSnapshot` + `LanguageBehaviorIoMock` I/O mock; generated corpus in `test/claim/generated/language_behavior_equivalence.dag` runs through `run_test_claim` / `run_test_claim_assert`; CI gate `scripts/check_testgen_activation.py`)
@@ -992,6 +1007,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **File**: `src/v4/lens/affected_set.dag` (operator-ratified 2026-05-15: "something i wanted to get working very early on")
 **Why early**: load-bearing for incremental cross-run execution AND it is the structural replacement for `scripts/detect-affected-components.sh` (the interim shell bridge currently gating v2/v3/v4 CI selection).
 
+**T-4 conformance consumer (operator-ratified 2026-05-25):** T-21 owns **incremental re-test selection** (IRT-2) over T-4's `LanguageBehaviorEquivalence` corpus — `test_claim_evaluation_touches_rerun_frontier` and `ci_select_from_affected_set` select which conformance claims re-run on change. T-21 does not emit claims; T-19 owns emission (see T-19 detail).
+
 **Modeling decisions**:
 - `affected_set: (Dag, Diff) -> Witness<ReExecFrontier>` shape
 - Diff representation (file-set? node-set? structural-delta over the Dag?)
@@ -1041,6 +1058,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **File**: `src/v4/lens/application.dag` (closes prior-audit BLOCKING GAP 1)
 **Why load-bearing**: `apply_lens(<lens>, Enforce { ... })` is referenced by `report.dag`, `synthesis.dag`, and the C7 advisory→blocking bridge — but had no substrate home until now. It is simultaneously: §1.5 user-defined-dimensions surface, §6.2 audience-duality opt-in-depth mechanism, and the ONLY advisory→fail-closed path.
 
+**Compile lens enforcement consumer (operator-ratified 2026-05-25):** T-23 owns the **`apply_lens` / Enforce** application substrate. `compiler/00_compile.dag` **`apply_compile_lens`** (T-10) invokes lenses in **`CompileLensEnforce`** mode — consuming T-23's advisory→fail-closed bridge. T-10 owns orchestrator wiring; T-23 owns lens application semantics.
+
 **Modeling decisions**:
 - `EnforcedApplication<Output, Budget, Projected>` (references `EnforceableLens<Output, Budget, Projected>` — bundled lens + enforcement) vs `IntrospectApplication<Output>` carrier shapes (v3 T-Lens-Application-Surface precedent: **two separate top-level carriers**, NOT a sum — per `docs/design-lens-application-surface.md` §2 + `src/v4/DECISIONS.md` Part 4 **T-23-PIN**; the historical two-parameter `EnforcedApplication<Output, Budget>` sketch is **retracted** here)
 - `SectionRef = DeclarationScope | NodeScope` (where a lens attaches)
@@ -1058,6 +1077,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **File**: `src/v4/workflow/ci.dag` (closes prior-audit BLOCKING GAP 2)
 **Why load-bearing**: THESIS:223-226 — "adding a CI gate = editing one .dag file." v3's gate #98 `ci_yml_hand_authority_dissolved` was an open R3 gap precisely because CI YAML stayed hand-authored. v4 must not reproduce it.
 
+**Dependencies:** `[needs T-21, T-20, T-10, T-23]` — T-21 for affected-set job/claim selection; T-20 for bootstrap interaction; **T-10 + T-23** for lens verdict (T-24 schedules; T-10 owns `run_required_lens_gates`; T-23 owns Enforce application substrate).
+
 **Modeling decisions**:
 - `CiPipeline { jobs, gates }` shape
 - `.github/workflows/ci.yml` as DERIVED Shape-B artifact (.dag walks CiPipeline, emits YAML)
@@ -1067,7 +1088,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
   deleted, and the v3 string ratchets become `TestClaim`s over the generated
   output.
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
-- **Lens verdict gate (operator-ratified 2026-05-25):** CI pass/fail for lens enforcement is **`run_required_lens_gates`** in `compiler/00_compile.dag` (`Outcome<List<LensGateWitness>>`), not compiler build exit code alone. `workflow/ci.dag` `LensCiCommand { required_lenses: … }` schedules the lens set; semantic verdict = lens-gate rejection diagnostics, structurally separate from "compile succeeded."
+- **Lens verdict gate (operator-ratified 2026-05-25) — single-authority split:** CI pass/fail for lens enforcement is **`run_required_lens_gates`** in `compiler/00_compile.dag` (`Outcome<List<LensGateWitness>>`) — **owned by T-10**, not build exit code alone. **T-24** owns **`LensCiCommand { required_lenses: … }`** scheduling in `workflow/ci.dag` (which lens set runs in CI). **T-23** owns the Enforce application substrate consumed by T-10's `apply_compile_lens`. Semantic verdict = lens-gate rejection diagnostics, structurally separate from "compile succeeded."
 - Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
 - The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
 
