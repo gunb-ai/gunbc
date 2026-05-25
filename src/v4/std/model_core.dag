@@ -172,22 +172,6 @@ fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
 }
 
 
-fn model_core_wave1_bool_fact_matches(axis: Symbol, expected: Node) -> Bool {
-  match model_core_wave1_bool_fact_lookup(facts: bool_primitive_facts, axis: axis) {
-    Holds { value } => value == expected
-    Violates { diagnostic: _ } => false
-  }
-}
-
-
-fn model_core_wave1_bool_axis_fails_closed(axis: Symbol) -> Bool {
-  match model_core_wave1_bool_fact_lookup(facts: bool_primitive_facts, axis: axis) {
-    Holds { value: _ } => false
-    Violates { diagnostic: _ } => true
-  }
-}
-
-
 fn model_core_wave1_bool_inhabitance_witness() -> Node {
   bool_boolean_algebra_node()
 }

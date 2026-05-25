@@ -19,8 +19,7 @@ import v4.std.model_core {
   ModelCoreWave1BoolBoundedLatticeIdentities,
   ModelCoreWave1BoolComplementBounds,
   ModelCoreWave1BoolComplementInvolution,
-  model_core_wave1_bool_axis_fails_closed,
-  model_core_wave1_bool_fact_matches,
+  model_core_wave1_bool_fact_lookup,
   model_core_wave1_bool_inhabitance,
   model_core_wave1_bool_law_obligation,
   model_core_wave1_bool_primitive_bundle,
@@ -40,6 +39,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v4.std.witness { Holds, Violates }
 
 data model_core_wave1_payload_fail_atom: Symbol = model_core_wave1_payload_fail_atom
 
@@ -51,21 +51,33 @@ fn model_core_wave1_payload_fail_node() -> Node {
 }
 
 fn wave1_model_core_bool_width_fact_holds() -> Bool {
-  model_core_wave1_bool_fact_matches(
-    axis: primitive_fact_axis_width,
-    expected: bool_width_fact_node(width: bool_primitive_facts.width)
-  )
+  match model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: primitive_fact_axis_width
+  ) {
+    Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
+    Violates { diagnostic: _ } => false
+  }
 }
 
 fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
-  model_core_wave1_bool_fact_matches(
-    axis: primitive_fact_axis_encoding,
-    expected: bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
-  )
+  match model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: primitive_fact_axis_encoding
+  ) {
+    Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
+    Violates { diagnostic: _ } => false
+  }
 }
 
 fn wave1_model_core_bool_unbound_axes_fail_closed() -> Bool {
-  model_core_wave1_bool_axis_fails_closed(axis: primitive_fact_axis_signedness)
+  match model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: primitive_fact_axis_signedness
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
 }
 
 fn wave1_model_core_primitives_contract() -> Bool {
