@@ -85,6 +85,7 @@ fn bool_named_edge(name: Symbol, target: Node) -> Edge {
 }
 
 
+// 🟡 needs-more-work — feature:bool-primitive-fact-nat-machine-node-carrier — scaffold:T-33-wave2 · Bool fact values are closed typed carriers in std.logic, then lowered to their canonical Node witnesses here. dissolve-on: std/machine or std/nat exports canonical bit-width and encoding Node constructors, replacing these variant witness atoms.
 fn bool_width_fact_node(width: BoolWidthFact) -> Node {
   match width {
     BoolWidthOneBit => bool_fact_atom(id: bool_spec_fact_width_one_bit)

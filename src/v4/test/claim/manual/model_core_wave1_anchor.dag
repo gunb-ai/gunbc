@@ -8,15 +8,16 @@ module v4.test.claim.manual.model_core_wave1_anchor
 
 import v4.std.algebra { length }
 import v4.std.logic {
+  bool_encoding_fact_node,
   bool_node,
-  bool_spec_fact_encoding_classical_two_valued,
-  bool_spec_fact_width_one_bit
+  bool_primitive_facts,
+  bool_primitive_facts_node,
+  bool_width_fact_node
 }
 import v4.std.model_core {
   ModelCoreWave1BoolBoundedLatticeIdentities,
   ModelCoreWave1BoolComplementBounds,
   ModelCoreWave1BoolComplementInvolution,
-  model_core_wave1_atom,
   model_core_wave1_bool_inhabitance,
   model_core_wave1_bool_law_obligation,
   model_core_wave1_bool_primitive_bundle,
@@ -49,14 +50,14 @@ fn model_core_wave1_payload_fail_node() -> Node {
 
 fn wave1_model_core_bool_width_fact_holds() -> Bool {
   match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_width) {
-    Holds { value } => value == model_core_wave1_atom(id: bool_spec_fact_width_one_bit)
+    Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
     Violates { diagnostic: _ } => false
   }
 }
 
 fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
   match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_encoding) {
-    Holds { value } => value == model_core_wave1_atom(id: bool_spec_fact_encoding_classical_two_valued)
+    Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
     Violates { diagnostic: _ } => false
   }
 }
@@ -70,7 +71,8 @@ fn wave1_model_core_bool_unbound_axes_fail_closed() -> Bool {
 
 fn wave1_model_core_primitives_contract() -> Bool {
   wave1_model_core().primitives == [model_core_wave1_bool_primitive_bundle()] &&
-  model_core_wave1_bool_primitive_bundle().substrate_carrier == bool_node() &&
+  model_core_wave1_bool_primitive_bundle().substrate_carrier ==
+    bool_primitive_facts_node(facts: bool_primitive_facts) &&
   wave1_model_core_bool_width_fact_holds() &&
   wave1_model_core_bool_encoding_fact_holds() &&
   wave1_model_core_bool_unbound_axes_fail_closed()
