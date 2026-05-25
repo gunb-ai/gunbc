@@ -246,6 +246,21 @@ fn test_claim_input(c: TestClaim) -> Node {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: testclaim-coproduct-reflection — bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate — dissolve-on-arrival: replace this hand-enumerated TestClaim → TestClaimCoproductVariant projection with canonical coproduct arm reflection once TestClaim coproduct reflection is available; forbidden: permanent hand-rolled TestClaim arm projection outside the reflection primitive.
+fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
+  match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      TestClaimCompilesClaimVariant
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      TestClaimDiagnosticClaimVariant
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      TestClaimEqualsClaimVariant
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      TestClaimRoundTripClaimVariant
+  }
+}
+
+
 fn locus_evaluation_nodes(at: Locus) -> List<Node> {
   match at {
     NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)

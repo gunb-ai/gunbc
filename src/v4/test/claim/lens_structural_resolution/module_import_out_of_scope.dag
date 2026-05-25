@@ -6,7 +6,8 @@
 
 module v4.test.claim.lens_structural_resolution.module_import_out_of_scope
 
-import v4.compiler.infer { AlgebraRef, InferredFacts, InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts }
 import v4.lens.structural_resolution {
   OutOfScopeDependencyKind,
   StructuralResolutionFact,
@@ -36,7 +37,6 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Witness }
 data sr_mod_child_symbol: Symbol = sr_mod_child_symbol
 data sr_mod_type_symbol: Symbol = sr_mod_type_symbol
 data sr_mod_algebra_symbol: Symbol = sr_mod_algebra_symbol
-data sr_mod_algebra_witness_symbol: Symbol = sr_mod_algebra_witness_symbol
 data sr_mod_descent_symbol: Symbol = sr_mod_descent_symbol
 data sr_mod_claim_hash: Hash = sr_mod_claim_hash
 
@@ -77,22 +77,13 @@ fn sr_mod_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
 }
 
 fn sr_mod_claim_facts() -> InferredFacts {
-  let resolved = sr_mod_claim_atom(s: sr_mod_type_symbol)
-  InferredFacts {
-    resolved_type: resolved,
-    inhabits: AlgebraRef {
-      algebra: sr_mod_claim_atom(s: sr_mod_algebra_symbol),
-      witness: sr_mod_claim_atom(s: sr_mod_algebra_witness_symbol)
-    },
-    descent: Holds {
-      value: TerminationProof {
-        non_increasing: [],
-        strict: RankingDimension { measured: sr_mod_descent_symbol }
-      }
-    },
-    canonical: sr_mod_canonical_witness(resolved: resolved)
-  }
+  claim_inferred_facts(
+    type_symbol: sr_mod_type_symbol,
+    algebra_symbol: sr_mod_algebra_symbol,
+    descent_symbol: sr_mod_descent_symbol,
+  )
 }
+
 
 fn sr_mod_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   Map {
