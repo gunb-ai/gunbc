@@ -274,15 +274,12 @@ fn is_prefix_of<T>(
 
 
 // Drop the first n elements; O(|xs|). Uses fold rather than Empty/Cons matching.
-// n = 0: returns xs unchanged (correct no-op).
+// n <= 0: returns xs unchanged (identity — n=0 correct, n<0 acceptable gated interim under
+//         caller-guarantees-non-negative contract; returns original list, not fabricated Empty).
 // 🟡 gated — P3-boundary-dissolution interim — feature: list_skip-non-negative-precondition —
 // nat.dag imports algebra.dag so Nat/UInt is not expressible at this layer to make n < 0
-// unrepresentable at the type level.
-// n < 0: returns Empty (caller contract violation; visibly wrong — fails fast at callers
-//         rather than silently producing the same result as n=0).
-// Compiler callers (01_tokenize.dag, 02_parse.dag, std/text.dag) have been migrated to
-// structural match / fold-based alternatives that do not pass n<0; list_skip is retained
-// as a utility for external callers that can guarantee n >= 0.
+// unrepresentable at the type level. Callers guarantee n >= 0; n<0 returns xs (identity,
+// not fabrication). Compiler callers migrated to structural match / fold-based alternatives.
 // Dissolve-on: shared PositiveInt/NonNegativeInt module extractable above algebra.dag,
 // or callers supply Nat directly.
 type ListSkipState<T> {
@@ -290,9 +287,7 @@ type ListSkipState<T> {
   result: FreeMonoid<T>
 }
 fn list_skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
-  if n < 0 {
-    Empty
-  } else if n == 0 {
+  if n <= 0 {
     xs
   } else {
     fold_list(

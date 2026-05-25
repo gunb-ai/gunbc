@@ -1,7 +1,7 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
 // Owns: Char, CharResult, String, string_is_empty, string_head, string_tail.
-// Consumes: std/algebra.dag (FreeMonoid, is_empty, fold_list_right, list_skip); std/logic.dag (Bool); std/nat.dag (Nat).
+// Consumes: std/algebra.dag (Cons, Empty, FreeMonoid, is_empty, fold_list_right); std/logic.dag (Bool); std/nat.dag (Nat).
 // Status: T-3 modeled; string scanning primitives added for T-6 lexer walk.
 // Anchor: https://en.wikipedia.org/wiki/Unicode
 
