@@ -26,7 +26,7 @@ import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List, Set }
-import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item }
+import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat, Zero, Succ, nat_add, nat_mul }
 
@@ -771,7 +771,7 @@ fn parse_expr(
               // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
               // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
               ParseExprAccepted {
-                remaining: match tokens { Empty => Empty, Cons { head: _, tail: t } => t },
+                remaining: list_tail(xs: tokens),
                 captured: Node {
                   kind: TypeNode { connective: Atom { identity: tok.class } },
                   children: []

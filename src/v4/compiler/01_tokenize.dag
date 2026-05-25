@@ -20,7 +20,7 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
-import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
@@ -35,6 +35,7 @@ type LexCharClass
   | StringTextChar
   | LineCommentTextChar
   | BlockCommentTextChar
+  | BlockCommentAfterStarChar
 
 
 // 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
@@ -158,6 +159,8 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
       c != 10
     BlockCommentTextChar =>
       c != 42
+    BlockCommentAfterStarChar =>
+      c != 47
   }
 }
 
@@ -170,10 +173,7 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     LexMatchAccepted {
       remaining: fold_list(xs: prefix, empty: source, cons: fn(remaining, _) {
-        match remaining {
-          Empty => Empty
-          Cons { head: _, tail: t } => t
-        }
+        list_tail(xs: remaining)
       }),
       lexeme: prefix
     }
