@@ -337,9 +337,9 @@ fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
-  if !algebra_ref_is_grounded(algebra: facts.inhabits.algebra) {
+  if !algebra_ref_is_grounded(algebra: inferred_facts_algebra_ref(facts: facts).algebra) {
     outcome_rejected(infer_algebra_ref_ungrounded_diagnostic(node: node))
-  } else if inferred_facts_canonical_grounding_coherent(facts: facts) {
+  } else if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
     Accepted {
       value: facts.grounding,
       diagnostics: None
