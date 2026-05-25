@@ -440,19 +440,22 @@ fn expr_reaches_nonterminal_left(
 }
 
 
+fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: GrammarRoot) -> Bool {
+  acc ||
+  expr_reaches_nonterminal_left(
+    expr: p.expression,
+    name: p.name,
+    visited: Set { member: fn(_) { false } },
+    root: root
+  )
+}
+
+
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   fold_list(
     xs: root.productions,
     empty: false,
-    cons: fn(acc, p) {
-      acc ||
-      expr_reaches_nonterminal_left(
-        expr: p.expression,
-        name: p.name,
-        visited: Set { member: fn(_) { false } },
-        root: root
-      )
-    }
+    cons: fn(acc, p) { grammar_has_left_recursion_step(acc: acc, p: p, root: root) }
   )
 }
 
@@ -481,13 +484,16 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
 }
 
 
+fn grammar_has_undefined_nonterminals_step(acc: Bool, p: GrammarProduction, root: GrammarRoot) -> Bool {
+  acc || expr_has_undefined_nonterminal(expr: p.expression, root: root)
+}
+
+
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   fold_list(
     xs: root.productions,
     empty: false,
-    cons: fn(acc, p) {
-      acc || expr_has_undefined_nonterminal(expr: p.expression, root: root)
-    }
+    cons: fn(acc, p) { grammar_has_undefined_nonterminals_step(acc: acc, p: p, root: root) }
   )
 }
 
