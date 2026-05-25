@@ -258,8 +258,8 @@ def main() -> None:
         (
             "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
             "testgen_emit_coproduct_exhaustiveness_claim",
-            "subject: DiagnosticExhaustivenessSubject",
-            "reason: t19_coproduct_exhaustiveness_missing_variant",
+            "GeneratedCoproductExhaustiveness { omitted_variant",
+            "omitted_variant: requested_variant",
             "GeneratedCoproductExhaustiveness { omitted_variant: _ }",
             "witness_coproduct_exhaustiveness_diagnostic_claim",
             "witness_coproduct_exhaustiveness_uses_generated_anchor",
