@@ -1,8 +1,8 @@
 // src/v4/extdeps/formatters/lean4_format.dag
 // Scope: Lean 4 formatter configuration model — option space grounded in Lean 4 formatter/Lake option surfaces.
-// Owns: Lean4NameValue, Lean4SyntaxValue, Lean4NatValue, Lean4OptionValue, Lean4OptionAssignment,
+// Owns: Lean4NameValue, Lean4SyntaxValue, Lean4NatValue, lean4_nat_value_validation, make_lean4_nat_value, Lean4OptionValue, Lean4OptionAssignment,
 //       Lean4FormatConfig, lean4_format_defaults, lean4_format_layer.
-// Consumes: none (String, Bool, Int, List are language-level primitives; Lean4NameValue, Lean4SyntaxValue, Lean4NatValue are opaque carriers for Lean 4 types).
+// Consumes: Locus, Outcome, Symbol, Refined, Validation.
 // Status: T-4.16 scaffold — full documented Lean formatter-facing option surface.
 // Anchor: https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Format.lean
 //         https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Options.lean
@@ -10,9 +10,33 @@
 module v4.extdeps.formatters.lean4_format
 
 
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
+import v4.std.refinement { Refined, Validation, refine }
+
+
 type Lean4NameValue
 type Lean4SyntaxValue
-type Lean4NatValue
+type Lean4NatValue = Refined<Int>
+
+
+data lean4_nat_value_out_of_range: Symbol = lean4_nat_value_out_of_range
+
+
+fn lean4_nat_value_admits(value: Int) -> Bool {
+  value >= 0
+}
+
+
+data lean4_nat_value_validation: Validation<Int> = Validation {
+  reason: lean4_nat_value_out_of_range,
+  admits: lean4_nat_value_admits
+}
+
+
+fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
+  refine(base: value, by: lean4_nat_value_validation, at: at)
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -32,11 +56,10 @@ type Lean4OptionAssignment {
 }
 
 
-// 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: lean4-option-closed-set — bind T-4.16 follow-on — dissolve-on-arrival: replace lake_lean_options open list with typed fields once Lean4 documents a fixed set of formatter-relevant set_option keys; forbidden: parallel closed-list approximations outside this substrate.
 type Lean4FormatConfig {
-  format_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0
-  format_indent: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
+  format_width: Lean4NatValue
+  format_indent: Lean4NatValue
   format_unicode: Bool
   pp_oneline: Bool
   lake_lean_options: List<Lean4OptionAssignment> // 🟡 gated: lean4-option-closed-set
@@ -44,8 +67,8 @@ type Lean4FormatConfig {
 
 
 data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
-  format_width: 120,
-  format_indent: 2,
+  format_width: Refined { base: 120 },
+  format_indent: Refined { base: 2 },
   format_unicode: true,
   pp_oneline: false,
   lake_lean_options: [],
