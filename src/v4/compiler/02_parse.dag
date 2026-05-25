@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions.
+// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions, grammar_carries_symbol.
 // Consumes: std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
 
@@ -11,7 +11,7 @@ module v4.compiler.parse
 
 import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List }
 import v4.std.algebra { Empty, fold_list, is_empty, length, list_snoc_item }
 
@@ -57,6 +57,11 @@ type ParseExprResult
 type GrammarProductionLookup
   = GrammarProductionFound { production: GrammarProduction }
   | GrammarProductionMissing
+
+
+type GrammarSymbolFoldState {
+  found: Bool
+}
 
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
@@ -258,6 +263,45 @@ fn grammar_to_node(grammar: Grammar) -> Node {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
   }
+}
+
+
+fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
+  NodeFold {
+    init: fn(n0) {
+      grammar_symbol_fold_init(n: n0, sym: sym)
+    },
+    step: grammar_symbol_fold_step
+  }
+}
+
+
+fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      GrammarSymbolFoldState { found: id == sym }
+    _ =>
+      GrammarSymbolFoldState { found: false }
+  }
+}
+
+
+fn grammar_symbol_fold_step(
+  acc: GrammarSymbolFoldState,
+  edge: Edge,
+  child_has_symbol: GrammarSymbolFoldState
+) -> GrammarSymbolFoldState {
+  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
+}
+
+
+fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
+}
+
+
+fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
+  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
 

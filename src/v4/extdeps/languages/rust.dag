@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_target_model, rust_wave1_* grammar/lex.
+// Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
 // Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
@@ -299,6 +299,18 @@ data rust_inhabitant_field_char: Symbol = rust_inhabitant_field_char
 data rust_inhabitant_field_str: Symbol = rust_inhabitant_field_str
 data rust_inhabitant_field_unit: Symbol = rust_inhabitant_field_unit
 data rust_inhabitant_field_never: Symbol = rust_inhabitant_field_never
+data rust_inhabitant_field_mvp1_add_fn: Symbol = rust_inhabitant_field_mvp1_add_fn
+data rust_coercion_field_i32_inhabitant_atom: Symbol = rust_coercion_field_i32_inhabitant_atom
+data rust_coercion_field_i32_facts: Symbol = rust_coercion_field_i32_facts
+data rust_coercion_field_i32_spelling: Symbol = rust_coercion_field_i32_spelling
+data rust_coercion_field_i32_std_projection: Symbol = rust_coercion_field_i32_std_projection
+data rust_coercion_field_i32_signed: Symbol = rust_coercion_field_i32_signed
+data rust_coercion_field_i32_width: Symbol = rust_coercion_field_i32_width
+data rust_coercion_field_i32_overflow: Symbol = rust_coercion_field_i32_overflow
+data rust_coercion_field_i32_scalar: Symbol = rust_coercion_field_i32_scalar
+data rust_coercion_field_i32_scalar_int: Symbol = rust_coercion_field_i32_scalar_int
+data rust_coercion_field_i32_panic_overflow: Symbol = rust_coercion_field_i32_panic_overflow
+data rust_coercion_field_i32_wrap_overflow: Symbol = rust_coercion_field_i32_wrap_overflow
 
 data rust_token_kw_fn: Symbol = rust_token_kw_fn
 data rust_token_ident: Symbol = rust_token_ident
@@ -969,15 +981,99 @@ fn rust_mvp1_selection_policy_node() -> Node {
   rust_inhabitant_i32_node()
 }
 
-fn rust_mvp1_emitted_add_fn_node() -> Node {
+// T-10 MVP fixture authority — emitted add-fn graph shares i32 inhabitant from fact bundle.
+data rust_mvp1_fixture_i32_inhabitant: Node = rust_inhabitant_i32_node()
+
+data rust_mvp1_fixture_emitted_add_fn: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
+    Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant },
+    Edge { label: Positional, target: rust_mvp1_fixture_i32_inhabitant }
+  ]
+}
+
+fn rust_mvp1_i32_overflow_disposition_node() -> Node {
+  rust_overflow_disposition_node(
+    disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32)
+  )
+}
+
+fn rust_mvp1_i32_scalar_node() -> Node {
+  rust_scalar_node(scalar: IntScalar { kind: Signed, width: Bits32 })
+}
+
+// Zip-fold support nodes derived from rust_facts_i32 constructors — not parallel fixture data.
+// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind TASKS.md T-10 (Tracked scaffolds) — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges; forbidden: duplicate i32 fact-bundle data nodes as parallel coercion authority.
+fn rust_mvp1_i32_zip_fold_closure_edges() -> List<Edge> {
+  [
+    rust_named_edge(
+      name: rust_inhabitant_field_mvp1_add_fn,
+      target: rust_mvp1_fixture_emitted_add_fn
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_inhabitant_atom,
+      target: rust_inhabitant_atom(id: rust_inhabitant_i32)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_facts,
+      target: rust_integer_facts_node(facts: rust_facts_i32)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_spelling,
+      target: rust_inhabitant_atom(id: rust_surface_spelling_i32)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_std_projection,
+      target: rust_inhabitant_atom(id: rust_std_projection_int32)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_signed,
+      target: rust_int_kind_node(kind: Signed)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_width,
+      target: rust_int_width_node(width: Bits32)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_overflow,
+      target: rust_mvp1_i32_overflow_disposition_node()
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_scalar,
+      target: rust_mvp1_i32_scalar_node()
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_scalar_int,
+      target: rust_inhabitant_atom(id: rust_tag_scalar_int)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_panic_overflow,
+      target: rust_overflow_node(overflow: PanicOnOverflow)
+    ),
+    rust_named_edge(
+      name: rust_coercion_field_i32_wrap_overflow,
+      target: rust_overflow_node(overflow: TwoComplementWrap)
+    )
+  ]
+}
+
+fn rust_mvp1_coercion_candidate_edges() -> List<Edge> {
+  list_append(
+    left: rust_declared_inhabitants_root().children,
+    right: rust_mvp1_i32_zip_fold_closure_edges()
+  )
+}
+
+fn rust_mvp1_declared_inhabitants_root() -> Node {
   Node {
-    kind: TypeNode { connective: Arrow },
-    children: [
-      Edge { label: Positional, target: rust_inhabitant_i32_node() },
-      Edge { label: Positional, target: rust_inhabitant_i32_node() },
-      Edge { label: Positional, target: rust_inhabitant_i32_node() }
-    ]
+    kind: TypeNode { connective: Conj },
+    children: rust_mvp1_coercion_candidate_edges()
   }
+}
+
+fn rust_mvp1_emitted_add_fn_node() -> Node {
+  rust_mvp1_fixture_emitted_add_fn
 }
 
 fn rust_mvp1_source_text_authority() -> String {
@@ -1171,7 +1267,7 @@ fn rust_mvp1_target_model_node() -> Node {
       ),
       rust_named_edge(
         name: target_model_edge_declared_inhabitants,
-        target: rust_declared_inhabitants_root()
+        target: rust_mvp1_declared_inhabitants_root()
       ),
       rust_named_edge(
         name: target_model_edge_translation_rules,
@@ -1240,7 +1336,7 @@ fn rust_wave1_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
       rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
       rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ") "),
+      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
       rust_lex_rule(token_class: rust_token_comma, text: ", "),
       rust_lex_rule(token_class: rust_token_colon, text: ": ")
     ]

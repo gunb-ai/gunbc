@@ -386,6 +386,45 @@ pub fn from_code_point(cp: i64) -> String {
         .unwrap_or_default()
 }
 
+const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
+const FNV1A64_PRIME: u64 = 0x100000001b3;
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = FNV1A64_OFFSET;
+    for b in bytes {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(FNV1A64_PRIME);
+    }
+    hash
+}
+
+pub type Hash = String;
+
+const HASH_DIGEST_LEN: usize = 16;
+
+pub fn is_hash_digest(s: &str) -> bool {
+    s.len() == HASH_DIGEST_LEN && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn expect_hash_digest(s: &str, arg: &str) {
+    if !is_hash_digest(s) {
+        panic!("{} must be a 16-char hex Hash digest", arg);
+    }
+}
+
+pub fn atom_identity_hash(s: String) -> Hash {
+    format!("{:016x}", fnv1a64(s.as_bytes()))
+}
+
+pub fn hash_combine(a: Hash, b: Hash) -> Hash {
+    expect_hash_digest(&a, "a");
+    expect_hash_digest(&b, "b");
+    let mut bytes = a.into_bytes();
+    bytes.push(0);
+    bytes.extend_from_slice(b.as_bytes());
+    format!("{:016x}", fnv1a64(&bytes))
+}
+
 #[derive(Debug, Clone)]
 pub struct FilesystemReadResult {
     pub content: String,
