@@ -502,13 +502,14 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 
 
 fn expr_direct_left_corner_step(lhs: GrammarExpr, rhs: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
-  if expr_is_nullable_given_set(expr: lhs, nullable_set: nullable_set) {
-    list_append(
-      left: expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set),
-      right: expr_direct_left_corner_list(expr: rhs, nullable_set: nullable_set)
-    )
-  } else {
-    expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set)
+  match expr_is_nullable_given_set(expr: lhs, nullable_set: nullable_set) {
+    true =>
+      list_append(
+        left: expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set),
+        right: expr_direct_left_corner_list(expr: rhs, nullable_set: nullable_set)
+      )
+    false =>
+      expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set)
   }
 }
 
