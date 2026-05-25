@@ -160,12 +160,9 @@ type RustfmtRequiredVersion
 // 🟡 gated — feature: rustfmt-deprecated-alias — bind T-4.16 follow-on — dissolve-on-arrival: merge_imports and fn_args_layout are deprecated v1.6.0 aliases retained for P1 faithfulness; both are subsumed by their canonical counterparts (imports_granularity and fn_params_layout respectively); precedence rule: canonical field wins when both are set; forbidden: treating either alias as an independent authoritative fact separate from its canonical field.
 // 🟡 gated — feature: rustfmt-unstable-option-validity — bind T-4.16 follow-on — dissolve-on-arrival: emit stage must omit all fields marked "Stable: No" from the emitted .toml when unstable_features=false; RustfmtConfig's full-value form collapses set-vs-absent so the validity constraint is an emit obligation, not a value predicate; follow-on: migrate unstable fields to Option<T> carriers so absence is structurally representable in the substrate; forbidden: emitting a key for any unstable field when unstable_features=false regardless of whether its value equals the default.
 type RustfmtConfig {
-  // Indentation
   indent_style: RustfmtIndentStyle
   tab_spaces: Int    // 🟡 gated: formatter-int-refinement — must be ≥1
   hard_tabs: Bool
-
-  // Line width
   max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
   comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 (0 causes wrap_comments to apply regardless of line width; see anchor); no max_width upper-bound — v1.6.0 "any positive integer"
   chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
@@ -177,43 +174,29 @@ type RustfmtConfig {
   struct_variant_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
   short_array_element_width_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
-
-  // Braces
   brace_style: RustfmtBraceStyle
   control_brace_style: RustfmtControlBraceStyle
   where_single_line: Bool
-
-  // Commas / semicolons
   trailing_comma: RustfmtTrailingComma
   trailing_semicolon: Bool
   match_arm_leading_pipes: RustfmtMatchArmLeadingPipes
   match_arm_blocks: Bool
   match_block_trailing_comma: Bool
-
-  // Imports
   imports_granularity: RustfmtImportsGranularity
   group_imports: RustfmtGroupImports
   imports_layout: RustfmtImportsLayout
   imports_indent: RustfmtImportsIndent
   reorder_imports: Bool
   merge_imports: Bool // 🟡 gated: rustfmt-deprecated-alias — deprecated bool alias for imports_granularity=Crate; canonical field imports_granularity wins when both are set
-
-  // Functions / params
   fn_params_layout: RustfmtFnParamsLayout
   fn_args_layout: RustfmtFnParamsLayout // 🟡 gated: rustfmt-deprecated-alias — deprecated former name for fn_params_layout; canonical field fn_params_layout wins when both are set
   fn_single_line: Bool
   inline_attribute_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
-
-  // Modules
   reorder_modules: Bool
   reorder_impl_items: Bool
-
-  // Newlines and blanks
   newline_style: RustfmtNewlineStyle
   blank_lines_upper_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
   blank_lines_lower_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
-
-  // Comments and docs
   wrap_comments: Bool
   normalize_comments: Bool
   normalize_doc_attributes: Bool
@@ -222,21 +205,13 @@ type RustfmtConfig {
   doc_comment_code_block_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
   format_generated_files: Bool
   hide_parse_errors: Bool
-
-  // Derives / attributes / shorthand
   merge_derives: Bool
   use_field_init_shorthand: Bool
   use_try_shorthand: Bool
   force_explicit_abi: Bool
-
-  // Macros
   format_macro_matchers: Bool
   format_macro_bodies: Bool
-
-  // Binary operations
   binop_separator: RustfmtBinopSeparator
-
-  // Misc
   use_small_heuristics: RustfmtSmallHeuristics
   overflow_delimited_expr: Bool
   remove_nested_parens: Bool
