@@ -2116,6 +2116,29 @@ fn emit_field_access_with_types() {
 }
 
 #[test]
+fn rust_emit_mangles_self_field_and_param_without_raw_identifier() {
+    let source = "module reserved_self\n\
+type SelfRecord { self: Int }\n\
+fn wrap(self: Int) -> SelfRecord { SelfRecord { self: self } }\n\
+fn unwrap(record: SelfRecord) -> Int { record.self }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/reserved_self.rs");
+    assert!(
+        !content.contains("r#self"),
+        "Rust emitter must not raw-escape reserved `self`: {content}"
+    );
+    assert!(
+        content.contains("#[serde(rename = \"self\")]")
+            && content.contains("pub self_: i64")
+            && content.contains("fn wrap(self_: i64) -> SelfRecord")
+            && content.contains("self_: self_")
+            && content.contains("record.self_"),
+        "Rust emitter should consistently suffix-mangle `self`: {content}"
+    );
+}
+
+#[test]
 fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     let source = "module callable_sig\n\ntype Mapper = fn(Int) -> Int\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
     let result = compile_dag(source);

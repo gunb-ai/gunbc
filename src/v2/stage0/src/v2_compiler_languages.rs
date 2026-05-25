@@ -465,8 +465,8 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         target_name: "rust".to_string(),
         reserved_words: Rc::new(ReservedWords {
             keywords: rust_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::PrefixEscape {
-                prefix: rust_reserved_escape_prefix(),
+            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+                suffix: "_".to_string(),
             }),
         }),
         scaffold: Rc::new(ProjectScaffold {
