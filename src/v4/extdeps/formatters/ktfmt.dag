@@ -1,11 +1,16 @@
 // src/v4/extdeps/formatters/ktfmt.dag
 // Scope: ktfmt configuration model — option space grounded in ktfmt latest README/options and CLI help.
-// Owns: KtfmtStyle, KtfmtTrailingCommaManagementStrategy, KtfmtConfig, ktfmt_defaults, ktfmt_layer.
-// Consumes: none (String, Bool, Int are language-level primitives; no compiler dependency).
+// Owns: KtfmtStyle, KtfmtTrailingCommaManagementStrategy, KtfmtPositiveInt, ktfmt_positive_int_validation, make_ktfmt_positive_int, KtfmtConfig, ktfmt_defaults, ktfmt_layer.
+// Consumes: Locus, Outcome, Symbol, Refined, Validation.
 // Status: T-4.16 scaffold — full documented ktfmt option surface.
 // Anchor: https://github.com/facebook/ktfmt#options
 
 module v4.extdeps.formatters.ktfmt
+
+
+import v4.std.diagnostic { Locus, Outcome }
+import v4.std.node { Symbol }
+import v4.std.refinement { Refined, Validation, refine }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -22,12 +27,34 @@ type KtfmtTrailingCommaManagementStrategy
   | KtfmtTrailingCommaComplete
 
 
+type KtfmtPositiveInt = Refined<Int>
+
+
+data ktfmt_positive_int_out_of_range: Symbol = ktfmt_positive_int_out_of_range
+
+
+fn ktfmt_positive_int_admits(value: Int) -> Bool {
+  value >= 1
+}
+
+
+data ktfmt_positive_int_validation: Validation<Int> = Validation {
+  reason: ktfmt_positive_int_out_of_range,
+  admits: ktfmt_positive_int_admits
+}
+
+
+fn make_ktfmt_positive_int(value: Int, at: Locus) -> Outcome<KtfmtPositiveInt> {
+  refine(base: value, by: ktfmt_positive_int_validation, at: at)
+}
+
+
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: KtfmtConfigValidation witness checks editorconfig precedence ij_kotlin_indent_size > indent_size > tab_width and ij_kotlin_continuation_indent_size > ij_continuation_indent_size; forbidden: ad-hoc cross-field guards outside validation substrate.
 type KtfmtConfig {
   style: KtfmtStyle
-  max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  block_indent: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  continuation_indent: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  max_width: KtfmtPositiveInt
+  block_indent: KtfmtPositiveInt
+  continuation_indent: KtfmtPositiveInt
   trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
   remove_unused_imports: Bool
   debugging_print_ops_after_formatting: Bool
@@ -38,21 +65,21 @@ type KtfmtConfig {
   enable_editorconfig: Bool
   quiet: Bool
 
-  editorconfig_max_line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
-  editorconfig_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
-  editorconfig_tab_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
-  editorconfig_ij_kotlin_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
-  editorconfig_ij_continuation_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
-  editorconfig_ij_kotlin_continuation_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_max_line_length: KtfmtPositiveInt
+  editorconfig_indent_size: KtfmtPositiveInt
+  editorconfig_tab_width: KtfmtPositiveInt
+  editorconfig_ij_kotlin_indent_size: KtfmtPositiveInt
+  editorconfig_ij_continuation_indent_size: KtfmtPositiveInt
+  editorconfig_ij_kotlin_continuation_indent_size: KtfmtPositiveInt
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
 }
 
 
 data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   style: KtfmtMetaStyle,
-  max_width: 100,
-  block_indent: 2,
-  continuation_indent: 4,
+  max_width: Refined { base: 100 },
+  block_indent: Refined { base: 2 },
+  continuation_indent: Refined { base: 4 },
   trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
   remove_unused_imports: true,
   debugging_print_ops_after_formatting: false,
@@ -63,12 +90,12 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   enable_editorconfig: false,
   quiet: false,
 
-  editorconfig_max_line_length: 100,
-  editorconfig_indent_size: 2,
-  editorconfig_tab_width: 2,
-  editorconfig_ij_kotlin_indent_size: 2,
-  editorconfig_ij_continuation_indent_size: 4,
-  editorconfig_ij_kotlin_continuation_indent_size: 4,
+  editorconfig_max_line_length: Refined { base: 100 },
+  editorconfig_indent_size: Refined { base: 2 },
+  editorconfig_tab_width: Refined { base: 2 },
+  editorconfig_ij_kotlin_indent_size: Refined { base: 2 },
+  editorconfig_ij_continuation_indent_size: Refined { base: 4 },
+  editorconfig_ij_kotlin_continuation_indent_size: Refined { base: 4 },
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
 }
 
