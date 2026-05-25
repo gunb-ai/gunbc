@@ -332,24 +332,21 @@ fn eval_runtime_value_acceptance_witness(
   value: RuntimeValue
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
-    resolved_type: if inferred_facts_resolved_type_matches(
-      facts: facts,
-      candidate_type: runtime_value_resolved_type(value: value)
-    ) {
+    resolved_type: if inferred_facts_resolved_type(facts: facts) == runtime_value_resolved_type(value: value) {
       Holds { value: runtime_value_resolved_type(value: value) }
     } else {
       Violates {
         diagnostic: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
       }
     },
-    inhabitance: if inferred_facts_inhabitance_well_grounded(facts: facts) {
+    inhabitance: if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
       Holds { value: facts }
     } else {
       Violates {
         diagnostic: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
       }
     },
-    canonical: if inferred_facts_canonical_well_grounded(facts: facts) {
+    canonical: if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
       Holds { value: facts }
     } else {
       Violates {

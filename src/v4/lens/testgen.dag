@@ -377,6 +377,7 @@ data t19_algebra_law_algebra_field: Symbol = t19_algebra_law_algebra_field
 data t19_algebra_law_inhabitant_field: Symbol = t19_algebra_law_inhabitant_field
 data t19_algebra_law_law_field: Symbol = t19_algebra_law_law_field
 data t19_algebra_law_expression_field: Symbol = t19_algebra_law_expression_field
+data algebra_law_anchor_mismatch: Symbol = algebra_law_anchor_mismatch
 
 
 data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
@@ -766,7 +767,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<Alg
       Rejected {
         diagnostics: diagnostics_singleton(
           d: Diagnostic {
-            reason: t19_algebra_law_anchor_mismatch,
+            reason: algebra_law_anchor_mismatch,
             at: Textual { file: testgen_lens_file, extent: WholeFile },
             correction: Unavailable { reason: UserInputBoundary }
           }
