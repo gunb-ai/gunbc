@@ -3,7 +3,8 @@
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 // Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
 //       Node projection functions, left-recursion check, error-recovery helpers,
-//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error, expr_is_nullable.
+//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error, expr_is_nullable,
+//       expr_has_undefined_nonterminal, grammar_has_undefined_nonterminals.
 // Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
 // Status: T-7 parse walk realized; GrammarRoot carries sync_tokens for error recovery.
 //
@@ -101,6 +102,8 @@ data parse_g0_tokens_remain: Symbol = parse_g0_tokens_remain
 
 data parse_grammar_left_recursive: Symbol = parse_grammar_left_recursive
 
+data parse_grammar_undefined_nonterminal: Symbol = parse_grammar_undefined_nonterminal
+
 data parse_e1_repeat_recovery: Symbol = parse_e1_repeat_recovery
 
 data parse_e1_syntax_error: Symbol = parse_e1_syntax_error
@@ -136,6 +139,15 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
 fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: parse_grammar_left_recursive,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_grammar_undefined_nonterminal,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -445,6 +457,41 @@ fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
 }
 
 
+// Structural recursion on GrammarExpr (finite tree) — does NOT follow nonterminal
+// references into their productions, so it always terminates without a visited set.
+fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
+  match expr {
+    Terminal { token_class: _ } => false
+    Nonterminal { production: p } =>
+      match grammar_lookup_production(root: root, name: p) {
+        GrammarProductionMissing => true
+        GrammarProductionFound { production: _ } => false
+      }
+    Sequence { left: left, right: right } =>
+      expr_has_undefined_nonterminal(expr: left, root: root) ||
+      expr_has_undefined_nonterminal(expr: right, root: root)
+    Choice { left: left, right: right } =>
+      expr_has_undefined_nonterminal(expr: left, root: root) ||
+      expr_has_undefined_nonterminal(expr: right, root: root)
+    Optional { element: element } =>
+      expr_has_undefined_nonterminal(expr: element, root: root)
+    Repeat { element: element } =>
+      expr_has_undefined_nonterminal(expr: element, root: root)
+  }
+}
+
+
+fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
+  fold_list(
+    xs: root.productions,
+    empty: false,
+    cons: fn(acc, p) {
+      acc || expr_has_undefined_nonterminal(expr: p.expression, root: root)
+    }
+  )
+}
+
+
 // --- Diagnostic list helpers ---
 
 fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
@@ -722,14 +769,18 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
       ModeledGrammar { root: root } =>
-        if grammar_has_left_recursion(root: root) {
-          Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+        if grammar_has_undefined_nonterminals(root: root) {
+          Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
         } else {
-          match grammar_lookup_production(root: root, name: root.start) {
-            GrammarProductionFound { production: start } =>
-              parse_production(tokens: tokens.tokens, root: root, production: start)
-            GrammarProductionMissing =>
-              Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+          if grammar_has_left_recursion(root: root) {
+            Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+          } else {
+            match grammar_lookup_production(root: root, name: root.start) {
+              GrammarProductionFound { production: start } =>
+                parse_production(tokens: tokens.tokens, root: root, production: start)
+              GrammarProductionMissing =>
+                Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+            }
           }
         }
     }

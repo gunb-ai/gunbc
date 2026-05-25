@@ -274,22 +274,27 @@ fn is_prefix_of<T>(
 
 
 // Drop the first n elements; O(|xs|). Uses fold rather than Empty/Cons matching.
+// n <= 0: returns xs unchanged (fail-closed; Nat not usable here — nat.dag imports algebra.dag).
 type ListSkipState<T> {
   remaining: Int
   result: FreeMonoid<T>
 }
 fn list_skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
-  fold_list(
-    xs: xs,
-    empty: ListSkipState { remaining: n, result: Empty },
-    cons: fn(acc, item) {
-      if acc.remaining != 0 {
-        ListSkipState { remaining: acc.remaining - 1, result: acc.result }
-      } else {
-        ListSkipState { remaining: 0, result: list_snoc_item(xs: acc.result, item: item) }
+  if n <= 0 {
+    xs
+  } else {
+    fold_list(
+      xs: xs,
+      empty: ListSkipState { remaining: n, result: Empty },
+      cons: fn(acc, item) {
+        if acc.remaining != 0 {
+          ListSkipState { remaining: acc.remaining - 1, result: acc.result }
+        } else {
+          ListSkipState { remaining: 0, result: list_snoc_item(xs: acc.result, item: item) }
+        }
       }
-    }
-  ).result
+    ).result
+  }
 }
 
 
