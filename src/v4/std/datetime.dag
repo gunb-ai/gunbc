@@ -235,6 +235,11 @@ fn minute_value(minute: MinuteOfHour) -> Nat {
 }
 
 
+fn hour_value(hour: HourOfDay) -> Nat {
+  refined_base(r: hour.value)
+}
+
+
 fn year_admits(value: Nat) -> Bool {
   value <= 9999
 }
@@ -353,8 +358,12 @@ fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
 
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
+  let hour = hour_value(hour: fields.occurrence.hour)
   let minute = minute_value(minute: fields.occurrence.minute)
-  (second == 60) && (minute == 59) && leap_second_month_end(date: fields.occurrence.date)
+  (second == 60)
+    && (hour == 23)
+    && (minute == 59)
+    && leap_second_month_end(date: fields.occurrence.date)
 }
 
 
