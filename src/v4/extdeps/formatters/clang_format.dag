@@ -22,14 +22,6 @@ type ClangFormatStyle
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type ClangFormatBracketAlignmentStyle
-  = ClangFormatBracketAlignAlign
-  | ClangFormatBracketAlignDontAlign
-  | ClangFormatBracketAlignAlwaysBreak
-  | ClangFormatBracketAlignBlockIndent
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatArrayInitializerAlignmentStyle
   = ClangFormatArrayAlignNone
   | ClangFormatArrayAlignLeft
@@ -644,7 +636,7 @@ type ClangFormatWrapNamespaceBodyWithEmptyLinesStyle
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 type ClangFormatConfig {
   access_modifier_offset: Int
-  align_after_open_bracket: ClangFormatBracketAlignmentStyle
+  align_after_open_bracket: Bool
   align_array_of_structures: ClangFormatArrayInitializerAlignmentStyle
   align_consecutive_assignments: ClangFormatAlignConsecutiveStyle
   align_consecutive_bit_fields: ClangFormatAlignConsecutiveStyle
@@ -841,7 +833,7 @@ type ClangFormatConfig {
 
 data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   access_modifier_offset: -2,
-  align_after_open_bracket: ClangFormatBracketAlignAlign,
+  align_after_open_bracket: true,
   align_array_of_structures: ClangFormatArrayAlignNone,
   align_consecutive_assignments: ClangFormatAlignConsecutiveStyle { enabled: false, across_empty_lines: false, across_comments: false, align_compound: false, align_function_declarations: false, align_function_pointers: false, enum_assignments: false, pad_operators: false },
   align_consecutive_bit_fields: ClangFormatAlignConsecutiveStyle { enabled: false, across_empty_lines: false, across_comments: false, align_compound: false, align_function_declarations: false, align_function_pointers: false, enum_assignments: false, pad_operators: false },
