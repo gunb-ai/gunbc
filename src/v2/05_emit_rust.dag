@@ -1536,6 +1536,7 @@ fn is_function_type_param(param: Node) -> Bool {
     Some { value: inf } => is_type_variable(inferred: inf)
     None => false
   }
+  let same_source_span = param.span.file == type_expr.span.file && param.span.start == type_expr.span.start && param.span.end == type_expr.span.end
   // Name match via Node.name — stable across both source spans and the
   // kernel spans installed by resolve_item_types's TypeVariable bindings.
   // The param.name != "" guard is belt-and-suspenders: the primary filter
@@ -1544,7 +1545,7 @@ fn is_function_type_param(param: Node) -> Bool {
   // future pipeline change populates TypeVariable on an unnamed node —
   // in which case falling through "" == "" would silently classify it as
   // a type param. Cheap to keep until ParamKind dissolves the classifier.
-  type_expr_is_var && param.name != "" && param.name == type_expr.name
+  param.name != "" && param.name == type_expr.name && (type_expr_is_var || same_source_span)
 }
 
 fn function_type_params(params: List<Node>) -> List<Node> {
