@@ -3236,12 +3236,29 @@ pub fn apply_missing_generic_args(
                             v2_rt::rc_empty_set::<String>(),
                             source_indices.clone(),
                         );
-                        if ((explicit_args.clone().len() as i64) == expected.clone()) {
+                        let inferred_args = if ((explicit_args.clone().len() as i64)
+                            == expected.clone())
+                        {
+                            explicit_args.clone()
+                        } else if ((parent_generic_param_names.clone().len() as i64)
+                            >= expected.clone())
+                        {
+                            Rc::new(
+                                parent_generic_param_names
+                                    .iter()
+                                    .cloned()
+                                    .take(expected as usize)
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            Rc::new(vec![])
+                        };
+                        if ((inferred_args.clone().len() as i64) == expected.clone()) {
                             {
                                 let with_args = v2_rt::concat(
                                     v2_rt::concat(
                                         v2_rt::concat(type_name.clone(), "<".to_string()),
-                                        explicit_args.clone().join(&", ".to_string()),
+                                        inferred_args.clone().join(&", ".to_string()),
                                     ),
                                     ">".to_string(),
                                 );
@@ -16023,7 +16040,7 @@ pub fn emit_data_def(
                     &needs_rc,
                 );
                 let kw = rust_items().func_keyword.clone();
-                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c| c.clone())\n".to_string()), "}".to_string())
+                v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c: &".to_string()), ty_str.clone()), "| c.clone())\n".to_string()), "}".to_string())
             }
         }
     }
