@@ -16,7 +16,7 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols
 }
-import v4.std.algebra { Cons, Empty }
+import v4.std.algebra { fold_list }
 import v4.std.collection { Set }
 import v4.std.module_graph { ModuleGraph, ModuleEntry }
 import v4.std.diagnostic {
@@ -569,29 +569,14 @@ fn namespace_from_tree_and_graph(
   graph: ModuleGraph
 ) -> Namespace {
   Namespace {
-    bindings: namespace_fold_entries(
-      entries: graph.entries,
-      acc: add_module_named_exports(root: tree, acc: empty_map())
+    bindings: fold_list(
+      xs: graph.entries,
+      empty: add_module_named_exports(root: tree, acc: empty_map()),
+      cons: fn(acc, entry) {
+        add_module_named_exports(root: entry.root, acc: acc)
+      }
     ),
     canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
-  }
-}
-
-
-// Folds over graph.entries (FreeMonoid<ModuleEntry>) accumulating each module's
-// exported symbols into acc. Hand-rolls Empty/Cons rather than using fold_list
-// — v2 cannot infer T=ModuleEntry for fold_list<T, A> over FreeMonoid<ModuleEntry>.
-fn namespace_fold_entries(
-  entries: FreeMonoid<ModuleEntry>,
-  acc: Map<Symbol, Symbol>
-) -> Map<Symbol, Symbol> {
-  match entries {
-    Empty => acc
-    Cons { head: entry, tail: rest } =>
-      namespace_fold_entries(
-        entries: rest,
-        acc: add_module_named_exports(root: entry.root, acc: acc)
-      )
   }
 }
 
