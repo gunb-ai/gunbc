@@ -5040,14 +5040,19 @@ pub fn emit_rust_param_type(
     } else {
         let rendered = render_rust_type(&n, shared_types.clone(), &source_indices);
         let type_name = authored_name_at(source_indices.clone(), n);
-        if ((rendered.clone() == type_name.clone())
-            && ((generic_param_names.clone().len() as i64) > 0)
-            && (type_name == "NodeFold".to_string()))
+        if (((rendered.clone() == "NodeFold".to_string())
+            || (rendered.clone() == "Rc<NodeFold>".to_string()))
+            && ((generic_param_names.clone().len() as i64) > 0))
         {
-            v2_rt::concat(
-                v2_rt::concat(rendered, "<".to_string()),
-                v2_rt::concat(generic_param_names.join(&", ".to_string()), ">".to_string()),
-            )
+            let args = generic_param_names.join(&", ".to_string());
+            if rendered == "Rc<NodeFold>".to_string() {
+                v2_rt::concat(
+                    v2_rt::concat("Rc<NodeFold<".to_string(), args),
+                    ">>".to_string(),
+                )
+            } else {
+                v2_rt::concat(v2_rt::concat("NodeFold<".to_string(), args), ">".to_string())
+            }
         } else {
             rendered
         }
@@ -8498,7 +8503,7 @@ pub fn emit_typed_call(
             }
             None => false,
         };
-        let callee_borrow_positions = if callee_is_tco {
+        let callee_borrow_positions = if true {
             v2_rt::rc_empty_map::<String, bool>()
         } else {
             match callee.clone() {
