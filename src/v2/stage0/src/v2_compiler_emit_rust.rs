@@ -5051,7 +5051,10 @@ pub fn emit_rust_param_type(
                     ">>".to_string(),
                 )
             } else {
-                v2_rt::concat(v2_rt::concat("NodeFold<".to_string(), args), ">".to_string())
+                v2_rt::concat(
+                    v2_rt::concat("NodeFold<".to_string(), args),
+                    ">".to_string(),
+                )
             }
         } else {
             rendered
