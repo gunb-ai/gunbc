@@ -15851,8 +15851,9 @@ pub fn emit_data_def_body(
             shared_types.clone(),
             &scope.type_env.clone().source_indices.clone(),
         );
-        if ((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
+        if (((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
             || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
+            || v2_rt::contains(raw_ty_str.clone(), "BoundedLattice<".to_string()))
         {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
