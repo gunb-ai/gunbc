@@ -208,11 +208,19 @@ Adding this step will reveal which v4 type constructs v2's Rust emitter doesn't
 handle yet. This should be the *first* action — it immediately surfaces M1 blockers.
 
 **Gap 2 — T-6/T-7 algorithm scope**
-The lexer and parser algorithm walks need to be written. Should they be written in
-.dag (executable only after T-22 runs) or in Rust (executable immediately as part
-of v2's emitter)? Writing them in .dag is consistent with the thesis but means M2
-depends on T-22+T-34. Writing them in Rust means M2 is achievable without the eval
-track. **This is an operator decision.**
+The lexer and parser algorithm walks must be written in `.dag` per the Pure Bootstrap
+Zero mandate (`THESIS.md`, `docs/design-pure-bootstrap-zero.md`): v4 compiler behavior
+is authored in `.dag`, not hand-Rust. Writing them in Rust would be a P5 scaffold
+(`docs/modeling-discipline.md` Practice 5 — Progress Is Dissolution) and requires an
+explicit dissolution receipt naming the exact trigger (T-22+T-34 running the .dag
+walks) before a worker can be dispatched on a Rust path.
+
+The consequence: **M2 depends on the eval track.** T-6/T-7 walks written in .dag
+are not executable until T-22 (eval) and T-34 (runtime concrete bundles) are real.
+This is not a free operator choice — it is the designed path. The open question is
+whether a time-bounded P5 Rust bridge is worth naming explicitly to accelerate M2,
+or whether T-22+T-34 should be parallelized with T-6/T-7 authoring to converge
+simultaneously. Dispatching workers on both tracks in parallel is the correct answer.
 
 **Gap 3 — T-28 cross-file resolution**
 `resolve_with_graph` has a `🟡` gate marking that it drops the module graph. Cross-file
@@ -235,14 +243,16 @@ In priority order:
    changes to src/v4 required — just a CI wiring change. Output: a list of v2 emitter
    gaps for v4 constructs.
 
-2. **Decide Gap 2** (T-6/T-7 algorithm in .dag vs Rust). This determines whether M2
-   is achievable before T-22/T-34 or depends on them.
+2. **Parallelize T-22+T-34 with T-6/T-7 authoring.** T-6/T-7 walks are written in
+   .dag (required by Pure Bootstrap Zero). T-22+T-34 must run before they execute.
+   Dispatch both tracks simultaneously so they converge: T-34 primitive hooks → T-22
+   eval running → T-6/T-7 walks execute → M2.
 
 3. **Fill T-34 primitive hooks** in v4_evaluator.dag (T-34 Wave 2). This unlocks the
-   eval track independently of the compiler pipeline track and enables TestClaim execution.
+   eval track and is the single dependency that makes T-6/T-7 walks executable.
 
-4. **Implement T-6 lexer walk and T-7 parser walk** (whichever answer Gap 2 picks).
-   These are serial and have no other blockers once Gap 2 is decided.
+4. **Implement T-6 lexer walk and T-7 parser walk** in .dag. These are serial and
+   can be authored now; execution waits on T-34+T-22.
 
 5. **Wire T-10 emit** once translate output is understood. Determine if this is wiring
    or new modeling.
