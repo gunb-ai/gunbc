@@ -3236,23 +3236,22 @@ pub fn apply_missing_generic_args(
                             v2_rt::rc_empty_set::<String>(),
                             source_indices.clone(),
                         );
-                        let inferred_args = if ((explicit_args.clone().len() as i64)
-                            == expected.clone())
-                        {
-                            explicit_args.clone()
-                        } else if ((parent_generic_param_names.clone().len() as i64)
-                            >= expected.clone())
-                        {
-                            Rc::new(
-                                parent_generic_param_names
-                                    .iter()
-                                    .cloned()
-                                    .take(expected as usize)
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            Rc::new(vec![])
-                        };
+                        let inferred_args =
+                            if ((explicit_args.clone().len() as i64) == expected.clone()) {
+                                explicit_args.clone()
+                            } else if ((parent_generic_param_names.clone().len() as i64)
+                                >= expected.clone())
+                            {
+                                Rc::new(
+                                    parent_generic_param_names
+                                        .iter()
+                                        .cloned()
+                                        .take(expected as usize)
+                                        .collect::<Vec<_>>(),
+                                )
+                            } else {
+                                Rc::new(vec![])
+                            };
                         if ((inferred_args.clone().len() as i64) == expected.clone()) {
                             {
                                 let with_args = v2_rt::concat(
