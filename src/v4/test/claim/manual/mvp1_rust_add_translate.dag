@@ -19,7 +19,7 @@ import v4.compiler.emit { emit }
 import v4.compiler.translate { translate }
 import v4.extdeps.languages.rust {
   rust_inhabitant_i32_node,
-  rust_mvp1_emitted_add_fn_node,
+  rust_mvp1_fixture_emitted_add_fn,
   rust_mvp1_source_text,
   rust_mvp1_target_model
 }
@@ -71,7 +71,7 @@ data mvp_add_arrow_node: Node = Node {
 }
 
 
-data mvp1_rust_emitted_root: Node = rust_mvp1_emitted_add_fn_node()
+data mvp1_rust_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
 
 
 data mvp1_rust_target_model: TargetModel = rust_mvp1_target_model()
