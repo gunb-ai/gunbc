@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, ListTailResult, list_tail, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -100,6 +100,17 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
   match xs {
     Empty => empty
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+  }
+}
+// 🟡 coproduct dissolution — feature: FreeMonoid substrate tail<T> accessor; dissolves when stdlib provides substrate-derived tail projection returning Option<FreeMonoid<T>> directly, eliminating the per-use carrier type.
+type ListTailResult<T>
+  = TailFound { tail: FreeMonoid<T> }
+  | TailAbsent
+
+fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
+  match xs {
+    Empty => TailAbsent
+    Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
 fn fold_list_node<T>(
@@ -271,6 +282,8 @@ fn is_prefix_of<T>(
       }
   }
 }
+
+
 
 
 type PointwisePower<T> {

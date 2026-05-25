@@ -1,6 +1,6 @@
 // src/v4/std/nat.dag
 // Scope: Natural numbers (Part 6 nat rows; external Natural_number anchor out of Lane-B header).
-// Owns: Nat nat_cata nat_add nat_mul nat_compare is_zero nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat NatAlgebraLawObligation nat_declared_algebra_law_obligations law_nat_add_left_identity law_nat_add_right_identity law_nat_add_associativity law_nat_mul_left_identity law_nat_mul_annihilator law_nat_mul_associativity
+// Owns: Nat nat_cata nat_add nat_mul nat_compare is_zero nat_lte nat_gte nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat NatAlgebraLawObligation nat_declared_algebra_law_obligations law_nat_add_left_identity law_nat_add_right_identity law_nat_add_associativity law_nat_mul_left_identity law_nat_mul_annihilator law_nat_mul_associativity
 // Consumes: v4.std.algebra v4.std.node
 // Status: T-3 modeled.
 
@@ -53,6 +53,22 @@ fn is_zero(n: Nat) -> Bool {
   match n {
     Zero => true
     Succ { prev: _ } => false
+  }
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+fn nat_lte(a: Nat, b: Nat) -> Bool {
+  match nat_compare(a: a, b: b) {
+    Less => true
+    Equal => true
+    Greater => false
+  }
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
+fn nat_gte(a: Nat, b: Nat) -> Bool {
+  match nat_compare(a: a, b: b) {
+    Less => false
+    Equal => true
+    Greater => true
   }
 }
 data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
