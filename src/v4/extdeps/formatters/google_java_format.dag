@@ -1,0 +1,30 @@
+// src/v4/extdeps/formatters/google_java_format.dag
+// Scope: google-java-format style selection model — no user-configurable algorithm options.
+// Owns: GoogleJavaFormatStyle, GoogleJavaFormatConfig, google_java_format_defaults, google_java_format_layer.
+// Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
+// Status: T-4.16 scaffold — style toggle grounded in google-java-format README.
+// Anchor: https://github.com/google/google-java-format
+
+module v4.extdeps.formatters.google_java_format
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type GoogleJavaFormatStyle
+  = GoogleJavaFormatGoogle
+  | GoogleJavaFormatAosp
+
+
+type GoogleJavaFormatConfig {
+  style: GoogleJavaFormatStyle,
+}
+
+
+data google_java_format_defaults: GoogleJavaFormatConfig = GoogleJavaFormatConfig {
+  style: GoogleJavaFormatGoogle,
+}
+
+
+// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: GoogleJavaFormatConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering.
+fn google_java_format_layer(base: GoogleJavaFormatConfig, outer: GoogleJavaFormatConfig) -> GoogleJavaFormatConfig {
+  outer
+}
