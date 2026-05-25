@@ -221,7 +221,7 @@ Compiler pipeline track              Execution/eval track (independent)
 M0: structural compile ✓             v4_evaluator nontrivial hooks deferred
 M1: emitted Rust links to binary     T-34 Wave 2: deferred hooks filled
 M2: trivial program compiles         T-22: eval executes simple expressions
-M3: self-compilation                 TestClaim receipts execute and pass
+M3: stage0 compiles src/v4 → stage1  TestClaim receipts execute and pass
 M4: fixpoint (T-15)                  Full TestClaim corpus green
 ```
 
