@@ -1,11 +1,12 @@
 // src/v4/extdeps/formatters/gofmt.dag
 // Scope: gofmt carrier — upstream canonical formatting style is a fixed invariant (not configurable).
-// Owns: GofmtCanonicalStyle, GofmtConfig, gofmt_defaults, gofmt_merge.
+// Owns: GofmtCanonicalStyle, gofmt_canonical_style, GofmtConfig, gofmt_defaults, gofmt_merge.
 // Consumes: none (pure config substrate; no node/compiler dependency).
 // Status: T-4.16 scaffold — gofmt has no project config file; style is canonical (tabs + blanks).
 // Anchor: https://go.dev/src/cmd/gofmt/doc.go
 // Simplicity claim: gofmt exposes no style surface — indentation uses tabs, alignment uses spaces,
-// tab width is fixed in the printer. Non-gofmt style states must not be constructible here.
+// tab width is fixed in the printer. Immutable style evidence lives in `gofmt_canonical_style`,
+// outside the GofmtConfig merge carrier, so non-gofmt style states are not constructible.
 // Note: override composition — consumer folds List<GofmtConfig> via gofmt_merge; each layer is a
 //       complete carrier. Field-granularity patch substrate (partial overrides) is 🟡 gated —
 //       feature: formatter-config-patch — dissolve-on-arrival: patch type with per-field
@@ -15,18 +16,16 @@
 module v4.extdeps.formatters.gofmt
 
 
-// Fixed upstream invariant — singleton; no overridable style fields.
+// Fixed upstream invariant — singleton evidence, not part of GofmtConfig merge carrier.
 type GofmtCanonicalStyle {}
 
-
-type GofmtConfig {
-  canonical_style: GofmtCanonicalStyle
-}
+data gofmt_canonical_style: GofmtCanonicalStyle = GofmtCanonicalStyle {}
 
 
-data gofmt_defaults: GofmtConfig = GofmtConfig {
-  canonical_style: GofmtCanonicalStyle {},
-}
+// Layering carrier for future gofmt-local facts; currently empty (no configurable style).
+type GofmtConfig {}
+
+data gofmt_defaults: GofmtConfig = GofmtConfig {}
 
 
 // Apply override: every field in `override` wins unconditionally.

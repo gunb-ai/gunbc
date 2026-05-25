@@ -1,6 +1,7 @@
 // src/v4/extdeps/formatters/black.dag
 // Scope: Black configuration model — real formatter option space grounded in pyproject.toml [tool.black].
-// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackConfig, black_defaults, black_merge.
+// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackRequiredVersionPolicy, BlackConfig,
+//       black_defaults, black_merge.
 // Consumes: v4.std.collection (List only; no node/compiler dependency).
 // Status: T-4.16 scaffold — pyproject.toml [tool.black] option space per Black 26.x docs.
 // Anchor: https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html
@@ -35,6 +36,12 @@ type BlackTargetVersionPolicy
   | BlackTargetVersionExplicit { targets: List<BlackTargetVersion> }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackRequiredVersionPolicy
+  = BlackRequiredVersionAbsent
+  | BlackRequiredVersionExplicit { version: String }
+
+
 type BlackConfig {
   // Line length
   line_length: Int
@@ -42,8 +49,8 @@ type BlackConfig {
   // Python grammar / style target (pyproject `target-version` array or absent → infer).
   target_version: BlackTargetVersionPolicy
 
-  // Require a specific Black version (pyproject `required-version`; empty = unset).
-  required_version: String
+  // Require a specific Black version (pyproject `required-version` or absent).
+  required_version: BlackRequiredVersionPolicy
 
   // File collection (regex strings; pyproject uses single-quoted TOML strings).
   include: String
@@ -59,11 +66,11 @@ type BlackConfig {
 }
 
 
-// Black CLI / absent-key pyproject defaults (Black 26.x — black.const DEFAULT_*).
+// Resolved absent-key defaults (Black 26.x — black.const DEFAULT_* + infer target-version).
 data black_defaults: BlackConfig = BlackConfig {
   line_length: 88,
   target_version: BlackTargetVersionAbsent,
-  required_version: "",
+  required_version: BlackRequiredVersionAbsent,
 
   include: "(\\.pyi?|\\.ipynb)$",
   exclude: "/(\\.direnv|\\.eggs|\\.git|\\.hg|\\.ipynb_checkpoints|\\.mypy_cache|\\.nox|\\.pytest_cache|\\.ruff_cache|\\.tox|\\.svn|\\.venv|\\.vscode|__pypackages__|_build|buck-out|build|dist|venv)/",
