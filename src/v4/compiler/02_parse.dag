@@ -266,23 +266,37 @@ fn grammar_to_node(grammar: Grammar) -> Node {
 }
 
 
+fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
+  NodeFold {
+    init: fn(n0) {
+      grammar_symbol_fold_init(n: n0, sym: sym)
+    },
+    step: grammar_symbol_fold_step
+  }
+}
+
+
+fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      GrammarSymbolFoldState { found: id == sym }
+    _ =>
+      GrammarSymbolFoldState { found: false }
+  }
+}
+
+
+fn grammar_symbol_fold_step(
+  acc: GrammarSymbolFoldState,
+  edge: Edge,
+  child_has_symbol: GrammarSymbolFoldState
+) -> GrammarSymbolFoldState {
+  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
+}
+
+
 fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
-  let folded = fold_node(
-    n: grammar_to_node(grammar: grammar),
-    algebra: NodeFold {
-      init: fn(n0) {
-        match n0.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            GrammarSymbolFoldState { found: id == sym }
-          _ =>
-            GrammarSymbolFoldState { found: false }
-        }
-      },
-      step: fn(acc, _, child_has_symbol) {
-        GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
-      }
-    }
-  )
+  let folded = fold_node(n: grammar_to_node(grammar: grammar), algebra: grammar_symbol_fold(sym: sym))
   folded.found
 }
 
