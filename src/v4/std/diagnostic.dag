@@ -2,7 +2,7 @@
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
 // Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
-//       bind_outcome, diagnostics_merge, diagnostics_monoid, diagnostics_fold,
+//       bind_outcome, diagnostics_merge, diagnostics_monoid,
 //       non_empty_diagnostics_append, non_empty_diagnostics_semigroup,
 //       rejected_with_pending, accepted_thread_diagnostics,
 //       eq, locus_eq, correction_eq, diagnostic_eq, outcome_node_eq,
@@ -164,11 +164,6 @@ data diagnostics_monoid: Monoid<Diagnostics> = Monoid {
 }
 data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = Semigroup {
   magma: Magma { op: non_empty_diagnostics_append }
-}
-fn diagnostics_fold(xs: List<Diagnostics>) -> Diagnostics {
-  fold(xs, init: None, f: fn(acc, d) {
-    diagnostics_merge(outer: acc, inner: d)
-  })
 }
 fn rejected_with_pending(
   pending: Diagnostics,
