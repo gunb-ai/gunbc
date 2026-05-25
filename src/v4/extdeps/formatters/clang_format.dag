@@ -1,8 +1,8 @@
 // src/v4/extdeps/formatters/clang_format.dag
-// Scope: clang-format configuration model — option space grounded in current Clang style options.
-// Owns: ClangFormatConfig, clang_format_defaults, clang_format_layer.
+// Scope: clang-format configuration model — option space grounded in clang-format 23.0.0git.
+// Owns: ClangFormatQualifierAlignmentStyle, ClangFormatConfig, clang_format_defaults, clang_format_layer.
 // Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
-// Status: T-4.16 scaffold — full top-level option space grounded in current clang-format style reference.
+// Status: T-4.16 scaffold — full top-level option space grounded in clang-format 23.0.0git style reference.
 // Anchor: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
 
 module v4.extdeps.formatters.clang_format
@@ -785,6 +785,7 @@ type ClangFormatConfig {
   pointer_alignment: ClangFormatPointerAlignmentStyle
   pp_indent_width: Int
   qualifier_alignment: ClangFormatQualifierAlignmentStyle
+  qualifier_order: List<String> // 🟡 gated: formatter-cross-field-constraints — operative only when qualifier_alignment = ClangFormatQualifierCustom
   reference_alignment: ClangFormatReferenceAlignmentStyle
   reflow_comments: ClangFormatReflowCommentsStyle
   remove_braces_llvm: Bool
@@ -981,6 +982,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   pointer_alignment: ClangFormatPointerRight,
   pp_indent_width: -1,
   qualifier_alignment: ClangFormatQualifierLeave,
+  qualifier_order: [],
   reference_alignment: ClangFormatReferencePointer,
   reflow_comments: ClangFormatReflowCommentsAlways,
   remove_braces_llvm: false,

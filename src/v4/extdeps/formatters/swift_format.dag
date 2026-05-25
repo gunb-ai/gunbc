@@ -1,8 +1,8 @@
 // src/v4/extdeps/formatters/swift_format.dag
-// Scope: swift-format configuration model — option space grounded in current Configuration.md.
+// Scope: swift-format formatting configuration model — formatting knobs only; rules carrier excluded (see gate below).
 // Owns: SwiftFormatIndentation, SwiftFormatPrivacy, SwiftFormatTrailingCommaBehavior, SwiftFormatStringReflow, SwiftFormatOrderedImports, SwiftFormatConfig, swift_format_defaults, swift_format_layer.
 // Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
-// Status: T-4.16 scaffold — full documented top-level configuration keys grounded in current swift-format Configuration.md.
+// Status: T-4.16 scaffold — formatting-knob option space grounded in swift-format Configuration.md; rules field gated pending Map primitive availability.
 // Anchor: https://github.com/apple/swift-format/blob/main/Documentation/Configuration.md
 
 module v4.extdeps.formatters.swift_format
@@ -51,6 +51,7 @@ type SwiftFormatOrderedImports {
 
 
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
+// 🟡 gated — feature: swift-format-rules-carrier — bind T-4.16 follow-on — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
   version: Int // 🟡 gated: formatter-int-refinement — must be exactly 1
   line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1
