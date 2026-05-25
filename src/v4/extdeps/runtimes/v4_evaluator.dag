@@ -185,18 +185,14 @@ fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
 // 🟡 gated — wave-1 interim (Practice 10) — feature: faithful RuntimeValue-to-EvaluationFrame reification —
 // dissolve-on-arrival: T-22 or T-8 providing RuntimeValue→Node reification (runtime_value_node_projection
 // returns non-Unrepresentable) or EvaluationFrame gains a RuntimeValue result slot.
-// Wave-1 rationale: step_loop is fail-closed (always rejects), so transfer is structurally unreachable
-// through the normal eval loop (bind_outcome short-circuits on Rejected before transfer is called).
-// Continue/Return thread runtime_value_resolved_type(v) into frame.current — the type Node of v,
-// which is the maximum Node-level fidelity available before full value reification lands.
-// Forbidden: returning the unchanged frame (discards value, violates P2 facts-flow-forward);
-// rejecting Continue/Return (more severe P2 violation — facts completely absent from output).
+// Wave-1: Continue/Return reject until value reification is modeled — type-only projection into
+// frame.current would fabricate a successful frame missing the value fact (P3).
 fn v4_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
     Continue { value: v } =>
-      Accepted { value: EvaluationFrame { current: runtime_value_resolved_type(value: v), environment: frame.environment }, diagnostics: None }
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
     Return { value: v } =>
-      Accepted { value: EvaluationFrame { current: runtime_value_resolved_type(value: v), environment: frame.environment }, diagnostics: None }
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
     Raise { diagnostic: d } =>
       outcome_rejected(d: d)
     Suspend { continuation: c } =>

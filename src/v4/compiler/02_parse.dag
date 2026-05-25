@@ -533,8 +533,8 @@ fn parse_nonterminal_from_table(
                 diagnostics: diags
               }
           }
-        Violates { diagnostic: _ } =>
-          ParseExprRejected { diagnostics: [] }
+        Violates { diagnostic: d } =>
+          ParseExprRejected { diagnostics: [d] }
       }
   }
 }
@@ -1114,13 +1114,8 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
                 )
               }
           }
-        Violates { diagnostic: _ } =>
-          Rejected {
-            diagnostics: parse_diags_to_non_empty(
-              diags: [],
-              default: parse_e1_syntax_error_diagnostic(at: at)
-            )
-          }
+        Violates { diagnostic: d } =>
+          Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
     GrammarProductionMissing =>
       Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }

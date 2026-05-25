@@ -161,8 +161,14 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
 }
 
 
-// Non-empty token list for the sync-recovery and parse-table claims.
+// Non-empty token list for the sync-recovery claim.
 data validation_one_token_list: List<Token> = Cons { head: validation_token(class: validation_tok_class), tail: Empty }
+
+// Two matching tokens for parse-table receipt: A = "x" A? must memo-hit A at position 1 after the first terminal.
+data validation_two_token_list: List<Token> = Cons {
+  head: validation_token(class: validation_tok_class),
+  tail: Cons { head: validation_token(class: validation_tok_class), tail: Empty }
+}
 
 
 fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
@@ -171,7 +177,7 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: validated, diagnostics: _ } =>
       parse_production(
-        tokens: validation_one_token_list,
+        tokens: validation_two_token_list,
         validated: validated,
         production_name: validation_rec_start
       )
@@ -237,7 +243,7 @@ data claim_right_recursion_not_left_recursive: TestClaim = EqualsClaim {
 
 
 data claim_right_recursive_parse_succeeds: TestClaim = EqualsClaim {
-  label: "parse_production accepts right-recursive A = 'x' A? on one matching token via memoized ParseTable",
+  label: "parse_production accepts right-recursive A = 'x' A? on two matching tokens via memoized ParseTable",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(
     b: validation_outcome_accepted(out: validation_right_recursive_parse_fixture())
