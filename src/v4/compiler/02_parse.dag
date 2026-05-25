@@ -5,7 +5,7 @@
 //       Node projection functions, left-recursion check, error-recovery helpers,
 //       ParseSyncState, TokenPeek, ParseRepeatAcc, parse_diag_cons, parse_token_first,
 //       parse_e1_syntax_error, expr_is_nullable_given_set, compute_nullable_step,
-//       compute_nullable_set, expr_direct_left_corner_list,
+//       compute_nullable_set, grammar_empty_corner_list, expr_direct_left_corner_list,
 //       compute_left_corner_closure, expr_has_undefined_nonterminal,
 //       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
 //       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel,
@@ -501,6 +501,13 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 }
 
 
+// v2 bootstrap compiler workaround: Empty literal has unknown element type in if/else context;
+// a typed wrapper anchors the type to List<Symbol> so branch unification succeeds.
+fn grammar_empty_corner_list() -> List<Symbol> {
+  Empty
+}
+
+
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
 // expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
 // Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
@@ -517,7 +524,7 @@ fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) ->
         right: if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
           expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
         } else {
-          Empty
+          grammar_empty_corner_list()
         }
       )
     Choice { left: left, right: right } =>
