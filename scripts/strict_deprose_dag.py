@@ -290,6 +290,10 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "WasmConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+    if rel == "src/v4/std/float.dag":
+        # T-3B language-facing disposition carriers (absent at merge-base).
+        for nm in ("NaNPropagation", "InfPropagation", "FloatExceptionDisposition"):
+            out[nm] = ("🟡", "SL-3229-FLOAT-DISPOSITION")
     return out
 
 
