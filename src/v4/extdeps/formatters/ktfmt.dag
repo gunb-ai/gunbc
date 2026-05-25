@@ -1,0 +1,79 @@
+// src/v4/extdeps/formatters/ktfmt.dag
+// Scope: ktfmt configuration model — option space grounded in ktfmt latest README/options and CLI help.
+// Owns: KtfmtStyle, KtfmtTrailingCommaManagementStrategy, KtfmtConfig, ktfmt_defaults, ktfmt_layer.
+// Consumes: none (String, Bool, Int are language-level primitives; no compiler dependency).
+// Status: T-4.16 scaffold — full documented ktfmt option surface.
+// Anchor: https://github.com/facebook/ktfmt#options
+
+module v4.extdeps.formatters.ktfmt
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type KtfmtStyle
+  = KtfmtMetaStyle
+  | KtfmtGoogleStyle
+  | KtfmtKotlinlangStyle
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type KtfmtTrailingCommaManagementStrategy
+  = KtfmtTrailingCommaNone
+  | KtfmtTrailingCommaOnlyAdd
+  | KtfmtTrailingCommaComplete
+
+
+// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: KtfmtConfigValidation witness checks editorconfig precedence ij_kotlin_indent_size > indent_size > tab_width and ij_kotlin_continuation_indent_size > ij_continuation_indent_size; forbidden: ad-hoc cross-field guards outside validation substrate.
+type KtfmtConfig {
+  style: KtfmtStyle
+  max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  block_indent: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  continuation_indent: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
+  remove_unused_imports: Bool
+  debugging_print_ops_after_formatting: Bool
+
+  dry_run: Bool
+  set_exit_if_changed: Bool
+  stdin_name: String
+  enable_editorconfig: Bool
+  quiet: Bool
+
+  editorconfig_max_line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_tab_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_ij_kotlin_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_ij_continuation_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_ij_kotlin_continuation_indent_size: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaManagementStrategy
+}
+
+
+data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
+  style: KtfmtMetaStyle,
+  max_width: 100,
+  block_indent: 2,
+  continuation_indent: 4,
+  trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
+  remove_unused_imports: true,
+  debugging_print_ops_after_formatting: false,
+
+  dry_run: false,
+  set_exit_if_changed: false,
+  stdin_name: "",
+  enable_editorconfig: false,
+  quiet: false,
+
+  editorconfig_max_line_length: 100,
+  editorconfig_indent_size: 2,
+  editorconfig_tab_width: 2,
+  editorconfig_ij_kotlin_indent_size: 2,
+  editorconfig_ij_continuation_indent_size: 4,
+  editorconfig_ij_kotlin_continuation_indent_size: 4,
+  editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
+}
+
+
+// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: KtfmtConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
+fn ktfmt_layer(base: KtfmtConfig, outer: KtfmtConfig) -> KtfmtConfig {
+  outer
+}
