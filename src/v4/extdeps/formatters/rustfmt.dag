@@ -1,0 +1,251 @@
+// src/v4/extdeps/formatters/rustfmt.dag
+// Scope: rustfmt configuration model — real formatter option space grounded in rustfmt.toml.
+// Owns: RustfmtIndentStyle, RustfmtBraceStyle, RustfmtControlBraceStyle, RustfmtTrailingComma,
+//       RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports,
+//       RustfmtImportsLayout, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition,
+//       RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtConfig, rustfmt_defaults,
+//       rustfmt_merge.
+// Consumes: none (pure config substrate; no node/compiler dependency).
+// Status: T-4.16 scaffold — full option space grounded in rustfmt 1.x toml reference.
+// Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
+// Note: override composition — consumer folds List<RustfmtConfig> via rustfmt_merge; each
+//       layer is a complete config. Field-granularity patch substrate (partial overrides) is
+//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
+//       per-field Override/Inherit variants replaces full-config layering.
+
+module v4.extdeps.formatters.rustfmt
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtIndentStyle
+  = RustfmtIndentBlock
+  | RustfmtIndentVisual
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtBraceStyle
+  = RustfmtBraceAlwaysNextLine
+  | RustfmtBracePreferSameLine
+  | RustfmtBraceSameLineWhere
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtControlBraceStyle
+  = RustfmtControlBraceAlwaysSameLine
+  | RustfmtControlBraceAlwaysNextLine
+  | RustfmtControlBraceClosingNextLine
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtTrailingComma
+  = RustfmtTrailingCommaAlways
+  | RustfmtTrailingCommaNever
+  | RustfmtTrailingCommaVertical
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtMatchArmLeadingPipes
+  = RustfmtMatchPipesAlways
+  | RustfmtMatchPipesNever
+  | RustfmtMatchPipesPreserve
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Controls how use statements are organized.
+// Crate: merge all imports in a single crate to the crate root.
+// Module: merge all imports per module.
+// Item: merge all items (default in newer editions).
+// One: merge everything into a single use declaration.
+type RustfmtImportsGranularity
+  = RustfmtImportsGranularityPreserve
+  | RustfmtImportsGranularityCrate
+  | RustfmtImportsGranularityModule
+  | RustfmtImportsGranularityItem
+  | RustfmtImportsGranularityOne
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtGroupImports
+  = RustfmtGroupImportsPreserve
+  | RustfmtGroupImportsStdExternalCrate
+  | RustfmtGroupImportsOne
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtImportsLayout
+  = RustfmtImportsMixed
+  | RustfmtImportsHorizontal
+  | RustfmtImportsVertical
+  | RustfmtImportsHorizontalVertical
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtFnParamsLayout
+  = RustfmtFnParamsCompressed
+  | RustfmtFnParamsTall
+  | RustfmtFnParamsVertical
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtNewlineStyle
+  = RustfmtNewlineAuto
+  | RustfmtNewlineUnix
+  | RustfmtNewlineWindows
+  | RustfmtNewlineNative
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtEdition
+  = RustfmtEdition2015
+  | RustfmtEdition2018
+  | RustfmtEdition2021
+  | RustfmtEdition2024
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Default: apply rustfmt's own small-heuristics defaults.
+// Off: disable all heuristics (multi-line everything).
+// Max: maximize heuristic usage (single-line as much as possible).
+type RustfmtSmallHeuristics
+  = RustfmtHeuristicsDefault
+  | RustfmtHeuristicsOff
+  | RustfmtHeuristicsMax
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtHexLiteralCase
+  = RustfmtHexPreserve
+  | RustfmtHexUpper
+  | RustfmtHexLower
+
+
+type RustfmtConfig {
+  // Indentation
+  indent_style: RustfmtIndentStyle
+  tab_spaces: Int
+  hard_tabs: Bool
+
+  // Line width
+  max_width: Int
+  comment_width: Int
+  chain_width: Int
+  single_line_if_else_max_width: Int
+  fn_call_width: Int
+  attr_fn_like_width: Int
+  struct_lit_width: Int
+  struct_variant_width: Int
+  array_width: Int
+  short_array_element_width_threshold: Int
+
+  // Braces
+  brace_style: RustfmtBraceStyle
+  control_brace_style: RustfmtControlBraceStyle
+  where_single_line: Bool
+
+  // Commas / semicolons
+  trailing_comma: RustfmtTrailingComma
+  trailing_semicolon: Bool
+  match_arm_leading_pipes: RustfmtMatchArmLeadingPipes
+
+  // Imports
+  imports_granularity: RustfmtImportsGranularity
+  group_imports: RustfmtGroupImports
+  imports_layout: RustfmtImportsLayout
+  reorder_imports: Bool
+
+  // Functions / params
+  fn_params_layout: RustfmtFnParamsLayout
+
+  // Modules
+  reorder_modules: Bool
+
+  // Newlines and blanks
+  newline_style: RustfmtNewlineStyle
+  blank_lines_upper_bound: Int
+  blank_lines_lower_bound: Int
+
+  // Comments
+  wrap_comments: Bool
+  normalize_comments: Bool
+  format_strings: Bool
+
+  // Derives / attributes
+  merge_derives: Bool
+
+  // Macros
+  format_macro_matchers: Bool
+  format_macro_bodies: Bool
+
+  // Misc
+  use_small_heuristics: RustfmtSmallHeuristics
+  overflow_delimited_expr: Bool
+  remove_nested_parens: Bool
+  combine_control_expr: Bool
+  hex_literal_case: RustfmtHexLiteralCase
+  enum_discrim_align_threshold: Int
+  edition: RustfmtEdition
+}
+
+
+// Official rustfmt 1.x defaults as of edition 2021 / rustfmt 1.6.
+data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
+  indent_style: RustfmtIndentBlock,
+  tab_spaces: 4,
+  hard_tabs: false,
+
+  max_width: 100,
+  comment_width: 80,
+  chain_width: 60,
+  single_line_if_else_max_width: 50,
+  fn_call_width: 60,
+  attr_fn_like_width: 70,
+  struct_lit_width: 18,
+  struct_variant_width: 35,
+  array_width: 60,
+  short_array_element_width_threshold: 10,
+
+  brace_style: RustfmtBraceSameLineWhere,
+  control_brace_style: RustfmtControlBraceAlwaysSameLine,
+  where_single_line: false,
+
+  trailing_comma: RustfmtTrailingCommaVertical,
+  trailing_semicolon: true,
+  match_arm_leading_pipes: RustfmtMatchPipesNever,
+
+  imports_granularity: RustfmtImportsGranularityPreserve,
+  group_imports: RustfmtGroupImportsPreserve,
+  imports_layout: RustfmtImportsMixed,
+  reorder_imports: true,
+
+  fn_params_layout: RustfmtFnParamsTall,
+
+  reorder_modules: true,
+
+  newline_style: RustfmtNewlineAuto,
+  blank_lines_upper_bound: 1,
+  blank_lines_lower_bound: 0,
+
+  wrap_comments: false,
+  normalize_comments: false,
+  format_strings: false,
+
+  merge_derives: true,
+
+  format_macro_matchers: false,
+  format_macro_bodies: true,
+
+  use_small_heuristics: RustfmtHeuristicsDefault,
+  overflow_delimited_expr: false,
+  remove_nested_parens: true,
+  combine_control_expr: true,
+  hex_literal_case: RustfmtHexPreserve,
+  enum_discrim_align_threshold: 0,
+  edition: RustfmtEdition2015,
+}
+
+
+// Apply override: every field in `override` wins unconditionally.
+// Hierarchical layering: fold(patches, init: rustfmt_defaults, f: rustfmt_merge).
+fn rustfmt_merge(base: RustfmtConfig, override: RustfmtConfig) -> RustfmtConfig {
+  override
+}
