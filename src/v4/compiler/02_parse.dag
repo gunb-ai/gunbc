@@ -11,7 +11,7 @@ module v4.compiler.parse
 
 import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List }
 import v4.std.algebra { Empty, fold_list, is_empty, length, list_snoc_item }
 
@@ -261,84 +261,26 @@ fn grammar_to_node(grammar: Grammar) -> Node {
 }
 
 
-fn grammar_node_carries_symbol_step(acc: Bool, edge: Edge, sym: Symbol) -> Bool {
-  acc || grammar_node_carries_symbol(n: edge.target, sym: sym)
-}
-
-
-fn grammar_node_carries_symbol(n: Node, sym: Symbol) -> Bool {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      id == sym
-    TypeNode { connective: _ } =>
-      fold_list(
-        xs: n.children,
-        empty: false,
-        cons: fn(acc, edge) {
-          grammar_node_carries_symbol_step(acc: acc, edge: edge, sym: sym)
-        }
-      )
-    ComputationNode { behavior: _ } =>
-      fold_list(
-        xs: n.children,
-        empty: false,
-        cons: fn(acc, edge) {
-          grammar_node_carries_symbol_step(acc: acc, edge: edge, sym: sym)
-        }
-      )
-  }
-}
-
-
-fn grammar_expr_carries_symbol(expr: GrammarExpr, sym: Symbol) -> Bool {
-  match expr {
-    Terminal { token_class: token_class } =>
-      token_class == sym
-    Nonterminal { production: production } =>
-      production == sym
-    Sequence { left: left, right: right } =>
-      grammar_expr_carries_symbol(expr: left, sym: sym) ||
-        grammar_expr_carries_symbol(expr: right, sym: sym)
-    Choice { left: left, right: right } =>
-      grammar_expr_carries_symbol(expr: left, sym: sym) ||
-        grammar_expr_carries_symbol(expr: right, sym: sym)
-    Optional { element: element } =>
-      grammar_expr_carries_symbol(expr: element, sym: sym)
-    Repeat { element: element } =>
-      grammar_expr_carries_symbol(expr: element, sym: sym)
-  }
-}
-
-
-fn grammar_production_carries_symbol(production: GrammarProduction, sym: Symbol) -> Bool {
-  production.name == sym ||
-    grammar_expr_carries_symbol(expr: production.expression, sym: sym) ||
-    grammar_node_carries_symbol(n: production.emitted, sym: sym)
-}
-
-
-fn grammar_root_carries_symbol_step(acc: Bool, production: GrammarProduction, sym: Symbol) -> Bool {
-  acc || grammar_production_carries_symbol(production: production, sym: sym)
-}
-
-
-fn grammar_root_carries_symbol(root: GrammarRoot, sym: Symbol) -> Bool {
-  root.start == sym ||
-    fold_list(
-      xs: root.productions,
-      empty: false,
-      cons: fn(acc, production) {
-        grammar_root_carries_symbol_step(acc: acc, production: production, sym: sym)
+fn grammar_symbol_fold(sym: Symbol) -> NodeFold<Bool> {
+  NodeFold {
+    init: fn(n0) {
+      match n0.kind {
+        TypeNode { connective: Atom { identity: id } } => id == sym
+        _ => false
       }
-    )
+    },
+    step: fn(acc, _, child_has_symbol) {
+      acc || child_has_symbol
+    }
+  }
 }
 
 
 fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
-  match grammar {
-    VoidGrammar => false
-    ModeledGrammar { root: root } => grammar_root_carries_symbol(root: root, sym: sym)
-  }
+  fold_node(
+    n: grammar_to_node(grammar: grammar),
+    algebra: grammar_symbol_fold(sym: sym)
+  )
 }
 
 
