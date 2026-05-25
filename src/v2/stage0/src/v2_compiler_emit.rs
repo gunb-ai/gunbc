@@ -1812,7 +1812,12 @@ pub fn render_named_type_base(
                 let param_names = Rc::new({
                     let mut __result = Vec::new();
                     for p in n.params.clone().iter().cloned() {
-                        __result.push(param_node_name_at(p.clone(), source_indices.clone()));
+                        __result.push(render_node_type(
+                            &param_node_type_expr(&p),
+                            &target,
+                            &v2_rt::rc_empty_set::<String>(),
+                            &source_indices,
+                        ));
                     }
                     __result
                 });
