@@ -61,7 +61,7 @@ type GrammarProductionLookup
   = GrammarProductionFound { production: GrammarProduction }
   | GrammarProductionMissing
 
-// ParseExprResult: per-expression match result carrying captured Node and accumulated diagnostics.
+// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult
   = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic> }
   | ParseExprRejected { diagnostics: List<Diagnostic> }
@@ -598,7 +598,19 @@ fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarP
   match parse_expr(expr: production.expression, tokens: tokens, root: root) {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
       if is_empty(xs: remaining) {
-        Accepted { value: captured, diagnostics: parse_diags_to_diagnostics(diags: diags) }
+        Accepted {
+          value: Node {
+            kind: production.emitted.kind,
+            children: list_snoc_item(
+              xs: production.emitted.children,
+              item: grammar_named_edge(
+                name: grammar_production_emitted_node_projection,
+                target: captured
+              )
+            )
+          },
+          diagnostics: parse_diags_to_diagnostics(diags: diags)
+        }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
       }

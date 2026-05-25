@@ -15,6 +15,7 @@ import v4.std.diagnostic {
   None,
   Outcome,
   Unavailable,
+  diagnostics_singleton,
   node_locus,
   outcome_rejected,
   port_locus
@@ -133,7 +134,7 @@ fn v4_eval_wave1_empty_frame() -> EvaluationFrame {
 fn v4_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
   Accepted {
     value: RuntimeUnit { value: RuntimeUnitValue { unit_type: node } },
-    diagnostics: None
+    diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(node: node))
   }
 }
 
@@ -152,18 +153,18 @@ fn v4_eval_wave1_call_primitive(
 ) -> Outcome<RuntimeValue> {
   Accepted {
     value: RuntimeUnit { value: RuntimeUnitValue { unit_type: node } },
-    diagnostics: None
+    diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(node: node))
   }
 }
 
 fn v4_eval_wave1_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  Accepted { value: node, diagnostics: None }
+  Accepted { value: node, diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(node: node)) }
 }
 
 fn v4_eval_wave1_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
   Accepted {
     value: Return { value: RuntimeUnit { value: RuntimeUnitValue { unit_type: node } } },
-    diagnostics: None
+    diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(node: node))
   }
 }
 
@@ -187,7 +188,7 @@ fn v4_eval_wave1_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
 fn v4_eval_wave1_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
   Accepted {
     value: Continue { value: RuntimeUnit { value: RuntimeUnitValue { unit_type: call.callee } } },
-    diagnostics: None
+    diagnostics: diagnostics_singleton(d: v4_eval_wave1_runtime_diagnostic(node: call.callee))
   }
 }
 

@@ -366,18 +366,28 @@ fn lex_walk_step(
     LexRuleNoMatch =>
       Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
     LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-      lex_walk(source: remaining, tokens: tokens, file: file, pos: pos + length(xs: lexeme), rules: rules)
+      match string_is_empty(s: lexeme) {
+        true =>
+          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+        false =>
+          lex_walk(source: remaining, tokens: tokens, file: file, pos: pos + length(xs: lexeme), rules: rules)
+      }
     LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-      lex_walk(
-        source: remaining,
-        tokens: list_snoc_item(
-          xs: tokens,
-          item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: pos + length(xs: lexeme) }
-        ),
-        file: file,
-        pos: pos + length(xs: lexeme),
-        rules: rules
-      )
+      match string_is_empty(s: lexeme) {
+        true =>
+          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+        false =>
+          lex_walk(
+            source: remaining,
+            tokens: list_snoc_item(
+              xs: tokens,
+              item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: pos + length(xs: lexeme) }
+            ),
+            file: file,
+            pos: pos + length(xs: lexeme),
+            rules: rules
+          )
+      }
   }
 }
 

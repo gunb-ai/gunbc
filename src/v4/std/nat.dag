@@ -55,6 +55,7 @@ fn is_zero(n: Nat) -> Bool {
     Succ { prev: _ } => false
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
 fn nat_lte(a: Nat, b: Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Less => true
@@ -62,6 +63,7 @@ fn nat_lte(a: Nat, b: Nat) -> Bool {
     Greater => false
   }
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Nat total-order compare (binary query consumer); forbidden: nat_cata / fold launder (operator CORE 2026-05-18).
 fn nat_gte(a: Nat, b: Nat) -> Bool {
   match nat_compare(a: a, b: b) {
     Less => false
