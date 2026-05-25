@@ -127,6 +127,7 @@ type RustfmtColor
   | RustfmtColorNever
 
 
+// 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain,array,fn_call,attr_fn_like,struct_lit,struct_variant,single_line_if_else}_width; forbidden: ad-hoc cross-field guards outside validation substrate.
 type RustfmtConfig {
   // Indentation
