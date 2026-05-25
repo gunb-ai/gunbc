@@ -26,11 +26,11 @@ import v4.compiler.parse {
   grammar_carries_symbol
 }
 import v4.compiler.tokenize {
-  BlockCommentAfterStarChar,
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
   ChoicePattern,
+  ConsumeCharUnlessFollowedByPattern,
   DelimitedPattern,
   DigitChar,
   IdentContinueChar,
@@ -212,10 +212,7 @@ fn dag_block_comment_trivia_rule() -> LexRule {
       open: LiteralPattern { text: "/*" },
       body: RepeatPattern { element: ChoicePattern {
         left: CharClassPattern { class: BlockCommentTextChar },
-        right: SequencePattern {
-          left: CharPattern { char: 42 },
-          right: CharClassPattern { class: BlockCommentAfterStarChar }
-        }
+        right: ConsumeCharUnlessFollowedByPattern { char: 42, forbidden_follow: 47 }
       }},
       close: LiteralPattern { text: "*/" }
     }
