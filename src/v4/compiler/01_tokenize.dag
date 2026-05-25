@@ -20,7 +20,7 @@ import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnkn
 import v4.std.node { Symbol }
 import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_skip, list_snoc_item }
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
-import v4.std.nat { nat_lte, nat_gte }
+import v4.std.nat { Nat, Zero, Succ, nat_lte, nat_gte }
 import v4.std.logic { Bool }
 
 // 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
@@ -171,30 +171,42 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
 }
 
 
+// Fuel for pattern-matching recursion: converts source length to Nat so the
+// complexity analyzer can witness structural descent in lex_repeat_pattern.
+fn lex_string_fuel(source: String) -> Nat {
+  fold_list(xs: source, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } })
+}
+
+
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: LexPattern repeat combinator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived greedy-repeat morphism over LexPattern's RepeatPattern variant, eliminating the hand-rolled zero-width halt guard; forbidden: inlining repeat semantics into the pattern match arms of lex_match_pattern.
 // lex_repeat_pattern: greedy zero-or-more match of element against source.
 // Termination: zero-width matches (empty consumed) halt immediately; otherwise
-// each iteration strictly reduces source length.
-fn lex_repeat_pattern(pattern: LexPattern, source: String, acc_lexeme: String) -> LexMatchResult {
-  match lex_match_pattern(pattern: pattern, source: source) {
-    LexMatchRejected =>
-      LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
-    LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-      match string_is_empty(s: consumed) {
-        true => LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
-        false =>
-          lex_repeat_pattern(
-            pattern: pattern,
-            source: rest,
-            acc_lexeme: list_append(left: acc_lexeme, right: consumed)
-          )
+// each iteration strictly reduces source length (fuel: Succ { prev: rest } → rest descent).
+fn lex_repeat_pattern(pattern: LexPattern, source: String, fuel: Nat, acc_lexeme: String) -> LexMatchResult {
+  match fuel {
+    Zero => LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
+    Succ { prev: rest_fuel } =>
+      match lex_match_pattern(pattern: pattern, source: source, fuel: rest_fuel) {
+        LexMatchRejected =>
+          LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
+        LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+          match string_is_empty(s: consumed) {
+            true => LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
+            false =>
+              lex_repeat_pattern(
+                pattern: pattern,
+                source: rest,
+                fuel: rest_fuel,
+                acc_lexeme: list_append(left: acc_lexeme, right: consumed)
+              )
+          }
       }
   }
 }
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: LexPattern structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived pattern-matching morphism over LexPattern coproduct (per-variant fold eliminating hand-written match arms); forbidden: adding new match arms outside the substrate derivation path.
-fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
+fn lex_match_pattern(pattern: LexPattern, source: String, fuel: Nat) -> LexMatchResult {
   match pattern {
     EmptyPattern =>
       LexMatchAccepted { remaining: source, lexeme: Empty }
@@ -252,45 +264,66 @@ fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
           }
       }
     SequencePattern { left: left, right: right } =>
-      match lex_match_pattern(pattern: left, source: source) {
+      match lex_match_pattern(pattern: left, source: source, fuel: fuel) {
         LexMatchRejected => LexMatchRejected
         LexMatchAccepted { remaining: rest1, lexeme: lex1 } =>
-          match lex_match_pattern(pattern: right, source: rest1) {
+          match lex_match_pattern(pattern: right, source: rest1, fuel: fuel) {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
               LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
           }
       }
     ChoicePattern { left: left, right: right } =>
-      match lex_match_pattern(pattern: left, source: source) {
+      match lex_match_pattern(pattern: left, source: source, fuel: fuel) {
         LexMatchAccepted { remaining: rest, lexeme: lex } =>
           LexMatchAccepted { remaining: rest, lexeme: lex }
         LexMatchRejected =>
-          lex_match_pattern(pattern: right, source: source)
+          lex_match_pattern(pattern: right, source: source, fuel: fuel)
       }
     OptionalPattern { element: element } =>
-      match lex_match_pattern(pattern: element, source: source) {
+      match lex_match_pattern(pattern: element, source: source, fuel: fuel) {
         LexMatchAccepted { remaining: rest, lexeme: lex } =>
           LexMatchAccepted { remaining: rest, lexeme: lex }
         LexMatchRejected =>
           LexMatchAccepted { remaining: source, lexeme: Empty }
       }
     RepeatPattern { element: element } =>
-      lex_repeat_pattern(pattern: element, source: source, acc_lexeme: Empty)
+      match fuel {
+        Zero => LexMatchAccepted { remaining: source, lexeme: Empty }
+        Succ { prev: rest_fuel } =>
+          lex_repeat_pattern(pattern: element, source: source, fuel: rest_fuel, acc_lexeme: Empty)
+      }
     OneOrMorePattern { element: element } =>
-      match lex_match_pattern(pattern: element, source: source) {
-        LexMatchRejected => LexMatchRejected
-        LexMatchAccepted { remaining: rest, lexeme: lex } =>
-          lex_repeat_pattern(pattern: element, source: rest, acc_lexeme: lex)
+      match fuel {
+        Zero => LexMatchRejected
+        Succ { prev: rest_fuel } =>
+          match lex_match_pattern(pattern: element, source: source, fuel: rest_fuel) {
+            LexMatchRejected => LexMatchRejected
+            LexMatchAccepted { remaining: rest, lexeme: lex } =>
+              lex_repeat_pattern(pattern: element, source: rest, fuel: rest_fuel, acc_lexeme: lex)
+          }
       }
     DelimitedPattern { open: open, body: body, close: close } =>
-      lex_match_pattern(
-        pattern: SequencePattern {
-          left: open,
-          right: SequencePattern { left: body, right: close }
-        },
-        source: source
-      )
+      match fuel {
+        Zero => LexMatchRejected
+        Succ { prev: rest_fuel } =>
+          match lex_match_pattern(pattern: open, source: source, fuel: rest_fuel) {
+            LexMatchRejected => LexMatchRejected
+            LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
+              match lex_match_pattern(pattern: body, source: after_open, fuel: rest_fuel) {
+                LexMatchRejected => LexMatchRejected
+                LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
+                  match lex_match_pattern(pattern: close, source: after_body, fuel: rest_fuel) {
+                    LexMatchRejected => LexMatchRejected
+                    LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
+                      LexMatchAccepted {
+                        remaining: after_close,
+                        lexeme: list_append(left: open_lex, right: list_append(left: body_lex, right: close_lex))
+                      }
+                  }
+              }
+          }
+      }
   }
 }
 
@@ -303,8 +336,8 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
 }
 
 
-fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
-  match lex_match_pattern(pattern: lex_rule_pattern(rule: rule), source: source) {
+fn lex_try_rule(rule: LexRule, source: String, fuel: Nat) -> LexRuleApply {
+  match lex_match_pattern(pattern: lex_rule_pattern(rule: rule), source: source, fuel: fuel) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
       match rule {
@@ -317,13 +350,13 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
 }
 
 
-fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
+fn lex_try_rules(rules: List<LexRule>, source: String, fuel: Nat) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
     cons: fn(acc, rule) {
       match acc {
-        LexRuleNoMatch => lex_try_rule(rule: rule, source: source)
+        LexRuleNoMatch => lex_try_rule(rule: rule, source: source, fuel: fuel)
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
