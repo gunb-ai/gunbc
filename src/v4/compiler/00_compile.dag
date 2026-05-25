@@ -1,7 +1,7 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Owns: CoreNode, LanguageModel, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
+// Owns: CoreNode, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
 //       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
@@ -19,7 +19,7 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
-import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -178,16 +178,14 @@ fn run_required_lens_gates(
 
 fn compile_inferred_translate(
   inferred: InferredTree,
-  input_lang: LanguageModel,
   target: TargetModel
 ) -> Outcome<TargetSource> {
-  emit(tree: inferred, target: target, input_lang: input_lang)
+  emit(tree: inferred, target: target)
 }
 
 
 fn compile_inferred(
   inferred: InferredTree,
-  input_lang: LanguageModel,
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   match mode {
@@ -195,7 +193,6 @@ fn compile_inferred(
       bind_outcome(
         o: compile_inferred_translate(
           inferred: inferred,
-          input_lang: input_lang,
           target: target
         ),
         f: fn(target_source) {
@@ -214,13 +211,12 @@ fn compile_inferred(
 
 fn compile(
   source: CoreNode,
-  input_lang: LanguageModel,
   mode: CompileMode
 ) -> Outcome<CompileOutput> {
   bind_outcome(
     o: infer(tree: source),
     f: fn(inferred) {
-      compile_inferred(inferred: inferred, input_lang: input_lang, mode: mode)
+      compile_inferred(inferred: inferred, mode: mode)
     }
   )
 }
@@ -239,7 +235,6 @@ fn validated_from_compile_output(
 
 fn validate_then_compile(
   source: CoreNode,
-  input_lang: LanguageModel,
   lenses: List<CompileLens>,
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
@@ -252,7 +247,6 @@ fn validate_then_compile(
           bind_outcome(
             o: compile_inferred(
               inferred: inferred,
-              input_lang: input_lang,
               mode: mode
             ),
             f: fn(compile_out) {
