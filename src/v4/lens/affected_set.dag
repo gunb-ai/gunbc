@@ -59,17 +59,17 @@ type EditDimension {
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta; bind T-21 IRT follow-on
+// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — bind T-21 — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
 
-// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
+// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
 type PropagationExclusionProof
   = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
 
-// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
+// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
 
@@ -81,13 +81,13 @@ type BoundaryExclusion {
 }
 
 
-// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
+// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — bind T-21 — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
 type FailClosedReason
   = ReasonSymbol { reason: Symbol }
   | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
+// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — bind T-21 — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
@@ -104,7 +104,7 @@ type ReExecFrontier
   | FailClosed { reason: FailClosedReason }
 
 
-// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — dissolve-on: B1/B-5 receipt primitives replace scaffold
+// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — bind T-21 — dissolve-on: B1/B-5 receipt primitives replace scaffold
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
@@ -118,20 +118,20 @@ type BoundaryReceipt
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
+// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — bind T-21 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — dissolve-on: B-4/B-5 edge receipts replace scaffold
+// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — bind T-21 — dissolve-on: B-4/B-5 edge receipts replace scaffold
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
+// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — bind T-21 — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
 type FrontierReceipt
   = FrontierProduced { dependencies: List<DependencyView> }
   | FrontierUnknown { reason: Symbol }
