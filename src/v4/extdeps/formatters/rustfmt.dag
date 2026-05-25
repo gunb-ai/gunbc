@@ -154,6 +154,7 @@ type RustfmtMacroSelector
 // v1.6.0 default is the compiled-in CARGO_PKG_VERSION (installed version); possible configured values
 // are published version strings like "0.3.8". Encoding the compile-time expression as a String sentinel
 // would admit an invalid config value and lose set-vs-default semantics.
+// 🟡 gated — feature: rustfmt-version-string-refinement — bind T-25-core — dissolve-on-arrival: replace version: String in RustfmtVersionPinned with Refined<String> whose predicate validates it as a published semver version string (e.g. "0.3.8"); forbidden: treating version as unconstrained — it must match the published-version format rustfmt v1.6.0 documents.
 type RustfmtRequiredVersion
   = RustfmtVersionInstalled
   | RustfmtVersionPinned { version: String }
@@ -266,7 +267,7 @@ type RustfmtConfig {
   version: RustfmtVersion
   unstable_features: Bool
   required_version: RustfmtRequiredVersion
-  ignore: List<String>
+  ignore: List<String> // 🟡 gated: rustfmt-ignore-path-refinement — bind T-4.16 follow-on — dissolve-on-arrival: replace List<String> with List<Refined<String>> whose predicate validates gitignore-format path patterns with Unix '/' separators (v1.6.0 explicitly excludes Windows backslash paths); forbidden: treating ignore elements as unconstrained strings.
 }
 
 
