@@ -4,6 +4,9 @@
 //! `parse_production`) and `src/v4/test/claim/parse/grammar_validation.dag` parse-success claim
 //! for a right-recursive grammar.
 //!
+//! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
+//! line in `sg0_census_test.rs` + INVARIANTS table row land in the same PR.
+//!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full T-22 claim execution deferred until eval
 //! runner lands (same posture as peer v4 smoke tests).
 

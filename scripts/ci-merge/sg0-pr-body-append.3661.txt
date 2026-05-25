@@ -1,0 +1,3 @@
+SG-0 hand-path delta: +1
+
+SG-0 pairing: (c) Net +1 on `EXPECTED_HAND_AUTHORED_TEST` for `v4_compiler_parse_table_dag_smoke_test.rs` (INVARIANTS §P5(b) tokenize/parse receipt for T-7 `ParseTable` / `parse_production` + `grammar_validation.dag` claim wiring). **ROADMAP:** `ROADMAP.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`. **TASKS.md** T-7. Dissolve when `.dag` `TestClaim` execution (T-22) or generated harness covers the same facts without this host parse probe.
