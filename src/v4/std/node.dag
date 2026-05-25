@@ -103,6 +103,8 @@ type EdgeDiscipline
   = NoEdges
   | LabeledEdges
   | PositionalEdges
+  // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
+  | LoopBoundEdges
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
     Atom { identity: _ } => NoEdges
@@ -223,6 +225,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     LabeledEdges =>
       all_edges_named(children: children) && all_names_distinct(children: children)
     PositionalEdges => all_edges_positional(children: children)
+    LoopBoundEdges => loop_behavior_edges_conform(children: children)
   }
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
