@@ -368,6 +368,7 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived nullable query morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating nullable logic outside this function.
 // expr_is_nullable: true iff expr can match empty input.
 // Optional/Repeat are always nullable; Sequence requires both halves nullable; Choice either.
 // Nonterminal expands with a visited guard to prevent looping on nullable mutual recursion.
@@ -404,6 +405,7 @@ fn expr_is_nullable(
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
 // expr_reaches_nonterminal_left: true iff the transitive left corner of expr includes `name`.
 // For Sequence, if the left element is nullable, the right is also a left corner.
 // visited tracks expanded nonterminals; prevents looping on mutual left recursion.
@@ -466,6 +468,7 @@ fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr production-reference closure query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-nonterminal query morphism over GrammarExpr coproduct; forbidden: duplicating reference-closure logic outside this function.
 // Structural recursion on GrammarExpr (finite tree) — does NOT follow nonterminal
 // references into their productions, so it always terminates without a visited set.
 fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
