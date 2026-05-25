@@ -278,6 +278,14 @@ fn grammar_node_carries_symbol(n: Node, sym: Symbol) -> Bool {
           grammar_node_carries_symbol_step(acc: acc, edge: edge, sym: sym)
         }
       )
+    ComputationNode { behavior: _ } =>
+      fold_list(
+        xs: n.children,
+        empty: false,
+        cons: fn(acc, edge) {
+          grammar_node_carries_symbol_step(acc: acc, edge: edge, sym: sym)
+        }
+      )
   }
 }
 
