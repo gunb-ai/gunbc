@@ -128,6 +128,18 @@ type RustfmtColor
   | RustfmtColorNever
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtImportsIndent
+  = RustfmtImportsIndentBlock
+  | RustfmtImportsIndentVisual
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtTypePunctuationDensity
+  = RustfmtTypePunctuationWide
+  | RustfmtTypePunctuationCompressed
+
+
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain,array,fn_call,attr_fn_like,struct_lit,struct_variant,single_line_if_else}_width; forbidden: ad-hoc cross-field guards outside validation substrate.
 type RustfmtConfig {
@@ -138,9 +150,10 @@ type RustfmtConfig {
 
   // Line width
   max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
-  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0; 0 means use max_width; see also formatter-cross-field-constraints
   chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  single_line_let_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   struct_lit_width: Int    // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
@@ -164,14 +177,19 @@ type RustfmtConfig {
   imports_granularity: RustfmtImportsGranularity
   group_imports: RustfmtGroupImports
   imports_layout: RustfmtImportsLayout
+  imports_indent: RustfmtImportsIndent
   reorder_imports: Bool
+  merge_imports: Bool
 
   // Functions / params
   fn_params_layout: RustfmtFnParamsLayout
+  fn_args_layout: RustfmtFnParamsLayout
   fn_single_line: Bool
+  inline_attribute_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
 
   // Modules
   reorder_modules: Bool
+  reorder_impl_items: Bool
 
   // Newlines and blanks
   newline_style: RustfmtNewlineStyle
@@ -184,6 +202,9 @@ type RustfmtConfig {
   normalize_doc_attributes: Bool
   format_strings: Bool
   format_code_in_doc_comments: Bool
+  doc_comment_code_block_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  format_generated_files: Bool
+  hide_parse_errors: Bool
 
   // Derives / attributes / shorthand
   merge_derives: Bool
@@ -207,7 +228,17 @@ type RustfmtConfig {
   enum_discrim_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
   struct_field_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
   spaces_around_ranges: Bool
+  space_after_colon: Bool
+  space_before_colon: Bool
   empty_item_single_line: Bool
+  struct_lit_single_line: Bool
+  condense_wildcard_suffixes: Bool
+  force_multiline_blocks: Bool
+  error_on_line_overflow: Bool
+  error_on_unformatted: Bool
+  skip_children: Bool
+  skip_macro_invocations: List<String>
+  type_punctuation_density: RustfmtTypePunctuationDensity
   disable_all_formatting: Bool
   color: RustfmtColor
   edition: RustfmtEdition
@@ -228,6 +259,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   comment_width: 80,
   chain_width: 60,
   single_line_if_else_max_width: 50,
+  single_line_let_else_max_width: 50,
   fn_call_width: 60,
   attr_fn_like_width: 70,
   struct_lit_width: 18,
@@ -248,12 +280,17 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   imports_granularity: RustfmtImportsGranularityPreserve,
   group_imports: RustfmtGroupImportsPreserve,
   imports_layout: RustfmtImportsMixed,
+  imports_indent: RustfmtImportsIndentBlock,
   reorder_imports: true,
+  merge_imports: false,
 
   fn_params_layout: RustfmtFnParamsTall,
+  fn_args_layout: RustfmtFnParamsTall,
   fn_single_line: false,
+  inline_attribute_width: 0,
 
   reorder_modules: true,
+  reorder_impl_items: false,
 
   newline_style: RustfmtNewlineAuto,
   blank_lines_upper_bound: 1,
@@ -264,6 +301,9 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   normalize_doc_attributes: false,
   format_strings: false,
   format_code_in_doc_comments: false,
+  doc_comment_code_block_width: 100,
+  format_generated_files: true,
+  hide_parse_errors: false,
 
   merge_derives: true,
   use_field_init_shorthand: false,
@@ -283,7 +323,17 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   enum_discrim_align_threshold: 0,
   struct_field_align_threshold: 0,
   spaces_around_ranges: false,
+  space_after_colon: true,
+  space_before_colon: false,
   empty_item_single_line: true,
+  struct_lit_single_line: true,
+  condense_wildcard_suffixes: false,
+  force_multiline_blocks: false,
+  error_on_line_overflow: false,
+  error_on_unformatted: false,
+  skip_children: false,
+  skip_macro_invocations: [],
+  type_punctuation_density: RustfmtTypePunctuationWide,
   disable_all_formatting: false,
   color: RustfmtColorAuto,
   edition: RustfmtEdition2015,
