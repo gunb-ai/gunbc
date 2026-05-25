@@ -739,6 +739,6 @@ fn dag_language_model_wave1_modeled() -> DagLanguageModel {
     lex: dag_wave1_lex(),
     grammar: dag_wave1_grammar(),
     language_identity: dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_surface_prelude_atoms()
+    canonical_symbols: dag_language_model_wave1_canonical_symbols()
   }
 }
