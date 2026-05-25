@@ -126,7 +126,7 @@ fn expr_bool(expr: &SurfaceExpr) -> bool {
         SurfaceExpr::Literal {
             value: SurfaceLiteral::Bool(value),
             ..
-        } => value,
+        } => *value,
         SurfaceExpr::Var { name, .. } if name == "true" => true,
         SurfaceExpr::Var { name, .. } if name == "false" => false,
         other => panic!("expected bool literal expr, got {other:?}"),
