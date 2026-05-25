@@ -252,16 +252,22 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
-fn conj_positional_targets(parent: Node) -> List<Node> {
+fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   match parent.kind {
     TypeNode { connective: Conj } =>
-      fold(parent.children, init: Empty, f: fn(acc, e) {
-        match e.label {
-          Positional => list_snoc_item(xs: acc, item: e.target)
-          Named { name: _ } => acc
-        }
-      })
-    _ => Empty
+      Accepted {
+        value: fold(parent.children, init: Empty, f: fn(acc, e) {
+          match e.label {
+            Positional => list_snoc_item(xs: acc, item: e.target)
+            Named { name: _ } => acc
+          }
+        }),
+        diagnostics: None
+      }
+    _ =>
+      outcome_rejected(
+        translate_grammar_inverse_not_realized_diagnostic(emitted: parent)
+      )
   }
 }
 fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
@@ -287,16 +293,23 @@ fn grammar_serialize_source_matches_row(
     bind_outcome(
       o: grammar_relation_row_tokens_root(row: row),
       f: fn(tokens_root) {
-        if conj_positional_target_lists_equal(
-          a: conj_positional_targets(parent: serialize_source),
-          b: conj_positional_targets(parent: tokens_root)
-        ) {
-          Accepted { value: serialize_source, diagnostics: None }
-        } else {
-          outcome_rejected(
-            translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
-          )
-        }
+        bind_outcome(
+          o: conj_positional_targets(parent: serialize_source),
+          f: fn(source_targets) {
+            bind_outcome(
+              o: conj_positional_targets(parent: tokens_root),
+              f: fn(row_targets) {
+                if conj_positional_target_lists_equal(a: source_targets, b: row_targets) {
+                  Accepted { value: serialize_source, diagnostics: None }
+                } else {
+                  outcome_rejected(
+                    translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
+                  )
+                }
+              }
+            )
+          }
+        )
       }
     )
   } else {
@@ -484,9 +497,11 @@ fn target_serialize_source_from_model(
               bind_outcome(
                 o: grammar_relation_row_tokens_root(row: row),
                 f: fn(tokens_root) {
-                  token_sequence_to_source(
-                    tokens: conj_positional_targets(parent: tokens_root),
-                    target: target
+                  bind_outcome(
+                    o: conj_positional_targets(parent: tokens_root),
+                    f: fn(tokens) {
+                      token_sequence_to_source(tokens: tokens, target: target)
+                    }
                   )
                 }
               )
