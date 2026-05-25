@@ -109,6 +109,7 @@ data grammar_production_expression_node_projection: Symbol = grammar_production_
 data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
+data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
 data grammar_production_identity_node_projection: Symbol = grammar_production_identity_node_projection
 data grammar_production_captured_node_projection: Symbol = grammar_production_captured_node_projection
 
@@ -328,6 +329,12 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 
 
+// 🟡 gated — P2-boundary-dissolution interim — feature: grammar-root-node-projection-completeness —
+// GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure { member: fn(Symbol) -> Bool };
+// the Node substrate has no edge kind for function values, so sync_tokens cannot be materialized
+// as a Node child. The projection constant grammar_root_sync_tokens_node_projection is declared
+// above to name the intended edge. Dissolve-on: substrate literal-value edge support for
+// predicate sets, or Set<Symbol> reified as an explicit membership list type.
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
