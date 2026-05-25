@@ -27,10 +27,12 @@ import v4.compiler.parse {
   grammar_has_duplicate_productions,
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
+  grammar_validate_for_parse,
   parse_production,
-  parse_skip_to_sync
+  parse_skip_to_sync,
+  parse_stage_locus_port
 }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
 import v4.std.algebra { Cons, Empty }
 import v4.std.collection { List }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -164,11 +166,16 @@ data validation_one_token_list: List<Token> = Cons { head: validation_token(clas
 
 
 fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
-  parse_production(
-    tokens: validation_one_token_list,
-    root: validation_right_recursive_root,
-    production_name: validation_rec_start
-  )
+  let at = port_locus(port: parse_stage_locus_port)
+  match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_production(
+        tokens: validation_one_token_list,
+        validated: validated,
+        production_name: validation_rec_start
+      )
+  }
 }
 
 

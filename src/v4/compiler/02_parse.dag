@@ -770,6 +770,23 @@ fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
 }
 
 
+fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
+  if grammar_has_undefined_nonterminals(root: root) {
+    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+  } else {
+    if grammar_has_duplicate_productions(root: root) {
+      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
+    } else {
+      if grammar_has_left_recursion(root: root) {
+        Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+      } else {
+        Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
+      }
+    }
+  }
+}
+
+
 // --- Diagnostic list helpers ---
 
 fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
@@ -1070,7 +1087,8 @@ fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
 }
 
 
-fn parse_production(tokens: List<Token>, root: GrammarRoot, production_name: Symbol) -> Outcome<ParseTree> {
+fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, production_name: Symbol) -> Outcome<ParseTree> {
+  let root = validated.root
   let at = port_locus(port: parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
     GrammarProductionFound { production: production } =>
@@ -1125,18 +1143,10 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
       ModeledGrammar { root: root } =>
-        if grammar_has_undefined_nonterminals(root: root) {
-          Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
-        } else {
-          if grammar_has_duplicate_productions(root: root) {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
-          } else {
-            if grammar_has_left_recursion(root: root) {
-              Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
-            } else {
-              parse_production(tokens: tokens.tokens, root: root, production_name: root.start)
-            }
-          }
+        match grammar_validate_for_parse(root: root, at: at) {
+          Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+          Accepted { value: validated, diagnostics: _ } =>
+            parse_production(tokens: tokens.tokens, validated: validated, production_name: root.start)
         }
     }
   }
