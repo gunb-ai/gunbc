@@ -756,7 +756,22 @@ fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> Pars
         GrammarProductionMissing =>
           ParseExprRejected { diagnostics: [] }
         GrammarProductionFound { production: production } =>
-          parse_expr(expr: production.expression, tokens: tokens, root: root)
+          match parse_expr(expr: production.expression, tokens: tokens, root: root) {
+            ParseExprRejected { diagnostics: diags } =>
+              ParseExprRejected { diagnostics: diags }
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+              ParseExprAccepted {
+                remaining: remaining,
+                captured: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
+                    grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+                  ]
+                },
+                diagnostics: diags
+              }
+          }
       }
     Sequence { left: left, right: right } =>
       match parse_expr(expr: left, tokens: tokens, root: root) {
