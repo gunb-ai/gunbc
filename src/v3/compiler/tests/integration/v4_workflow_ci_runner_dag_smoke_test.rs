@@ -15,13 +15,15 @@
 //! this hand-Rust parse harness.
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
 use v3_compiler::tokenize_for_test;
 
 const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
 const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
 const CI_YML_PATH: &str = ".github/workflows/ci.yml";
+const M1_BINDING_TEST_FILTER: &str =
+    "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
@@ -78,6 +80,79 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
         } => item_name == name,
         _ => false,
     })
+}
+
+fn data_body<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a SurfaceExpr {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::Data {
+                name: item_name,
+                body: Some(body),
+                ..
+            } if item_name == name => Some(body),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing data body `{name}`"))
+}
+
+fn record_body_field<'a>(body: &'a SurfaceExpr, field_name: &str) -> &'a SurfaceExpr {
+    let SurfaceExpr::Record { fields, .. } = body else {
+        panic!("expected record body, got {body:?}");
+    };
+    fields
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|SurfaceRecordField { value, .. }| value)
+        .unwrap_or_else(|| panic!("record body missing `{field_name}` field"))
+}
+
+fn expr_string(expr: &SurfaceExpr) -> &str {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::String(value),
+            ..
+        } => value,
+        other => panic!("expected string literal expr, got {other:?}"),
+    }
+}
+
+fn expr_int(expr: &SurfaceExpr) -> i64 {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::Int(value),
+            ..
+        } => value
+            .parse()
+            .unwrap_or_else(|_| panic!("expected int literal expr, got non-integer `{value}`")),
+        other => panic!("expected int literal expr, got {other:?}"),
+    }
+}
+
+fn expr_bool(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::Bool(value),
+            ..
+        } => *value,
+        SurfaceExpr::Var { name, .. } if name == "true" => true,
+        SurfaceExpr::Var { name, .. } if name == "false" => false,
+        other => panic!("expected bool literal expr, got {other:?}"),
+    }
+}
+
+fn workflow_step_block<'a>(workflow_yml: &'a str, step_name: &str) -> &'a str {
+    let marker = format!("    - name: {step_name}");
+    let start = workflow_yml
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{CI_YML_PATH}: missing workflow step `{step_name}`"));
+    let rest = &workflow_yml[start..];
+    let end = rest.find("\n    - name: ").unwrap_or(rest.len());
+    &rest[..end]
 }
 
 fn surface_declares_test_claim_data(
@@ -154,6 +229,79 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
     assert!(
         CI_DAG.contains("test_claim_ci_selection_fail_closed(c: claim)"),
         "{CI_DAG_PATH}: DiagnosticClaim rows must bypass narrow filter via fail-closed guard"
+    );
+}
+
+#[test]
+fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::TypeSum { name, .. } if name == "CiCommand"
+        )),
+        "{CI_DAG_PATH}: CiCommand must exist"
+    );
+    assert!(
+        CI_DAG.contains("| M1RustEmitProbeCommand"),
+        "{CI_DAG_PATH}: M1 probe must be a CiCommand arm"
+    );
+    assert!(
+        CI_DAG.contains("feature:project-github-actions-landed")
+            && CI_DAG.contains("consumer:v4.workflow.ci m1_ci_live_workflow_signal")
+            && CI_DAG.contains("bind src/v4/TASKS.md T-24"),
+        "{CI_DAG_PATH}: M1 live-workflow bridge must carry checkable P5 dissolution tags"
+    );
+    assert!(
+        surface_declares_fn(&module, "ci_command_authority_ok"),
+        "{CI_DAG_PATH}: command authority must cover M1RustEmitProbeCommand"
+    );
+    assert!(
+        CI_DAG.contains("M1RustEmitProbeCommand => true"),
+        "{CI_DAG_PATH}: M1 probe command must pass authority check"
+    );
+    assert!(
+        CI_DAG.contains("id: m1_rust_emit_probe_execution")
+            && CI_DAG.contains("id: m1_rust_emit_probe_signal"),
+        "{CI_DAG_PATH}: ci_pipeline must declare M1 job and gate"
+    );
+    let live_signal = data_body(&module, "m1_ci_live_workflow_signal");
+    let binding_smoke_step_name =
+        expr_string(record_body_field(live_signal, "binding_smoke_step_name"));
+    let step_name = expr_string(record_body_field(live_signal, "step_name"));
+    let script_path = expr_string(record_body_field(live_signal, "script_path"));
+    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
+    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
+    let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
+    assert!(
+        binding_smoke_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
+        )),
+        "{CI_YML_PATH}: `{binding_smoke_step_name}` must execute the M1 model/YAML binding receipt (gunbc#846 zero-test-filter bypass)"
+    );
+    let m1_step = workflow_step_block(CI_YML, step_name);
+    assert!(
+        m1_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run for v4 and workflow-policy changes"
+    );
+    if non_blocking {
+        assert!(
+            m1_step.contains("continue-on-error: true"),
+            "{CI_YML_PATH}: `{step_name}` must set continue-on-error when modeled non_blocking is true"
+        );
+    } else {
+        assert!(
+            !m1_step.contains("continue-on-error: true"),
+            "{CI_YML_PATH}: `{step_name}` must not set continue-on-error when modeled non_blocking is false"
+        );
+    }
+    assert!(
+        m1_step.contains(&format!("timeout-minutes: {timeout_minutes}")),
+        "{CI_YML_PATH}: `{step_name}` must set timeout-minutes from modeled timeout_minutes"
+    );
+    assert!(
+        m1_step.contains(&format!("run: bash {script_path}")),
+        "{CI_YML_PATH}: `{step_name}` must invoke the modeled probe script"
     );
 }
 
