@@ -12,6 +12,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod b1_hash_primitive_test;
+#[cfg(test)]
 mod bootstrap;
 #[cfg(test)]
 mod bug_sentinel_ratchet;

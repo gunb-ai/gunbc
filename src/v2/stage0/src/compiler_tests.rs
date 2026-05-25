@@ -686,6 +686,10 @@ mod compiler_tests {
             coerce_primitive_type(RenderTarget::Rust, "Json".into()),
             "serde_json::Value"
         );
+        assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Hash".into()),
+            "v2_rt::Hash"
+        );
     }
 
     #[test]
@@ -860,6 +864,7 @@ mod compiler_tests {
         assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
+        assert_eq!(is_copy(RenderTarget::Rust, "Hash".into()), Some(false));
     }
 
     #[test]
