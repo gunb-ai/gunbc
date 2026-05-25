@@ -1,6 +1,6 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node, algebra_connective_is_atom, algebra_ref_is_grounded, infer_algebra_ref_ungrounded, infer_algebra_ref_ungrounded_diagnostic.
+// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node, algebra_ref_is_grounded, infer_algebra_ref_ungrounded, infer_algebra_ref_ungrounded_diagnostic.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: T-9 modeled — coercion substrate in std/coercion.dag. Option B: canonical_grounding_from_inferred_facts fails-closed on bare-Atom algebra references (bridge-symbol guard).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
@@ -138,20 +138,16 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
 }
 
 
-fn algebra_connective_is_atom(c: Connective) -> Bool {
-  match c {
-    Atom { identity: _ } => true
-    _ => false
-  }
-}
-
-
-// Returns false when `algebra` is a bare Atom (bridge symbol standing in for a real algebra Node).
-// A bare Atom has no structure for the coercion fold to walk — passing it through would make
-// AlgebraInhabitanceDecl.algebra unverifiable at T-9 execution time.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
+// feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded
+// dissolve-on-arrival: std/node.dag or std/model_core.dag exports a canonical structural
+// query for "algebra Node is grounded" (non-bare-Atom); until then, this is the only guard
+// site in canonical_grounding_from_inferred_facts.
+// Returns false when `algebra` is a bare Atom TypeNode — a bridge symbol or identity-MVP
+// solver return that has no structure for the coercion fold to walk.
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
-    TypeNode { connective: c } => !algebra_connective_is_atom(c: c)
+    TypeNode { connective: Atom { identity: _ } } => false
     _ => true
   }
 }
