@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, ListTailResult, list_tail, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, ListTailResult, list_tail, ordered_ring_node, approximate_field_node, boolean_algebra_node, free_monoid_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -10,7 +10,7 @@
 module v4.std.algebra
 
 
-import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -129,6 +129,319 @@ fn fold_list_node<T>(
         ]
       }
     }
+  )
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+data algebra_edge: Symbol = algebra_edge
+data inhabitant_edge: Symbol = inhabitant_edge
+data magma_field_op: Symbol = magma_field_op
+data semigroup_field_magma: Symbol = semigroup_field_magma
+data monoid_field_semigroup: Symbol = monoid_field_semigroup
+data monoid_field_identity: Symbol = monoid_field_identity
+data group_field_monoid: Symbol = group_field_monoid
+data group_field_inverse: Symbol = group_field_inverse
+data abelian_group_field_group: Symbol = abelian_group_field_group
+data ring_field_add: Symbol = ring_field_add
+data ring_field_mul: Symbol = ring_field_mul
+data ordered_ring_field_ring: Symbol = ordered_ring_field_ring
+data ordered_ring_field_compare: Symbol = ordered_ring_field_compare
+data approximate_field_field_add: Symbol = approximate_field_field_add
+data approximate_field_field_zero: Symbol = approximate_field_field_zero
+data approximate_field_field_negate: Symbol = approximate_field_field_negate
+data approximate_field_field_mul: Symbol = approximate_field_field_mul
+data approximate_field_field_one: Symbol = approximate_field_field_one
+data approximate_field_field_compare: Symbol = approximate_field_field_compare
+data lattice_field_meet: Symbol = lattice_field_meet
+data lattice_field_join: Symbol = lattice_field_join
+data bounded_lattice_field_lattice: Symbol = bounded_lattice_field_lattice
+data bounded_lattice_field_top: Symbol = bounded_lattice_field_top
+data bounded_lattice_field_bottom: Symbol = bounded_lattice_field_bottom
+data boolean_algebra_field_bounded_lattice: Symbol = boolean_algebra_field_bounded_lattice
+data boolean_algebra_field_complement: Symbol = boolean_algebra_field_complement
+data ordering_variant_less: Symbol = ordering_variant_less
+data ordering_variant_equal: Symbol = ordering_variant_equal
+data ordering_variant_greater: Symbol = ordering_variant_greater
+data free_monoid_variant_empty: Symbol = free_monoid_variant_empty
+data free_monoid_variant_cons: Symbol = free_monoid_variant_cons
+data free_monoid_field_head: Symbol = free_monoid_field_head
+data free_monoid_field_tail: Symbol = free_monoid_field_tail
+data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
+
+
+fn algebra_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [] }
+}
+
+
+// 🟡 needs-more-work — feature:T-2-free-monoid-equirecursive-tail — bind node://adhoc-82b64410-d48 — dissolve-on: std/ gains an equi-recursive type carrier or mu-fixpoint connective that can represent FreeMonoid<T>'s self-referential Cons.tail directly without a fixpoint-marker placeholder (ledger: T-2 · TASKS.md §T-2)
+fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Named { name: free_monoid_type_fixpoint }, target: algebra_empty_conj() },
+      ],
+    },
+    inhabitant: inhabitant,
+  )
+}
+
+
+fn free_monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Named { name: free_monoid_variant_empty }, target: algebra_empty_conj() },
+      Edge {
+        label: Named { name: free_monoid_variant_cons },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Named { name: free_monoid_field_head }, target: inhabitant },
+            Edge {
+              label: Named { name: free_monoid_field_tail },
+              target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
+            },
+          ]
+        },
+      },
+    ]
+  }
+}
+
+
+fn algebra_binary_fn_node(domain: Node, codomain: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: domain },
+      Edge { label: Positional, target: domain },
+      Edge { label: Positional, target: codomain },
+    ]
+  }
+}
+
+
+fn algebra_unary_fn_node(domain: Node, codomain: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: domain },
+      Edge { label: Positional, target: codomain },
+    ]
+  }
+}
+
+
+fn ordering_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Named { name: ordering_variant_less }, target: algebra_empty_conj() },
+      Edge { label: Named { name: ordering_variant_equal }, target: algebra_empty_conj() },
+      Edge { label: Named { name: ordering_variant_greater }, target: algebra_empty_conj() },
+    ]
+  }
+}
+
+
+fn magma_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: magma_field_op },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+    ]
+  }
+}
+
+
+fn semigroup_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: semigroup_field_magma }, target: magma_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
+fn monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: monoid_field_semigroup }, target: semigroup_type_node(inhabitant: inhabitant) },
+      Edge { label: Named { name: monoid_field_identity }, target: inhabitant },
+    ]
+  }
+}
+
+
+fn group_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: group_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
+      Edge {
+        label: Named { name: group_field_inverse },
+        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+    ]
+  }
+}
+
+
+fn abelian_group_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: abelian_group_field_group }, target: group_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
+fn ring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
+      Edge { label: Named { name: ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
+fn ordered_ring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ordered_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
+      Edge {
+        label: Named { name: ordered_ring_field_compare },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
+      },
+    ]
+  }
+}
+
+
+fn approximate_field_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: approximate_field_field_add },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+      Edge { label: Named { name: approximate_field_field_zero }, target: inhabitant },
+      Edge {
+        label: Named { name: approximate_field_field_negate },
+        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+      Edge {
+        label: Named { name: approximate_field_field_mul },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+      Edge { label: Named { name: approximate_field_field_one }, target: inhabitant },
+      Edge {
+        label: Named { name: approximate_field_field_compare },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: ordering_type_node())
+      },
+    ]
+  }
+}
+
+
+fn lattice_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: lattice_field_meet },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+      Edge {
+        label: Named { name: lattice_field_join },
+        target: algebra_binary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+    ]
+  }
+}
+
+
+fn bounded_lattice_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: bounded_lattice_field_lattice }, target: lattice_type_node(inhabitant: inhabitant) },
+      Edge { label: Named { name: bounded_lattice_field_top }, target: inhabitant },
+      Edge { label: Named { name: bounded_lattice_field_bottom }, target: inhabitant },
+    ]
+  }
+}
+
+
+fn boolean_algebra_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: boolean_algebra_field_bounded_lattice },
+        target: bounded_lattice_type_node(inhabitant: inhabitant)
+      },
+      Edge {
+        label: Named { name: boolean_algebra_field_complement },
+        target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
+      },
+    ]
+  }
+}
+
+
+fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: algebra_edge }, target: algebra },
+      Edge { label: Named { name: inhabitant_edge }, target: inhabitant },
+    ]
+  }
+}
+
+
+fn ordered_ring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: ordered_ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn approximate_field_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: approximate_field_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn boolean_algebra_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn free_monoid_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: free_monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
   )
 }
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Empty-variant discriminant projection; forbidden: fold_list laundering.
@@ -282,8 +595,6 @@ fn is_prefix_of<T>(
       }
   }
 }
-
-
 
 
 type PointwisePower<T> {
