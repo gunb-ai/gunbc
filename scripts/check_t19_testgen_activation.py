@@ -20,6 +20,8 @@ TESTGEN = ROOT / "src/v4/lens/testgen.dag"
 EFFECTS = ROOT / "src/v4/std/effects.dag"
 LBE_GENERATED = ROOT / "src/v4/test/claim/generated/language_behavior_equivalence.dag"
 LBE_MANIFEST = ROOT / "src/v4/test/claim/generated/lbe_anchor_manifest.dag"
+GENERATOR_WISHLIST = ROOT / "src/v4/test/claim/generated/testgen_category_wishlist.dag"
+ALGEBRA_GENERATED = ROOT / "src/v4/test/claim/generated/algebra_law_conformance.dag"
 COPRODUCT_EXHAUSTIVENESS_GENERATED = (
     ROOT / "src/v4/test/claim/generated/coproduct_exhaustiveness.dag"
 )
@@ -46,6 +48,12 @@ def _require_substrings(label: str, text: str, needles: tuple[str, ...]) -> None
         raise SystemExit(f"{label}: missing required substrings: {missing!r}")
 
 
+def _forbid_substrings(label: str, text: str, needles: tuple[str, ...]) -> None:
+    present = [n for n in needles if n in text]
+    if present:
+        raise SystemExit(f"{label}: forbidden substrings present: {present!r}")
+
+
 def main() -> None:
     for path in (
         TESTGEN,
@@ -53,6 +61,8 @@ def main() -> None:
         EFFECTS,
         LBE_GENERATED,
         LBE_MANIFEST,
+        GENERATOR_WISHLIST,
+        ALGEBRA_GENERATED,
         REFINEMENT_GENERATED,
         REFINEMENT_MANIFEST,
         IDEMPOTENT_OPERATION_GENERATED,
@@ -64,6 +74,8 @@ def main() -> None:
     effects = _read(EFFECTS)
     lbe = _read(LBE_GENERATED)
     manifest = _read(LBE_MANIFEST)
+    wishlist = _read(GENERATOR_WISHLIST)
+    algebra = _read(ALGEBRA_GENERATED)
     coproduct_exhaustiveness = _read(COPRODUCT_EXHAUSTIVENESS_GENERATED)
     refinement = _read(REFINEMENT_GENERATED)
     refinement_manifest = _read(REFINEMENT_MANIFEST)
@@ -78,6 +90,18 @@ def main() -> None:
             "type FrozenLanguageBehaviorSnapshot",
             "type LanguageBehaviorIoMock",
             "fn testgen_emit_language_behavior_equivalence_claim",
+            "fn testgen_emit_algebra_law_claim",
+            "if lhs == rhs",
+            "t19_algebra_law_tautological_sides",
+            "type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }",
+            "fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase>",
+            "fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject>",
+            "algebra_law_anchor_mismatch",
+            "match algebra_law_manual_claim_case(anchor: anchor)",
+            "match algebra_law_subject_for_manual_anchor(anchor: manual_anchor)",
+            "fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node",
+            "lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs)",
+            "rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs)",
             "fn testgen_emit_idempotent_operation_claim",
             "fn testgen_scheduled_language_behavior_generators",
             "fn testgen_scheduled_idempotent_operation_subjects",
@@ -164,11 +188,78 @@ def main() -> None:
     )
 
     _require_substrings(
+        "testgen_category_wishlist.dag",
+        wishlist,
+        (
+            "fn testgen_pending_non_tautological_generator_wishlist",
+            "fn testgen_dispatched_non_tautological_generators",
+            "kind: TestClaimCompilesClaimVariant",
+            "kind: TestClaimDiagnosticClaimVariant",
+            "kind: TestClaimEqualsClaimVariant",
+            "kind: TestClaimRoundTripClaimVariant",
+            "type TestgenOracleBasis",
+            "StructuralConstructionWitness",
+            "AlgebraLawWitness",
+            "DiagnosticNegativeFixture",
+            "LensObservationFixture",
+            "RoundTripDifferential",
+            "FrozenIoSnapshot",
+            "RefinementProjectionWitness",
+            "dispatch_key: Symbol",
+            "feature:t19-generator-oracle-basis-carrier",
+            "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            "dissolve-on-arrival: delete TestgenOracleBasis",
+            "data claim_testgen_wishlist_formalized: TestClaim",
+            "generated_claim_anchor",
+            "GeneratedCoproductExhaustiveness",
+        ),
+    )
+
+    _require_substrings(
+        "algebra_law_conformance.dag",
+        algebra,
+        (
+            "testgen_emit_algebra_law_claim",
+            "Nat,",
+            "nat_add,",
+            "nat_mul",
+            "feature:t19-nat-expression-node-encoding",
+            "generated_nat_add_left_identity_claim",
+            "generated_nat_add_associativity_claim",
+            "generated_nat_mul_annihilator_claim",
+            "fn t19_generated_nat_add",
+            "fn t19_generated_nat_mul",
+            "operation: algebra_law_generated_nat_add_application",
+            "operation: algebra_law_generated_nat_mul_application",
+            "result: nat_add(a: t19_generated_nat_zero_value(), b: t19_generated_nat_one_value())",
+            "rhs: t19_generated_nat_one()",
+            "result: nat_mul(a: t19_generated_nat_zero_value(), b: t19_generated_nat_three_value())",
+            "rhs: t19_generated_nat_zero()",
+            "fn generated_algebra_law_claim_rows",
+            "length(xs: generated_algebra_law_claim_rows()) == 3",
+        ),
+    )
+    _forbid_substrings(
+        "algebra_law_conformance.dag",
+        algebra,
+        (
+            "nat_algebra_law_subject_symbol_add_operation",
+            "nat_algebra_law_subject_symbol_mul_operation",
+            "nat_algebra_law_subject_symbol_zero_value",
+            "nat_algebra_law_subject_symbol_one_value",
+            "nat_algebra_law_subject_symbol_two_value",
+            "nat_algebra_law_subject_symbol_three_value",
+        ),
+    )
+
+    _require_substrings(
         "coproduct_exhaustiveness.dag",
         coproduct_exhaustiveness,
         (
             "fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>",
             "testgen_emit_coproduct_exhaustiveness_claim",
+            "GeneratedCoproductExhaustiveness { omitted_variant",
+            "omitted_variant: requested_variant",
             "GeneratedCoproductExhaustiveness { omitted_variant: _ }",
             "witness_coproduct_exhaustiveness_diagnostic_claim",
             "witness_coproduct_exhaustiveness_uses_generated_anchor",
@@ -233,6 +324,42 @@ def main() -> None:
             "IdempotentOperationSubject must stay outside the closed seven-way TestgenConcept coproduct"
         )
 
+    pending_rows = wishlist.split("fn testgen_pending_non_tautological_generator_wishlist")[1].split(
+        "fn testgen_dispatched_non_tautological_generators"
+    )[0]
+    if pending_rows.count("TestgenWishlistRow {") != 3:
+        raise SystemExit("generator wishlist must carry exactly three pending non-dispatched rows")
+    for shipped_slot in ("slot: AlgebraLaw", "slot: DiagnosticExhaustiveness"):
+        if shipped_slot in pending_rows:
+            raise SystemExit(f"{shipped_slot} has generated rows and must stay out of pending wishlist rows")
+
+    dispatched_rows = wishlist.split("fn testgen_dispatched_non_tautological_generators")[1].split(
+        "fn pending_non_tautological_generator_count_is_three"
+    )[0]
+    if dispatched_rows.count("TestgenWishlistRow {") != 4:
+        raise SystemExit("generator wishlist must carry exactly four dispatched rows")
+    if (
+        "generator: dispatched_language_behavior_equivalence_generator()" not in dispatched_rows
+        or "generator: dispatched_algebra_law_generator()" not in dispatched_rows
+        or "generator: dispatched_diagnostic_exhaustiveness_generator()" not in dispatched_rows
+        or "generator: dispatched_refinement_preservation_generator()" not in dispatched_rows
+    ):
+        raise SystemExit("dispatched wishlist rows must include LBE, AlgebraLaw, DiagnosticExhaustiveness, and RefinementPreservation")
+    if "ManualNatAddAssociativity" not in wishlist:
+        raise SystemExit("dispatched AlgebraLaw wishlist row must carry the emitted algebra-law anchor")
+    if "GeneratedCoproductExhaustiveness" not in wishlist:
+        raise SystemExit("dispatched DiagnosticExhaustiveness wishlist row must carry the emitted generated anchor")
+    diagnostic_generator = wishlist.split("fn dispatched_diagnostic_exhaustiveness_generator")[1].split(
+        "fn wishlist_lens_applicability_generator"
+    )[0]
+    if "classification: TestClassification { tier: Tier1, layer: Unit }" not in diagnostic_generator:
+        raise SystemExit("dispatched DiagnosticExhaustiveness wishlist row must match emitted Tier1 classification")
+    if "ManualRefinementNonEmptyListBase" not in wishlist:
+        raise SystemExit("dispatched RefinementPreservation wishlist row must carry the emitted refinement anchor")
+
+    if algebra.count("data generated_nat_") < 3:
+        raise SystemExit("algebra-law generator must produce at least three sample TestClaim rows")
+
     _require_substrings(
         "effects.dag",
         effects,
@@ -259,7 +386,8 @@ def main() -> None:
 
     print(
         "OK: T-19 testgen activation "
-        "(LBE + refinement-preservation + idempotent-operation + coproduct-exhaustiveness generated receipts)."
+        "(LBE + algebra-law + refinement-preservation + idempotent-operation + "
+        "coproduct-exhaustiveness generated receipts)."
     )
 
 

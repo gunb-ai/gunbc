@@ -125,6 +125,7 @@ import v4.std.verification {
   Unit,
   generated_claim_anchor,
   manual_claim_anchor,
+  test_claim_coproduct_variant,
   test_claim_classification,
   test_claim_anchor
 }
@@ -175,6 +176,10 @@ type TypeConstructionSubject
 
 
 type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
+
+
+type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }
+
 
 
 type LensApplicabilitySubject {
@@ -231,6 +236,7 @@ type TestgenConcept
 
 
 type Generator<C> {
+  kind: TestClaimCoproductVariant
   classification: TestClassification
   anchor: ClaimAnchorKey
   slot: C
@@ -363,6 +369,15 @@ data testgen_non_algebra_law_scheduled_slot: Symbol = testgen_non_algebra_law_sc
 
 
 data coproduct_exhaustiveness_missing_variant: Symbol = coproduct_exhaustiveness_missing_variant
+
+
+data t19_algebra_law_tautological_sides: Symbol = t19_algebra_law_tautological_sides
+data t19_algebra_law_subject_field: Symbol = t19_algebra_law_subject_field
+data t19_algebra_law_algebra_field: Symbol = t19_algebra_law_algebra_field
+data t19_algebra_law_inhabitant_field: Symbol = t19_algebra_law_inhabitant_field
+data t19_algebra_law_law_field: Symbol = t19_algebra_law_law_field
+data t19_algebra_law_expression_field: Symbol = t19_algebra_law_expression_field
+data algebra_law_anchor_mismatch: Symbol = algebra_law_anchor_mismatch
 
 
 data coproduct_exhaustiveness_testclaim_variant: Symbol = coproduct_exhaustiveness_testclaim_variant
@@ -635,6 +650,157 @@ fn testgen_emit_language_behavior_equivalence_claim(
       Rejected {
         diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()),
       }
+  }
+}
+
+
+fn testgen_emit_algebra_law_claim(
+  anchor: ManualAnchorKey,
+  label: String,
+  lhs: Node,
+  rhs: Node,
+  classification: TestClassification
+) -> Outcome<TestClaim> {
+  if lhs == rhs {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: t19_algebra_law_tautological_sides,
+          at: Textual { file: testgen_lens_file, extent: WholeFile },
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  } else {
+    match algebra_law_manual_claim_case(anchor: anchor) {
+      Accepted { value: law_case, diagnostics: None } =>
+        Accepted {
+          value: EqualsClaim {
+            label: label,
+            anchor: law_case.anchor,
+            lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs),
+            rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs),
+            classification: classification,
+          },
+          diagnostics: None,
+        }
+      Rejected { diagnostics: d } =>
+        Rejected { diagnostics: d }
+    }
+  }
+}
+
+
+fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase> {
+  match algebra_law_subject_for_manual_anchor(anchor: anchor) {
+    Accepted { value: subject, diagnostics: None } =>
+      Accepted {
+        value: AlgebraLawCase {
+          anchor: manual_claim_anchor(anchor: anchor),
+          subject: subject,
+        },
+        diagnostics: None,
+      }
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+
+fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject> {
+  match anchor {
+    ManualNatAddLeftIdentity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_add_left_identity,
+        },
+        diagnostics: None,
+      }
+    ManualNatAddRightIdentity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_add_right_identity,
+        },
+        diagnostics: None,
+      }
+    ManualNatAddAssociativity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_additive_monoid,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_add_associativity,
+        },
+        diagnostics: None,
+      }
+    ManualNatMulLeftIdentity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_mul_left_identity,
+        },
+        diagnostics: None,
+      }
+    ManualNatMulAnnihilator =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_mul_annihilator,
+        },
+        diagnostics: None,
+      }
+    ManualNatMulAssociativity =>
+      Accepted {
+        value: AlgebraLawSubject {
+          algebra: nat_algebra_law_subject_symbol_commutative_semiring,
+          inhabitant: nat_algebra_law_subject_symbol_inhabitant_nat,
+          law: law_nat_mul_associativity,
+        },
+        diagnostics: None,
+      }
+    _ =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: algebra_law_anchor_mismatch,
+            at: Textual { file: testgen_lens_file, extent: WholeFile },
+            correction: Unavailable { reason: UserInputBoundary }
+          }
+        )
+      }
+  }
+}
+
+
+fn algebra_law_subject_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn algebra_law_subject_node(subject: AlgebraLawSubject) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: t19_algebra_law_algebra_field }, target: algebra_law_subject_atom(s: subject.algebra) },
+      Edge { label: Named { name: t19_algebra_law_inhabitant_field }, target: algebra_law_subject_atom(s: subject.inhabitant) },
+      Edge { label: Named { name: t19_algebra_law_law_field }, target: algebra_law_subject_atom(s: subject.law) },
+    ]
+  }
+}
+
+
+fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: t19_algebra_law_subject_field }, target: algebra_law_subject_node(subject: subject) },
+      Edge { label: Named { name: t19_algebra_law_expression_field }, target: expression },
+    ]
   }
 }
 
@@ -1061,6 +1227,7 @@ fn testgen_emit_witness_validity_claim(
 fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
+      kind: TestClaimCompilesClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeConjDagSurface),
       slot: LanguageBehaviorEquivalence {
@@ -1069,6 +1236,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       },
     },
     Generator {
+      kind: TestClaimCompilesClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeDisjDagSurface),
       slot: LanguageBehaviorEquivalence {
@@ -1077,6 +1245,7 @@ fn testgen_scheduled_language_behavior_generators() -> List<Generator<TestgenCon
       },
     },
     Generator {
+      kind: TestClaimCompilesClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: manual_claim_anchor(anchor: ManualLbeTransformDagSurface),
       slot: LanguageBehaviorEquivalence {
@@ -1554,6 +1723,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
   [
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_compiles()
@@ -1561,6 +1731,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimCompilesClaimVariant },
     },
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_diagnostic()
@@ -1568,6 +1739,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimDiagnosticClaimVariant },
     },
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_equals()
@@ -1575,6 +1747,7 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
       slot: DiagnosticExhaustiveness { omitted_variant: TestClaimEqualsClaimVariant },
     },
     Generator {
+      kind: TestClaimDiagnosticClaimVariant,
       classification: TestClassification { tier: Tier1, layer: Unit },
       anchor: generated_claim_anchor(
         anchor: coproduct_exhaustiveness_subject_testclaim_roundtrip()
@@ -1746,6 +1919,17 @@ fn testgen_concept_for_manual_claim(claim: TestClaim) -> Outcome<TestgenConcept>
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }
+    ManualClaimAnchor { manual_anchor: manual_anchor } =>
+      match algebra_law_subject_for_manual_anchor(anchor: manual_anchor) {
+        Accepted { value: subject, diagnostics: None } =>
+          Accepted {
+            value: AlgebraLaw {
+              subject: subject,
+            },
+            diagnostics: None,
+          }
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+      }
   }
 }
 
@@ -1762,6 +1946,7 @@ fn bootstrap_claim_generator_for_manual_anchor(
         Accepted { value: slot, diagnostics: d1 } =>
           Accepted {
             value: Generator {
+              kind: test_claim_coproduct_variant(c: claim),
               classification: test_claim_classification(c: claim),
               anchor: test_claim_anchor(c: claim),
               slot: slot

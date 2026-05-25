@@ -20,9 +20,11 @@ import v4.compiler.eval {
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree
+}
+import v4.test.claim.lens_common.infer_fixture {
+  claim_inferred_facts_from_nodes
 }
 import v4.std.collection { List, Map }
 import v4.std.node {
@@ -69,11 +71,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.witness { Holds, StructuralPropertyWitness, Violates }
+import v4.std.witness { Holds, Violates }
 import v4.workflow.bootstrap { v4_stage0_binary }
 import v4.workflow.ci {
   Always,
@@ -169,7 +170,6 @@ data pipeline_resources: Symbol = pipeline_resources
 data pipeline_extdeps: Symbol = pipeline_extdeps
 data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
-data inferred_algebra_witness_symbol: Symbol = inferred_algebra_witness_symbol
 data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 // 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
 // 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
@@ -248,37 +248,19 @@ fn pipeline_interpretation() -> InterpretationAlgebra {
 }
 
 
-fn workflow_inferred_algebra_ref() -> AlgebraRef {
-  AlgebraRef {
-    algebra: pipeline_symbol_node(s: inferred_algebra_symbol),
-    witness: pipeline_symbol_node(s: inferred_algebra_witness_symbol)
-  }
-}
-
-
 fn workflow_inferred_facts() -> InferredFacts {
   let resolved = pipeline_symbol_node(s: inferred_type_symbol)
-  InferredFacts {
-    resolved_type: resolved,
-    inhabits: workflow_inferred_algebra_ref(),
+  claim_inferred_facts_from_nodes(
+    resolved: resolved,
+    algebra: pipeline_symbol_node(s: inferred_algebra_symbol),
     descent: Violates {
       diagnostic: Diagnostic {
         reason: inferred_descent_not_derived,
         at: node_locus(node: resolved),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
-    },
-    canonical: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
-        property: constraint_property_being_canonical,
-        evidence: resolved
-      },
-      closedness: StructuralPropertyWitness {
-        property: constraint_property_candidate_set_closedness,
-        evidence: resolved
-      }
     }
-  }
+  )
 }
 
 

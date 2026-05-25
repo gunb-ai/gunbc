@@ -43,6 +43,12 @@ const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
 const LBE_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
 const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const ALGEBRA_LAW_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/algebra_law_conformance.dag");
+const ALGEBRA_LAW_GENERATED_PATH: &str = "src/v4/test/claim/generated/algebra_law_conformance.dag";
+const TESTGEN_WISHLIST_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/testgen_category_wishlist.dag");
+const TESTGEN_WISHLIST_PATH: &str = "src/v4/test/claim/generated/testgen_category_wishlist.dag";
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
     include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
 const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
@@ -60,6 +66,181 @@ const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
 #[test]
 fn language_behavior_equivalence_generated_claims_parse() {
     parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn t19_algebra_law_generated_claims_parse_and_use_testgen_emit() {
+    parse_module(ALGEBRA_LAW_GENERATED_DAG, ALGEBRA_LAW_GENERATED_PATH);
+
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_emit_algebra_law_claim")
+            && TESTGEN_DAG.contains("if lhs == rhs")
+            && TESTGEN_DAG.contains("t19_algebra_law_tautological_sides")
+            && TESTGEN_DAG
+                .contains("type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }")
+            && TESTGEN_DAG.contains(
+                "fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node"
+            )
+            && TESTGEN_DAG
+                .contains("fn algebra_law_manual_claim_case(anchor: ManualAnchorKey) -> Outcome<AlgebraLawCase>")
+            && TESTGEN_DAG.contains(
+                "fn algebra_law_subject_for_manual_anchor(anchor: ManualAnchorKey) -> Outcome<AlgebraLawSubject>"
+            )
+            && TESTGEN_DAG.contains("match algebra_law_manual_claim_case(anchor: anchor)")
+            && TESTGEN_DAG.contains("match algebra_law_subject_for_manual_anchor(anchor: manual_anchor)")
+            && TESTGEN_DAG
+                .contains("lhs: algebra_law_claim_term(subject: law_case.subject, expression: lhs)")
+            && TESTGEN_DAG
+                .contains("rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs)")
+            && TESTGEN_DAG.contains("Rejected {")
+            && TESTGEN_DAG.contains("value: EqualsClaim {"),
+        "testgen must reject tautological algebra-law sides and derive AlgebraLawSubject from the checked algebra-law anchor"
+    );
+    assert!(
+        ALGEBRA_LAW_GENERATED_DAG.contains("testgen_emit_algebra_law_claim")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("Nat,")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_add,")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("nat_mul")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("feature:t19-nat-expression-node-encoding")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_left_identity_claim")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_add_associativity_claim")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("generated_nat_mul_annihilator_claim")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("length(xs: generated_algebra_law_claim_rows()) == 3"),
+        "algebra-law generator slice must produce at least three sample TestClaim rows"
+    );
+    assert!(
+        ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_add")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("fn t19_generated_nat_mul")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("operation: algebra_law_generated_nat_add_application")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("operation: algebra_law_generated_nat_mul_application")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("result: nat_add(a: t19_generated_nat_zero_value(), b: t19_generated_nat_one_value())")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_one()")
+            && ALGEBRA_LAW_GENERATED_DAG
+                .contains("result: nat_mul(a: t19_generated_nat_zero_value(), b: t19_generated_nat_three_value())")
+            && ALGEBRA_LAW_GENERATED_DAG.contains("rhs: t19_generated_nat_zero()"),
+        "algebra-law samples must route generated Nat expression results through canonical nat_add/nat_mul, not exported operation/value mirror symbols"
+    );
+    for forbidden in [
+        "nat_algebra_law_subject_symbol_add_operation",
+        "nat_algebra_law_subject_symbol_mul_operation",
+        "nat_algebra_law_subject_symbol_zero_value",
+        "nat_algebra_law_subject_symbol_one_value",
+        "nat_algebra_law_subject_symbol_two_value",
+        "nat_algebra_law_subject_symbol_three_value",
+    ] {
+        assert!(
+            !ALGEBRA_LAW_GENERATED_DAG.contains(forbidden),
+            "algebra-law generated corpus must not consume {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn t19_non_tautological_generator_wishlist_parse_and_pins_dispatch_rows() {
+    parse_module(TESTGEN_WISHLIST_DAG, TESTGEN_WISHLIST_PATH);
+
+    assert!(
+        TESTGEN_WISHLIST_DAG.contains("type TestgenOracleBasis")
+            && TESTGEN_WISHLIST_DAG
+                .contains("feature:t19-generator-oracle-basis-carrier")
+            && TESTGEN_WISHLIST_DAG.contains(
+                "bound task: src/v4/TASKS.md#t-19-lenstestgendag--producer-of-testclaim-corpus-from-substrate",
+            )
+            && TESTGEN_WISHLIST_DAG.contains("dissolve-on-arrival: delete TestgenOracleBasis")
+            && TESTGEN_WISHLIST_DAG.contains("StructuralConstructionWitness")
+            && TESTGEN_WISHLIST_DAG.contains("AlgebraLawWitness")
+            && TESTGEN_WISHLIST_DAG.contains("DiagnosticNegativeFixture")
+            && TESTGEN_WISHLIST_DAG.contains("LensObservationFixture")
+            && TESTGEN_WISHLIST_DAG.contains("RoundTripDifferential")
+            && TESTGEN_WISHLIST_DAG.contains("FrozenIoSnapshot")
+            && TESTGEN_WISHLIST_DAG.contains("RefinementProjectionWitness")
+            && TESTGEN_WISHLIST_DAG.contains("dispatch_key: Symbol"),
+        "T-19 wishlist rows must name an independent oracle basis plus a dispatch key"
+    );
+    assert!(
+        TESTGEN_WISHLIST_DAG.contains("generated_claim_anchor")
+            && TESTGEN_WISHLIST_DAG.contains("GeneratedCoproductExhaustiveness")
+            && TESTGEN_WISHLIST_DAG.contains("omitted_variant: TestClaimDiagnosticClaimVariant"),
+        "DiagnosticExhaustiveness dispatched row must use the generated coproduct-exhaustiveness anchor and omitted variant"
+    );
+
+    let pending = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_pending_non_tautological_generator_wishlist",
+        "fn testgen_dispatched_non_tautological_generators",
+    );
+    assert_eq!(
+        pending.matches("TestgenWishlistRow {").count(),
+        3,
+        "wishlist must dispatch the three pending non-dispatched TestgenConcept categories"
+    );
+    for generator in [
+        "generator: wishlist_type_construction_generator()",
+        "generator: wishlist_lens_applicability_generator()",
+        "generator: wishlist_bidirectional_roundtrip_generator()",
+    ] {
+        assert!(
+            pending.contains(generator),
+            "pending wishlist must include {generator}"
+        );
+    }
+    assert!(
+        !pending.contains("slot: LanguageBehaviorEquivalence"),
+        "LBE has already shipped generated runner receipts and must stay out of pending wishlist rows"
+    );
+    assert!(
+        !pending.contains("slot: AlgebraLaw"),
+        "AlgebraLaw has generated corpus rows and must stay out of pending wishlist rows"
+    );
+    assert!(
+        !pending.contains("slot: DiagnosticExhaustiveness"),
+        "DiagnosticExhaustiveness has generated corpus rows and must stay out of pending wishlist rows"
+    );
+
+    let dispatched = between(
+        TESTGEN_WISHLIST_DAG,
+        "fn testgen_dispatched_non_tautological_generators",
+        "fn pending_non_tautological_generator_count_is_three",
+    );
+    assert_eq!(
+        dispatched.matches("TestgenWishlistRow {").count(),
+        4,
+        "wishlist must record the four already-dispatched generator rows"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_language_behavior_equivalence_generator()")
+            && dispatched.contains("oracle: FrozenIoSnapshot"),
+        "dispatched row must keep LBE tied to the frozen I/O snapshot oracle"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_algebra_law_generator()")
+            && dispatched.contains("oracle: AlgebraLawWitness")
+            && TESTGEN_WISHLIST_DAG.contains("anchor: manual_claim_anchor(anchor: ManualNatAddAssociativity)"),
+        "dispatched row must keep AlgebraLaw tied to the emitted algebra-law anchor and witness oracle"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_diagnostic_exhaustiveness_generator()")
+            && dispatched.contains("oracle: DiagnosticNegativeFixture")
+            && dispatched.contains("dispatch_key: t19_dispatched_diagnostic_exhaustiveness")
+            && between(
+                TESTGEN_WISHLIST_DAG,
+                "fn dispatched_diagnostic_exhaustiveness_generator",
+                "fn wishlist_lens_applicability_generator",
+            )
+            .contains("classification: TestClassification { tier: Tier1, layer: Unit }"),
+        "dispatched row must keep DiagnosticExhaustiveness tied to the emitted diagnostic oracle and Tier1 emitted claim classification"
+    );
+    assert!(
+        dispatched.contains("generator: dispatched_refinement_preservation_generator()")
+            && dispatched.contains("oracle: RefinementProjectionWitness")
+            && TESTGEN_WISHLIST_DAG
+                .contains("anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase)"),
+        "dispatched row must keep RefinementPreservation tied to the emitted refinement anchor and projection witness oracle"
+    );
 }
 
 #[test]
@@ -298,11 +479,12 @@ fn testgen_concept_surface_stays_closed_and_classified() {
     assert_eq!(
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
+            ("kind", "TestClaimCoproductVariant"),
             ("classification", "TestClassification"),
             ("anchor", "ClaimAnchorKey"),
             ("slot", "C"),
         ]),
-        "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
+        "Generator<C> must carry claim kind, anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
     );
 }
 
@@ -731,6 +913,12 @@ fn record_field_expr<'a>(fields: &'a [SurfaceRecordField], name: &str) -> &'a Su
         .iter()
         .find_map(|field| (field.name == name).then_some(&field.value))
         .unwrap_or_else(|| panic!("missing record field {name}"))
+}
+
+fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
+    text.split_once(start)
+        .and_then(|(_, tail)| tail.split_once(end).map(|(middle, _)| middle))
+        .unwrap_or_else(|| panic!("missing expected span from {start:?} to {end:?}"))
 }
 
 fn assert_compile_stage(

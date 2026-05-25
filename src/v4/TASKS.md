@@ -483,6 +483,11 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 - `Symbol` binding (K-1): the use→def fact is *derived and carried
   forward at the resolve boundary itself*, not supplied out-of-band — the
   resolve stage contract is "identifier binding to declarations".
+- **Declared-binding bridge:** resolve currently infers declaration-ness from
+  structural position. This dissolves when `DeclaredBinding` lands in
+  `std/node.dag` or `std/binding.dag`, `03_normalize.dag` stamps it on
+  declaration nodes, and `03_resolve.dag` consumes that typed fact
+  exclusively.
 - The sugar-name authority is the `LanguageModel`'s, consumed — never
   re-minted in this stage (single-authority, Practice 5).
 - **CP-1b bucket C (native `.dag` LM):** `DagLanguageModel` carries
@@ -510,7 +515,7 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 - **The coercion fold** (rescoped 2026-05-17, D2-reversal — supersedes "algebra-homomorphism search algorithm"). Coercion is a **mechanical zip-fold** (a catamorphism) over two groundings — not a search, not research. It walks both canonical `Node` groundings in parallel and compares; `node.dag`'s B1-CANON contract `content_hash = merkle_fold ∘ canonical` already specifies the hard half (the canonical-form fold). Per `DECISIONS.md` U1 / C1 / T-9 the Find is **decidable by construction** over the closed declared candidate set — empty ⇒ Diagnostic, never a fabricated coercion. Name it the *coercion fold*; never an "engine" or "search algorithm".
 - **The coercion quality tag** *(rescoped 2026-05-20, operator-direct strict amendments — `Lossy` stripped + `Outcome` shape reconciled to ratified Q11 two-variant)*. The coercion result is the ratified `Outcome` carrier (`std/diagnostic.dag`), and **quality and outcome are distinct axes**. A *successful* coercion is `Outcome::Accepted { value, diagnostics: Diagnostics }` carrying the coerced value **plus a closed quality tag**: `Identity` (groundings coincide) | `Exact` (related, total, lossless). **`Lossy` is REMOVED from the quality tag** — a candidate target inhabitant that would lose information is NOT a valid structure-preserving homomorphism; the correct categorical answer is `Outcome::Rejected { diagnostics: NonEmptyDiagnostics }`, not a success-with-warning. Lossy operations exist as **explicit user-declared source operations** (e.g., `floor`, `int_truncate`, `widening_cast`) modeled like any other operation in `std/integer.dag` / `std/float.dag`; they are not a coercion-time category. This eliminates the success-with-warning failure mode at the substrate level (P3 fail-closed enforcement). A coercion that cannot be derived is `Outcome::Rejected { diagnostics: NonEmptyDiagnostics }` where each diagnostic in the list carries a `CoercionMismatchKind` payload: `CoercionMismatchKind = NoTargetCandidate | AmbiguousTargetCandidate | StructuralMismatch | WouldLoseInformation`. Fail-closed is **not** a quality value: it is the `Rejected` branch of `Outcome`. The quality tag attaches only to `Accepted`; never collapse the success-quality axis and the success/failure axis into one flat enum.
 - **The composition rule** *(rescoped 2026-05-20 — simplified lattice post-`Lossy` strip)*. When two *successful* coercions compose, their quality tags compose by a closed lattice: `Identity ∘ Identity = Identity`; `Identity ∘ Exact = Exact`; `Exact ∘ Identity = Exact`; `Exact ∘ Exact = Exact`. **No `Lossy` entry in the lattice** — any candidate that would be lossy is `Rejected` before reaching composition. If either coercion is `Rejected`, the composition is `Rejected` — `Outcome` short-circuits on the failure branch (the standard bind), so the failure axis needs no lattice entry. This is the audit's composition lattice in its simplest form; it lives here in T-9, not in a new task.
-- `type AlgebraRef { algebra: Node, witness: Node }` — `04_infer.dag`'s IR-1 `InferredFacts.inhabits` carries a typed boundary coordinate for algebra inhabitance while the full algebra authority is still pending. Declared here (Theme-A audit #2).
+- `type AlgebraRef { algebra: Node, witness: Node }` — `04_infer.dag`'s `InferredFacts.grounding` carries canonical grounding; `inferred_facts_algebra_ref` / `algebra_ref_from_grounding` project a typed boundary coordinate for algebra inhabitance while the full algebra authority is still pending. Declared here (Theme-A audit #2).
 - Cardinality propagation
 - Diagnostic precision when inference fails
 
@@ -561,6 +566,10 @@ if any emission step cannot be expressed as inverse grammar-data.)
 - How the `TargetModel`'s grammar drives emission **as the inverse walk**
   of the same relation parse (T-7) applies forward — the bidirectional
   relation is authored once, consumed in both directions.
+- `TargetModel.authority_source_text` / `*_source_literal` are fixed-point
+  anchors only. The bridge dissolves when no emit path reads
+  `authority_source_text`, or a P3 gate in `05_emit.dag` / `06_translate.dag`
+  blocks reads outside fixed-point contexts.
 - The orchestrator as function composition (`emit ∘ core ∘ ingest`),
   fail-closed error propagation on the `Result` / `Rejected` branch (same
   discipline as `Outcome` in `std/diagnostic.dag`).
@@ -579,6 +588,12 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 **Modeling decisions**:
 - Per-target translation rules — **as grammar-as-data, never string templates** (no-templating principle, operator 2026-05-17). The per-target "translation tables" are the declarative bidirectional grammar relation (concrete-syntax ⟷ `Node`, the canonical non-templated form — see T-4 "Grammar encoding"), NOT fill-in-the-holes string templates. A string-template emit path is the emit-side D2 hollow alias: an artifact the compiler cannot ground and check. STOP if a translation rule cannot be expressed as grammar-data.
+- **Layout-in-literals bridge:** Rust, Java, TypeScript, Swift, and WASM
+  still encode inter-token layout inside `LiteralPattern.text` (for example
+  `"fn "`, `" + "`, `" { "`). This is not a terminal lex authority: it
+  dissolves when T-6 supplies `TokenLayout` / `TriviaPolicy`, T-11 strips
+  layout from token spellings, and `token_sequence_to_source` interleaves
+  spellings with layout from that carrier.
 - Target-specific optimizations (or absence thereof)
 
 ---
@@ -903,6 +918,9 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 - **`manual_anchor_manifest.dag` — P2 join (single authority):** `ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
 - **`TestClaimCoproductVariant` — 🟡 `feature:testclaim-coproduct-reflection` gate (coproduct-exhaustiveness):** the current generated `DiagnosticExhaustiveness` slice needs a typed `omitted_variant` key, but v4 cannot yet project the arm-key set directly from the canonical `TestClaim` coproduct. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** land the T-19 coproduct-reflection primitive/consumer that reads the `TestClaim` variant set structurally and emits per-arm generated TestClaims. **Dissolve-on-arrival:** in that same follow-up, delete `TestClaimCoproductVariant`, make `GeneratedCoproductExhaustiveness` consume the reflected arm key, and keep the generated corpus witness proving every reflected arm schedules/emits from the canonical `TestClaim` type.
 - **`ClaimAnchorKey` — 🟡 `feature:t19-claim-anchor-split` gate (claim-anchor-unification):** the generated corpus shares `TestClaim.anchor` with manual claim rows; a single typed union (`ManualClaimAnchor | GeneratedClaimAnchor`) bridges this because .dag cannot yet split the field per-corpus. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** when T-19 Phase-2 defines separate corpus types for generated vs manual `TestClaim` rows (so `anchor` is no longer a shared field), the union dissolves. **Dissolve-on-arrival:** in the PR that separates manual/generated claim types, delete `ClaimAnchorKey`, `ManualClaimAnchor`, and `GeneratedClaimAnchor` wrappers, and update all `TestClaim` field declarations accordingly.
+- **`TestgenOracleBasis` — 🟡 `feature:t19-generator-oracle-basis-carrier` gate (wishlist-dispatch oracle basis):** the wishlist dispatch ledger needs a typed oracle-basis witness while some `TestgenConcept` arms are still pending generated corpora, but this witness must not become a parallel category authority. **Owning follow-up:** the T-19 follow-up that replaces each pending wishlist arm with its category-specific generated corpus owns the carrier split. **Dissolve-on-arrival:** delete `TestgenOracleBasis` from `testgen_category_wishlist.dag` when those rows are replaced, and carry oracle basis through the concrete generator helper or emitted `TestClaim` shape for each landed category.
+- **Nat algebra-law expression nodes — 🟡 `feature:t19-nat-expression-node-encoding` gate:** the generated AlgebraLaw Nat corpus must not export or consume per-operation/per-value mirror symbols from `v4.std.nat`; sample terms route through canonical `Nat` constructors and `nat_add` / `nat_mul` results. The remaining local expression-shape tags in `algebra_law_conformance.dag` are a bounded T-19 bridge until a canonical Nat-expression `Node` encoder can reflect function application identity directly. **Dissolve-on-arrival:** replace those local tags with the canonical encoder and keep the generated corpus ratchet proving it uses the modeled Nat constructors/functions.
+- **AlgebraLaw Nat corpus receipt (this PR):** `testgen_category_wishlist.dag` records dispatch; `algebra_law_conformance.dag` is the generated corpus; v3 hand-Rust integration tests in `v4_test_bootstrap_infra_closeout_test.rs` assert corpus parse + oracle rows. SG-0 path: Rust test assertions at integration-test band, no new hand-Rust primitive (corpus is `.dag`-only; Rust side is test infrastructure, not a new v2/v3 primitive).
 - **`BehaviorValueSubject` (L1 `Value` in `type_construction`):** `BehaviorValueSubject { behavior: Behavior }` in `lens/testgen.dag` — carries the **five-behavior** axis structurally (pairs with `ConnectiveKernel { connective: Connective }` for the **six connectives** per bootstrap pragma above). **No** live manual `TestClaim` yet ⇒ **no** manifest row until one lands (same P2 bijection rule).
 - **Retirement (same band as M2 unblock):** fold manifest membership into reflection / `Symbol` spellings once M2 cross-file loading + literal validation land; never reintroduce parallel `Int` encodings of axes already on `TestClaim`. **`ManualAnchorAbsent`:** use on **`TestClaim`** rows not in the twelve-anchor manifest until a broader substrate generalizes membership.
 - **`lens/testgen.dag` — M2 materialization band:** subject folds / eval wiring land with cross-file M2 load; first change set that enables peer imports must keep declarations consistent with this file's live `type` carriers.
@@ -1033,6 +1051,11 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Modeling decisions**:
 - `CiPipeline { jobs, gates }` shape
 - `.github/workflows/ci.yml` as DERIVED Shape-B artifact (.dag walks CiPipeline, emits YAML)
+- **CI/YAML authority bridge:** T-24 is not closed while committed YAML and
+  v3 string ratchets can act as parallel authorities. It dissolves when the
+  generator emits checked YAML from `ci.dag`, the hand-authored YAML is
+  deleted, and the v3 string ratchets become `TestClaim`s over the generated
+  output.
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
 - Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
 - The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
@@ -1089,8 +1112,8 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 **Dissolved (no new substrate — wording/clarification):**
 - **#1 `BitIdentical`** — = `Equals` over B1 `content_hash`; no 5th
   `AssertKind`. Encoded in the T-15 probe above.
-- **#2 `AlgebraRef`** — `04_infer.dag`'s IR-1 `InferredFacts.inhabits`
-  names `AlgebraRef`; `std/algebra.dag` declares no such type yet. It is a
+- **#2 `AlgebraRef`** — `04_infer.dag`'s `InferredFacts.grounding` plus
+  `algebra_ref_from_grounding` names `AlgebraRef`; `std/algebra.dag` declares no such type yet. It is a
   typed boundary coordinate over the algebra and witness nodes until the
   full algebra inhabitance authority lands. Disposition: T-9 declares the
   carrier — a clarification in existing T-9 scope, not a new task.

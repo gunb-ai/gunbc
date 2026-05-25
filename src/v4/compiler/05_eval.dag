@@ -11,9 +11,9 @@ module v4.compiler.eval
 import v4.compiler.infer {
   InferredFacts,
   InferredTree,
-  inferred_facts_canonical_well_grounded,
-  inferred_facts_inhabitance_well_grounded,
-  inferred_facts_resolved_type_matches
+  canonical_grounding_admits_infer_facts,
+  inferred_facts_descent,
+  inferred_facts_resolved_type
 }
 import v4.std.collection { List, Map, list_nth }
 import v4.std.verdict { Verdict, verdict_fold }
@@ -132,15 +132,21 @@ type TestClaimEvalSubject<T> {
 }
 
 
-// RULING-1: needs-more-work — hash slots dissolve to B1 content_hash facts.
-type TestClaimCacheKey<T> {
-  eval_subject: TestClaimEvalSubject<T>
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: B1 content_hash of the whole TestClaim evaluation subgraph replaces staging placeholders; forbidden: caller-supplied hash parameters acting as cache-validating authority before B1 content_hash lands.
+type TestClaimCacheKeyStagingPlaceholder {
   claim_hash: Hash
   interpretation_hash: Hash
 }
 
 
-// RULING-1: needs-more-work — receipt remains hash-scaffolded until cache hashes derive.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: cache key derived from content_hash(eval_subject); hash_staging is NOT cache-validating authority until B1 lands.
+type TestClaimCacheKey<T> {
+  eval_subject: TestClaimEvalSubject<T>
+  hash_staging: TestClaimCacheKeyStagingPlaceholder
+}
+
+
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: receipt keyed by derived content_hash; forbidden: treating hash_staging as authoritative cache boundary.
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -177,8 +183,10 @@ fn test_claim_cache_receipt<T>(
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
-      claim_hash: claim_hash,
-      interpretation_hash: interpretation_hash
+      hash_staging: TestClaimCacheKeyStagingPlaceholder {
+        claim_hash: claim_hash,
+        interpretation_hash: interpretation_hash
+      }
     }
   }
 }
@@ -194,6 +202,7 @@ data eval_rejected_runtime_binding_lookup_miss: Symbol = eval_rejected_runtime_b
 data eval_rejected_resolved_type_mismatch: Symbol = eval_rejected_resolved_type_mismatch
 data eval_rejected_inhabitance_mismatch: Symbol = eval_rejected_inhabitance_mismatch
 data eval_rejected_canonical_mismatch: Symbol = eval_rejected_canonical_mismatch
+data eval_rejected_grounding_node_mismatch: Symbol = eval_rejected_grounding_node_mismatch
 data eval_rejected_runtime_value_node_unrepresentable: Symbol = eval_rejected_runtime_value_node_unrepresentable
 data eval_rejected_branch_argument_absent: Symbol = eval_rejected_branch_argument_absent
 data eval_rejected_bind_key_absent: Symbol = eval_rejected_bind_key_absent
@@ -250,11 +259,25 @@ fn inferred_facts_witness_for_eval(tree: InferredTree, node: Node) -> Witness<In
 fn inferred_facts_for_eval(tree: InferredTree, node: Node) -> Outcome<InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
-      match facts.descent {
-        Holds { value: _ } =>
-          Accepted { value: facts, diagnostics: None }
-        Violates { diagnostic: d } =>
-          Rejected { diagnostics: diagnostics_singleton(d: d) }
+      if inferred_facts_resolved_type(facts: facts) != node {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: eval_rejected_grounding_node_mismatch, node: node)
+          )
+        }
+      } else if !canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: eval_diagnostic(reason: eval_rejected_canonical_mismatch, node: node)
+          )
+        }
+      } else {
+        match inferred_facts_descent(facts: facts) {
+          Holds { value: _ } =>
+            Accepted { value: facts, diagnostics: None }
+          Violates { diagnostic: d } =>
+            Rejected { diagnostics: diagnostics_singleton(d: d) }
+        }
       }
     Violates { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
@@ -275,6 +298,7 @@ fn eval_structural_node_for_eval(tree: InferredTree, node: Node) -> Outcome<Node
 fn eval_short_circuit_policy() -> StageDiagnosticPolicy {
   StageDiagnosticPolicy { accumulation: ShortCircuit }
 }
+
 
 
 fn eval_absorb_structural_child(
@@ -315,24 +339,21 @@ fn eval_runtime_value_acceptance_witness(
   value: RuntimeValue
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
-    resolved_type: if inferred_facts_resolved_type_matches(
-      facts: facts,
-      candidate_type: runtime_value_resolved_type(value: value)
-    ) {
+    resolved_type: if inferred_facts_resolved_type(facts: facts) == runtime_value_resolved_type(value: value) {
       Holds { value: runtime_value_resolved_type(value: value) }
     } else {
       Violates {
         diagnostic: eval_diagnostic(reason: eval_rejected_resolved_type_mismatch, node: node)
       }
     },
-    inhabitance: if inferred_facts_inhabitance_well_grounded(facts: facts) {
+    inhabitance: if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
       Holds { value: facts }
     } else {
       Violates {
         diagnostic: eval_diagnostic(reason: eval_rejected_inhabitance_mismatch, node: node)
       }
     },
-    canonical: if inferred_facts_canonical_well_grounded(facts: facts) {
+    canonical: if canonical_grounding_admits_infer_facts(grounding: facts.grounding) {
       Holds { value: facts }
     } else {
       Violates {
@@ -1052,6 +1073,7 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 }
 
 
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — claim_hash/interpretation_hash are staging placeholders, NOT cache-validating authority; dissolve-on: B1 content_hash derivation replaces caller-supplied hashes.
 fn run_test_claim(
   subject: TestClaimEvalSubject<Node>,
   claim_hash: Hash,
