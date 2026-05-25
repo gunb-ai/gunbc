@@ -6321,7 +6321,8 @@ fn v4_trivial_import_emits_rust_that_cargo_checks() {
     let ws = crate::helpers::workspace_root();
     let trivial_root = unique_temp_dir("v4-trivial-src");
     let out_dir = unique_temp_dir("v4-trivial-out");
-    let trivial_source = "module v4.trivial\n\nimport v4.std.node { Symbol }\n\ndata trivial: Symbol = trivial\n";
+    let trivial_source =
+        "module v4.trivial\n\nimport v4.std.node { Symbol }\n\ndata trivial: Symbol = trivial\n";
     std::fs::write(trivial_root.join("trivial.dag"), trivial_source).expect("write trivial.dag");
 
     let result = compile_dag_named_with_source_roots(
