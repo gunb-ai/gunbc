@@ -3273,7 +3273,7 @@ pub fn apply_missing_generic_args(
                                             .collect::<Vec<_>>(),
                                     )
                                 } else {
-                                    summary.generic_param_names.clone()
+                                    Rc::new(vec![])
                                 }
                             }
                         };
