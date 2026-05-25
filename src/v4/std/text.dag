@@ -1,6 +1,6 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
-// Owns: Char, CharResult, String, StringTailResult, string_is_empty, string_head, string_tail.
+// Owns: Char, CharResult, String, string_is_empty, string_head, string_tail.
 // Consumes: std/algebra.dag (FreeMonoid, is_empty, fold_list_right, list_tail, ListTailResult, TailFound, TailAbsent); std/logic.dag (Bool); std/nat.dag (Nat).
 // Status: T-3 modeled; string scanning primitives added for T-6 lexer walk.
 // Anchor: https://en.wikipedia.org/wiki/Unicode
@@ -25,8 +25,6 @@ fn string_is_empty(s: String) -> Bool {
 fn string_head(s: String) -> CharResult {
   fold_list_right(xs: s, empty: CharAbsent, snoc: fn(_acc, c) { CharFound { value: c } })
 }
-type StringTailResult = ListTailResult<Char>
-
-fn string_tail(s: String) -> StringTailResult {
+fn string_tail(s: String) -> ListTailResult<Char> {
   list_tail(xs: s)
 }

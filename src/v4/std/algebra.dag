@@ -102,6 +102,7 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
+// 🟡 coproduct dissolution — feature: FreeMonoid substrate tail<T> accessor; dissolves when stdlib provides substrate-derived tail projection returning Option<FreeMonoid<T>> directly, eliminating the per-use carrier type.
 type ListTailResult<T>
   = TailFound { tail: FreeMonoid<T> }
   | TailAbsent

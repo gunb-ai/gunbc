@@ -20,7 +20,7 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
-import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
+import v4.std.algebra { Cons, Empty, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
@@ -58,6 +58,8 @@ type LexRule
   | TriviaRule { pattern: LexPattern }
 
 
+// Maximal munch: lex_try_rules selects the accepting rule with the longest lexeme;
+// equal-length ties prefer the later rule (specific literals/keywords after ident).
 type LexRuleSet {
   rules: List<LexRule>
 }
@@ -164,24 +166,16 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
 
 // lex_match_prefix: match a literal string prefix against source.
 // Uses is_prefix_of (stdlib terminal) to avoid direct structural recursion on FreeMonoid.
-// Advances source by folding over prefix — each step pops the head of the remaining source.
+// Advances source by folding over prefix — each step pops the head via list_tail (fail-closed).
 // Safe because is_prefix_of guarantees source has at least length(prefix) elements.
-type PrefixStripResult
-  = PrefixStripOk { remaining: String }
-  | PrefixStripFailed
-
-fn lex_strip_prefix(prefix: String, source: String) -> PrefixStripResult {
+fn lex_strip_prefix(prefix: String, source: String) -> ListTailResult<Char> {
   fold_list(
     xs: prefix,
-    empty: PrefixStripOk { remaining: source },
+    empty: TailFound { tail: source },
     cons: fn(acc, _) {
       match acc {
-        PrefixStripFailed => PrefixStripFailed
-        PrefixStripOk { remaining: r } =>
-          match list_tail(xs: r) {
-            TailFound { tail: t } => PrefixStripOk { remaining: t }
-            TailAbsent => PrefixStripFailed
-          }
+        TailAbsent => TailAbsent
+        TailFound { tail: r } => list_tail(xs: r)
       }
     }
   )
@@ -190,8 +184,8 @@ fn lex_strip_prefix(prefix: String, source: String) -> PrefixStripResult {
 fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     match lex_strip_prefix(prefix: prefix, source: source) {
-      PrefixStripOk { remaining: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
-      PrefixStripFailed => LexMatchRejected
+      TailFound { tail: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
+      TailAbsent => LexMatchRejected
     }
   } else {
     LexMatchRejected
@@ -450,18 +444,43 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
 }
 
 
+fn lex_rule_apply_lexeme_length(apply: LexRuleApply) -> Int {
+  match apply {
+    LexRuleNoMatch => 0
+    LexRuleToken { lexeme: lexeme, remaining: _, class: _ } => length(xs: lexeme)
+    LexRuleTrivia { lexeme: lexeme, remaining: _ } => length(xs: lexeme)
+  }
+}
+
+
+// Maximal munch: prefer the longest accepting lexeme; equal-length ties prefer the later rule
+// so specific literal/keyword rules listed after ident win (i32, Int32, number, …).
+fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> LexRuleApply {
+  match acc {
+    LexRuleNoMatch => candidate
+    _ =>
+      match candidate {
+        LexRuleNoMatch => acc
+        _ =>
+          if nat_gte(a: lex_rule_apply_lexeme_length(apply: candidate), b: lex_rule_apply_lexeme_length(apply: acc)) {
+            candidate
+          } else {
+            acc
+          }
+      }
+  }
+}
+
+
 fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
     cons: fn(acc, rule) {
-      match acc {
-        LexRuleNoMatch => lex_try_rule(rule: rule, source: source)
-        LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-          LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
-        LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-          LexRuleTrivia { lexeme: lexeme, remaining: remaining }
-      }
+      lex_try_rules_prefer_longer(
+        acc: acc,
+        candidate: lex_try_rule(rule: rule, source: source)
+      )
     }
   )
 }
