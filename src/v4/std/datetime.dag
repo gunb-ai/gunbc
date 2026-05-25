@@ -160,16 +160,29 @@ type OrdinaryInstantFields {
 }
 
 
-type LeapSecondOccurrence {
-  date: CalendarDate
-  hour: HourOfDay
-  minute: MinuteOfHour
-  authority: Symbol
+type LeapSecondAnnouncement {
+  utc_date: CalendarDate
+  utc_hour: HourOfDay
+  utc_minute: MinuteOfHour
+}
+
+
+type LeapSecondLocalRepresentation {
+  local_date: CalendarDate
+  local_hour: HourOfDay
+  local_minute: MinuteOfHour
+  offset: TzOffset
+}
+
+
+type LeapSecondOffsetCoherence {
+  announcement: LeapSecondAnnouncement
+  local: LeapSecondLocalRepresentation
 }
 
 
 type LeapSecondInstantFields {
-  occurrence: LeapSecondOccurrence
+  coherence: LeapSecondOffsetCoherence
   second: SecondOfMinute
   subsecond: Subsecond
 }
@@ -345,11 +358,18 @@ fn calendar_date_fields(date: CalendarDate) -> CalendarDateFields {
 }
 
 
-fn leap_second_month_end(date: CalendarDate) -> Bool {
-  let fields = calendar_date_fields(date: date)
+fn leap_second_month_end(fields: CalendarDateFields) -> Bool {
   let month = month_value(month: fields.month)
   let day = day_value(day: fields.day)
   ((month == 6) && (day == 30)) || ((month == 12) && (day == 31))
+}
+
+
+fn leap_second_announcement_admits(announcement: LeapSecondAnnouncement) -> Bool {
+  let fields = calendar_date_fields(date: announcement.utc_date)
+  let hour = hour_value(hour: announcement.utc_hour)
+  let minute = minute_value(minute: announcement.utc_minute)
+  (hour == 23) && (minute == 59) && leap_second_month_end(fields: fields)
 }
 
 
@@ -361,12 +381,8 @@ fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
 
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
-  let hour = hour_value(hour: fields.occurrence.hour)
-  let minute = minute_value(minute: fields.occurrence.minute)
   (second == 60)
-    && (hour == 23)
-    && (minute == 59)
-    && leap_second_month_end(date: fields.occurrence.date)
+    && leap_second_announcement_admits(announcement: fields.coherence.announcement)
 }
 
 
