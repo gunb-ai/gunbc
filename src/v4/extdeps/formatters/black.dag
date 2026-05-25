@@ -1,6 +1,6 @@
 // src/v4/extdeps/formatters/black.dag
 // Scope: Black 26.5.1 pyproject [tool.black] configuration model.
-// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackRequiredVersionPolicy, BlackUnstableFeature, BlackConfig, black_defaults, black_merge.
+// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackRequiredVersionPolicy, BlackUnstableFeature, BlackConfig, black_defaults, black_layer.
 // Consumes: v4.std.collection { List }.
 // Status: T-4.16 scaffold — Black 26.5.1 pyproject schema.
 // Anchor: https://github.com/psf/black/blob/26.5.1/src/black/resources/black.schema.json
@@ -93,6 +93,6 @@ data black_defaults: BlackConfig = BlackConfig {
 
 
 // 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: BlackConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
-fn black_merge(base: BlackConfig, override: BlackConfig) -> BlackConfig {
-  override
+fn black_layer(base: BlackConfig, outer: BlackConfig) -> BlackConfig {
+  outer
 }

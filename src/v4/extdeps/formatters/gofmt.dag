@@ -1,6 +1,6 @@
 // src/v4/extdeps/formatters/gofmt.dag
 // Scope: gofmt canonical style invariant carrier (no project config file).
-// Owns: GofmtCanonicalStyle, gofmt_canonical_style, GofmtConfig, gofmt_defaults, gofmt_merge.
+// Owns: GofmtCanonicalStyle, gofmt_canonical_style, GofmtConfig, gofmt_defaults, gofmt_layer.
 // Consumes: none.
 // Status: T-4.16 scaffold — gofmt doc.go (no style configuration surface).
 // Anchor: https://go.dev/src/cmd/gofmt/doc.go
@@ -19,6 +19,6 @@ data gofmt_defaults: GofmtConfig = GofmtConfig {}
 
 
 // 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: GofmtConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
-fn gofmt_merge(base: GofmtConfig, override: GofmtConfig) -> GofmtConfig {
-  override
+fn gofmt_layer(base: GofmtConfig, outer: GofmtConfig) -> GofmtConfig {
+  outer
 }
