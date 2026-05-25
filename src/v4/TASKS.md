@@ -1504,7 +1504,7 @@ grounded substrate — not an abstract pretty-printer model — so that
 `TargetModel` and the emit stage can carry formatter constraints as typed
 facts.
 
-**Files:** `src/v4/extdeps/formatters/` — new directory.
+**Files:** `src/v4/extdeps/formatters/`
 - `rustfmt.dag` — `RustfmtConfig` grounded in rustfmt.toml option space
 - `black.dag` — `BlackConfig` (Python; pyproject.toml `[tool.black]`)
 - `gofmt.dag` — `GofmtConfig` (Go; `gofmt` has minimal config — simplicity claim)
@@ -1515,9 +1515,12 @@ facts.
 - `ktfmt.dag` — `KtfmtConfig` (Kotlin; ktfmt CLI options)
 - `lean4_format.dag` — `Lean4FormatConfig` (Lean; `lean4-format` options)
 
-`rustfmt.dag` is the reference implementation — all others follow its
-pattern: option coproducts → full config type → defaults data node →
+`rustfmt.dag` established the pattern the sibling files follow:
+option coproducts → full config type → defaults data node →
 `*_layer` function for hierarchical override composition.
+(Sibling files black.dag, gofmt.dag, prettier.dag, clang_format.dag,
+google_java_format.dag, swift_format.dag, ktfmt.dag, lean4_format.dag
+are already landed on main — see PRs #3650, #3651, #3652.)
 
 **Modeling decisions:**
 - Each formatter file is **pure config substrate** — no dependency on
