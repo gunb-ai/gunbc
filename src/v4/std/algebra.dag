@@ -278,7 +278,8 @@ fn is_prefix_of<T>(
 // 🟡 gated — P3-boundary-dissolution interim — feature: list_skip-non-negative-precondition —
 // nat.dag imports algebra.dag so Nat/UInt is not expressible at this layer to make n < 0
 // unrepresentable at the type level. Production callers guarantee n >= 0 (literals or length).
-// n < 0: returns xs unchanged (caller contract violation; undetectable as typed failure here).
+// n < 0: returns Empty (caller contract violation; visibly wrong — fails fast at callers
+//         rather than silently producing the same result as n=0).
 // Dissolve-on: shared PositiveInt/NonNegativeInt module extractable above algebra.dag,
 // or callers supply Nat directly.
 type ListSkipState<T> {
@@ -286,7 +287,9 @@ type ListSkipState<T> {
   result: FreeMonoid<T>
 }
 fn list_skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
-  if n <= 0 {
+  if n < 0 {
+    Empty
+  } else if n == 0 {
     xs
   } else {
     fold_list(
