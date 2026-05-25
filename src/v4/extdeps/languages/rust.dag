@@ -1336,7 +1336,7 @@ fn rust_wave1_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
       rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
       rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ") "),
+      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
       rust_lex_rule(token_class: rust_token_comma, text: ", "),
       rust_lex_rule(token_class: rust_token_colon, text: ": ")
     ]
