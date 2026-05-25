@@ -48,13 +48,16 @@ distinguish them because only one produces an executable:
 
 **Current CI state:** the "v2 → v4 bootstrap compile (fail-closed full)" step uses
 `--target dag`. It is a structural check, not a compilation to a running binary.
-`--target rust` is available and used for specific v4 files (lens-ci registry step,
-T-22 host eval receipt), but has not been run over the full src/v4 source tree and
-linked into a binary in CI.
+`--target rust` over the full `src/v4` source tree IS already run in CI by the
+T-22 host eval receipt (`scripts/check-v4-host-eval-receipt.py`, step "T-22 host
+eval receipt — eval(tree, interpretation, inputs)"). That step verifies zero
+v2 diagnostics and checks structural properties of the emitted Rust. What has
+**not** been done in CI is: compiling that emitted Rust crate with `rustc`/`cargo`
+to produce a runnable `v4-stage0` binary.
 
 ---
 
-## Milestone 0 — Structural compile (CURRENT, CI green)
+## Milestone 0 — Structural compile (CURRENT STATE)
 
 **Definition:** v2 can parse and type-check all v4 .dag files with zero diagnostics.
 
