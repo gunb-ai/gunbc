@@ -534,6 +534,28 @@ fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
 }
 
 
+fn grammar_dup_check_step(acc: GrammarDupCheckState, p: GrammarProduction) -> GrammarDupCheckState {
+  if acc.has_duplicate {
+    acc
+  } else {
+    if acc.seen.member(p.name) {
+      GrammarDupCheckState { seen: acc.seen, has_duplicate: true }
+    } else {
+      GrammarDupCheckState { seen: set_symbol_insert(s: acc.seen, item: p.name), has_duplicate: false }
+    }
+  }
+}
+
+
+fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
+  fold_list(
+    xs: root.productions,
+    empty: GrammarDupCheckState { seen: Set { member: fn(_) { false } }, has_duplicate: false },
+    cons: fn(acc, p) { grammar_dup_check_step(acc: acc, p: p) }
+  ).has_duplicate
+}
+
+
 // --- Diagnostic list helpers ---
 
 fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
@@ -776,14 +798,11 @@ fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarP
       if is_empty(xs: remaining) {
         Accepted {
           value: Node {
-            kind: production.emitted.kind,
-            children: list_snoc_item(
-              xs: production.emitted.children,
-              item: grammar_named_edge(
-                name: grammar_production_emitted_node_projection,
-                target: captured
-              )
-            )
+            kind: TypeNode { connective: Conj },
+            children: [
+              grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
+              grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+            ]
           },
           diagnostics: parse_diags_to_diagnostics(diags: diags)
         }
@@ -819,17 +838,21 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
         if grammar_has_undefined_nonterminals(root: root) {
           Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
         } else {
-          if grammar_has_left_recursion(root: root) {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+          if grammar_has_duplicate_productions(root: root) {
+            Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
           } else {
-            match grammar_lookup_production(root: root, name: root.start) {
-              GrammarProductionFound { production: start } =>
-                parse_production(tokens: tokens.tokens, root: root, production: start)
-              // 🟡 gated T-8: structurally unreachable — grammar_has_undefined_nonterminals above
-              // validates root.start; GrammarProductionMissing here is dead by construction.
-              // Kept for exhaustiveness; dissolve-on: T-8 or substrate-level totality proof.
-              GrammarProductionMissing =>
-                Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+            if grammar_has_left_recursion(root: root) {
+              Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+            } else {
+              match grammar_lookup_production(root: root, name: root.start) {
+                GrammarProductionFound { production: start } =>
+                  parse_production(tokens: tokens.tokens, root: root, production: start)
+                // 🟡 gated T-8: structurally unreachable — grammar_has_undefined_nonterminals above
+                // validates root.start; GrammarProductionMissing here is dead by construction.
+                // Kept for exhaustiveness; dissolve-on: T-8 or substrate-level totality proof.
+                GrammarProductionMissing =>
+                  Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+              }
             }
           }
         }
