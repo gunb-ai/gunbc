@@ -163,8 +163,7 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
 // Bare parameterized type reference (e.g. `Pair` with zero children) — must not
 // reach emit and get repaired by heuristics; fail closed with ArityMismatch.
 fn is_bare_user_generic_type_reference(n: Node, env: TypeEnv) -> Bool {
-  if n.children |> count != 0 { false }
-  else if n.connective != NoConnective { false }
+  if n.children |> count > 0 || n.connective != NoConnective { false }
   else {
     match lookup_type_for(env: env, node: n) {
       Some { value: decl } =>
