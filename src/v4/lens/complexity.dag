@@ -200,11 +200,15 @@ fn complexity_bound_from_class(
 ) -> ComplexityBound {
   match class {
     ClassConstant => ConstantComplexity
-    ClassUnknown => unknown_complexity()
+    ClassUnknown =>
+      match variables {
+        Holds { value: _ } => unknown_complexity()
+        Violates { diagnostic: d } => unknown_complexity_with_diagnostic(diagnostic: d)
+      }
     _ =>
       match variables {
         Holds { value: v } => complexity_bound_from_sized_class(class: class, variables: v)
-        Violates { diagnostic: _ } => unknown_complexity()
+        Violates { diagnostic: d } => unknown_complexity_with_diagnostic(diagnostic: d)
       }
   }
 }
