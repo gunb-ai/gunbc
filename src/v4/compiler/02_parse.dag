@@ -80,10 +80,10 @@ type ParseSyncState {
   result: List<Token>
 }
 
-type GrammarDupCheckState {
-  seen: Set<Symbol>
-  has_duplicate: Bool
-}
+// 🟡 coproduct dissolution — feature: GrammarRoot duplicate-name scan accumulator — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived membership fold over production names eliminates the hand-written accumulator; invalid-state-representable Bool flag dissolved into coproduct branches.
+type GrammarDupCheckResult
+  = GrammarDupCheckUnique { seen: Set<Symbol> }
+  | GrammarDupCheckDuplicate
 
 // 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type TokenPeek
@@ -342,12 +342,12 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 
 
-// 🟡 gated — P2-boundary-dissolution interim — feature: grammar-root-node-projection-completeness —
-// GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure { member: fn(Symbol) -> Bool };
-// the Node substrate has no edge kind for function values, so sync_tokens cannot be materialized
-// as a Node child. The projection constant grammar_root_sync_tokens_node_projection is declared
-// above to name the intended edge. Dissolve-on: substrate literal-value edge support for
-// predicate sets, or Set<Symbol> reified as an explicit membership list type.
+// 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
+// bind TASKS.md T-8 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
+// { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
+// sync_tokens cannot be materialized as a Node child here. grammar_root_sync_tokens_node_projection
+// names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership
+// list type (or substrate gains literal-value edge support), enabling the edge to be emitted.
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
@@ -679,6 +679,7 @@ fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: Gramma
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot left-recursion validator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-recursion reachability morphism over GrammarRoot productions; forbidden: duplicating left-recursion check logic outside this function.
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   let nullable_set = compute_nullable_set(root: root)
   fold_list(
@@ -719,6 +720,7 @@ fn grammar_has_undefined_nonterminals_step(acc: Bool, p: GrammarProduction, root
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {
     GrammarProductionMissing => true
@@ -732,25 +734,29 @@ fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
 }
 
 
-fn grammar_dup_check_step(acc: GrammarDupCheckState, p: GrammarProduction) -> GrammarDupCheckState {
-  if acc.has_duplicate {
-    acc
-  } else {
-    if acc.seen.member(p.name) {
-      GrammarDupCheckState { seen: acc.seen, has_duplicate: true }
-    } else {
-      GrammarDupCheckState { seen: set_symbol_insert(s: acc.seen, item: p.name), has_duplicate: false }
-    }
+fn grammar_dup_check_step(acc: GrammarDupCheckResult, p: GrammarProduction) -> GrammarDupCheckResult {
+  match acc {
+    GrammarDupCheckDuplicate => GrammarDupCheckDuplicate
+    GrammarDupCheckUnique { seen: seen } =>
+      if seen.member(p.name) {
+        GrammarDupCheckDuplicate
+      } else {
+        GrammarDupCheckUnique { seen: set_symbol_insert(s: seen, item: p.name) }
+      }
   }
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived duplicate-name scan morphism over GrammarRoot productions; forbidden: duplicating duplicate-check logic outside this function.
 fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
-  fold_list(
+  match fold_list(
     xs: root.productions,
-    empty: GrammarDupCheckState { seen: Set { member: fn(_) { false } }, has_duplicate: false },
+    empty: GrammarDupCheckUnique { seen: Set { member: fn(_) { false } } },
     cons: fn(acc, p) { grammar_dup_check_step(acc: acc, p: p) }
-  ).has_duplicate
+  ) {
+    GrammarDupCheckDuplicate => true
+    GrammarDupCheckUnique { seen: _ } => false
+  }
 }
 
 

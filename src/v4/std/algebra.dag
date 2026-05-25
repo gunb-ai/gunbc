@@ -102,6 +102,7 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
+// 🟡 gated — P3/P5 interim (docs/modeling-discipline.md Practice 10) — feature: FreeMonoid head-pop stdlib projection — bind node://adhoc-2145db6b-69a — dissolve-on: stdlib Option<T>-returning tail projection; Empty→Empty is caller-guaranteed unreachable (all call sites guard with is_empty or Cons match before calling); forbidden: calling with empty list without a prior guard.
 fn list_tail<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
   match xs {
     Empty => Empty
