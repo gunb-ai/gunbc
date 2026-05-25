@@ -61,12 +61,12 @@ type Grammar
 
 type ParseTree = Node
 
-// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; follow-up: dissolve when production lookup is indexed at parse-walk realization instead of linear fold over GrammarRoot.productions.
+// 🟡 coproduct dissolution — feature:grammar-production-index; T-7 arrived; dissolve when Map<Symbol, GrammarProduction> substrate lands and replaces the linear fold with O(1) lookup.
 type GrammarProductionLookup
   = GrammarProductionFound { production: GrammarProduction }
   | GrammarProductionMissing
 
-// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
+// 🟡 coproduct dissolution — feature:T-8-parse-result-projection; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult
   = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic> }
   | ParseExprRejected { diagnostics: List<Diagnostic> }
@@ -397,6 +397,12 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 // grammar_fuel: upper bound on cross-production expansion depth — one unit per production.
 // Passed as the fuel: Nat parameter to expr_is_nullable, expr_reaches_nonterminal_left,
 // and parse_expr so the complexity analyzer can prove termination on the Nonterminal arms.
+// 🟡 gated — P4-bounded-semantics interim — feature: grammar-recursion-depth-fuel —
+// production-count fuel is sound for grammars whose only recursive structure is left recursion
+// (rejected by grammar_has_left_recursion). For non-left-recursive cyclic grammars (e.g.,
+// right-recursive A → B A | ε), expansion depth equals input length, not production count;
+// those grammars pass validation but reject inputs whose recursion depth exceeds production count.
+// Dissolve-on: input-length-based fuel or grammar-recursion-depth static analysis.
 fn grammar_fuel(root: GrammarRoot) -> Nat {
   fold_list(xs: root.productions, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } })
 }
