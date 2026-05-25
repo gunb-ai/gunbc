@@ -50,7 +50,6 @@ type LexPattern
   | RepeatPattern { element: LexPattern }
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
-  | ConsumeCharUnlessFollowedByPattern { char: Char, forbidden_follow: Char }
 
 
 // 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
@@ -395,43 +394,6 @@ fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
               match result.failed {
                 true => LexMatchRejected
                 false => LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
-              }
-          }
-      }
-    ConsumeCharUnlessFollowedByPattern { char: expected, forbidden_follow: forbidden } =>
-      match string_is_empty(s: source) {
-        true => LexMatchRejected
-        false =>
-          match string_head(s: source) {
-            CharAbsent => LexMatchRejected
-            CharFound { value: c } =>
-              match c == expected {
-                false => LexMatchRejected
-                true =>
-                  match string_is_empty(s: string_tail(s: source)) {
-                    true =>
-                      LexMatchAccepted {
-                        remaining: string_tail(s: source),
-                        lexeme: Cons { head: c, tail: Empty }
-                      }
-                    false =>
-                      match string_head(s: string_tail(s: source)) {
-                        CharAbsent =>
-                          LexMatchAccepted {
-                            remaining: string_tail(s: source),
-                            lexeme: Cons { head: c, tail: Empty }
-                          }
-                        CharFound { value: next } =>
-                          match next == forbidden {
-                            true => LexMatchRejected
-                            false =>
-                              LexMatchAccepted {
-                                remaining: string_tail(s: source),
-                                lexeme: Cons { head: c, tail: Empty }
-                              }
-                          }
-                      }
-                  }
               }
           }
       }

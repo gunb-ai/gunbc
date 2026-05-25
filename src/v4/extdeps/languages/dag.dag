@@ -30,7 +30,6 @@ import v4.compiler.tokenize {
   CharClassPattern,
   CharPattern,
   ChoicePattern,
-  ConsumeCharUnlessFollowedByPattern,
   DelimitedPattern,
   DigitChar,
   IdentContinueChar,
@@ -212,7 +211,7 @@ fn dag_block_comment_trivia_rule() -> LexRule {
       open: LiteralPattern { text: "/*" },
       body: ChoicePattern {
         left: CharClassPattern { class: BlockCommentTextChar },
-        right: ConsumeCharUnlessFollowedByPattern { char: 42, forbidden_follow: 47 }
+        right: CharPattern { char: 42 }
       },
       close: LiteralPattern { text: "*/" }
     }
