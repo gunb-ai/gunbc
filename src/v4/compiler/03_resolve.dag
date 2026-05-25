@@ -2,10 +2,10 @@
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def; T-28 cross-file binding via ModuleGraph.
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_graph; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/algebra.dag (fold_list),
-//           std/module_graph.dag (ModuleGraph, ModuleEntry), compiler/03_normalize.dag,
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag,
+//           std/module_graph.dag (ModuleGraph), compiler/03_normalize.dag,
 //           extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 + T-28 realized — K-1 single-file resolution; resolve_with_graph cross-file binding wired.
+// Status: T-8 realized — K-1 single-file resolution; resolve_with_graph wired (T-28 gated).
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -16,9 +16,8 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols
 }
-import v4.std.algebra { fold_list }
 import v4.std.collection { Set }
-import v4.std.module_graph { ModuleGraph, ModuleEntry }
+import v4.std.module_graph { ModuleGraph }
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
