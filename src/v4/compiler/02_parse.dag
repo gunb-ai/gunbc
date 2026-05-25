@@ -499,11 +499,15 @@ fn grammar_has_undefined_nonterminals_step(acc: Bool, p: GrammarProduction, root
 
 
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
-  fold_list(
-    xs: root.productions,
-    empty: false,
-    cons: fn(acc, p) { grammar_has_undefined_nonterminals_step(acc: acc, p: p, root: root) }
-  )
+  match grammar_lookup_production(root: root, name: root.start) {
+    GrammarProductionMissing => true
+    GrammarProductionFound { production: _ } =>
+      fold_list(
+        xs: root.productions,
+        empty: false,
+        cons: fn(acc, p) { grammar_has_undefined_nonterminals_step(acc: acc, p: p, root: root) }
+      )
+  }
 }
 
 
