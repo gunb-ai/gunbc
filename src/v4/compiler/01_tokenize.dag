@@ -166,33 +166,13 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
 }
 
 
-// lex_match_prefix: match a literal string prefix against source, building lexeme.
-// Recurses character-by-character; terminates on prefix exhaustion or mismatch.
+// lex_match_prefix: match a literal string prefix against source.
+// Uses is_prefix_of (stdlib terminal) to avoid direct structural recursion on FreeMonoid.
 fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
-  match string_is_empty(s: prefix) {
-    true => LexMatchAccepted { remaining: source, lexeme: Empty }
-    false =>
-      match string_is_empty(s: source) {
-        true => LexMatchRejected
-        false =>
-          match string_head(s: prefix) {
-            CharAbsent => LexMatchRejected
-            CharFound { value: ph } =>
-              match string_head(s: source) {
-                CharAbsent => LexMatchRejected
-                CharFound { value: sh } =>
-                  match ph == sh {
-                    true =>
-                      match lex_match_prefix(prefix: string_tail(s: prefix), source: string_tail(s: source)) {
-                        LexMatchRejected => LexMatchRejected
-                        LexMatchAccepted { remaining: rest, lexeme: lex } =>
-                          LexMatchAccepted { remaining: rest, lexeme: Cons { head: sh, tail: lex } }
-                      }
-                    false => LexMatchRejected
-                  }
-              }
-          }
-      }
+  if is_prefix_of(xs: prefix, ys: source, eq: fn(a, b) { a == b }) {
+    LexMatchAccepted { remaining: list_skip(xs: source, n: length(xs: prefix)), lexeme: prefix }
+  } else {
+    LexMatchRejected
   }
 }
 
