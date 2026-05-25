@@ -383,9 +383,13 @@ Three independent guarantees — no runtime check is needed:
    a `TerminationProof { non_increasing, strict: RankingDimension }` (declared in
    `std/cardinality.dag`). `well_formed` enforces this structurally. Unbounded
    loops are not well-formed.
-3. **Module graph:** circular imports are a resolve-time `Diagnostic`. The module
-   dependency graph is enforced acyclic at `03_resolve.dag` — no import cycle can
-   survive to a fold.
+3. **Module graph (T-28, not yet live):** `std/module_graph.dag` models path
+   uniqueness and entry lookup. Import-cycle detection is a T-28 deliverable —
+   `namespace_from_tree_and_graph` in `03_resolve.dag` is gated (🟡 line 564) and
+   currently ignores the `ModuleGraph` argument. Acyclicity at the module level is
+   aspirational, not enforced. Fold termination is guaranteed by (1) alone —
+   `fold_node` operates on `Node` values which are trees by construction; it does
+   not depend on module-level cycle enforcement.
 
 ### Test gate architecture (Decision 5)
 
