@@ -16,6 +16,7 @@ type Lean4NatValue
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟡 gated — feature: lean4-option-closed-set — bind T-4.16 follow-on — dissolve-on-arrival: Lean4OptionValue and Lean4OptionAssignment dissolve when lake_lean_options is replaced by typed fields; the six arms faithfully mirror Lean.DataValue (ofString/ofBool/ofName/ofNat/ofInt/ofSyntax); forbidden: adding arms not present in upstream Lean.DataValue.
 type Lean4OptionValue
   = Lean4StringOption { value: String }
   | Lean4BoolOption { value: Bool }
