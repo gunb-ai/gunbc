@@ -1,19 +1,27 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions.
-// Consumes: std diagnostic, std node, compiler tokenize.
-// Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
+// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
+//       Node projection functions, left-recursion check, error-recovery helpers.
+// Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
+// Status: T-7 parse walk realized; GrammarRoot carries sync_tokens for error recovery.
+//
+// Walker semantics:
+//   PEG ordered choice: Choice tries left first; left wins if it matches.
+//   Grammar data must be non-left-recursive; checked at parse() entry.
+//   Repeat error recovery: on element failure with diagnostics, skip to next sync token.
+//   sync_tokens are declaration-start keywords (language-specific; declared on GrammarRoot).
 
 
 module v4.compiler.parse
 
 
 import v4.compiler.tokenize { Token, TokenStream }
-import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, port_locus, UserInputBoundary, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
-import v4.std.collection { List }
-import v4.std.algebra { Empty, fold_list, is_empty, length, list_snoc_item }
+import v4.std.collection { List, Set }
+import v4.std.algebra { Cons, Empty, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item }
+import v4.std.logic { Bool }
 
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
@@ -36,6 +44,7 @@ type GrammarProduction {
 type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
+  sync_tokens: Set<Symbol>
 }
 
 
@@ -47,16 +56,15 @@ type Grammar
 
 type ParseTree = Node
 
-// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; bound task: src/v4/TASKS.md#t-7-compiler02_parsedag; follow-up: dissolve when parse_expr recursive walk lands with termination/ambiguity certificate (see parse_expr gate at line 298).
-type ParseExprResult
-  = ParseExprAccepted { remaining: List<Token> }
-  | ParseExprRejected
-
-
-// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; bound task: src/v4/TASKS.md#t-7-compiler02_parsedag; follow-up: dissolve when production lookup is indexed at parse-walk realization instead of linear fold over GrammarRoot.productions.
+// 🟡 coproduct dissolution — feature:T-7-parse-walk-realization; follow-up: dissolve when production lookup is indexed at parse-walk realization instead of linear fold over GrammarRoot.productions.
 type GrammarProductionLookup
   = GrammarProductionFound { production: GrammarProduction }
   | GrammarProductionMissing
+
+// ParseExprResult: per-expression match result carrying captured Node and accumulated diagnostics.
+type ParseExprResult
+  = ParseExprAccepted { remaining: List<Token>, captured: Node, diagnostics: List<Diagnostic> }
+  | ParseExprRejected { diagnostics: List<Diagnostic> }
 
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
@@ -81,6 +89,10 @@ data parse_grammar_not_well_formed: Symbol = parse_grammar_not_well_formed
 
 data parse_g0_tokens_remain: Symbol = parse_g0_tokens_remain
 
+data parse_grammar_left_recursive: Symbol = parse_grammar_left_recursive
+
+data parse_e1_repeat_recovery: Symbol = parse_e1_repeat_recovery
+
 
 fn parse_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -103,6 +115,24 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
 fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: parse_g0_tokens_remain,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_grammar_left_recursive,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse_e1_repeat_recovery_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_e1_repeat_recovery,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -289,23 +319,248 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProducti
 }
 
 
+// --- Left-recursion detection ---
+
+// expr_starts_with_nonterminal: true iff the leftmost position of expr is Nonterminal { name }.
+fn expr_starts_with_nonterminal(expr: GrammarExpr, name: Symbol) -> Bool {
+  match expr {
+    Terminal { token_class: _ } => false
+    Nonterminal { production: p } => p == name
+    Sequence { left: left, right: _ } => expr_starts_with_nonterminal(expr: left, name: name)
+    Choice { left: left, right: right } =>
+      expr_starts_with_nonterminal(expr: left, name: name) ||
+      expr_starts_with_nonterminal(expr: right, name: name)
+    Optional { element: element } => expr_starts_with_nonterminal(expr: element, name: name)
+    Repeat { element: element } => expr_starts_with_nonterminal(expr: element, name: name)
+  }
+}
+
+
+fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
+  fold_list(
+    xs: root.productions,
+    empty: false,
+    cons: fn(acc, p) {
+      acc || expr_starts_with_nonterminal(expr: p.expression, name: p.name)
+    }
+  )
+}
+
+
+// --- Diagnostic list helpers ---
+
+fn parse_diags_to_diagnostics(diags: List<Diagnostic>) -> Diagnostics {
+  match diags {
+    Empty => None
+    Cons { head: h, tail: t } => Some { diagnostics: NonEmptyDiagnostics { head: h, tail: t } }
+  }
+}
+
+
+fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> NonEmptyDiagnostics {
+  match diags {
+    Empty => NonEmptyDiagnostics { head: default, tail: [] }
+    Cons { head: h, tail: t } => NonEmptyDiagnostics { head: h, tail: t }
+  }
+}
+
+
+// --- Parse walk helpers ---
+
+fn parse_repeat_captured_node(acc_nodes: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list_right(
+      xs: acc_nodes,
+      empty: [],
+      snoc: fn(acc, n) {
+        Cons {
+          head: Edge {
+            label: Named { name: grammar_repeat_element_node_projection },
+            target: n
+          },
+          tail: acc
+        }
+      }
+    )
+  }
+}
+
+
+// Skip tokens until a sync token is found (inclusive — returns stream starting at sync token).
+fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> List<Token> {
+  match tokens {
+    Empty => Empty
+    Cons { head: tok, tail: rest } =>
+      match sync_tokens.member(tok.class) {
+        true => tokens
+        false => parse_skip_to_sync(tokens: rest, sync_tokens: sync_tokens)
+      }
+  }
+}
+
+
+fn parse_repeat_error_recover(
+  element: GrammarExpr,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  acc_nodes: List<Node>,
+  acc_diags: List<Diagnostic>,
+  failed_diags: List<Diagnostic>
+) -> ParseExprResult {
+  let at = port_locus(port: parse_stage_locus_port)
+  let synced = parse_skip_to_sync(tokens: tokens, sync_tokens: root.sync_tokens)
+  let new_diags = list_append(
+    left: acc_diags,
+    right: list_append(
+      left: failed_diags,
+      right: Cons { head: parse_e1_repeat_recovery_diagnostic(at: at), tail: Empty }
+    )
+  )
+  match length(xs: synced) != length(xs: tokens) {
+    true =>
+      parse_repeat(element: element, tokens: synced, root: root, acc_nodes: acc_nodes, acc_diags: new_diags)
+    false =>
+      ParseExprAccepted {
+        remaining: tokens,
+        captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
+        diagnostics: new_diags
+      }
+  }
+}
+
+
+// parse_repeat: greedy zero-or-more, with error recovery via sync-token skip.
+// Termination: each successful iteration reduces token count; each error recovery
+// either skips tokens (reducing count) or stops (no skip = no progress).
+fn parse_repeat(
+  element: GrammarExpr,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  acc_nodes: List<Node>,
+  acc_diags: List<Diagnostic>
+) -> ParseExprResult {
+  match parse_expr(expr: element, tokens: tokens, root: root) {
+    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+      parse_repeat(
+        element: element,
+        tokens: rest,
+        root: root,
+        acc_nodes: list_snoc_item(xs: acc_nodes, item: cap),
+        acc_diags: list_append(left: acc_diags, right: diags)
+      )
+    ParseExprRejected { diagnostics: failed_diags } =>
+      match is_empty(xs: failed_diags) {
+        true =>
+          ParseExprAccepted {
+            remaining: tokens,
+            captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
+            diagnostics: acc_diags
+          }
+        false =>
+          parse_repeat_error_recover(
+            element: element,
+            tokens: tokens,
+            root: root,
+            acc_nodes: acc_nodes,
+            acc_diags: acc_diags,
+            failed_diags: failed_diags
+          )
+      }
+  }
+}
+
+
+// parse_expr: recursive-descent walk over a GrammarExpr against a token stream.
+// Mutual recursion with parse_repeat (Repeat element iteration).
 fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
-  // 🟡 gated — feature:T-7-parse-walk-realization — bind TASKS.md T-7 — dissolve-on: T-8/T-9 normalize/resolve integrates parse_expr into pipeline fold; bootstrap lacks fold-on-demand token consumption and termination certificates for recursive descent
-  ParseExprRejected
+  match expr {
+    Terminal { token_class: class } =>
+      match tokens {
+        Empty => ParseExprRejected { diagnostics: [] }
+        Cons { head: tok, tail: rest } =>
+          match tok.class == class {
+            true =>
+              ParseExprAccepted {
+                remaining: rest,
+                captured: Node {
+                  kind: TypeNode { connective: Atom { identity: tok.class } },
+                  children: []
+                },
+                diagnostics: []
+              }
+            false => ParseExprRejected { diagnostics: [] }
+          }
+      }
+    Nonterminal { production: prod_name } =>
+      match grammar_lookup_production(root: root, name: prod_name) {
+        GrammarProductionMissing =>
+          ParseExprRejected { diagnostics: [] }
+        GrammarProductionFound { production: production } =>
+          parse_expr(expr: production.expression, tokens: tokens, root: root)
+      }
+    Sequence { left: left, right: right } =>
+      match parse_expr(expr: left, tokens: tokens, root: root) {
+        ParseExprRejected { diagnostics: diags } =>
+          ParseExprRejected { diagnostics: diags }
+        ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
+          match parse_expr(expr: right, tokens: rest1, root: root) {
+            ParseExprRejected { diagnostics: diags2 } =>
+              ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
+            ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
+              ParseExprAccepted {
+                remaining: rest2,
+                captured: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    grammar_named_edge(name: grammar_sequence_left_node_projection, target: cap1),
+                    grammar_named_edge(name: grammar_sequence_right_node_projection, target: cap2)
+                  ]
+                },
+                diagnostics: list_append(left: diags1, right: diags2)
+              }
+          }
+      }
+    Choice { left: left, right: right } =>
+      match parse_expr(expr: left, tokens: tokens, root: root) {
+        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
+        ParseExprRejected { diagnostics: _ } =>
+          parse_expr(expr: right, tokens: tokens, root: root)
+      }
+    Optional { element: element } =>
+      match parse_expr(expr: element, tokens: tokens, root: root) {
+        ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+          ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
+        ParseExprRejected { diagnostics: _ } =>
+          ParseExprAccepted {
+            remaining: tokens,
+            captured: grammar_empty_node(),
+            diagnostics: []
+          }
+      }
+    Repeat { element: element } =>
+      parse_repeat(element: element, tokens: tokens, root: root, acc_nodes: [], acc_diags: [])
+  }
 }
 
 
 fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   match parse_expr(expr: production.expression, tokens: tokens, root: root) {
-    ParseExprAccepted { remaining: remaining } =>
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
       if is_empty(xs: remaining) {
-        Accepted { value: production.emitted, diagnostics: None }
+        Accepted { value: captured, diagnostics: parse_diags_to_diagnostics(diags: diags) }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
       }
-    ParseExprRejected =>
-      Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+    ParseExprRejected { diagnostics: diags } =>
+      Rejected {
+        diagnostics: parse_diags_to_non_empty(
+          diags: diags,
+          default: parse_walk_not_realized_diagnostic(at: at)
+        )
+      }
   }
 }
 
@@ -325,11 +580,15 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
           Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
         }
       ModeledGrammar { root: root } =>
-        match grammar_lookup_production(root: root, name: root.start) {
-          GrammarProductionFound { production: start } =>
-            parse_production(tokens: tokens.tokens, root: root, production: start)
-          GrammarProductionMissing =>
-            Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+        if grammar_has_left_recursion(root: root) {
+          Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
+        } else {
+          match grammar_lookup_production(root: root, name: root.start) {
+            GrammarProductionFound { production: start } =>
+              parse_production(tokens: tokens.tokens, root: root, production: start)
+            GrammarProductionMissing =>
+              Rejected { diagnostics: diagnostics_singleton(d: parse_walk_not_realized_diagnostic(at: at)) }
+          }
         }
     }
   }

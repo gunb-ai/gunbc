@@ -6,7 +6,7 @@
 //       tokenize_lex_e1_unrecognized_char, tokenize_lex_e1_unrecognized_char_diagnostic,
 //       char_in_class, LexMatchResult, LexRuleApply,
 //       lex_match_prefix, lex_match_pattern, lex_repeat_pattern,
-//       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk,
+//       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk_step, lex_walk,
 //       lex_rule_token_class_member, lex_rule_set_token_class_member, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text, std nat, std algebra.
 // Status: T-6 lexer walk realized.
@@ -23,7 +23,7 @@ module v4.compiler.tokenize
 
 
 import v4.std.collection { List }
-import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, UserInputBoundary, WholeFile, diagnostics_singleton }
+import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
 import v4.std.algebra { Cons, Empty, fold_list, is_empty, length, list_append, list_snoc_item }
 import v4.std.text { Char, String, string_head, string_is_empty, string_tail }
@@ -173,14 +173,12 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
       match string_is_empty(s: source) {
         true => LexMatchRejected
         false =>
-          let ph = string_head(s: prefix)
-          let sh = string_head(s: source)
-          match ph == sh {
+          match string_head(s: prefix) == string_head(s: source) {
             true =>
               match lex_match_prefix(prefix: string_tail(s: prefix), source: string_tail(s: source)) {
                 LexMatchRejected => LexMatchRejected
                 LexMatchAccepted { remaining: rest, lexeme: lex } =>
-                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: sh, tail: lex } }
+                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: string_head(s: source), tail: lex } }
               }
             false => LexMatchRejected
           }
@@ -332,6 +330,34 @@ fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
 }
 
 
+fn lex_walk_step(
+  source: String,
+  tokens: List<Token>,
+  file: Symbol,
+  pos: Int,
+  rules: LexRuleSet
+) -> Outcome<TokenStream> {
+  let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
+  match lex_try_rules(rules: rules.rules, source: source) {
+    LexRuleNoMatch =>
+      Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
+      lex_walk(source: remaining, tokens: tokens, file: file, pos: pos + length(xs: lexeme), rules: rules)
+    LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
+      lex_walk(
+        source: remaining,
+        tokens: list_snoc_item(
+          xs: tokens,
+          item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: pos + length(xs: lexeme) }
+        ),
+        file: file,
+        pos: pos + length(xs: lexeme),
+        rules: rules
+      )
+  }
+}
+
+
 // lex_walk: scan source left-to-right; emit tokens, discard trivia, error on E1.
 // Termination: each non-error iteration consumes at least one character (lexeme non-empty).
 fn lex_walk(
@@ -345,31 +371,7 @@ fn lex_walk(
     true =>
       Accepted { value: TokenStream { tokens: tokens }, diagnostics: None }
     false =>
-      let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
-      match lex_try_rules(rules: rules.rules, source: source) {
-        LexRuleNoMatch =>
-          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-        LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-          lex_walk(
-            source: remaining,
-            tokens: tokens,
-            file: file,
-            pos: pos + length(xs: lexeme),
-            rules: rules
-          )
-        LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-          let new_pos = pos + length(xs: lexeme)
-          lex_walk(
-            source: remaining,
-            tokens: list_snoc_item(
-              xs: tokens,
-              item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: new_pos }
-            ),
-            file: file,
-            pos: new_pos,
-            rules: rules
-          )
-      }
+      lex_walk_step(source: source, tokens: tokens, file: file, pos: pos, rules: rules)
   }
 }
 

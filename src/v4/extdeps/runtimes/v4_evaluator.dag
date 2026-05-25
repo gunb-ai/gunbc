@@ -47,6 +47,8 @@ import v4.std.runtime {
   Raise,
   ResourceEffectBoundary,
   Return,
+  RuntimeUnit,
+  RuntimeUnitValue,
   RuntimeValue,
   Suspend,
   TransformInterpreter,
@@ -129,7 +131,10 @@ fn v4_eval_wave1_empty_frame() -> EvaluationFrame {
 }
 
 fn v4_eval_wave1_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
+  Accepted {
+    value: RuntimeUnit { value: RuntimeUnitValue { unit_type: node } },
+    diagnostics: None
+  }
 }
 
 fn v4_eval_wave1_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
@@ -145,15 +150,21 @@ fn v4_eval_wave1_call_primitive(
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
+  Accepted {
+    value: RuntimeUnit { value: RuntimeUnitValue { unit_type: node } },
+    diagnostics: None
+  }
 }
 
 fn v4_eval_wave1_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
-  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
+  Accepted { value: node, diagnostics: None }
 }
 
 fn v4_eval_wave1_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
-  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: node))
+  Accepted {
+    value: Return { value: RuntimeUnit { value: RuntimeUnitValue { unit_type: node } } },
+    diagnostics: None
+  }
 }
 
 fn v4_eval_wave1_bind_value(
@@ -174,7 +185,10 @@ fn v4_eval_wave1_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
 }
 
 fn v4_eval_wave1_call(call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
-  outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: call.callee))
+  Accepted {
+    value: Continue { value: RuntimeUnit { value: RuntimeUnitValue { unit_type: call.callee } } },
+    diagnostics: None
+  }
 }
 
 fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
@@ -184,13 +198,13 @@ fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
 fn v4_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
     Continue { value: _ } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
+      Accepted { value: frame, diagnostics: None }
     Return { value: _ } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
-    Raise { diagnostic: _ } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
+      Accepted { value: frame, diagnostics: None }
+    Raise { diagnostic: d } =>
+      outcome_rejected(d: d)
     Suspend { continuation: c } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: c.current))
+      Accepted { value: c, diagnostics: None }
   }
 }
 
@@ -243,7 +257,7 @@ fn v4_evaluator_value_representation_wave1() -> ValueRepresentationModel {
   }
 }
 
-// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes non-deferred interpretation hooks (ledger: T-34 · TASKS.md §T-34)
+// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes fully typed interpretation; Wave-1 hooks realized (T-34), richer primitive semantics gated on T-22.
 fn v4_evaluator_interpretation_wave1() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
