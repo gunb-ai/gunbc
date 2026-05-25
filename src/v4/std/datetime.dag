@@ -133,7 +133,7 @@ type CalendarDateFields {
 
 
 type CalendarDateValidity {
-  fields: CalendarDateFields
+  refined: Refined<CalendarDateFields>
 }
 
 
@@ -177,11 +177,16 @@ type LeapSecondEvidence
   | LeapSecondPermitted { authority: Symbol }
 
 
-type InstantValidity {
+type InstantFields {
   date: CalendarDate
   time: ClockTime
   offset: TzOffset
   leap_second: LeapSecondEvidence
+}
+
+
+type InstantValidity {
+  refined: Refined<InstantFields>
 }
 
 
@@ -213,6 +218,28 @@ data nanoseconds_out_of_range: Symbol = nanoseconds_out_of_range
 data subsecond_digits_out_of_range: Symbol = subsecond_digits_out_of_range
 data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
+data calendar_date_invalid: Symbol = calendar_date_invalid
+data instant_invalid: Symbol = instant_invalid
+
+
+fn year_value(year: Year) -> Nat {
+  year.parsed.base.value
+}
+
+
+fn month_value(month: MonthOrdinal) -> Nat {
+  month.parsed.base.value
+}
+
+
+fn day_value(day: DayOrdinal) -> Nat {
+  day.parsed.base.value
+}
+
+
+fn second_value(second: SecondOfMinute) -> Nat {
+  second.parsed.base.value
+}
 
 
 fn year_admits(parsed: ParsedFourDigitYearLexeme) -> Bool {
@@ -262,6 +289,56 @@ fn tz_offset_hour_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
 
 fn tz_offset_minute_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
   parsed.value <= 59
+}
+
+
+fn divisible_by(value: Nat, divisor: Nat) -> Bool {
+  (value % divisor) == 0
+}
+
+
+fn leap_year(value: Nat) -> Bool {
+  divisible_by(value: value, divisor: 4)
+    && (!divisible_by(value: value, divisor: 100) || divisible_by(value: value, divisor: 400))
+}
+
+
+fn calendar_date_admits(fields: CalendarDateFields) -> Bool {
+  let year = year_value(year: fields.year)
+  let month = month_value(month: fields.month)
+  let day = day_value(day: fields.day)
+  match month {
+    1 => day <= 31
+    2 => if leap_year(value: year) {
+      day <= 29
+    } else {
+      day <= 28
+    }
+    3 => day <= 31
+    4 => day <= 30
+    5 => day <= 31
+    6 => day <= 30
+    7 => day <= 31
+    8 => day <= 31
+    9 => day <= 30
+    10 => day <= 31
+    11 => day <= 30
+    12 => day <= 31
+    _ => false
+  }
+}
+
+
+fn instant_admits(fields: InstantFields) -> Bool {
+  let second = second_value(second: fields.time.fields.second)
+  if second == 60 {
+    match fields.leap_second {
+      NoLeapSecond => false
+      LeapSecondPermitted { authority: _ } => true
+    }
+  } else {
+    true
+  }
 }
 
 
@@ -322,6 +399,18 @@ data tz_offset_hour_validation: Validation<ParsedTwoDigitFieldLexeme> = Validati
 data tz_offset_minute_validation: Validation<ParsedTwoDigitFieldLexeme> = Validation {
   reason: tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
+}
+
+
+data calendar_date_validation: Validation<CalendarDateFields> = Validation {
+  reason: calendar_date_invalid,
+  admits: calendar_date_admits
+}
+
+
+data instant_validation: Validation<InstantFields> = Validation {
+  reason: instant_invalid,
+  admits: instant_admits
 }
 
 
@@ -441,8 +530,15 @@ fn make_tz_offset_minute(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcom
 }
 
 
-fn make_calendar_date(validity: CalendarDateValidity) -> CalendarDate {
-  CalendarDate { validity: validity }
+fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<CalendarDate> {
+  match refine(base: fields, by: calendar_date_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: CalendarDate { validity: CalendarDateValidity { refined: refined } },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
 }
 
 
@@ -451,6 +547,13 @@ fn make_clock_time(fields: ClockTimeFields) -> ClockTime {
 }
 
 
-fn make_instant(validity: InstantValidity) -> Instant {
-  Instant { validity: validity }
+fn make_instant(fields: InstantFields, at: Locus) -> Outcome<Instant> {
+  match refine(base: fields, by: instant_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: Instant { validity: InstantValidity { refined: refined } },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
 }
