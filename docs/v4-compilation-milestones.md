@@ -291,9 +291,11 @@ of work.
 
 In priority order:
 
-1. **Add M1 CI step** (`--target rust` + rustc) and surface what breaks. Zero code
-   changes to src/v4 required — just a CI wiring change. Output: a list of v2 emitter
-   gaps for v4 constructs.
+1. **Add M1 CI step** (`--target rust` + rustc) and surface what breaks. No
+   compiler-spine changes to src/v4 required — author the gate in
+   `src/v4/workflow/ci.dag` (the modeled CI authority per THESIS.md §workflow) and
+   regenerate/update the checked CI projection as its receipt. Output: a list of v2
+   emitter gaps for v4 constructs.
 
 2. **Implement T-6 lexer walk** in 01_tokenize.dag (one worker, one file, fills the
    `ModeledLexRules` arm). v2 emits Rust from it; stage0 runs it natively.
