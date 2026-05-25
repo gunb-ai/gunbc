@@ -1,6 +1,6 @@
 // src/v4/std/integer.dag
 // Scope: Abstract Int/UInt, fixed-width projections, divide/modulo carriers and diagnostics.
-// Owns: GroupCompletion, Int, UInt, Compose, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, IntPlatform, UIntPlatform, int_add, int_negate, int_mul, int_compare, int_is_zero, int_abelian_group, int_ordered_ring, integer_div_by_zero, integer_modulo_by_zero, integer_divide_by_zero_diagnostic, integer_modulo_by_zero_diagnostic, int_div, int_mod
+// Owns: GroupCompletion, Int, UInt, Compose, Signedness, Representation, OverflowDisposition, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, IntPlatform, UIntPlatform, int_add, int_negate, int_mul, int_compare, int_is_zero, int_abelian_group, int_ordered_ring, integer_div_by_zero, integer_modulo_by_zero, integer_divide_by_zero_diagnostic, integer_modulo_by_zero_diagnostic, int_div, int_mod
 // Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
 // Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).
 // Anchor: https://en.wikipedia.org/wiki/Integer
@@ -36,6 +36,15 @@ type GroupCompletion<M>
 type Int = GroupCompletion<Nat>
 type UInt = Nat
 type Compose<carrier, dimension>
+
+// Anchor: https://en.wikipedia.org/wiki/Signedness
+type Signedness = Signed | Unsigned
+
+// Anchor: https://en.wikipedia.org/wiki/Signed_number_representations
+type Representation = TwosComplement | OnesComplement | SignMagnitude
+
+// Anchor: https://en.wikipedia.org/wiki/Integer_overflow
+type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
 type Int8 = Compose<Int, MachineWidth<Word8>>
 type Int16 = Compose<Int, MachineWidth<Word16>>
