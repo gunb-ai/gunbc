@@ -118,6 +118,8 @@ See [docs/modeling/layering.md](docs/modeling/layering.md).
 
 Types decompose into smaller types that each assert one fact.
 
+The canonical carrier for a compositional type is a **fact-bundle**: a `Conj` / record whose fields are **named edges** (`Edge { label: Named { name: … }, target: … }`), each field asserting one spec-read fact. Bare aliases (`type X = Y`) and positional-only `Conj` without named fields are under-modeled carriers — they assert an identity or shape while reading zero facts. Practice 8 in [docs/modeling-discipline.md](docs/modeling-discipline.md#8-fact-bundle-modeling) is the operational rubric (good/bad examples, hollow-alias discriminator, structural T-30 gate); the worked target-by-target forms live in [docs/modeling/grounding-worked-examples.md](docs/modeling/grounding-worked-examples.md).
+
 > Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from* (see [docs/modeling-discipline.md](docs/modeling-discipline.md) "The three facets").
 
 Do not hand-roll a derived operation. If a function's behavior is determined entirely by the shape of a modeled type, it is re-deriving something the compiler already derives. The deficiency is in the model, not the code — model the missing fact; do not hand-roll the operation.
