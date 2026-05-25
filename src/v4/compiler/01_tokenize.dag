@@ -144,7 +144,7 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
     DigitChar =>
       nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57)
     HexDigitChar =>
-      char_in_class(c: c, class: DigitChar) ||
+      (nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57)) ||
       (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 70)) ||
       (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 102))
     IdentStartChar =>
@@ -152,8 +152,10 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
       (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 122)) ||
       c == 95
     IdentContinueChar =>
-      char_in_class(c: c, class: IdentStartChar) ||
-      char_in_class(c: c, class: DigitChar)
+      (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 90)) ||
+      (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 122)) ||
+      c == 95 ||
+      (nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57))
     StringTextChar =>
       c != 34 && c != 10
     LineCommentTextChar =>
@@ -340,17 +342,19 @@ fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
 
 
 fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
-  match rules {
-    Empty => LexRuleNoMatch
-    Cons { head: rule, tail: rest } =>
-      match lex_try_rule(rule: rule, source: source) {
-        LexRuleNoMatch => lex_try_rules(rules: rest, source: source)
+  fold_list(
+    xs: rules,
+    empty: LexRuleNoMatch,
+    cons: fn(acc, rule) {
+      match acc {
+        LexRuleNoMatch => lex_try_rule(rule: rule, source: source)
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
           LexRuleTrivia { lexeme: lexeme, remaining: remaining }
       }
-  }
+    }
+  )
 }
 
 
