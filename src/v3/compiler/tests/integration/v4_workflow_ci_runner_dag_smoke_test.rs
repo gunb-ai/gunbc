@@ -22,6 +22,8 @@ const CI_DAG: &str = include_str!("../../../../v4/workflow/ci.dag");
 const CI_DAG_PATH: &str = "src/v4/workflow/ci.dag";
 const CI_YML: &str = include_str!("../../../../../.github/workflows/ci.yml");
 const CI_YML_PATH: &str = ".github/workflows/ci.yml";
+const M1_BINDING_TEST_FILTER: &str =
+    "v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml";
 const CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/workflow/affected_set_ci_runner.dag");
 const CLAIM_PATH: &str = "src/v4/test/claim/workflow/affected_set_ci_runner.dag";
@@ -116,6 +118,18 @@ fn expr_string(expr: &SurfaceExpr) -> &str {
             ..
         } => value,
         other => panic!("expected string literal expr, got {other:?}"),
+    }
+}
+
+fn expr_bool(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::Bool(value),
+            ..
+        } => value,
+        SurfaceExpr::Var { name, .. } if name == "true" => true,
+        SurfaceExpr::Var { name, .. } if name == "false" => false,
+        other => panic!("expected bool literal expr, got {other:?}"),
     }
 }
 
@@ -244,11 +258,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         expr_string(record_body_field(live_signal, "binding_smoke_step_name"));
     let step_name = expr_string(record_body_field(live_signal, "step_name"));
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
+    let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
-        binding_smoke_step.contains(
-            "cargo test -p v3-compiler --test integration v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet"
-        ),
+        binding_smoke_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
+        )),
         "{CI_YML_PATH}: `{binding_smoke_step_name}` must execute the M1 model/YAML binding receipt (gunbc#846 zero-test-filter bypass)"
     );
     let m1_step = workflow_step_block(CI_YML, step_name);
@@ -256,10 +271,17 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         m1_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
         "{CI_YML_PATH}: `{step_name}` must run for v4 and workflow-policy changes"
     );
-    assert!(
-        m1_step.contains("continue-on-error: true"),
-        "{CI_YML_PATH}: `{step_name}` must stay non-blocking per modeled `non_blocking: true`"
-    );
+    if non_blocking {
+        assert!(
+            m1_step.contains("continue-on-error: true"),
+            "{CI_YML_PATH}: `{step_name}` must set continue-on-error when modeled non_blocking is true"
+        );
+    } else {
+        assert!(
+            !m1_step.contains("continue-on-error: true"),
+            "{CI_YML_PATH}: `{step_name}` must not set continue-on-error when modeled non_blocking is false"
+        );
+    }
     assert!(
         m1_step.contains(&format!("run: bash {script_path}")),
         "{CI_YML_PATH}: `{step_name}` must invoke the modeled probe script"
