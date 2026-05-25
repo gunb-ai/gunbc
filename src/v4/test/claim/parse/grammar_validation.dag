@@ -107,8 +107,7 @@ data validation_dangling_ref_root: GrammarRoot = GrammarRoot {
 
 
 // Non-empty token list for the sync-recovery claim.
-data validation_one_token_list: List<Token> =
-  Cons { head: validation_token(class: validation_tok_class), tail: Empty }
+data validation_one_token_list: List<Token> = Cons { head: validation_token(class: validation_tok_class), tail: Empty }
 
 
 data claim_duplicate_productions_detected: TestClaim = EqualsClaim {
