@@ -429,6 +429,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     } else {
       match lookup_type_for(env: env, node: n) {
         Some { value: resolved } =>
+          let type_name = authored_name(env: env, node: n)
+          let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+          let bare_arity_diags = if is_user_generic_use_site(n: n, env: env) && n.children |> count == 0 && !n_is_type_var {
+            [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: resolved.params |> count, got: 0, span: n.span }, module_name: module_name)]
+          } else { [] }
           // Topological resolution ensures bindings are fully resolved before
           // any dependent type is processed. Re-resolving the looked-up node
           // would redundantly walk the entire expanded subtree, causing
@@ -453,7 +458,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           } else { resolved }
           let is_optional = n.return_cardinality == CardOptional
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          NodeResolveResult { resolved: final_resolved, diagnostics: [] }
+          NodeResolveResult { resolved: final_resolved, diagnostics: bare_arity_diags }
         None =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
