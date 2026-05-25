@@ -116,7 +116,7 @@ See [docs/modeling/layering.md](docs/modeling/layering.md).
 
 ### M1: Types are compositional facts
 
-Types decompose into smaller types that each assert one fact. For types that model an external spec primitive (a language integer, a hardware register, a protocol packet), this means authoring a **fact-bundle**: a `Conj`/record whose fields are the facts the spec states — width, signedness, overflow disposition, surface spelling — each grounded into the shared `std/` vocabulary. A bare alias (`type RustI32 = Int32`) models nothing; a fact-bundle models everything. See Practice 8 in [docs/modeling-discipline.md](docs/modeling-discipline.md) for the full discipline and worked examples.
+Types decompose into smaller types that each assert one fact.
 
 > Fact modeling is the **inputs facet** of the derived homomorphism: the facts a type asserts are what the compiler derives the cross-target map *from* (see [docs/modeling-discipline.md](docs/modeling-discipline.md) "The three facets").
 
