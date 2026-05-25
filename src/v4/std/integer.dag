@@ -4,7 +4,7 @@
 // Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
 // Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).
 // Anchor: https://en.wikipedia.org/wiki/Integer
-// Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
+// Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION, SL-3229-INTEGER-OVERFLOW-SEMANTICS, SL-3229-INTEGER-REPRESENTATION-STUBS.
 // 🟢
 
 module v4.std.integer
@@ -40,13 +40,13 @@ type Compose<carrier, dimension>
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Signedness = Signed | Unsigned
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// 🟡 coproduct dissolution — SL-3229-INTEGER-REPRESENTATION-STUBS — feature:integer-representation-stub-semantics — dissolve-on-arrival: OnesComplement and SignMagnitude gain target-backed representation semantics or are proven unused by the T-4 fact-bundle catalog.
 type Representation
   = TwosComplement
   | OnesComplement // stub — no current target uses this representation
   | SignMagnitude  // stub — no current target uses this representation
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// 🟡 coproduct dissolution — SL-3229-INTEGER-OVERFLOW-SEMANTICS — feature:integer-overflow-disposition-semantics — dissolve-on-arrival: wrapping/saturating/trapping/undefined overflow are backed by width, bounds, and Outcome semantics consumed by T-4 fact-bundles.
 type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
 type Int8 = Compose<Int, MachineWidth<Word8>>

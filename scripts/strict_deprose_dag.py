@@ -293,12 +293,9 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
     if rel == "src/v4/std/integer.dag":
         # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
         # (absent at merge-base).
-        for nm in (
-            "Signedness",
-            "Representation",
-            "OverflowDisposition",
-        ):
-            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["Signedness"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["Representation"] = ("🟡", "SL-3229-INTEGER-REPRESENTATION-STUBS")
+        out["OverflowDisposition"] = ("🟡", "SL-3229-INTEGER-OVERFLOW-SEMANTICS")
     return out
 
 
@@ -361,6 +358,20 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
             "feature:llvm-wave1-int-bits-subset — "
             "dissolve-on-arrival: llvm_integer_facts_catalog aligns with "
             "LlvmType.IntegerType.bits NonZeroNat carrier (wave-2 · T-4 quiet-otter-381)."
+        )
+    if type_name == "Representation":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-INTEGER-REPRESENTATION-STUBS — "
+            "feature:integer-representation-stub-semantics — "
+            "dissolve-on-arrival: OnesComplement and SignMagnitude gain target-backed "
+            "representation semantics or are proven unused by the T-4 fact-bundle catalog."
+        )
+    if type_name == "OverflowDisposition":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-INTEGER-OVERFLOW-SEMANTICS — "
+            "feature:integer-overflow-disposition-semantics — "
+            "dissolve-on-arrival: wrapping/saturating/trapping/undefined overflow are "
+            "backed by width, bounds, and Outcome semantics consumed by T-4 fact-bundles."
         )
     return f"// {emoji} coproduct dissolution · {ref}."
 
