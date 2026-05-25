@@ -116,17 +116,19 @@ The first moment that v4 actually compiles something.
 
 **Known blockers:**
 1. **T-6 lexer walk ("not realized").** `01_tokenize.dag` has `ModeledLexRules { root: _ } → Rejected("lexical walk not realized")`. The lex rule data is modeled but the walk algorithm that uses it is a stub. This MUST be real for M2. One worker, one file.
-2. **T-7 parser walk ("not realized").** Same pattern in `02_parse.dag`. `ModeledGrammar { root: _ } → Rejected("grammar walk not realized")`. dag.dag grammar data is filled; the walk algorithm is not.
+2. **T-7 parser walk — `parse_expr` stub.** `02_parse.dag` has been partially filled (#3626): `parse()` now dispatches through `grammar_lookup_production` → `parse_production` → `parse_expr`. The remaining stub is `parse_expr` itself, which has a `🟡 gated — feature:T-7-parse-walk-realization` marker and always returns `ParseExprRejected`. dag.dag grammar data is filled; `parse_expr` needs implementing to match the grammar rule structure against the token stream.
 3. **T-10 emit must produce real output.** `05_emit.dag` must compose translate output into actual Rust source text for the target. Currently 45 lines.
 4. **Trivial input scope:** the minimal viable input only needs to exercise the pipeline for the .dag language's grammar (dag.dag is the only language with lex/grammar data filled). Python, Go, etc. are not needed for M2.
 
 **Required work to reach M2:**
 - Implement lexer walk in 01_tokenize.dag (algorithm, 1 worker, ~200-400 lines)
-- Implement parser walk in 02_parse.dag (algorithm, 1 worker, ~200-400 lines)
+- Implement `parse_expr` in 02_parse.dag (the remaining stub; `parse_production` and `parse()` structure already real)
 - Wire T-10 emit to produce real Rust source text from a translated node tree
+- T-8 normalize + resolve: modeled and in the chain; single-file trivial input does not hit the T-28 cross-file bridge gate
+- T-9 infer: modeled and in the chain; no additional work for trivial input
 
-**Sequential dependency:** T-6 walk → T-7 walk → T-10 emit → M2.
-These three are serial; nothing else unblocks them.
+**Sequential dependency:** T-6 walk → T-7 `parse_expr` → T-8 normalize/resolve (modeled) → T-9 infer (modeled) → T-10 emit → M2.
+T-8 and T-9 are modeled but required stages; they are not additional blockers for trivial input.
 
 ---
 
