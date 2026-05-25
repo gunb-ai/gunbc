@@ -158,21 +158,13 @@ fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
     }
   }
 }
-// ALGEBRA: (Diagnostics, diagnostics_merge, None) forms a Monoid where:
-//   None is the identity (empty diagnostic accumulation).
-//   Some merges via non_empty_diagnostics_append on the NonEmptyDiagnostics carrier.
-// Laws: diagnostics_merge(None, d) = d; diagnostics_merge(d, None) = d;
-//   associativity follows from list_append associativity on the tail FreeMonoid.
 data diagnostics_monoid: Monoid<Diagnostics> = Monoid {
   semigroup: Semigroup { magma: Magma { op: diagnostics_merge } },
   identity: None
 }
-// Semigroup<NonEmptyDiagnostics> inhabitant: op = non_empty_diagnostics_append.
-// No identity — rejected diagnostics are always non-empty (fail-closed).
 data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = Semigroup {
   magma: Magma { op: non_empty_diagnostics_append }
 }
-// Fold a list of Diagnostics with the monoid identity (None) and diagnostics_merge.
 fn diagnostics_fold(xs: List<Diagnostics>) -> Diagnostics {
   fold(xs, init: None, f: fn(acc, d) {
     diagnostics_merge(outer: acc, inner: d)
@@ -214,7 +206,6 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
 fn outcome_with_diagnostics<U>(value: U, diagnostics: Diagnostics) -> Outcome<U> {
   Accepted { value: value, diagnostics: diagnostics }
 }
-// Thread accumulated Diagnostics into an Accepted outcome via diagnostics_monoid op.
 fn accepted_thread_diagnostics<T>(
   value: T,
   accumulated: Diagnostics,
