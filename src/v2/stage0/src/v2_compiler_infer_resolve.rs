@@ -721,19 +721,6 @@ pub fn resolve_node_bounded(
                         }
                         __result
                     });
-                    let type_arg_params = Rc::new({
-                        let mut __result = Vec::new();
-                        for arg in resolved_args.clone().iter().cloned() {
-                            __result.push(make_param_node(
-                                &authored_name_at(env.source_indices.clone(), &arg),
-                                arg.clone(),
-                                None,
-                                arg.span.clone(),
-                                node_name_span(&arg),
-                            ));
-                        }
-                        __result
-                    });
                     let slot_bindings = Rc::new(
                         decl.params
                             .clone()
@@ -821,7 +808,7 @@ pub fn resolve_node_bounded(
                                 ident_span: n.ident_span.clone(),
                                 children: target_result.resolved.clone().children.clone(),
                                 connective: target_result.resolved.clone().connective.clone(),
-                                params: type_arg_params,
+                                params: Rc::new(vec![]),
                                 inferred: n.inferred.clone(),
                                 return_cardinality: n.return_cardinality.clone(),
                                 uses: n.uses.clone(),
@@ -865,7 +852,7 @@ pub fn resolve_node_bounded(
                                     ident_span: n.ident_span.clone(),
                                     children: substituted_children,
                                     connective: decl.connective.clone(),
-                                    params: type_arg_params,
+                                    params: Rc::new(vec![]),
                                     inferred: n.inferred.clone(),
                                     return_cardinality: n.return_cardinality.clone(),
                                     uses: n.uses.clone(),

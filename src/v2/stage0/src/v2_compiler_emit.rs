@@ -1797,6 +1797,42 @@ pub fn emit_node_type(
     )
 }
 
+pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec<String>> {
+    match inferred.as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: var_id, .. }) => Rc::new(vec![var_id.clone()]),
+        Some(InferredNode::Resolved { node: rt, .. }) => named_type_vars_in_node(&rt),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn named_type_vars_in_node(n: &Rc<Node>) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_vars = named_type_vars_in_inferred(n.inferred.clone());
+        let child_vars = Rc::new({
+            let mut __result = Vec::new();
+            for ch in n.children.clone().iter().cloned() {
+                __result.extend((*named_type_vars_in_node(&ch)).iter().cloned());
+            }
+            __result
+        });
+        let param_vars = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.extend(
+                    (*named_type_vars_in_node(&param_node_type_expr(&p)))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        unique_strings(v2_rt::concat(
+            v2_rt::concat(self_vars, child_vars),
+            param_vars,
+        ))
+    })
+}
+
 pub fn render_named_type_base(
     n: &Rc<Node>,
     target: &RenderTarget,
@@ -1805,27 +1841,33 @@ pub fn render_named_type_base(
     {
         let tn = authored_name_at(source_indices.clone(), &n);
         let base = coerce_primitive_type(target.clone(), tn);
-        if ((n.params.clone().len() as i64) == 0) {
+        let explicit_params = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.push(render_node_type(
+                    &param_node_type_expr(&p),
+                    &target,
+                    &v2_rt::rc_empty_set::<String>(),
+                    &source_indices,
+                ));
+            }
+            __result
+        });
+        let inferred_params = if ((explicit_params.clone().len() as i64) == 0) {
+            named_type_vars_in_node(&n)
+        } else {
+            Rc::new(vec![])
+        };
+        let param_names = v2_rt::concat(explicit_params.clone(), inferred_params);
+        if ((param_names.clone().len() as i64) == 0) {
             base
         } else {
             {
-                let param_names = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in n.params.clone().iter().cloned() {
-                        __result.push(render_node_type(
-                            &param_node_type_expr(&p),
-                            &target,
-                            &v2_rt::rc_empty_set::<String>(),
-                            &source_indices,
-                        ));
-                    }
-                    __result
-                });
                 let spec = language_spec(target.clone());
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(base, spec.type_arg_open.clone()),
-                        param_names.join(&", ".to_string()),
+                        param_names.clone().join(&", ".to_string()),
                     ),
                     spec.type_arg_close.clone(),
                 )
