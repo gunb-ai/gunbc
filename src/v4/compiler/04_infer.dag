@@ -249,10 +249,20 @@ fn lookup_inferred_facts_in_entries(
 }
 
 
+// Consumption guard: only entries where node == facts.grounding.node are inserted.
+// Entries that violate the invariant are silently dropped (construction via
+// admitted_inferred_facts_entry is the primary enforcement point).
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, InferredFacts> {
+  let admitted = fold(entries, init: [], f: fn(acc, entry) {
+    if entry.node == entry.facts.grounding.node {
+      list_push(acc, entry)
+    } else {
+      acc
+    }
+  })
   Map {
     lookup: fn(key) {
-      lookup_inferred_facts_in_entries(entries: entries, key: key)
+      lookup_inferred_facts_in_entries(entries: admitted, key: key)
     }
   }
 }
@@ -289,13 +299,31 @@ fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<Canon
 }
 
 
+// Construction guard: enforces node == facts.grounding.node before admitting an entry.
+// Prevents an InferredFactsEntry where the map key diverges from the grounding subject.
+fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<InferredFactsEntry> {
+  if node == facts.grounding.node {
+    Accepted {
+      value: InferredFactsEntry { node: node, facts: facts },
+      diagnostics: None
+    }
+  } else {
+    outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
+  }
+}
+
+
 fn infer_entries_fold_init(n: Node) -> Outcome<List<InferredFactsEntry>> {
   match infer_node_facts(n: n) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: facts, diagnostics: d } =>
-      Accepted {
-        value: [InferredFactsEntry { node: n, facts: facts }],
-        diagnostics: d
+      match admitted_inferred_facts_entry(node: n, facts: facts) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: entry, diagnostics: ed } =>
+          Accepted {
+            value: [entry],
+            diagnostics: diagnostics_merge(outer: d, inner: ed)
+          }
       }
   }
 }
