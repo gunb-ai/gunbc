@@ -10327,6 +10327,40 @@ pub fn emit_rust_generic_method_call(
 ) -> String {
     {
         let function_name = method_name;
+        if (function_name.as_str() == "init") || (function_name.as_str() == "step") {
+            let recv_str = emit_typed_expr_base(
+                &receiver,
+                registry.clone(),
+                &scope,
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            );
+            let arg_strs = Rc::new({
+                let mut __result = Vec::new();
+                for a in args.iter().cloned() {
+                    __result.push(emit_cloned_arg(
+                        arg_value(&a),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    ));
+                }
+                __result
+            });
+            return v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat("(".to_string(), recv_str),
+                        v2_rt::concat(".".to_string(), function_name),
+                    ),
+                    ")(".to_string(),
+                ),
+                v2_rt::concat(arg_strs.join(&", ".to_string()), ")".to_string()),
+            );
+        }
         let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
             v2_rt::concat(
                 "&".to_string(),

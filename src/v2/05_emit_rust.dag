@@ -1671,8 +1671,12 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
         ty
       } else {
         let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
-        if explicit_args |> count == expected {
-          let with_args = concat(type_name, "<", explicit_args |> join(separator: ", "), ">")
+        let inferred_args =
+          if explicit_args |> count == expected { explicit_args }
+          else if parent_generic_param_names |> count >= expected { parent_generic_param_names |> take(n: expected) }
+          else { [] }
+        if inferred_args |> count == expected {
+          let with_args = concat(type_name, "<", inferred_args |> join(separator: ", "), ">")
           if ty == type_name {
             with_args
           } else if ty == concat("Rc<", type_name, ">") {
@@ -4190,6 +4194,11 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
 
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
+  if function_name == "init" || function_name == "step" {
+    let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    concat("(", recv_str, ".", function_name, ")(", arg_strs |> join(separator: ", "), ")")
+  } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
     concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
   } else {
@@ -4203,6 +4212,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
     concat("Rc::new(", lowered, ")")
   } else { lowered }
+  }
 }
 
 fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -6251,7 +6261,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       body, "\n",
       "        };\n",
       "    }\n",
-      "    CACHED.with(|c| c.clone())\n",
+      "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
       "}")
   }
 }
