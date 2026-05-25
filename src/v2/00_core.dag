@@ -870,8 +870,7 @@ data node_field_roles: Map<String, NodeFieldRole> = {
   "params": ChildrenListField,
   "body": SubValueField,
   "expr_data": SubValueField,
-  "match_pattern": SubValueField,
-  "target": SubValueField
+  "match_pattern": SubValueField
 }
 
 fn is_children_list_field(field_name: String) -> Bool {

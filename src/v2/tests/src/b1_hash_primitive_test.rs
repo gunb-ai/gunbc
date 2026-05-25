@@ -61,8 +61,8 @@ fn hash_combine_rejects_pair_framing_ambiguous_raw_strings() {
 #[test]
 fn emitted_runtime_hash_ops_preserves_hash_carrier_boundary() {
     let emitted = rt_hash_ops();
-    assert!(emitted.contains("pub type Hash = String;"));
     assert!(emitted.contains("fn expect_hash_digest"));
+    assert!(emitted.contains("pub fn is_hash_digest"));
     assert!(emitted.contains("pub fn hash_combine(a: Hash, b: Hash) -> Hash"));
     assert!(!emitted.contains("pub fn hash_combine(a: String, b: String)"));
 }

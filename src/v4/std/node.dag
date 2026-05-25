@@ -323,10 +323,22 @@ fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
     Positional => false
   })
 }
+fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  sort_by(
+    filter(children, e => match e.label {
+      Named { name: sym } => sym != loop_bound_edge
+      Positional => false
+    }),
+    e => named_edge_sort_key(e: e)
+  )
+}
 fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
   concat(
     loop_body_edges_for_content_hash(children: children),
-    loop_bound_edges_for_content_hash(children: children)
+    concat(
+      loop_other_named_edges_for_content_hash(children: children),
+      loop_bound_edges_for_content_hash(children: children)
+    )
   )
 }
 fn canonicalize_node_for_content_hash(n: Node) -> Node {
