@@ -1,7 +1,7 @@
 // src/v4/extdeps/formatters/black.dag
 // Scope: Black configuration model — real formatter option space grounded in pyproject.toml [tool.black].
-// Owns: BlackTargetVersion, BlackConfig, black_defaults, black_merge.
-// Consumes: none (pure config substrate; no node/compiler dependency).
+// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackConfig, black_defaults, black_merge.
+// Consumes: v4.std.collection (List only; no node/compiler dependency).
 // Status: T-4.16 scaffold — pyproject.toml [tool.black] option space per Black 26.x docs.
 // Anchor: https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html
 // Note: override composition — consumer folds List<BlackConfig> via black_merge; each
@@ -10,6 +10,8 @@
 //       per-field Override/Inherit variants replaces full-config layering.
 
 module v4.extdeps.formatters.black
+
+import v4.std.collection { List }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -24,12 +26,20 @@ type BlackTargetVersion
   | BlackPy314
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Absent pyproject `target-version`: infer from `[project.requires-python]`, else per-file
+// auto-detection (Black 26.x docs — not a fixed py311 sentinel).
+type BlackTargetVersionPolicy
+  = BlackTargetVersionInferFromProject
+  | BlackTargetVersionExplicit { versions: List<BlackTargetVersion> }
+
+
 type BlackConfig {
   // Line length
   line_length: Int
 
-  // Python grammar / style target (pyproject `target-version`; single primary version).
-  target_version: BlackTargetVersion
+  // Python grammar / style target (pyproject `target-version` array or inferred).
+  target_version: BlackTargetVersionPolicy
 
   // Require a specific Black version (pyproject `required-version`; empty = unset).
   required_version: String
@@ -48,10 +58,11 @@ type BlackConfig {
 }
 
 
-// Official Black defaults for pyproject.toml [tool.black] (Black 26.x stable docs).
+// Black CLI / absent-key pyproject defaults (Black 26.x stable docs).
+// `target-version` omitted → BlackTargetVersionInferFromProject (not a pinned py311).
 data black_defaults: BlackConfig = BlackConfig {
   line_length: 88,
-  target_version: BlackPy311,
+  target_version: BlackTargetVersionInferFromProject,
   required_version: "",
 
   include: "\\.pyi?$",
