@@ -150,7 +150,7 @@ type RustfmtConfig {
 
   // Line width
   max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
-  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0; 0 means use max_width; see also formatter-cross-field-constraints
+  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 (0 is a sentinel; see anchor for semantics); see also formatter-cross-field-constraints
   chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   single_line_let_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
