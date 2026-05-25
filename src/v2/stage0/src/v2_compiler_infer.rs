@@ -84,10 +84,6 @@ pub use crate::v2_compiler_infer_types::{
 };
 pub use crate::v2_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -143,6 +139,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -10687,7 +10684,7 @@ pub fn build_type_env(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
@@ -11146,7 +11143,7 @@ pub fn build_type_env_unresolved(
             Rc::new(v2_rt::map_keys(&compiler_recursive_types())),
         );
         let cross_type_set_str = cross_type_all_names.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
@@ -11797,7 +11794,7 @@ pub fn topo_resolve_types(
             });
         }
         let remaining_set = remaining.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, name: String| v2_rt::rc_set_insert(acc, name.clone()),
         );
         let ready = Rc::new({
@@ -12028,7 +12025,7 @@ pub fn build_fielded_variants(
 ) -> Rc<std::collections::BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, m: Rc<TypedModule>| {
                 let items = m.items.clone();
                 let si = m.type_env.clone().source_indices.clone();
@@ -12162,7 +12159,7 @@ pub fn build_emit_graph_info(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraph
             },
         );
         let all_recursive = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new(v2_rt::map_keys(
                     &m.type_env.clone().recursive_type_set.clone(),

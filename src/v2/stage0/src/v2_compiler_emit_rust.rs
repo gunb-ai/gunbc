@@ -67,10 +67,6 @@ pub use crate::v2_compiler_ownership::{
 };
 pub use crate::v2_compiler_runtime_rust::rust_runtime_source;
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
@@ -122,6 +118,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -1642,7 +1639,7 @@ pub struct OwnershipBuildResult {
 pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_set::<_>(), /* BRIDGE: fold empty_set accumulator type unresolved */
+            compile_error!("empty_set element type unresolved"),
             |acc: _, m: Rc<TypedModule>| {
                 Rc::new({
                     let mut __result = Vec::new();
@@ -1669,16 +1666,59 @@ pub fn build_ownership_results(modules: &Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownersh
         let proofs = Rc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
-                __result.extend((*Rc::new({ let mut __result = Vec::new(); for item in Rc::new({ let mut __result = Vec::new(); for item in m.items.clone().iter().cloned() { if (item.body.clone() != None) { __result.push(item); } } __result }).iter().cloned() { __result.push({
-            let pnames = item.params.clone().iter().cloned().fold(v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */, |acc: _, p: Rc<Node>| v2_rt::rc_set_insert(acc, param_node_name_at(p.clone(), m.type_env.clone().source_indices.clone())));
-let si = m.type_env.clone().source_indices.clone();
-let qualified = v2_rt::concat(v2_rt::concat(authored_name_at(si.clone(), &m.module.clone()), ".".to_string()), authored_name_at(si.clone(), &item));
-Rc::new(OwnershipProofEntry {
-    name: qualified.clone(),
-    proof: analyze_ownership(authored_name_at(si.clone(), &item), item.params.clone(), item.body.clone().clone().unwrap(), &si),
-    param_names: pnames.clone(),
-})
-}); } __result })).iter().cloned());
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in m.items.clone().iter().cloned() {
+                                if (item.body.clone() != None) {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push({
+                                let pnames = item.params.clone().iter().cloned().fold(
+                                    compile_error!("empty_set element type unresolved"),
+                                    |acc: _, p: Rc<Node>| {
+                                        v2_rt::rc_set_insert(
+                                            acc,
+                                            param_node_name_at(
+                                                p.clone(),
+                                                m.type_env.clone().source_indices.clone(),
+                                            ),
+                                        )
+                                    },
+                                );
+                                let si = m.type_env.clone().source_indices.clone();
+                                let qualified = v2_rt::concat(
+                                    v2_rt::concat(
+                                        authored_name_at(si.clone(), &m.module.clone()),
+                                        ".".to_string(),
+                                    ),
+                                    authored_name_at(si.clone(), &item),
+                                );
+                                Rc::new(OwnershipProofEntry {
+                                    name: qualified.clone(),
+                                    proof: analyze_ownership(
+                                        authored_name_at(si.clone(), &item),
+                                        item.params.clone(),
+                                        item.body.clone().clone().unwrap(),
+                                        &si,
+                                    ),
+                                    param_names: pnames.clone(),
+                                })
+                            });
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
             }
             __result
         });

@@ -63,10 +63,6 @@ pub use crate::v2_compiler_parse::{
     ParserCallIdentity, ParserResultWitness,
 };
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::{Div, Sub};
 use crate::v2_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda,
@@ -90,6 +86,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -7076,41 +7073,70 @@ pub fn build_scc_index(
             |acc: Rc<DfsFinishAcc>, name: String| dfs_finish_order(&name, &adjacency, &acc),
         );
         let topo_order = v2_rt::reverse(finish.order.clone());
-        let result = topo_order.clone().iter().cloned().fold(Rc::new(SccBuildAcc {
-    assigned: v2_rt::rc_empty_set::<String>(),
-    index: v2_rt::rc_empty_map::<String, Rc<SccInfo>>(),
-}), |acc: Rc<SccBuildAcc>, name: String| if v2_rt::set_contains(&acc.assigned.clone(), name.clone()) {
-            acc.clone()
-        } else {
-            {
-                let component = dfs_collect_component(&name, &reverse_graph, &Rc::new(SccComponentAcc {
-    visited: acc.assigned.clone(),
-    members: Rc::new(vec![]),
-}));
-let member_set = component.members.clone().iter().cloned().fold(v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */, |inner: _, member: String| v2_rt::rc_set_insert(inner, member.clone()));
-let members = Rc::new({ let mut __result = Vec::new(); for member in names.clone().iter().cloned() { if v2_rt::set_contains(&member_set, member.clone()) { __result.push(member); } } __result });
-let next_assigned = component.visited.clone();
-if ((members.clone().len() as i64) > 1) {
-                    {
-                        let info = Rc::new(SccInfo {
-    members: members.clone(),
-    member_set: member_set.clone(),
-    pattern: classify_scc_recursion_pattern(&members, &func_index, &si),
-});
-let next_index = members.clone().iter().cloned().fold(acc.index.clone(), |inner: Rc<HashMap<String, Rc<SccInfo>>>, member: String| v2_rt::rc_map_insert(inner, member.clone(), info.clone()));
-Rc::new(SccBuildAcc {
-    assigned: next_assigned.clone(),
-    index: next_index.clone(),
-})
-}
+        let result = topo_order.clone().iter().cloned().fold(
+            Rc::new(SccBuildAcc {
+                assigned: v2_rt::rc_empty_set::<String>(),
+                index: v2_rt::rc_empty_map::<String, Rc<SccInfo>>(),
+            }),
+            |acc: Rc<SccBuildAcc>, name: String| {
+                if v2_rt::set_contains(&acc.assigned.clone(), name.clone()) {
+                    acc.clone()
                 } else {
-                    Rc::new(SccBuildAcc {
-    assigned: next_assigned.clone(),
-    index: acc.index.clone(),
-})
+                    {
+                        let component = dfs_collect_component(
+                            &name,
+                            &reverse_graph,
+                            &Rc::new(SccComponentAcc {
+                                visited: acc.assigned.clone(),
+                                members: Rc::new(vec![]),
+                            }),
+                        );
+                        let member_set = component.members.clone().iter().cloned().fold(
+                            compile_error!("empty_set element type unresolved"),
+                            |inner: _, member: String| v2_rt::rc_set_insert(inner, member.clone()),
+                        );
+                        let members = Rc::new({
+                            let mut __result = Vec::new();
+                            for member in names.clone().iter().cloned() {
+                                if v2_rt::set_contains(&member_set, member.clone()) {
+                                    __result.push(member);
+                                }
+                            }
+                            __result
+                        });
+                        let next_assigned = component.visited.clone();
+                        if ((members.clone().len() as i64) > 1) {
+                            {
+                                let info = Rc::new(SccInfo {
+                                    members: members.clone(),
+                                    member_set: member_set.clone(),
+                                    pattern: classify_scc_recursion_pattern(
+                                        &members,
+                                        &func_index,
+                                        &si,
+                                    ),
+                                });
+                                let next_index = members.clone().iter().cloned().fold(
+                                    acc.index.clone(),
+                                    |inner: Rc<HashMap<String, Rc<SccInfo>>>, member: String| {
+                                        v2_rt::rc_map_insert(inner, member.clone(), info.clone())
+                                    },
+                                );
+                                Rc::new(SccBuildAcc {
+                                    assigned: next_assigned.clone(),
+                                    index: next_index.clone(),
+                                })
+                            }
+                        } else {
+                            Rc::new(SccBuildAcc {
+                                assigned: next_assigned.clone(),
+                                index: acc.index.clone(),
+                            })
+                        }
+                    }
                 }
-}
-        });
+            },
+        );
         Rc::new(SccResult {
             index: result.index.clone(),
             topo_order: topo_order.clone(),
@@ -9441,22 +9467,40 @@ pub fn build_complexity_report(
         );
         let scc_result = build_scc_index(&func_entries, func_index.clone(), &si);
         let parser_always_advancing = infer_all_parser_always_advancing(&func_index, &si);
-        let full_scc_index = func_entries.clone().iter().cloned().fold(scc_result.index.clone(), |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v2_rt::map_get(&acc, entry.name.clone()) {
-    Some(_) => acc.clone(),
-    None => if (max_path_self_calls(entry.body.clone(), entry.name.clone(), si.clone()) > 0) {
-            {
-                let pattern = classify_recursion_pattern(&entry.name.clone(), &entry.body.clone(), &entry.params.clone(), parser_always_advancing.clone(), &si);
-let info = Rc::new(SccInfo {
-    members: Rc::new(vec![entry.name.clone()]),
-    member_set: v2_rt::rc_set_insert(v2_rt::rc_empty_set::<_>() /* BRIDGE: empty_set element type unresolved */, entry.name.clone()),
-    pattern: pattern.clone(),
-});
-v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), info.clone())
-}
-        } else {
-            acc.clone()
-        },
-});
+        let full_scc_index = func_entries.clone().iter().cloned().fold(
+            scc_result.index.clone(),
+            |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v2_rt::map_get(
+                &acc,
+                entry.name.clone(),
+            ) {
+                Some(_) => acc.clone(),
+                None => {
+                    if (max_path_self_calls(entry.body.clone(), entry.name.clone(), si.clone()) > 0)
+                    {
+                        {
+                            let pattern = classify_recursion_pattern(
+                                &entry.name.clone(),
+                                &entry.body.clone(),
+                                &entry.params.clone(),
+                                parser_always_advancing.clone(),
+                                &si,
+                            );
+                            let info = Rc::new(SccInfo {
+                                members: Rc::new(vec![entry.name.clone()]),
+                                member_set: v2_rt::rc_set_insert(
+                                    compile_error!("empty_set element type unresolved"),
+                                    entry.name.clone(),
+                                ),
+                                pattern: pattern.clone(),
+                            });
+                            v2_rt::rc_map_insert(acc.clone(), entry.name.clone(), info.clone())
+                        }
+                    } else {
+                        acc.clone()
+                    }
+                }
+            },
+        );
         let call_forward = forward_adjacency(
             Rc::new({
                 let mut __result = Vec::new();
