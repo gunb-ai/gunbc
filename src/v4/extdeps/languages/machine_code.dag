@@ -504,7 +504,7 @@ fn mc_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
     xs: mc_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      mc_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: mc_primitive_bundle_from_integer_facts(facts: facts)
       )

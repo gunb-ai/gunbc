@@ -1031,7 +1031,7 @@ fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
     xs: rust_mvp1_concrete_tokens(),
     empty: Empty,
     cons: fn(acc, token) {
-      rust_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: rust_mvp1_positional_token_edge(token: token)
       )
@@ -1056,7 +1056,7 @@ fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
 }
 
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
-  rust_list_append(
+  list_append(
     left: rust_mvp1_serialize_source_prefix_edges(),
     right: rust_mvp1_positional_edges_from_token_classes()
   )
@@ -1110,7 +1110,7 @@ fn rust_relation_token_edges(tokens: List<RustConcreteSyntaxToken>) -> List<Edge
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
-      rust_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: rust_mvp1_positional_token_edge(token: token)
       )
@@ -1437,7 +1437,7 @@ fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
     xs: rust_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: rust_primitive_bundle_from_integer_facts(facts: facts)
       )
@@ -1450,7 +1450,7 @@ fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
     xs: rust_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: rust_primitive_bundle_from_float_facts(facts: facts)
       )
@@ -1463,7 +1463,7 @@ fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
     xs: rust_noninteger_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_snoc_item(
+      list_snoc_item(
         xs: acc,
         item: rust_primitive_bundle_from_noninteger_facts(facts: facts)
       )
@@ -1536,7 +1536,7 @@ fn rust_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
     xs: rust_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_snoc_item(xs: acc, item: rust_integer_algebra_inhabitance(facts: facts))
+      list_snoc_item(xs: acc, item: rust_integer_algebra_inhabitance(facts: facts))
     }
   )
 }
@@ -1546,7 +1546,7 @@ fn rust_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
     xs: rust_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_snoc_item(xs: acc, item: rust_float_algebra_inhabitance(facts: facts))
+      list_snoc_item(xs: acc, item: rust_float_algebra_inhabitance(facts: facts))
     }
   )
 }
@@ -1558,8 +1558,8 @@ fn rust_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 }
 
 fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  rust_list_append(
-    left: rust_list_append(
+  list_append(
+    left: list_append(
       left: rust_integer_algebra_inhabitance_decls(),
       right: rust_float_algebra_inhabitance_decls()
     ),
@@ -1607,7 +1607,7 @@ fn rust_integer_algebra_laws() -> List<AlgebraLawObligation> {
     xs: rust_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_append(left: acc, right: rust_integer_law_obligations(facts: facts))
+      list_append(left: acc, right: rust_integer_law_obligations(facts: facts))
     }
   )
 }
@@ -1617,14 +1617,14 @@ fn rust_float_algebra_laws() -> List<AlgebraLawObligation> {
     xs: rust_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      rust_list_append(left: acc, right: rust_float_law_obligations(facts: facts))
+      list_append(left: acc, right: rust_float_law_obligations(facts: facts))
     }
   )
 }
 
 fn rust_model_core_law_obligations() -> List<AlgebraLawObligation> {
-  rust_list_append(
-    left: rust_list_append(
+  list_append(
+    left: list_append(
       left: rust_integer_algebra_laws(),
       right: rust_float_algebra_laws()
     ),
@@ -1723,8 +1723,8 @@ fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
 }
 
 fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  rust_list_append(
-    left: rust_list_append(
+  list_append(
+    left: list_append(
       left: rust_primitive_bundles_from_integer_catalog(),
       right: rust_primitive_bundles_from_float_catalog()
     ),
