@@ -855,10 +855,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
-    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
+    // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
     // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
     "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
+    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
     // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
     // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
     // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.
@@ -880,6 +883,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-21/T-24: `workflow/ci.dag` Wave-0 selection consumes `RerunNodeSet` for TestClaim roster narrowing.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim harness replaces probe.
     "src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs",
+    // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
+    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a

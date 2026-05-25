@@ -33,10 +33,16 @@ import v4.compiler.tokenize {
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
   ModelCore,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
@@ -361,6 +367,50 @@ data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data rust_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
+
+data rust_model_core_bridge_std_ordered_ring_representable_integer: Symbol = rust_model_core_bridge_std_ordered_ring_representable_integer
+data rust_model_core_bridge_std_approximate_field_ieee754_float: Symbol = rust_model_core_bridge_std_approximate_field_ieee754_float
+data rust_model_core_bridge_std_bool_boolean_algebra: Symbol = rust_model_core_bridge_std_bool_boolean_algebra
+
+data rust_model_core_bridge_law_integer_add_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_associative_when_representable
+data rust_model_core_bridge_law_integer_add_commutative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_commutative_when_representable
+data rust_model_core_bridge_law_integer_mul_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_mul_associative_when_representable
+data rust_model_core_bridge_law_integer_mul_commutative_when_representable: Symbol = rust_model_core_bridge_law_integer_mul_commutative_when_representable
+data rust_model_core_bridge_law_integer_distributive_when_representable: Symbol = rust_model_core_bridge_law_integer_distributive_when_representable
+data rust_model_core_bridge_law_integer_total_order_over_representable_values: Symbol = rust_model_core_bridge_law_integer_total_order_over_representable_values
+data rust_model_core_bridge_law_float_ieee754_rounding: Symbol = rust_model_core_bridge_law_float_ieee754_rounding
+data rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754: Symbol = rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754
+data rust_model_core_bridge_law_bool_bounded_lattice: Symbol = rust_model_core_bridge_law_bool_bounded_lattice
+data rust_model_core_bridge_law_bool_complement: Symbol = rust_model_core_bridge_law_bool_complement
+
+data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
+data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
+data rust_witness_bool_boolean_algebra: Symbol = rust_witness_bool_boolean_algebra
+
+data rust_effect_signature_pure_value: Symbol = rust_effect_signature_pure_value
+data rust_op_integer_add: Symbol = rust_op_integer_add
+data rust_op_integer_sub: Symbol = rust_op_integer_sub
+data rust_op_integer_mul: Symbol = rust_op_integer_mul
+data rust_op_integer_neg: Symbol = rust_op_integer_neg
+data rust_op_integer_div: Symbol = rust_op_integer_div
+data rust_op_integer_rem: Symbol = rust_op_integer_rem
+data rust_op_integer_compare: Symbol = rust_op_integer_compare
+data rust_op_float_add: Symbol = rust_op_float_add
+data rust_op_float_sub: Symbol = rust_op_float_sub
+data rust_op_float_mul: Symbol = rust_op_float_mul
+data rust_op_float_div: Symbol = rust_op_float_div
+data rust_op_float_compare: Symbol = rust_op_float_compare
+data rust_op_bool_and: Symbol = rust_op_bool_and
+data rust_op_bool_or: Symbol = rust_op_bool_or
+data rust_op_bool_not: Symbol = rust_op_bool_not
+
+data rust_partial_checked_integer_overflow: Symbol = rust_partial_checked_integer_overflow
+data rust_partial_integer_divide_by_zero: Symbol = rust_partial_integer_divide_by_zero
+data rust_partial_integer_remainder_by_zero: Symbol = rust_partial_integer_remainder_by_zero
+data rust_partial_signed_min_divide_by_negative_one: Symbol = rust_partial_signed_min_divide_by_negative_one
+data rust_precondition_integer_result_representable: Symbol = rust_precondition_integer_result_representable
+data rust_precondition_integer_divisor_nonzero: Symbol = rust_precondition_integer_divisor_nonzero
+data rust_precondition_signed_division_not_min_over_negative_one: Symbol = rust_precondition_signed_division_not_min_over_negative_one
 
 fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
   OverflowDisposition {
@@ -1431,6 +1481,257 @@ fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
   )
 }
 
+fn rust_symbol_node(id: Symbol) -> Node {
+  rust_inhabitant_atom(id: id)
+}
+
+fn rust_integer_algebra_witness_node(facts: RustIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_checked_integer_arithmetic, target: rust_symbol_node(id: rust_witness_checked_integer_arithmetic)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
+      rust_named_edge(name: rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
+    ]
+  }
+}
+
+fn rust_float_algebra_witness_node(facts: RustFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_float_approximate_field, target: rust_symbol_node(id: rust_witness_float_approximate_field)),
+      rust_named_edge(name: rust_facts_field_ieee754_binary, target: rust_symbol_node(id: facts.ieee754_binary)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection))
+    ]
+  }
+}
+
+fn rust_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_bool_boolean_algebra, target: rust_symbol_node(id: rust_witness_bool_boolean_algebra)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: rust_facts_bool.std_projection))
+    ]
+  }
+}
+
+fn rust_integer_algebra_inhabitance(facts: RustIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: rust_symbol_node(id: rust_model_core_bridge_std_ordered_ring_representable_integer),
+    inhabitant: rust_integer_facts_node(facts: facts),
+    witness: rust_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn rust_float_algebra_inhabitance(facts: RustFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: rust_symbol_node(id: rust_model_core_bridge_std_approximate_field_ieee754_float),
+    inhabitant: rust_float_facts_node(facts: facts),
+    witness: rust_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn rust_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: rust_symbol_node(id: rust_model_core_bridge_std_bool_boolean_algebra),
+    inhabitant: rust_noninteger_facts_node(facts: rust_facts_bool),
+    witness: rust_bool_algebra_witness_node()
+  }
+}
+
+fn rust_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(xs: acc, item: rust_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn rust_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(xs: acc, item: rust_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn rust_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    rust_bool_algebra_inhabitance()
+  ]
+}
+
+fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  rust_list_append(
+    left: rust_list_append(
+      left: rust_integer_algebra_inhabitance_decls(),
+      right: rust_float_algebra_inhabitance_decls()
+    ),
+    right: rust_bool_algebra_inhabitance_decls()
+  )
+}
+
+fn rust_model_core_law_obligation(witness: Node, law: Symbol) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: rust_symbol_node(id: law)
+  }
+}
+
+fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = rust_integer_algebra_witness_node(facts: facts)
+  [
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_associative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_commutative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_associative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_commutative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_distributive_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_total_order_over_representable_values)
+  ]
+}
+
+fn rust_float_law_obligations(facts: RustFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = rust_float_algebra_witness_node(facts: facts)
+  [
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_ieee754_rounding),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754)
+  ]
+}
+
+fn rust_bool_algebra_laws() -> List<AlgebraLawObligation> {
+  let witness = rust_bool_algebra_witness_node()
+  [
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_bounded_lattice),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_complement)
+  ]
+}
+
+fn rust_integer_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_append(left: acc, right: rust_integer_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn rust_float_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_append(left: acc, right: rust_float_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn rust_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  rust_list_append(
+    left: rust_list_append(
+      left: rust_integer_algebra_laws(),
+      right: rust_float_algebra_laws()
+    ),
+    right: rust_bool_algebra_laws()
+  )
+}
+
+fn rust_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: rust_symbol_node(id: operation),
+    effect_signature: EffectSignature {
+      signature: rust_symbol_node(id: rust_effect_signature_pure_value)
+    }
+  }
+}
+
+fn rust_effect_semantics_wave2() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      rust_pure_operation(operation: rust_op_integer_add),
+      rust_pure_operation(operation: rust_op_integer_sub),
+      rust_pure_operation(operation: rust_op_integer_mul),
+      rust_pure_operation(operation: rust_op_integer_neg),
+      rust_pure_operation(operation: rust_op_integer_div),
+      rust_pure_operation(operation: rust_op_integer_rem),
+      rust_pure_operation(operation: rust_op_integer_compare),
+      rust_pure_operation(operation: rust_op_float_add),
+      rust_pure_operation(operation: rust_op_float_sub),
+      rust_pure_operation(operation: rust_op_float_mul),
+      rust_pure_operation(operation: rust_op_float_div),
+      rust_pure_operation(operation: rust_op_float_compare),
+      rust_pure_operation(operation: rust_op_bool_and),
+      rust_pure_operation(operation: rust_op_bool_or),
+      rust_pure_operation(operation: rust_op_bool_not)
+    ]
+  }
+}
+
+fn rust_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: rust_symbol_node(id: operation),
+    precondition: rust_symbol_node(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_add,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_sub,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_mul,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_neg,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_div,
+        precondition: rust_precondition_integer_divisor_nonzero,
+        reason: rust_partial_integer_divide_by_zero
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_rem,
+        precondition: rust_precondition_integer_divisor_nonzero,
+        reason: rust_partial_integer_remainder_by_zero
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_div,
+        precondition: rust_precondition_signed_division_not_min_over_negative_one,
+        reason: rust_partial_signed_min_divide_by_negative_one
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_rem,
+        precondition: rust_precondition_signed_division_not_min_over_negative_one,
+        reason: rust_partial_signed_min_divide_by_negative_one
+      )
+    ]
+  }
+}
+
 fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   rust_list_append(
     left: rust_list_append(
@@ -1444,10 +1745,10 @@ fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 fn rust_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: rust_wave1_primitive_fact_bundles(),
-    inhabitance: [],
-    laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    inhabitance: rust_model_core_inhabitance_decls(),
+    laws: rust_model_core_law_obligations(),
+    effects: rust_effect_semantics_wave2(),
+    partiality: rust_partiality_semantics_wave2()
   }
 }
 

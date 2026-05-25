@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: RFC 4180 CSV document, dialect, and fact-profile model.
+// Owns: CsvDialect, CsvAxisProfile, CsvDocument, CsvHeaderPresence, CsvRow, CsvNumericLexemeProfile, CsvUniqueNameProfile, CsvRecordShapeProfile, CsvRfc4180DelimiterProfile, CsvRfc4180QuoteProfile, CsvRfc4180LineTerminatorProfile, CsvRfc4180FieldTextProfile, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/text.dag
 // Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
@@ -32,18 +32,11 @@ type CsvRfc4180FieldTextProfile {
 }
 
 
-type CsvRfc4180RecordShapeProfile {
-  records_should_have_same_field_count: CsvRfc4180RecordsSameFieldCountWitness,
-  header_should_have_same_field_count_as_records: CsvRfc4180HeaderSameFieldCountAsRecordsWitness,
-}
-
-
 type CsvAxisProfile {
   delimiter: CsvRfc4180DelimiterProfile,
   quote: CsvRfc4180QuoteProfile,
   line_terminator: CsvRfc4180LineTerminatorProfile,
   field_text: CsvRfc4180FieldTextProfile,
-  record_shape: CsvRfc4180RecordShapeProfile,
   header_row: CsvRfc4180HeaderRowOptional,
   registered_mime: CsvRfc4180RegisteredTextCsvMime,
 }
@@ -58,6 +51,14 @@ type CsvNumericLexemeProfile {
 type CsvUniqueNameProfile {
   header_names_are_not_required_unique_by_rfc4180: CsvHeaderNamesNotRequiredUniqueByRfc4180Witness,
   duplicate_header_name_policy_is_consumer_defined: CsvDuplicateHeaderNamePolicyConsumerDefinedWitness,
+}
+
+
+type CsvRecordShapeProfile {
+  records_same_field_count_rfc4180_should: CsvRfc4180RecordsShouldHaveSameFieldCountWitness,
+  rectangular_record_enforcement_is_consumer_defined: CsvRectangularRecordEnforcementConsumerDefinedWitness,
+  header_same_field_count_as_records_rfc4180_should: CsvRfc4180HeaderShouldMatchRecordFieldCountWitness,
+  header_width_enforcement_is_consumer_defined: CsvHeaderWidthEnforcementConsumerDefinedWitness,
 }
 
 
@@ -105,9 +106,13 @@ type CsvRfc4180RecordLineBreak {
   generator_should_emit_crlf_between_records_per_rfc4180: CsvRfc4180GeneratorEmitsCrlfBetweenRecordsWitness,
 }
 
-type CsvRfc4180RecordsSameFieldCountWitness {}
+type CsvRfc4180RecordsShouldHaveSameFieldCountWitness {}
 
-type CsvRfc4180HeaderSameFieldCountAsRecordsWitness {}
+type CsvRectangularRecordEnforcementConsumerDefinedWitness {}
+
+type CsvRfc4180HeaderShouldMatchRecordFieldCountWitness {}
+
+type CsvHeaderWidthEnforcementConsumerDefinedWitness {}
 
 type CsvRfc4180LastRecordEndingLineBreakOptional {}
 
@@ -140,6 +145,7 @@ type CsvDocument {
   dialect: CsvDialect,
   numeric_lexeme_profile: CsvNumericLexemeProfile,
   unique_name_profile: CsvUniqueNameProfile,
+  record_shape_profile: CsvRecordShapeProfile,
   header: CsvHeaderPresence,
   records: List<CsvRow>,
 }
