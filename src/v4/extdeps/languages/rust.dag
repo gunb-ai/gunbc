@@ -1227,9 +1227,7 @@ fn rust_ident_lex_rule() -> LexRule {
 }
 
 // NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "fn " not "fn").
-// token_sequence_to_source concatenates spellings directly; the spaces here ARE the inter-token
-// spacing. This must be split into a separate layout field before forward-lex is wired for
-// these token classes (see Claude review 16906 secondary finding).
+// Dissolves when T-6 supplies TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [

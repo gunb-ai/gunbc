@@ -658,6 +658,8 @@ fn wasm_ident_lex_rule() -> LexRule {
   }
 }
 
+// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "func " not "func").
+// Dissolves when T-6 supplies TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
 fn wasm_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [

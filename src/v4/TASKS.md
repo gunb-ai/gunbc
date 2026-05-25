@@ -473,6 +473,11 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 - `Symbol` binding (K-1): the use→def fact is *derived and carried
   forward at the resolve boundary itself*, not supplied out-of-band — the
   resolve stage contract is "identifier binding to declarations".
+- **Declared-binding bridge:** resolve currently infers declaration-ness from
+  structural position. This dissolves when `DeclaredBinding` lands in
+  `std/node.dag` or `std/binding.dag`, `03_normalize.dag` stamps it on
+  declaration nodes, and `03_resolve.dag` consumes that typed fact
+  exclusively.
 - The sugar-name authority is the `LanguageModel`'s, consumed — never
   re-minted in this stage (single-authority, Practice 5).
 - **CP-1b bucket C (native `.dag` LM):** `DagLanguageModel` carries
@@ -551,6 +556,10 @@ if any emission step cannot be expressed as inverse grammar-data.)
 - How the `TargetModel`'s grammar drives emission **as the inverse walk**
   of the same relation parse (T-7) applies forward — the bidirectional
   relation is authored once, consumed in both directions.
+- `TargetModel.authority_source_text` / `*_source_literal` are fixed-point
+  anchors only. The bridge dissolves when no emit path reads
+  `authority_source_text`, or a P3 gate in `05_emit.dag` / `06_translate.dag`
+  blocks reads outside fixed-point contexts.
 - The orchestrator as function composition (`emit ∘ core ∘ ingest`),
   fail-closed error propagation on the `Result` / `Rejected` branch (same
   discipline as `Outcome` in `std/diagnostic.dag`).
@@ -1023,6 +1032,11 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Modeling decisions**:
 - `CiPipeline { jobs, gates }` shape
 - `.github/workflows/ci.yml` as DERIVED Shape-B artifact (.dag walks CiPipeline, emits YAML)
+- **CI/YAML authority bridge:** T-24 is not closed while committed YAML and
+  v3 string ratchets can act as parallel authorities. It dissolves when the
+  generator emits checked YAML from `ci.dag`, the hand-authored YAML is
+  deleted, and the v3 string ratchets become `TestClaim`s over the generated
+  output.
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
 - Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
 - The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
