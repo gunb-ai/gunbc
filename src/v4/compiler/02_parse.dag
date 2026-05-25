@@ -501,14 +501,14 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 }
 
 
-fn expr_direct_left_corner_step(left: GrammarExpr, right: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
-  if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
+fn expr_direct_left_corner_step(lhs: GrammarExpr, rhs: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
+  if expr_is_nullable_given_set(expr: lhs, nullable_set: nullable_set) {
     list_append(
-      left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
-      right: expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
+      left: expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set),
+      right: expr_direct_left_corner_list(expr: rhs, nullable_set: nullable_set)
     )
   } else {
-    expr_direct_left_corner_list(expr: left, nullable_set: nullable_set)
+    expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set)
   }
 }
 
@@ -522,7 +522,7 @@ fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) ->
     Terminal { token_class: _ } => Empty
     Nonterminal { production: name } => Cons { head: name, tail: Empty }
     Sequence { left: left, right: right } =>
-      expr_direct_left_corner_step(left: left, right: right, nullable_set: nullable_set)
+      expr_direct_left_corner_step(lhs: left, rhs: right, nullable_set: nullable_set)
     Choice { left: left, right: right } =>
       list_append(
         left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
