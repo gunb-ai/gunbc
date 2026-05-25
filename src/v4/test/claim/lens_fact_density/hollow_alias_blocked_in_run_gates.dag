@@ -7,11 +7,19 @@
 module v4.test.claim.lens_fact_density.hollow_alias_blocked_in_run_gates
 
 import v4.compiler.compile {
+<<<<<<< HEAD
   fact_density_lens,
   run_required_lens_gates
 }
 import v4.compiler.infer { InferredTree }
 import v4.lens.fact_density { fact_density_hollow_alias_locus }
+=======
+  fact_density_hollow_alias_lens,
+  run_required_lens_gates
+}
+import v4.compiler.infer { InferredTree }
+import v4.lens.fact_density { fact_density_hollow_alias_rejected }
+>>>>>>> origin/session/snappy-ram-376
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -59,7 +67,11 @@ fn hollow_alias_blocked_in_run_gates_holds() -> Bool {
     inferred: hollow_alias_run_gates_tree(),
     lenses: [fact_density_lens]
   ) {
+<<<<<<< HEAD
     Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_locus
+=======
+    Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_rejected
+>>>>>>> origin/session/snappy-ram-376
     Accepted { value: _, diagnostics: _ } => false
   }
 }
