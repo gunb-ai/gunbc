@@ -25,7 +25,7 @@ import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
-import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
+import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -457,11 +457,15 @@ fn tokens_at_position(all_tokens: List<Token>, position: Int) -> List<Token> {
     empty: TokensAtPositionAcc { skipped: 0, target: position, current: all_tokens },
     cons: fn(acc, _) {
       match acc.skipped < acc.target {
-        true => TokensAtPositionAcc {
-          skipped: acc.skipped + 1,
-          target: acc.target,
-          current: list_tail(xs: acc.current)
-        }
+        true =>
+          match list_tail(xs: acc.current) {
+            TailFound { tail: t } => TokensAtPositionAcc {
+              skipped: acc.skipped + 1,
+              target: acc.target,
+              current: t
+            }
+            TailAbsent => acc
+          }
         false => acc
       }
     }
@@ -856,17 +860,21 @@ fn parse_expr(
         TokenPeekFirst { value: tok } =>
           match tok.class == class {
             true =>
-              // 🟡 gated T-8: terminal node carries tok.class only — tok.lexeme, tok.file, tok.start, tok.end
-              // are staged for T-8 source-text anchoring. The node substrate has no String/Nat literal-value
-              // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
-              // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
-              ParseExprAccepted {
-                remaining: list_tail(xs: tokens),
-                captured: Node {
-                  kind: TypeNode { connective: Atom { identity: tok.class } },
-                  children: []
-                },
-                diagnostics: []
+              match list_tail(xs: tokens) {
+                TailFound { tail: remaining } =>
+                  // 🟡 gated T-8: terminal node carries tok.class only — tok.lexeme, tok.file, tok.start, tok.end
+                  // are staged for T-8 source-text anchoring. The node substrate has no String/Nat literal-value
+                  // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
+                  // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
+                  ParseExprAccepted {
+                    remaining: remaining,
+                    captured: Node {
+                      kind: TypeNode { connective: Atom { identity: tok.class } },
+                      children: []
+                    },
+                    diagnostics: []
+                  }
+                TailAbsent => ParseExprRejected { diagnostics: [] }
               }
             false => ParseExprRejected { diagnostics: [] }
           }

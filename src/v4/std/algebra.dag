@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, list_tail, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, ListTailResult, list_tail, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -102,11 +102,14 @@ fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A 
     Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
   }
 }
-// 🟡 gated — P3/P5 interim (docs/modeling-discipline.md Practice 10) — feature: FreeMonoid head-pop stdlib projection — bind node://adhoc-2145db6b-69a — dissolve-on: stdlib Option<T>-returning tail projection; Empty→Empty is caller-guaranteed unreachable (all call sites guard with is_empty or Cons match before calling); forbidden: calling with empty list without a prior guard.
-fn list_tail<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+type ListTailResult<T>
+  = TailFound { tail: FreeMonoid<T> }
+  | TailAbsent
+
+fn list_tail<T>(xs: FreeMonoid<T>) -> ListTailResult<T> {
   match xs {
-    Empty => Empty
-    Cons { head: _, tail: t } => t
+    Empty => TailAbsent
+    Cons { head: _, tail: t } => TailFound { tail: t }
   }
 }
 fn fold_list_node<T>(

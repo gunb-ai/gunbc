@@ -20,7 +20,7 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
-import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
+import v4.std.algebra { Cons, Empty, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item, list_tail }
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
@@ -166,13 +166,32 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
 // Uses is_prefix_of (stdlib terminal) to avoid direct structural recursion on FreeMonoid.
 // Advances source by folding over prefix — each step pops the head of the remaining source.
 // Safe because is_prefix_of guarantees source has at least length(prefix) elements.
+type PrefixStripResult
+  = PrefixStripOk { remaining: String }
+  | PrefixStripFailed
+
+fn lex_strip_prefix(prefix: String, source: String) -> PrefixStripResult {
+  fold_list(
+    xs: prefix,
+    empty: PrefixStripOk { remaining: source },
+    cons: fn(acc, _) {
+      match acc {
+        PrefixStripFailed => PrefixStripFailed
+        PrefixStripOk { remaining: r } =>
+          match list_tail(xs: r) {
+            TailFound { tail: t } => PrefixStripOk { remaining: t }
+            TailAbsent => PrefixStripFailed
+          }
+      }
+    }
+  )
+}
+
 fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
-    LexMatchAccepted {
-      remaining: fold_list(xs: prefix, empty: source, cons: fn(remaining, _) {
-        list_tail(xs: remaining)
-      }),
-      lexeme: prefix
+    match lex_strip_prefix(prefix: prefix, source: source) {
+      PrefixStripOk { remaining: rem } => LexMatchAccepted { remaining: rem, lexeme: prefix }
+      PrefixStripFailed => LexMatchRejected
     }
   } else {
     LexMatchRejected
@@ -232,9 +251,13 @@ fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
             CharFound { value: c } =>
               match c == expected {
                 true =>
-                  LexMatchAccepted {
-                    remaining: string_tail(s: source),
-                    lexeme: Cons { head: c, tail: Empty }
+                  match string_tail(s: source) {
+                    TailFound { tail: rest } =>
+                      LexMatchAccepted {
+                        remaining: rest,
+                        lexeme: Cons { head: c, tail: Empty }
+                      }
+                    TailAbsent => LexMatchRejected
                   }
                 false => LexMatchRejected
               }
@@ -249,9 +272,13 @@ fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
             CharFound { value: c } =>
               match char_in_class(c: c, class: class) {
                 true =>
-                  LexMatchAccepted {
-                    remaining: string_tail(s: source),
-                    lexeme: Cons { head: c, tail: Empty }
+                  match string_tail(s: source) {
+                    TailFound { tail: rest } =>
+                      LexMatchAccepted {
+                        remaining: rest,
+                        lexeme: Cons { head: c, tail: Empty }
+                      }
+                    TailAbsent => LexMatchRejected
                   }
                 false => LexMatchRejected
               }

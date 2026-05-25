@@ -1,7 +1,7 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
-// Owns: Char, CharResult, String, string_is_empty, string_head, string_tail.
-// Consumes: std/algebra.dag (FreeMonoid, is_empty, fold_list_right, list_tail); std/logic.dag (Bool); std/nat.dag (Nat).
+// Owns: Char, CharResult, String, StringTailResult, string_is_empty, string_head, string_tail.
+// Consumes: std/algebra.dag (FreeMonoid, is_empty, fold_list_right, list_tail, ListTailResult, TailFound, TailAbsent); std/logic.dag (Bool); std/nat.dag (Nat).
 // Status: T-3 modeled; string scanning primitives added for T-6 lexer walk.
 // Anchor: https://en.wikipedia.org/wiki/Unicode
 
@@ -9,7 +9,7 @@
 module v4.std.text
 
 
-import v4.std.algebra { FreeMonoid, fold_list_right, is_empty, list_tail }
+import v4.std.algebra { FreeMonoid, ListTailResult, TailAbsent, TailFound, fold_list_right, is_empty, list_tail }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 type Char = Nat
@@ -25,6 +25,8 @@ fn string_is_empty(s: String) -> Bool {
 fn string_head(s: String) -> CharResult {
   fold_list_right(xs: s, empty: CharAbsent, snoc: fn(_acc, c) { CharFound { value: c } })
 }
-fn string_tail(s: String) -> String {
+type StringTailResult = ListTailResult<Char>
+
+fn string_tail(s: String) -> StringTailResult {
   list_tail(xs: s)
 }
