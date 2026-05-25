@@ -126,8 +126,6 @@ data grammar_production_captured_node_projection: Symbol = grammar_production_ca
 
 data parse_stage_locus_port: Symbol = parse_stage_locus_port
 
-data parse_walk_not_realized: Symbol = parse_walk_not_realized
-
 data parse_grammar_not_well_formed: Symbol = parse_grammar_not_well_formed
 
 data parse_g0_tokens_remain: Symbol = parse_g0_tokens_remain
@@ -139,15 +137,6 @@ data parse_grammar_undefined_nonterminal: Symbol = parse_grammar_undefined_nonte
 data parse_grammar_duplicate_production: Symbol = parse_grammar_duplicate_production
 
 data parse_e1_syntax_error: Symbol = parse_e1_syntax_error
-
-
-fn parse_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: parse_walk_not_realized,
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 
 
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
