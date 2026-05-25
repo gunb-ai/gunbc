@@ -152,15 +152,15 @@ type RustfmtConfig {
   // Line width
   max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
   comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 (0 is a sentinel; see anchor for semantics); see also formatter-cross-field-constraints
-  chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
   single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   single_line_let_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
-  fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
-  attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
+  attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
   struct_lit_width: Int    // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   struct_variant_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
-  array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
-  short_array_element_width_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
+  short_array_element_width_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
 
   // Braces
   brace_style: RustfmtBraceStyle
@@ -203,7 +203,7 @@ type RustfmtConfig {
   normalize_doc_attributes: Bool
   format_strings: Bool
   format_code_in_doc_comments: Bool
-  doc_comment_code_block_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  doc_comment_code_block_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
   format_generated_files: Bool
   hide_parse_errors: Bool
 
