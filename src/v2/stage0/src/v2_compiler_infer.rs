@@ -549,7 +549,7 @@ pub fn classify_field_recursion(
                     };
                     let is_recursive_element = ((value_type.clone().as_str()
                         == parent_name.clone().as_str())
-                        || v2_rt::set_contains(recursive_type_set, value_type.clone()));
+                        || v2_rt::set_contains(&recursive_type_set, value_type.clone()));
                     if is_recursive_element {
                         {
                             let elem =
@@ -579,7 +579,7 @@ pub fn classify_field_recursion(
                     }
                 }
             } else {
-                if v2_rt::set_contains(recursive_type_set, field_type_name.clone()) {
+                if v2_rt::set_contains(&recursive_type_set, field_type_name.clone()) {
                     match field_node.return_cardinality.clone() {
                         Cardinality::CardOptional => Some(Rc::new(FieldRecursionResult {
                             shape: RecursionShape::OptionalRecursion,
@@ -11811,8 +11811,7 @@ pub fn topo_resolve_types(
                                 || (dep.clone().as_str() == "None".to_string().as_str()))
                                 || (dep.clone().as_str() == "".to_string().as_str()))
                                 || is_recursive_type_by_name(&env, dep.clone()))
-                                || (v2_rt::set_contains(remaining_set.clone(), dep.clone())
-                                    == false))
+                                || (v2_rt::set_contains(&remaining_set, dep.clone()) == false))
                             {
                                 __all = false;
                                 break;

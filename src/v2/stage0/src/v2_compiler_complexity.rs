@@ -7079,7 +7079,7 @@ pub fn build_scc_index(
         let result = topo_order.clone().iter().cloned().fold(Rc::new(SccBuildAcc {
     assigned: v2_rt::rc_empty_set::<String>(),
     index: v2_rt::rc_empty_map::<String, Rc<SccInfo>>(),
-}), |acc: Rc<SccBuildAcc>, name: String| if v2_rt::set_contains(acc.assigned.clone(), name.clone()) {
+}), |acc: Rc<SccBuildAcc>, name: String| if v2_rt::set_contains(&acc.assigned.clone(), name.clone()) {
             acc.clone()
         } else {
             {
@@ -7088,7 +7088,7 @@ pub fn build_scc_index(
     members: Rc::new(vec![]),
 }));
 let member_set = component.members.clone().iter().cloned().fold(v2_rt::rc_empty_set::<_>() /* BRIDGE: fold empty_set accumulator type unresolved */, |inner: _, member: String| v2_rt::rc_set_insert(inner, member.clone()));
-let members = Rc::new({ let mut __result = Vec::new(); for member in names.clone().iter().cloned() { if v2_rt::set_contains(member_set.clone(), member.clone()) { __result.push(member); } } __result });
+let members = Rc::new({ let mut __result = Vec::new(); for member in names.clone().iter().cloned() { if v2_rt::set_contains(&member_set, member.clone()) { __result.push(member); } } __result });
 let next_assigned = component.visited.clone();
 if ((members.clone().len() as i64) > 1) {
                     {

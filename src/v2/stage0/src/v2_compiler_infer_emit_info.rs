@@ -104,7 +104,7 @@ pub fn variant_has_fields(
 ) -> bool {
     {
         let key = v2_rt::concat(v2_rt::concat(enum_name, "::".to_string()), variant_name);
-        v2_rt::set_contains(emit_info.fielded_variants.clone(), key)
+        v2_rt::set_contains(&emit_info.fielded_variants.clone(), key)
     }
 }
 

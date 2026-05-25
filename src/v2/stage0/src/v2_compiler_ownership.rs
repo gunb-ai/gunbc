@@ -730,7 +730,7 @@ pub fn build_read_only_params(
             .iter()
             .cloned()
         {
-            if (((v2_rt::set_contains(param_names.clone(), usage.name.clone())
+            if (((v2_rt::set_contains(&param_names, usage.name.clone())
                 && is_owned_local(usage.binding_kind.clone()))
                 && (binding_fan_out(usage.clone()) > 1))
                 && {

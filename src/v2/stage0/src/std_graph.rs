@@ -146,7 +146,7 @@ pub fn dfs_finish_order(
     acc: &Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v2_rt::set_contains(acc.visited.clone(), node.clone()) {
+        if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
@@ -179,7 +179,7 @@ pub fn dfs_collect_component(
     acc: &Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if v2_rt::set_contains(acc.visited.clone(), node.clone()) {
+        if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
             {
@@ -221,7 +221,8 @@ pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -
                 has_cycle: false,
             }),
             |acc: Rc<SccCycleAcc>, name: String| {
-                if (acc.has_cycle.clone() || v2_rt::set_contains(acc.visited.clone(), name.clone()))
+                if (acc.has_cycle.clone()
+                    || v2_rt::set_contains(&acc.visited.clone(), name.clone()))
                 {
                     acc.clone()
                 } else {

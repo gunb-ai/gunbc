@@ -1907,7 +1907,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = v2_rt::set_contains(shared_types.clone(), tn.clone());
+        let shared = v2_rt::set_contains(&shared_types, tn.clone());
         if is_disj {
             {
                 let base = if (n.ident_span.clone() != None) {
