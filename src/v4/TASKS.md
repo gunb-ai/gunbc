@@ -145,7 +145,7 @@ Substrate / extdeps fan-out:
         One file per formatter: rustfmt (Rust), black (Python), gofmt (Go), prettier (TypeScript/JS),
         clang-format (C++), google-java-format (Java), swift-format (Swift), ktfmt (Kotlin),
         lean4 (Lean). Each file: real option coproducts grounded in the formatter's reference
-        + defaults data node + merge function for hierarchical override composition.
+        + defaults data node + layer function for hierarchical override composition.
         Human-readable emission is a hard requirement — emitted code must be formatter-clean.
         Dissolution: wire into TargetModel (T-10/T-11) and add TestClaim category "emit → fmt --check → assert no diff".
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
@@ -1494,15 +1494,15 @@ facts.
 
 `rustfmt.dag` is the reference implementation — all others follow its
 pattern: option coproducts → full config type → defaults data node →
-`*_merge` function for hierarchical override composition.
+`*_layer` function for hierarchical override composition.
 
 **Modeling decisions:**
 - Each formatter file is **pure config substrate** — no dependency on
   `std/node.dag` or any compiler module. This keeps the formatter layer
   independent of the compiler pipeline and usable as a standalone fact bundle.
-- **Hierarchical override**: `*_merge(base: Config, override: Config) ->
-  Config` where override wins unconditionally. Layering is
-  `fold(patches, init: *_defaults, f: *_merge)`. Field-granularity patch
+- **Hierarchical override**: `*_layer(base: Config, outer: Config) ->
+  Config` where outer wins unconditionally. Layering is
+  `fold(layers, init: *_defaults, f: *_layer)`. Field-granularity patch
   types (per-field `Override/Inherit` coproduct) are 🟡 gated —
   feature: `formatter-config-patch` — dissolve when consumers need
   partial override without full-config specification.
