@@ -408,7 +408,7 @@ pub fn is_hash_digest(s: &str) -> bool {
 
 fn expect_hash_digest(s: &str, arg: &str) {
     if !is_hash_digest(s) {
-        panic!("{} must be a 16-char hex Hash digest", arg);
+        panic!("{arg} must be a 16-char hex Hash digest");
     }
 }
 
