@@ -74,20 +74,6 @@ fn validation_outcome_accepted(out: Outcome<ParseTree>) -> Bool {
 }
 
 
-fn validation_parse_start_production(root: GrammarRoot) -> Outcome<ParseTree> {
-  match grammar_lookup_production(root: root, name: root.start) {
-    GrammarProductionFound { production: prod } =>
-      parse_production(
-        tokens: validation_one_token_list,
-        root: root,
-        production: prod
-      )
-    GrammarProductionMissing =>
-      Rejected { diagnostics: [] }
-  }
-}
-
-
 fn validation_terminal_production(name: Symbol) -> GrammarProduction {
   GrammarProduction {
     name: name,
