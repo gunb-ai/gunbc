@@ -92,7 +92,8 @@ fi
 # v4 affected: src/v4/ touched OR workspace deps changed (deps can break v2 build,
 # which v4 depends for bootstrap). Also dsl/std/ — MVP-1 gate compile dep pool
 # (fixtures/v4-mvp1/add); dsl/std-only PRs must re-run the add receipt.
-if echo "$changed" | grep -qE '^src/v4/|^fixtures/v4-mvp1/|^scripts/v4-mvp1|^dsl/std/|^Cargo\.(toml|lock)$'; then
+# scripts/v4-mvp1* and scripts/v4-m1* — v4 CI shell gates (MVP-1 e2e, M1 rust emit probe).
+if echo "$changed" | grep -qE '^src/v4/|^fixtures/v4-mvp1/|^scripts/v4-mvp1|^scripts/v4-m1|^dsl/std/|^Cargo\.(toml|lock)$'; then
   v4_state="true"
   echo "v4 affected: yes (running v2→v4 bootstrap viability test)" >&2
 else

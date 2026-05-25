@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# scripts/v4-m1-rust-emit-probe.sh
+#
+# M1 informational probe: v2-compiler --target rust over full src/v4, then
+# cargo check on emitted output. Surfaces v2 Rust emitter / rustc gaps without
+# failing CI (probe mode exits 0 unless V4_M1_RUST_EMIT_PROBE_STRICT=1).
+#
+# Authority: src/v4/workflow/ci.dag (T-24) + src/v4/TASKS.md T-24; r3 gates #98/#100 interim bridge.
+# Pattern: scripts/v4-bootstrap-viability.sh (compile + log receipt parsing).
+#
+# Env:
+#   V2_COMPILER              — v2-compiler binary (default: target/release/v2-compiler)
+#   V4_M1_RUST_EMIT_OUT       — emit output dir (default: /tmp/v4-rust-emit)
+#   V4_M1_RUST_EMIT_LOG       — v2 compile log (default: ${OUT}.compile.log)
+#   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
+#   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when compile or rustc fails
+#   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
+
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$root"
+
+bin="${V2_COMPILER:-target/release/v2-compiler}"
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M1_RUST_EMIT_OUT:-}" ]]; then
+  out="${RUNNER_TEMP:-/tmp}/v4-rust-emit"
+else
+  out="${V4_M1_RUST_EMIT_OUT:-/tmp/v4-rust-emit}"
+fi
+# Avoid ctrl-build shims for cargo check — emitted tree lives on the runner filesystem.
+if [[ -x /opt/cargo/bin/cargo ]]; then
+  cargo_bin="/opt/cargo/bin/cargo"
+else
+  cargo_bin="${CARGO_BIN:-cargo}"
+fi
+compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
+rustc_log="${V4_M1_RUSTC_LOG:-${out}.rustc.log}"
+summary="${out}.m1-probe-summary.txt"
+strict="${V4_M1_RUST_EMIT_PROBE_STRICT:-0}"
+
+if [[ ! -x "$bin" ]]; then
+  echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
+  if [[ "$strict" == "1" ]]; then
+    exit 1
+  fi
+  echo "::notice title=M1 rust emit probe::skipped — v2-compiler missing"
+  exit 0
+fi
+
+rm -rf "$out"
+mkdir -p "$(dirname "$compile_log")"
+
+emit_notice() {
+  local title="$1"
+  local body="$2"
+  # GitHub Actions workflow commands tolerate newlines in body when escaped.
+  local escaped="${body//$'\n'/%0A}"
+  escaped="${escaped//\r/}"
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    echo "::notice title=${title}::${escaped}"
+  fi
+}
+
+echo "=== M1: v2-compiler compile --target rust src/v4 ==="
+set +e
+"$bin" compile --source-root src/v4 --output-dir "$out" --target rust 2>&1 | tee "$compile_log"
+compile_status=${PIPESTATUS[0]}
+set -e
+
+compiled_receipt=""
+if [[ -f "$compile_log" ]]; then
+  compiled_receipt="$(grep -E '^compiled: [0-9]+ files emitted, [0-9]+ diagnostics$' "$compile_log" | tail -1 || true)"
+fi
+
+files_emitted=0
+v2_diagnostics=0
+if [[ -n "$compiled_receipt" ]]; then
+  files_emitted="$(echo "$compiled_receipt" | sed -n 's/^compiled: \([0-9]*\) files emitted, \([0-9]*\) diagnostics$/\1/p')"
+  v2_diagnostics="$(echo "$compiled_receipt" | sed -n 's/^compiled: \([0-9]*\) files emitted, \([0-9]*\) diagnostics$/\2/p')"
+fi
+
+rs_on_disk=0
+if [[ -d "$out" ]]; then
+  rs_on_disk="$(find "$out" -name '*.rs' 2>/dev/null | wc -l | tr -d ' ')"
+fi
+
+# v2 diagnostic lines: error[file:line:col]: message  OR  error: message
+v2_error_lines=0
+v2_error_categories=""
+if [[ -f "$compile_log" ]]; then
+  v2_error_lines="$(grep -cE '^[[:space:]]*error(\[[^]]+\])?: ' "$compile_log" 2>/dev/null || true)"
+  v2_error_lines="${v2_error_lines:-0}"
+  v2_error_categories="$(
+    grep -oE '^[[:space:]]*error(\[[^]]+\])?: ' "$compile_log" 2>/dev/null \
+      | sed 's/^[[:space:]]*//' | sort | uniq -c | sort -rn | head -20 || true
+  )"
+fi
+
+rustc_attempted=false
+rustc_skipped=true
+rustc_skip_reason=""
+rustc_status=""
+rustc_error_total=0
+rustc_categories=""
+rustc_files_with_errors=0
+if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
+  rustc_attempted=true
+  rustc_skipped=false
+  rustc_skip_reason=""
+  echo "=== M1: cargo check on emitted tree ==="
+  rustc_timeout="${V4_M1_RUSTC_TIMEOUT_SECS:-}"
+  if [[ -n "${GITHUB_ACTIONS:-}" && -z "$rustc_timeout" ]]; then
+    rustc_timeout=600
+  fi
+  set +e
+  if [[ -n "$rustc_timeout" ]]; then
+    timeout --preserve-status "$rustc_timeout" \
+      "$cargo_bin" check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
+  else
+    "$cargo_bin" check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
+  fi
+  rustc_status=${PIPESTATUS[0]}
+  set -e
+else
+  if [[ "$compile_status" -ne 0 ]]; then
+    rustc_skip_reason="compile_failed (exit ${compile_status})"
+  elif [[ ! -f "$out/Cargo.toml" ]]; then
+    rustc_skip_reason="no Cargo.toml in emit output"
+  else
+    rustc_skip_reason="unknown"
+  fi
+  echo "=== M1: skipping cargo check (${rustc_skip_reason}) ===" | tee "$rustc_log"
+fi
+
+if [[ -f "$rustc_log" ]]; then
+  # grep exits 1 on zero matches; with pipefail that must not abort the probe
+  # before summary + non-strict exit 0 (modeled non_blocking / INVARIANTS P3/P5).
+  rustc_error_total="$(grep -cE '^error\[E[0-9]+\]:' "$rustc_log" 2>/dev/null || true)"
+  rustc_error_total="${rustc_error_total:-0}"
+  rustc_categories="$(
+    grep -oE 'error\[E[0-9]+\]:' "$rustc_log" 2>/dev/null \
+      | sort | uniq -c | sort -rn | head -25 || true
+  )"
+  rustc_files_with_errors="$(
+    grep -oE '\-\-> src/[^:]+\.rs' "$rustc_log" 2>/dev/null \
+      | sed 's/^--> //' | sort -u | wc -l | tr -d ' ' || true
+  )"
+  rustc_files_with_errors="${rustc_files_with_errors:-0}"
+fi
+
+{
+  echo "M1 v4 full-tree rust emit probe"
+  echo "==========================="
+  echo "v2 compile exit: ${compile_status}"
+  echo "v2 receipt: ${compiled_receipt:-<missing>}"
+  echo "v2 stderr error lines: ${v2_error_lines}"
+  echo ".rs files on disk: ${rs_on_disk}"
+  echo ""
+  echo "cargo check attempted: ${rustc_attempted}"
+  echo "cargo check skipped: ${rustc_skipped}"
+  if [[ "$rustc_attempted" == "true" ]]; then
+    echo "cargo check exit: ${rustc_status}"
+  else
+    echo "cargo check skip_reason: ${rustc_skip_reason}"
+  fi
+  echo "rustc error[E####] lines: ${rustc_error_total}"
+  echo "distinct .rs files with rustc errors: ${rustc_files_with_errors}"
+  echo ""
+  if [[ -n "$v2_error_categories" ]]; then
+    echo "v2 error prefix histogram (top 20):"
+    echo "$v2_error_categories"
+    echo ""
+  fi
+  if [[ -n "$rustc_categories" ]]; then
+    echo "rustc error code histogram (top 25):"
+    echo "$rustc_categories"
+    echo ""
+  fi
+  echo "logs: compile=${compile_log} rustc=${rustc_log}"
+} | tee "$summary"
+
+probe_body="$(head -20 "$summary")"
+emit_notice "M1 v4 rust emit probe" "$probe_body"
+
+if [[ "$compile_status" -ne 0 ]]; then
+  emit_notice "M1 compile failed" "exit=${compile_status}; see ${compile_log}"
+elif [[ "$v2_diagnostics" != "0" ]]; then
+  emit_notice "M1 compile diagnostics" "${compiled_receipt:-see log}"
+fi
+
+if [[ "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
+  emit_notice "M1 rustc gap surface" "cargo check exit=${rustc_status}; ${rustc_error_total} error lines; ${rustc_files_with_errors} files"
+fi
+
+echo "=== M1 probe summary written to ${summary} ==="
+
+if [[ "$strict" == "1" ]]; then
+  if [[ "$compile_status" -ne 0 ]]; then
+    exit "$compile_status"
+  fi
+  if [[ "$rustc_skipped" == "true" ]]; then
+    echo "error: strict mode requires cargo check after successful compile (skip_reason=${rustc_skip_reason})" >&2
+    exit 1
+  fi
+  if [[ "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
+    exit "$rustc_status"
+  fi
+fi
+
+exit 0
