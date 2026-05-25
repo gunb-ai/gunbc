@@ -34,8 +34,11 @@ import v4.extdeps.languages.rust {
   rust_mvp1_fixture_i32_inhabitant,
   rust_mvp1_i32_overflow_disposition_node,
   rust_mvp1_i32_scalar_node,
+  rust_mvp1_binding_spellings,
   rust_mvp1_source_text,
   rust_mvp1_target_model,
+  rust_mvp1_target_model_node,
+  rust_wave1_lex,
   rust_facts_i32,
   Signed,
   Bits32,
@@ -102,6 +105,7 @@ data mvp_add_int_atom: Symbol = mvp_add_int_atom
 data mvp1_rust_grounding_miss: Symbol = mvp1_rust_grounding_miss
 data mvp1_emit_source_mismatch: Symbol = mvp1_emit_source_mismatch
 data mvp1_compile_source_mismatch: Symbol = mvp1_compile_source_mismatch
+data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 
 fn mvp_int_node() -> Node {
@@ -126,6 +130,14 @@ data mvp1_rust_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
 
 
 data mvp1_rust_target_model: TargetModel = rust_mvp1_target_model()
+
+
+data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
+  bundle: rust_mvp1_target_model_node(),
+  lex: rust_wave1_lex(),
+  binding_spellings: rust_mvp1_binding_spellings(),
+  authority_source_text: mvp1_forbidden_authority_source_text
+}
 
 
 fn mvp1_rust_i32_facts_node() -> Node {
@@ -331,7 +343,7 @@ fn anchor_mvp1_emit_accepts() -> Outcome<TargetSource> {
 fn anchor_mvp1_compile_inferred_accepts() -> Outcome<CompileOutput> {
   compile_inferred(
     inferred: mvp1_rust_inferred_tree,
-    mode: TranslateTo { target: mvp1_rust_target_model }
+    mode: TranslateTo { target: mvp1_rust_poisoned_authority_target_model }
   )
 }
 
@@ -341,6 +353,7 @@ data mvp1_emit_receipt: Outcome<TargetSource> = anchor_mvp1_emit_accepts()
 
 
 // Typed compile receipt — compile_inferred exercises compile → emit → translate → grammar inverse.
+// The target model intentionally poisons authority_source_text so a fallback read cannot pass.
 data mvp1_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_compile_inferred_accepts()
 
 
