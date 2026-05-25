@@ -51,7 +51,8 @@ import v4.std.runtime {
   Suspend,
   TransformInterpreter,
   ValueInterpreter,
-  ValueRepresentationModel
+  ValueRepresentationModel,
+  runtime_value_resolved_type
 }
 import v4.std.witness { Violates, Witness }
 
