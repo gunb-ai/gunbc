@@ -16,7 +16,16 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
-import v4.std.logic { bool_boolean_algebra_node, bool_boolean_algebra_type_node, bool_node, bool_spec_fact_encoding_classical_two_valued, bool_spec_fact_width_one_bit }
+import v4.std.logic {
+  BoolPrimitiveFacts,
+  bool_boolean_algebra_node,
+  bool_boolean_algebra_type_node,
+  bool_encoding_fact_node,
+  bool_node,
+  bool_primitive_facts,
+  bool_primitive_facts_node,
+  bool_width_fact_node
+}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -132,14 +141,14 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
 }
 
 
-fn model_core_wave1_bool_spec_facts() -> Map<Symbol, Node> {
+fn model_core_wave1_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
       match axis {
         primitive_fact_axis_width =>
-          Holds { value: model_core_wave1_atom(id: bool_spec_fact_width_one_bit) }
+          Holds { value: bool_width_fact_node(width: facts.width) }
         primitive_fact_axis_encoding =>
-          Holds { value: model_core_wave1_atom(id: bool_spec_fact_encoding_classical_two_valued) }
+          Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
         _ =>
           Violates {
             diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
@@ -152,8 +161,8 @@ fn model_core_wave1_bool_spec_facts() -> Map<Symbol, Node> {
 
 fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
   PrimitiveFactBundle {
-    substrate_carrier: bool_node(),
-    spec_facts: model_core_wave1_bool_spec_facts()
+    substrate_carrier: bool_primitive_facts_node(facts: bool_primitive_facts),
+    spec_facts: model_core_wave1_bool_spec_facts(facts: bool_primitive_facts)
   }
 }
 
