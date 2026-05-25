@@ -1,10 +1,6 @@
 // src/v4/lens/fact_density.dag
 // Scope: T-30 fact-density lens — classifies each type carrier by the spec facts it records; CompileLens gate that fails closed on hollow aliases (NoFact carriers) when wired into run_required_lens_gates.
-<<<<<<< HEAD
 // Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact, fact_density_hollow_alias_locus, fact_density_hollow_alias_gate.
-=======
-// Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact, fact_density_hollow_alias_locus, fact_density_hollow_alias_rejected, fact_density_hollow_alias_gate.
->>>>>>> origin/session/snappy-ram-376
 // Consumes: std node, std nat, std cardinality, std diagnostic, std witness, compiler infer.
 // Status: T-30 lens + CompileLens gate — enforcement runs via run_required_lens_gates (mechanism operator-ratified 2026-05-25).
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
@@ -13,7 +9,6 @@ module v4.lens.fact_density
 
 
 import v4.compiler.infer { InferredTree }
-<<<<<<< HEAD
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -23,9 +18,6 @@ import v4.std.diagnostic {
   outcome_rejected,
   port_locus
 }
-=======
-import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Outcome, Unavailable, outcome_accepted, outcome_rejected, port_locus }
->>>>>>> origin/session/snappy-ram-376
 import v4.std.node {
   Node,
   Edge,
@@ -118,7 +110,6 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
 
 
 data fact_density_hollow_alias_locus: Symbol = fact_density_hollow_alias_locus
-data fact_density_hollow_alias_rejected: Symbol = fact_density_hollow_alias_rejected
 
 
 fn fact_density_hollow_alias_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -126,11 +117,7 @@ fn fact_density_hollow_alias_gate(tree: InferredTree) -> Outcome<Witness<Node>> 
     NoFact =>
       outcome_rejected(
         Diagnostic {
-<<<<<<< HEAD
           reason: fact_density_hollow_alias_locus,
-=======
-          reason: fact_density_hollow_alias_rejected,
->>>>>>> origin/session/snappy-ram-376
           at: port_locus(port: fact_density_hollow_alias_locus),
           correction: Unavailable { reason: ExternalContractUnknown }
         }

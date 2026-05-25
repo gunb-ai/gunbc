@@ -9,11 +9,7 @@ module v4.test.claim.lens_fact_density.fact_bundle_compile_lens_passes
 import v4.compiler.compile {
   CompileLensEnforce,
   apply_compile_lens,
-<<<<<<< HEAD
   fact_density_lens
-=======
-  fact_density_hollow_alias_lens
->>>>>>> origin/session/snappy-ram-376
 }
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic { Accepted, Rejected }
