@@ -292,11 +292,12 @@ of work.
 
 In priority order:
 
-1. **Add M1 CI step** (`--target rust` + rustc) and surface what breaks. No
-   compiler-spine changes to src/v4 required — author the gate in
-   `src/v4/workflow/ci.dag` (the modeled CI authority per THESIS.md §workflow) and
-   regenerate/update the checked CI projection as its receipt. Output: a list of v2
-   emitter gaps for v4 constructs.
+1. **Fix v2 emitter gaps** surfaced by the non-gating probe in #3654 (~4,900 rustc
+   errors; target E0282/E0107 first). The probe already ran (continue-on-error); the
+   fail-closed M1 gate comes after gap elimination. Once errors reach zero, author the
+   gating `cargo check` step in `src/v4/workflow/ci.dag` (the modeled CI authority per
+   THESIS.md §workflow) and regenerate the checked projection as its receipt. Do not
+   land the gate while the probe is still red — a known-failing gate is not M1.
 
 2. **Implement T-6 lexer walk** in 01_tokenize.dag (one worker, one file, fills the
    `ModeledLexRules` arm). v2 emits Rust from it; stage0 runs it natively.
