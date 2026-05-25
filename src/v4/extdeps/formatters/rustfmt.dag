@@ -1,22 +1,13 @@
 // src/v4/extdeps/formatters/rustfmt.dag
-// Scope: rustfmt configuration model — real formatter option space grounded in rustfmt.toml.
+// Scope: rustfmt configuration model — option space grounded in rustfmt v1.6.0 toml reference.
 // Owns: RustfmtIndentStyle, RustfmtBraceStyle, RustfmtControlBraceStyle, RustfmtTrailingComma,
 //       RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports,
 //       RustfmtImportsLayout, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition,
-//       RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtConfig, rustfmt_defaults,
-//       rustfmt_layer.
+//       RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtVersion, RustfmtBinopSeparator,
+//       RustfmtColor, RustfmtConfig, rustfmt_defaults, rustfmt_layer.
 // Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
-// Status: T-4.16 scaffold — full option space grounded in rustfmt 1.6 toml reference.
+// Status: T-4.16 scaffold — full option space grounded in rustfmt v1.6.0 toml reference.
 // Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
-// Note: layer composition — consumer folds List<RustfmtConfig> via rustfmt_layer; each
-//       layer is a complete config. Field-granularity patch substrate (partial overrides) is
-//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
-//       per-field Override/Inherit variants replaces full-config layering.
-// Note: width/count fields use Int as a bootstrap affordance. Negative values are
-//       structurally constructible but spec-invalid (rustfmt rejects them at parse time).
-//       🟡 gated — feature: formatter-int-refinement — dissolve-on-arrival: replace Int
-//       with Refined<Int> (T-25-core) validated ≥1 (tab_spaces, max_width, comment_width)
-//       or ≥0 (remaining count fields); forbidden: ad-hoc negative-check guards.
 
 module v4.extdeps.formatters.rustfmt
 
@@ -56,11 +47,6 @@ type RustfmtMatchArmLeadingPipes
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Controls how use statements are organized.
-// Crate: merge all imports in a single crate to the crate root.
-// Module: merge all imports per module.
-// Item: merge all items (default in newer editions).
-// One: merge everything into a single use declaration.
 type RustfmtImportsGranularity
   = RustfmtImportsGranularityPreserve
   | RustfmtImportsGranularityCrate
@@ -100,18 +86,14 @@ type RustfmtNewlineStyle
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Shared by both `edition` (parser edition) and `style_edition` (formatting style guide edition).
+// v1.6.0 documents 2015/2018/2021 only; 2024 is not a v1.6.0 option.
 type RustfmtEdition
   = RustfmtEdition2015
   | RustfmtEdition2018
   | RustfmtEdition2021
-  | RustfmtEdition2024
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Default: apply rustfmt's own small-heuristics defaults.
-// Off: disable all heuristics (multi-line everything).
-// Max: maximize heuristic usage (single-line as much as possible).
 type RustfmtSmallHeuristics
   = RustfmtHeuristicsDefault
   | RustfmtHeuristicsOff
@@ -125,6 +107,27 @@ type RustfmtHexLiteralCase
   | RustfmtHexLower
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Which formatting rule set to apply (v1.6.0 documents One and Two).
+type RustfmtVersion
+  = RustfmtVersionOne
+  | RustfmtVersionTwo
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtBinopSeparator
+  = RustfmtBinopFront
+  | RustfmtBinopBack
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtColor
+  = RustfmtColorAuto
+  | RustfmtColorAlways
+  | RustfmtColorNever
+
+
+// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain,array,fn_call,attr_fn_like,struct_lit,struct_variant,single_line_if_else}_width; forbidden: ad-hoc cross-field guards outside validation substrate.
 type RustfmtConfig {
   // Indentation
   indent_style: RustfmtIndentStyle
@@ -133,14 +136,14 @@ type RustfmtConfig {
 
   // Line width
   max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
-  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
-  chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0
-  single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
-  fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥0
-  attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
-  struct_lit_width: Int    // 🟡 gated: formatter-int-refinement — must be ≥0
-  struct_variant_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
-  array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥0
+  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1; see also formatter-cross-field-constraints
+  chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  struct_lit_width: Int    // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  struct_variant_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
+  array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   short_array_element_width_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
 
   // Braces
@@ -152,6 +155,8 @@ type RustfmtConfig {
   trailing_comma: RustfmtTrailingComma
   trailing_semicolon: Bool
   match_arm_leading_pipes: RustfmtMatchArmLeadingPipes
+  match_arm_blocks: Bool
+  match_block_trailing_comma: Bool
 
   // Imports
   imports_granularity: RustfmtImportsGranularity
@@ -161,6 +166,7 @@ type RustfmtConfig {
 
   // Functions / params
   fn_params_layout: RustfmtFnParamsLayout
+  fn_single_line: Bool
 
   // Modules
   reorder_modules: Bool
@@ -170,17 +176,25 @@ type RustfmtConfig {
   blank_lines_upper_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
   blank_lines_lower_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
 
-  // Comments
+  // Comments and docs
   wrap_comments: Bool
   normalize_comments: Bool
+  normalize_doc_attributes: Bool
   format_strings: Bool
+  format_code_in_doc_comments: Bool
 
-  // Derives / attributes
+  // Derives / attributes / shorthand
   merge_derives: Bool
+  use_field_init_shorthand: Bool
+  use_try_shorthand: Bool
+  force_explicit_abi: Bool
 
   // Macros
   format_macro_matchers: Bool
   format_macro_bodies: Bool
+
+  // Binary operations
+  binop_separator: RustfmtBinopSeparator
 
   // Misc
   use_small_heuristics: RustfmtSmallHeuristics
@@ -189,14 +203,15 @@ type RustfmtConfig {
   combine_control_expr: Bool
   hex_literal_case: RustfmtHexLiteralCase
   enum_discrim_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  struct_field_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  spaces_around_ranges: Bool
+  empty_item_single_line: Bool
+  disable_all_formatting: Bool
+  color: RustfmtColor
   edition: RustfmtEdition
-  // Controls which formatting style guide to apply (distinct from edition which controls parsing).
-  style_edition: RustfmtEdition
-  // Enables unstable rustfmt features; intended for rustfmt development, not production use.
+  version: RustfmtVersion
   unstable_features: Bool
-  // When non-empty, rustfmt rejects runs on versions older than this string.
   required_version: String
-  // File path patterns (glob syntax) to exclude from formatting.
   ignore: List<String>
 }
 
@@ -225,6 +240,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   trailing_comma: RustfmtTrailingCommaVertical,
   trailing_semicolon: true,
   match_arm_leading_pipes: RustfmtMatchPipesNever,
+  match_arm_blocks: true,
+  match_block_trailing_comma: false,
 
   imports_granularity: RustfmtImportsGranularityPreserve,
   group_imports: RustfmtGroupImportsPreserve,
@@ -232,6 +249,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   reorder_imports: true,
 
   fn_params_layout: RustfmtFnParamsTall,
+  fn_single_line: false,
 
   reorder_modules: true,
 
@@ -241,12 +259,19 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
 
   wrap_comments: false,
   normalize_comments: false,
+  normalize_doc_attributes: false,
   format_strings: false,
+  format_code_in_doc_comments: false,
 
   merge_derives: true,
+  use_field_init_shorthand: false,
+  use_try_shorthand: false,
+  force_explicit_abi: true,
 
   format_macro_matchers: false,
   format_macro_bodies: true,
+
+  binop_separator: RustfmtBinopFront,
 
   use_small_heuristics: RustfmtHeuristicsDefault,
   overflow_delimited_expr: false,
@@ -254,16 +279,20 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   combine_control_expr: true,
   hex_literal_case: RustfmtHexPreserve,
   enum_discrim_align_threshold: 0,
+  struct_field_align_threshold: 0,
+  spaces_around_ranges: false,
+  empty_item_single_line: true,
+  disable_all_formatting: false,
+  color: RustfmtColorAuto,
   edition: RustfmtEdition2015,
-  style_edition: RustfmtEdition2015,
+  version: RustfmtVersionOne,
   unstable_features: false,
   required_version: "",
   ignore: [],
 }
 
 
-// Apply one config layer over another: the outer layer wins unconditionally on every field.
-// Hierarchical layering: fold(layers, init: rustfmt_defaults, f: rustfmt_layer).
+// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
 fn rustfmt_layer(base: RustfmtConfig, outer: RustfmtConfig) -> RustfmtConfig {
   outer
 }
