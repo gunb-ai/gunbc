@@ -11321,7 +11321,7 @@ pub fn wrap_rust_record_field_value(
 ) -> String {
     {
         let is_bounded_lattice_field =
-            v2_rt::contains(struct_name.clone(), "BoundedLattice".to_string());
+            struct_name.clone().as_str() == "BoundedLattice".to_string().as_str();
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
             v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
         } else {
@@ -16045,10 +16045,9 @@ pub fn emit_data_def_body(
             shared_types.clone(),
             &scope.type_env.clone().source_indices.clone(),
         );
-        if (((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
-            || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
-            || v2_rt::contains(raw_ty_str.clone(), "BoundedLattice<".to_string()))
-        {
+        let type_name =
+            authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node);
+        if (type_name.clone().as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     let meet_str = match field_value_by_name(
