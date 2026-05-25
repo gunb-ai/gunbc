@@ -7,10 +7,12 @@
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       compile_inferred, compile, validate_then_compile.
-// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
-//           std/collection.dag, std/diagnostic.dag,
-//           std/node.dag, std/text.dag, std/witness.dag.
-// Status: Wave-5-A — validate_then_compile: infer once → lens gates on InferredTree → compile_inferred (TranslateTo: emit).
+// Consumes: compiler/01_tokenize.dag, compiler/02_parse.dag, compiler/03_normalize.dag,
+//           compiler/03_resolve.dag, compiler/04_infer.dag, compiler/05_emit.dag,
+//           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
+//           std/algebra.dag, std/collection.dag, std/diagnostic.dag,
+//           std/module_graph.dag, std/node.dag, std/text.dag, std/witness.dag.
+// Status: Wave-5-A — compile_ingest_staging: tokenize → parse → normalize → resolve_with_graph → compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
 
@@ -19,8 +21,15 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.normalize { normalize }
+import v4.compiler.parse { parse }
+import v4.compiler.resolve { resolve_with_graph }
+import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.extdeps.languages.dag { dag_language_model_wave1 }
+import v4.std.algebra { Empty }
 import v4.std.collection { List }
+import v4.std.module_graph { module_graph_from_entries }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -38,7 +47,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }
-import v4.std.witness { Witness }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 type CoreNode = Node
@@ -82,6 +91,7 @@ type Validated<T> {
 
 
 data compile_stage_locus_port: Symbol = compile_stage_locus_port
+data compile_ingest_staging_source_file: Symbol = compile_ingest_staging_source_file
 data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
 data compile_lens_gate_rejected: Symbol = compile_lens_gate_rejected
 data compile_eval_not_realized: Symbol = compile_eval_not_realized
@@ -269,11 +279,57 @@ fn validate_then_compile(
 
 
 fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
-  Rejected {
-    diagnostics: diagnostics_singleton(
-      d: compile_pipeline_not_realized_diagnostic(
-        at: port_locus(port: compile_stage_locus_port)
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: source,
+      file: compile_ingest_staging_source_file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) {
+              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must replace this.
+              match module_graph_from_entries(entries: Empty) {
+                Holds { value: graph } =>
+                  bind_outcome(
+                    o: resolve_with_graph(
+                      tree: normalized,
+                      lm: lm,
+                      graph: graph
+                    ),
+                    f: fn(resolved) {
+                      bind_outcome(
+                        o: compile(
+                          source: resolved,
+                          mode: TranslateTo { target: target }
+                        ),
+                        f: fn(compile_out) {
+                          match compile_out {
+                            TranslateResult { source: target_source } =>
+                              outcome_accepted(target_source)
+                            EvalResult { value: _ } =>
+                              outcome_rejected(
+                                compile_eval_not_realized_diagnostic(
+                                  at: port_locus(port: compile_stage_locus_port)
+                                )
+                              )
+                          }
+                        }
+                      )
+                    }
+                  )
+                Violates { diagnostic: d } =>
+                  Rejected { diagnostics: diagnostics_singleton(d: d) }
+              }
+            }
+          )
+        }
       )
-    )
-  }
+    }
+  )
 }
