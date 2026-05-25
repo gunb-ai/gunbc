@@ -665,3 +665,19 @@ data hash_contract: PrimitiveContract = {
   certainty: Proven,
   notes: "n = serialized size of value; output is fixed-length hash string"
 }
+
+data hash_combine_contract: PrimitiveContract = {
+  name: "hash_combine",
+  work: "1",
+  output_size: "1",
+  certainty: Proven,
+  notes: "returns opaque Hash carrier (16-hex digest, not String); FNV-1a 64-bit content-addressing fingerprint — digest equality is cache lookup, not proof-grade structural injectivity (docs/thesis/what-else-falls-out.md §Content-hash caching); hash_combine rejects non-digest inputs at runtime boundary"
+}
+
+data atom_identity_hash_contract: PrimitiveContract = {
+  name: "atom_identity_hash",
+  work: "n",
+  output_size: "1",
+  certainty: Proven,
+  notes: "returns opaque Hash carrier (not String); n = Symbol spelling length at runtime boundary"
+}
