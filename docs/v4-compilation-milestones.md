@@ -254,9 +254,13 @@ The next step is a gating `cargo check` step once the emitter gaps are fixed.
 **Gap 2 — T-6/T-7 algorithm scope**
 The lexer and parser algorithm walks must be written in `.dag` per the Pure Bootstrap
 Zero mandate (`THESIS.md`, `docs/design-pure-bootstrap-zero.md`): v4 compiler behavior
-is authored in `.dag`, not hand-Rust. Writing them in Rust would be a P5 scaffold
-(`docs/modeling-discipline.md` Practice 5 — Progress Is Dissolution) and requires an
-explicit dissolution receipt before a worker can be dispatched on that path.
+is authored in `.dag`, not hand-Rust. `THESIS.md:294-296` is explicit: "Stage0 Rust
+compiler internals (tokenize, parse, lower, infer, emit, lenses, std library) are emitted
+from the `.dag` graph and committed — not hand authored. Hand-maintained surface target: 0."
+Writing T-6/T-7 algorithm walks in Rust is a **STOP** — not a normal P5-scaffold dispatch
+path. A worker must not be dispatched on a hand-Rust path for T-6/T-7 without explicit
+PM/Director re-ratification of the Pure Bootstrap Zero mandate. There is no dissolution
+receipt that makes hand-Rust authoring of these internals a valid normal path.
 
 Authoring in `.dag` does NOT make M2 depend on T-22/T-34. The path is: T-6/T-7
 algorithms written in `.dag` → v2 emits Rust from them (--target rust, same as the
