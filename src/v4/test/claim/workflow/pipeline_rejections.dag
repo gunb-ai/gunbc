@@ -253,8 +253,6 @@ fn workflow_inferred_facts() -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: resolved,
     algebra: pipeline_symbol_node(s: inferred_algebra_symbol),
-    canonical_structural_symbol: constraint_property_being_canonical,
-    canonical_closedness_symbol: constraint_property_candidate_set_closedness,
     descent: Violates {
       diagnostic: Diagnostic {
         reason: inferred_descent_not_derived,

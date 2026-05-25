@@ -63,8 +63,6 @@ data anchor_stub_descent_not_derived: Symbol = anchor_stub_descent_not_derived
 data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,
-  canonical_structural_symbol: constraint_property_being_canonical,
-  canonical_closedness_symbol: constraint_property_candidate_set_closedness,
   descent: Violates {
     diagnostic: Diagnostic {
       reason: anchor_stub_descent_not_derived,

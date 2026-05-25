@@ -418,8 +418,6 @@ fn subsumption_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: node,
-    canonical_structural_symbol: constraint_property_being_canonical,
-    canonical_closedness_symbol: constraint_property_candidate_set_closedness,
     descent: Holds { value: subsumption_termination_proof() }
   )
 }

@@ -333,8 +333,6 @@ fn eval_mvp2_facts() -> InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: eval_mvp2_i64_node(),
     algebra: eval_mvp2_algebra_node(),
-    canonical_structural_symbol: constraint_property_being_canonical,
-    canonical_closedness_symbol: constraint_property_candidate_set_closedness,
     descent: Holds { value: eval_mvp2_termination_proof() }
   )
 }
