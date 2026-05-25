@@ -3173,7 +3173,7 @@ pub fn emit_struct_from_children(
 }
 
 pub fn explicit_type_arg_strings(
-    type_node: Rc<Node>,
+    type_node: &Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
@@ -3184,7 +3184,7 @@ pub fn explicit_type_arg_strings(
                 __result.push(render_rust_type(
                     &param_node_type_expr(&p),
                     shared_types.clone(),
-                    &source_indices.clone(),
+                    &source_indices,
                 ));
             }
             __result
@@ -3199,7 +3199,7 @@ pub fn explicit_type_arg_strings(
                     __result.push(render_rust_type(
                         &child_type_node(&c),
                         shared_types.clone(),
-                        &source_indices.clone(),
+                        &source_indices,
                     ));
                 }
                 __result
@@ -3212,10 +3212,10 @@ pub fn explicit_type_arg_strings(
 
 pub fn apply_missing_generic_args(
     ty: String,
-    type_node: Rc<Node>,
-    parent_generic_param_names: &Rc<Vec<String>>,
+    type_node: &Rc<Node>,
+    parent_generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let type_name = authored_name_at(source_indices.clone(), &type_node);
@@ -3232,8 +3232,8 @@ pub fn apply_missing_generic_args(
                 } else {
                     {
                         let explicit_args = explicit_type_arg_strings(
-                            type_node.clone(),
-                            Rc::new(std::collections::BTreeSet::new()),
+                            &type_node,
+                            v2_rt::rc_empty_set::<String>(),
                             source_indices.clone(),
                         );
                         if ((explicit_args.clone().len() as i64) == expected.clone()) {
@@ -3241,7 +3241,7 @@ pub fn apply_missing_generic_args(
                                 let with_args = v2_rt::concat(
                                     v2_rt::concat(
                                         v2_rt::concat(type_name.clone(), "<".to_string()),
-                                        explicit_args.join(&", ".to_string()),
+                                        explicit_args.clone().join(&", ".to_string()),
                                     ),
                                     ">".to_string(),
                                 );
@@ -3360,10 +3360,10 @@ pub fn emit_struct_field_from_child(
         };
         let generic_ty = apply_missing_generic_args(
             ty,
-            rt_child.clone(),
-            &parent_generic_param_names,
+            &rt_child,
+            parent_generic_param_names,
             emit_info,
-            env.source_indices.clone(),
+            &env.source_indices.clone(),
         );
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
@@ -3681,10 +3681,10 @@ pub fn emit_enum_shared_accessors(
                                             shared_types.clone(),
                                             &env.source_indices.clone(),
                                         ),
-                                        resolved_type(f.clone()),
-                                        &generic_param_names,
+                                        &resolved_type(f.clone()),
+                                        generic_param_names.clone(),
                                         emit_info.clone(),
-                                        env.source_indices.clone(),
+                                        &env.source_indices.clone(),
                                     ),
                                     None => "".to_string(),
                                 },
@@ -3739,10 +3739,10 @@ pub fn emit_enum_shared_accessors(
                                 shared_types.clone(),
                                 &env.source_indices.clone(),
                             ),
-                            resolved_type(f.clone()),
-                            &generic_param_names,
+                            &resolved_type(f.clone()),
+                            generic_param_names.clone(),
                             emit_info.clone(),
-                            env.source_indices.clone(),
+                            &env.source_indices.clone(),
                         ),
                         None => "compile_error!(\"enum shared accessor missing field metadata\")"
                             .to_string(),
@@ -4184,10 +4184,10 @@ pub fn emit_variant_from_child(
                                 };
                                 let ty = apply_missing_generic_args(
                                     raw_ty,
-                                    type_node.clone(),
-                                    &parent_generic_param_names,
+                                    &type_node,
+                                    parent_generic_param_names.clone(),
                                     emit_info.clone(),
-                                    env.source_indices.clone(),
+                                    &env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
                                     type_node.clone(),
@@ -4237,10 +4237,10 @@ pub fn emit_variant_from_child(
                                                 shared_types.clone(),
                                                 &env.source_indices.clone(),
                                             ),
-                                            rt_f.clone(),
-                                            &parent_generic_param_names,
+                                            &rt_f,
+                                            parent_generic_param_names.clone(),
                                             emit_info.clone(),
-                                            env.source_indices.clone(),
+                                            &env.source_indices.clone(),
                                         );
                                         let final_ty = if needs_box_wrapping(
                                             rt_f.clone(),
@@ -4305,10 +4305,10 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         &env.source_indices.clone(),
                                     ),
-                                    rt_f.clone(),
-                                    &parent_generic_param_names,
+                                    &rt_f,
+                                    parent_generic_param_names.clone(),
                                     emit_info.clone(),
-                                    env.source_indices.clone(),
+                                    &env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
                                     rt_f.clone(),
@@ -11321,7 +11321,7 @@ pub fn wrap_rust_record_field_value(
 ) -> String {
     {
         let is_bounded_lattice_field =
-            struct_name.clone().as_str() == "BoundedLattice".to_string().as_str();
+            (struct_name.clone().as_str() == "BoundedLattice".to_string().as_str());
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
             v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
         } else {
@@ -16046,7 +16046,7 @@ pub fn emit_data_def_body(
             &scope.type_env.clone().source_indices.clone(),
         );
         let type_name = authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node);
-        if (type_name.clone().as_str() == "BoundedLattice".to_string().as_str()) {
+        if (type_name.as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     let meet_str = match field_value_by_name(
