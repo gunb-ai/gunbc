@@ -2,9 +2,10 @@
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def; T-28 cross-file binding via ModuleGraph.
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_graph; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/module_graph.dag (ModuleGraph),
-//           compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 (+ T-28) modeled — K-1 single-file resolution; resolve_with_graph cross-file binding surface.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag,
+//           std/module_graph.dag (ModuleGraph), compiler/03_normalize.dag,
+//           extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
+// Status: T-8 realized — K-1 single-file resolution; resolve_with_graph wired (T-28 gated).
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -561,7 +562,12 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// 🟡 gated — consumer: T-28 full cross-file namespace merge not yet realized — bind TODO — dissolve-on-arrival: walks ModuleGraph.entries, extracts each entry's exported symbols, and unions them into the returned Namespace.
+// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace type gains a
+// per-module symbol table keyed by ModulePath so qualified binding can be represented, then wire
+// fold over graph.entries here (ledger: T-28 · TASKS.md §T-28).
+// Constraint: Map<Symbol,Symbol> bindings have no ModulePath dimension; a flat fold of all
+// ModuleEntry.root exports makes every symbol globally visible and cannot represent
+// qualified/ambiguous imports.
 fn namespace_from_tree_and_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,

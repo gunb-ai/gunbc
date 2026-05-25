@@ -1133,6 +1133,7 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 **Status:** Both T-25 components are landed on `main`.
 - **T-25-core** — `src/v4/std/refinement.dag` (`Validation<B>`, `Refined<B>`, `refine`, `refined_base`).
   Landed **PR #3354**. Consumed by posix.dag (ProcessId/ExitCode/SignalNum per PR #3507).
+  **Approach (operator-ratified 2026-05-25):** Strengthen the home type before reaching for a refinement. `posix.dag` ProcessId/ExitCode is the reference pattern: `ProcessId` is a nominal wrapper (`{ refined: Refined<Int> }`) with a `value > 0` lower bound from the POSIX spec; `ExitCode` adds a `0–255` upper bound. Neither carries width or signedness fields in the current substrate — those would be the *strengthening* step a future T-4 home-type upgrade would add. The principle: use `Refined<B>` for externally-specified boundary values only (POSIX defines these bounds, not the modeler). A refinement on an under-modeled home type does not fix the home; it adds a second layer of opacity over the gap.
 - **T-25-tail** — predicate prover (`constraint_satisfaction` + `exact_structural_equality_zip_fold`
   semantics) in `src/v4/std/find_witness.dag` and `src/v4/std/constraint_satisfaction_predicate.dag`;
   dissolves identity-MVP scaffolds. Landed **PR #3531**.
@@ -1226,6 +1227,7 @@ into ≥1 spec-read fact beyond a bare std alias); how the gate reads
 fact-density off a `Node` carrier; the kernel-ambient exemption (`Bool`
 and the other kernel-ambient atoms are legitimately atomic — not hollow);
 the Diagnostic shape on a fail-closed hollow alias.
+**Mechanism (operator-ratified 2026-05-25):** The T-30 hollow-alias gate runs as a lens verdict via `run_required_lens_gates` (affected-lens `TestClaim` driven by T-21 affected-set frontier), **not** as a separate lint tool or a `ci.dag` build step. The lens verdict IS the enforcement gate; `cargo build` success is the M1 floor minimum, not the T-30 authority.
 
 **Interim bootstrap mirror (not the final generated checker).** The north
 star remains a **generated** structural `Node → Outcome` gate in v4

@@ -1,9 +1,9 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_wave1_*; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set.
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag.
-// Status: T-6 modeled lex rules; T-7 grammar remains scaffolded.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_wave1_*; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens.
+// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/logic.dag.
+// Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
 // Anchor: docs/v3-spec.md
 
 module v4.extdeps.languages.dag
@@ -28,6 +28,8 @@ import v4.compiler.parse {
 import v4.compiler.tokenize {
   BlockCommentTextChar,
   CharClassPattern,
+  CharPattern,
+  ChoicePattern,
   DelimitedPattern,
   DigitChar,
   IdentContinueChar,
@@ -207,7 +209,10 @@ fn dag_block_comment_trivia_rule() -> LexRule {
   TriviaRule {
     pattern: DelimitedPattern {
       open: LiteralPattern { text: "/*" },
-      body: RepeatPattern { element: CharClassPattern { class: BlockCommentTextChar } },
+      body: ChoicePattern {
+        left: CharClassPattern { class: BlockCommentTextChar },
+        right: CharPattern { char: 42 }
+      },
       close: LiteralPattern { text: "*/" }
     }
   }
@@ -626,7 +631,8 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
       type_alias_rhs,
       block,
       data_value
-    ]
+    ],
+    sync_tokens: dag_wave1_sync_tokens()
   }
 }
 
@@ -715,4 +721,24 @@ fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     rules: dag_wave1_lex_rules(),
     token_class: sym
   )
+}
+
+
+// sync_tokens: declaration-start keywords used for error recovery in Repeat walks.
+fn dag_wave1_sync_tokens() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      sym == dag_token_kw_module ||
+      sym == dag_token_kw_import ||
+      sym == dag_token_kw_type ||
+      sym == dag_token_kw_data ||
+      sym == dag_token_kw_fn
+    }
+  }
+}
+
+
+// Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
+fn dag_language_model_wave1_modeled() -> DagLanguageModel {
+  dag_language_model_wave1()
 }
