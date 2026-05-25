@@ -5,6 +5,7 @@
 //       RustfmtImportsLayout, RustfmtImportsIndent, RustfmtFnParamsLayout, RustfmtNewlineStyle,
 //       RustfmtEdition, RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtVersion,
 //       RustfmtBinopSeparator, RustfmtColor, RustfmtTypePunctuationDensity,
+//       RustfmtMacroSelector, RustfmtRequiredVersion,
 //       RustfmtConfig, rustfmt_defaults, rustfmt_layer.
 // Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
 // Status: T-4.16 scaffold — full option space grounded in rustfmt v1.6.0 toml reference.
@@ -140,6 +141,23 @@ type RustfmtTypePunctuationDensity
   | RustfmtTypePunctuationCompressed
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// v1.6.0 documents skip_macro_invocations as macro name idents plus the special "*" selector (skip all).
+// List<String> would lose this structural distinction; model the two arms explicitly.
+type RustfmtMacroSelector
+  = RustfmtMacroAll
+  | RustfmtMacroNamed { name: String }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// v1.6.0 default is the compiled-in CARGO_PKG_VERSION (installed version); possible configured values
+// are published version strings like "0.3.8". Encoding the compile-time expression as a String sentinel
+// would admit an invalid config value and lose set-vs-default semantics.
+type RustfmtRequiredVersion
+  = RustfmtVersionInstalled
+  | RustfmtVersionPinned { version: String }
+
+
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; comment_width excluded — v1.6.0 documents it as "any positive integer" with no max_width upper bound (0 causes wrap_comments to apply regardless of line width); forbidden: ad-hoc cross-field guards outside validation substrate.
 // 🟡 gated — feature: rustfmt-deprecated-alias — bind T-4.16 follow-on — dissolve-on-arrival: merge_imports and fn_args_layout are deprecated v1.6.0 aliases retained for P1 faithfulness; both are subsumed by their canonical counterparts (imports_granularity and fn_params_layout respectively); precedence rule: canonical field wins when both are set; forbidden: treating either alias as an independent authoritative fact separate from its canonical field.
@@ -238,14 +256,14 @@ type RustfmtConfig {
   error_on_line_overflow: Bool
   error_on_unformatted: Bool
   skip_children: Bool
-  skip_macro_invocations: List<String>
+  skip_macro_invocations: List<RustfmtMacroSelector>
   type_punctuation_density: RustfmtTypePunctuationDensity
   disable_all_formatting: Bool
   color: RustfmtColor
   edition: RustfmtEdition
   version: RustfmtVersion
   unstable_features: Bool
-  required_version: String
+  required_version: RustfmtRequiredVersion
   ignore: List<String>
 }
 
@@ -340,7 +358,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   edition: RustfmtEdition2015,
   version: RustfmtVersionOne,
   unstable_features: false,
-  required_version: "CARGO_PKG_VERSION",
+  required_version: RustfmtVersionInstalled,
   ignore: [],
 }
 
