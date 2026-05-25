@@ -446,17 +446,6 @@ fn lean_inhabitant_int32_node() -> Node {
 }
 
 
-fn lean_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  fold_list(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
-}
-
-
 fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {

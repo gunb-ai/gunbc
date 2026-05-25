@@ -35,10 +35,6 @@ pub use crate::v2_compiler_parse::{parse_with_table, ParseResult};
 pub use crate::v2_compiler_resolve::{resolve_modules, ModuleGraph};
 pub use crate::v2_compiler_tokenize::tokenize;
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::BinOp::*;
 use crate::v2_std_core::CallSemantics::*;
 use crate::v2_std_core::Cardinality::*;
@@ -74,6 +70,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 

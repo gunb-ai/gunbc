@@ -49,10 +49,6 @@ pub use crate::v2_compiler_languages::{
     TcoSyntax, TestConventions, TestNameStyle, VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v2_rt;
-use crate::v2_rt::rc_empty_set as empty_set;
-use crate::v2_rt::rc_set_insert as set_insert;
-use crate::v2_rt::rc_set_union as set_union;
-use crate::v2_rt::set_contains;
 use crate::v2_std_core::AlgebraFieldKind::*;
 use crate::v2_std_core::BinOp::NullCoalesce;
 use crate::v2_std_core::Cardinality::CardOptional;
@@ -93,6 +89,7 @@ pub use crate::v2_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -1907,7 +1904,7 @@ pub fn render_node_type(
         }
         let is_conj = (n.connective.clone() == Connective::Conj);
         let is_disj = (n.connective.clone() == Connective::Disj);
-        let shared = v2_rt::set_contains(shared_types.clone(), tn.clone());
+        let shared = v2_rt::set_contains(&shared_types, tn.clone());
         if is_disj {
             {
                 let base = if (n.ident_span.clone() != None) {

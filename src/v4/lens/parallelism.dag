@@ -1,13 +1,14 @@
 // src/v4/lens/parallelism.dag
 // Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
 // Owns: ParallelismRelation, ParallelismFact, parallelism_witness.
-// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Consumes: v4.std.algebra (bag_eq), v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
 // Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; no copied endpoints, no parallel substrate (Practice 11 sub-rule: parallel-payload vs typed-reference).
 
 
 module v4.lens.parallelism
 
 import v4.compiler.infer { InferredTree }
+import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -29,7 +30,6 @@ import v4.std.dependency {
   VerifiedBy,
   classified_dependency_view_eq
 }
-import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Witness }
 
@@ -113,32 +113,6 @@ fn parallelism_classified_eq(
   classified_dependency_view_eq(a: a, b: b, classification_eq: parallelism_relation_eq)
 }
 
-fn parallelism_dependency_count(
-  xs: List<ClassifiedDependencyView<ParallelismRelation>>,
-  item: ClassifiedDependencyView<ParallelismRelation>
-) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if parallelism_classified_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn parallelism_dependency_facts_eq(
-  left: List<ClassifiedDependencyView<ParallelismRelation>>,
-  right: List<ClassifiedDependencyView<ParallelismRelation>>
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (parallelism_dependency_count(xs: left, item: item) == parallelism_dependency_count(xs: right, item: item))
-    })
-  }
-}
-
 fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
-  parallelism_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: parallelism_classified_eq)
 }

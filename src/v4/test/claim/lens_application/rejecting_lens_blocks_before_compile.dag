@@ -36,11 +36,6 @@ import v4.test.claim.manual.infer_ground_add_mvp { fixture_add_resolved_tree }
 data rejecting_lens_claim_symbol: Symbol = rejecting_lens_claim_symbol
 data rejecting_lens_gate_at: Symbol = rejecting_lens_gate_at
 
-data rejecting_lens_language_model_stub: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: []
-}
-
 data rejecting_lens_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
@@ -67,7 +62,6 @@ data rejecting_lens: CompileLens = CompileLens {
 fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
   match validate_then_compile(
     source: fixture_add_resolved_tree(),
-    input_lang: rejecting_lens_language_model_stub,
     lenses: [rejecting_lens],
     mode: TranslateTo { target: rejecting_lens_target_model_stub }
   ) {

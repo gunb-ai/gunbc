@@ -1,13 +1,14 @@
 // src/v4/lens/idempotency.dag
 // Scope: idempotency lens — algebraic-law-derived; redundant ops collapse structurally (THESIS:188 — idempotency + cancellation + redundancy = algebraic simplification).
 // Owns: IdempotencyVerdict, IdempotencyFact, idempotency_witness, idempotency_classify.
-// Consumes: v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
+// Consumes: v4.std.algebra (bag_eq), v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
 // Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<IdempotencyVerdict>`; no copied endpoints, no nested per-row EffectDependencyFact (Practice 11 sub-rule: parallel-payload vs typed-reference). The algebra-law witness is the verdict payload itself; the dependency-edge identity authority is `ClassifiedDependencyView.dependency`.
 
 
 module v4.lens.idempotency
 
 import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -29,7 +30,6 @@ import v4.std.dependency {
   VerifiedBy,
   classified_dependency_view_eq
 }
-import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Witness }
 
@@ -105,32 +105,6 @@ fn idempotency_classified_eq(
   classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
 }
 
-fn idempotency_dependency_count(
-  xs: List<ClassifiedDependencyView<IdempotencyVerdict>>,
-  item: ClassifiedDependencyView<IdempotencyVerdict>
-) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if idempotency_classified_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn idempotency_dependency_facts_eq(
-  left: List<ClassifiedDependencyView<IdempotencyVerdict>>,
-  right: List<ClassifiedDependencyView<IdempotencyVerdict>>
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (idempotency_dependency_count(xs: left, item: item) == idempotency_dependency_count(xs: right, item: item))
-    })
-  }
-}
-
 fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
-  idempotency_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: idempotency_classified_eq)
 }

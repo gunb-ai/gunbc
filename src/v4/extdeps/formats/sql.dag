@@ -8,7 +8,7 @@
 module v4.extdeps.formats.sql
 
 
-import v4.std.algebra { fold_list }
+import v4.std.algebra { fold_list, list_append }
 import v4.std.collection { List, Map }
 import v4.std.nat { Nat }
 import v4.std.cardinality { NonZeroNat }
@@ -385,8 +385,8 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
 
 // fold_list is a left fold, so cons-prepend folds reverse input order.
 // reverse + cons-prepend recovers the input order — this is the order-preserving
-// idiom for List<T> in v4 substrate today (no canonical list_map / list_append in
-// std/collection or std/algebra yet).
+// idiom for List<T> in v4 substrate today; list_append is canonical in
+// std/algebra, while list_map remains local here.
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
   fold_list(
     xs: xs,
@@ -406,16 +406,6 @@ fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
         Cons { head: f(item), tail: acc }
       }
     )
-  )
-}
-
-fn sql_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  fold_list(
-    xs: sql_list_reverse(xs: left),
-    empty: right,
-    cons: fn(acc, item) {
-      Cons { head: item, tail: acc }
-    }
   )
 }
 
@@ -441,8 +431,8 @@ fn sql_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> 
 }
 
 fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
-  sql_list_append(
-    left: sql_list_append(
+  list_append(
+    left: list_append(
       left: sql_primitive_bundles_from_integer_catalog(),
       right: sql_primitive_bundles_from_float_catalog()
     ),
