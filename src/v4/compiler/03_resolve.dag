@@ -76,12 +76,6 @@ type DeclaredBinding {
 }
 
 
-// 🟢 coproduct dissolution — F1 scoped resolver binding bridge: HasDeclaredBinding vs NoDeclaredBinding is the complete local extraction result for immediate Conj edges. Future std-level DeclaredBinding substrate can replace this bridge without adding resolver-local arms.
-type MaybeDeclaredBinding
-  = HasDeclaredBinding { binding: DeclaredBinding }
-  | NoDeclaredBinding
-
-
 fn empty_edge_list() -> List<Edge> {
   []
 }
@@ -104,10 +98,10 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
-fn try_edge_declared_binding(e: Edge) -> MaybeDeclaredBinding {
+fn try_edge_declared_binding(e: Edge) -> DeclaredBinding? {
   match e.label {
-    Named { name: sym } => HasDeclaredBinding { binding: DeclaredBinding { name: sym } }
-    Positional => NoDeclaredBinding
+    Named { name: sym } => Some { value: DeclaredBinding { name: sym } }
+    Positional => None
   }
 }
 
@@ -133,8 +127,8 @@ fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symb
     TypeNode { connective: Conj } =>
       fold(root.children, init: acc, f: fn(a, e) {
         match try_edge_declared_binding(e: e) {
-          HasDeclaredBinding { binding: b } => map_insert(a, b.name, b.name)
-          NoDeclaredBinding => a
+          Some { value: b } => map_insert(a, b.name, b.name)
+          None => a
         }
       })
     _ => acc
