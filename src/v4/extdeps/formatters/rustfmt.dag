@@ -4,7 +4,7 @@
 //       RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports,
 //       RustfmtImportsLayout, RustfmtImportsIndent, RustfmtFnParamsLayout, RustfmtNewlineStyle,
 //       RustfmtEdition, RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtVersion,
-//       RustfmtBinopSeparator, RustfmtColor, RustfmtTypePunctuationDensity,
+//       RustfmtBinopSeparator, RustfmtColor, RustfmtTypePunctuationDensity, RustfmtReportTactic,
 //       RustfmtConfig, rustfmt_defaults, rustfmt_layer.
 // Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
 // Status: T-4.16 scaffold — full option space grounded in rustfmt v1.6.0 toml reference.
@@ -140,6 +140,13 @@ type RustfmtTypePunctuationDensity
   | RustfmtTypePunctuationCompressed
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustfmtReportTactic
+  = RustfmtReportAlways
+  | RustfmtReportNever
+  | RustfmtReportUnnumbered
+
+
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
 // 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {comment_width (when >0),chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; zero-sentinel fields (comment_width=0) are exempt from the upper-bound check; forbidden: ad-hoc cross-field guards outside validation substrate.
 type RustfmtConfig {
@@ -205,6 +212,8 @@ type RustfmtConfig {
   doc_comment_code_block_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   format_generated_files: Bool
   hide_parse_errors: Bool
+  report_fixme: RustfmtReportTactic
+  report_todo: RustfmtReportTactic
 
   // Derives / attributes / shorthand
   merge_derives: Bool
@@ -245,6 +254,7 @@ type RustfmtConfig {
   version: RustfmtVersion
   unstable_features: Bool
   required_version: String
+  license_template_path: String
   ignore: List<String>
 }
 
@@ -304,6 +314,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   doc_comment_code_block_width: 100,
   format_generated_files: true,
   hide_parse_errors: false,
+  report_fixme: RustfmtReportNever,
+  report_todo: RustfmtReportNever,
 
   merge_derives: true,
   use_field_init_shorthand: false,
@@ -339,7 +351,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   edition: RustfmtEdition2015,
   version: RustfmtVersionOne,
   unstable_features: false,
-  required_version: "",
+  required_version: "CARGO_PKG_VERSION",
+  license_template_path: "",
   ignore: [],
 }
 
