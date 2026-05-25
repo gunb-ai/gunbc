@@ -124,13 +124,15 @@ The first moment that v4 actually compiles something.
 
 **Known blockers:**
 1. **T-6 lexer walk ("not realized").** `01_tokenize.dag` has `ModeledLexRules { root: _ } → Rejected("lexical walk not realized")`. The lex rule data is modeled but the walk algorithm that uses it is a stub. This MUST be real for M2. One worker, one file.
-2. **T-7 parser walk — `parse_expr` stub.** `02_parse.dag` has been partially filled (#3626): `parse()` now dispatches through `grammar_lookup_production` → `parse_production` → `parse_expr`. The remaining stub is `parse_expr` itself, which has a `🟡 gated — feature:T-7-parse-walk-realization` marker and always returns `ParseExprRejected`. dag.dag grammar data is filled; `parse_expr` needs implementing to match the grammar rule structure against the token stream.
-3. **T-10 emit must produce real output.** `05_emit.dag` must compose translate output into actual Rust source text for the target. Currently 45 lines.
-4. **Trivial input scope:** the minimal viable input only needs to exercise the pipeline for the .dag language's grammar (dag.dag is the only language with lex/grammar data filled). Python, Go, etc. are not needed for M2.
+2. **T-7 parser walk — `parse_expr` stub.** `02_parse.dag` has been partially filled (#3626): `parse()` now dispatches through `grammar_lookup_production` → `parse_production` → `parse_expr`. The remaining stub is `parse_expr` itself, which has a `🟡 gated — feature:T-7-parse-walk-realization` marker and always returns `ParseExprRejected`. `parse_expr` needs implementing to match the grammar rule structure against the token stream. T-7 is the generic walk algorithm only — it does not own dag.dag LM wiring (see blocker 5).
+3. **dag.dag language model wiring.** `dag_wave1_grammar()` (ModeledGrammar with production bodies) exists in dag.dag, but both pipeline-facing language model functions — `dag_language_model_wave1_void()` and `dag_language_model_surface_empty_prelude()` — use `dag_wave1_g0_void_grammar()` (VoidGrammar). `parse()` dispatches VoidGrammar to the accept-empty arm: it accepts empty token streams and rejects any real program. A pipeline-facing function using `dag_wave1_grammar()` (e.g. `dag_language_model_wave1()`) must be added to dag.dag and wired in. This is **not** T-7 scope — it is dag.dag data wiring, a separate follow-on task.
+4. **T-10 emit must produce real output.** `05_emit.dag` must compose translate output into actual Rust source text for the target. Currently 45 lines.
+5. **Trivial input scope:** the minimal viable input only needs to exercise the pipeline for the .dag language's grammar (dag.dag is the only language with lex/grammar data filled). Python, Go, etc. are not needed for M2.
 
 **Required work to reach M2:**
 - Implement lexer walk in 01_tokenize.dag (algorithm, 1 worker, ~200-400 lines)
 - Implement `parse_expr` in 02_parse.dag (the remaining stub; `parse_production` and `parse()` structure already real)
+- Add `dag_language_model_wave1()` to dag.dag using `dag_wave1_grammar()` (not VoidGrammar) and wire into the pipeline
 - Wire T-10 emit to produce real Rust source text from a translated node tree
 - T-8 normalize + resolve: modeled and in the chain; single-file trivial input does not hit the T-28 cross-file bridge gate
 - T-9 infer: modeled and in the chain; no additional work for trivial input
