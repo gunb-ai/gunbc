@@ -341,8 +341,7 @@ data mvp1_emit_receipt: Outcome<TargetSource> = anchor_mvp1_emit_accepts()
 
 
 // Typed compile receipt — compile_inferred exercises compile → emit → translate → grammar inverse.
-data mvp1_compile_inferred_receipt: Outcome<CompileOutput> =
-  anchor_mvp1_compile_inferred_accepts()
+data mvp1_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_compile_inferred_accepts()
 
 
 // Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
