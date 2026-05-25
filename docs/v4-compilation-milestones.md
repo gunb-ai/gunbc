@@ -271,7 +271,7 @@ independent at M2.
 but that function has a `🟡` gate (`03_resolve.dag:564-570`) and does not walk
 `ModuleGraph.entries` — cross-file exports are never merged into the namespace. Cross-file
 imports (which every v4 file uses) won't resolve correctly until `namespace_from_tree_and_graph`
-is filled. M3 requires this. M2 with a single-file trivial input does not.
+is filled. M3 requires this for arbitrary user-module graph walking. M2 also requires T-28: the trivial fixture's `import v4.std.node { Symbol }` is a cross-file import — std library name lookup exercises `namespace_from_tree_and_graph` — consistent with the Required work list at line 146.
 
 **Gap 4 — T-10 emit scope vs. translate**
 `06_translate.dag` is 707 lines and more developed. `05_emit.dag` is 45 lines. Is
