@@ -134,7 +134,7 @@ pub fn render_rust_type_in_emit_context(
         apply_missing_generic_args(
             ty,
             &n,
-            &parent_generic_param_names,
+            parent_generic_param_names,
             emit_info,
             &source_indices,
         )
@@ -3232,7 +3232,7 @@ pub fn explicit_type_arg_strings(
 pub fn apply_missing_generic_args(
     ty: String,
     type_node: &Rc<Node>,
-    parent_generic_param_names: &Rc<Vec<String>>,
+    parent_generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -3258,24 +3258,7 @@ pub fn apply_missing_generic_args(
                         let args = if ((explicit_args.clone().len() as i64) == expected.clone()) {
                             explicit_args.clone()
                         } else {
-                            if ((explicit_args.clone().len() as i64) > 0) {
-                                Rc::new(vec![])
-                            } else {
-                                if ((parent_generic_param_names.clone().len() as i64)
-                                    >= expected.clone())
-                                {
-                                    Rc::new(
-                                        parent_generic_param_names
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .take(expected.clone() as usize)
-                                            .collect::<Vec<_>>(),
-                                    )
-                                } else {
-                                    Rc::new(vec![])
-                                }
-                            }
+                            Rc::new(vec![])
                         };
                         if ((args.clone().len() as i64) == expected.clone()) {
                             {
@@ -3402,7 +3385,7 @@ pub fn emit_struct_field_from_child(
         let generic_ty = apply_missing_generic_args(
             ty,
             &rt_child,
-            &parent_generic_param_names,
+            parent_generic_param_names,
             emit_info,
             &env.source_indices.clone(),
         );
@@ -3723,7 +3706,7 @@ pub fn emit_enum_shared_accessors(
                                             &env.source_indices.clone(),
                                         ),
                                         &resolved_type(f.clone()),
-                                        &generic_param_names,
+                                        generic_param_names.clone(),
                                         emit_info.clone(),
                                         &env.source_indices.clone(),
                                     ),
@@ -3781,7 +3764,7 @@ pub fn emit_enum_shared_accessors(
                                 &env.source_indices.clone(),
                             ),
                             &resolved_type(f.clone()),
-                            &generic_param_names,
+                            generic_param_names.clone(),
                             emit_info.clone(),
                             &env.source_indices.clone(),
                         ),
@@ -4226,7 +4209,7 @@ pub fn emit_variant_from_child(
                                 let ty = apply_missing_generic_args(
                                     raw_ty,
                                     &type_node,
-                                    &parent_generic_param_names,
+                                    parent_generic_param_names.clone(),
                                     emit_info.clone(),
                                     &env.source_indices.clone(),
                                 );
@@ -4279,7 +4262,7 @@ pub fn emit_variant_from_child(
                                                 &env.source_indices.clone(),
                                             ),
                                             &rt_f,
-                                            &parent_generic_param_names,
+                                            parent_generic_param_names.clone(),
                                             emit_info.clone(),
                                             &env.source_indices.clone(),
                                         );
@@ -4347,7 +4330,7 @@ pub fn emit_variant_from_child(
                                         &env.source_indices.clone(),
                                     ),
                                     &rt_f,
-                                    &parent_generic_param_names,
+                                    parent_generic_param_names.clone(),
                                     emit_info.clone(),
                                     &env.source_indices.clone(),
                                 );
