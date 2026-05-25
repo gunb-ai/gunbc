@@ -83,16 +83,18 @@ full-compile arm, not the bridge arm, before treating CI green as M0 confirmatio
 
 ---
 
-## Milestone 1 — Rust emit from full v4 source (NOT YET IN CI)
+## Milestone 1 — Rust emit links to a binary (NOT YET IN CI)
 
-**Definition:** `v2-compiler compile --target rust src/v4` succeeds over the full
-source tree and `rustc` compiles the output to a stage0 binary without errors.
+**Definition:** The emitted Rust from `v2-compiler compile --target rust src/v4`
+compiles with `rustc`/`cargo` to a runnable `v4-stage0` binary without errors.
 
-**Evidence:** CI step that runs `v2-compiler compile --target rust src/v4 --output-dir /tmp/v4-stage0 && rustc ...` exits 0. A `v4-compiler` binary exists and runs.
+**Evidence:** CI step that runs `cargo build` (or `rustc main.rs`) on the crate
+emitted by the T-22 host eval receipt step exits 0. A `v4-stage0` binary exists
+and runs.
 
-**What this proves:** The v2 emitter understands all v4 type constructs well enough
-to produce valid Rust. The generated Rust is structurally coherent. This is the
-first moment that "v4" exists as an executable artifact.
+**What this proves:** The v2 emitter produces Rust that is not only syntactically
+valid but type-correct and linkable. This is the first moment that "v4" exists as
+an executable artifact.
 
 **What this does NOT prove:** The stage0 binary can compile a v4 program correctly.
 It may exist but produce wrong or empty output for any input.
@@ -102,17 +104,20 @@ It may exist but produce wrong or empty output for any input.
    `serialize_target ∘ translate` but the composition is skeletal. v2 can emit Rust
    *for* the emit stage (turning it into a Rust function), but that Rust function
    will also be a stub that produces no output for any real input.
-2. **No CI step exists** that runs `--target rust` over all of src/v4 and attempts
-   rustc. This needs to be added to discover any emit-time errors before attempting M2.
+2. **Emitted Rust does not pass `cargo check`.** The T-22 host eval receipt already
+   verifies zero v2 diagnostics on `--target rust src/v4`, but the emitted crate
+   currently has ~4,900 `rustc` errors (PR #3654). Top categories: E0282 type
+   annotations needed (~2,125), E0107 wrong generic arity (~792), E0308 type mismatch
+   (~669). These are v2 emitter fidelity gaps, not v4 modeling gaps.
 3. **Dependency:** this milestone does NOT require T-6/T-7 algorithm walks to be real.
-   The Rust emitted from the stub implementations will compile; the stubs just won't
-   do anything useful at runtime.
+   The Rust emitted from the stub implementations will compile once emitter gaps are
+   fixed; the stubs just won't do anything useful at runtime.
 
 **Required work to reach M1:**
-- Add CI step: `v2-compiler compile --target rust src/v4 --output-dir ... && rustc main.rs -o v4-stage0`
-- Fix any Rust emit errors that surface (likely some v4 type constructs not yet
-  handled by v2's Rust emitter)
-- This is primarily a CI wiring task + v2 emitter gap-filling, not v4 modeling work
+- Fix v2 emitter to produce type-annotated, correct-arity Rust for all v4 constructs
+  (target the E0282/E0107 categories first — highest count)
+- Add CI step to `cargo check` (or `cargo build`) the emitted crate and gate on success
+- This is v2 Rust codebase work, not v4 modeling work
 
 ---
 
@@ -192,25 +197,35 @@ The milestones above are about the *compiler pipeline* producing Rust output.
 Separately, the TestClaim runner (T-22 + T-34) enables *executing* v4 expressions
 and verifying behavioral claims. These are parallel tracks:
 
+The table shows what is happening on each track at each milestone level.
+**The eval track column is NOT a prerequisite for the compiler track row.**
+M2 does not require T-22 or T-34; the two tracks are fully independent until M3/M4.
+
 ```
-Compiler pipeline track              Execution/eval track
-─────────────────────────            ──────────────────────────
-M0: structural compile ✓             v4_evaluator wave-1 stubs (all deferred)
-M1: Rust emit → binary               T-34 concrete runtime (primitive ops real)
-M2: trivial program compiles         T-22 eval executes simple expressions
+Compiler pipeline track              Execution/eval track (independent)
+─────────────────────────            ──────────────────────────────────
+M0: structural compile ✓             v4_evaluator nontrivial hooks deferred
+M1: emitted Rust links to binary     T-34 Wave 2: deferred hooks filled
+M2: trivial program compiles         T-22: eval executes simple expressions
 M3: self-compilation                 TestClaim receipts execute and pass
 M4: fixpoint (T-15)                  Full TestClaim corpus green
 ```
 
-These tracks are independent until M3/M4, where they converge: a complete v4 binary
-should be able to run its own TestClaim suite.
+These tracks converge at M3/M4: a complete v4 binary should be able to run its
+own TestClaim suite. Before that point, progress on either track does not block
+the other.
 
 **Current eval/runtime state:**
-- `v4_evaluator.dag`: every primitive operation (`call_primitive`, `choose_branch`,
-  `step_loop`, `call`) returns `v4_eval_wave1_semantics_deferred` — always rejected.
-- `05_eval.dag`: 1099 lines of eval logic, structurally correct, consuming runtime
-  hooks that all reject immediately. Nothing can execute.
-- **To unlock:** fill `v4_evaluator.dag` primitive hooks with real implementations
+- `v4_evaluator.dag`: the nontrivial operation hooks — `call_primitive`,
+  `choose_branch`, `step_loop`, `call`, `represent_literal`, and all arms of
+  `transfer` — return `v4_eval_wave1_semantics_deferred` (rejected). Value-identity
+  hooks (`bind_value`, `allocate`, `return_value`, `terminal_value` for
+  Continue/Return) do accept, but no end-to-end evaluation path can complete while
+  `transfer` rejects all control-transfer arms.
+- `05_eval.dag`: structurally complete eval dispatch consuming the runtime hooks
+  above. No nontrivial expression can evaluate end-to-end until the deferred hooks
+  are filled.
+- **To unlock:** fill `v4_evaluator.dag` deferred hooks with real implementations
   (T-34 Wave 2). This is the single unlock for the eval track.
 
 ---
@@ -219,10 +234,12 @@ should be able to run its own TestClaim suite.
 
 These are decisions required before the corresponding work can be dispatched:
 
-**Gap 1 — CI wiring for M1 (v2 emit → rustc)**
-No CI step runs `--target rust` over full src/v4 and attempts to link a binary.
-Adding this step will reveal which v4 type constructs v2's Rust emitter doesn't
-handle yet. This should be the *first* action — it immediately surfaces M1 blockers.
+**Gap 1 — CI wiring for M1 (emitted Rust → binary)**
+The T-22 host eval receipt already runs `--target rust src/v4` and verifies zero v2
+diagnostics, but no CI step runs `cargo check` / `cargo build` on the emitted crate
+to link a binary. Adding this step will surface which v2 emitter patterns produce
+rustc errors. PR #3654 (probe-only, continue-on-error) surfaced ~4,900 errors.
+The next step is a gating `cargo check` step once the emitter gaps are fixed.
 
 **Gap 2 — T-6/T-7 algorithm scope**
 The lexer and parser algorithm walks must be written in `.dag` per the Pure Bootstrap
