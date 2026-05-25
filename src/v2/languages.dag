@@ -490,7 +490,7 @@ fn rust_spec() -> LanguageSpec {
     target_name: "rust",
     reserved_words: ReservedWords {
       keywords: rust_reserved,
-      strategy: PrefixEscape { prefix: rust_reserved_escape_prefix }
+      strategy: SuffixEscape { suffix: "_" }
     },
     scaffold: ProjectScaffold {
       manifest_file: "Cargo.toml",
@@ -1159,5 +1159,4 @@ fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_template
   replace(tmpl, "{0}", inner)
 }
-
 
