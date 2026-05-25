@@ -349,7 +349,44 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
+// expr_is_nullable: true iff expr can match empty input.
+// Optional/Repeat are always nullable; Sequence requires both halves nullable; Choice either.
+// Nonterminal expands with a visited guard to prevent looping on nullable mutual recursion.
+fn expr_is_nullable(
+  expr: GrammarExpr,
+  visited: Set<Symbol>,
+  root: GrammarRoot
+) -> Bool {
+  match expr {
+    Terminal { token_class: _ } => false
+    Nonterminal { production: p } =>
+      match visited.member(p) {
+        true => false
+        false =>
+          match grammar_lookup_production(root: root, name: p) {
+            GrammarProductionMissing => false
+            GrammarProductionFound { production: prod } =>
+              expr_is_nullable(
+                expr: prod.expression,
+                visited: set_symbol_insert(s: visited, item: p),
+                root: root
+              )
+          }
+      }
+    Sequence { left: left, right: right } =>
+      expr_is_nullable(expr: left, visited: visited, root: root) &&
+      expr_is_nullable(expr: right, visited: visited, root: root)
+    Choice { left: left, right: right } =>
+      expr_is_nullable(expr: left, visited: visited, root: root) ||
+      expr_is_nullable(expr: right, visited: visited, root: root)
+    Optional { element: _ } => true
+    Repeat { element: _ } => true
+  }
+}
+
+
 // expr_reaches_nonterminal_left: true iff the transitive left corner of expr includes `name`.
+// For Sequence, if the left element is nullable, the right is also a left corner.
 // visited tracks expanded nonterminals; prevents looping on mutual left recursion.
 fn expr_reaches_nonterminal_left(
   expr: GrammarExpr,
@@ -375,8 +412,10 @@ fn expr_reaches_nonterminal_left(
               )
           }
       }
-    Sequence { left: left, right: _ } =>
-      expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root)
+    Sequence { left: left, right: right } =>
+      expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root) ||
+      (expr_is_nullable(expr: left, visited: visited, root: root) &&
+       expr_reaches_nonterminal_left(expr: right, name: name, visited: visited, root: root))
     Choice { left: left, right: right } =>
       expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root) ||
       expr_reaches_nonterminal_left(expr: right, name: name, visited: visited, root: root)
