@@ -2,9 +2,10 @@
 //
 // Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def; T-28 cross-file binding via ModuleGraph.
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_graph; Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/module_graph.dag (ModuleGraph),
-//           compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 (+ T-28) modeled — K-1 single-file resolution; resolve_with_graph cross-file binding surface.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/algebra.dag (Cons, Empty),
+//           std/module_graph.dag (ModuleGraph, ModuleEntry), compiler/03_normalize.dag,
+//           extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
+// Status: T-8 + T-28 realized — K-1 single-file resolution; resolve_with_graph cross-file binding wired.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -15,8 +16,9 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols
 }
+import v4.std.algebra { Cons, Empty }
 import v4.std.collection { Set }
-import v4.std.module_graph { ModuleGraph }
+import v4.std.module_graph { ModuleGraph, ModuleEntry }
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
@@ -561,13 +563,36 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// 🟡 gated — consumer: T-28 full cross-file namespace merge not yet realized — bind TODO — dissolve-on-arrival: walks ModuleGraph.entries, extracts each entry's exported symbols, and unions them into the returned Namespace.
 fn namespace_from_tree_and_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,
   graph: ModuleGraph
 ) -> Namespace {
-  build_program_namespace(tree: tree, lm: lm)
+  Namespace {
+    bindings: namespace_fold_entries(
+      entries: graph.entries,
+      acc: add_module_named_exports(root: tree, acc: empty_map())
+    ),
+    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
+  }
+}
+
+
+// Folds over graph.entries (FreeMonoid<ModuleEntry>) accumulating each module's
+// exported symbols into acc. Hand-rolls Empty/Cons rather than using fold_list
+// — v2 cannot infer T=ModuleEntry for fold_list<T, A> over FreeMonoid<ModuleEntry>.
+fn namespace_fold_entries(
+  entries: FreeMonoid<ModuleEntry>,
+  acc: Map<Symbol, Symbol>
+) -> Map<Symbol, Symbol> {
+  match entries {
+    Empty => acc
+    Cons { head: entry, tail: rest } =>
+      namespace_fold_entries(
+        entries: rest,
+        acc: add_module_named_exports(root: entry.root, acc: acc)
+      )
+  }
 }
 
 
