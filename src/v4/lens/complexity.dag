@@ -157,7 +157,7 @@ fn combine_complexity_variables(
       match rhs {
         Holds { value: rv } =>
           Holds { value: composite_complexity_variables(lhs: lv, rhs: rv) }
-        Violates { diagnostic: _ } => Holds { value: lv }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: _ } => rhs
   }
@@ -166,7 +166,7 @@ fn combine_complexity_variables(
 fn complexity_variables_from_cost(cost: SymbolicCost) -> Witness<ComplexityVariables> {
   match cost {
     ConstantCost { value: _ } =>
-      Violates { diagnostic: complexity_projection_diagnostic() }
+      Holds { value: Refined { base: [] } }
     LogCost { variable: v } =>
       Holds { value: single_complexity_variable(size_var: v) }
     LinearCost { variable: v } =>
