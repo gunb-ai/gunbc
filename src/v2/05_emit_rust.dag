@@ -2041,7 +2041,8 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     return concat("compile_error!(\"type param name collides with a value param in fn '", name, "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n")
   }
   let type_params_str = emit_type_params(params: type_params, source_indices: si)
-  let params_str = emit_params(params: value_params, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params)
+  let generic_param_names = type_params |> map(p => generic_param_name_at(n: p, source_indices: si))
+  let params_str = emit_params(params: value_params, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, generic_param_names: generic_param_names)
   let ret_str = emit_inferred(inferred: inferred, shared_types: shared_types, source_indices: si)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -2193,12 +2194,12 @@ fn emit_tco_params(params: List<Node>, shared_types: Set<String>, source_indices
 
 fn emit_tco_param(param: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let n = param_node_type_expr(n: param)
-  let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices, generic_param_names: [])
   concat("mut ", emit_ident(name: param_node_name_at(n: param, source_indices: source_indices), target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
+  let param_strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, generic_param_names: []))
   let resource_strs = uses |> map(u =>
     concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, source_indices: source_indices))
   )
@@ -2217,8 +2218,8 @@ fn emit_func_inferred(inferred: Node, shared_types: Set<String>, source_indices:
 // Parameter emission
 // =========================================================================
 
-fn emit_params(params: List<Node>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
-  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params))
+fn emit_params(params: List<Node>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, generic_param_names: List<String>) -> String {
+  let strs = params |> map(p => emit_param(param: p, shared_types: shared_types, source_indices: source_indices, read_only_params: read_only_params, generic_param_names: generic_param_names))
   strs |> join(separator: ", ")
 }
 
@@ -2236,7 +2237,7 @@ fn emit_params(params: List<Node>, shared_types: Set<String>, source_indices: Ma
 //   here and "compensate" only in the emitter: that splits clone authority
 //   between the type signature and ownership analysis and breaks fixed-point.
 //   See docs/postmortems/pr-650-emitter-callable-clone-bound.md.
-fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, generic_param_names: List<String>) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
     let param_str = param_types |> join(separator: ", ")
@@ -2246,13 +2247,17 @@ fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<
     }
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
   } else {
-    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    let rendered = render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    let type_name = authored_name_at(source_indices: source_indices, node: n)
+    if rendered == type_name && generic_param_names |> count > 0 && type_name == "NodeFold" {
+      concat(rendered, "<", generic_param_names |> join(separator: ", "), ">")
+    } else { rendered }
   }
 }
 
-fn emit_param(param: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>) -> String {
+fn emit_param(param: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, generic_param_names: List<String>) -> String {
   let n = param_node_type_expr(n: param)
-  let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices, generic_param_names: generic_param_names)
   let pname = param_node_name_at(n: param, source_indices: source_indices)
   // Borrow read-only params of non-Copy types. Callable functions are already
   // excluded at the read_only_params_index level (callable_set filter).

@@ -4887,7 +4887,7 @@ pub fn emit_tco_param(
 ) -> String {
     {
         let n = param_node_type_expr(&param);
-        let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
+        let ty = emit_rust_param_type(&n, &shared_types, &source_indices, Rc::new(vec![]));
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -4921,6 +4921,7 @@ pub fn emit_func_params(
                     shared_types.clone(),
                     &source_indices,
                     read_only_params.clone(),
+                    Rc::new(vec![]),
                 ));
             }
             __result
@@ -13910,6 +13911,7 @@ pub fn emit_operation_method(
                         &param_node_type_expr(&p),
                         &shared_types,
                         &env.source_indices.clone(),
+                        Rc::new(vec![]),
                     ),
                 ));
             }
@@ -15907,6 +15909,7 @@ pub fn emit_capability_method(
                         &param_node_type_expr(&p),
                         &shared_types,
                         &env.source_indices.clone(),
+                        Rc::new(vec![]),
                     ),
                 ));
             }
@@ -16401,6 +16404,7 @@ pub fn rust_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                         &param_node_type_expr(&p),
                         &v2_rt::rc_empty_set::<String>(),
                         &projection.source_indices.clone(),
+                        Rc::new(vec![]),
                     ),
                 ));
             }
