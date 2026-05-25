@@ -1,7 +1,7 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions.
+// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk, Node projection functions, grammar_carries_symbol.
 // Consumes: std diagnostic, std node, compiler tokenize.
 // Status: Wave-1 void-grammar path realized; syntactic grammar data is typed, Node is projection only.
 
@@ -257,6 +257,79 @@ fn grammar_to_node(grammar: Grammar) -> Node {
   match grammar {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
+  }
+}
+
+
+fn grammar_node_carries_symbol_step(acc: Bool, edge: Edge, sym: Symbol) -> Bool {
+  acc || grammar_node_carries_symbol(n: edge.target, sym: sym)
+}
+
+
+fn grammar_node_carries_symbol(n: Node, sym: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == sym
+    TypeNode { connective: _ } =>
+      fold_list(
+        xs: n.children,
+        empty: false,
+        cons: fn(acc, edge) {
+          grammar_node_carries_symbol_step(acc: acc, edge: edge, sym: sym)
+        }
+      )
+  }
+}
+
+
+fn grammar_expr_carries_symbol(expr: GrammarExpr, sym: Symbol) -> Bool {
+  match expr {
+    Terminal { token_class: token_class } =>
+      token_class == sym
+    Nonterminal { production: production } =>
+      production == sym
+    Sequence { left: left, right: right } =>
+      grammar_expr_carries_symbol(expr: left, sym: sym) ||
+        grammar_expr_carries_symbol(expr: right, sym: sym)
+    Choice { left: left, right: right } =>
+      grammar_expr_carries_symbol(expr: left, sym: sym) ||
+        grammar_expr_carries_symbol(expr: right, sym: sym)
+    Optional { element: element } =>
+      grammar_expr_carries_symbol(expr: element, sym: sym)
+    Repeat { element: element } =>
+      grammar_expr_carries_symbol(expr: element, sym: sym)
+  }
+}
+
+
+fn grammar_production_carries_symbol(production: GrammarProduction, sym: Symbol) -> Bool {
+  production.name == sym ||
+    grammar_expr_carries_symbol(expr: production.expression, sym: sym) ||
+    grammar_node_carries_symbol(n: production.emitted, sym: sym)
+}
+
+
+fn grammar_root_carries_symbol_step(acc: Bool, production: GrammarProduction, sym: Symbol) -> Bool {
+  acc || grammar_production_carries_symbol(production: production, sym: sym)
+}
+
+
+fn grammar_root_carries_symbol(root: GrammarRoot, sym: Symbol) -> Bool {
+  root.start == sym ||
+    fold_list(
+      xs: root.productions,
+      empty: false,
+      cons: fn(acc, production) {
+        grammar_root_carries_symbol_step(acc: acc, production: production, sym: sym)
+      }
+    )
+}
+
+
+fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
+  match grammar {
+    VoidGrammar => false
+    ModeledGrammar { root: root } => grammar_root_carries_symbol(root: root, sym: sym)
   }
 }
 
