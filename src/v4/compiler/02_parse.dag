@@ -13,10 +13,9 @@
 // Consumes: std diagnostic, std node, std algebra, std collection, std nat, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
-//         parse_expr Nonterminal arm uses grammar_fuel measure (production_count + token_count);
+//         parse_expr Nonterminal arm uses grammar_fuel measure K*(N+1) where K=production_count N=token_count;
 //         visited guard removed — grammar_has_left_recursion validates cycles pre-parse;
-//         right-recursive grammars supported up to token_count expansion depth;
-//         nullable-nonterminal chains bounded by production_count.
+//         right-recursive grammars and wrapper-nonterminal chains bounded by K*(N+1).
 //         all fuel: Nat parameters removed. T-22 complexity analysis: 0 diagnostics.
 
 
@@ -27,9 +26,9 @@ import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List, Set }
-import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_skip, list_snoc_item }
+import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Zero, Succ, nat_add }
+import v4.std.nat { Nat, Zero, Succ, nat_add, nat_mul }
 
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
@@ -433,19 +432,26 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
-// grammar_fuel: production_count + token_count as Nat — initial measure for parse_expr's Nonterminal arm.
-// Two components cover distinct expansion modes:
-//   - production_count: bounds nullable-nonterminal chains (non-token-consuming expansions).
-//     Without left-recursion (pre-rejected), each distinct production appears at most once in such chains.
-//   - token_count: bounds right-recursive chains (token-consuming expansions).
-//     Each successful non-nullable Nonterminal expansion consumes ≥1 token → depth ≤ token count.
-// Combined, production_count + token_count bounds all Nonterminal expansion sequences for any
-// non-left-recursive grammar on any input. Left-recursive grammars are rejected by
-// grammar_has_left_recursion before parse_expr runs.
+// grammar_fuel: K*(N+1) as Nat — initial measure for parse_expr's Nonterminal arm.
+// K = production_count, N = token_count.
+//
+// Correctness argument:
+//   Each token in the input can trigger at most K Nonterminal expansions before consuming
+//   it (via wrapper nonterminal chains like A = B; B = "x" A?). The +1 accounts for at most
+//   one additional nullable/empty-matching chain after all tokens are consumed. So K*(N+1)
+//   bounds the total Nonterminal expansion count for any non-left-recursive grammar on any input.
+//
+//   Counter-example that breaks K+N: A = B; B = "x" A? with N=4 tokens needs up to 2*(4+1)=10
+//   expansions (K+N=6 is too small). K*(N+1) is the tight bound.
+//
+// Left-recursive grammars are rejected by grammar_has_left_recursion before parse_expr runs.
 fn grammar_fuel(root: GrammarRoot, tokens: List<Token>) -> Nat {
-  nat_add(
+  nat_mul(
     a: fold_list(xs: root.productions, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } }),
-    b: fold_list(xs: tokens, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } })
+    b: nat_add(
+      a: fold_list(xs: tokens, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } }),
+      b: Succ { prev: Zero }
+    )
   )
 }
 
@@ -744,10 +750,9 @@ fn parse_token_first(tokens: List<Token>) -> TokenPeek {
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
 // parse_expr: recursive-descent parse walk.
-// measure: Nat — initial value grammar_fuel(root, tokens); decrements once per Nonterminal expansion.
-// Semantics: measure = nat_monus(production_count + token_count, expansion_depth).
+// measure: Nat — initial value grammar_fuel(root, tokens) = K*(N+1); decrements once per Nonterminal expansion.
 // Left-recursive grammars are rejected by grammar_has_left_recursion before parse_expr runs;
-// right-recursive grammars terminate via measure exhaustion (depth ≤ production_count + token_count).
+// right-recursive and wrapper-nonterminal chains terminate via measure exhaustion (depth ≤ K*(N+1)).
 fn parse_expr(
   expr: GrammarExpr,
   tokens: List<Token>,
@@ -766,7 +771,7 @@ fn parse_expr(
               // edge kind; carrying those facts requires a substrate literal-carrier or String→Symbol projection.
               // Dissolve-on: T-8 source-text anchor feature or substrate literal-value edge support.
               ParseExprAccepted {
-                remaining: list_skip(xs: tokens, n: 1),
+                remaining: match tokens { Empty => Empty, Cons { head: _, tail: t } => t },
                 captured: Node {
                   kind: TypeNode { connective: Atom { identity: tok.class } },
                   children: []

@@ -9,7 +9,7 @@
 module v4.std.text
 
 
-import v4.std.algebra { FreeMonoid, fold_list_right, is_empty, list_skip }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_right, is_empty }
 import v4.std.logic { Bool }
 import v4.std.nat { Nat }
 type Char = Nat
@@ -26,5 +26,8 @@ fn string_head(s: String) -> CharResult {
   fold_list_right(xs: s, empty: CharAbsent, snoc: fn(_acc, c) { CharFound { value: c } })
 }
 fn string_tail(s: String) -> String {
-  list_skip(xs: s, n: 1)
+  match s {
+    Empty => Empty
+    Cons { head: _, tail: t } => t
+  }
 }

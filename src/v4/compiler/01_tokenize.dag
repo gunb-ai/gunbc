@@ -20,7 +20,7 @@ module v4.compiler.tokenize
 import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
-import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_skip, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_snoc_item }
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
@@ -164,9 +164,19 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
 
 // lex_match_prefix: match a literal string prefix against source.
 // Uses is_prefix_of (stdlib terminal) to avoid direct structural recursion on FreeMonoid.
+// Advances source by folding over prefix — each step pops the head of the remaining source.
+// Safe because is_prefix_of guarantees source has at least length(prefix) elements.
 fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
   if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
-    LexMatchAccepted { remaining: list_skip(xs: source, n: length(xs: prefix)), lexeme: prefix }
+    LexMatchAccepted {
+      remaining: fold_list(xs: prefix, empty: source, cons: fn(remaining, _) {
+        match remaining {
+          Empty => Empty
+          Cons { head: _, tail: t } => t
+        }
+      }),
+      lexeme: prefix
+    }
   } else {
     LexMatchRejected
   }
