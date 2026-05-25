@@ -271,7 +271,7 @@ Close-the-loop + late substrate:
 - Inhabitance declaration shape (relation? predicate? typeclass-style?)
 - Composition: how do Sum/Product algebras compose for the cost lens?
 - Free constructions: FreeMonoid<T> as primitive vs derived?
-- Node constructor shape: Instantiation connective applying the algebra type to the inhabitant Node, or a named Atom with structured children? Must be walkable by the T-9 coercion fold.
+- **Node constructor shape (operator-ratified 2026-05-25):** `Conj` + named `Edge { label: Named { name: … }, target: … }` children — the same fact-bundle carrier M1 / Practice 8 names for spec-read facts. **Not** an `Instantiation` connective and **not** a bare Atom with unstructured children. Positional-only `Conj` leaves are insufficient: named edges are required for fact-density (T-30), content-hash stability (B1), and T-9's coercion fold to walk the algebra reference.
 
 **Reference**:
 - v3: `dsl/std/algebra.dag` (study; expected substantive)
