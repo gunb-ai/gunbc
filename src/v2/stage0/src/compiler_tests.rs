@@ -795,6 +795,53 @@ mod compiler_tests {
         );
     }
 
+    fn named_type_node(name: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
+        let span = crate::v2_std_core::make_span(0, name.len() as i64);
+        std::rc::Rc::new(crate::v2_std_core::Node {
+            name: name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: std::rc::Rc::new(Vec::new()),
+            connective: crate::v2_std_core::Connective::NoConnective,
+            params: std::rc::Rc::new(Vec::new()),
+            inferred: None,
+            return_cardinality: crate::v2_std_core::Cardinality::Required,
+            uses: std::rc::Rc::new(Vec::new()),
+            body: None,
+            transport: None,
+            properties: std::rc::Rc::new(Vec::new()),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: std::rc::Rc::new(crate::v2_std_core::ExprData::NoExprData),
+        })
+    }
+
+    #[test]
+    fn rust_btree_set_ord_eligibility_includes_symbol_and_diff_id_only() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        assert!(
+            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                named_type_node("Symbol"),
+                source_indices.clone()
+            )
+        );
+        assert!(
+            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                named_type_node("DiffId"),
+                source_indices.clone()
+            )
+        );
+        assert!(
+            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                named_type_node("TestClaimId"),
+                source_indices
+            )
+        );
+    }
+
     #[test]
     fn coercion_python_inhabitant_resolves_containers() {
         use crate::v2_compiler_coercion::*;
