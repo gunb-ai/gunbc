@@ -76,6 +76,7 @@ type DeclaredBinding {
 }
 
 
+// 🟢 coproduct dissolution — F1 scoped resolver binding bridge: HasDeclaredBinding vs NoDeclaredBinding is the complete local extraction result for immediate Conj edges. Future std-level DeclaredBinding substrate can replace this bridge without adding resolver-local arms.
 type MaybeDeclaredBinding
   = HasDeclaredBinding { binding: DeclaredBinding }
   | NoDeclaredBinding
