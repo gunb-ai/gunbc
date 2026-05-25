@@ -1180,6 +1180,31 @@ Theme-B "module-loading" dependency.)
 Not a standalone task: the module-tree + ancestor-relation `Witness` land
 inside the T-8 resolver scope.
 
+### T-28-B — Extract module graph admission from `03_resolve.dag`  [SCHEDULED]
+**Gap:** `03_resolve.dag` currently exposes `resolve_with_graph` /
+`namespace_from_tree_and_graph`, so the K-1 resolver has a
+`ModuleGraph`-shaped cross-file surface even though it does not load files
+and the graph path remains gated. This keeps module admission policy in
+the resolver layer.
+**Disposition — SCHEDULED (T-28 follow-up, bundled with T-8).** Move
+graph-to-namespace projection into a separate module-resolution stage that
+consumes `std/module_graph.dag` and calls
+`compiler/03_resolve.resolve_with_namespace`. `03_resolve.dag` remains
+single-tree K-1 resolution only: `resolve(tree, lm)` and
+`resolve_with_namespace(tree, namespace)`.
+**Boundary:** the new stage receives the fully loaded `ModuleGraph` plus
+the subject `ModulePath` / tree, enforces import / visibility / ambiguity
+rules, and produces the exact `Namespace` admitted for that subject module.
+It must not flat-fold `graph.entries`; module paths remain authoritative
+until admission is complete.
+**Move out of `03_resolve.dag`:** `ModuleGraph` import,
+`namespace_from_tree_and_graph`, `resolve_with_graph`, and header
+ownership / consume claims for `ModuleGraph`.
+**Dissolve gate:** once the external stage owns module admission and emits
+a `Namespace`, delete the T-28 graph gate from `03_resolve.dag`;
+cross-file resolution enters through the new stage, not through a third
+`Scope` arm or a resolver-local graph fold.
+
 ### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
 **Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
 `std/` numeric vocabulary is undefined without an ABI data-model — C++
