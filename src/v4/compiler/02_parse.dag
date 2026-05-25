@@ -8,7 +8,8 @@
 //       compute_nullable_set, expr_direct_left_corner_step, expr_direct_left_corner_list,
 //       compute_left_corner_closure, expr_has_undefined_nonterminal,
 //       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
-//       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel.
+//       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel,
+//       grammar_carries_symbol.
 // Consumes: std diagnostic, std node, std algebra, std collection, std nat, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
@@ -98,6 +99,11 @@ type ParseRepeatAcc {
   acc_diags: List<Diagnostic>
   done: Bool
 }
+
+type GrammarSymbolFoldState {
+  found: Bool
+}
+
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
 data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
@@ -356,6 +362,45 @@ fn grammar_to_node(grammar: Grammar) -> Node {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
   }
+}
+
+
+fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
+  NodeFold {
+    init: fn(n0) {
+      grammar_symbol_fold_init(n: n0, sym: sym)
+    },
+    step: grammar_symbol_fold_step
+  }
+}
+
+
+fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      GrammarSymbolFoldState { found: id == sym }
+    _ =>
+      GrammarSymbolFoldState { found: false }
+  }
+}
+
+
+fn grammar_symbol_fold_step(
+  acc: GrammarSymbolFoldState,
+  edge: Edge,
+  child_has_symbol: GrammarSymbolFoldState
+) -> GrammarSymbolFoldState {
+  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
+}
+
+
+fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
+}
+
+
+fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
+  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
 

@@ -2911,8 +2911,13 @@ pub fn is_function_type_param(param: &Rc<Node>) -> bool {
             Some(inf) => is_type_variable(inf.clone()),
             None => false,
         };
-        ((type_expr_is_var && (param.name.clone().as_str() != "".to_string().as_str()))
+        let same_source_span = (((param.span.clone().file.clone().as_str()
+            == type_expr.span.clone().file.clone().as_str())
+            && (param.span.clone().start.clone() == type_expr.span.clone().start.clone()))
+            && (param.span.clone().end.clone() == type_expr.span.clone().end.clone()));
+        (((param.name.clone().as_str() != "".to_string().as_str())
             && (param.name.clone().as_str() == type_expr.name.clone().as_str()))
+            && (type_expr_is_var || same_source_span))
     }
 }
 
@@ -2969,15 +2974,25 @@ pub fn emit_type_def_from_connective(
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = is_product_type(item.clone());
         if is_product {
-            emit_struct_from_children(
-                &item_text,
-                type_params,
-                &item.children.clone(),
-                recursive_types,
-                &shared_types,
-                env.clone(),
-                emit_info,
-            )
+            {
+                let generic_param_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in item.params.clone().iter().cloned() {
+                        __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                    }
+                    __result
+                });
+                emit_struct_from_children(
+                    &item_text,
+                    type_params,
+                    generic_param_names,
+                    &item.children.clone(),
+                    recursive_types,
+                    &shared_types,
+                    env.clone(),
+                    &emit_info,
+                )
+            }
         } else {
             {
                 let all_unit_variants = {
@@ -3035,14 +3050,23 @@ pub fn emit_type_def_from_connective(
                         )
                     }
                 };
+                let generic_param_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in item.params.clone().iter().cloned() {
+                        __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                    }
+                    __result
+                });
                 let enum_text = emit_enum_from_children(
                     &item_text,
                     &type_params,
+                    &generic_param_names,
                     &item.children.clone(),
                     &recursive_types,
                     &shared_types,
                     &env,
                     &serde_policy,
+                    &emit_info,
                 );
                 if (validations.clone().as_str() == "".to_string().as_str()) {
                     enum_text
@@ -3060,11 +3084,12 @@ pub fn emit_type_def_from_connective(
 pub fn emit_struct_from_children(
     name: &String,
     type_params: String,
+    generic_param_names: Rc<Vec<String>>,
     children: &Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
-    emit_info: Rc<EmitGraphInfo>,
+    emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
         let has_fn_fields = match v2_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
@@ -3107,9 +3132,11 @@ pub fn emit_struct_from_children(
                     for child in children.clone().iter().cloned() {
                         __result.push(emit_struct_field_from_child(
                             &child,
+                            generic_param_names.clone(),
                             recursive_types.clone(),
                             &shared_types,
                             &env,
+                            emit_info.clone(),
                         ));
                     }
                     __result
@@ -3145,11 +3172,132 @@ pub fn emit_struct_from_children(
     }
 }
 
+pub fn explicit_type_arg_strings(
+    type_node: &Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if ((type_node.params.clone().len() as i64) > 0) {
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in type_node.params.clone().iter().cloned() {
+                __result.push(render_rust_type(
+                    &param_node_type_expr(&p),
+                    shared_types.clone(),
+                    &source_indices,
+                ));
+            }
+            __result
+        })
+    } else {
+        if ((type_node.connective.clone() == Connective::NoConnective)
+            && ((type_node.children.clone().len() as i64) > 0))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in type_node.children.clone().iter().cloned() {
+                    __result.push(render_rust_type(
+                        &child_type_node(&c),
+                        shared_types.clone(),
+                        &source_indices,
+                    ));
+                }
+                __result
+            })
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
+pub fn apply_missing_generic_args(
+    ty: String,
+    type_node: &Rc<Node>,
+    parent_generic_param_names: Rc<Vec<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    {
+        let type_name = authored_name_at(source_indices.clone(), &type_node);
+        match v2_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone()) {
+            Some(summary) => {
+                let expected = (summary.generic_param_names.clone().len() as i64);
+                if ((expected.clone() == 0)
+                    || v2_rt::contains(
+                        ty.clone(),
+                        v2_rt::concat(type_name.clone(), "<".to_string()),
+                    ))
+                {
+                    ty.clone()
+                } else {
+                    {
+                        let explicit_args = explicit_type_arg_strings(
+                            &type_node,
+                            v2_rt::rc_empty_set::<String>(),
+                            source_indices.clone(),
+                        );
+                        if ((explicit_args.clone().len() as i64) == expected.clone()) {
+                            {
+                                let with_args = v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(type_name.clone(), "<".to_string()),
+                                        explicit_args.clone().join(&", ".to_string()),
+                                    ),
+                                    ">".to_string(),
+                                );
+                                if (ty.clone().as_str() == type_name.clone().as_str()) {
+                                    with_args
+                                } else {
+                                    if (ty.clone().as_str()
+                                        == v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), type_name.clone()),
+                                            ">".to_string(),
+                                        )
+                                        .as_str())
+                                    {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), with_args),
+                                            ">".to_string(),
+                                        )
+                                    } else {
+                                        if (ty.clone().as_str()
+                                            == v2_rt::concat(
+                                                v2_rt::concat(
+                                                    "Box<".to_string(),
+                                                    type_name.clone(),
+                                                ),
+                                                ">".to_string(),
+                                            )
+                                            .as_str())
+                                        {
+                                            v2_rt::concat(
+                                                v2_rt::concat("Box<".to_string(), with_args),
+                                                ">".to_string(),
+                                            )
+                                        } else {
+                                            ty.clone()
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            ty.clone()
+                        }
+                    }
+                }
+            }
+            None => ty.clone(),
+        }
+    }
+}
+
 pub fn emit_struct_field_from_child(
     child: &Rc<Node>,
+    parent_generic_param_names: Rc<Vec<String>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     env: &Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let rt_child = resolved_type(child.clone());
@@ -3210,15 +3358,25 @@ pub fn emit_struct_field_from_child(
         } else {
             render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
         };
+        let generic_ty = apply_missing_generic_args(
+            ty,
+            &rt_child,
+            parent_generic_param_names,
+            emit_info,
+            &env.source_indices.clone(),
+        );
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types,
             shared_types.clone(),
             env.source_indices.clone(),
         ) {
-            v2_rt::concat(v2_rt::concat("Box<".to_string(), ty), ">".to_string())
+            v2_rt::concat(
+                v2_rt::concat("Box<".to_string(), generic_ty),
+                ">".to_string(),
+            )
         } else {
-            ty
+            generic_ty
         };
         let rename_attr = match Rc::new({
             let mut __result = Vec::new();
@@ -3320,11 +3478,13 @@ pub fn enum_derives(children: Rc<Vec<Rc<Node>>>) -> String {
 pub fn emit_enum_from_children(
     name: &String,
     type_params: &String,
+    generic_param_names: &Rc<Vec<String>>,
     children: &Rc<Vec<Rc<Node>>>,
     recursive_types: &Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     env: &Rc<TypeEnv>,
     serde_policy: &Rc<RustEnumWireSerde>,
+    emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
         let derives = enum_derives(children.clone());
@@ -3334,10 +3494,12 @@ pub fn emit_enum_from_children(
                 __result.push(emit_variant_from_child(
                     &child,
                     name.clone(),
+                    generic_param_names.clone(),
                     recursive_types.clone(),
                     &shared_types,
                     &env,
                     &serde_policy,
+                    emit_info.clone(),
                 ));
             }
             __result
@@ -3379,10 +3541,12 @@ pub fn emit_enum_from_children(
         let accessor_impl = emit_enum_shared_accessors(
             &name,
             &type_params,
+            generic_param_names.clone(),
             &children,
             recursive_types.clone(),
             shared_types.clone(),
             &env,
+            emit_info.clone(),
         );
         if (accessor_impl.clone().as_str() == "".to_string().as_str()) {
             enum_def
@@ -3459,10 +3623,12 @@ pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) ->
 pub fn emit_enum_shared_accessors(
     name: &String,
     type_params: &String,
+    generic_param_names: Rc<Vec<String>>,
     children: &Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     env: &Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let all_shared = find_shared_enum_fields(children.clone(), env.clone());
@@ -3509,9 +3675,15 @@ pub fn emit_enum_shared_accessors(
                                 .first()
                                 .cloned()
                                 {
-                                    Some(f) => render_rust_type(
+                                    Some(f) => apply_missing_generic_args(
+                                        render_rust_type(
+                                            &resolved_type(f.clone()),
+                                            shared_types.clone(),
+                                            &env.source_indices.clone(),
+                                        ),
                                         &resolved_type(f.clone()),
-                                        shared_types.clone(),
+                                        generic_param_names.clone(),
+                                        emit_info.clone(),
                                         &env.source_indices.clone(),
                                     ),
                                     None => "".to_string(),
@@ -3561,9 +3733,15 @@ pub fn emit_enum_shared_accessors(
                     .first()
                     .cloned()
                     {
-                        Some(f) => render_rust_type(
+                        Some(f) => apply_missing_generic_args(
+                            render_rust_type(
+                                &resolved_type(f.clone()),
+                                shared_types.clone(),
+                                &env.source_indices.clone(),
+                            ),
                             &resolved_type(f.clone()),
-                            shared_types.clone(),
+                            generic_param_names.clone(),
+                            emit_info.clone(),
                             &env.source_indices.clone(),
                         ),
                         None => "compile_error!(\"enum shared accessor missing field metadata\")"
@@ -3947,10 +4125,12 @@ pub fn variant_is_synthetic_positional_payload(
 pub fn emit_variant_from_child(
     child: &Rc<Node>,
     enum_name: String,
+    parent_generic_param_names: Rc<Vec<String>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     env: &Rc<TypeEnv>,
     serde_policy: &Rc<RustEnumWireSerde>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
@@ -3989,7 +4169,7 @@ pub fn emit_variant_from_child(
                                 } else {
                                     fallback
                                 };
-                                let ty = if positional_payload.clone() {
+                                let raw_ty = if positional_payload.clone() {
                                     render_variant_payload_type(
                                         &type_node,
                                         shared_types.clone(),
@@ -4002,6 +4182,13 @@ pub fn emit_variant_from_child(
                                         &env.source_indices.clone(),
                                     )
                                 };
+                                let ty = apply_missing_generic_args(
+                                    raw_ty,
+                                    &type_node,
+                                    parent_generic_param_names.clone(),
+                                    emit_info.clone(),
+                                    &env.source_indices.clone(),
+                                );
                                 let final_ty = if needs_box_wrapping(
                                     type_node.clone(),
                                     recursive_types.clone(),
@@ -4044,9 +4231,15 @@ pub fn emit_variant_from_child(
                                 for f in child.children.clone().iter().cloned() {
                                     __result.push({
                                         let rt_f = resolved_type(f.clone());
-                                        let ty = render_rust_type(
+                                        let ty = apply_missing_generic_args(
+                                            render_rust_type(
+                                                &rt_f,
+                                                shared_types.clone(),
+                                                &env.source_indices.clone(),
+                                            ),
                                             &rt_f,
-                                            shared_types.clone(),
+                                            parent_generic_param_names.clone(),
+                                            emit_info.clone(),
                                             &env.source_indices.clone(),
                                         );
                                         let final_ty = if needs_box_wrapping(
@@ -4106,9 +4299,15 @@ pub fn emit_variant_from_child(
                         for f in child.children.clone().iter().cloned() {
                             __result.push({
                                 let rt_f = resolved_type(f.clone());
-                                let ty = render_rust_type(
+                                let ty = apply_missing_generic_args(
+                                    render_rust_type(
+                                        &rt_f,
+                                        shared_types.clone(),
+                                        &env.source_indices.clone(),
+                                    ),
                                     &rt_f,
-                                    shared_types.clone(),
+                                    parent_generic_param_names.clone(),
+                                    emit_info.clone(),
                                     &env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
@@ -11122,7 +11321,7 @@ pub fn wrap_rust_record_field_value(
 ) -> String {
     {
         let is_bounded_lattice_field =
-            v2_rt::contains(struct_name.clone(), "BoundedLattice".to_string());
+            (struct_name.clone().as_str() == "BoundedLattice".to_string().as_str());
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
             v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
         } else {
@@ -15846,9 +16045,8 @@ pub fn emit_data_def_body(
             shared_types.clone(),
             &scope.type_env.clone().source_indices.clone(),
         );
-        if ((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
-            || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
-        {
+        let type_name = authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node);
+        if (type_name.as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     let meet_str = match field_value_by_name(

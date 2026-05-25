@@ -569,6 +569,22 @@ if any emission step cannot be expressed as inverse grammar-data.)
 - `00_compile.dag` `LanguageModel` / `TargetModel`: declare the carrier
   type, or state formally "a model IS a `Node`" (Theme-A audit #9).
 
+**Tracked scaffolds (this lane):**
+- **`feature:W-T-10-mvp1-exact-zip-closure`** — `src/v4/extdeps/languages/rust.dag`
+  `rust_mvp1_i32_zip_fold_closure_edges`: MVP-1 Rust add-fn zip-fold coercion
+  catalog append to `rust_mvp1_declared_inhabitants_root`. **Dissolve-on:**
+  `find_witness` / declared-inhabitants enumeration covers the i32 fact-bundle
+  plus emitted add-fn subtree without hand-appended fixture closure edges.
+  **Forbidden steady state:** parallel i32 fact-bundle `data` nodes as a second
+  coercion authority.
+- **`feature:W-T-10-mvp1-inferred-tree-grounding`** —
+  `src/v4/test/claim/manual/mvp1_rust_add_translate.dag`
+  `mvp1_rust_canonical_grounding_for`: hand-enumerated per-node canonical
+  grounding for the MVP emit/translate fixture. **Dissolve-on:** infer-authored
+  `InferredTree.facts` replace hand-enumerated MVP fixture grounding.
+  **Forbidden steady state:** generic Atom→i32 inhabitant algebra-evidence
+  across unrelated nodes.
+
 **Reference**:
 - merged: `src/v4/compiler/00_compile.dag` (B2-OMNI), `05_emit.dag` (C5)
 - v3 L2.5 design: PB-emit model (`docs/r3-retirement-modeling-emit-rs.md`)
