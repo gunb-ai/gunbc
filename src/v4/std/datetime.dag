@@ -169,15 +169,6 @@ type LeapSecondInstantFields {
 }
 
 
-type LeapSecondOffsetRepresentation {
-  instant: LeapSecondInstantFields
-  local_date: CalendarDate
-  local_hour: HourOfDay
-  local_minute: MinuteOfHour
-  offset: TzOffset
-}
-
-
 type OrdinaryInstantValidity {
   refined: Refined<OrdinaryInstantFields>
 }
