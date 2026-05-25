@@ -8,14 +8,6 @@
 //       grammar_has_left_recursion_step, grammar_has_undefined_nonterminals_step, parse_sync_step.
 // Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
-//
-// Walker semantics:
-//   PEG ordered choice: Choice tries left first; left wins if it matches.
-//   Grammar data must be non-left-recursive; checked at parse() entry.
-//   Repeat error recovery staged (T-8): recovery loop and sync_tokens are structurally
-//   correct but unreachable — parse_expr currently emits empty diagnostics on all rejections;
-//   the recovery branch fires only when parse_expr signals a committed mismatch (T-8 upstream
-//   signal not yet wired). sync_tokens are declaration-start keywords (language-specific).
 
 
 module v4.compiler.parse
@@ -726,8 +718,7 @@ fn parse_repeat(
 }
 
 
-// parse_expr: recursive-descent walk over a GrammarExpr against a token stream.
-// Mutual recursion with parse_repeat (Repeat element iteration).
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
 fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
   match expr {
     Terminal { token_class: class } =>

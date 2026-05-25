@@ -10,13 +10,6 @@
 //       lex_rule_token_class_member, lex_rule_set_token_class_member, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text, std nat, std algebra.
 // Status: T-6 lexer walk realized.
-//
-// Rule-matching contract:
-//   Priority: first-rule-wins (order in LexRuleSet.rules).
-//   KeywordPattern: match text exactly AND assert next char is NOT IdentContinueChar.
-//   LiteralPattern: match text exactly, no boundary assertion.
-//   RepeatPattern / OneOrMorePattern: greedy (consume as much as possible).
-//   Error: first unrecognized character → E1 diagnostic, scanning stops.
 
 
 module v4.compiler.tokenize
