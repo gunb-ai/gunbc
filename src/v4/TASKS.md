@@ -1542,6 +1542,15 @@ are already landed on main — see PRs #3650, #3651, #3652.)
   "emit program, run `<formatter> --check`, assert no diff." That claim
   is the hard requirement that formatter-clean emission is verified, not
   just declared.
+- **Fidelity verification model (operator-ratified 2026-05-25):** Per-field
+  doc reconciliation against the formatter's reference is NOT the acceptance
+  bar for formatter substrate PRs. The bar is: (a) options are modeled as
+  typed coproducts/records grounded in the formatter's reference, (b)
+  unresolved constraints carry named 🟡 gates with a bound task and
+  dissolve-on-arrival trigger, and (c) the emit → fmt --check TestClaim
+  (T-10/T-11) is the structural proof of formatter fidelity. Review rounds
+  that re-audit individual fields for spec completeness are out of scope;
+  the TestClaim oracle is the definitive correctness check.
 
 **Dependencies:** `[needs none]` — pure config, no node/compiler dependency.
 Consumers: `TargetModel` (T-10/T-11) wires formatter config into the
