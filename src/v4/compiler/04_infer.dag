@@ -103,9 +103,14 @@ fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
-// Fired when AlgebraInhabitanceDecl.algebra is a bare Atom (bridge symbol) rather than a
-// grounded Node. Dissolves when algebra.dag exports Node constructors and T-4 Wave 2b
-// populates AlgebraInhabitanceDecl.algebra with real algebra structure (T-2 Node constructors).
+// 🟡 gated — scaffold:T-4-wave-2b — feature:infer-algebra-ref-grounding-gate
+// Fired when InferredFacts.inhabits.algebra (AlgebraRef.algebra) is a bare Atom.
+// In the current identity-MVP solver, AlgebraRef.algebra = the node itself; for Atom leaf
+// nodes this means the guard fires, making canonical_grounding_for_node unusable for Atom
+// leaves until the solver is upgraded (T-4 Wave 2b / T-2 Node constructors).
+// dissolve-on: constraint solver reads ModelCore.inhabitance (T-4 Wave 2b) and populates
+// AlgebraRef.algebra from grounded algebra Node constructors (T-2); at that point bare-Atom
+// algebra evidence means an unharvested bridge symbol, not a scaffolded identity return.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 
 
@@ -285,7 +290,9 @@ fn canonical_grounding_from_inferred_facts(
   node: Node,
   facts: InferredFacts,
 ) -> Outcome<CanonicalGrounding> {
-  if inferred_facts_canonical_grounding_coherent(facts: facts) {
+  if !algebra_ref_is_grounded(algebra: facts.inhabits.algebra) {
+    outcome_rejected(infer_algebra_ref_ungrounded_diagnostic(node: node))
+  } else if inferred_facts_canonical_grounding_coherent(facts: facts) {
     Accepted {
       value: CanonicalGrounding {
         node: facts.resolved_type,

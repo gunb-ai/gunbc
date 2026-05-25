@@ -368,10 +368,21 @@ data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data rust_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
+// 🟡 needs-more-work — feature:rust-model-core-bridge-symbols — scaffold:T-4-wave-2b
+// These are bare-Atom placeholders standing in for typed algebra Nodes that cannot exist
+// until std/algebra.dag (T-2) exports Node constructors (ordered_ring_node() -> Node, etc.).
+// Using these as AlgebraInhabitanceDecl.algebra fields will fail-closed at T-9 with
+// infer_algebra_ref_ungrounded — they are intentionally unverifiable until T-4 Wave 2b lands.
+// dissolve-on: T-2 exports Node constructors AND T-4 Wave 2b replaces these with
+// grounded algebra Nodes in rust_integer_algebra_inhabitance / rust_float_algebra_inhabitance /
+// rust_bool_algebra_inhabitance. Until then, rust_model_core_wave1() is Wave-1 scaffolding only.
 data rust_model_core_bridge_std_ordered_ring_representable_integer: Symbol = rust_model_core_bridge_std_ordered_ring_representable_integer
 data rust_model_core_bridge_std_approximate_field_ieee754_float: Symbol = rust_model_core_bridge_std_approximate_field_ieee754_float
 data rust_model_core_bridge_std_bool_boolean_algebra: Symbol = rust_model_core_bridge_std_bool_boolean_algebra
 
+// 🟡 needs-more-work — feature:rust-model-core-bridge-law-symbols — scaffold:T-4-wave-2b
+// Law obligations use opaque Symbol atoms in place of grounded law Nodes.
+// dissolve-on: same as bridge algebra symbols above (T-2 Node constructors + T-4 Wave 2b).
 data rust_model_core_bridge_law_integer_add_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_associative_when_representable
 data rust_model_core_bridge_law_integer_add_commutative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_commutative_when_representable
 data rust_model_core_bridge_law_integer_mul_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_mul_associative_when_representable
