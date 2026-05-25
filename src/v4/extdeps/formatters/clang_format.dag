@@ -552,7 +552,7 @@ type ClangFormatSpaceBeforeParensStyle
   | ClangFormatSpaceBeforeParensControlStatementsExceptControlMacros
   | ClangFormatSpaceBeforeParensNonEmptyParentheses
   | ClangFormatSpaceBeforeParensAlways
-  | ClangFormatSpaceBeforeParensCustom
+  | ClangFormatSpaceBeforeParensCustomStyle
 
 
 type ClangFormatSpaceBeforeParensCustom {
@@ -593,7 +593,7 @@ type ClangFormatSpacesInLineComment {
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSpacesInParensStyle
   = ClangFormatSpacesInParensNever
-  | ClangFormatSpacesInParensCustom
+  | ClangFormatSpacesInParensCustomStyle
 
 
 type ClangFormatSpacesInParensCustom {
