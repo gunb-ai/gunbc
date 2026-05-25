@@ -10,7 +10,7 @@
 module v4.std.datetime
 
 
-import v4.std.diagnostic { Accepted, Locus, Outcome, Rejected }
+import v4.std.diagnostic { Locus, Outcome, bind_outcome, outcome_accepted }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
@@ -476,89 +476,58 @@ data leap_second_instant_validation: Validation<LeapSecondInstantFields> = Valid
 
 
 fn make_year(parsed: ParsedFourDigitYearLexeme, at: Locus) -> Outcome<Year> {
-  match refine(base: parsed, by: year_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: Year { parsed: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: year_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: Year { parsed: refined })
+  })
 }
 
 
 fn make_month_ordinal(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<MonthOrdinal> {
-  match refine(base: parsed, by: month_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: MonthOrdinal { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: month_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: MonthOrdinal { parsed: refined })
+  })
 }
 
 
 fn make_day_ordinal(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<DayOrdinal> {
-  match refine(base: parsed, by: day_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: DayOrdinal { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: day_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: DayOrdinal { parsed: refined })
+  })
 }
 
 
 fn make_hour_of_day(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<HourOfDay> {
-  match refine(base: parsed, by: hour_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: HourOfDay { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: hour_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: HourOfDay { parsed: refined })
+  })
 }
 
 
 fn make_minute_of_hour(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<MinuteOfHour> {
-  match refine(base: parsed, by: minute_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: MinuteOfHour { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: minute_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: MinuteOfHour { parsed: refined })
+  })
 }
 
 
 fn make_second_of_minute(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<SecondOfMinute> {
-  match refine(base: parsed, by: second_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: SecondOfMinute { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: second_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: SecondOfMinute { parsed: refined })
+  })
 }
 
 
 fn make_nanoseconds(value: Nat, at: Locus) -> Outcome<Nanoseconds> {
-  match refine(base: value, by: nanoseconds_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: Nanoseconds { value: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: value, by: nanoseconds_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: Nanoseconds { value: refined })
+  })
 }
 
 
 fn make_subsecond_digit_count(value: Nat, at: Locus) -> Outcome<SubsecondDigitCount> {
-  match refine(base: value, by: subsecond_digit_count_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: SubsecondDigitCount { value: refined }, diagnostics: diagnostics }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: value, by: subsecond_digit_count_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: SubsecondDigitCount { value: refined })
+  })
 }
 
 
@@ -568,38 +537,23 @@ fn make_subsecond(parsed: ParsedSubsecondLexeme) -> Subsecond {
 
 
 fn make_tz_offset_hour(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<TzOffsetHour> {
-  match refine(base: parsed, by: tz_offset_hour_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: TzOffsetHour { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: tz_offset_hour_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: TzOffsetHour { parsed: refined })
+  })
 }
 
 
 fn make_tz_offset_minute(parsed: ParsedTwoDigitFieldLexeme, at: Locus) -> Outcome<TzOffsetMinute> {
-  match refine(base: parsed, by: tz_offset_minute_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: TzOffsetMinute { parsed: refined },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: parsed, by: tz_offset_minute_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: TzOffsetMinute { parsed: refined })
+  })
 }
 
 
 fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<CalendarDate> {
-  match refine(base: fields, by: calendar_date_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: CalendarDate { validity: CalendarDateValidity { refined: refined } },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: fields, by: calendar_date_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: CalendarDate { validity: CalendarDateValidity { refined: refined } })
+  })
 }
 
 
@@ -609,24 +563,14 @@ fn make_clock_time(fields: ClockTimeFields) -> ClockTime {
 
 
 fn make_ordinary_instant(fields: OrdinaryInstantFields, at: Locus) -> Outcome<Instant> {
-  match refine(base: fields, by: ordinary_instant_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: OrdinaryInstant { validity: OrdinaryInstantValidity { refined: refined } },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: OrdinaryInstant { validity: OrdinaryInstantValidity { refined: refined } })
+  })
 }
 
 
 fn make_leap_second_instant(fields: LeapSecondInstantFields, at: Locus) -> Outcome<Instant> {
-  match refine(base: fields, by: leap_second_instant_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted {
-        value: LeapSecondInstant { validity: LeapSecondInstantValidity { refined: refined } },
-        diagnostics: diagnostics
-      }
-    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
-  }
+  bind_outcome(o: refine(base: fields, by: leap_second_instant_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: LeapSecondInstant { validity: LeapSecondInstantValidity { refined: refined } })
+  })
 }
