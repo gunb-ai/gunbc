@@ -321,17 +321,49 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProducti
 
 // --- Left-recursion detection ---
 
-// expr_starts_with_nonterminal: true iff the leftmost position of expr is Nonterminal { name }.
-fn expr_starts_with_nonterminal(expr: GrammarExpr, name: Symbol) -> Bool {
+// set_symbol_insert: functional set extension — new set tests item first, then delegates.
+fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
+  Set {
+    member: fn(sym) { sym == item || s.member(sym) }
+  }
+}
+
+
+// expr_reaches_nonterminal_left: true iff the transitive left corner of expr includes `name`.
+// visited tracks expanded nonterminals; prevents looping on mutual left recursion.
+fn expr_reaches_nonterminal_left(
+  expr: GrammarExpr,
+  name: Symbol,
+  visited: Set<Symbol>,
+  root: GrammarRoot
+) -> Bool {
   match expr {
     Terminal { token_class: _ } => false
-    Nonterminal { production: p } => p == name
-    Sequence { left: left, right: _ } => expr_starts_with_nonterminal(expr: left, name: name)
+    Nonterminal { production: p } =>
+      p == name ||
+      match visited.member(p) {
+        true => false
+        false =>
+          match grammar_lookup_production(root: root, name: p) {
+            GrammarProductionMissing => false
+            GrammarProductionFound { production: prod } =>
+              expr_reaches_nonterminal_left(
+                expr: prod.expression,
+                name: name,
+                visited: set_symbol_insert(s: visited, item: p),
+                root: root
+              )
+          }
+      }
+    Sequence { left: left, right: _ } =>
+      expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root)
     Choice { left: left, right: right } =>
-      expr_starts_with_nonterminal(expr: left, name: name) ||
-      expr_starts_with_nonterminal(expr: right, name: name)
-    Optional { element: element } => expr_starts_with_nonterminal(expr: element, name: name)
-    Repeat { element: element } => expr_starts_with_nonterminal(expr: element, name: name)
+      expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root) ||
+      expr_reaches_nonterminal_left(expr: right, name: name, visited: visited, root: root)
+    Optional { element: element } =>
+      expr_reaches_nonterminal_left(expr: element, name: name, visited: visited, root: root)
+    Repeat { element: element } =>
+      expr_reaches_nonterminal_left(expr: element, name: name, visited: visited, root: root)
   }
 }
 
@@ -341,7 +373,13 @@ fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
     xs: root.productions,
     empty: false,
     cons: fn(acc, p) {
-      acc || expr_starts_with_nonterminal(expr: p.expression, name: p.name)
+      acc ||
+      expr_reaches_nonterminal_left(
+        expr: p.expression,
+        name: p.name,
+        visited: Set { member: fn(_) { false } },
+        root: root
+      )
     }
   )
 }
@@ -431,7 +469,8 @@ fn parse_repeat_error_recover(
 
 
 // parse_repeat: greedy zero-or-more, with error recovery via sync-token skip.
-// Termination: each successful iteration reduces token count; each error recovery
+// Termination: zero-progress accepted matches (Optional/Empty elements that consume no tokens)
+// halt immediately; each consuming iteration reduces token count; each error recovery
 // either skips tokens (reducing count) or stops (no skip = no progress).
 fn parse_repeat(
   element: GrammarExpr,
@@ -442,13 +481,22 @@ fn parse_repeat(
 ) -> ParseExprResult {
   match parse_expr(expr: element, tokens: tokens, root: root) {
     ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-      parse_repeat(
-        element: element,
-        tokens: rest,
-        root: root,
-        acc_nodes: list_snoc_item(xs: acc_nodes, item: cap),
-        acc_diags: list_append(left: acc_diags, right: diags)
-      )
+      match length(xs: rest) != length(xs: tokens) {
+        true =>
+          parse_repeat(
+            element: element,
+            tokens: rest,
+            root: root,
+            acc_nodes: list_snoc_item(xs: acc_nodes, item: cap),
+            acc_diags: list_append(left: acc_diags, right: diags)
+          )
+        false =>
+          ParseExprAccepted {
+            remaining: tokens,
+            captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
+            diagnostics: acc_diags
+          }
+      }
     ParseExprRejected { diagnostics: failed_diags } =>
       match is_empty(xs: failed_diags) {
         true =>
