@@ -120,7 +120,7 @@ It may exist but produce wrong or empty output for any input.
 
 ## Milestone 2 — Stage0 can compile a trivial v4 program (first real execution)
 
-**Definition:** The stage0 binary, given a minimal .dag input (e.g. a single `fn add(a, b) = a + b`), tokenizes it, parses it, resolves it, infers it, and emits valid Rust output.
+**Definition:** The stage0 binary, given a minimal .dag input (e.g. `data trivial: Bool = true`), tokenizes it, parses it, resolves it, infers it, and emits valid Rust output. Note: the wave-1 dag.dag grammar requires typed params (`name: Type`), block bodies (`{ expr }`), and has no arithmetic operators (no `+`), so the concrete fixture must be grounded in the live grammar.
 
 **Evidence:** A CI test that invokes `v4-stage0-compiler compile trivial.dag --output-dir /tmp/out && rustc out/trivial.rs -o /tmp/trivial && /tmp/trivial` exits 0.
 
