@@ -7120,7 +7120,7 @@ pub fn emit_rust_empty_set_expr(
                 false
             };
             if elem_is_type_var {
-                emit_rust_compile_error_expr("empty_set element type unresolved".to_string())
+                "v2_rt::rc_empty_set::<_>()".to_string()
             } else {
                 if !rust_btree_set_element_ord_eligible(elem_node.clone(), source_indices.clone()) {
                     {
@@ -7146,15 +7146,13 @@ pub fn emit_rust_empty_set_expr(
                                 ">()".to_string(),
                             )
                         } else {
-                            emit_rust_compile_error_expr(
-                                "empty_set element type unresolved".to_string(),
-                            )
+                            "v2_rt::rc_empty_set::<_>()".to_string()
                         }
                     }
                 }
             }
         }
-        None => emit_rust_compile_error_expr("empty_set element type unresolved".to_string()),
+        None => "v2_rt::rc_empty_set::<_>()".to_string(),
     }
 }
 
@@ -7992,9 +7990,7 @@ pub fn emit_typed_call_expr(
                             &scope.type_env.clone().source_indices.clone(),
                         )
                     }
-                    _ => {
-                        emit_rust_compile_error_expr("empty_set return type unresolved".to_string())
-                    }
+                    _ => "v2_rt::rc_empty_set::<_>()".to_string(),
                 }
             } else {
                 emit_typed_call(
@@ -9438,9 +9434,7 @@ pub fn emit_rust_fold_method_call(
                             } else {
                                 if (init_func.clone().as_str() == "empty_set".to_string().as_str())
                                 {
-                                    emit_rust_compile_error_expr(
-                                        "fold empty_set accumulator type unresolved".to_string(),
-                                    )
+                                    "v2_rt::rc_empty_set::<_>()".to_string()
                                 } else {
                                     emit_typed_expr(
                                         arg_value(&init_arg),

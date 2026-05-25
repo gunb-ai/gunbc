@@ -3139,7 +3139,8 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
       let elem_node = child_type_node(ch: elem_child)
       let elem_is_type_var = if elem_node.inferred != none { is_type_variable(inferred: elem_node.inferred.value) } else { false }
       if elem_is_type_var {
-        emit_rust_compile_error_expr(message: "empty_set element type unresolved")
+        // Element type is a type variable — let Rust infer it from context.
+        "v2_rt::rc_empty_set::<_>()"
       } else if !rust_btree_set_element_ord_eligible(elem_node: elem_node, source_indices: source_indices) {
         let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
         emit_rust_compile_error_expr(message: concat("empty_set element type ", elem_name, " is not Ord-eligible for BTreeSet"))
@@ -3148,10 +3149,13 @@ fn emit_rust_empty_set_expr(set_type: Node, shared_types: Set<String>, source_in
         if elem_str != "" {
           concat("v2_rt::rc_empty_set::<", elem_str, ">()")
         } else {
-          emit_rust_compile_error_expr(message: "empty_set element type unresolved")
+          // Element str resolved to empty — let Rust infer from context.
+          "v2_rt::rc_empty_set::<_>()"
         }
       }
-    None => emit_rust_compile_error_expr(message: "empty_set element type unresolved")
+    None =>
+      // No element child — bare Set node; let Rust infer element type from context.
+      "v2_rt::rc_empty_set::<_>()"
   }
 }
 
@@ -3428,7 +3432,8 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
     match inferred {
       Some { value: Resolved { node: ret_type } } =>
         emit_rust_empty_set_expr(set_type: ret_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-      _ => emit_rust_compile_error_expr(message: "empty_set return type unresolved")
+      // Return type unresolved — let Rust infer element type from context.
+      _ => "v2_rt::rc_empty_set::<_>()"
     }
   } else {
     emit_typed_call(func: func, args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -3949,7 +3954,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           } else if init_func == "empty_set" && acc_type_str != "_" && acc_type_str != "" && !acc_has_unit_child {
             emit_rust_empty_set_expr(set_type: acc_type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
           } else if init_func == "empty_set" {
-            emit_rust_compile_error_expr(message: "fold empty_set accumulator type unresolved")
+            // Accumulator type unresolved — let Rust infer element type from fold body.
+            "v2_rt::rc_empty_set::<_>()"
           } else {
             emit_typed_expr(texpr: arg_value(n: init_arg), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: fold_emit_info, fuel: 1024)
           }
