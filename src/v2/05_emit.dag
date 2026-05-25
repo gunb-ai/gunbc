@@ -979,6 +979,18 @@ fn emit_node_type(n: Node, target: RenderTarget, source_indices: Map<String, New
   render_node_type(n: n, target: target, shared_types: empty_set(), source_indices: source_indices)
 }
 
+fn render_named_type_base(n: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> String {
+  let tn = authored_name_at(source_indices: source_indices, node: n)
+  let base = coerce_primitive_type(target: target, dag_name: tn)
+  if n.params |> count == 0 {
+    base
+  } else {
+    let param_names = n.params |> map(p => param_node_name_at(n: p, source_indices: source_indices))
+    let spec = language_spec(target: target)
+    concat(base, spec.type_arg_open, param_names |> join(separator: ", "), spec.type_arg_close)
+  }
+}
+
 // =========================================================================
 // render_node_type -- fused Node -> String type rendering
 //
@@ -994,6 +1006,14 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
 
   // Error / unresolved type variable
   if (n_is_type_var || n_is_error) && n.children |> count == 0 {
+    if n_is_type_var && tn != "" {
+      match n.inferred {
+        Some { value: TypeVariable { id: var_id } } =>
+          if tn == var_id { return coerce_primitive_type(target: target, dag_name: tn) }
+          else { "" }
+        _ => ""
+      }
+    }
     let label = if n_is_error { "CompilerError" } else { "TypeVariable" }
     let spec = language_spec(target: target)
     let err_str = apply_type_template1(template: spec.error_type_template, arg0: concat("UNRESOLVED_", label))
@@ -1043,7 +1063,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
 
   if is_disj {
     let base = if n.ident_span != none {
-      coerce_primitive_type(target: target, dag_name: tn)
+      render_named_type_base(n: n, target: target, source_indices: source_indices)
     } else {
       let spec = language_spec(target: target)
       apply_type_template1(template: spec.error_type_template, arg0: "ANONYMOUS_COPRODUCT")
@@ -1089,7 +1109,7 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
         let conj_container_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
         return conj_container_str
       }
-      let base = coerce_primitive_type(target: target, dag_name: tn)
+      let base = render_named_type_base(n: n, target: target, source_indices: source_indices)
       let conj_named_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
       return conj_named_str
     }
