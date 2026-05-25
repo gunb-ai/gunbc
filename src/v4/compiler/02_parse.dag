@@ -8,15 +8,14 @@
 //       compute_nullable_set, grammar_empty_corner_list, expr_direct_left_corner_list,
 //       compute_left_corner_closure, expr_has_undefined_nonterminal,
 //       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
-//       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel,
+//       grammar_has_undefined_nonterminals_step, parse_sync_step, build_parse_table,
 //       grammar_carries_symbol.
-// Consumes: std diagnostic, std node, std algebra, std collection, std nat, compiler tokenize.
+// Consumes: std diagnostic, std node, std algebra, std collection, std witness, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
-//         parse_expr Nonterminal arm uses grammar_fuel measure K*(N+1) where K=production_count N=token_count;
-//         visited guard removed — grammar_has_left_recursion validates cycles pre-parse;
-//         right-recursive grammars and wrapper-nonterminal chains bounded by K*(N+1).
-//         all fuel: Nat parameters removed. T-22 complexity analysis: 0 diagnostics.
+//         parse_expr Nonterminal arm uses memoized ParseTable (position × production) built by
+//         structurally bounded double fold — no measure: Nat / grammar_fuel scaffold.
+//         grammar_has_left_recursion validates left cycles pre-parse.
 
 
 module v4.compiler.parse
@@ -25,10 +24,10 @@ module v4.compiler.parse
 import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Zero, Succ, nat_add, nat_mul }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
@@ -101,8 +100,23 @@ type ParseRepeatAcc {
   done: Bool
 }
 
+// Memo key for parse table: token offset × production name.
+type ParsePositionKey {
+  position: Int
+  production: Symbol
+}
+
+// Memoized (position, production) → parse_expr result for production.expression at that offset.
+type ParseTable = Map<ParsePositionKey, ParseExprResult>
+
 type GrammarSymbolFoldState {
   found: Bool
+}
+
+type TokensAtPositionAcc {
+  skipped: Int
+  target: Int
+  current: List<Token>
 }
 
 
@@ -422,6 +436,179 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProducti
 }
 
 
+// --- Parse table (memoized position × production) ---
+
+// Map<K,V> uses structural == on K; ParsePositionKey { position: Int, production: Symbol } is a valid composite key.
+fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseExprResult> {
+  table.lookup(key)
+}
+
+fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseExprResult) -> ParseTable {
+  map_insert(m: table, key: key, value: value)
+}
+
+fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
+  length(xs: all_tokens) - length(xs: tokens)
+}
+
+fn tokens_at_position(all_tokens: List<Token>, position: Int) -> List<Token> {
+  fold_list(
+    xs: all_tokens,
+    empty: TokensAtPositionAcc { skipped: 0, target: position, current: all_tokens },
+    cons: fn(acc, _) {
+      match acc.skipped < acc.target {
+        true => TokensAtPositionAcc {
+          skipped: acc.skipped + 1,
+          target: acc.target,
+          current: list_tail(xs: acc.current)
+        }
+        false => acc
+      }
+    }
+  ).current
+}
+
+// Positions 0..N inclusive for a token stream of length N (N+1 suffixes).
+fn token_position_indices(tokens: List<Token>) -> List<Int> {
+  match is_empty(xs: tokens) {
+    true => Cons { head: 0, tail: Empty }
+    false =>
+      list_snoc_item(
+        xs: fold_list(
+          xs: tokens,
+          empty: Cons { head: 0, tail: Empty },
+          cons: fn(acc, _) {
+            list_snoc_item(xs: acc, item: length(xs: acc))
+          }
+        ),
+        item: length(xs: tokens)
+      )
+  }
+}
+
+fn parse_wrap_production_captured(production: GrammarProduction, captured: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
+      grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+    ]
+  }
+}
+
+fn parse_nonterminal_from_table(
+  table: ParseTable,
+  all_tokens: List<Token>,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  prod_name: Symbol
+) -> ParseExprResult {
+  match grammar_lookup_production(root: root, name: prod_name) {
+    GrammarProductionMissing =>
+      ParseExprRejected { diagnostics: [] }
+    GrammarProductionFound { production: production } =>
+      let key = ParsePositionKey {
+        position: parse_current_position(all_tokens: all_tokens, tokens: tokens),
+        production: prod_name
+      }
+      match parse_table_lookup(table: table, key: key) {
+        Holds { value: inner } =>
+          match inner {
+            ParseExprRejected { diagnostics: diags } =>
+              ParseExprRejected { diagnostics: diags }
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+              ParseExprAccepted {
+                remaining: remaining,
+                captured: parse_wrap_production_captured(production: production, captured: captured),
+                diagnostics: diags
+              }
+          }
+        Violates { diagnostic: _ } =>
+          ParseExprRejected { diagnostics: [] }
+      }
+  }
+}
+
+fn parse_table_fill_production_step(
+  table: ParseTable,
+  production: GrammarProduction,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot
+) -> ParseTable {
+  let key = ParsePositionKey { position: position, production: production.name }
+  let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
+  let result = parse_expr(
+    expr: production.expression,
+    tokens: suffix,
+    all_tokens: all_tokens,
+    root: root,
+    table: table
+  )
+  parse_table_insert(table: table, key: key, value: result)
+}
+
+// One pass: update every production entry at a fixed position.
+fn parse_table_fill_position_pass(
+  table: ParseTable,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot
+) -> ParseTable {
+  fold_list(
+    xs: root.productions,
+    empty: table,
+    cons: fn(acc, prod) {
+      parse_table_fill_production_step(
+        table: acc,
+        production: prod,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+    }
+  )
+}
+
+// |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
+fn parse_table_fill_position(
+  table: ParseTable,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot
+) -> ParseTable {
+  fold_list(
+    xs: root.productions,
+    empty: table,
+    cons: fn(acc, _) {
+      parse_table_fill_position_pass(
+        table: acc,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+    }
+  )
+}
+
+// Outer fold over positions high→low; inner fold over productions × passes at each position.
+// Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
+fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
+  fold_list_right(
+    xs: token_position_indices(tokens: all_tokens),
+    empty: empty_map<ParsePositionKey, ParseExprResult>(),
+    snoc: fn(acc, position) {
+      parse_table_fill_position(
+        table: acc,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+    }
+  )
+}
+
+
 // --- Left-recursion detection ---
 
 // set_symbol_insert: functional set extension — new set tests item first, then delegates.
@@ -429,30 +616,6 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
   Set {
     member: fn(sym) { sym == item || s.member(sym) }
   }
-}
-
-
-// grammar_fuel: K*(N+1) as Nat — initial measure for parse_expr's Nonterminal arm.
-// K = production_count, N = token_count.
-//
-// Correctness argument:
-//   Each token in the input can trigger at most K Nonterminal expansions before consuming
-//   it (via wrapper nonterminal chains like A = B; B = "x" A?). The +1 accounts for at most
-//   one additional nullable/empty-matching chain after all tokens are consumed. So K*(N+1)
-//   bounds the total Nonterminal expansion count for any non-left-recursive grammar on any input.
-//
-//   Counter-example that breaks K+N: A = B; B = "x" A? with N=4 tokens needs up to 2*(4+1)=10
-//   expansions (K+N=6 is too small). K*(N+1) is the tight bound.
-//
-// Left-recursive grammars are rejected by grammar_has_left_recursion before parse_expr runs.
-fn grammar_fuel(root: GrammarRoot, tokens: List<Token>) -> Nat {
-  nat_mul(
-    a: fold_list(xs: root.productions, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } }),
-    b: nat_add(
-      a: fold_list(xs: tokens, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } }),
-      b: Succ { prev: Zero }
-    )
-  )
 }
 
 
@@ -750,14 +913,14 @@ fn parse_token_first(tokens: List<Token>) -> TokenPeek {
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
 // parse_expr: recursive-descent parse walk.
-// measure: Nat — initial value grammar_fuel(root, tokens) = K*(N+1); decrements once per Nonterminal expansion.
-// Left-recursive grammars are rejected by grammar_has_left_recursion before parse_expr runs;
-// right-recursive and wrapper-nonterminal chains terminate via measure exhaustion (depth ≤ K*(N+1)).
+// Nonterminal arm: O(1) ParseTable lookup (built by build_parse_table) — no measure: Nat.
+// Left-recursive grammars are rejected by grammar_has_left_recursion before parse runs.
 fn parse_expr(
   expr: GrammarExpr,
   tokens: List<Token>,
+  all_tokens: List<Token>,
   root: GrammarRoot,
-  measure: Nat
+  table: ParseTable
 ) -> ParseExprResult {
   match expr {
     Terminal { token_class: class } =>
@@ -782,37 +945,19 @@ fn parse_expr(
           }
       }
     Nonterminal { production: prod_name } =>
-      match measure {
-        Zero => ParseExprRejected { diagnostics: [] }
-        Succ { prev: rest_measure } =>
-          match grammar_lookup_production(root: root, name: prod_name) {
-            GrammarProductionMissing =>
-              ParseExprRejected { diagnostics: [] }
-            GrammarProductionFound { production: production } =>
-              match parse_expr(expr: production.expression, tokens: tokens, root: root, measure: rest_measure) {
-                ParseExprRejected { diagnostics: diags } =>
-                  ParseExprRejected { diagnostics: diags }
-                ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
-                  ParseExprAccepted {
-                    remaining: remaining,
-                    captured: Node {
-                      kind: TypeNode { connective: Conj },
-                      children: [
-                        grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
-                        grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
-                      ]
-                    },
-                    diagnostics: diags
-                  }
-              }
-          }
-      }
+      parse_nonterminal_from_table(
+        table: table,
+        all_tokens: all_tokens,
+        tokens: tokens,
+        root: root,
+        prod_name: prod_name
+      )
     Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, root: root, measure: measure) {
+      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
         ParseExprRejected { diagnostics: diags } =>
           ParseExprRejected { diagnostics: diags }
         ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
-          match parse_expr(expr: right, tokens: rest1, root: root, measure: measure) {
+          match parse_expr(expr: right, tokens: rest1, all_tokens: all_tokens, root: root, table: table) {
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
@@ -830,14 +975,14 @@ fn parse_expr(
           }
       }
     Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, root: root, measure: measure) {
+      match parse_expr(expr: left, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, tokens: tokens, root: root, measure: measure)
+          parse_expr(expr: right, tokens: tokens, all_tokens: all_tokens, root: root, table: table)
       }
     Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, root: root, measure: measure) {
+      match parse_expr(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
@@ -858,7 +1003,7 @@ fn parse_expr(
           match acc.done {
             true => acc
             false =>
-              match parse_expr(expr: element, tokens: acc.remaining, root: root, measure: measure) {
+              match parse_expr(expr: element, tokens: acc.remaining, all_tokens: all_tokens, root: root, table: table) {
                 ParseExprRejected { diagnostics: _ } =>
                   ParseRepeatAcc {
                     remaining: acc.remaining,
@@ -898,26 +1043,32 @@ fn parse_expr(
 
 fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  match parse_expr(expr: production.expression, tokens: tokens, root: root, measure: grammar_fuel(root: root, tokens: tokens)) {
-    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
-      if is_empty(xs: remaining) {
-        Accepted {
-          value: Node {
-            kind: TypeNode { connective: Conj },
-            children: [
-              grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
-              grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
-            ]
-          },
-          diagnostics: parse_diags_to_diagnostics(diags: diags)
-        }
-      } else {
-        Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+  let table = build_parse_table(all_tokens: tokens, root: root)
+  let key = ParsePositionKey { position: 0, production: production.name }
+  match parse_table_lookup(table: table, key: key) {
+    Holds { value: inner } =>
+      match inner {
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+          if is_empty(xs: remaining) {
+            Accepted {
+              value: parse_wrap_production_captured(production: production, captured: captured),
+              diagnostics: parse_diags_to_diagnostics(diags: diags)
+            }
+          } else {
+            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+          }
+        ParseExprRejected { diagnostics: diags } =>
+          Rejected {
+            diagnostics: parse_diags_to_non_empty(
+              diags: diags,
+              default: parse_e1_syntax_error_diagnostic(at: at)
+            )
+          }
       }
-    ParseExprRejected { diagnostics: diags } =>
+    Violates { diagnostic: _ } =>
       Rejected {
         diagnostics: parse_diags_to_non_empty(
-          diags: diags,
+          diags: [],
           default: parse_e1_syntax_error_diagnostic(at: at)
         )
       }
