@@ -154,38 +154,10 @@ type PrettierFormattingOptions {
 }
 
 
-// Override `options` object: root formatting keys plus override-local `parser`.
+// Override `options` object: override-local `parser` plus shared formatting options.
 type PrettierOverrideOptions {
   parser: PrettierParserPolicy
-
-  print_width: Int
-  tab_width: Int
-  use_tabs: Bool
-
-  semi: Bool
-  single_quote: Bool
-  quote_props: PrettierQuoteProps
-  jsx_single_quote: Bool
-  trailing_comma: PrettierTrailingComma
-  bracket_spacing: Bool
-  object_wrap: PrettierObjectWrap
-  bracket_same_line: Bool
-  arrow_parens: PrettierArrowParens
-
-  require_pragma: Bool
-  insert_pragma: Bool
-  check_ignore_pragma: Bool
-
-  prose_wrap: PrettierProseWrap
-  html_whitespace_sensitivity: PrettierHtmlWhitespaceSensitivity
-  vue_indent_script_and_style: Bool
-  single_attribute_per_line: Bool
-
-  end_of_line: PrettierEndOfLine
-  embedded_language_formatting: PrettierEmbeddedLanguageFormatting
-
-  experimental_ternaries: Bool
-  experimental_operator_position: PrettierExperimentalOperatorPosition
+  options: PrettierFormattingOptions
 }
 
 
