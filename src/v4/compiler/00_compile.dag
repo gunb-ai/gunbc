@@ -293,6 +293,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
           bind_outcome(
             o: normalize(parse_tree: parse_tree),
             f: fn(normalized) {
+              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must replace this.
               match module_graph_from_entries(entries: Empty) {
                 Holds { value: graph } =>
                   bind_outcome(
