@@ -10,7 +10,7 @@ module v4.test.claim.manual.infer_emit_compile_anchor
 
 
 import v4.compiler.compile { Source, compile_ingest_staging }
-import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.tokenize { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
@@ -51,7 +51,6 @@ data anchor_stub_target_model: TargetModel = TargetModel {
   binding_spellings: empty_map(),
   authority_source_text: Empty
 }
-data anchor_stub_input_lang: LanguageModel = anchor_stub_empty_conj
 
 
 data anchor_stub_source: Source = Empty
@@ -120,8 +119,7 @@ fn anchor_infer_rejects() -> Outcome<InferredTree> {
 fn anchor_emit_rejects() -> Outcome<TargetSource> {
   emit(
     tree: anchor_stub_inferred_tree,
-    target: anchor_stub_target_model,
-    input_lang: anchor_stub_input_lang
+    target: anchor_stub_target_model
   )
 }
 

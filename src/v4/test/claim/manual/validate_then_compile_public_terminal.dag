@@ -54,10 +54,6 @@ import v4.std.witness { Holds, Witness }
 
 
 data claim_validate_then_compile_module: Symbol = claim_validate_then_compile_module
-data rust_language_model_stub: Node = Node {
-  kind: TypeNode { connective: Conj },
-  children: []
-}
 data rust_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },
@@ -105,7 +101,6 @@ data grounding_sanity_lens: CompileLens = CompileLens {
 fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
-    input_lang: rust_language_model_stub,
     lenses: [],
     mode: TranslateTo { target: rust_target_model_stub }
   )
@@ -115,7 +110,6 @@ fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutpu
 fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
-    input_lang: rust_language_model_stub,
     lenses: [rejecting_lens],
     mode: TranslateTo { target: rust_target_model_stub }
   )
