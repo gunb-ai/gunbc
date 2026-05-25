@@ -358,7 +358,7 @@ data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 
-// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node>.
+// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
 // 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_emit_add_fn_accepts,
@@ -368,7 +368,7 @@ data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEva
 }
 
 
-data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Outcome<Node>> = TestClaimRun {
+data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   cache: test_claim_cache_receipt(
     subject: subject_mvp1_emit_add_fn_accepts,
     claim_hash: claim_hash_placeholder,
