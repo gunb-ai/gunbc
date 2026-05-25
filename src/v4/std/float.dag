@@ -176,20 +176,20 @@ fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<Ordering> {
 }
 
 
-// 🟡 coproduct dissolution · SL-3229-FLOAT-DISPOSITION.
+// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-nan-propagation-semantics — dissolve-on-arrival: SignalingNaNEnabled gains a target-backed trap handler path consumed by a T-4 language fact-bundle.
 type NaNPropagation
-  = QuietNaNPropagation   // IEEE-754 §6.2 default: quiet NaN propagates silently without signaling
-  | SignalingNaNEnabled   // stub — IEEE-754 §6.2: signaling NaN traps on first use; no current target enables this
+  = QuietNaNPropagation
+  | SignalingNaNEnabled
 
 
-// 🟡 coproduct dissolution · SL-3229-FLOAT-DISPOSITION.
+// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-inf-propagation-semantics — dissolve-on-arrival: SaturatingInf gains a target-backed clamp semantic consumed by a T-4 fact-bundle (e.g. DSP target).
 type InfPropagation
-  = IEEEInfinityPropagation  // IEEE-754 §6.1 default: overflow produces ±infinity that propagates
-  | SaturatingInf            // stub — clamp to max finite value (non-IEEE, used in some DSP targets); no current target uses this
+  = IEEEInfinityPropagation
+  | SaturatingInf
 
 
-// 🟡 coproduct dissolution · SL-3229-FLOAT-DISPOSITION.
+// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-exception-disposition-semantics — dissolve-on-arrival: TrapEnabled or FastMathUndefined gain target-backed exception handler paths consumed by T-4 fact-bundles.
 type FloatExceptionDisposition
-  = SilentDefaultResult  // IEEE-754 §7 default: return defined result, set sticky status flag
-  | TrapEnabled          // stub — IEEE-754 §7.1: invoke alternate exception handler; no current target enables this
-  | FastMathUndefined    // stub — language UB when fast-math flags relax IEEE-754 constraints (e.g. C -ffast-math)
+  = SilentDefaultResult
+  | TrapEnabled
+  | FastMathUndefined

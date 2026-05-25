@@ -84,7 +84,7 @@ EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
             "SL-3229-INTEGER-GROUP-COMPLETION",
         }
     ),
-    "src/v4/std/float.dag": frozenset({"SL-3229-FLOAT-NOMINAL", "SL-3229-FLOAT-DISPOSITION"}),
+    "src/v4/std/float.dag": frozenset({"SL-3229-FLOAT-NOMINAL"}),
 }
 
 
@@ -376,6 +376,27 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
             "feature:integer-overflow-disposition-semantics — "
             "dissolve-on-arrival: wrapping/saturating/trapping/undefined overflow are "
             "backed by width, bounds, and Outcome semantics consumed by T-4 fact-bundles."
+        )
+    if type_name == "NaNPropagation":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — "
+            "feature:float-nan-propagation-semantics — "
+            "dissolve-on-arrival: SignalingNaNEnabled gains a target-backed trap handler "
+            "path consumed by a T-4 language fact-bundle."
+        )
+    if type_name == "InfPropagation":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — "
+            "feature:float-inf-propagation-semantics — "
+            "dissolve-on-arrival: SaturatingInf gains a target-backed clamp semantic "
+            "consumed by a T-4 fact-bundle (e.g. DSP target)."
+        )
+    if type_name == "FloatExceptionDisposition":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — "
+            "feature:float-exception-disposition-semantics — "
+            "dissolve-on-arrival: TrapEnabled or FastMathUndefined gain target-backed "
+            "exception handler paths consumed by T-4 fact-bundles."
         )
     return f"// {emoji} coproduct dissolution · {ref}."
 
