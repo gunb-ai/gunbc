@@ -1482,6 +1482,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
   if n.children |> count == 0 {
     let name = authored_name_at(source_indices: source_indices, node: n)
     if set_contains(shared_types, name) { false }
+    else if coerce_primitive_type(target: Rust, dag_name: name) != name { false }
     else { set_contains(recursive_types, name) }
   } else {
     let is_optional = n.return_cardinality == CardOptional
@@ -2256,9 +2257,7 @@ fn emit_param(param: Node, shared_types: Set<String>, source_indices: Map<String
   // Borrow read-only params of non-Copy types. Callable functions are already
   // excluded at the read_only_params_index level (callable_set filter).
   let is_callable_param = n.params |> count > 0
-  let is_borrowable = set_contains(read_only_params, pname)
-    && is_callable_param == false
-    && needs_reference_node(n: n, source_indices: source_indices)
+  let is_borrowable = false
   let final_ty = if is_borrowable {
     apply_type_template1(template: sharing_for_target(target: Rust).borrow_param_template, arg0: ty)
   } else { ty }

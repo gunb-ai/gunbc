@@ -2863,6 +2863,8 @@ pub fn needs_box_wrapping(
             let name = authored_name_at(source_indices, &n);
             if v2_rt::set_contains(&shared_types, name.clone()) {
                 break false;
+            } else if coerce_primitive_type(RenderTarget::Rust, name.clone()) != name.clone() {
+                break false;
             } else {
                 break v2_rt::set_contains(&recursive_types, name.clone());
             }
@@ -4397,11 +4399,19 @@ pub fn emit_fn_def(
             return v2_rt::concat(v2_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
         }
         let type_params_str = emit_type_params(&type_params, si.clone());
+        let generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), si.clone()));
+            }
+            __result
+        });
         let params_str = emit_params(
             value_params.clone(),
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
+            generic_param_names.clone(),
         );
         let ret_str = emit_inferred(inferred, shared_types.clone(), si.clone());
         let body_scope = build_params_scope(&scope, value_params.clone());
@@ -4969,6 +4979,7 @@ pub fn emit_params(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -4979,6 +4990,7 @@ pub fn emit_params(
                     shared_types.clone(),
                     &source_indices,
                     read_only_params.clone(),
+                    generic_param_names.clone(),
                 ));
             }
             __result
@@ -4991,6 +5003,7 @@ pub fn emit_rust_param_type(
     n: &Rc<Node>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
@@ -5024,7 +5037,19 @@ pub fn emit_rust_param_type(
             )
         }
     } else {
-        render_rust_type(&n, shared_types.clone(), &source_indices)
+        let rendered = render_rust_type(&n, shared_types.clone(), &source_indices);
+        let type_name = authored_name_at(source_indices.clone(), n);
+        if ((rendered.clone() == type_name.clone())
+            && ((generic_param_names.clone().len() as i64) > 0)
+            && (type_name == "NodeFold".to_string()))
+        {
+            v2_rt::concat(
+                v2_rt::concat(rendered, "<".to_string()),
+                v2_rt::concat(generic_param_names.join(&", ".to_string()), ">".to_string()),
+            )
+        } else {
+            rendered
+        }
     }
 }
 
@@ -5033,15 +5058,14 @@ pub fn emit_param(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let n = param_node_type_expr(&param);
-        let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
+        let ty = emit_rust_param_type(&n, &shared_types, &source_indices, generic_param_names);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
-        let is_borrowable = ((v2_rt::set_contains(&read_only_params, pname.clone())
-            && (is_callable_param == false))
-            && needs_reference_node(&n, source_indices.clone()));
+        let is_borrowable = false;
         let final_ty = if is_borrowable {
             apply_type_template1(
                 sharing_for_target(RenderTarget::Rust)
