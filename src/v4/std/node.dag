@@ -95,7 +95,7 @@ type NodeFold<R> {
 }
 fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
+    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
   })
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -292,6 +292,41 @@ data canonical_tag_named_edge: Symbol = canonical_tag_named_edge
 data canonical_tag_positional_edge: Symbol = canonical_tag_positional_edge
 
 
+fn behavior_edge_discipline(b: Behavior) -> EdgeDiscipline {
+  match b {
+    Value => NoEdges
+    Transform => PositionalEdges
+    Branch => PositionalEdges
+    Loop => PositionalEdges
+    Bind => PositionalEdges
+  }
+}
+fn node_edge_discipline(n: Node) -> EdgeDiscipline {
+  match n.kind {
+    TypeNode { connective: c } => connective_edge_discipline(c: c)
+    ComputationNode { behavior: b } => behavior_edge_discipline(b: b)
+  }
+}
+fn named_edge_sort_key(e: Edge) -> Symbol {
+  match e.label {
+    Named { name: sym } => sym
+    Positional => canonical_tag_positional_edge
+  }
+}
+fn canonical_children_for_content_hash(n: Node) -> List<Edge> {
+  match node_edge_discipline(n: n) {
+    LabeledEdges => sort_by(n.children, e => named_edge_sort_key(e: e))
+    NoEdges => n.children
+    PositionalEdges => n.children
+  }
+}
+fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
+  fold(canonical_children_for_content_hash(n: n), init: algebra.init(n), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
+  })
+}
+
+
 fn canonical_hash_of_connective(c: Connective) -> Hash {
   match c {
     Atom { identity: sym } =>
@@ -347,9 +382,9 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
-// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form via fold_node; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
+// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
-  fold_node(
+  fold_node_content_hash(
     n: n,
     algebra: NodeFold {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
