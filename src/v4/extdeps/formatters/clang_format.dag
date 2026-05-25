@@ -1,0 +1,255 @@
+// src/v4/extdeps/formatters/clang_format.dag
+// Scope: clang-format configuration model — option space grounded in Clang 23.0.0git style options.
+// Owns: ClangFormatStyle, ClangFormatValue, ClangFormatOption, ClangFormatConfig, clang_format_defaults, clang_format_layer.
+// Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
+// Status: T-4.16 scaffold — full top-level option space grounded in current clang-format style reference.
+// Anchor: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
+
+module v4.extdeps.formatters.clang_format
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ClangFormatStyle
+  = ClangFormatStyleLLVM
+  | ClangFormatStyleGoogle
+  | ClangFormatStyleChromium
+  | ClangFormatStyleMozilla
+  | ClangFormatStyleWebKit
+  | ClangFormatStyleMicrosoft
+  | ClangFormatStyleGNU
+  | ClangFormatStyleInheritParentConfig
+  | ClangFormatStyleInheritParentConfigPath { path: String }
+
+
+type ClangFormatSignedInteger {
+  value: Int
+}
+
+
+type ClangFormatUnsignedInteger {
+  value: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ClangFormatValue
+  = ClangFormatBool { value: Bool }
+  | ClangFormatString { value: String }
+  | ClangFormatInteger { value: ClangFormatSignedInteger }
+  | ClangFormatUnsigned { value: ClangFormatUnsignedInteger }
+  | ClangFormatEnum { value: String }
+  | ClangFormatNested { entries: List<ClangFormatOption> }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ClangFormatOption
+  = ClangFormatAccessModifierOffset { value: ClangFormatSignedInteger }
+  | ClangFormatAlignAfterOpenBracket { value: Bool }
+  | ClangFormatAlignArrayOfStructures { value: String }
+  | ClangFormatAlignConsecutiveAssignments { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveBitFields { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveDeclarations { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveMacros { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveShortCaseStatements { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveTableGenBreakingDAGArgColons { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveTableGenCondOperatorColons { value: ClangFormatValue }
+  | ClangFormatAlignConsecutiveTableGenDefinitionColons { value: ClangFormatValue }
+  | ClangFormatAlignEscapedNewlines { value: String }
+  | ClangFormatAlignOperands { value: String }
+  | ClangFormatAlignTrailingComments { value: ClangFormatValue }
+  | ClangFormatAllowAllArgumentsOnNextLine { value: Bool }
+  | ClangFormatAllowAllConstructorInitializersOnNextLine { value: Bool }
+  | ClangFormatAllowAllParametersOfDeclarationOnNextLine { value: Bool }
+  | ClangFormatAllowBreakBeforeNoexceptSpecifier { value: String }
+  | ClangFormatAllowBreakBeforeQtProperty { value: Bool }
+  | ClangFormatAllowShortBlocksOnASingleLine { value: String }
+  | ClangFormatAllowShortCaseExpressionOnASingleLine { value: Bool }
+  | ClangFormatAllowShortCaseLabelsOnASingleLine { value: Bool }
+  | ClangFormatAllowShortCompoundRequirementOnASingleLine { value: Bool }
+  | ClangFormatAllowShortEnumsOnASingleLine { value: Bool }
+  | ClangFormatAllowShortFunctionsOnASingleLine { value: String }
+  | ClangFormatAllowShortIfStatementsOnASingleLine { value: String }
+  | ClangFormatAllowShortLambdasOnASingleLine { value: String }
+  | ClangFormatAllowShortLoopsOnASingleLine { value: Bool }
+  | ClangFormatAllowShortNamespacesOnASingleLine { value: Bool }
+  | ClangFormatAllowShortRecordOnASingleLine { value: String }
+  | ClangFormatAlwaysBreakAfterDefinitionReturnType { value: String }
+  | ClangFormatAlwaysBreakAfterReturnType { value: String }
+  | ClangFormatAlwaysBreakBeforeMultilineStrings { value: Bool }
+  | ClangFormatAlwaysBreakTemplateDeclarations { value: String }
+  | ClangFormatBasedOnStyle { value: ClangFormatStyle }
+  | ClangFormatBinPackArguments { value: Bool }
+  | ClangFormatBinPackLongBracedList { value: Bool }
+  | ClangFormatBinPackParameters { value: String }
+  | ClangFormatBitFieldColonSpacing { value: String }
+  | ClangFormatBraceWrapping { value: ClangFormatValue }
+  | ClangFormatBracedInitializerIndentWidth { value: ClangFormatSignedInteger }
+  | ClangFormatBreakAdjacentStringLiterals { value: Bool }
+  | ClangFormatBreakAfterAttributes { value: String }
+  | ClangFormatBreakAfterJavaFieldAnnotations { value: Bool }
+  | ClangFormatBreakAfterOpenBracketBracedList { value: Bool }
+  | ClangFormatBreakAfterOpenBracketFunction { value: Bool }
+  | ClangFormatBreakAfterOpenBracketIf { value: Bool }
+  | ClangFormatBreakAfterOpenBracketLoop { value: Bool }
+  | ClangFormatBreakAfterOpenBracketSwitch { value: Bool }
+  | ClangFormatBreakAfterReturnType { value: String }
+  | ClangFormatBreakArrays { value: Bool }
+  | ClangFormatBreakBeforeBinaryOperators { value: String }
+  | ClangFormatBreakBeforeBraces { value: String }
+  | ClangFormatBreakBeforeCloseBracketBracedList { value: Bool }
+  | ClangFormatBreakBeforeCloseBracketFunction { value: Bool }
+  | ClangFormatBreakBeforeCloseBracketIf { value: Bool }
+  | ClangFormatBreakBeforeCloseBracketLoop { value: Bool }
+  | ClangFormatBreakBeforeCloseBracketSwitch { value: Bool }
+  | ClangFormatBreakBeforeConceptDeclarations { value: String }
+  | ClangFormatBreakBeforeInlineASMColon { value: String }
+  | ClangFormatBreakBeforeReturnType { value: String }
+  | ClangFormatBreakBeforeTemplateCloser { value: Bool }
+  | ClangFormatBreakBeforeTernaryOperators { value: Bool }
+  | ClangFormatBreakBinaryOperations { value: ClangFormatValue }
+  | ClangFormatBreakConstructorInitializers { value: String }
+  | ClangFormatBreakFunctionDeclarationParameters { value: Bool }
+  | ClangFormatBreakFunctionDefinitionParameters { value: Bool }
+  | ClangFormatBreakInheritanceList { value: String }
+  | ClangFormatBreakStringLiterals { value: Bool }
+  | ClangFormatBreakTemplateDeclarations { value: String }
+  | ClangFormatColumnLimit { value: ClangFormatUnsignedInteger }
+  | ClangFormatCommentPragmas { value: String }
+  | ClangFormatCompactNamespaces { value: Bool }
+  | ClangFormatConstructorInitializerAllOnOneLineOrOnePerLine { value: Bool }
+  | ClangFormatConstructorInitializerIndentWidth { value: ClangFormatUnsignedInteger }
+  | ClangFormatContinuationIndentWidth { value: ClangFormatUnsignedInteger }
+  | ClangFormatCpp11BracedListStyle { value: String }
+  | ClangFormatDeriveLineEnding { value: Bool }
+  | ClangFormatDerivePointerAlignment { value: Bool }
+  | ClangFormatDisableFormat { value: Bool }
+  | ClangFormatEmptyLineAfterAccessModifier { value: String }
+  | ClangFormatEmptyLineBeforeAccessModifier { value: String }
+  | ClangFormatEnumTrailingComma { value: String }
+  | ClangFormatExperimentalAutoDetectBinPacking { value: Bool }
+  | ClangFormatFixNamespaceComments { value: Bool }
+  | ClangFormatIncludeBlocks { value: String }
+  | ClangFormatIncludeIsMainRegex { value: String }
+  | ClangFormatIncludeIsMainSourceRegex { value: String }
+  | ClangFormatIndentAccessModifiers { value: Bool }
+  | ClangFormatIndentCaseBlocks { value: Bool }
+  | ClangFormatIndentCaseLabels { value: Bool }
+  | ClangFormatIndentExportBlock { value: Bool }
+  | ClangFormatIndentExternBlock { value: String }
+  | ClangFormatIndentGotoLabels { value: String }
+  | ClangFormatIndentPPDirectives { value: String }
+  | ClangFormatIndentRequiresClause { value: Bool }
+  | ClangFormatIndentWidth { value: ClangFormatUnsignedInteger }
+  | ClangFormatIndentWrappedFunctionNames { value: Bool }
+  | ClangFormatInsertBraces { value: Bool }
+  | ClangFormatInsertNewlineAtEOF { value: Bool }
+  | ClangFormatInsertTrailingCommas { value: String }
+  | ClangFormatIntegerLiteralSeparator { value: ClangFormatValue }
+  | ClangFormatJavaScriptQuotes { value: String }
+  | ClangFormatJavaScriptWrapImports { value: Bool }
+  | ClangFormatKeepEmptyLines { value: ClangFormatValue }
+  | ClangFormatKeepEmptyLinesAtEOF { value: Bool }
+  | ClangFormatKeepEmptyLinesAtTheStartOfBlocks { value: Bool }
+  | ClangFormatKeepFormFeed { value: Bool }
+  | ClangFormatLambdaBodyIndentation { value: String }
+  | ClangFormatLanguage { value: String }
+  | ClangFormatLineEnding { value: String }
+  | ClangFormatMacroBlockBegin { value: String }
+  | ClangFormatMacroBlockEnd { value: String }
+  | ClangFormatMainIncludeChar { value: String }
+  | ClangFormatMaxEmptyLinesToKeep { value: ClangFormatUnsignedInteger }
+  | ClangFormatNamespaceIndentation { value: String }
+  | ClangFormatNumericLiteralCase { value: ClangFormatValue }
+  | ClangFormatObjCBinPackProtocolList { value: String }
+  | ClangFormatObjCBlockIndentWidth { value: ClangFormatUnsignedInteger }
+  | ClangFormatObjCBreakBeforeNestedBlockParam { value: Bool }
+  | ClangFormatObjCSpaceAfterMethodDeclarationPrefix { value: Bool }
+  | ClangFormatObjCSpaceAfterProperty { value: Bool }
+  | ClangFormatObjCSpaceBeforeProtocolList { value: Bool }
+  | ClangFormatOneLineFormatOffRegex { value: String }
+  | ClangFormatPackArguments { value: String }
+  | ClangFormatPackConstructorInitializers { value: String }
+  | ClangFormatPackParameters { value: String }
+  | ClangFormatPenaltyBreakAssignment { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakBeforeFirstCallParameter { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakBeforeMemberAccess { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakComment { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakFirstLessLess { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakOpenParenthesis { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakScopeResolution { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakString { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyBreakTemplateDeclaration { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyExcessCharacter { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyIndentedWhitespace { value: ClangFormatUnsignedInteger }
+  | ClangFormatPenaltyReturnTypeOnItsOwnLine { value: ClangFormatUnsignedInteger }
+  | ClangFormatPointerAlignment { value: String }
+  | ClangFormatPPIndentWidth { value: ClangFormatSignedInteger }
+  | ClangFormatQualifierAlignment { value: String }
+  | ClangFormatReferenceAlignment { value: String }
+  | ClangFormatReflowComments { value: String }
+  | ClangFormatRemoveBracesLLVM { value: Bool }
+  | ClangFormatRemoveEmptyLinesInUnwrappedLines { value: Bool }
+  | ClangFormatRemoveParentheses { value: String }
+  | ClangFormatRemoveSemicolon { value: Bool }
+  | ClangFormatRequiresClausePosition { value: String }
+  | ClangFormatRequiresExpressionIndentation { value: String }
+  | ClangFormatSeparateDefinitionBlocks { value: String }
+  | ClangFormatShortNamespaceLines { value: ClangFormatUnsignedInteger }
+  | ClangFormatSkipMacroDefinitionBody { value: Bool }
+  | ClangFormatSortIncludes { value: ClangFormatValue }
+  | ClangFormatSortJavaStaticImport { value: String }
+  | ClangFormatSortUsingDeclarations { value: String }
+  | ClangFormatSpaceAfterCStyleCast { value: Bool }
+  | ClangFormatSpaceAfterLogicalNot { value: Bool }
+  | ClangFormatSpaceAfterOperatorKeyword { value: Bool }
+  | ClangFormatSpaceAfterTemplateKeyword { value: Bool }
+  | ClangFormatSpaceAroundPointerQualifiers { value: String }
+  | ClangFormatSpaceBeforeAssignmentOperators { value: Bool }
+  | ClangFormatSpaceBeforeCaseColon { value: Bool }
+  | ClangFormatSpaceBeforeCpp11BracedList { value: Bool }
+  | ClangFormatSpaceBeforeCtorInitializerColon { value: Bool }
+  | ClangFormatSpaceBeforeEnumUnderlyingTypeColon { value: Bool }
+  | ClangFormatSpaceBeforeInheritanceColon { value: Bool }
+  | ClangFormatSpaceBeforeJsonColon { value: Bool }
+  | ClangFormatSpaceBeforeParens { value: String }
+  | ClangFormatSpaceBeforeParensOptions { value: ClangFormatValue }
+  | ClangFormatSpaceBeforeRangeBasedForLoopColon { value: Bool }
+  | ClangFormatSpaceBeforeSquareBrackets { value: Bool }
+  | ClangFormatSpaceInEmptyBlock { value: Bool }
+  | ClangFormatSpaceInEmptyBraces { value: String }
+  | ClangFormatSpaceInEmptyParentheses { value: Bool }
+  | ClangFormatSpacesBeforeTrailingComments { value: ClangFormatUnsignedInteger }
+  | ClangFormatSpacesInAngles { value: String }
+  | ClangFormatSpacesInConditionalStatement { value: Bool }
+  | ClangFormatSpacesInCStyleCastParentheses { value: Bool }
+  | ClangFormatSpacesInContainerLiterals { value: Bool }
+  | ClangFormatSpacesInLineCommentPrefix { value: ClangFormatValue }
+  | ClangFormatSpacesInParens { value: String }
+  | ClangFormatSpacesInParensOptions { value: ClangFormatValue }
+  | ClangFormatSpacesInParentheses { value: Bool }
+  | ClangFormatSpacesInSquareBrackets { value: Bool }
+  | ClangFormatStandard { value: String }
+  | ClangFormatTableGenBreakInsideDAGArg { value: String }
+  | ClangFormatTabWidth { value: ClangFormatUnsignedInteger }
+  | ClangFormatUseCRLF { value: Bool }
+  | ClangFormatUseTab { value: String }
+  | ClangFormatVerilogBreakBetweenInstancePorts { value: Bool }
+  | ClangFormatWrapNamespaceBodyWithEmptyLines { value: String }
+
+
+type ClangFormatConfig {
+  based_on_style: ClangFormatStyle,
+  options: List<ClangFormatOption>,
+}
+
+
+data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
+  based_on_style: ClangFormatStyleLLVM,
+  options: [],
+}
+
+
+// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: ClangFormatConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering.
+fn clang_format_layer(base: ClangFormatConfig, outer: ClangFormatConfig) -> ClangFormatConfig {
+  outer
+}
