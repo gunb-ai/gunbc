@@ -1,16 +1,18 @@
 // src/v4/std/datetime.dag
 // Scope: RFC 3339 clock-calendar instant facts for format-layer consumers.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc3339
-// Owns: Instant, RFC 3339 date/time field carriers, nanosecond subsecond, and UTC offset carriers.
-// Consumes: std nat, std text, std refinement, std node.
+// Owns: Instant, RFC 3339 date/time field carriers, nanosecond subsecond,
+//       UTC offset carriers, and validation-discharge constructors.
+// Consumes: std diagnostic, std nat, std text, std refinement, std node.
 // Status: 🟢 T-3 modeled.
 
 module v4.std.datetime
 
 
+import v4.std.diagnostic { Accepted, Locus, Outcome, Rejected }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-import v4.std.refinement { Refined, Validation }
+import v4.std.refinement { Refined, Validation, refine }
 import v4.std.text { String }
 
 
@@ -247,4 +249,143 @@ data tz_offset_hour_validation: Validation<Nat> = Validation {
 data tz_offset_minute_validation: Validation<Nat> = Validation {
   reason: tz_offset_minute_out_of_range,
   admits: tz_offset_minute_admits
+}
+
+
+fn make_year(value: Nat, lexeme: FourDigitYearLexeme, at: Locus) -> Outcome<Year> {
+  match refine(base: value, by: year_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: Year { value: refined, lexeme: lexeme }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_month_ordinal(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<MonthOrdinal> {
+  match refine(base: value, by: month_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: MonthOrdinal { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_day_ordinal(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<DayOrdinal> {
+  match refine(base: value, by: day_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: DayOrdinal { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_hour_of_day(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<HourOfDay> {
+  match refine(base: value, by: hour_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: HourOfDay { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_minute_of_hour(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<MinuteOfHour> {
+  match refine(base: value, by: minute_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: MinuteOfHour { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_second_of_minute(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<SecondOfMinute> {
+  match refine(base: value, by: second_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: SecondOfMinute { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_nanoseconds(value: Nat, at: Locus) -> Outcome<Nanoseconds> {
+  match refine(base: value, by: nanoseconds_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: Nanoseconds { value: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_subsecond_digit_count(value: Nat, at: Locus) -> Outcome<SubsecondDigitCount> {
+  match refine(base: value, by: subsecond_digit_count_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted { value: SubsecondDigitCount { value: refined }, diagnostics: diagnostics }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_tz_offset_hour(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<TzOffsetHour> {
+  match refine(base: value, by: tz_offset_hour_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: TzOffsetHour { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_tz_offset_minute(
+  value: Nat,
+  lexeme: TwoDigitFieldLexeme,
+  at: Locus,
+) -> Outcome<TzOffsetMinute> {
+  match refine(base: value, by: tz_offset_minute_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: TzOffsetMinute { value: refined, lexeme: lexeme },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
 }
