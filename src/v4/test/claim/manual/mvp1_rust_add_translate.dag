@@ -382,8 +382,8 @@ fn mvp1_emit_claim_outcome() -> Outcome<Node> {
 // Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_compile_inferred_claim_outcome() -> Outcome<Node> {
   match mvp1_compile_inferred_receipt {
-    Accepted { value: output, diagnostics: d } =>
-      match output {
+    Accepted { value: compile_result, diagnostics: d } =>
+      match compile_result {
         TranslateResult { source } =>
           if (source == rust_mvp1_source_text) && (d == None) {
             Accepted { value: mvp1_rust_emitted_root, diagnostics: None }
