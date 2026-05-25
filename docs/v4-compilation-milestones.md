@@ -135,7 +135,9 @@ The first moment that v4 actually compiles something.
 2. **T-7 parser walk — `parse_expr` stub.** `02_parse.dag` has been partially filled (#3626): `parse()` now dispatches through `grammar_lookup_production` → `parse_production` → `parse_expr`. The remaining stub is `parse_expr` itself, which has a `🟡 gated — feature:T-7-parse-walk-realization` marker and always returns `ParseExprRejected`. `parse_expr` needs implementing to match the grammar rule structure against the token stream. T-7 is the generic walk algorithm only — it does not own dag.dag LM wiring (see blocker 5).
 3. **dag.dag language model wiring.** `dag_wave1_grammar()` (ModeledGrammar with production bodies) exists in dag.dag, but both pipeline-facing language model functions — `dag_language_model_wave1_void()` and `dag_language_model_surface_empty_prelude()` — use `dag_wave1_g0_void_grammar()` (VoidGrammar). `parse()` dispatches VoidGrammar to the accept-empty arm: it accepts empty token streams and rejects any real program. A pipeline-facing function using `dag_wave1_grammar()` (e.g. `dag_language_model_wave1()`) must be added to dag.dag and wired in. This is **not** T-7 scope — it is dag.dag data wiring, a separate follow-on task.
 4. **T-10 emit must produce real output.** `05_emit.dag` must compose translate output into actual Rust source text for the target. Currently 45 lines.
-5. **Trivial input scope:** the minimal viable input only needs to exercise the pipeline for the .dag language's grammar (dag.dag is the only language with lex/grammar data filled). Python, Go, etc. are not needed for M2.
+5. **T-4 target algebra fact-bundle (rust.dag algebra grounding).** `TASKS.md` lists T-4 as a formal prerequisite of both T-9 and T-10 (line 42: "T-9 [needs T-8, T-2, T-3, and T-4]"; line 43: "T-10 [needs T-9, T-4]"). T-9 infer rejects bare-Atom algebra references via `infer_algebra_ref_ungrounded` — rust.dag currently uses bridge Symbols as placeholders for algebra types (e.g., `rust_model_core_bridge_std_ordered_ring_representable_integer`). These fail-closed at T-9 until T-4 Wave 2b provides real Node constructors (`ordered_ring_node(inhabitant: Node) -> Node`, etc.) so that `AlgebraInhabitanceDecl.algebra` is grounded. Even a trivial `fn add(a, b) = a + b` targeting Rust exercises primitive algebra types, so this gate fires for any Rust-target input.
+6. **T-33 side-branch prerequisite.** `std/model_core.dag` (T-33) is a hard prerequisite of T-4: T-4's fact-bundle authoring cannot ground primitives or algebra references without T-33's abstract runtime carrier types. The side branch `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33} → T-4 → T-9` is a watch item in TASKS.md — any feeder slip makes it critical-path. These feeders are not compiler-spine steps, but they gate T-4 which gates T-9 and T-10.
+7. **Trivial input scope:** the minimal viable input only needs to exercise the pipeline for the .dag language's grammar (dag.dag is the only language with lex/grammar data filled). Python, Go, etc. are not needed for M2.
 
 **Required work to reach M2:**
 - Implement lexer walk in 01_tokenize.dag (algorithm, 1 worker, ~200-400 lines)
@@ -143,10 +145,13 @@ The first moment that v4 actually compiles something.
 - Add `dag_language_model_wave1()` to dag.dag using `dag_wave1_grammar()` (not VoidGrammar) and wire into the pipeline
 - Wire T-10 emit to produce real Rust source text from a translated node tree
 - T-8 normalize + resolve: modeled and in the chain; single-file trivial input does not hit the T-28 cross-file bridge gate
-- T-9 infer: modeled and in the chain; no additional work for trivial input
+- T-9 infer: modeled and in the chain; requires T-4 algebra grounding (formal TASKS.md prerequisite) — T-9 fail-closes on bare-Atom bridge symbols until T-4 fills real Node constructors for each algebra type
+- T-4 algebra fact-bundle for Rust target: fill Node constructors for each algebra type (e.g. `ordered_ring_node`) so T-9 can ground algebra references in rust.dag instead of rejecting via `infer_algebra_ref_ungrounded`
+- T-33 std/model_core.dag: side-branch feeders {P1-KEYSTONE, T-30, T-29, T-25-core, T-33} must close before T-4 can start; watch item per TASKS.md
 
-**Sequential dependency:** T-6 walk → T-7 `parse_expr` → T-8 normalize/resolve (modeled) → T-9 infer (modeled) → T-10 emit → M2.
-T-8 and T-9 are modeled but required stages; they are not additional blockers for trivial input.
+**Sequential dependency:** T-6 walk → T-7 `parse_expr` → T-8 normalize/resolve (modeled) → T-9 infer → T-10 emit → M2.
+T-8 is modeled and required but not a new implementation blocker for trivial single-file input.
+T-9 is modeled but requires T-4 algebra grounding (formal TASKS.md prerequisite); T-4 requires the T-33 side-branch feeders to close first.
 
 ---
 
@@ -185,9 +190,13 @@ and asserts equality. Documented in bootstrap.dag `bootstrap_plan_fixpt_witness`
 **Status:** Defined structurally in bootstrap.dag (content hash pins are placeholder Symbols,
 awaiting real B1 content_hash computation). Milestone reached only after M3 is stable.
 
-**Note:** M4 is T-15. It is the "v4 done" gate per TASKS.md. All other tasks (T-16 omni
-demo, T-36 ingest round-trip, etc.) feed into whether the fixpoint binary is also
-feature-complete, but the fixpoint itself is a correctness property, not a feature property.
+**Note:** M4 is T-15. It is the "v4 done" gate per TASKS.md. Per TASKS.md lines 31–33:
+T-16 (full-stack omni-emission demo) and T-36 (ingest round-trip fidelity claim) are
+**prerequisites** of T-15, not optional feature additions — "Both must be complete before
+T-15." The critical path is `T-10 → T-11 → T-16` and `T-36`, both feeding into T-15.
+The fixpoint hash equality test is only meaningful after T-16 and T-36 demonstrate the
+binary is functionally complete; asserting fixpoint before those gates would be a
+correctness claim about an incomplete binary.
 
 ---
 
