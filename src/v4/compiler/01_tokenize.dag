@@ -5,8 +5,8 @@
 //       tokenize_lex_e0_source_not_exhausted, tokenize_lex_e0_source_not_exhausted_diagnostic,
 //       tokenize_lex_e1_unrecognized_char, tokenize_lex_e1_unrecognized_char_diagnostic,
 //       char_in_class, LexMatchResult, LexRuleApply,
-//       lex_match_prefix, lex_match_pattern, lex_repeat_pattern,
-//       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk_step, lex_walk,
+//       lex_string_fuel, lex_match_prefix, lex_match_pattern, lex_repeat_pattern,
+//       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk,
 //       lex_rule_token_class_member, lex_rule_set_token_class_member, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text, std nat, std algebra.
 // Status: T-6 lexer walk realized.
@@ -367,58 +367,56 @@ fn lex_try_rules(rules: List<LexRule>, source: String, fuel: Nat) -> LexRuleAppl
 }
 
 
-fn lex_walk_step(
-  source: String,
-  tokens: List<Token>,
-  file: Symbol,
-  pos: Int,
-  rules: LexRuleSet
-) -> Outcome<TokenStream> {
-  let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
-  match lex_try_rules(rules: rules.rules, source: source) {
-    LexRuleNoMatch =>
-      Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-    LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-      match string_is_empty(s: lexeme) {
-        true =>
-          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-        false =>
-          lex_walk(source: remaining, tokens: tokens, file: file, pos: pos + length(xs: lexeme), rules: rules)
-      }
-    LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-      match string_is_empty(s: lexeme) {
-        true =>
-          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-        false =>
-          lex_walk(
-            source: remaining,
-            tokens: list_snoc_item(
-              xs: tokens,
-              item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: pos + length(xs: lexeme) }
-            ),
-            file: file,
-            pos: pos + length(xs: lexeme),
-            rules: rules
-          )
-      }
-  }
-}
-
-
 // lex_walk: scan source left-to-right; emit tokens, discard trivia, error on E1.
-// Termination: each non-error iteration consumes at least one character (lexeme non-empty).
+// Termination: walk_fuel is initialized to source length; each non-error iteration
+// consumes at least one character, so walk_fuel descends (Succ { prev: rest } → rest).
 fn lex_walk(
   source: String,
   tokens: List<Token>,
   file: Symbol,
   pos: Int,
-  rules: LexRuleSet
+  rules: LexRuleSet,
+  walk_fuel: Nat
 ) -> Outcome<TokenStream> {
   match string_is_empty(s: source) {
     true =>
       Accepted { value: TokenStream { tokens: tokens }, diagnostics: None }
     false =>
-      lex_walk_step(source: source, tokens: tokens, file: file, pos: pos, rules: rules)
+      match walk_fuel {
+        Zero =>
+          let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
+          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+        Succ { prev: rest_walk } =>
+          let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
+          match lex_try_rules(rules: rules.rules, source: source, fuel: lex_string_fuel(source: source)) {
+            LexRuleNoMatch =>
+              Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+            LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
+              match string_is_empty(s: lexeme) {
+                true =>
+                  Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+                false =>
+                  lex_walk(source: remaining, tokens: tokens, file: file, pos: pos + length(xs: lexeme), rules: rules, walk_fuel: rest_walk)
+              }
+            LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
+              match string_is_empty(s: lexeme) {
+                true =>
+                  Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+                false =>
+                  lex_walk(
+                    source: remaining,
+                    tokens: list_snoc_item(
+                      xs: tokens,
+                      item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: pos + length(xs: lexeme) }
+                    ),
+                    file: file,
+                    pos: pos + length(xs: lexeme),
+                    rules: rules,
+                    walk_fuel: rest_walk
+                  )
+              }
+          }
+      }
   }
 }
 
@@ -436,6 +434,6 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
         Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: rule_set } =>
-      lex_walk(source: text, tokens: [], file: file, pos: 0, rules: rule_set)
+      lex_walk(source: text, tokens: [], file: file, pos: 0, rules: rule_set, walk_fuel: lex_string_fuel(source: text))
   }
 }
