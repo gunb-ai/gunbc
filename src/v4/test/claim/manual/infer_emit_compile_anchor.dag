@@ -1,14 +1,8 @@
 // src/v4/test/claim/manual/infer_emit_compile_anchor.dag
-// Scope: Tier-1 v2-compile anchor for T-9/T-10 interface freeze — `infer`/`emit`/`compile` Wave-1 boundary.
-// Owns: anchor_stub_empty_conj, anchor_stub_target_model, anchor_stub_source, anchor_stub_inferred_facts,
-//       anchor_stub_empty_facts_map, anchor_stub_inferred_tree, anchor_facts_map_lookup_not_realized,
-//       anchor_infer_rejects, anchor_emit_rejects, anchor_emit_mvp1_accepts, anchor_compile_inferred_mvp1_accepts,
-//       anchor_compile_rejects.
-// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag,
-//           test/claim/manual/mvp1_rust_add_translate.dag, std/algebra.dag, std/collection.dag,
-//           std/diagnostic.dag, std/node.dag, std/witness.dag.
+// Scope: Tier-1 compile anchor for infer/emit/compile Wave-1 boundary (T-10 MVP fixture).
+// Owns: stub anchors, anchor_emit_mvp1_accepts, anchor_compile_inferred_mvp1_accepts.
+// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, test/claim/manual/mvp1_rust_add_translate.dag, std/*.
 // Status: T-10 — stub targets fail-closed; rust_mvp1 fixture accepts emit + compile_inferred.
-// Anchor: https://en.wikipedia.org/wiki/Compiler
 
 
 module v4.test.claim.manual.infer_emit_compile_anchor

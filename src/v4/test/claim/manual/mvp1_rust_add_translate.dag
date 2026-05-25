@@ -1,18 +1,8 @@
 // src/v4/test/claim/manual/mvp1_rust_add_translate.dag
 // Scope: MVP-1 T-10 receipt — translate/emit substrate + rust_mvp1 add-fn Accepted emit.
-// Owns: mvp_add_arrow_node, mvp1_rust_emitted_root, mvp1_rust_inferred_tree, mvp1_rust_target_model,
-//       mvp1_rust_canonical_grounding, mvp1_rust_inferred_facts_for, mvp1_rust_facts_lookup,
-//       anchor_mvp1_translate_accepts, anchor_mvp1_emit_accepts,
-//       claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles,
-//       claim_mvp1_emit_add_fn_accepts, mvp1_emit_receipt,
-//       run_mvp1_emit_add_fn_accepts, witness_mvp1_emit_accepts.
-// Consumes: compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag,
-//           extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag,
-//           test/claim/manual/infer_ground_add_mvp.dag, std/cardinality.dag,
-//           std/verification.dag, std/diagnostic.dag, std/node.dag, std/constraints.dag,
-//           std/verdict.dag.
+// Owns: mvp1 anchors, inferred tree, emit TestClaimRun, translate/emit module compiles claims.
+// Consumes: compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag, extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag, test/claim/manual/infer_ground_add_mvp.dag, std/*.
 // Status: T-10 — grammar-inverse emit accepts for rust_mvp1_target_model + emitted add-fn tree.
-// Anchor: docs/design-v4-compiler-homomorphism.md MVP-1 worked example.
 
 
 module v4.test.claim.manual.mvp1_rust_add_translate
@@ -90,7 +80,6 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
-import v4.std.verdict { Pass }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -390,13 +379,6 @@ data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Outcome<Node>> = TestClaim
     actual: mvp1_emit_claim_outcome(),
     at: mvp1_rust_emitted_root
   )
-}
-
-
-data witness_mvp1_emit_accepts: Bool = match run_mvp1_emit_add_fn_accepts.verdict {
-  Pass => true
-  Fail { actual: _ } => false
-  Deferred { actual: _, diagnostic: _ } => false
 }
 
 
