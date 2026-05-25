@@ -772,7 +772,7 @@ pub fn collect_callable_refs(
             } => match bk.clone().as_deref().cloned() {
                 Some(VarBindingKind::FunctionValueBinding) => {
                     let n = expr_var_name_at(texpr.clone(), si.clone());
-                    v2_rt::rc_set_insert(compile_error!("empty_set element type unresolved"), n)
+                    v2_rt::rc_set_insert(v2_rt::rc_empty_set::<_>(), n)
                 }
                 _ => v2_rt::rc_empty_set::<String>(),
             },
