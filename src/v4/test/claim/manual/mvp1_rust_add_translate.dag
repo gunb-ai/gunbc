@@ -306,9 +306,7 @@ fn mvp1_rust_facts_lookup(key: Node) -> Witness<InferredFacts> {
 data mvp1_rust_inferred_tree: InferredTree = InferredTree {
   root: mvp1_rust_emitted_root,
   facts: Map {
-    lookup: fn(key) {
-      mvp1_rust_facts_lookup(key: key)
-    }
+    lookup: mvp1_rust_facts_lookup
   }
 }
 
