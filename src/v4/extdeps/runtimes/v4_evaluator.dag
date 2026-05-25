@@ -51,7 +51,8 @@ import v4.std.runtime {
   Suspend,
   TransformInterpreter,
   ValueInterpreter,
-  ValueRepresentationModel
+  ValueRepresentationModel,
+  runtime_value_resolved_type
 }
 import v4.std.witness { Violates, Witness }
 
@@ -181,14 +182,19 @@ fn v4_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
+// 🟡 gated — wave-1 interim (Practice 10) — feature: faithful RuntimeValue-to-EvaluationFrame reification —
+// dissolve-on-arrival: T-22 or T-8 providing RuntimeValue→Node reification (runtime_value_node_projection
+// returns non-Unrepresentable) or EvaluationFrame gains a RuntimeValue result slot.
+// Wave-1: Continue/Return reject until value reification is modeled — type-only projection into
+// frame.current would fabricate a successful frame missing the value fact (P3).
 fn v4_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
-    Continue { value: _ } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
-    Return { value: _ } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
-    Raise { diagnostic: _ } =>
-      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: frame.current))
+    Continue { value: v } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+    Return { value: v } =>
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: runtime_value_resolved_type(value: v)))
+    Raise { diagnostic: d } =>
+      outcome_rejected(d: d)
     Suspend { continuation: c } =>
       outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: c.current))
   }
@@ -243,7 +249,7 @@ fn v4_evaluator_value_representation_wave1() -> ValueRepresentationModel {
   }
 }
 
-// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes non-deferred interpretation hooks (ledger: T-34 · TASKS.md §T-34)
+// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes fully typed interpretation; Wave-1 hooks realized (T-34), richer primitive semantics gated on T-22.
 fn v4_evaluator_interpretation_wave1() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {
