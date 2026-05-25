@@ -4,10 +4,13 @@
 //       mvp1_rust_canonical_grounding, mvp1_rust_inferred_facts_for, mvp1_rust_facts_lookup,
 //       anchor_mvp1_translate_accepts, anchor_mvp1_emit_accepts,
 //       claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles,
-//       mvp1_emit_receipt, witness_mvp1_emit_accepts.
-// Consumes: compiler/05_emit.dag, compiler/06_translate.dag, extdeps/languages/rust.dag,
-//           test/claim/lens_common/infer_fixture.dag, std/cardinality.dag, std/verification.dag,
-//           std/diagnostic.dag, std/node.dag, std/constraints.dag.
+//       claim_mvp1_emit_add_fn_accepts, mvp1_emit_receipt, mvp1_emit_accepted_source,
+//       run_mvp1_emit_add_fn_accepts, witness_mvp1_emit_accepts.
+// Consumes: compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag,
+//           extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag,
+//           test/claim/manual/infer_ground_add_mvp.dag, std/cardinality.dag,
+//           std/verification.dag, std/diagnostic.dag, std/node.dag, std/constraints.dag,
+//           std/verdict.dag.
 // Status: T-10 — grammar-inverse emit accepts for rust_mvp1_target_model + emitted add-fn tree.
 // Anchor: docs/design-v4-compiler-homomorphism.md MVP-1 worked example.
 
@@ -16,6 +19,13 @@ module v4.test.claim.manual.mvp1_rust_add_translate
 
 
 import v4.compiler.emit { emit }
+import v4.compiler.eval {
+  TestClaimEvalSubject,
+  TestClaimRun,
+  TestClaimTypedInput,
+  run_test_claim_assert,
+  test_claim_cache_receipt
+}
 import v4.compiler.translate { translate }
 import v4.extdeps.languages.rust {
   rust_inhabitant_i32_node,
@@ -47,6 +57,11 @@ import v4.extdeps.languages.rust {
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
+import v4.test.claim.manual.infer_ground_add_mvp {
+  claim_hash_placeholder,
+  infer_receipt_context,
+  interpretation_hash_placeholder
+}
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { Map }
 import v4.std.constraints {
@@ -63,17 +78,20 @@ import v4.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
+  diagnostics_singleton,
   node_locus
 }
 import v4.std.node {
   Atom,
   Arrow,
   Edge,
+  Hash,
   Node,
   Positional,
   Symbol,
   TypeNode
 }
+import v4.std.verdict { Fail, Pass, Verdict }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -88,6 +106,7 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
 data mvp_add_int_atom: Symbol = mvp_add_int_atom
 data mvp1_rust_grounding_miss: Symbol = mvp1_rust_grounding_miss
+data mvp1_emit_source_mismatch: Symbol = mvp1_emit_source_mismatch
 
 
 fn mvp_int_node() -> Node {
@@ -320,12 +339,81 @@ fn anchor_mvp1_emit_accepts() -> Outcome<TargetSource> {
 data mvp1_emit_receipt: Outcome<TargetSource> = anchor_mvp1_emit_accepts()
 
 
-// Compile-time witness: mvp1_emit_receipt must be Accepted with canonical MVP-1 source.
-// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> TestClaim eval receipt replaces Bool witness; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
-data witness_mvp1_emit_accepts: Bool = match mvp1_emit_receipt {
-  Accepted { value: source, diagnostics: d } =>
-    (source == rust_mvp1_source_text) && (d == None)
-  Rejected { diagnostics: _ } => false
+// Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
+fn mvp1_emit_claim_outcome() -> Outcome<Node> {
+  match mvp1_emit_receipt {
+    Accepted { value: source, diagnostics: d } =>
+      if (source == rust_mvp1_source_text) && (d == None) {
+        Accepted { value: mvp1_rust_emitted_root, diagnostics: None }
+      } else {
+        Rejected {
+          diagnostics: diagnostics_singleton(
+            d: Diagnostic {
+              reason: mvp1_emit_source_mismatch,
+              at: node_locus(node: mvp1_rust_emitted_root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+
+data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
+  label: "manual/mvp1: anchor_mvp1_emit_accepts Accepted with canonical rust_mvp1 add-fn source",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: mvp1_rust_emitted_root,
+  expected_value: mvp1_rust_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_mvp1_emit_add_fn_accepts,
+  context: infer_receipt_context(),
+  tree: mvp1_rust_inferred_tree,
+  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+}
+
+
+data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Outcome<Node>> = TestClaimRun {
+  cache: test_claim_cache_receipt(
+    subject: subject_mvp1_emit_add_fn_accepts,
+    claim_hash: claim_hash_placeholder,
+    interpretation_hash: interpretation_hash_placeholder
+  ),
+  verdict: run_test_claim_assert(
+    claim: claim_mvp1_emit_add_fn_accepts,
+    actual: mvp1_emit_claim_outcome(),
+    at: mvp1_rust_emitted_root
+  )
+}
+
+
+// Bootstrap compile-time enforcement: non-Accepted emit paths call undefined fn (compile error).
+fn mvp1_emit_acceptance_not_enforced() -> TargetSource {
+  mvp1_emit_acceptance_compile_error()
+}
+
+
+data mvp1_emit_accepted_source: TargetSource = match mvp1_emit_receipt {
+  Accepted { value: source, diagnostics: None } =>
+    if source == rust_mvp1_source_text {
+      source
+    } else {
+      mvp1_emit_acceptance_not_enforced()
+    }
+  Accepted { value: _, diagnostics: _ } => mvp1_emit_acceptance_not_enforced()
+  Rejected { diagnostics: _ } => mvp1_emit_acceptance_not_enforced()
+}
+
+
+data witness_mvp1_emit_accepts: Bool = match run_mvp1_emit_add_fn_accepts.verdict {
+  Pass => true
+  Fail { actual: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
 }
 
 
