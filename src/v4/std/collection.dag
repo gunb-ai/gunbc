@@ -22,6 +22,7 @@ type Set<T> = PointwisePower<T>
 type Map<K, V> {
   lookup: fn(K) -> Witness<V>
 }
+// Composite struct keys (e.g. { position: Int, production: Symbol }) use structural == in map_insert lookup.
 type IndexedLookup<T> {
   index: Int
   value: Witness<T>

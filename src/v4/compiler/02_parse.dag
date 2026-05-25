@@ -529,85 +529,6 @@ fn parse_nonterminal_from_table(
   }
 }
 
-fn parse_table_fill_production_step(
-  table: ParseTable,
-  production: GrammarProduction,
-  position: Int,
-  all_tokens: List<Token>,
-  root: GrammarRoot
-) -> ParseTable {
-  let key = ParsePositionKey { position: position, production: production.name }
-  let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
-  let result = parse_expr(
-    expr: production.expression,
-    tokens: suffix,
-    all_tokens: all_tokens,
-    root: root,
-    table: table
-  )
-  parse_table_insert(table: table, key: key, value: result)
-}
-
-// One pass: update every production entry at a fixed position.
-fn parse_table_fill_position_pass(
-  table: ParseTable,
-  position: Int,
-  all_tokens: List<Token>,
-  root: GrammarRoot
-) -> ParseTable {
-  fold_list(
-    xs: root.productions,
-    empty: table,
-    cons: fn(acc, prod) {
-      parse_table_fill_production_step(
-        table: acc,
-        production: prod,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
-  )
-}
-
-// |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
-fn parse_table_fill_position(
-  table: ParseTable,
-  position: Int,
-  all_tokens: List<Token>,
-  root: GrammarRoot
-) -> ParseTable {
-  fold_list(
-    xs: root.productions,
-    empty: table,
-    cons: fn(acc, _) {
-      parse_table_fill_position_pass(
-        table: acc,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
-  )
-}
-
-// Outer fold over positions high→low; inner fold over productions × passes at each position.
-// Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
-fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
-  fold_list_right(
-    xs: token_position_indices(tokens: all_tokens),
-    empty: empty_map<ParsePositionKey, ParseExprResult>(),
-    snoc: fn(acc, position) {
-      parse_table_fill_position(
-        table: acc,
-        position: position,
-        all_tokens: all_tokens,
-        root: root
-      )
-    }
-  )
-}
-
 
 // --- Left-recursion detection ---
 
@@ -1038,6 +959,89 @@ fn parse_expr(
         diagnostics: result.acc_diags
       }
   }
+}
+
+
+fn parse_table_fill_production_step(
+  table: ParseTable,
+  production: GrammarProduction,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot
+) -> ParseTable {
+  let key = ParsePositionKey { position: position, production: production.name }
+  let suffix = tokens_at_position(all_tokens: all_tokens, position: position)
+  let result = parse_expr(
+    expr: production.expression,
+    tokens: suffix,
+    all_tokens: all_tokens,
+    root: root,
+    table: table
+  )
+  parse_table_insert(table: table, key: key, value: result)
+}
+
+
+// One pass: update every production entry at a fixed position.
+fn parse_table_fill_position_pass(
+  table: ParseTable,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot
+) -> ParseTable {
+  fold_list(
+    xs: root.productions,
+    empty: table,
+    cons: fn(acc, prod) {
+      parse_table_fill_production_step(
+        table: acc,
+        production: prod,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+    }
+  )
+}
+
+
+// |productions| passes at one position — converges same-position wrapper chains (A = B; B = "x").
+fn parse_table_fill_position(
+  table: ParseTable,
+  position: Int,
+  all_tokens: List<Token>,
+  root: GrammarRoot
+) -> ParseTable {
+  fold_list(
+    xs: root.productions,
+    empty: table,
+    cons: fn(acc, _) {
+      parse_table_fill_position_pass(
+        table: acc,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+    }
+  )
+}
+
+
+// Outer fold over positions high→low; inner fold over productions × passes at each position.
+// Termination: (N+1) positions × K productions × K passes — structurally bounded, no fuel.
+fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
+  fold_list_right(
+    xs: token_position_indices(tokens: all_tokens),
+    empty: empty_map<ParsePositionKey, ParseExprResult>(),
+    snoc: fn(acc, position) {
+      parse_table_fill_position(
+        table: acc,
+        position: position,
+        all_tokens: all_tokens,
+        root: root
+      )
+    }
+  )
 }
 
 
