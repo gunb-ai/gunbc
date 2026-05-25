@@ -43,6 +43,7 @@ type Float64 {
   body: FloatBody
 }
 type Float = Float64
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 // IEEE 754-2019 §7 — NaN propagation disposition: how a language/runtime handles a NaN operand.
 // PropagatesQuietly: quiet NaN propagates through operations (default IEEE 754 behavior).
 // Traps: a NaN operand raises a floating-point exception signal.
@@ -52,6 +53,7 @@ type NaNPropagation
   | Traps
   | PlatformDefined
 
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 // IEEE 754-2019 §7 + §5.4 — Infinity propagation disposition: how a language/runtime handles an infinite result.
 // PropagatesQuietly: infinity propagates through operations (default IEEE 754 behavior).
 // Traps: overflow to infinity raises a floating-point exception signal.
