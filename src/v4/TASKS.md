@@ -141,6 +141,13 @@ Substrate / extdeps fan-out:
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-3 machine + T-4 LanguageModel shape; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
+  T-4.16 extdeps/formatters/*.dag — formatter config substrate  [needs none — pure config, no node/compiler dep]
+        One file per formatter: rustfmt (Rust), black (Python), gofmt (Go), prettier (TypeScript/JS),
+        clang-format (C++), google-java-format (Java), swift-format (Swift), ktfmt (Kotlin),
+        lean4 (Lean). Each file: real option coproducts grounded in the formatter's reference
+        + defaults data node + merge function for hierarchical override composition.
+        Human-readable emission is a hard requirement — emitted code must be formatter-clean.
+        Dissolution: wire into TargetModel (T-10/T-11) and add TestClaim category "emit → fmt --check → assert no diff".
   T-5   REMOVED 2026-05-15 (operator-ratified) — work-direction meta-layer
         cut; only workflow/bootstrap.dag (T-20) + workflow/ci.dag (T-24) remain
   (T-4.15 protocols substrate is NOT in this "instant parallel fill" block —
@@ -1458,6 +1465,65 @@ activates).
 **Reference:** `docs/design-v4-compiler-homomorphism.md` §"P4 — Glue
 derivation is composed homomorphism, orthogonal to the compiler" +
 §"What's NOT in scope for this design" (the `extdeps/protocols/` row).
+
+---
+
+### T-4.16 — extdeps/formatters/*.dag — formatter config substrate  [ACTIVE]
+
+**Operator-ratified 2026-05-25.** Human-readable emitted code is a hard
+requirement. Every language target the compiler emits must produce output
+that passes the canonical formatter for that language without modification.
+This task models the formatter option space for each language as real,
+grounded substrate — not an abstract pretty-printer model — so that
+`TargetModel` and the emit stage can carry formatter constraints as typed
+facts.
+
+**Files:** `src/v4/extdeps/formatters/` — new directory.
+- `rustfmt.dag` — `RustfmtConfig` grounded in rustfmt.toml option space
+- `black.dag` — `BlackConfig` (Python; pyproject.toml `[tool.black]`)
+- `gofmt.dag` — `GofmtConfig` (Go; `gofmt` has minimal config — simplicity claim)
+- `prettier.dag` — `PrettierConfig` (TypeScript/JS; `.prettierrc`)
+- `clang_format.dag` — `ClangFormatConfig` (C++; `.clang-format`)
+- `google_java_format.dag` — `GoogleJavaFormatConfig` (Java; CLI flags)
+- `swift_format.dag` — `SwiftFormatConfig` (Swift; `.swift-format`)
+- `ktfmt.dag` — `KtfmtConfig` (Kotlin; ktfmt CLI options)
+- `lean4_format.dag` — `Lean4FormatConfig` (Lean; `lean4-format` options)
+
+`rustfmt.dag` is the reference implementation — all others follow its
+pattern: option coproducts → full config type → defaults data node →
+`*_merge` function for hierarchical override composition.
+
+**Modeling decisions:**
+- Each formatter file is **pure config substrate** — no dependency on
+  `std/node.dag` or any compiler module. This keeps the formatter layer
+  independent of the compiler pipeline and usable as a standalone fact bundle.
+- **Hierarchical override**: `*_merge(base: Config, override: Config) ->
+  Config` where override wins unconditionally. Layering is
+  `fold(patches, init: *_defaults, f: *_merge)`. Field-granularity patch
+  types (per-field `Override/Inherit` coproduct) are 🟡 gated —
+  feature: `formatter-config-patch` — dissolve when consumers need
+  partial override without full-config specification.
+- **Real options, not abstract axes**: each file models the actual
+  formatter's documented option space (e.g., `rustfmt.toml` flags, not
+  a synthetic `IndentWidth` abstraction shared across languages). A
+  cross-language `FormatterModel` abstraction may be derived later if
+  the option sets converge — not authored ahead of the concrete files.
+- **TestClaim dissolution gate**: once a language formatter file exists,
+  the emit stage (T-10/T-11) acquires a TestClaim category:
+  "emit program, run `<formatter> --check`, assert no diff." That claim
+  is the hard requirement that formatter-clean emission is verified, not
+  just declared.
+
+**Dependencies:** `[needs none]` — pure config, no node/compiler dependency.
+Consumers: `TargetModel` (T-10/T-11) wires formatter config into the
+target descriptor; `TargetModel.formatter_config` field is a follow-on
+edit after each formatter file lands.
+
+**Scope:** one formatter per language target. The set matches the
+languages already modeled in `extdeps/languages/`: Rust, Python, Go,
+TypeScript, C++, Java, Swift, Kotlin, Lean. PTX/LLVM IR/machine code/
+Verilog/WASM do not have standard formatters — those targets carry no
+formatter config by construction.
 
 ---
 
