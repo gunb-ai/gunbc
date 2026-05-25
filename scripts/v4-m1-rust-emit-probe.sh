@@ -22,7 +22,17 @@ root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
 bin="${V2_COMPILER:-target/release/v2-compiler}"
-out="${V4_M1_RUST_EMIT_OUT:-/tmp/v4-rust-emit}"
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M1_RUST_EMIT_OUT:-}" ]]; then
+  out="${RUNNER_TEMP:-/tmp}/v4-rust-emit"
+else
+  out="${V4_M1_RUST_EMIT_OUT:-/tmp/v4-rust-emit}"
+fi
+# Avoid ctrl-build shims for cargo check — emitted tree lives on the runner filesystem.
+if [[ -x /opt/cargo/bin/cargo ]]; then
+  cargo_bin="/opt/cargo/bin/cargo"
+else
+  cargo_bin="${CARGO_BIN:-cargo}"
+fi
 compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
 rustc_log="${V4_M1_RUSTC_LOG:-${out}.rustc.log}"
 summary="${out}.m1-probe-summary.txt"
@@ -98,9 +108,9 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   set +e
   if [[ -n "$rustc_timeout" ]]; then
     timeout --preserve-status "$rustc_timeout" \
-      cargo check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
+      "$cargo_bin" check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
   else
-    cargo check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
+    "$cargo_bin" check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
   fi
   rustc_status=${PIPESTATUS[0]}
   set -e
@@ -115,7 +125,7 @@ if [[ -f "$rustc_log" ]]; then
       | sort | uniq -c | sort -rn | head -25 || true
   )"
   rustc_files_with_errors="$(
-    grep -oE '--> src/[^:]+\.rs' "$rustc_log" 2>/dev/null \
+    grep -oE '\-\-> src/[^:]+\.rs' "$rustc_log" 2>/dev/null \
       | sed 's/^--> //' | sort -u | wc -l | tr -d ' '
   )"
 fi
