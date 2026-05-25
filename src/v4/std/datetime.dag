@@ -4,13 +4,14 @@
 // Anchor: https://en.wikipedia.org/wiki/Gregorian_calendar
 // Owns: Instant, RFC 3339 date/time field carriers, local date/time profiles,
 //       UTC offset carriers, and validation-discharge constructors.
-// Consumes: std diagnostic, std nat, std refinement, std node.
+// Consumes: std collection, std diagnostic, std nat, std refinement, std node.
 // Status: 🟢 T-3 modeled.
 
 module v4.std.datetime
 
 
 import v4.std.diagnostic { Locus, Outcome, bind_outcome, outcome_accepted }
+import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
 import v4.std.refinement { Refined, Validation, refine, refined_base }
@@ -51,21 +52,30 @@ type Nanoseconds {
 }
 
 
-type SubsecondDigitCount {
-  value: Refined<Nat>
-}
+// 🟢 coproduct dissolution — RFC 3339 secfrac digits are decimal digits.
+type SecfracDigit
+  = SecfracDigit0
+  | SecfracDigit1
+  | SecfracDigit2
+  | SecfracDigit3
+  | SecfracDigit4
+  | SecfracDigit5
+  | SecfracDigit6
+  | SecfracDigit7
+  | SecfracDigit8
+  | SecfracDigit9
 
 
-type SubsecondFraction {
-  digit_count: SubsecondDigitCount
-  nanosecond_projection: Nanoseconds
+type SecfracDigits {
+  first: SecfracDigit
+  rest: List<SecfracDigit>
 }
 
 
 // 🟢 coproduct dissolution — RFC 3339 secfrac is present or absent at the user-input boundary.
 type Subsecond
   = NoSubsecond
-  | FractionalSecond { fraction: SubsecondFraction }
+  | FractionalSecond { digits: SecfracDigits }
 
 
 // 🟢 coproduct dissolution — RFC 3339 numeric UTC offsets are explicitly signed.
@@ -154,7 +164,6 @@ type LeapSecondOccurrence {
   date: CalendarDate
   hour: HourOfDay
   minute: MinuteOfHour
-  offset: TzOffset
   authority: Symbol
 }
 
@@ -202,7 +211,6 @@ data hour_out_of_range: Symbol = hour_out_of_range
 data minute_out_of_range: Symbol = minute_out_of_range
 data second_out_of_range: Symbol = second_out_of_range
 data nanoseconds_out_of_range: Symbol = nanoseconds_out_of_range
-data subsecond_digits_out_of_range: Symbol = subsecond_digits_out_of_range
 data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
@@ -272,11 +280,6 @@ fn second_admits(value: Nat) -> Bool {
 
 fn nanoseconds_admits(value: Nat) -> Bool {
   value <= 999999999
-}
-
-
-fn subsecond_digit_count_admits(value: Nat) -> Bool {
-  value >= 1
 }
 
 
@@ -409,12 +412,6 @@ data nanoseconds_validation: Validation<Nat> = Validation {
 }
 
 
-data subsecond_digit_count_validation: Validation<Nat> = Validation {
-  reason: subsecond_digits_out_of_range,
-  admits: subsecond_digit_count_admits
-}
-
-
 data tz_offset_hour_validation: Validation<Nat> = Validation {
   reason: tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
@@ -494,15 +491,8 @@ fn make_nanoseconds(value: Nat, at: Locus) -> Outcome<Nanoseconds> {
 }
 
 
-fn make_subsecond_digit_count(value: Nat, at: Locus) -> Outcome<SubsecondDigitCount> {
-  bind_outcome(o: refine(base: value, by: subsecond_digit_count_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: SubsecondDigitCount { value: refined })
-  })
-}
-
-
-fn make_subsecond(fraction: SubsecondFraction) -> Subsecond {
-  FractionalSecond { fraction: fraction }
+fn make_subsecond(digits: SecfracDigits) -> Subsecond {
+  FractionalSecond { digits: digits }
 }
 
 
