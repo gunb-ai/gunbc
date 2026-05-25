@@ -168,6 +168,12 @@ data free_monoid_variant_cons: Symbol = free_monoid_variant_cons
 data free_monoid_field_head: Symbol = free_monoid_field_head
 data free_monoid_field_tail: Symbol = free_monoid_field_tail
 data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
+data ordered_ring_algebra_kind: Symbol = ordered_ring_algebra_kind
+data ordered_ring_inhabitant: Symbol = ordered_ring_inhabitant
+data approximate_field_algebra_kind: Symbol = approximate_field_algebra_kind
+data approximate_field_inhabitant: Symbol = approximate_field_inhabitant
+data boolean_algebra_kind: Symbol = boolean_algebra_kind
+data boolean_algebra_inhabitant: Symbol = boolean_algebra_inhabitant
 
 
 fn algebra_empty_conj() -> Node {
@@ -415,26 +421,35 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
 
 
 fn ordered_ring_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: ordered_ring_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ordered_ring_algebra_kind }, target: Node { kind: TypeNode { connective: Atom { identity: ordered_ring_algebra_kind } }, children: [] } },
+      Edge { label: Named { name: ordered_ring_inhabitant }, target: inhabitant },
+    ]
+  }
 }
 
 
 fn approximate_field_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: approximate_field_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: approximate_field_algebra_kind }, target: Node { kind: TypeNode { connective: Atom { identity: approximate_field_algebra_kind } }, children: [] } },
+      Edge { label: Named { name: approximate_field_inhabitant }, target: inhabitant },
+    ]
+  }
 }
 
 
 fn boolean_algebra_node(inhabitant: Node) -> Node {
-  algebra_inhabitance_node(
-    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
-    inhabitant: inhabitant
-  )
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: boolean_algebra_kind }, target: Node { kind: TypeNode { connective: Atom { identity: boolean_algebra_kind } }, children: [] } },
+      Edge { label: Named { name: boolean_algebra_inhabitant }, target: inhabitant },
+    ]
+  }
 }
 
 
