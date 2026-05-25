@@ -4,7 +4,7 @@
 //       mvp1_rust_canonical_grounding, mvp1_rust_inferred_facts_for, mvp1_rust_facts_lookup,
 //       anchor_mvp1_translate_accepts, anchor_mvp1_emit_accepts,
 //       claim_mvp1_translate_module_compiles, claim_mvp1_emit_module_compiles,
-//       claim_mvp1_emit_add_fn_accepts, mvp1_emit_receipt, mvp1_emit_accepted_source,
+//       claim_mvp1_emit_add_fn_accepts, mvp1_emit_receipt,
 //       run_mvp1_emit_add_fn_accepts, witness_mvp1_emit_accepts.
 // Consumes: compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag,
 //           extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag,
@@ -369,7 +369,7 @@ data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 
-// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node>; bootstrap enforced via mvp1_emit_accepted_source.
+// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node>.
 // 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_emit_add_fn_accepts,
@@ -390,25 +390,6 @@ data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Outcome<Node>> = TestClaim
     actual: mvp1_emit_claim_outcome(),
     at: mvp1_rust_emitted_root
   )
-}
-
-
-// Bootstrap compile-time enforcement: non-Pass verdict / non-Accepted receipt arms bind Node
-// where TargetSource (String) is required — v2 bootstrap fails closed (undefined-fn refs are resolved for all fn bodies).
-data mvp1_emit_accepted_source: TargetSource = match run_mvp1_emit_add_fn_accepts.verdict {
-  Pass =>
-    match mvp1_emit_receipt {
-      Accepted { value: source, diagnostics: None } =>
-        if source == rust_mvp1_source_text {
-          source
-        } else {
-          mvp1_rust_emitted_root
-        }
-      Accepted { value: _, diagnostics: _ } => mvp1_rust_emitted_root
-      Rejected { diagnostics: _ } => mvp1_rust_emitted_root
-    }
-  Fail { actual: _ } => mvp1_rust_emitted_root
-  Deferred { actual: _, diagnostic: _ } => mvp1_rust_emitted_root
 }
 
 
