@@ -159,8 +159,27 @@ data validation_right_recursive_root: GrammarRoot = GrammarRoot {
 }
 
 
-// Non-empty token list for the sync-recovery claim.
+// Non-empty token list for the sync-recovery and parse-table claims.
 data validation_one_token_list: List<Token> = Cons { head: validation_token(class: validation_tok_class), tail: Empty }
+
+
+data validation_rec_production: GrammarProduction = GrammarProduction {
+  name: validation_rec_start,
+  expression: Sequence {
+    left: Terminal { token_class: validation_tok_class },
+    right: Optional { element: Nonterminal { production: validation_rec_start } }
+  },
+  emitted: grammar_atom(identity: validation_rec_start)
+}
+
+
+fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
+  parse_production(
+    tokens: validation_one_token_list,
+    root: validation_right_recursive_root,
+    production: validation_rec_production
+  )
+}
 
 
 data claim_duplicate_productions_detected: TestClaim = EqualsClaim {
@@ -224,9 +243,7 @@ data claim_right_recursive_parse_succeeds: TestClaim = EqualsClaim {
   label: "parse_production accepts right-recursive A = 'x' A? on one matching token via memoized ParseTable",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(
-    b: validation_outcome_accepted(
-      out: validation_parse_start_production(root: validation_right_recursive_root)
-    )
+    b: validation_outcome_accepted(out: validation_right_recursive_parse_fixture())
   ),
   rhs: validation_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
