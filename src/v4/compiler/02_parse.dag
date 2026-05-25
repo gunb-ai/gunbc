@@ -19,6 +19,7 @@ import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_forme
 import v4.std.collection { List, Set }
 import v4.std.algebra { Cons, Empty, fold_list, fold_list_right, is_empty, length, list_append, list_skip, list_snoc_item }
 import v4.std.logic { Bool }
+import v4.std.nat { Nat, Zero, Succ }
 
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
@@ -80,6 +81,16 @@ type GrammarDupCheckState {
 type TokenPeek
   = TokenPeekAbsent
   | TokenPeekFirst { value: Token }
+
+// Accumulator for the fold-list based Repeat implementation in parse_expr.
+// fold_list over the token stream bounds iterations to length(tokens);
+// done: true short-circuits remaining steps.
+type ParseRepeatAcc {
+  remaining: List<Token>
+  acc_nodes: List<Node>
+  acc_diags: List<Diagnostic>
+  done: Bool
+}
 
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
 data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
