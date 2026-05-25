@@ -312,6 +312,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   doc_comment_code_block_width: 100,
   format_generated_files: true,
   hide_parse_errors: false,
+  report_fixme: RustfmtReportTacticNever,
+  report_todo: RustfmtReportTacticNever,
 
   merge_derives: true,
   use_field_init_shorthand: false,
@@ -340,7 +342,6 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   error_on_line_overflow: false,
   error_on_unformatted: false,
   skip_children: false,
-  skip_macro_invocations: [],
   type_punctuation_density: RustfmtTypePunctuationWide,
   disable_all_formatting: false,
   color: RustfmtColorAuto,
@@ -348,6 +349,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   version: RustfmtVersionOne,
   unstable_features: false,
   required_version: "CARGO_PKG_VERSION",
+  license_template_path: "",
   ignore: [],
 }
 
