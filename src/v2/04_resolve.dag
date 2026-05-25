@@ -160,8 +160,8 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
-// Bare parameterized type reference (e.g. `Pair` with zero children) — must not
-// reach emit and get repaired by heuristics; fail closed with ArityMismatch.
+// Bare parameterized type reference (e.g. Pair with zero children): fail closed
+// with ArityMismatch instead of letting emit repair it heuristically.
 fn is_bare_user_generic_type_reference(n: Node, env: TypeEnv) -> Bool {
   if n.children |> count > 0 || n.connective != NoConnective { false }
   else {

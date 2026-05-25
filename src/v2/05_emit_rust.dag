@@ -1676,7 +1676,7 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
         ty
       } else {
         let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
-        // Only explicit use-site args; no emit-time guess from enclosing type-param names (P3).
+        // Only explicit use-site args; no emit-time guess from enclosing type-param names.
         let args = if explicit_args |> count == expected {
           explicit_args
         } else {
