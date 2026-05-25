@@ -15,7 +15,6 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
-import v4.std.algebra { non_empty }
 import v4.std.collection { List, Map, list_nth }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
