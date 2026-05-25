@@ -6216,7 +6216,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-  if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" {
+  if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" || contains(raw_ty_str, "BoundedLattice<") {
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
         let meet_str = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
