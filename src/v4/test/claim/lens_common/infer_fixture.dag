@@ -34,8 +34,6 @@ fn claim_atom_node(s: Symbol) -> Node {
 fn claim_canonical_grounding(
   type_symbol: Symbol,
   algebra_symbol: Symbol,
-  canonical_structural_symbol: Symbol,
-  canonical_closedness_symbol: Symbol
 ) -> CanonicalGrounding {
   let resolved = claim_atom_node(s: type_symbol)
   let algebra = claim_atom_node(s: algebra_symbol)
@@ -43,11 +41,11 @@ fn claim_canonical_grounding(
     node: resolved,
     witness: CanonicalGroundingWitness {
       structural: StructuralPropertyWitness {
-        property: canonical_structural_symbol,
+        property: constraint_property_being_canonical,
         evidence: algebra
       },
       closedness: StructuralPropertyWitness {
-        property: canonical_closedness_symbol,
+        property: constraint_property_candidate_set_closedness,
         evidence: resolved
       }
     }
@@ -67,8 +65,6 @@ fn claim_inferred_facts_witness(
 fn claim_inferred_facts_from_nodes(
   resolved: Node,
   algebra: Node,
-  canonical_structural_symbol: Symbol,
-  canonical_closedness_symbol: Symbol,
   descent: Witness<TerminationProof>
 ) -> InferredFacts {
   claim_inferred_facts_witness(
@@ -76,11 +72,11 @@ fn claim_inferred_facts_from_nodes(
       node: resolved,
       witness: CanonicalGroundingWitness {
         structural: StructuralPropertyWitness {
-          property: canonical_structural_symbol,
+          property: constraint_property_being_canonical,
           evidence: algebra
         },
         closedness: StructuralPropertyWitness {
-          property: canonical_closedness_symbol,
+          property: constraint_property_candidate_set_closedness,
           evidence: resolved
         }
       }
@@ -93,15 +89,11 @@ fn claim_inferred_facts(
   type_symbol: Symbol,
   algebra_symbol: Symbol,
   descent_symbol: Symbol,
-  canonical_structural_symbol: Symbol,
-  canonical_closedness_symbol: Symbol
 ) -> InferredFacts {
   claim_inferred_facts_witness(
     grounding: claim_canonical_grounding(
       type_symbol: type_symbol,
       algebra_symbol: algebra_symbol,
-      canonical_structural_symbol: canonical_structural_symbol,
-      canonical_closedness_symbol: canonical_closedness_symbol
     ),
     descent: Holds {
       value: TerminationProof {

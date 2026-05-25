@@ -39,9 +39,6 @@ data apply_lens_mode_gate_at: Symbol = apply_lens_mode_gate_at
 data apply_lens_mode_type_symbol: Symbol = apply_lens_mode_type_symbol
 data apply_lens_mode_algebra_symbol: Symbol = apply_lens_mode_algebra_symbol
 data apply_lens_mode_descent_symbol: Symbol = apply_lens_mode_descent_symbol
-data apply_lens_mode_canonical_structural_symbol: Symbol = apply_lens_mode_canonical_structural_symbol
-data apply_lens_mode_canonical_closedness_symbol: Symbol = apply_lens_mode_canonical_closedness_symbol
-
 data apply_lens_mode_root: Node = claim_atom_node(s: apply_lens_mode_symbol)
 
 fn apply_lens_mode_tree() -> InferredTree {
@@ -51,8 +48,6 @@ fn apply_lens_mode_tree() -> InferredTree {
       type_symbol: apply_lens_mode_type_symbol,
       algebra_symbol: apply_lens_mode_algebra_symbol,
       descent_symbol: apply_lens_mode_descent_symbol,
-      canonical_structural_symbol: apply_lens_mode_canonical_structural_symbol,
-      canonical_closedness_symbol: apply_lens_mode_canonical_closedness_symbol
     )
   )
 }
