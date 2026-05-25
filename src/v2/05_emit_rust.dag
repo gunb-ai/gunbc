@@ -1652,6 +1652,16 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
 }
 
+fn explicit_type_arg_strings(type_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  if type_node.params |> count > 0 {
+    type_node.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
+  } else if type_node.connective == NoConnective && type_node.children |> count > 0 {
+    type_node.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices))
+  } else {
+    []
+  }
+}
+
 fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   let type_name = authored_name_at(source_indices: source_indices, node: type_node)
   match map_get(emit_info.type_summaries, type_name) {
@@ -1660,18 +1670,18 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
       if expected == 0 || contains(ty, concat(type_name, "<")) {
         ty
       } else {
-        let args = if (parent_generic_param_names |> count) >= expected {
-          parent_generic_param_names |> take(n: expected)
-        } else {
-          summary.generic_param_names
-        }
-        let with_args = concat(type_name, "<", args |> join(separator: ", "), ">")
-        if ty == type_name {
-          with_args
-        } else if ty == concat("Rc<", type_name, ">") {
-          concat("Rc<", with_args, ">")
-        } else if ty == concat("Box<", type_name, ">") {
-          concat("Box<", with_args, ">")
+        let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
+        if explicit_args |> count == expected {
+          let with_args = concat(type_name, "<", explicit_args |> join(separator: ", "), ">")
+          if ty == type_name {
+            with_args
+          } else if ty == concat("Rc<", type_name, ">") {
+            concat("Rc<", with_args, ">")
+          } else if ty == concat("Box<", type_name, ">") {
+            concat("Box<", with_args, ">")
+          } else {
+            ty
+          }
         } else {
           ty
         }
@@ -4448,7 +4458,7 @@ fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shar
 
 // BoundedLattice meet/join are fn carriers (Rc); top/bottom are stored values (Box).
 fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
-  let is_bounded_lattice_field = contains(struct_name, "BoundedLattice")
+  let is_bounded_lattice_field = struct_name == "BoundedLattice"
   if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
     concat("Rc::new(", raw, ")")
   } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
@@ -6248,7 +6258,8 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 
 fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, needs_rc: Bool) -> String {
   let raw_ty_str = render_rust_type(n: type_node, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-  if raw_ty_str == "BoundedLattice" || raw_ty_str == "Rc<BoundedLattice>" || contains(raw_ty_str, "BoundedLattice<") {
+  let type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)
+  if type_name == "BoundedLattice" {
     match value.expr_data {
       ExprRecordLit { parent_enum: _ } =>
         let meet_str = match field_value_by_name(record: value, field_name: "meet", source_indices: scope.type_env.source_indices) {
