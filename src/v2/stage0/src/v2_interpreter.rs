@@ -2546,6 +2546,27 @@ fn eval_builtin(
             _ => Ok(None),
         },
 
+        "atom_identity_hash" => match positional.as_slice() {
+            [Value::Str(s)] => Ok(Some(Value::Str(v2_rt::atom_identity_hash(s.clone())))),
+            _ => Err(InterpError::TypeError {
+                msg: "atom_identity_hash requires exactly one string argument".to_string(),
+            }),
+        },
+
+        "hash_combine" => match positional.as_slice() {
+            [Value::Str(a), Value::Str(b)] if positional.len() == 2 => {
+                if !v2_rt::is_hash_digest(a) || !v2_rt::is_hash_digest(b) {
+                    return Err(InterpError::TypeError {
+                        msg: "hash_combine requires exactly two Hash arguments".to_string(),
+                    });
+                }
+                Ok(Some(Value::Str(v2_rt::hash_combine(a.clone(), b.clone()))))
+            }
+            _ => Err(InterpError::TypeError {
+                msg: "hash_combine requires exactly two Hash arguments".to_string(),
+            }),
+        },
+
         // Not a built-in — fall through to user-defined function lookup
         _ => Ok(None),
     }

@@ -9,8 +9,8 @@ use crate::v2_std_core::Connective::NoConnective;
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v2_std_core::{
-    bool_type, int_type, make_span, string_type, unit_type, with_optional_cardinality, Cardinality,
-    Connective, ErrorNode, ExprData, InferredNode, Node,
+    bool_type, hash_type, int_type, make_span, string_type, unit_type, with_optional_cardinality,
+    Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -161,6 +161,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "list_push".to_string(),
             list_of_type_variable("collection_element".to_string()),
         );
+        let m = v2_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
+        let m = v2_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
         m.clone()
     }
 }
