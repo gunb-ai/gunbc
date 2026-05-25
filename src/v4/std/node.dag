@@ -95,7 +95,7 @@ type NodeFold<R> {
 }
 fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
+    algebra.step(acc, e, fold_node(n: e.target, algebra: algebra))
   })
 }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
