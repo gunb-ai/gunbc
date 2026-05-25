@@ -26,7 +26,7 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, Unavailable, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
 import v4.std.algebra { Cons, Empty, fold_list, is_empty, length, list_append, list_snoc_item }
-import v4.std.text { Char, String, string_head, string_is_empty, string_tail }
+import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { nat_lte, nat_gte }
 import v4.std.logic { Bool }
 
@@ -173,14 +173,22 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
       match string_is_empty(s: source) {
         true => LexMatchRejected
         false =>
-          match string_head(s: prefix) == string_head(s: source) {
-            true =>
-              match lex_match_prefix(prefix: string_tail(s: prefix), source: string_tail(s: source)) {
-                LexMatchRejected => LexMatchRejected
-                LexMatchAccepted { remaining: rest, lexeme: lex } =>
-                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: string_head(s: source), tail: lex } }
+          match string_head(s: prefix) {
+            CharAbsent => LexMatchRejected
+            CharFound { value: ph } =>
+              match string_head(s: source) {
+                CharAbsent => LexMatchRejected
+                CharFound { value: sh } =>
+                  match ph == sh {
+                    true =>
+                      match lex_match_prefix(prefix: string_tail(s: prefix), source: string_tail(s: source)) {
+                        LexMatchRejected => LexMatchRejected
+                        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+                          LexMatchAccepted { remaining: rest, lexeme: Cons { head: sh, tail: lex } }
+                      }
+                    false => LexMatchRejected
+                  }
               }
-            false => LexMatchRejected
           }
       }
   }
@@ -188,18 +196,22 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
 
 
 // lex_repeat_pattern: greedy zero-or-more match of element against source.
-// Terminates because each accepted iteration strictly reduces source length
-// (grammar data authors must not define zero-width RepeatPattern elements).
+// Termination: zero-width matches (empty consumed) halt immediately; otherwise
+// each iteration strictly reduces source length.
 fn lex_repeat_pattern(pattern: LexPattern, source: String, acc_lexeme: String) -> LexMatchResult {
   match lex_match_pattern(pattern: pattern, source: source) {
     LexMatchRejected =>
       LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
     LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-      lex_repeat_pattern(
-        pattern: pattern,
-        source: rest,
-        acc_lexeme: list_append(left: acc_lexeme, right: consumed)
-      )
+      match string_is_empty(s: consumed) {
+        true => LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
+        false =>
+          lex_repeat_pattern(
+            pattern: pattern,
+            source: rest,
+            acc_lexeme: list_append(left: acc_lexeme, right: consumed)
+          )
+      }
   }
 }
 
@@ -217,9 +229,13 @@ fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
           match string_is_empty(s: rest) {
             true => LexMatchAccepted { remaining: rest, lexeme: lex }
             false =>
-              match char_in_class(c: string_head(s: rest), class: IdentContinueChar) {
-                true => LexMatchRejected
-                false => LexMatchAccepted { remaining: rest, lexeme: lex }
+              match string_head(s: rest) {
+                CharAbsent => LexMatchAccepted { remaining: rest, lexeme: lex }
+                CharFound { value: c } =>
+                  match char_in_class(c: c, class: IdentContinueChar) {
+                    true => LexMatchRejected
+                    false => LexMatchAccepted { remaining: rest, lexeme: lex }
+                  }
               }
           }
       }
@@ -227,26 +243,34 @@ fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
       match string_is_empty(s: source) {
         true => LexMatchRejected
         false =>
-          match string_head(s: source) == expected {
-            true =>
-              LexMatchAccepted {
-                remaining: string_tail(s: source),
-                lexeme: Cons { head: string_head(s: source), tail: Empty }
+          match string_head(s: source) {
+            CharAbsent => LexMatchRejected
+            CharFound { value: c } =>
+              match c == expected {
+                true =>
+                  LexMatchAccepted {
+                    remaining: string_tail(s: source),
+                    lexeme: Cons { head: c, tail: Empty }
+                  }
+                false => LexMatchRejected
               }
-            false => LexMatchRejected
           }
       }
     CharClassPattern { class: class } =>
       match string_is_empty(s: source) {
         true => LexMatchRejected
         false =>
-          match char_in_class(c: string_head(s: source), class: class) {
-            true =>
-              LexMatchAccepted {
-                remaining: string_tail(s: source),
-                lexeme: Cons { head: string_head(s: source), tail: Empty }
+          match string_head(s: source) {
+            CharAbsent => LexMatchRejected
+            CharFound { value: c } =>
+              match char_in_class(c: c, class: class) {
+                true =>
+                  LexMatchAccepted {
+                    remaining: string_tail(s: source),
+                    lexeme: Cons { head: c, tail: Empty }
+                  }
+                false => LexMatchRejected
               }
-            false => LexMatchRejected
           }
       }
     SequencePattern { left: left, right: right } =>
