@@ -237,6 +237,14 @@ fn rust_enum_derives_copy_text() -> String {
   rust_enum_derives_copy
 }
 
+fn rust_ord_derives_text() -> String {
+  "#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
+}
+
+fn rust_ord_derives_copy_text() -> String {
+  "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
+}
+
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
@@ -1638,6 +1646,10 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
   let derives = if has_fn_fields {
     "#[derive(Clone)]"
+  } else if name == "Symbol" {
+    rust_ord_derives_copy_text()
+  } else if name == "DiffId" {
+    rust_ord_derives_text()
   } else if set_contains(shared_types, name) {
     rust_struct_derives_text()
   } else {
@@ -3153,12 +3165,13 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-// BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers;
-// Float (no total Ord), Json (serde_json::Value), and nominal types fail-closed.
+// BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers
+// plus nominal carriers that the Rust emitter also derives Ord for.
+// Float (no total Ord), Json (serde_json::Value), and other nominal types fail-closed.
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
   elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
-    || elem_name == "Secret" || elem_name == "Bytes"
+    || elem_name == "Secret" || elem_name == "Bytes" || elem_name == "Symbol" || elem_name == "DiffId"
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
