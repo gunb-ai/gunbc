@@ -14,11 +14,11 @@ import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.tokenize { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
-  AlgebraRef,
   InferredFacts,
   InferredTree,
   infer
 }
+import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v4.std.algebra { Empty }
 import v4.std.collection { Map, empty_map }
 import v4.std.diagnostic {
@@ -32,11 +32,10 @@ import v4.std.diagnostic {
 import v4.std.algebra { Empty }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
 import v4.std.constraints {
-  CanonicalGroundingWitness,
   constraint_property_being_canonical,
   constraint_property_candidate_set_closedness
 }
-import v4.std.witness { StructuralPropertyWitness, Violates, Witness }
+import v4.std.witness { Violates, Witness }
 
 
 data anchor_stub_empty_conj: Node = Node {
@@ -56,40 +55,21 @@ data anchor_stub_target_model: TargetModel = TargetModel {
 data anchor_stub_source: Source = Empty
 
 
-data anchor_stub_algebra_ref: AlgebraRef = AlgebraRef {
-  algebra: anchor_stub_empty_conj,
-  witness: anchor_stub_empty_conj
-}
-
-
 data anchor_facts_map_lookup_not_realized: Symbol = anchor_facts_map_lookup_not_realized
 data anchor_stub_descent_not_derived: Symbol = anchor_stub_descent_not_derived
 
 
-data anchor_stub_canonical_witness: CanonicalGroundingWitness = CanonicalGroundingWitness {
-  structural: StructuralPropertyWitness {
-    property: constraint_property_being_canonical,
-    evidence: anchor_stub_empty_conj
-  },
-  closedness: StructuralPropertyWitness {
-    property: constraint_property_candidate_set_closedness,
-    evidence: anchor_stub_empty_conj
-  }
-}
-
-
-data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
-  resolved_type: anchor_stub_empty_conj,
-  inhabits: anchor_stub_algebra_ref,
+data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes(
+  resolved: anchor_stub_empty_conj,
+  algebra: anchor_stub_empty_conj,
   descent: Violates {
     diagnostic: Diagnostic {
       reason: anchor_stub_descent_not_derived,
       at: node_locus(node: anchor_stub_empty_conj),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
-  },
-  canonical: anchor_stub_canonical_witness
-}
+  }
+)
 
 
 data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {

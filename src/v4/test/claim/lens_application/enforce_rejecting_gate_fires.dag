@@ -37,12 +37,7 @@ data enforce_reject_symbol: Symbol = enforce_reject_symbol
 data enforce_reject_gate_at: Symbol = enforce_reject_gate_at
 data enforce_reject_type_symbol: Symbol = enforce_reject_type_symbol
 data enforce_reject_algebra_symbol: Symbol = enforce_reject_algebra_symbol
-data enforce_reject_algebra_witness_symbol: Symbol = enforce_reject_algebra_witness_symbol
 data enforce_reject_descent_symbol: Symbol = enforce_reject_descent_symbol
-data enforce_reject_canonical_structural_symbol: Symbol = enforce_reject_canonical_structural_symbol
-data enforce_reject_canonical_closedness_symbol: Symbol = enforce_reject_canonical_closedness_symbol
-data enforce_reject_canonical_evidence_symbol: Symbol = enforce_reject_canonical_evidence_symbol
-
 data enforce_reject_root: Node = claim_atom_node(s: enforce_reject_symbol)
 
 fn enforce_reject_tree() -> InferredTree {
@@ -51,11 +46,7 @@ fn enforce_reject_tree() -> InferredTree {
     facts: claim_inferred_facts(
       type_symbol: enforce_reject_type_symbol,
       algebra_symbol: enforce_reject_algebra_symbol,
-      algebra_witness_symbol: enforce_reject_algebra_witness_symbol,
       descent_symbol: enforce_reject_descent_symbol,
-      canonical_structural_symbol: enforce_reject_canonical_structural_symbol,
-      canonical_closedness_symbol: enforce_reject_canonical_closedness_symbol,
-      canonical_evidence_symbol: enforce_reject_canonical_evidence_symbol
     )
   )
 }

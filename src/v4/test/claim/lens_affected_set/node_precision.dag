@@ -25,12 +25,7 @@ data affected_set_root_edge_symbol: Symbol = affected_set_root_edge_symbol
 data affected_set_mid_edge_symbol: Symbol = affected_set_mid_edge_symbol
 data affected_set_type_symbol: Symbol = affected_set_type_symbol
 data affected_set_algebra_symbol: Symbol = affected_set_algebra_symbol
-data affected_set_algebra_witness_symbol: Symbol = affected_set_algebra_witness_symbol
 data affected_set_descent_symbol: Symbol = affected_set_descent_symbol
-data affected_set_canonical_structural_symbol: Symbol = affected_set_canonical_structural_symbol
-data affected_set_canonical_closedness_symbol: Symbol = affected_set_canonical_closedness_symbol
-data affected_set_canonical_evidence_symbol: Symbol = affected_set_canonical_evidence_symbol
-
 data affected_set_leaf: Node = claim_atom_node(s: affected_set_leaf_symbol)
 
 data affected_set_mid: Node = Node {
@@ -51,11 +46,7 @@ fn affected_set_claim_facts() -> InferredFacts {
   claim_inferred_facts(
     type_symbol: affected_set_type_symbol,
     algebra_symbol: affected_set_algebra_symbol,
-    algebra_witness_symbol: affected_set_algebra_witness_symbol,
     descent_symbol: affected_set_descent_symbol,
-    canonical_structural_symbol: affected_set_canonical_structural_symbol,
-    canonical_closedness_symbol: affected_set_canonical_closedness_symbol,
-    canonical_evidence_symbol: affected_set_canonical_evidence_symbol
   )
 }
 

@@ -33,12 +33,7 @@ data effect_child_symbol: Symbol = effect_child_symbol
 data effect_edge_symbol: Symbol = effect_edge_symbol
 data effect_type_symbol: Symbol = effect_type_symbol
 data effect_algebra_symbol: Symbol = effect_algebra_symbol
-data effect_algebra_witness_symbol: Symbol = effect_algebra_witness_symbol
 data effect_descent_symbol: Symbol = effect_descent_symbol
-data effect_canonical_structural_symbol: Symbol = effect_canonical_structural_symbol
-data effect_canonical_closedness_symbol: Symbol = effect_canonical_closedness_symbol
-data effect_canonical_evidence_symbol: Symbol = effect_canonical_evidence_symbol
-
 data effect_child: Node = claim_atom_node(s: effect_child_symbol)
 
 data effect_root: Node = Node {
@@ -59,11 +54,7 @@ fn effect_claim_facts() -> InferredFacts {
   claim_inferred_facts(
     type_symbol: effect_type_symbol,
     algebra_symbol: effect_algebra_symbol,
-    algebra_witness_symbol: effect_algebra_witness_symbol,
     descent_symbol: effect_descent_symbol,
-    canonical_structural_symbol: effect_canonical_structural_symbol,
-    canonical_closedness_symbol: effect_canonical_closedness_symbol,
-    canonical_evidence_symbol: effect_canonical_evidence_symbol
   )
 }
 
