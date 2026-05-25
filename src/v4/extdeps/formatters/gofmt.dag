@@ -1,16 +1,11 @@
 // src/v4/extdeps/formatters/gofmt.dag
-// Scope: gofmt canonical style invariant carrier (no project config file).
-// Owns: GofmtCanonicalStyle, gofmt_canonical_style, GofmtConfig, gofmt_defaults, gofmt_layer.
+// Scope: gofmt configuration carrier (no project config file; no configurable style options).
+// Owns: GofmtConfig, gofmt_defaults, gofmt_layer.
 // Consumes: none.
 // Status: T-4.16 scaffold — gofmt doc.go (no style configuration surface).
 // Anchor: https://go.dev/src/cmd/gofmt/doc.go
 
 module v4.extdeps.formatters.gofmt
-
-
-type GofmtCanonicalStyle {}
-
-data gofmt_canonical_style: GofmtCanonicalStyle = GofmtCanonicalStyle {}
 
 
 type GofmtConfig {}
