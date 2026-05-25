@@ -1,0 +1,155 @@
+// src/v4/extdeps/formatters/prettier.dag
+// Scope: Prettier configuration model — real formatter option space grounded in .prettierrc / package.json "prettier".
+// Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap,
+//       PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting,
+//       PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierConfig,
+//       prettier_defaults, prettier_merge.
+// Consumes: none (pure config substrate; no node/compiler dependency).
+// Status: T-4.16 scaffold — Prettier stable options per prettier.io/docs/options (v3 defaults).
+// Anchor: https://prettier.io/docs/options
+// Note: override composition — consumer folds List<PrettierConfig> via prettier_merge; each
+//       layer is a complete config. Field-granularity patch substrate (partial overrides) is
+//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
+//       per-field Override/Inherit variants replaces full-config layering.
+// Note: `parser`, `filepath`, and `rangeStart`/`rangeEnd` are CLI/API-only per Prettier docs —
+//       omitted from PrettierConfig (use overrides[] at invocation time, not top-level config).
+
+module v4.extdeps.formatters.prettier
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierTrailingComma
+  = PrettierTrailingCommaAll
+  | PrettierTrailingCommaEs5
+  | PrettierTrailingCommaNone
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierQuoteProps
+  = PrettierQuotePropsAsNeeded
+  | PrettierQuotePropsConsistent
+  | PrettierQuotePropsPreserve
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierArrowParens
+  = PrettierArrowParensAlways
+  | PrettierArrowParensAvoid
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierProseWrap
+  = PrettierProseWrapAlways
+  | PrettierProseWrapNever
+  | PrettierProseWrapPreserve
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierHtmlWhitespaceSensitivity
+  = PrettierHtmlWhitespaceCss
+  | PrettierHtmlWhitespaceStrict
+  | PrettierHtmlWhitespaceIgnore
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierEndOfLine
+  = PrettierEndOfLineLf
+  | PrettierEndOfLineCrlf
+  | PrettierEndOfLineCr
+  | PrettierEndOfLineAuto
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierEmbeddedLanguageFormatting
+  = PrettierEmbeddedLanguageAuto
+  | PrettierEmbeddedLanguageOff
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierObjectWrap
+  = PrettierObjectWrapPreserve
+  | PrettierObjectWrapCollapse
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierExperimentalOperatorPosition
+  = PrettierOperatorPositionStart
+  | PrettierOperatorPositionEnd
+
+
+type PrettierConfig {
+  // Core layout
+  print_width: Int
+  tab_width: Int
+  use_tabs: Bool
+
+  // JavaScript / TypeScript
+  semi: Bool
+  single_quote: Bool
+  quote_props: PrettierQuoteProps
+  jsx_single_quote: Bool
+  trailing_comma: PrettierTrailingComma
+  bracket_spacing: Bool
+  object_wrap: PrettierObjectWrap
+  bracket_same_line: Bool
+  arrow_parens: PrettierArrowParens
+
+  // Pragma markers
+  require_pragma: Bool
+  insert_pragma: Bool
+  check_ignore_pragma: Bool
+
+  // Markup / prose
+  prose_wrap: PrettierProseWrap
+  html_whitespace_sensitivity: PrettierHtmlWhitespaceSensitivity
+  vue_indent_script_and_style: Bool
+  single_attribute_per_line: Bool
+
+  // Line endings / embedded code
+  end_of_line: PrettierEndOfLine
+  embedded_language_formatting: PrettierEmbeddedLanguageFormatting
+
+  // Experimental (Prettier v3+)
+  experimental_ternaries: Bool
+  experimental_operator_position: PrettierExperimentalOperatorPosition
+}
+
+
+// Official Prettier v3 defaults (prettier.io/docs/options).
+data prettier_defaults: PrettierConfig = PrettierConfig {
+  print_width: 80,
+  tab_width: 2,
+  use_tabs: false,
+
+  semi: true,
+  single_quote: false,
+  quote_props: PrettierQuotePropsAsNeeded,
+  jsx_single_quote: false,
+  trailing_comma: PrettierTrailingCommaAll,
+  bracket_spacing: true,
+  object_wrap: PrettierObjectWrapPreserve,
+  bracket_same_line: false,
+  arrow_parens: PrettierArrowParensAlways,
+
+  require_pragma: false,
+  insert_pragma: false,
+  check_ignore_pragma: false,
+
+  prose_wrap: PrettierProseWrapPreserve,
+  html_whitespace_sensitivity: PrettierHtmlWhitespaceCss,
+  vue_indent_script_and_style: false,
+  single_attribute_per_line: false,
+
+  end_of_line: PrettierEndOfLineLf,
+  embedded_language_formatting: PrettierEmbeddedLanguageAuto,
+
+  experimental_ternaries: false,
+  experimental_operator_position: PrettierOperatorPositionEnd,
+}
+
+
+// Apply override: every field in `override` wins unconditionally.
+// Hierarchical layering: fold(patches, init: prettier_defaults, f: prettier_merge).
+fn prettier_merge(base: PrettierConfig, override: PrettierConfig) -> PrettierConfig {
+  override
+}

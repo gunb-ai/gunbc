@@ -1,0 +1,73 @@
+// src/v4/extdeps/formatters/black.dag
+// Scope: Black configuration model — real formatter option space grounded in pyproject.toml [tool.black].
+// Owns: BlackTargetVersion, BlackConfig, black_defaults, black_merge.
+// Consumes: none (pure config substrate; no node/compiler dependency).
+// Status: T-4.16 scaffold — pyproject.toml [tool.black] option space per Black 26.x docs.
+// Anchor: https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html
+// Note: override composition — consumer folds List<BlackConfig> via black_merge; each
+//       layer is a complete config. Field-granularity patch substrate (partial overrides) is
+//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
+//       per-field Override/Inherit variants replaces full-config layering.
+
+module v4.extdeps.formatters.black
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackTargetVersion
+  = BlackPy37
+  | BlackPy38
+  | BlackPy39
+  | BlackPy310
+  | BlackPy311
+  | BlackPy312
+  | BlackPy313
+  | BlackPy314
+
+
+type BlackConfig {
+  // Line length
+  line_length: Int
+
+  // Python grammar / style target (pyproject `target-version`; single primary version).
+  target_version: BlackTargetVersion
+
+  // Require a specific Black version (pyproject `required-version`; empty = unset).
+  required_version: String
+
+  // File collection (regex strings; pyproject uses single-quoted TOML strings).
+  include: String
+  exclude: String
+  extend_exclude: String
+  force_exclude: String
+
+  // Formatting behavior
+  skip_string_normalization: Bool
+  skip_magic_trailing_comma: Bool
+  preview: Bool
+  unstable: Bool
+}
+
+
+// Official Black defaults for pyproject.toml [tool.black] (Black 26.x stable docs).
+data black_defaults: BlackConfig = BlackConfig {
+  line_length: 88,
+  target_version: BlackPy311,
+  required_version: "",
+
+  include: "\\.pyi?$",
+  exclude: "",
+  extend_exclude: "",
+  force_exclude: "",
+
+  skip_string_normalization: false,
+  skip_magic_trailing_comma: false,
+  preview: false,
+  unstable: false,
+}
+
+
+// Apply override: every field in `override` wins unconditionally.
+// Hierarchical layering: fold(patches, init: black_defaults, f: black_merge).
+fn black_merge(base: BlackConfig, override: BlackConfig) -> BlackConfig {
+  override
+}

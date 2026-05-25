@@ -1,0 +1,42 @@
+// src/v4/extdeps/formatters/gofmt.dag
+// Scope: gofmt configuration model — minimal formatter option space grounded in cmd/gofmt docs.
+// Owns: GofmtConfig, gofmt_defaults, gofmt_merge.
+// Consumes: none (pure config substrate; no node/compiler dependency).
+// Status: T-4.16 scaffold — gofmt has no project config file; style is canonical (tabs + blanks).
+// Anchor: https://go.dev/src/cmd/gofmt/doc.go
+// Note: override composition — consumer folds List<GofmtConfig> via gofmt_merge; each
+//       layer is a complete config. Field-granularity patch substrate (partial overrides) is
+//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
+//       per-field Override/Inherit variants replaces full-config layering.
+// Simplicity claim: gofmt exposes no rustfmt.toml-style style surface — indentation uses tabs,
+// alignment uses spaces, and tab width is fixed at 8 in the printer (not user-configurable).
+
+module v4.extdeps.formatters.gofmt
+
+
+type GofmtConfig {
+  // Fixed canonical style facts (not CLI flags).
+  tab_width: Int
+  indent_with_tabs: Bool
+
+  // Optional pre-format transforms (gofmt -s / -r flags).
+  simplify: Bool
+  rewrite_rule: String
+}
+
+
+// Official gofmt defaults: canonical tab-indented style; -s/-r off unless explicitly set.
+data gofmt_defaults: GofmtConfig = GofmtConfig {
+  tab_width: 8,
+  indent_with_tabs: true,
+
+  simplify: false,
+  rewrite_rule: "",
+}
+
+
+// Apply override: every field in `override` wins unconditionally.
+// Hierarchical layering: fold(patches, init: gofmt_defaults, f: gofmt_merge).
+fn gofmt_merge(base: GofmtConfig, override: GofmtConfig) -> GofmtConfig {
+  override
+}
