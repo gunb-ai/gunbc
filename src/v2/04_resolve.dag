@@ -160,6 +160,24 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
+// Bare parameterized type reference (e.g. `Pair` with zero children) — must not
+// reach emit and get repaired by heuristics; fail closed with ArityMismatch.
+fn is_bare_user_generic_type_reference(n: Node, env: TypeEnv) -> Bool {
+  if n.children |> count != 0 { false }
+  else if n.connective != NoConnective { false }
+  else {
+    match lookup_type_for(env: env, node: n) {
+      Some { value: decl } =>
+        if decl.params |> count > 0 {
+          if is_container_type(name: authored_name(env: env, node: n)) { false }
+          else if decl.inferred != none { true }
+          else { true }
+        } else { false }
+      None => false
+    }
+  }
+}
+
 fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
@@ -429,6 +447,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     } else {
       match lookup_type_for(env: env, node: n) {
         Some { value: resolved } =>
+          let type_name = authored_name(env: env, node: n)
+          let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+          let bare_arity_diags = if is_bare_user_generic_type_reference(n: n, env: env) && !n_is_type_var {
+            [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: resolved.params |> count, got: 0, span: n.span }, module_name: module_name)]
+          } else { [] }
           // Topological resolution ensures bindings are fully resolved before
           // any dependent type is processed. Re-resolving the looked-up node
           // would redundantly walk the entire expanded subtree, causing
@@ -453,7 +476,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           } else { resolved }
           let is_optional = n.return_cardinality == CardOptional
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          NodeResolveResult { resolved: final_resolved, diagnostics: [] }
+          NodeResolveResult { resolved: final_resolved, diagnostics: bare_arity_diags }
         None =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
