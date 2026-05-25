@@ -178,6 +178,7 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: LexPattern repeat combinator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived greedy-repeat morphism over LexPattern's RepeatPattern variant, eliminating the hand-rolled zero-width halt guard; forbidden: inlining repeat semantics into the pattern match arms of lex_match_pattern.
 // lex_repeat_pattern: greedy zero-or-more match of element against source.
 // Termination: zero-width matches (empty consumed) halt immediately; otherwise
 // each iteration strictly reduces source length.
@@ -199,6 +200,7 @@ fn lex_repeat_pattern(pattern: LexPattern, source: String, acc_lexeme: String) -
 }
 
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: LexPattern structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived pattern-matching morphism over LexPattern coproduct (per-variant fold eliminating hand-written match arms); forbidden: adding new match arms outside the substrate derivation path.
 fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
   match pattern {
     EmptyPattern =>
