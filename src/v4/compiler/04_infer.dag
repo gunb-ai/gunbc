@@ -40,6 +40,7 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
+  ComputationNode,
   Edge,
   Node,
   NodeFold,
@@ -141,14 +142,19 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
 // feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded
 // dissolve-on-arrival: std/node.dag or std/model_core.dag exports a canonical structural
-// query for "algebra Node is grounded" (non-bare-Atom); until then, this is the only guard
-// site in canonical_grounding_from_inferred_facts.
-// Returns false when `algebra` is a bare Atom TypeNode — a bridge symbol or identity-MVP
-// solver return that has no structure for the coercion fold to walk.
+// query for "algebra Node is grounded" (non-bare-Atom TypeNode); until then, this is the
+// only guard site in canonical_grounding_from_inferred_facts.
+// Returns true only when `algebra` is a TypeNode with a non-Atom connective.
+// ComputationNode algebra evidence fails-closed — computation nodes are never valid
+// algebra types; only TypeNode shapes are (Conj, Arrow, Instantiation, etc.).
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
-    TypeNode { connective: Atom { identity: _ } } => false
-    _ => true
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: _ } => false
+        _ => true
+      }
+    ComputationNode { behavior: _ } => false
   }
 }
 
