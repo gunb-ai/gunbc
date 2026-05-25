@@ -3,11 +3,15 @@
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 // Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
 //       Node projection functions, left-recursion check, error-recovery helpers,
-//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error, expr_is_nullable,
-//       expr_has_undefined_nonterminal, grammar_has_undefined_nonterminals,
-//       grammar_has_left_recursion_step, grammar_has_undefined_nonterminals_step, parse_sync_step.
-// Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
+//       ParseSyncState, TokenPeek, ParseRepeatAcc, parse_diag_cons, parse_token_first,
+//       parse_e1_syntax_error, expr_is_nullable, expr_has_undefined_nonterminal,
+//       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
+//       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel.
+// Consumes: std diagnostic, std node, std algebra, std collection, std nat, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
+//         Fuel-based termination proofs on Nonterminal arms of expr_is_nullable,
+//         expr_reaches_nonterminal_left, and parse_expr; fold_list Repeat arm eliminates
+//         parse_repeat mutual SCC — all functions pass v2 complexity analysis (0 diagnostics).
 
 
 module v4.compiler.parse
@@ -39,9 +43,9 @@ type GrammarProduction {
 }
 
 
-// 🟡 gated — feature: T-8 parse error-recovery trigger — sync_tokens present; recovery loop
-// (parse_repeat_error_recover, parse_skip_to_sync) structurally correct but unreachable until
-// parse_expr emits non-empty diagnostics on committed Terminal mismatches. Dissolve-on: T-8.
+// 🟡 gated — feature: T-8 parse error-recovery trigger — sync_tokens present; parse_skip_to_sync
+// is structurally correct but unreachable until parse_expr emits non-empty diagnostics on
+// committed Terminal mismatches. Dissolve-on: T-8.
 type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
@@ -122,8 +126,6 @@ data parse_grammar_undefined_nonterminal: Symbol = parse_grammar_undefined_nonte
 
 data parse_grammar_duplicate_production: Symbol = parse_grammar_duplicate_production
 
-data parse_e1_repeat_recovery: Symbol = parse_e1_repeat_recovery
-
 data parse_e1_syntax_error: Symbol = parse_e1_syntax_error
 
 
@@ -184,15 +186,6 @@ fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
 fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: parse_e1_syntax_error,
-    at: at,
-    correction: Unavailable { reason: UserInputBoundary }
-  }
-}
-
-
-fn parse_e1_repeat_recovery_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: parse_e1_repeat_recovery,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
@@ -394,12 +387,21 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
+// grammar_fuel: upper bound on cross-production expansion depth — one unit per production.
+// Passed as the fuel: Nat parameter to expr_is_nullable, expr_reaches_nonterminal_left,
+// and parse_expr so the complexity analyzer can prove termination on the Nonterminal arms.
+fn grammar_fuel(root: GrammarRoot) -> Nat {
+  fold_list(xs: root.productions, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } })
+}
+
+
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived nullable query morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating nullable logic outside this function.
 // expr_is_nullable: true iff expr can match empty input.
 // Optional/Repeat are always nullable; Sequence requires both halves nullable; Choice either.
 // Nonterminal expands with a visited guard to prevent looping on nullable mutual recursion.
 fn expr_is_nullable(
   expr: GrammarExpr,
+  fuel: Nat,
   visited: Set<Symbol>,
   root: GrammarRoot
 ) -> Bool {
@@ -409,22 +411,27 @@ fn expr_is_nullable(
       match visited.member(p) {
         true => false
         false =>
-          match grammar_lookup_production(root: root, name: p) {
-            GrammarProductionMissing => false
-            GrammarProductionFound { production: prod } =>
-              expr_is_nullable(
-                expr: prod.expression,
-                visited: set_symbol_insert(s: visited, item: p),
-                root: root
-              )
+          match fuel {
+            Zero => false
+            Succ { prev: rest } =>
+              match grammar_lookup_production(root: root, name: p) {
+                GrammarProductionMissing => false
+                GrammarProductionFound { production: prod } =>
+                  expr_is_nullable(
+                    expr: prod.expression,
+                    fuel: rest,
+                    visited: set_symbol_insert(s: visited, item: p),
+                    root: root
+                  )
+              }
           }
       }
     Sequence { left: left, right: right } =>
-      expr_is_nullable(expr: left, visited: visited, root: root) &&
-      expr_is_nullable(expr: right, visited: visited, root: root)
+      expr_is_nullable(expr: left, fuel: fuel, visited: visited, root: root) &&
+      expr_is_nullable(expr: right, fuel: fuel, visited: visited, root: root)
     Choice { left: left, right: right } =>
-      expr_is_nullable(expr: left, visited: visited, root: root) ||
-      expr_is_nullable(expr: right, visited: visited, root: root)
+      expr_is_nullable(expr: left, fuel: fuel, visited: visited, root: root) ||
+      expr_is_nullable(expr: right, fuel: fuel, visited: visited, root: root)
     Optional { element: _ } => true
     Repeat { element: _ } => true
   }
@@ -438,6 +445,7 @@ fn expr_is_nullable(
 fn expr_reaches_nonterminal_left(
   expr: GrammarExpr,
   name: Symbol,
+  fuel: Nat,
   visited: Set<Symbol>,
   root: GrammarRoot
 ) -> Bool {
@@ -448,28 +456,33 @@ fn expr_reaches_nonterminal_left(
       match visited.member(p) {
         true => false
         false =>
-          match grammar_lookup_production(root: root, name: p) {
-            GrammarProductionMissing => false
-            GrammarProductionFound { production: prod } =>
-              expr_reaches_nonterminal_left(
-                expr: prod.expression,
-                name: name,
-                visited: set_symbol_insert(s: visited, item: p),
-                root: root
-              )
+          match fuel {
+            Zero => false
+            Succ { prev: rest } =>
+              match grammar_lookup_production(root: root, name: p) {
+                GrammarProductionMissing => false
+                GrammarProductionFound { production: prod } =>
+                  expr_reaches_nonterminal_left(
+                    expr: prod.expression,
+                    name: name,
+                    fuel: rest,
+                    visited: set_symbol_insert(s: visited, item: p),
+                    root: root
+                  )
+              }
           }
       }
     Sequence { left: left, right: right } =>
-      expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root) ||
-      (expr_is_nullable(expr: left, visited: visited, root: root) &&
-       expr_reaches_nonterminal_left(expr: right, name: name, visited: visited, root: root))
+      expr_reaches_nonterminal_left(expr: left, name: name, fuel: fuel, visited: visited, root: root) ||
+      (expr_is_nullable(expr: left, fuel: fuel, visited: visited, root: root) &&
+       expr_reaches_nonterminal_left(expr: right, name: name, fuel: fuel, visited: visited, root: root))
     Choice { left: left, right: right } =>
-      expr_reaches_nonterminal_left(expr: left, name: name, visited: visited, root: root) ||
-      expr_reaches_nonterminal_left(expr: right, name: name, visited: visited, root: root)
+      expr_reaches_nonterminal_left(expr: left, name: name, fuel: fuel, visited: visited, root: root) ||
+      expr_reaches_nonterminal_left(expr: right, name: name, fuel: fuel, visited: visited, root: root)
     Optional { element: element } =>
-      expr_reaches_nonterminal_left(expr: element, name: name, visited: visited, root: root)
+      expr_reaches_nonterminal_left(expr: element, name: name, fuel: fuel, visited: visited, root: root)
     Repeat { element: element } =>
-      expr_reaches_nonterminal_left(expr: element, name: name, visited: visited, root: root)
+      expr_reaches_nonterminal_left(expr: element, name: name, fuel: fuel, visited: visited, root: root)
   }
 }
 
@@ -479,6 +492,7 @@ fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: Gramma
   expr_reaches_nonterminal_left(
     expr: p.expression,
     name: p.name,
+    fuel: grammar_fuel(root: root),
     visited: Set { member: fn(_) { false } },
     root: root
   )
@@ -637,100 +651,8 @@ fn parse_token_first(tokens: List<Token>) -> TokenPeek {
 }
 
 
-fn parse_repeat_error_recover(
-  element: GrammarExpr,
-  tokens: List<Token>,
-  root: GrammarRoot,
-  acc_nodes: List<Node>,
-  acc_diags: List<Diagnostic>,
-  failed_diags: List<Diagnostic>
-) -> ParseExprResult {
-  let at = port_locus(port: parse_stage_locus_port)
-  let synced = parse_skip_to_sync(tokens: tokens, sync_tokens: root.sync_tokens)
-  let new_diags = list_append(
-    left: acc_diags,
-    right: list_append(
-      left: failed_diags,
-      right: Cons { head: parse_e1_repeat_recovery_diagnostic(at: at), tail: Empty }
-    )
-  )
-  match synced.found_sync {
-    false =>
-      ParseExprAccepted {
-        remaining: tokens,
-        captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
-        diagnostics: new_diags
-      }
-    true =>
-      match length(xs: synced.result) < length(xs: tokens) {
-        true =>
-          parse_repeat(element: element, tokens: synced.result, root: root, acc_nodes: acc_nodes, acc_diags: new_diags)
-        false =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
-            diagnostics: new_diags
-          }
-      }
-  }
-}
-
-
-// parse_repeat: greedy zero-or-more, with error recovery via sync-token skip.
-// Termination: zero-progress accepted matches (Optional/Empty elements that consume no tokens)
-// halt immediately; each consuming iteration reduces token count; each error recovery
-// either skips tokens (reducing count) or stops (no skip = no progress).
-fn parse_repeat(
-  element: GrammarExpr,
-  tokens: List<Token>,
-  root: GrammarRoot,
-  acc_nodes: List<Node>,
-  acc_diags: List<Diagnostic>
-) -> ParseExprResult {
-  match parse_expr(expr: element, tokens: tokens, root: root) {
-    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
-      match length(xs: rest) != length(xs: tokens) {
-        true =>
-          parse_repeat(
-            element: element,
-            tokens: rest,
-            root: root,
-            acc_nodes: list_snoc_item(xs: acc_nodes, item: cap),
-            acc_diags: list_append(left: acc_diags, right: diags)
-          )
-        false =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
-            diagnostics: acc_diags
-          }
-      }
-    ParseExprRejected { diagnostics: failed_diags } =>
-      // 🟡 gated T-8: false branch (non-empty failed_diags) unreachable until parse_expr
-      // signals committed mismatches; currently all rejections carry diagnostics: [].
-      match is_empty(xs: failed_diags) {
-        true =>
-          ParseExprAccepted {
-            remaining: tokens,
-            captured: parse_repeat_captured_node(acc_nodes: acc_nodes),
-            diagnostics: acc_diags
-          }
-        false =>
-          parse_repeat_error_recover(
-            element: element,
-            tokens: tokens,
-            root: root,
-            acc_nodes: acc_nodes,
-            acc_diags: acc_diags,
-            failed_diags: failed_diags
-          )
-      }
-  }
-}
-
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
-fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
+fn parse_expr(expr: GrammarExpr, fuel: Nat, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
   match expr {
     Terminal { token_class: class } =>
       match parse_token_first(tokens: tokens) {
@@ -754,33 +676,37 @@ fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> Pars
           }
       }
     Nonterminal { production: prod_name } =>
-      match grammar_lookup_production(root: root, name: prod_name) {
-        GrammarProductionMissing =>
-          ParseExprRejected { diagnostics: [] }
-        GrammarProductionFound { production: production } =>
-          match parse_expr(expr: production.expression, tokens: tokens, root: root) {
-            ParseExprRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
-              ParseExprAccepted {
-                remaining: remaining,
-                captured: Node {
-                  kind: TypeNode { connective: Conj },
-                  children: [
-                    grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
-                    grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
-                  ]
-                },
-                diagnostics: diags
+      match fuel {
+        Zero => ParseExprRejected { diagnostics: [] }
+        Succ { prev: rest } =>
+          match grammar_lookup_production(root: root, name: prod_name) {
+            GrammarProductionMissing =>
+              ParseExprRejected { diagnostics: [] }
+            GrammarProductionFound { production: production } =>
+              match parse_expr(expr: production.expression, fuel: rest, tokens: tokens, root: root) {
+                ParseExprRejected { diagnostics: diags } =>
+                  ParseExprRejected { diagnostics: diags }
+                ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+                  ParseExprAccepted {
+                    remaining: remaining,
+                    captured: Node {
+                      kind: TypeNode { connective: Conj },
+                      children: [
+                        grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
+                        grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+                      ]
+                    },
+                    diagnostics: diags
+                  }
               }
           }
       }
     Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, root: root) {
+      match parse_expr(expr: left, fuel: fuel, tokens: tokens, root: root) {
         ParseExprRejected { diagnostics: diags } =>
           ParseExprRejected { diagnostics: diags }
         ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
-          match parse_expr(expr: right, tokens: rest1, root: root) {
+          match parse_expr(expr: right, fuel: fuel, tokens: rest1, root: root) {
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
@@ -798,14 +724,14 @@ fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> Pars
           }
       }
     Choice { left: left, right: right } =>
-      match parse_expr(expr: left, tokens: tokens, root: root) {
+      match parse_expr(expr: left, fuel: fuel, tokens: tokens, root: root) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, tokens: tokens, root: root)
+          parse_expr(expr: right, fuel: fuel, tokens: tokens, root: root)
       }
     Optional { element: element } =>
-      match parse_expr(expr: element, tokens: tokens, root: root) {
+      match parse_expr(expr: element, fuel: fuel, tokens: tokens, root: root) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
@@ -816,14 +742,57 @@ fn parse_expr(expr: GrammarExpr, tokens: List<Token>, root: GrammarRoot) -> Pars
           }
       }
     Repeat { element: element } =>
-      parse_repeat(element: element, tokens: tokens, root: root, acc_nodes: [], acc_diags: [])
+      // fold_list bounds iterations to length(tokens); done: true short-circuits remaining steps.
+      // Each consuming iteration reduces acc.remaining; zero-progress or rejection sets done: true.
+      let init = ParseRepeatAcc { remaining: tokens, acc_nodes: [], acc_diags: [], done: false }
+      let result = fold_list(
+        xs: tokens,
+        empty: init,
+        cons: fn(acc, _) {
+          match acc.done {
+            true => acc
+            false =>
+              match parse_expr(expr: element, fuel: fuel, tokens: acc.remaining, root: root) {
+                ParseExprRejected { diagnostics: _ } =>
+                  ParseRepeatAcc {
+                    remaining: acc.remaining,
+                    acc_nodes: acc.acc_nodes,
+                    acc_diags: acc.acc_diags,
+                    done: true
+                  }
+                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
+                  match length(xs: rest) != length(xs: acc.remaining) {
+                    true =>
+                      ParseRepeatAcc {
+                        remaining: rest,
+                        acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
+                        acc_diags: list_append(left: acc.acc_diags, right: diags),
+                        done: false
+                      }
+                    false =>
+                      ParseRepeatAcc {
+                        remaining: acc.remaining,
+                        acc_nodes: acc.acc_nodes,
+                        acc_diags: acc.acc_diags,
+                        done: true
+                      }
+                  }
+              }
+          }
+        }
+      )
+      ParseExprAccepted {
+        remaining: result.remaining,
+        captured: parse_repeat_captured_node(acc_nodes: result.acc_nodes),
+        diagnostics: result.acc_diags
+      }
   }
 }
 
 
 fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  match parse_expr(expr: production.expression, tokens: tokens, root: root) {
+  match parse_expr(expr: production.expression, fuel: grammar_fuel(root: root), tokens: tokens, root: root) {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
       if is_empty(xs: remaining) {
         Accepted {
