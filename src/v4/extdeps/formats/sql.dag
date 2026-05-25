@@ -385,8 +385,8 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
 
 // fold_list is a left fold, so cons-prepend folds reverse input order.
 // reverse + cons-prepend recovers the input order — this is the order-preserving
-// idiom for List<T> in v4 substrate today (no canonical list_map / list_append in
-// std/collection or std/algebra yet).
+// idiom for List<T> in v4 substrate today; list_append is canonical in
+// std/algebra, while list_map remains local here.
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
   fold_list(
     xs: xs,
