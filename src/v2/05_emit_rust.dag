@@ -1683,7 +1683,7 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
         } else if parent_generic_param_names |> count >= expected {
           parent_generic_param_names |> take(n: expected)
         } else {
-          summary.generic_param_names
+          []
         }
         if args |> count == expected {
           let with_args = concat(type_name, "<", args |> join(separator: ", "), ">")
