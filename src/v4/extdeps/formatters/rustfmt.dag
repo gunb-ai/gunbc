@@ -1,6 +1,6 @@
 // src/v4/extdeps/formatters/rustfmt.dag
 // Scope: rustfmt configuration model — option space grounded in rustfmt v1.6.0 toml reference.
-// Owns: RustfmtIndentStyle, RustfmtBraceStyle, RustfmtControlBraceStyle, RustfmtTrailingComma, RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports, RustfmtImportsLayout, RustfmtImportsIndent, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition, RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtVersion, RustfmtBinopSeparator, RustfmtColor, RustfmtTypePunctuationDensity, RustfmtMacroSelector, RustfmtRequiredVersion, RustfmtConfig, rustfmt_defaults, rustfmt_layer.
+// Owns: RustfmtIndentStyle, RustfmtBraceStyle, RustfmtControlBraceStyle, RustfmtTrailingComma, RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports, RustfmtImportsLayout, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition, RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtVersion, RustfmtBinopSeparator, RustfmtColor, RustfmtTypePunctuationDensity, RustfmtMacroSelector, RustfmtRequiredVersion, RustfmtConfig, rustfmt_defaults, rustfmt_layer.
 // Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
 // Status: T-4.16 scaffold — full option space grounded in rustfmt v1.6.0 toml reference.
 // Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
@@ -125,12 +125,6 @@ type RustfmtColor
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type RustfmtImportsIndent
-  = RustfmtImportsIndentBlock
-  | RustfmtImportsIndentVisual
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtTypePunctuationDensity
   = RustfmtTypePunctuationWide
   | RustfmtTypePunctuationCompressed
@@ -185,7 +179,7 @@ type RustfmtConfig {
   imports_granularity: RustfmtImportsGranularity
   group_imports: RustfmtGroupImports
   imports_layout: RustfmtImportsLayout
-  imports_indent: RustfmtImportsIndent
+  imports_indent: RustfmtIndentStyle
   reorder_imports: Bool
   merge_imports: Bool // 🟡 gated: rustfmt-deprecated-alias — deprecated bool alias for imports_granularity=Crate; canonical field imports_granularity wins when both are set
   fn_params_layout: RustfmtFnParamsLayout
@@ -272,7 +266,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   imports_granularity: RustfmtImportsGranularityPreserve,
   group_imports: RustfmtGroupImportsPreserve,
   imports_layout: RustfmtImportsMixed,
-  imports_indent: RustfmtImportsIndentBlock,
+  imports_indent: RustfmtIndentBlock,
   reorder_imports: true,
   merge_imports: false,
 
