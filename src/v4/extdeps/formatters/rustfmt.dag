@@ -180,11 +180,11 @@ type RustfmtConfig {
   imports_layout: RustfmtImportsLayout
   imports_indent: RustfmtImportsIndent
   reorder_imports: Bool
-  merge_imports: Bool
+  merge_imports: Bool // 🟡 gated: rustfmt-deprecated-alias — deprecated bool alias for imports_granularity=Crate; canonical field imports_granularity wins when both are set
 
   // Functions / params
   fn_params_layout: RustfmtFnParamsLayout
-  fn_args_layout: RustfmtFnParamsLayout
+  fn_args_layout: RustfmtFnParamsLayout // 🟡 gated: rustfmt-deprecated-alias — deprecated former name for fn_params_layout; canonical field fn_params_layout wins when both are set
   fn_single_line: Bool
   inline_attribute_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
 
