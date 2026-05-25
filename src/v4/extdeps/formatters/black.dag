@@ -1,17 +1,9 @@
 // src/v4/extdeps/formatters/black.dag
-// Scope: Black configuration model — real formatter option space grounded in pyproject.toml [tool.black].
-// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackRequiredVersionPolicy, BlackConfig,
-//       black_defaults, black_merge.
-// Consumes: v4.std.collection (List only; no node/compiler dependency).
-// Status: T-4.16 scaffold — pyproject.toml [tool.black] option space per Black 26.x docs.
-// Anchor: https://black.readthedocs.io/en/stable/usage_and_configuration/the_basics.html
-//         https://github.com/psf/black/blob/main/src/black/const.py (DEFAULT_INCLUDES / DEFAULT_EXCLUDES)
-// Note: override composition — consumer folds List<BlackConfig> via black_merge; each
-//       layer is a complete config. Field-granularity patch substrate (partial overrides) is
-//       🟡 gated — feature:formatter-config-patch — bind task: src/v4/TASKS.md#t-10-compiler05_emitdag--compiler00_compiledag--emission--orchestrator
-//       — consumer: TargetModel.formatter_config (T-10/T-11 follow-on) — dissolve-on-arrival:
-//       per-field Override/Inherit patch type replaces full-config *_merge layering when emit
-//       needs partial pyproject override without full-config specification.
+// Scope: Black 26.5.1 pyproject [tool.black] configuration model.
+// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackRequiredVersionPolicy, BlackUnstableFeature, BlackConfig, black_defaults, black_merge.
+// Consumes: v4.std.collection { List }.
+// Status: T-4.16 scaffold — Black 26.5.1 pyproject schema.
+// Anchor: https://github.com/psf/black/blob/26.5.1/src/black/resources/black.schema.json
 
 module v4.extdeps.formatters.black
 
@@ -20,7 +12,11 @@ import v4.std.collection { List }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BlackTargetVersion
-  = BlackPy37
+  = BlackPy33
+  | BlackPy34
+  | BlackPy35
+  | BlackPy36
+  | BlackPy37
   | BlackPy38
   | BlackPy39
   | BlackPy310
@@ -28,11 +24,10 @@ type BlackTargetVersion
   | BlackPy312
   | BlackPy313
   | BlackPy314
+  | BlackPy315
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Absent pyproject `target-version`: infer from `[project.requires-python]`, else per-file
-// auto-detection (Black 26.x docs). Explicit arm mirrors pyproject's repeatable array.
 type BlackTargetVersionPolicy
   = BlackTargetVersionAbsent
   | BlackTargetVersionExplicit { targets: List<BlackTargetVersion> }
@@ -44,50 +39,60 @@ type BlackRequiredVersionPolicy
   | BlackRequiredVersionExplicit { version: String }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type BlackUnstableFeature
+  = BlackUnstableStringProcessing
+  | BlackUnstableHugParensWithBracesAndSquareBrackets
+  | BlackUnstableWrapComprehensionIn
+  | BlackUnstableSimplifyPowerOperatorHugging
+  | BlackUnstableWrapLongDictValuesInParens
+  | BlackUnstableFixIfGuardExplosionInCaseStatement
+  | BlackUnstablePyiOverloadGroupBlankLines
+  | BlackUnstablePyiBlankLineBeforeDecoratedClass
+
+
+// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: witness checks enable_unstable_feature empty unless preview; unstable implies preview; forbidden: ad-hoc cross-field guards outside validation substrate.
 type BlackConfig {
-  // Line length
-  line_length: Int
-
-  // Python grammar / style target (pyproject `target-version` array or absent → infer).
+  line_length: Int // 🟡 gated: formatter-int-refinement — must be ≥1
   target_version: BlackTargetVersionPolicy
-
-  // Require a specific Black version (pyproject `required-version` or absent).
   required_version: BlackRequiredVersionPolicy
-
-  // File collection (regex strings; pyproject uses single-quoted TOML strings).
-  include: String
-  exclude: String
-  extend_exclude: String
-  force_exclude: String
-
-  // Formatting behavior
+  pyi: Bool
+  ipynb: Bool
+  python_cell_magics: List<String>
+  skip_source_first_line: Bool
   skip_string_normalization: Bool
   skip_magic_trailing_comma: Bool
   preview: Bool
   unstable: Bool
+  enable_unstable_feature: List<BlackUnstableFeature>
+  include: String
+  exclude: String
+  extend_exclude: String
+  force_exclude: String
 }
 
 
-// Resolved absent-key defaults (Black 26.x — black.const DEFAULT_* + infer target-version).
 data black_defaults: BlackConfig = BlackConfig {
   line_length: 88,
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
-
-  include: "(\\.pyi?|\\.ipynb)$",
-  exclude: "/(\\.direnv|\\.eggs|\\.git|\\.hg|\\.ipynb_checkpoints|\\.mypy_cache|\\.nox|\\.pytest_cache|\\.ruff_cache|\\.tox|\\.svn|\\.venv|\\.vscode|__pypackages__|_build|buck-out|build|dist|venv)/",
-  extend_exclude: "",
-  force_exclude: "",
-
+  pyi: false,
+  ipynb: false,
+  python_cell_magics: [],
+  skip_source_first_line: false,
   skip_string_normalization: false,
   skip_magic_trailing_comma: false,
   preview: false,
   unstable: false,
+  enable_unstable_feature: [],
+  include: "(\\.pyi?|\\.ipynb)$",
+  exclude: "/(\\.direnv|\\.eggs|\\.git|\\.hg|\\.ipynb_checkpoints|\\.mypy_cache|\\.nox|\\.pytest_cache|\\.ruff_cache|\\.tox|\\.svn|\\.venv|\\.vscode|__pypackages__|_build|buck-out|build|dist|venv)/",
+  extend_exclude: "",
+  force_exclude: "",
 }
 
 
-// Apply override: every field in `override` wins unconditionally.
-// Hierarchical layering: fold(patches, init: black_defaults, f: black_merge).
+// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: BlackConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
 fn black_merge(base: BlackConfig, override: BlackConfig) -> BlackConfig {
   override
 }

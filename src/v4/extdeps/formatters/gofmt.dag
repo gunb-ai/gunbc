@@ -1,37 +1,24 @@
 // src/v4/extdeps/formatters/gofmt.dag
-// Scope: gofmt carrier — upstream canonical formatting style is a fixed invariant (not configurable).
+// Scope: gofmt canonical style invariant carrier (no project config file).
 // Owns: GofmtCanonicalStyle, gofmt_canonical_style, GofmtConfig, gofmt_defaults, gofmt_merge.
-// Consumes: none (pure config substrate; no node/compiler dependency).
-// Status: T-4.16 scaffold — gofmt has no project config file; style is canonical (tabs + blanks).
+// Consumes: none.
+// Status: T-4.16 scaffold — gofmt doc.go (no style configuration surface).
 // Anchor: https://go.dev/src/cmd/gofmt/doc.go
-// Simplicity claim: gofmt exposes no style surface — indentation uses tabs, alignment uses spaces,
-// tab width is fixed in the printer. Immutable style evidence lives in `gofmt_canonical_style`,
-// outside the GofmtConfig merge carrier, so non-gofmt style states are not constructible.
-// Note: override composition — consumer folds List<GofmtConfig> via gofmt_merge; each layer is a
-//       complete carrier. Field-granularity patch substrate (partial overrides) is
-//       🟡 gated — feature:formatter-config-patch — bind task: src/v4/TASKS.md#t-10-compiler05_emitdag--compiler00_compiledag--emission--orchestrator
-//       — consumer: TargetModel.formatter_config (T-10/T-11 follow-on) — dissolve-on-arrival:
-//       per-field Override/Inherit patch type replaces full-config *_merge layering when emit
-//       needs partial override without full-config specification.
-// Invocation flags (-d, -l, -w, -s, -r) are CLI/runtime concerns, not formatter-config substrate.
 
 module v4.extdeps.formatters.gofmt
 
 
-// Fixed upstream invariant — singleton evidence, not part of GofmtConfig merge carrier.
 type GofmtCanonicalStyle {}
 
 data gofmt_canonical_style: GofmtCanonicalStyle = GofmtCanonicalStyle {}
 
 
-// Layering carrier for future gofmt-local facts; currently empty (no configurable style).
 type GofmtConfig {}
 
 data gofmt_defaults: GofmtConfig = GofmtConfig {}
 
 
-// Apply override: every field in `override` wins unconditionally.
-// Hierarchical layering: fold(patches, init: gofmt_defaults, f: gofmt_merge).
+// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: GofmtConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
 fn gofmt_merge(base: GofmtConfig, override: GofmtConfig) -> GofmtConfig {
   override
 }
