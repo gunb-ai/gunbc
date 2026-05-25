@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, list_skip, ListSkipState, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -273,36 +273,6 @@ fn is_prefix_of<T>(
 }
 
 
-// Drop the first n elements; O(|xs|). Uses fold rather than Empty/Cons matching.
-// n <= 0: returns xs unchanged (identity — n=0 correct, n<0 acceptable gated interim under
-//         caller-guarantees-non-negative contract; returns original list, not fabricated Empty).
-// 🟡 gated — P3-boundary-dissolution interim — feature: list_skip-non-negative-precondition —
-// nat.dag imports algebra.dag so Nat/UInt is not expressible at this layer to make n < 0
-// unrepresentable at the type level. Callers guarantee n >= 0; n<0 returns xs (identity,
-// not fabrication). Compiler callers migrated to structural match / fold-based alternatives.
-// Dissolve-on: shared PositiveInt/NonNegativeInt module extractable above algebra.dag,
-// or callers supply Nat directly.
-type ListSkipState<T> {
-  remaining: Int
-  result: FreeMonoid<T>
-}
-fn list_skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
-  if n <= 0 {
-    xs
-  } else {
-    fold_list(
-      xs: xs,
-      empty: ListSkipState { remaining: n, result: Empty },
-      cons: fn(acc, item) {
-        if acc.remaining != 0 {
-          ListSkipState { remaining: acc.remaining - 1, result: acc.result }
-        } else {
-          ListSkipState { remaining: 0, result: list_snoc_item(xs: acc.result, item: item) }
-        }
-      }
-    ).result
-  }
-}
 
 
 type PointwisePower<T> {
