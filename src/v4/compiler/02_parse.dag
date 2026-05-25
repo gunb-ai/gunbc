@@ -1064,37 +1064,42 @@ fn build_parse_table(all_tokens: List<Token>, root: GrammarRoot) -> ParseTable {
 }
 
 
-fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
+fn parse_production(tokens: List<Token>, root: GrammarRoot, production_name: Symbol) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  let table = build_parse_table(all_tokens: tokens, root: root)
-  let key = ParsePositionKey { position: 0, production: production.name }
-  match parse_table_lookup(table: table, key: key) {
-    Holds { value: inner } =>
-      match inner {
-        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
-          if is_empty(xs: remaining) {
-            Accepted {
-              value: parse_wrap_production_captured(production: production, captured: captured),
-              diagnostics: parse_diags_to_diagnostics(diags: diags)
-            }
-          } else {
-            Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+  match grammar_lookup_production(root: root, name: production_name) {
+    GrammarProductionFound { production: production } =>
+      let table = build_parse_table(all_tokens: tokens, root: root)
+      let key = ParsePositionKey { position: 0, production: production_name }
+      match parse_table_lookup(table: table, key: key) {
+        Holds { value: inner } =>
+          match inner {
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+              if is_empty(xs: remaining) {
+                Accepted {
+                  value: parse_wrap_production_captured(production: production, captured: captured),
+                  diagnostics: parse_diags_to_diagnostics(diags: diags)
+                }
+              } else {
+                Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
+              }
+            ParseExprRejected { diagnostics: diags } =>
+              Rejected {
+                diagnostics: parse_diags_to_non_empty(
+                  diags: diags,
+                  default: parse_e1_syntax_error_diagnostic(at: at)
+                )
+              }
           }
-        ParseExprRejected { diagnostics: diags } =>
+        Violates { diagnostic: _ } =>
           Rejected {
             diagnostics: parse_diags_to_non_empty(
-              diags: diags,
+              diags: [],
               default: parse_e1_syntax_error_diagnostic(at: at)
             )
           }
       }
-    Violates { diagnostic: _ } =>
-      Rejected {
-        diagnostics: parse_diags_to_non_empty(
-          diags: [],
-          default: parse_e1_syntax_error_diagnostic(at: at)
-        )
-      }
+    GrammarProductionMissing =>
+      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
   }
 }
 
@@ -1123,15 +1128,7 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
             if grammar_has_left_recursion(root: root) {
               Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
             } else {
-              match grammar_lookup_production(root: root, name: root.start) {
-                GrammarProductionFound { production: start } =>
-                  parse_production(tokens: tokens.tokens, root: root, production: start)
-                // 🟡 gated T-8: structurally unreachable — grammar_has_undefined_nonterminals above
-                // validates root.start; GrammarProductionMissing here is dead by construction.
-                // Kept for exhaustiveness; dissolve-on: T-8 or substrate-level totality proof.
-                GrammarProductionMissing =>
-                  Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
-              }
+              parse_production(tokens: tokens.tokens, root: root, production_name: root.start)
             }
           }
         }
