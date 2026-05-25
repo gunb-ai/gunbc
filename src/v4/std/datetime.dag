@@ -162,24 +162,19 @@ type LeapSecondAnnouncement {
 }
 
 
-type LeapSecondLocalRepresentation {
+type LeapSecondInstantFields {
+  announcement: LeapSecondAnnouncement
+  second: SecondOfMinute
+  subsecond: Subsecond
+}
+
+
+type LeapSecondOffsetRepresentation {
+  instant: LeapSecondInstantFields
   local_date: CalendarDate
   local_hour: HourOfDay
   local_minute: MinuteOfHour
   offset: TzOffset
-}
-
-
-type LeapSecondOffsetCoherence {
-  announcement: LeapSecondAnnouncement
-  local: LeapSecondLocalRepresentation
-}
-
-
-type LeapSecondInstantFields {
-  coherence: LeapSecondOffsetCoherence
-  second: SecondOfMinute
-  subsecond: Subsecond
 }
 
 
@@ -371,7 +366,7 @@ fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
   (second == 60)
-    && leap_second_announcement_admits(announcement: fields.coherence.announcement)
+    && leap_second_announcement_admits(announcement: fields.announcement)
 }
 
 
