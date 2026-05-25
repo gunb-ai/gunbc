@@ -271,7 +271,7 @@ Close-the-loop + late substrate:
 - Inhabitance declaration shape (relation? predicate? typeclass-style?)
 - Composition: how do Sum/Product algebras compose for the cost lens?
 - Free constructions: FreeMonoid<T> as primitive vs derived?
-- Node constructor shape: Instantiation connective applying the algebra type to the inhabitant Node, or a named Atom with structured children? Must be walkable by the T-9 coercion fold.
+- Node constructor shape: **Conj + named 'algebra' and 'inhabitant' edges** (ratified 2026-05-25). NOT Instantiation — Instantiation is type application, semantically wrong here. Shape: `Conj { children: [Named { name: algebra_edge } → algebra_Node, Named { name: inhabitant_edge } → inhabitant_Node] }`. Must match `AlgebraRef { algebra: Node, witness: Node }` in `04_infer.dag` and be walkable by the T-9 coercion fold.
 
 **Reference**:
 - v3: `dsl/std/algebra.dag` (study; expected substantive)
@@ -334,7 +334,8 @@ flat — dispatch in waves):
 
 **Note on T-33 edge scope.** Adding T-33 to `[needs …]` is a graph-edge update — it records that LanguageModel cannot be authored before ModelCore exists. It does **not** restructure the T-4 fact-bundle authoring contract (the body text above) to be expressed in terms of "LanguageModel extends ModelCore". That re-expression is its own commit train, after T-33 lands.
 
-**Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17):**
+**Authoring contract (operator-ratified 2026-05-15; D2 bullet superseded 2026-05-17; conformance-test deliverable added 2026-05-25):**
+- **Per-language conformance test is an explicit deliverable.** Each T-4 language file ships with an auto-generated conformance test (not a follow-on). The test verifies that every fact-bundle reads at least one spec fact (hollow-alias gate) and that grounding coincidences are cited. This is a hard deliverable of the T-4 authoring pass, not optional polish.
 - **Model the SPECIFICATION, not libraries (L-2).** Model the versioned upstream spec (Rust Reference, ECMAScript/TS Handbook, IEEE 1364, …) — the anchor IS that spec. Do NOT model std/crates/packages: a library is just a program in the modeled language = `Node`. Modeling libraries is infinite, non-general, the wrong layer.
 - **Declare every surface feature's disposition (C5-fidelity).** For each feature: `Modeled` (∈ F, Node-bearing, round-trips both ways — e.g. Python indentation IS block structure) | `Declared-normalized` (deliberately not in F; `emit∘ingest` canonicalizes — Go/C++ insignificant whitespace; a *declared*, reviewable loss, never silent) | `Fail-closed` (encountered but neither → Diagnostic, no-engine). F = the spec's own meaning-vs-lexical distinction, not worker judgment. Round-trip fidelity = declared model completeness.
 - **A language file FACT-BUNDLES each primitive (fact-bundle reseed — operator-ratified 2026-05-17, supersedes D2).** For each primitive the file authors a **fact-bundle**: the facts read from that language's *own spec* — width, signedness, representation, overflow / NaN-Inf disposition, surface spelling — each a real modeled carrier grounding into the shared `std/` vocabulary (T-3). It does NOT bare-alias to the `std/` carrier: `type RustI32 = Int32` models *nothing about Rust* — it asserts an unproven identity while reading zero facts. A bundle deduplicates against a `std/` carrier ONLY where the identity is **proven** — a compiler-verified coincidence of the language bundle with the `std/` bundle, cited as evidence. `extdeps/` models systems we do not control: default to separate, honest modeling; reuse `std/` only on evidenced identity. A per-language `OrderedRing<<lang>Prim, …>` re-declaration is still the parallel-*algebra* substrate INVARIANTS P1:42 forbids — model the facts, never a duplicate algebra and never a hollow alias. See `DECISIONS.md` "D2 REVERSAL + FACT-BUNDLE RESEED" and `docs/modeling-discipline.md`.
@@ -1065,6 +1066,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
   generator emits checked YAML from `ci.dag`, the hand-authored YAML is
   deleted, and the v3 string ratchets become `TestClaim`s over the generated
   output.
+- **Gate architecture (ratified 2026-05-25): lens verdict via `run_required_lens_gates`, not just `cargo build` exit code.** The compile pipeline wraps with `run_required_lens_gates`; the lens verdict IS the gate. `cargo build` is the M1 minimum floor — it's not the long-term authority. Lens enforcement (via `apply_lens(Enforce)`) is the permanent gate; the `cargo build` bridge dissolves when lens-verdict CI is live.
 - Affected-set-driven job selection consuming `lens/affected_set.dag` (T-21) — this is what dissolves `scripts/detect-affected-components.sh`
 - Structural cache keys: a cacheable job's `actions/cache` key is `content_hash` (B1) of its input subgraph, not a hand-authored `hashFiles(...)` glob. The interim `hashFiles(...)` keys in the committed `ci.yml` (e.g. the v2-compiler-binary cache) are manual approximations, replaced by emitted content-hashes when `ci.yml` is emitted from this file.
 - The bootstrap interaction: CI runs `workflow/bootstrap.dag` (T-20)
