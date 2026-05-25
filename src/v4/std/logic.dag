@@ -1,17 +1,25 @@
 // src/v4/std/logic.dag
 // Scope: classical two-valued logic.
 // Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
-// Owns: Bool, bool_boolean_algebra.
-// Consumes: std algebra.
+// Owns: Bool, bool_boolean_algebra, bool_node, bool_boolean_algebra_node, bool_boolean_algebra_type_node.
+// Consumes: std algebra, std node.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 
 module v4.std.logic
 
 
-import v4.std.algebra { BooleanAlgebra, BoundedLattice, Lattice }
+import v4.std.algebra {
+  BooleanAlgebra,
+  BoundedLattice,
+  Lattice,
+  boolean_algebra_node,
+  boolean_algebra_type_node
+}
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Bool = True | False
+data bool_node_symbol: Symbol = bool_node_symbol
 data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
   bounded_lattice: BoundedLattice {
     lattice: Lattice {
@@ -37,4 +45,22 @@ data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
       False => True
     }
   }
+}
+
+
+fn bool_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: bool_node_symbol } },
+    children: []
+  }
+}
+
+
+fn bool_boolean_algebra_type_node() -> Node {
+  boolean_algebra_type_node(inhabitant: bool_node())
+}
+
+
+fn bool_boolean_algebra_node() -> Node {
+  boolean_algebra_node(inhabitant: bool_node())
 }
