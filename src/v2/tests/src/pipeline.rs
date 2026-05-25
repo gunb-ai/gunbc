@@ -6279,6 +6279,79 @@ fn google_oauth_refresh_200_body_round_trip_representative_wire() {
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.
 
+fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+    let unique = format!(
+        "v2-compiler-tests-{}-{}",
+        name,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos()
+    );
+    let dir = std::env::temp_dir().join(unique);
+    std::fs::create_dir_all(&dir).expect("failed to create temp dir");
+    dir
+}
+
+fn cargo_binary() -> &'static str {
+    if std::path::Path::new("/opt/cargo/bin/cargo").exists() {
+        "/opt/cargo/bin/cargo"
+    } else {
+        "cargo"
+    }
+}
+
+fn write_emitted_crate(
+    result: &v2_compiler::v2_compiler_compile::PipelineResult,
+    out_dir: &std::path::Path,
+) {
+    for file in result.files.iter() {
+        let file_path = out_dir.join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("failed to create {}: {}", parent.display(), e));
+        }
+        std::fs::write(&file_path, &file.content)
+            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
+    }
+}
+
+#[test]
+fn v4_trivial_import_emits_rust_that_cargo_checks() {
+    let ws = crate::helpers::workspace_root();
+    let trivial_root = unique_temp_dir("v4-trivial-src");
+    let out_dir = unique_temp_dir("v4-trivial-out");
+    let trivial_source = "module v4.trivial\n\nimport v4.std.node { Symbol }\n\ndata trivial: Symbol = trivial\n";
+    std::fs::write(trivial_root.join("trivial.dag"), trivial_source).expect("write trivial.dag");
+
+    let result = compile_dag_named_with_source_roots(
+        "trivial.dag",
+        trivial_source,
+        RenderTarget::Rust,
+        &[trivial_root.clone(), ws.join("src/v4")],
+    );
+    assert_no_diagnostics(&result);
+    write_emitted_crate(&result, &out_dir);
+
+    let check = std::process::Command::new(cargo_binary())
+        .arg("check")
+        .arg("--manifest-path")
+        .arg(out_dir.join("Cargo.toml"))
+        .output()
+        .expect("failed to run cargo check");
+
+    let stdout = String::from_utf8_lossy(&check.stdout);
+    let stderr = String::from_utf8_lossy(&check.stderr);
+    let _ = std::fs::remove_dir_all(&trivial_root);
+    let _ = std::fs::remove_dir_all(&out_dir);
+    assert!(
+        check.status.success(),
+        "emitted v4 trivial crate failed cargo check\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        stdout,
+        stderr
+    );
+}
+
 #[test]
 #[ignore] // Expensive: reads from disk, writes temp project, runs cargo check
 fn review_dag_compiles_to_rust() {
@@ -6312,21 +6385,14 @@ fn review_dag_compiles_to_rust() {
     );
 
     // Write emitted files to temp dir
-    let out_dir = std::env::temp_dir().join("v2-re2-review");
+    let out_dir = unique_temp_dir("re2-review");
     let _ = std::fs::remove_dir_all(&out_dir);
     std::fs::create_dir_all(&out_dir).expect("failed to create temp dir");
 
-    for file in result.files.iter() {
-        let file_path = out_dir.join(&file.path);
-        if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        std::fs::write(&file_path, &file.content)
-            .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
-    }
+    write_emitted_crate(&result, &out_dir);
 
     // Run cargo check
-    let check = std::process::Command::new("cargo")
+    let check = std::process::Command::new(cargo_binary())
         .arg("check")
         .current_dir(&out_dir)
         .output()
