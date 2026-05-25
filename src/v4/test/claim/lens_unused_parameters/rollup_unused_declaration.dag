@@ -34,9 +34,6 @@ data rollup_edge_symbol: Symbol = rollup_edge_symbol
 data rollup_type_symbol: Symbol = rollup_type_symbol
 data rollup_algebra_symbol: Symbol = rollup_algebra_symbol
 data rollup_descent_symbol: Symbol = rollup_descent_symbol
-data rollup_canonical_structural_symbol: Symbol = rollup_canonical_structural_symbol
-data rollup_canonical_closedness_symbol: Symbol = rollup_canonical_closedness_symbol
-
 data rollup_parameter: Node = claim_atom_node(s: rollup_parameter_symbol)
 
 data rollup_function: Node = Node {
@@ -61,8 +58,6 @@ fn rollup_facts() -> InferredFacts {
     type_symbol: rollup_type_symbol,
     algebra_symbol: rollup_algebra_symbol,
     descent_symbol: rollup_descent_symbol,
-    canonical_structural_symbol: rollup_canonical_structural_symbol,
-    canonical_closedness_symbol: rollup_canonical_closedness_symbol
   )
 }
 

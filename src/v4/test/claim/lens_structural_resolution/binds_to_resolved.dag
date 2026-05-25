@@ -69,8 +69,6 @@ fn sr_claim_facts() -> InferredFacts {
     type_symbol: sr_type_symbol,
     algebra_symbol: sr_algebra_symbol,
     descent_symbol: sr_descent_symbol,
-    canonical_structural_symbol: constraint_property_being_canonical,
-    canonical_closedness_symbol: constraint_property_candidate_set_closedness
   )
 }
 

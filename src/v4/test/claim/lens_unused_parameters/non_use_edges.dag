@@ -41,9 +41,6 @@ data unused_parameters_non_use_edge_symbol: Symbol = unused_parameters_non_use_e
 data unused_parameters_non_use_type_symbol: Symbol = unused_parameters_non_use_type_symbol
 data unused_parameters_non_use_algebra_symbol: Symbol = unused_parameters_non_use_algebra_symbol
 data unused_parameters_non_use_descent_symbol: Symbol = unused_parameters_non_use_descent_symbol
-data unused_parameters_non_use_canonical_structural_symbol: Symbol = unused_parameters_non_use_canonical_structural_symbol
-data unused_parameters_non_use_canonical_closedness_symbol: Symbol = unused_parameters_non_use_canonical_closedness_symbol
-
 data unused_parameters_non_use_child: Node = claim_atom_node(s: unused_parameters_non_use_child_symbol)
 
 data unused_parameters_non_use_root: Node = Node {
@@ -79,8 +76,6 @@ fn unused_parameters_non_use_facts() -> InferredFacts {
     type_symbol: unused_parameters_non_use_type_symbol,
     algebra_symbol: unused_parameters_non_use_algebra_symbol,
     descent_symbol: unused_parameters_non_use_descent_symbol,
-    canonical_structural_symbol: unused_parameters_non_use_canonical_structural_symbol,
-    canonical_closedness_symbol: unused_parameters_non_use_canonical_closedness_symbol
   )
 }
 

@@ -34,9 +34,6 @@ data ownership_edge_symbol: Symbol = ownership_edge_symbol
 data ownership_type_symbol: Symbol = ownership_type_symbol
 data ownership_algebra_symbol: Symbol = ownership_algebra_symbol
 data ownership_descent_symbol: Symbol = ownership_descent_symbol
-data ownership_canonical_structural_symbol: Symbol = ownership_canonical_structural_symbol
-data ownership_canonical_closedness_symbol: Symbol = ownership_canonical_closedness_symbol
-
 data ownership_child: Node = claim_atom_node(s: ownership_child_symbol)
 
 data ownership_root: Node = Node {
@@ -58,8 +55,6 @@ fn ownership_claim_facts() -> InferredFacts {
     type_symbol: ownership_type_symbol,
     algebra_symbol: ownership_algebra_symbol,
     descent_symbol: ownership_descent_symbol,
-    canonical_structural_symbol: ownership_canonical_structural_symbol,
-    canonical_closedness_symbol: ownership_canonical_closedness_symbol
   )
 }
 

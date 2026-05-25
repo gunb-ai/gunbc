@@ -72,8 +72,6 @@ fn sr_infer_resolved_facts() -> InferredFacts {
     type_symbol: sr_infer_type_symbol,
     algebra_symbol: sr_infer_algebra_symbol,
     descent_symbol: sr_infer_descent_symbol,
-    canonical_structural_symbol: constraint_property_being_canonical,
-    canonical_closedness_symbol: constraint_property_candidate_set_closedness
   )
 }
 

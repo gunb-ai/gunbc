@@ -71,8 +71,6 @@ fn sr_lookup_resolved_facts() -> InferredFacts {
     type_symbol: sr_lookup_type_symbol,
     algebra_symbol: sr_lookup_algebra_symbol,
     descent_symbol: sr_lookup_descent_symbol,
-    canonical_structural_symbol: constraint_property_being_canonical,
-    canonical_closedness_symbol: constraint_property_candidate_set_closedness
   )
 }
 
