@@ -567,6 +567,7 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 // imports. Current M2 surface intentionally flattens ModuleEntry.root named exports into
 // Map<Symbol,Symbol>; this unblocks cross-file unqualified imports but cannot represent qualified
 // references or diagnose same-symbol exports across imported modules.
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — same v2 bootstrap limitation as module_graph_entry_for_path_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleEntry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
 fn namespace_from_tree_and_graph_fold(
   entries: FreeMonoid<ModuleEntry>,
   acc: Map<Symbol, Symbol>
