@@ -141,7 +141,7 @@ type RustfmtTypePunctuationDensity
 
 
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
-// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {comment_width (when >0),chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; zero-sentinel fields (comment_width=0) are exempt from the upper-bound check; forbidden: ad-hoc cross-field guards outside validation substrate.
+// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; comment_width excluded — v1.6.0 documents it as "any positive integer" with no max_width upper bound (0 is a sentinel meaning "use max_width"); forbidden: ad-hoc cross-field guards outside validation substrate.
 // 🟡 gated — feature: rustfmt-deprecated-alias — bind T-4.16 follow-on — dissolve-on-arrival: merge_imports and fn_args_layout are deprecated v1.6.0 aliases retained for P1 faithfulness; both are subsumed by their canonical counterparts (imports_granularity and fn_params_layout respectively); precedence rule: canonical field wins when both are set; forbidden: treating either alias as an independent authoritative fact separate from its canonical field.
 type RustfmtConfig {
   // Indentation
@@ -151,7 +151,7 @@ type RustfmtConfig {
 
   // Line width
   max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
-  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 (0 is a sentinel; see anchor for semantics); see also formatter-cross-field-constraints
+  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 (0 is a sentinel meaning "use max_width"; see anchor); no max_width upper-bound — v1.6.0 "any positive integer"
   chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥1 and ≤ max_width
   single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
   single_line_let_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0 and ≤ max_width
