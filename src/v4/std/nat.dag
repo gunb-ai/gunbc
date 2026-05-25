@@ -1,6 +1,6 @@
 // src/v4/std/nat.dag
 // Scope: Natural numbers (Part 6 nat rows; external Natural_number anchor out of Lane-B header).
-// Owns: Nat nat_cata nat_add nat_mul nat_compare is_zero nat_lte nat_gte nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat NatAlgebraLawObligation nat_declared_algebra_law_obligations law_nat_add_left_identity law_nat_add_right_identity law_nat_add_associativity law_nat_mul_left_identity law_nat_mul_annihilator law_nat_mul_associativity
+// Owns: Nat nat_cata nat_add nat_mul nat_monus nat_compare is_zero nat_lte nat_gte nat_additive_commutative_monoid nat_semiring nat_algebra_law_subject_symbol_additive_monoid nat_algebra_law_subject_symbol_commutative_semiring nat_algebra_law_subject_symbol_inhabitant_nat NatAlgebraLawObligation nat_declared_algebra_law_obligations law_nat_add_left_identity law_nat_add_right_identity law_nat_add_associativity law_nat_mul_left_identity law_nat_mul_annihilator law_nat_mul_associativity
 // Consumes: v4.std.algebra v4.std.node
 // Status: T-3 modeled.
 
@@ -69,6 +69,17 @@ fn nat_gte(a: Nat, b: Nat) -> Bool {
     Less => false
     Equal => true
     Greater => true
+  }
+}
+// 🟢 terminal — this IS the canonical monus (saturating subtraction) on Nat; no richer substrate exists.
+fn nat_monus(a: Nat, b: Nat) -> Nat {
+  match b {
+    Zero => a
+    Succ { prev: bp } =>
+      match a {
+        Zero => Zero
+        Succ { prev: ap } => nat_monus(a: ap, b: bp)
+      }
   }
 }
 data nat_additive_commutative_monoid: CommutativeMonoid<Nat> = CommutativeMonoid {
