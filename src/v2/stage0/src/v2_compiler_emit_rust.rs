@@ -2911,8 +2911,13 @@ pub fn is_function_type_param(param: &Rc<Node>) -> bool {
             Some(inf) => is_type_variable(inf.clone()),
             None => false,
         };
-        ((type_expr_is_var && (param.name.clone().as_str() != "".to_string().as_str()))
+        let same_source_span = (((param.span.clone().file.clone().as_str()
+            == type_expr.span.clone().file.clone().as_str())
+            && (param.span.clone().start.clone() == type_expr.span.clone().start.clone()))
+            && (param.span.clone().end.clone() == type_expr.span.clone().end.clone()));
+        (((param.name.clone().as_str() != "".to_string().as_str())
             && (param.name.clone().as_str() == type_expr.name.clone().as_str()))
+            && (type_expr_is_var || same_source_span))
     }
 }
 
