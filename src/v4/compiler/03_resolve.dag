@@ -562,11 +562,12 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// 🟡 gated — T-28 cross-file namespace merge not yet realized.
-// Namespace is Map<Symbol,Symbol> with no ModulePath dimension; a flat fold of all ModuleEntry.root
-// exports makes every symbol globally visible and cannot represent qualified/ambiguous imports.
-// dissolve-on-arrival: Namespace gains a per-module table keyed by ModulePath (or import declarations
-// in tree guide which module symbols are admitted), then wire fold over graph.entries here.
+// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace type gains a
+// per-module symbol table keyed by ModulePath so qualified binding can be represented, then wire
+// fold over graph.entries here (ledger: T-28 · TASKS.md §T-28).
+// Constraint: Map<Symbol,Symbol> bindings have no ModulePath dimension; a flat fold of all
+// ModuleEntry.root exports makes every symbol globally visible and cannot represent
+// qualified/ambiguous imports.
 fn namespace_from_tree_and_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,
