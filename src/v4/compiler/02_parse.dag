@@ -25,7 +25,7 @@ module v4.compiler.parse
 
 import v4.compiler.tokenize { Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
+import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List, Set }
 import v4.std.algebra { Cons, Empty, contains, fold_list, fold_list_right, is_empty, length, list_append, list_skip, list_snoc_item }
 import v4.std.logic { Bool }
