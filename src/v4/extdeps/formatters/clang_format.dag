@@ -180,7 +180,7 @@ type ClangFormatBraceWrappingFlags {
   after_extern_block: Bool,
   after_function: Bool,
   after_namespace: Bool,
-  after_objc_declaration: Bool,
+  after_obj_c_declaration: Bool,
   after_struct: Bool,
   after_union: Bool,
   before_catch: Bool,
@@ -759,12 +759,12 @@ type ClangFormatConfig {
   max_empty_lines_to_keep: Int // 🟡 gated: formatter-int-refinement — must be ≥0
   namespace_indentation: ClangFormatNamespaceIndentationKind
   numeric_literal_case: ClangFormatNumericLiteralCaseStyle
-  objc_bin_pack_protocol_list: ClangFormatBinPackStyle
-  objc_block_indent_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
-  objc_break_before_nested_block_param: Bool
-  objc_space_after_method_declaration_prefix: Bool
-  objc_space_after_property: Bool
-  objc_space_before_protocol_list: Bool
+  obj_c_bin_pack_protocol_list: ClangFormatBinPackStyle
+  obj_c_block_indent_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  obj_c_break_before_nested_block_param: Bool
+  obj_c_space_after_method_declaration_prefix: Bool
+  obj_c_space_after_property: Bool
+  obj_c_space_before_protocol_list: Bool
   one_line_format_off_regex: String
   pack_arguments: ClangFormatPackArgumentsStyle
   pack_constructor_initializers: ClangFormatPackConstructorInitializersStyle
@@ -878,7 +878,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   bin_pack_parameters: ClangFormatBinPackParametersBinPack,
   bit_field_colon_spacing: ClangFormatBitFieldColonBoth,
   braced_initializer_indent_width: 2,
-  brace_wrapping: ClangFormatBraceWrappingFlags { after_case_label: false, after_class: false, after_control_statement: ClangFormatBraceWrapAfterControlNever, after_enum: false, after_extern_block: false, after_function: false, after_namespace: false, after_objc_declaration: false, after_struct: false, after_union: false, before_catch: false, before_else: false, before_lambda_body: false, before_while: false, indent_braces: false, split_empty_function: true, split_empty_record: true, split_empty_namespace: true },
+  brace_wrapping: ClangFormatBraceWrappingFlags { after_case_label: false, after_class: false, after_control_statement: ClangFormatBraceWrapAfterControlNever, after_enum: false, after_extern_block: false, after_function: false, after_namespace: false, after_obj_c_declaration: false, after_struct: false, after_union: false, before_catch: false, before_else: false, before_lambda_body: false, before_while: false, indent_braces: false, split_empty_function: true, split_empty_record: true, split_empty_namespace: true },
   break_adjacent_string_literals: true,
   break_after_attributes: ClangFormatAttributeBreakNever,
   break_after_java_field_annotations: false,
@@ -955,12 +955,12 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   max_empty_lines_to_keep: 1,
   namespace_indentation: ClangFormatNamespaceIndentNone,
   numeric_literal_case: ClangFormatNumericLiteralCaseStyle { exponent_letter: ClangFormatNumericLiteralLeave, hex_digit: ClangFormatNumericLiteralLeave, prefix: ClangFormatNumericLiteralLeave, suffix: ClangFormatNumericLiteralLeave },
-  objc_bin_pack_protocol_list: ClangFormatBinPackAuto,
-  objc_block_indent_width: 2,
-  objc_break_before_nested_block_param: true,
-  objc_space_after_method_declaration_prefix: false,
-  objc_space_after_property: false,
-  objc_space_before_protocol_list: true,
+  obj_c_bin_pack_protocol_list: ClangFormatBinPackAuto,
+  obj_c_block_indent_width: 2,
+  obj_c_break_before_nested_block_param: true,
+  obj_c_space_after_method_declaration_prefix: false,
+  obj_c_space_after_property: false,
+  obj_c_space_before_protocol_list: true,
   one_line_format_off_regex: "",
   pack_arguments: ClangFormatPackArgumentsBinPack,
   pack_constructor_initializers: ClangFormatPackConstructorBinPack,
