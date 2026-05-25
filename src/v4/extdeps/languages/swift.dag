@@ -884,7 +884,7 @@ fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
 
 fn swift_wave1_grammar_root() -> GrammarRoot {
   let start = swift_grammar_production_mvp1_fn_add()
-  GrammarRoot { start: swift_production_mvp1_fn_add, productions: [start] }
+  GrammarRoot { start: swift_production_mvp1_fn_add, productions: [start], sync_tokens: Set { member: fn(_) { false } } }
 }
 
 fn swift_wave1_grammar() -> Grammar {

@@ -190,7 +190,7 @@ fn v4_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> O
     Raise { diagnostic: d } =>
       outcome_rejected(d: d)
     Suspend { continuation: c } =>
-      Accepted { value: c, diagnostics: None }
+      outcome_rejected(d: v4_eval_wave1_runtime_diagnostic(node: c.current))
   }
 }
 

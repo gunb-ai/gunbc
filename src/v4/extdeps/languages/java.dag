@@ -921,7 +921,7 @@ fn java_grammar_production_mvp1_method_add() -> GrammarProduction {
 
 fn java_wave1_grammar_root() -> GrammarRoot {
   let start = java_grammar_production_mvp1_method_add()
-  GrammarRoot { start: java_production_mvp1_method_add, productions: [start] }
+  GrammarRoot { start: java_production_mvp1_method_add, productions: [start], sync_tokens: Set { member: fn(_) { false } } }
 }
 
 fn java_wave1_grammar() -> Grammar {
