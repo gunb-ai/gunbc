@@ -16045,8 +16045,7 @@ pub fn emit_data_def_body(
             shared_types.clone(),
             &scope.type_env.clone().source_indices.clone(),
         );
-        let type_name =
-            authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node);
+        let type_name = authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node);
         if (type_name.clone().as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
