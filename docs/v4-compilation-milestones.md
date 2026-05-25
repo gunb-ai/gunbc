@@ -253,7 +253,7 @@ The T-22 host eval receipt already runs `--target rust src/v4` and verifies zero
 diagnostics, but no CI step runs `cargo check` / `cargo build` on the emitted crate
 to link a binary. Adding this step will surface which v2 emitter patterns produce
 rustc errors. PR #3654 (probe-only, continue-on-error) surfaced ~4,900 errors.
-The next step is a gating `cargo check` step once the emitter gaps are fixed.
+The next step is a gating `cargo build` step once the emitter gaps are fixed (`cargo check` alone does not link and does not satisfy M1).
 
 **Gap 2 — T-6/T-7 algorithm scope**
 The lexer and parser algorithm walks must be written in `.dag` per the Pure Bootstrap
@@ -296,7 +296,7 @@ In priority order:
 1. **Fix v2 emitter gaps** surfaced by the non-gating probe in #3654 (~4,900 rustc
    errors; target E0282/E0107 first). The probe already ran (continue-on-error); the
    fail-closed M1 gate comes after gap elimination. Once errors reach zero, author the
-   gating `cargo check` step in `src/v4/workflow/ci.dag` (the modeled CI authority per
+   gating `cargo build` step in `src/v4/workflow/ci.dag` (the modeled CI authority per
    THESIS.md §workflow) and regenerate the checked projection as its receipt. Do not
    land the gate while the probe is still red — a known-failing gate is not M1.
 
