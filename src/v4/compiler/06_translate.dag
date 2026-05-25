@@ -19,7 +19,7 @@
 module v4.compiler.translate
 
 
-import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
 import v4.std.coercion {
   CoercionCandidateSet,
@@ -701,13 +701,7 @@ fn translate_node(
 }
 fn translate(
   tree: InferredTree,
-  target: TargetModel,
-  input_lang: LanguageModel
+  target: TargetModel
 ) -> Outcome<TargetNodeTree> {
-  bind_outcome(
-    o: outcome_accepted(value: input_lang),
-    f: fn(lang) {
-      translate_node(node: tree.root, tree: tree, target: target)
-    }
-  )
+  translate_node(node: tree.root, tree: tree, target: target)
 }

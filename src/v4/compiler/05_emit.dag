@@ -11,7 +11,7 @@
 module v4.compiler.emit
 
 
-import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
 import v4.compiler.translate {
   TargetNodeTree,
@@ -34,11 +34,10 @@ fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<Target
 }
 fn emit(
   tree: InferredTree,
-  target: TargetModel,
-  input_lang: LanguageModel
+  target: TargetModel
 ) -> Outcome<TargetSource> {
   bind_outcome(
-    o: translate(tree: tree, target: target, input_lang: input_lang),
+    o: translate(tree: tree, target: target),
     f: fn(target_tree) {
       serialize_target(tree: target_tree, target: target)
     }
