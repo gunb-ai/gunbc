@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_wave1_*; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_wave1_*; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set.
 // Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag.
 // Status: T-6 modeled lex rules; T-7 grammar remains scaffolded.
 // Anchor: docs/v3-spec.md
@@ -663,6 +663,48 @@ fn dag_language_model_empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
+fn dag_wave1_grammar_symbol(sym: Symbol) -> Bool {
+  sym == dag_production_module ||
+    sym == dag_production_module_header ||
+    sym == dag_production_top_level_item ||
+    sym == dag_production_import_decl ||
+    sym == dag_production_type_decl ||
+    sym == dag_production_data_decl ||
+    sym == dag_production_fn_decl ||
+    sym == dag_production_qualified_name ||
+    sym == dag_production_param_list ||
+    sym == dag_production_type_expr ||
+    sym == dag_production_type_variant ||
+    sym == dag_production_type_alias_rhs ||
+    sym == dag_production_block ||
+    sym == dag_production_data_value ||
+    sym == dag_surface_module ||
+    sym == dag_surface_module_header ||
+    sym == dag_surface_top_level_item ||
+    sym == dag_surface_import_decl ||
+    sym == dag_surface_type_decl ||
+    sym == dag_surface_data_decl ||
+    sym == dag_surface_fn_decl ||
+    sym == dag_surface_qualified_name ||
+    sym == dag_surface_param_list ||
+    sym == dag_surface_type_expr ||
+    sym == dag_surface_type_variant ||
+    sym == dag_surface_type_alias_rhs ||
+    sym == dag_surface_block ||
+    sym == dag_surface_data_value
+}
+
+
+fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      dag_language_model_surface_prelude_atoms().member(sym) ||
+        dag_wave1_grammar_symbol(sym: sym)
+    }
+  }
+}
+
+
 fn dag_language_model_wave1_void() -> DagLanguageModel {
   DagLanguageModel {
     lex: dag_wave1_lex(),
@@ -678,7 +720,7 @@ fn dag_language_model_wave1() -> DagLanguageModel {
     lex: dag_wave1_lex(),
     grammar: dag_wave1_grammar(),
     language_identity: dag_language_model_surface_id,
-    canonical_symbols: dag_language_model_surface_prelude_atoms()
+    canonical_symbols: dag_language_model_wave1_canonical_symbols()
   }
 }
 
