@@ -159,12 +159,14 @@ T-9 is modeled but requires T-4 algebra grounding (formal TASKS.md prerequisite)
 **Definition:** The stage0 binary, given src/v4 as input, produces a new binary
 (stage1). stage1 is functionally complete: it can compile v4 programs, not just trivial ones.
 
-**Evidence:** `v4-stage0-compiler compile src/v4 --output-dir /tmp/stage1 && rustc /tmp/stage1/main.rs -o v4-stage1`
+**Evidence:** `v4-stage0-compiler compile src/v4 --output-dir /tmp/stage1 && rustc /tmp/stage1/main.rs -o v4-stage1 && v4-stage1 compile trivial.dag --target rust`
 
 **What this proves:** The v4 compiler can compile itself — stage0 self-compilation,
-stage1 exists. This is NOT self-hosting. Self-hosting (the Pure Bootstrap Zero
-requirement) is the bit-identical fixed point at M4/T-15. Reaching M3 is a necessary
-step toward that target, not the target itself.
+stage1 exists and can execute (not just link). The `v4-stage1 compile trivial.dag`
+smoke confirms the emitted binary is a working compiler, not merely a linkable artifact.
+This is NOT self-hosting. Self-hosting (the Pure Bootstrap Zero requirement) is the
+bit-identical fixed point at M4/T-15. Reaching M3 is a necessary step toward that
+target, not the target itself.
 
 **Known blockers (beyond M2):**
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
