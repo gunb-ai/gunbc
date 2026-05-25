@@ -311,3 +311,87 @@ In priority order:
 
 5. **Wire T-10 emit** once translate output is understood. Determine if this is wiring
    or new modeling.
+
+---
+
+## Ratified design decisions (2026-05-25)
+
+Operator-ratified decisions recorded here for dispatch clarity. These are new
+ratifications, not copies of existing TASKS.md facts — workers dispatched by
+eager-dove-283 should treat them as authoritative starting points and migrate
+detail to TASKS.md task bodies as they execute.
+
+### T-2 Node constructor shape
+
+`ordered_ring_node(inhabitant: Node) -> Node` and siblings return a **`Conj` node
+with named `algebra` and `inhabitant` edges** — NOT an `Instantiation` node.
+
+```
+Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Named { name: algebra_edge_sym },   target: <algebra Atom node> },
+    Edge { label: Named { name: inhabitant_edge_sym }, target: inhabitant }
+  ]
+}
+```
+
+Rationale: `Conj` + named edges is the semantically correct encoding for a product
+of two fields. `Instantiation` means "apply a type constructor to positional
+arguments" (e.g. `List<Int>`) — a different concept. Using `Conj` also matches the
+`AlgebraRef { algebra: Node, witness: Node }` shape already declared in
+`04_infer.dag` and is walkable by named-edge access in the existing fold with no
+new fold branch in T-9. Precision and simplicity point the same direction here —
+`Conj` is not a compromise.
+
+### T-25-core approach: strengthen home types before reaching for refinements
+
+When a type needs a constraint (e.g. "positive integer"), prefer strengthening the
+home model first — `NonZeroNat` from `std/nat.dag` already exists. A felt need for
+a refinement is a signal the home model may be anemic, not a mandate to add a
+predicate. T-25-core refinements apply only to externally-specified boundary values
+where the constraint is imposed by an upstream spec and cannot be resolved by
+improving the home model (e.g. POSIX `ExitCode` 0–255). The `posix.dag`
+`ProcessId`/`ExitCode` pattern is the reference — generalize it, do not broaden it.
+
+### T-30 hollow-alias gate mechanism
+
+An **affected-lens `TestClaim`** — not a separate lint tool and not a ci.dag build
+step. It runs via `bazel test //...` (or equivalent) driven by the T-21
+affected-set frontier. The compile pipeline is wrapped with lenses via
+`run_required_lens_gates` (already declared in `00_compile.dag`); the lens verdict
+is the gate. T-21 and T-19 must be dispatched immediately — every downstream task
+benefits from the testgen + affected-set infrastructure being live.
+
+### T-4 language model conformance tests (explicit deliverable)
+
+Each T-4 language file ships with an **auto-generated conformance test**: emit a
+representative program from the model, compile it with the target toolchain, verify
+correct execution. This is an explicit authoring deliverable per language file, not
+a follow-on. T-19 (testgen.dag) + T-21 (affected_set.dag) are prerequisites and
+must be dispatched before T-4 workers start. Every spec is orthogonal — model
+bottom-up from the spec itself, never assume shape similarity to adjacent languages.
+
+### Cycle prevention in processing (why fold_node terminates)
+
+Three independent guarantees — no runtime check is needed:
+1. **Value layer:** `Node` values are trees by construction. Pure functional
+   evaluation with no mutation makes self-referential nodes syntactically
+   unwritable. Depth is finite; `fold_node` is a structurally recursive
+   catamorphism on a decreasing structure.
+2. **Loop nodes:** the `Loop` behavior requires a `loop_bound_edge` child carrying
+   a `TerminationProof { non_increasing, strict: RankingDimension }` (declared in
+   `std/cardinality.dag`). `well_formed` enforces this structurally. Unbounded
+   loops are not well-formed.
+3. **Module graph:** circular imports are a resolve-time `Diagnostic`. The module
+   dependency graph is enforced acyclic at `03_resolve.dag` — no import cycle can
+   survive to a fold.
+
+### Test gate architecture (Decision 5)
+
+M1 gate and all downstream milestone gates author in `src/v4/workflow/ci.dag`
+(T-24, schedulable now — T-20 and T-21 both landed). The compile pipeline is
+wrapped with `run_required_lens_gates`; `bazel test //...` runs all affected
+TestClaims driven by T-21. The lens verdict — not merely a build exit code — is
+the acceptance criterion. `cargo check` is a valid non-gating probe; `cargo build`
+is the M1 gate minimum; lens enforcement is the long-term gate authority.
