@@ -245,6 +245,20 @@ fn rust_ord_derives_copy_text() -> String {
   "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
 }
 
+fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
+  if type_name == "Symbol" {
+    rust_ord_derives_copy_text()
+  } else if type_name == "DiffId" {
+    rust_ord_derives_text()
+  } else {
+    ""
+  }
+}
+
+fn rust_nominal_ord_type_eligible(type_name: String) -> Bool {
+  rust_nominal_ord_derives_for_type(type_name: type_name) != ""
+}
+
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
@@ -1646,10 +1660,8 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
   let derives = if has_fn_fields {
     "#[derive(Clone)]"
-  } else if name == "Symbol" {
-    rust_ord_derives_copy_text()
-  } else if name == "DiffId" {
-    rust_ord_derives_text()
+  } else if rust_nominal_ord_type_eligible(type_name: name) {
+    rust_nominal_ord_derives_for_type(type_name: name)
   } else if set_contains(shared_types, name) {
     rust_struct_derives_text()
   } else {
@@ -3171,7 +3183,7 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
   elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
-    || elem_name == "Secret" || elem_name == "Bytes" || elem_name == "Symbol" || elem_name == "DiffId"
+    || elem_name == "Secret" || elem_name == "Bytes" || rust_nominal_ord_type_eligible(type_name: elem_name)
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {

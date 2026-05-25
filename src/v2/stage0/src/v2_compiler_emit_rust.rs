@@ -271,6 +271,20 @@ pub fn rust_ord_derives_copy_text() -> String {
         .to_string()
 }
 
+pub fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
+    if (type_name.clone().as_str() == "Symbol".to_string().as_str()) {
+        rust_ord_derives_copy_text()
+    } else if (type_name.clone().as_str() == "DiffId".to_string().as_str()) {
+        rust_ord_derives_text()
+    } else {
+        "".to_string()
+    }
+}
+
+pub fn rust_nominal_ord_type_eligible(type_name: String) -> bool {
+    (rust_nominal_ord_derives_for_type(type_name).as_str() != "".to_string().as_str())
+}
+
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust)
         .tag_attribute
@@ -3108,10 +3122,8 @@ pub fn emit_struct_from_children(
         };
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
-        } else if (name.clone().as_str() == "Symbol".to_string().as_str()) {
-            rust_ord_derives_copy_text()
-        } else if (name.clone().as_str() == "DiffId".to_string().as_str()) {
-            rust_ord_derives_text()
+        } else if rust_nominal_ord_type_eligible(name.clone()) {
+            rust_nominal_ord_derives_for_type(name.clone())
         } else {
             if v2_rt::set_contains(&shared_types, name.clone()) {
                 rust_struct_derives_text()
@@ -7279,8 +7291,7 @@ pub fn rust_btree_set_element_ord_eligible(
             || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
             || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Symbol".to_string().as_str()))
-            || (elem_name.clone().as_str() == "DiffId".to_string().as_str()))
+            || rust_nominal_ord_type_eligible(elem_name.clone()))
     }
 }
 
