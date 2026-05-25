@@ -249,21 +249,35 @@ fn lookup_inferred_facts_in_entries(
 }
 
 
-// Consumption guard: only entries where node == facts.grounding.node are inserted.
-// Entries that violate the invariant are silently dropped (construction via
-// admitted_inferred_facts_entry is the primary enforcement point).
-fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Map<Node, InferredFacts> {
-  let admitted = fold(entries, init: [], f: fn(acc, entry) {
-    if entry.node == entry.facts.grounding.node {
-      list_push(acc, entry)
-    } else {
-      acc
+// Fail-closed map construction: rejects (with diagnostic) any entry where node != facts.grounding.node.
+// admitted_inferred_facts_entry is the primary enforcement point; this function is the secondary
+// fail-closed gate — it makes invariant violations visible as Rejected rather than silently dropping them.
+fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
+  match fold(entries, init: Accepted { value: [], diagnostics: None }, f: fn(acc, entry) {
+    match acc {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: ok_entries, diagnostics: d } =>
+        if entry.node == entry.facts.grounding.node {
+          Accepted { value: list_push(ok_entries, entry), diagnostics: d }
+        } else {
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: infer_canonical_grounding_incoherent_diagnostic(node: entry.node)
+            )
+          }
+        }
     }
-  })
-  Map {
-    lookup: fn(key) {
-      lookup_inferred_facts_in_entries(entries: admitted, key: key)
-    }
+  }) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: admitted, diagnostics: d } =>
+      Accepted {
+        value: Map {
+          lookup: fn(key) {
+            lookup_inferred_facts_in_entries(entries: admitted, key: key)
+          }
+        },
+        diagnostics: d
+      }
   }
 }
 
@@ -372,12 +386,16 @@ fn infer(tree: ResolvedTree) -> Outcome<InferredTree> {
   match infer_entries_for_tree(tree: tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: entries, diagnostics: d } =>
-      Accepted {
-        value: InferredTree {
-          root: tree,
-          facts: facts_map_from_entries(entries: entries)
-        },
-        diagnostics: d
+      match facts_map_from_entries(entries: entries) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: facts_map, diagnostics: md } =>
+          Accepted {
+            value: InferredTree {
+              root: tree,
+              facts: facts_map
+            },
+            diagnostics: diagnostics_merge(outer: d, inner: md)
+          }
       }
   }
 }
