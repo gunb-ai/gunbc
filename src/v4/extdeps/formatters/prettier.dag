@@ -1,6 +1,6 @@
 // src/v4/extdeps/formatters/prettier.dag
 // Scope: Prettier configuration file model (.prettierrc / package.json "prettier").
-// Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap, PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting, PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierParser, PrettierParserPolicy, PrettierFormattingOptions, PrettierOverrideOptions, PrettierOverrideEntry, PrettierConfig, prettier_defaults, prettier_layer.
+// Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap, PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting, PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierParser, PrettierIntPatch, PrettierBoolPatch, PrettierTrailingCommaPatch, PrettierQuotePropsPatch, PrettierArrowParensPatch, PrettierProseWrapPatch, PrettierHtmlWhitespaceSensitivityPatch, PrettierEndOfLinePatch, PrettierEmbeddedLanguageFormattingPatch, PrettierObjectWrapPatch, PrettierExperimentalOperatorPositionPatch, PrettierParserPatch, PrettierFormattingOptions, PrettierOverrideOptions, PrettierOverrideEntry, PrettierConfig, prettier_defaults, prettier_layer.
 // Consumes: v4.std.collection { List }.
 // Status: T-4.16 scaffold — Prettier stable config/options docs (v3 defaults).
 // Anchor: https://prettier.io/docs/configuration
@@ -100,9 +100,75 @@ type PrettierParser
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type PrettierParserPolicy
-  = PrettierParserInferFromExtension
-  | PrettierParserExplicit { parser: PrettierParser }
+type PrettierIntPatch
+  = PrettierIntPatchInherit
+  | PrettierIntPatchOverride { value: Int }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierBoolPatch
+  = PrettierBoolPatchInherit
+  | PrettierBoolPatchOverride { value: Bool }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierTrailingCommaPatch
+  = PrettierTrailingCommaPatchInherit
+  | PrettierTrailingCommaPatchOverride { value: PrettierTrailingComma }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierQuotePropsPatch
+  = PrettierQuotePropsPatchInherit
+  | PrettierQuotePropsPatchOverride { value: PrettierQuoteProps }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierArrowParensPatch
+  = PrettierArrowParensPatchInherit
+  | PrettierArrowParensPatchOverride { value: PrettierArrowParens }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierProseWrapPatch
+  = PrettierProseWrapPatchInherit
+  | PrettierProseWrapPatchOverride { value: PrettierProseWrap }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierHtmlWhitespaceSensitivityPatch
+  = PrettierHtmlWhitespaceSensitivityPatchInherit
+  | PrettierHtmlWhitespaceSensitivityPatchOverride { value: PrettierHtmlWhitespaceSensitivity }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierEndOfLinePatch
+  = PrettierEndOfLinePatchInherit
+  | PrettierEndOfLinePatchOverride { value: PrettierEndOfLine }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierEmbeddedLanguageFormattingPatch
+  = PrettierEmbeddedLanguageFormattingPatchInherit
+  | PrettierEmbeddedLanguageFormattingPatchOverride { value: PrettierEmbeddedLanguageFormatting }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierObjectWrapPatch
+  = PrettierObjectWrapPatchInherit
+  | PrettierObjectWrapPatchOverride { value: PrettierObjectWrap }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierExperimentalOperatorPositionPatch
+  = PrettierExperimentalOperatorPositionPatchInherit
+  | PrettierExperimentalOperatorPositionPatchOverride { value: PrettierExperimentalOperatorPosition }
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierParserPatch
+  = PrettierParserPatchInherit
+  | PrettierParserPatchOverride { value: PrettierParser }
 
 
 type PrettierFormattingOptions {
@@ -133,8 +199,30 @@ type PrettierFormattingOptions {
 
 
 type PrettierOverrideOptions {
-  parser: PrettierParserPolicy
-  options: PrettierFormattingOptions
+  parser: PrettierParserPatch
+  print_width: PrettierIntPatch
+  tab_width: PrettierIntPatch
+  use_tabs: PrettierBoolPatch
+  semi: PrettierBoolPatch
+  single_quote: PrettierBoolPatch
+  quote_props: PrettierQuotePropsPatch
+  jsx_single_quote: PrettierBoolPatch
+  trailing_comma: PrettierTrailingCommaPatch
+  bracket_spacing: PrettierBoolPatch
+  object_wrap: PrettierObjectWrapPatch
+  bracket_same_line: PrettierBoolPatch
+  arrow_parens: PrettierArrowParensPatch
+  require_pragma: PrettierBoolPatch
+  insert_pragma: PrettierBoolPatch
+  check_ignore_pragma: PrettierBoolPatch
+  prose_wrap: PrettierProseWrapPatch
+  html_whitespace_sensitivity: PrettierHtmlWhitespaceSensitivityPatch
+  vue_indent_script_and_style: PrettierBoolPatch
+  single_attribute_per_line: PrettierBoolPatch
+  end_of_line: PrettierEndOfLinePatch
+  embedded_language_formatting: PrettierEmbeddedLanguageFormattingPatch
+  experimental_ternaries: PrettierBoolPatch
+  experimental_operator_position: PrettierExperimentalOperatorPositionPatch
 }
 
 
