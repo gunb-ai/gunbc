@@ -58,17 +58,25 @@ linked into a binary in CI.
 
 **Definition:** v2 can parse and type-check all v4 .dag files with zero diagnostics.
 
-**Evidence:** CI step "v2 → v4 bootstrap compile (fail-closed full)" exits 0.
+**Evidence:** CI gate "v4 bootstrap gate result (compile or tracked bridge)" exits 0,
+AND the gate log shows **"v4 bootstrap: full compile receipt"** (not "resolve-posture
+bridge receipt"). The gate has two arms:
+- **Full compile receipt:** `v2-compiler compile --target dag src/v4` exits 0 with
+  `compiled: N files emitted, 0 diagnostics`. This is the M0 receipt.
+- **Resolve-posture bridge receipt:** the compile step timed out (CI timeout is 180s)
+  but `scripts/v4-bootstrap-resolve-posture-gate.sh` passed. This proves resolve posture
+  only — it does **not** guarantee zero diagnostics or full parse coverage.
 
-**What this proves:** Every v4 type is well-formed. Every import resolves. Every
-function signature is consistent with its body's type. The structural design is
-sound.
+**What this proves (full compile receipt only):** Every v4 type is well-formed.
+Every import resolves. Every function signature is consistent with its body's type.
+The structural design is sound.
 
 **What this does NOT prove:** Any function body does what it claims. The
 tokenizer tokenizes. The parser parses. The evaluator evaluates. The emitter emits.
 None of these are executed during M0.
 
-**Status:** ✓ Achieved. This is the current state of the project.
+**Status:** ✓ Achieved on full compile receipt. Verify the gate log shows the
+full-compile arm, not the bridge arm, before treating CI green as M0 confirmation.
 
 ---
 
@@ -145,9 +153,11 @@ is structurally achieved (even if not yet bit-identical).
 **Known blockers (beyond M2):**
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
    present in src/v4 itself. Currently modeled; exercised at M2 only for trivial input.
-2. **T-8 resolve cross-file bindings (T-28 bridge).** `resolve_with_graph` currently
-   drops the graph parameter (`🟡` gate). Cross-file imports (which src/v4 has extensively)
-   require this to be real.
+2. **T-8 resolve cross-file bindings (T-28 bridge).** `resolve_with_graph` passes the
+   `ModuleGraph` to `namespace_from_tree_and_graph`, but that function has a `🟡` gate
+   and does not walk `ModuleGraph.entries` — cross-file exports are never merged into the
+   namespace. Cross-file imports (which src/v4 has extensively) won't resolve until
+   `namespace_from_tree_and_graph` is filled.
 3. **Full lex/grammar data for .dag language.** dag.dag already has wave-1 lex/grammar
    data. It needs to be complete enough to parse all of src/v4's constructs.
 
@@ -225,9 +235,11 @@ not for the compiled binary to execute its pipeline. The two tracks are genuinel
 independent at M2.
 
 **Gap 3 — T-28 cross-file resolution**
-`resolve_with_graph` has a `🟡` gate marking that it drops the module graph. Cross-file
-imports (which every v4 file uses) won't resolve correctly until this is real. M3
-requires this. M2 with a single-file trivial input does not.
+`resolve_with_graph` passes the `ModuleGraph` through to `namespace_from_tree_and_graph`,
+but that function has a `🟡` gate (`03_resolve.dag:564-570`) and does not walk
+`ModuleGraph.entries` — cross-file exports are never merged into the namespace. Cross-file
+imports (which every v4 file uses) won't resolve correctly until `namespace_from_tree_and_graph`
+is filled. M3 requires this. M2 with a single-file trivial input does not.
 
 **Gap 4 — T-10 emit scope vs. translate**
 `06_translate.dag` is 707 lines and more developed. `05_emit.dag` is 45 lines. Is
