@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_model_core, wave1_void
 // Consumes: v4.std.collection, v4.std.node
 // Status: T-33 modeled.
 
@@ -9,6 +9,7 @@ module v4.std.model_core
 
 
 import v4.std.collection { List, Map }
+import v4.std.algebra { boolean_algebra_node }
 import v4.std.diagnostic {
   Diagnostic,
   Textual,
@@ -16,7 +17,7 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -110,13 +111,131 @@ type ModelCore {
 }
 
 
-// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: (a) ModelCore is non-empty AND (b) every AlgebraInhabitanceDecl.algebra field is a grounded Node (not a bare Atom / bridge symbol). Condition (b) requires algebra.dag to export Node constructors (T-2) and T-4 Wave 2b to populate inhabitance with real algebra structure. A non-empty ModelCore that uses bridge-Symbol algebra fields does NOT satisfy this condition (T-4 / T-34).
-fn wave1_void() -> ModelCore {
+data model_core_wave1_bool: Symbol = model_core_wave1_bool
+data model_core_wave1_bool_width_one_bit: Symbol = model_core_wave1_bool_width_one_bit
+data model_core_wave1_bool_encoding_classical_two_valued: Symbol = model_core_wave1_bool_encoding_classical_two_valued
+data model_core_wave1_bool_law_bounded_lattice_identities: Symbol = model_core_wave1_bool_law_bounded_lattice_identities
+data model_core_wave1_bool_law_complement_involution: Symbol = model_core_wave1_bool_law_complement_involution
+data model_core_wave1_bool_law_complement_bounds: Symbol = model_core_wave1_bool_law_complement_bounds
+data model_core_wave1_law_field_subject: Symbol = model_core_wave1_law_field_subject
+data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
+
+
+fn model_core_wave1_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+
+fn model_core_wave1_bool_node() -> Node {
+  model_core_wave1_atom(id: model_core_wave1_bool)
+}
+
+
+fn model_core_wave1_bool_facts_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: primitive_fact_axis_width },
+        target: model_core_wave1_atom(id: model_core_wave1_bool_width_one_bit)
+      },
+      Edge {
+        label: Named { name: primitive_fact_axis_encoding },
+        target: model_core_wave1_atom(id: model_core_wave1_bool_encoding_classical_two_valued)
+      },
+    ]
+  }
+}
+
+
+fn model_core_wave1_bool_spec_facts() -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_width =>
+          Holds { value: model_core_wave1_atom(id: model_core_wave1_bool_width_one_bit) }
+        primitive_fact_axis_encoding =>
+          Holds { value: model_core_wave1_atom(id: model_core_wave1_bool_encoding_classical_two_valued) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+
+fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: model_core_wave1_bool_facts_node(),
+    spec_facts: model_core_wave1_bool_spec_facts()
+  }
+}
+
+
+fn model_core_wave1_bool_inhabitance_witness() -> Node {
+  boolean_algebra_node(inhabitant: model_core_wave1_bool_node())
+}
+
+
+fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
+  let witness = model_core_wave1_bool_inhabitance_witness()
+  AlgebraInhabitanceDecl {
+    algebra: witness,
+    inhabitant: model_core_wave1_bool_node(),
+    witness: witness
+  }
+}
+
+
+fn model_core_wave1_law_node(law: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: model_core_wave1_law_field_subject },
+        target: model_core_wave1_bool_inhabitance_witness()
+      },
+      Edge {
+        label: Named { name: model_core_wave1_law_field_kind },
+        target: model_core_wave1_atom(id: law)
+      },
+    ]
+  }
+}
+
+
+fn model_core_wave1_bool_law_obligation(law: Symbol) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: model_core_wave1_bool_inhabitance_witness(),
+    law: model_core_wave1_law_node(law: law)
+  }
+}
+
+
+fn wave1_model_core() -> ModelCore {
   ModelCore {
-    primitives: [],
-    inhabitance: [],
-    laws: [],
+    primitives: [
+      model_core_wave1_bool_primitive_bundle(),
+    ],
+    inhabitance: [
+      model_core_wave1_bool_inhabitance(),
+    ],
+    laws: [
+      model_core_wave1_bool_law_obligation(law: model_core_wave1_bool_law_bounded_lattice_identities),
+      model_core_wave1_bool_law_obligation(law: model_core_wave1_bool_law_complement_involution),
+      model_core_wave1_bool_law_obligation(law: model_core_wave1_bool_law_complement_bounds),
+    ],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
   }
+}
+
+
+fn wave1_void() -> ModelCore {
+  wave1_model_core()
 }
