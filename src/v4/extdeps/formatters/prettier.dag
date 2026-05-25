@@ -2,22 +2,24 @@
 // Scope: Prettier configuration model — real formatter option space grounded in .prettierrc / package.json "prettier".
 // Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap,
 //       PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting,
-//       PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierOptions,
-//       PrettierOverrideEntry, PrettierConfig, prettier_defaults, prettier_merge.
+//       PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierParser, PrettierParserPolicy,
+//       PrettierFormattingOptions, PrettierOverrideOptions, PrettierOverrideEntry, PrettierConfig,
+//       prettier_defaults, prettier_merge.
 // Consumes: v4.std.collection (List only; no node/compiler dependency).
 // Status: T-4.16 scaffold — Prettier stable options per prettier.io/docs/options (v3 defaults).
 // Anchor: https://prettier.io/docs/configuration
 //         https://prettier.io/docs/options
 // PrettierConfig is a complete resolved .prettierrc / package.json "prettier" document — root
-// PrettierOptions plus the official `overrides[]` carrier (required `files`, optional
+// PrettierFormattingOptions plus the official `overrides[]` carrier (required `files`, optional
 // `excludeFiles`, nested `options`). Every field is required; this is not a partial patch.
 // Note: override composition — consumer folds List<PrettierConfig> via prettier_merge; each
 //       layer is a complete config. Field-granularity patch substrate (partial overrides) is
-//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
-//       per-field Override/Inherit variants replaces full-config layering.
-// CLI/API-only surface omitted from PrettierOptions: `filepath`, `rangeStart`/`rangeEnd`.
-// Top-level `parser` is omitted (Prettier forbids it outside overrides); override-local parser
-// is 🟡 gated — feature: prettier-override-parser — until consumers need per-override parser facts.
+//       🟡 gated — feature:formatter-config-patch — bind task: src/v4/TASKS.md#t-10-compiler05_emitdag--compiler00_compiledag--emission--orchestrator
+//       — consumer: TargetModel.formatter_config (T-10/T-11 follow-on) — dissolve-on-arrival:
+//       per-field Override/Inherit patch type replaces full-config *_merge layering when emit
+//       needs partial .prettierrc override without full-config specification.
+// CLI/API-only surface omitted: `filepath`, `rangeStart`/`rangeEnd`. Top-level `parser` is
+// forbidden by Prettier; override-local `parser` is modeled on PrettierOverrideOptions.
 
 module v4.extdeps.formatters.prettier
 
@@ -84,14 +86,47 @@ type PrettierExperimentalOperatorPosition
   | PrettierOperatorPositionEnd
 
 
-// Flat formatter options (root config + nested override `options` object).
-type PrettierOptions {
-  // Core layout
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Official Prettier parser names (prettier.io/docs/options#parser); allowed in override `options` only.
+type PrettierParser
+  = PrettierParserBabel
+  | PrettierParserBabelFlow
+  | PrettierParserBabelTs
+  | PrettierParserFlow
+  | PrettierParserTypescript
+  | PrettierParserEspree
+  | PrettierParserMeriyah
+  | PrettierParserAcorn
+  | PrettierParserCss
+  | PrettierParserScss
+  | PrettierParserLess
+  | PrettierParserJson
+  | PrettierParserJson5
+  | PrettierParserJsonc
+  | PrettierParserJsonStringify
+  | PrettierParserGraphql
+  | PrettierParserMarkdown
+  | PrettierParserMdx
+  | PrettierParserHtml
+  | PrettierParserVue
+  | PrettierParserAngular
+  | PrettierParserLwc
+  | PrettierParserMjml
+  | PrettierParserYaml
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type PrettierParserPolicy
+  = PrettierParserInferFromExtension
+  | PrettierParserExplicit { parser: PrettierParser }
+
+
+// Root / package.json options (no top-level `parser` per Prettier docs).
+type PrettierFormattingOptions {
   print_width: Int
   tab_width: Int
   use_tabs: Bool
 
-  // JavaScript / TypeScript
   semi: Bool
   single_quote: Bool
   quote_props: PrettierQuoteProps
@@ -102,22 +137,53 @@ type PrettierOptions {
   bracket_same_line: Bool
   arrow_parens: PrettierArrowParens
 
-  // Pragma markers
   require_pragma: Bool
   insert_pragma: Bool
   check_ignore_pragma: Bool
 
-  // Markup / prose
   prose_wrap: PrettierProseWrap
   html_whitespace_sensitivity: PrettierHtmlWhitespaceSensitivity
   vue_indent_script_and_style: Bool
   single_attribute_per_line: Bool
 
-  // Line endings / embedded code
   end_of_line: PrettierEndOfLine
   embedded_language_formatting: PrettierEmbeddedLanguageFormatting
 
-  // Experimental (Prettier v3+)
+  experimental_ternaries: Bool
+  experimental_operator_position: PrettierExperimentalOperatorPosition
+}
+
+
+// Override `options` object: root formatting keys plus override-local `parser`.
+type PrettierOverrideOptions {
+  parser: PrettierParserPolicy
+
+  print_width: Int
+  tab_width: Int
+  use_tabs: Bool
+
+  semi: Bool
+  single_quote: Bool
+  quote_props: PrettierQuoteProps
+  jsx_single_quote: Bool
+  trailing_comma: PrettierTrailingComma
+  bracket_spacing: Bool
+  object_wrap: PrettierObjectWrap
+  bracket_same_line: Bool
+  arrow_parens: PrettierArrowParens
+
+  require_pragma: Bool
+  insert_pragma: Bool
+  check_ignore_pragma: Bool
+
+  prose_wrap: PrettierProseWrap
+  html_whitespace_sensitivity: PrettierHtmlWhitespaceSensitivity
+  vue_indent_script_and_style: Bool
+  single_attribute_per_line: Bool
+
+  end_of_line: PrettierEndOfLine
+  embedded_language_formatting: PrettierEmbeddedLanguageFormatting
+
   experimental_ternaries: Bool
   experimental_operator_position: PrettierExperimentalOperatorPosition
 }
@@ -125,22 +191,19 @@ type PrettierOptions {
 
 // Official Prettier `overrides[]` entry (prettier.io/docs/configuration#configuration-overrides).
 type PrettierOverrideEntry {
-  // Required: glob(s) selecting files for this override (pyproject accepts string or array).
   files: List<String>
-  // Optional: glob(s) excluding files; empty list = absent key.
   exclude_files: List<String>
-  // Nested resolved options for matched files (no nested overrides[] in upstream Prettier).
-  options: PrettierOptions
+  options: PrettierOverrideOptions
 }
 
 
 type PrettierConfig {
-  options: PrettierOptions
+  options: PrettierFormattingOptions
   overrides: List<PrettierOverrideEntry>
 }
 
 
-data prettier_default_options: PrettierOptions = PrettierOptions {
+data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
   print_width: 80,
   tab_width: 2,
   use_tabs: false,
@@ -172,9 +235,8 @@ data prettier_default_options: PrettierOptions = PrettierOptions {
 }
 
 
-// Official Prettier v3 defaults (prettier.io/docs/options); no overrides unless authored.
 data prettier_defaults: PrettierConfig = PrettierConfig {
-  options: prettier_default_options,
+  options: prettier_default_formatting,
   overrides: [],
 }
 

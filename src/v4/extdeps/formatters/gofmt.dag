@@ -8,9 +8,11 @@
 // tab width is fixed in the printer. Immutable style evidence lives in `gofmt_canonical_style`,
 // outside the GofmtConfig merge carrier, so non-gofmt style states are not constructible.
 // Note: override composition — consumer folds List<GofmtConfig> via gofmt_merge; each layer is a
-//       complete carrier. Field-granularity patch substrate (partial overrides) is 🟡 gated —
-//       feature: formatter-config-patch — dissolve-on-arrival: patch type with per-field
-//       Override/Inherit variants replaces full-config layering.
+//       complete carrier. Field-granularity patch substrate (partial overrides) is
+//       🟡 gated — feature:formatter-config-patch — bind task: src/v4/TASKS.md#t-10-compiler05_emitdag--compiler00_compiledag--emission--orchestrator
+//       — consumer: TargetModel.formatter_config (T-10/T-11 follow-on) — dissolve-on-arrival:
+//       per-field Override/Inherit patch type replaces full-config *_merge layering when emit
+//       needs partial override without full-config specification.
 // Invocation flags (-d, -l, -w, -s, -r) are CLI/runtime concerns, not formatter-config substrate.
 
 module v4.extdeps.formatters.gofmt

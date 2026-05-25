@@ -8,8 +8,10 @@
 //         https://github.com/psf/black/blob/main/src/black/const.py (DEFAULT_INCLUDES / DEFAULT_EXCLUDES)
 // Note: override composition — consumer folds List<BlackConfig> via black_merge; each
 //       layer is a complete config. Field-granularity patch substrate (partial overrides) is
-//       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
-//       per-field Override/Inherit variants replaces full-config layering.
+//       🟡 gated — feature:formatter-config-patch — bind task: src/v4/TASKS.md#t-10-compiler05_emitdag--compiler00_compiledag--emission--orchestrator
+//       — consumer: TargetModel.formatter_config (T-10/T-11 follow-on) — dissolve-on-arrival:
+//       per-field Override/Inherit patch type replaces full-config *_merge layering when emit
+//       needs partial pyproject override without full-config specification.
 
 module v4.extdeps.formatters.black
 
