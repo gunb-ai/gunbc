@@ -507,7 +507,7 @@ fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> List<Tok
         false =>
           match sync_tokens.member(tok.class) {
             true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: Empty, item: tok) }
-            false => ParseSyncState { found_sync: false, result: [] }
+            false => ParseSyncState { found_sync: false, result: Empty }
           }
       }
     }
