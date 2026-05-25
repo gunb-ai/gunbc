@@ -290,6 +290,15 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "WasmConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+    if rel == "src/v4/std/integer.dag":
+        # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
+        # (absent at merge-base).
+        for nm in (
+            "Signedness",
+            "Representation",
+            "OverflowDisposition",
+        ):
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
 
 

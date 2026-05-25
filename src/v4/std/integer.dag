@@ -4,7 +4,7 @@
 // Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
 // Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).
 // Anchor: https://en.wikipedia.org/wiki/Integer
-// Ledger: CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
+// Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION.
 // 🟢
 
 module v4.std.integer
@@ -37,16 +37,16 @@ type Int = GroupCompletion<Nat>
 type UInt = Nat
 type Compose<carrier, dimension>
 
-// Anchor: https://en.wikipedia.org/wiki/Signedness
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Signedness = Signed | Unsigned
 
-// Anchor: https://en.wikipedia.org/wiki/Signed_number_representations
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Representation
   = TwosComplement
   | OnesComplement // stub — no current target uses this representation
   | SignMagnitude  // stub — no current target uses this representation
 
-// Anchor: https://en.wikipedia.org/wiki/Integer_overflow
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
 type Int8 = Compose<Int, MachineWidth<Word8>>
