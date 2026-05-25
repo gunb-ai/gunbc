@@ -1,19 +1,33 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Owns: LexCharClass, LexPattern, LexRule, LexRuleSet, LexRules, Token, TokenStream, tokenize_lexical_walk_not_realized, tokenize_lex_e0_source_not_exhausted, tokenize_lexical_walk_not_realized_diagnostic, tokenize_lex_e0_source_not_exhausted_diagnostic, tokenize.
-// Consumes: std collection, std diagnostic, std node, std text.
-// Status: Wave-1 void-lex path realized.
+// Owns: LexCharClass, LexPattern, LexRule, LexRuleSet, LexRules, Token, TokenStream,
+//       tokenize_lex_e0_source_not_exhausted, tokenize_lex_e0_source_not_exhausted_diagnostic,
+//       tokenize_lex_e1_unrecognized_char, tokenize_lex_e1_unrecognized_char_diagnostic,
+//       char_in_class, LexMatchResult, LexRuleApply,
+//       lex_match_prefix, lex_match_pattern, lex_repeat_pattern,
+//       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk,
+//       lex_rule_token_class_member, lex_rule_set_token_class_member, tokenize.
+// Consumes: std collection, std diagnostic, std node, std text, std nat, std algebra.
+// Status: T-6 lexer walk realized.
+//
+// Rule-matching contract:
+//   Priority: first-rule-wins (order in LexRuleSet.rules).
+//   KeywordPattern: match text exactly AND assert next char is NOT IdentContinueChar.
+//   LiteralPattern: match text exactly, no boundary assertion.
+//   RepeatPattern / OneOrMorePattern: greedy (consume as much as possible).
+//   Error: first unrecognized character → E1 diagnostic, scanning stops.
 
 
 module v4.compiler.tokenize
 
 
 import v4.std.collection { List }
-import v4.std.diagnostic {Correction, Diagnostic, ExternalContractUnknown, Locus, Outcome, Textual, UserInputBoundary, WholeFile, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnknown, Locus, None, Outcome, Textual, UserInputBoundary, WholeFile, diagnostics_singleton }
 import v4.std.node { Symbol }
-import v4.std.algebra { fold_list, is_empty }
-import v4.std.text { Char, String }
+import v4.std.algebra { Cons, Empty, fold_list, is_empty, length, list_append, list_snoc_item }
+import v4.std.text { Char, String, string_head, string_is_empty, string_tail }
+import v4.std.nat { nat_lte, nat_gte }
 import v4.std.logic { Bool }
 
 // 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
@@ -28,7 +42,7 @@ type LexCharClass
   | BlockCommentTextChar
 
 
-// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, walker witness remains gated.
+// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -54,7 +68,7 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk remains gated.
+// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk realized.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }
@@ -70,9 +84,20 @@ type Token {
 type TokenStream {
   tokens: List<Token>
 }
-data tokenize_lexical_walk_not_realized: Symbol = tokenize_lexical_walk_not_realized
+
+// 🟡 coproduct dissolution — CP-1b item 13e; per-pattern match result; dissolves when LexPattern converges with GrammarExpr on single bidirectional grammar carrier.
+type LexMatchResult
+  = LexMatchAccepted { remaining: String, lexeme: String }
+  | LexMatchRejected
+
+// 🟡 coproduct dissolution — CP-1b item 13f; per-rule application result; dissolves with LexPattern carrier convergence.
+type LexRuleApply
+  = LexRuleNoMatch
+  | LexRuleToken { class: Symbol, lexeme: String, remaining: String }
+  | LexRuleTrivia { lexeme: String, remaining: String }
 
 data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
+data tokenize_lex_e1_unrecognized_char: Symbol = tokenize_lex_e1_unrecognized_char
 
 
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
@@ -94,20 +119,257 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
 }
 
 
-fn tokenize_lexical_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: tokenize_lexical_walk_not_realized,
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
 fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: tokenize_lex_e0_source_not_exhausted,
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn tokenize_lex_e1_unrecognized_char_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: tokenize_lex_e1_unrecognized_char,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
+
+fn char_in_class(c: Char, class: LexCharClass) -> Bool {
+  match class {
+    WhitespaceChar =>
+      c == 32 || c == 9 || c == 10 || c == 13
+    DigitChar =>
+      nat_gte(a: c, b: 48) && nat_lte(a: c, b: 57)
+    HexDigitChar =>
+      char_in_class(c: c, class: DigitChar) ||
+      (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 70)) ||
+      (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 102))
+    IdentStartChar =>
+      (nat_gte(a: c, b: 65) && nat_lte(a: c, b: 90)) ||
+      (nat_gte(a: c, b: 97) && nat_lte(a: c, b: 122)) ||
+      c == 95
+    IdentContinueChar =>
+      char_in_class(c: c, class: IdentStartChar) ||
+      char_in_class(c: c, class: DigitChar)
+    StringTextChar =>
+      c != 34 && c != 10
+    LineCommentTextChar =>
+      c != 10
+    BlockCommentTextChar =>
+      c != 42
+  }
+}
+
+
+// lex_match_prefix: match a literal string prefix against source, building lexeme.
+// Recurses character-by-character; terminates on prefix exhaustion or mismatch.
+fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
+  match string_is_empty(s: prefix) {
+    true => LexMatchAccepted { remaining: source, lexeme: Empty }
+    false =>
+      match string_is_empty(s: source) {
+        true => LexMatchRejected
+        false =>
+          let ph = string_head(s: prefix)
+          let sh = string_head(s: source)
+          match ph == sh {
+            true =>
+              match lex_match_prefix(prefix: string_tail(s: prefix), source: string_tail(s: source)) {
+                LexMatchRejected => LexMatchRejected
+                LexMatchAccepted { remaining: rest, lexeme: lex } =>
+                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: sh, tail: lex } }
+              }
+            false => LexMatchRejected
+          }
+      }
+  }
+}
+
+
+// lex_repeat_pattern: greedy zero-or-more match of element against source.
+// Terminates because each accepted iteration strictly reduces source length
+// (grammar data authors must not define zero-width RepeatPattern elements).
+fn lex_repeat_pattern(pattern: LexPattern, source: String, acc_lexeme: String) -> LexMatchResult {
+  match lex_match_pattern(pattern: pattern, source: source) {
+    LexMatchRejected =>
+      LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
+    LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+      lex_repeat_pattern(
+        pattern: pattern,
+        source: rest,
+        acc_lexeme: list_append(left: acc_lexeme, right: consumed)
+      )
+  }
+}
+
+
+fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
+  match pattern {
+    EmptyPattern =>
+      LexMatchAccepted { remaining: source, lexeme: Empty }
+    LiteralPattern { text: text } =>
+      lex_match_prefix(prefix: text, source: source)
+    KeywordPattern { text: text } =>
+      match lex_match_prefix(prefix: text, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          match string_is_empty(s: rest) {
+            true => LexMatchAccepted { remaining: rest, lexeme: lex }
+            false =>
+              match char_in_class(c: string_head(s: rest), class: IdentContinueChar) {
+                true => LexMatchRejected
+                false => LexMatchAccepted { remaining: rest, lexeme: lex }
+              }
+          }
+      }
+    CharPattern { char: expected } =>
+      match string_is_empty(s: source) {
+        true => LexMatchRejected
+        false =>
+          match string_head(s: source) == expected {
+            true =>
+              LexMatchAccepted {
+                remaining: string_tail(s: source),
+                lexeme: Cons { head: string_head(s: source), tail: Empty }
+              }
+            false => LexMatchRejected
+          }
+      }
+    CharClassPattern { class: class } =>
+      match string_is_empty(s: source) {
+        true => LexMatchRejected
+        false =>
+          match char_in_class(c: string_head(s: source), class: class) {
+            true =>
+              LexMatchAccepted {
+                remaining: string_tail(s: source),
+                lexeme: Cons { head: string_head(s: source), tail: Empty }
+              }
+            false => LexMatchRejected
+          }
+      }
+    SequencePattern { left: left, right: right } =>
+      match lex_match_pattern(pattern: left, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest1, lexeme: lex1 } =>
+          match lex_match_pattern(pattern: right, source: rest1) {
+            LexMatchRejected => LexMatchRejected
+            LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
+              LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
+          }
+      }
+    ChoicePattern { left: left, right: right } =>
+      match lex_match_pattern(pattern: left, source: source) {
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          LexMatchAccepted { remaining: rest, lexeme: lex }
+        LexMatchRejected =>
+          lex_match_pattern(pattern: right, source: source)
+      }
+    OptionalPattern { element: element } =>
+      match lex_match_pattern(pattern: element, source: source) {
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          LexMatchAccepted { remaining: rest, lexeme: lex }
+        LexMatchRejected =>
+          LexMatchAccepted { remaining: source, lexeme: Empty }
+      }
+    RepeatPattern { element: element } =>
+      lex_repeat_pattern(pattern: element, source: source, acc_lexeme: Empty)
+    OneOrMorePattern { element: element } =>
+      match lex_match_pattern(pattern: element, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          lex_repeat_pattern(pattern: element, source: rest, acc_lexeme: lex)
+      }
+    DelimitedPattern { open: open, body: body, close: close } =>
+      lex_match_pattern(
+        pattern: SequencePattern {
+          left: open,
+          right: SequencePattern { left: body, right: close }
+        },
+        source: source
+      )
+  }
+}
+
+
+fn lex_rule_pattern(rule: LexRule) -> LexPattern {
+  match rule {
+    TokenRule { token_class: _, pattern: p } => p
+    TriviaRule { pattern: p } => p
+  }
+}
+
+
+fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
+  match lex_match_pattern(pattern: lex_rule_pattern(rule: rule), source: source) {
+    LexMatchRejected => LexRuleNoMatch
+    LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
+      match rule {
+        TokenRule { token_class: class, pattern: _ } =>
+          LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
+        TriviaRule { pattern: _ } =>
+          LexRuleTrivia { lexeme: lexeme, remaining: remaining }
+      }
+  }
+}
+
+
+fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
+  match rules {
+    Empty => LexRuleNoMatch
+    Cons { head: rule, tail: rest } =>
+      match lex_try_rule(rule: rule, source: source) {
+        LexRuleNoMatch => lex_try_rules(rules: rest, source: source)
+        LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
+          LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
+        LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
+          LexRuleTrivia { lexeme: lexeme, remaining: remaining }
+      }
+  }
+}
+
+
+// lex_walk: scan source left-to-right; emit tokens, discard trivia, error on E1.
+// Termination: each non-error iteration consumes at least one character (lexeme non-empty).
+fn lex_walk(
+  source: String,
+  tokens: List<Token>,
+  file: Symbol,
+  pos: Int,
+  rules: LexRuleSet
+) -> Outcome<TokenStream> {
+  match string_is_empty(s: source) {
+    true =>
+      Accepted { value: TokenStream { tokens: tokens }, diagnostics: None }
+    false =>
+      let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
+      match lex_try_rules(rules: rules.rules, source: source) {
+        LexRuleNoMatch =>
+          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+        LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
+          lex_walk(
+            source: remaining,
+            tokens: tokens,
+            file: file,
+            pos: pos + length(xs: lexeme),
+            rules: rules
+          )
+        LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
+          let new_pos = pos + length(xs: lexeme)
+          lex_walk(
+            source: remaining,
+            tokens: list_snoc_item(
+              xs: tokens,
+              item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: new_pos }
+            ),
+            file: file,
+            pos: new_pos,
+            rules: rules
+          )
+      }
   }
 }
 
@@ -120,13 +382,11 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
   match rules {
     VoidLexRules =>
       if is_empty(xs: text) {
-        Accepted { value: TokenStream {
-            tokens: []
-          }, diagnostics: None }
+        Accepted { value: TokenStream { tokens: [] }, diagnostics: None }
       } else {
         Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
-    ModeledLexRules { root: _ } =>
-      Rejected { diagnostics: diagnostics_singleton(d: tokenize_lexical_walk_not_realized_diagnostic(at: at)) }
+    ModeledLexRules { root: rule_set } =>
+      lex_walk(source: text, tokens: [], file: file, pos: 0, rules: rule_set)
   }
 }

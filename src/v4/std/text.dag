@@ -1,15 +1,32 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
-// Owns: Char, String.
-// Consumes: std/algebra.dag (FreeMonoid); std/nat.dag (Nat).
-// Status: T-3 modeled.
+// Owns: Char, String, string_is_empty, string_head, string_tail.
+// Consumes: std/algebra.dag (FreeMonoid, Cons, Empty, is_empty); std/logic.dag (Bool); std/nat.dag (Nat, Zero).
+// Status: T-3 modeled; string scanning primitives added for T-6 lexer walk.
 // Anchor: https://en.wikipedia.org/wiki/Unicode
 
 
 module v4.std.text
 
 
-import v4.std.algebra { FreeMonoid }
-import v4.std.nat { Nat }
+import v4.std.algebra { Cons, Empty, FreeMonoid, is_empty }
+import v4.std.logic { Bool }
+import v4.std.nat { Nat, Zero }
 type Char = Nat
 type String = FreeMonoid<Char>
+fn string_is_empty(s: String) -> Bool {
+  is_empty(xs: s)
+}
+// string_head: first character. Caller must check string_is_empty first; returns Zero on empty.
+fn string_head(s: String) -> Char {
+  match s {
+    Empty => Zero
+    Cons { head: c, tail: _ } => c
+  }
+}
+fn string_tail(s: String) -> String {
+  match s {
+    Empty => Empty
+    Cons { head: _, tail: t } => t
+  }
+}
