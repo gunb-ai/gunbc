@@ -3,7 +3,7 @@
 // Anchor: https://en.wikipedia.org/wiki/Parsing
 // Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
 //       Node projection functions, left-recursion check, error-recovery helpers,
-//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first.
+//       ParseSyncState, TokenPeek, parse_diag_cons, parse_token_first, parse_e1_syntax_error.
 // Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
 // Status: T-7 parse walk realized; GrammarRoot carries sync_tokens for error recovery.
 //
@@ -102,6 +102,8 @@ data parse_grammar_left_recursive: Symbol = parse_grammar_left_recursive
 
 data parse_e1_repeat_recovery: Symbol = parse_e1_repeat_recovery
 
+data parse_e1_syntax_error: Symbol = parse_e1_syntax_error
+
 
 fn parse_walk_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -135,6 +137,15 @@ fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
     reason: parse_grammar_left_recursive,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: parse_e1_syntax_error,
+    at: at,
+    correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
@@ -649,7 +660,7 @@ fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarP
       Rejected {
         diagnostics: parse_diags_to_non_empty(
           diags: diags,
-          default: parse_walk_not_realized_diagnostic(at: at)
+          default: parse_e1_syntax_error_diagnostic(at: at)
         )
       }
   }
