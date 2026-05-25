@@ -1,7 +1,7 @@
 // src/v4/std/datetime.dag
 // Scope: RFC 3339 clock-calendar instant facts for format-layer consumers.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc3339
-// Owns: Instant, RFC 3339 date/time field carriers, nanosecond subsecond,
+// Owns: Instant, RFC 3339 date/time field carriers, local date/time profiles,
 //       UTC offset carriers, and validation-discharge constructors.
 // Consumes: std diagnostic, std nat, std text, std refinement, std node.
 // Status: 🟢 T-3 modeled.
@@ -118,16 +118,55 @@ type TzOffset
   | SignedOffset { offset: NumericTzOffset }
 
 
-type Instant {
+type CalendarDate {
   year: Year
   month: MonthOrdinal
   day: DayOrdinal
+}
+
+
+type ClockTime {
   hour: HourOfDay
   minute: MinuteOfHour
   second: SecondOfMinute
   subsecond: Subsecond
+}
+
+
+type LocalDate {
+  date: CalendarDate
+}
+
+
+type LocalTime {
+  time: ClockTime
+}
+
+
+type LocalDateTime {
+  date: CalendarDate
+  time: ClockTime
+}
+
+
+type Instant {
+  date: CalendarDate
+  time: ClockTime
   offset: TzOffset
 }
+
+
+type OffsetDateTime {
+  instant: Instant
+}
+
+
+// 🟢 coproduct dissolution — TOML §Date-Time exposes these four closed user-input profiles.
+type DateTimeValue
+  = OffsetDateTimeValue { value: OffsetDateTime }
+  | LocalDateTimeValue { value: LocalDateTime }
+  | LocalDateValue { value: LocalDate }
+  | LocalTimeValue { value: LocalTime }
 
 
 data year_out_of_range: Symbol = year_out_of_range
