@@ -347,6 +347,9 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
     let arg_results = n.children |> map(child => resolve_node_bounded(n: child, env: env, module_name: module_name, depth: depth + 1))
     let resolved_args = map(arg_results, ar => ar.resolved)
     let arg_diags = flat_map(arg_results, ar => ar.diagnostics)
+    let type_arg_params = resolved_args |> map(arg =>
+      make_param_node(name: "", type_expr: arg, default_value: none, span: arg.span, name_span: arg.span)
+    )
     let slot_bindings = decl.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
       let idx = pair.first
       let slot_name = authored_name_at(source_indices: env.source_indices, node: pair.second)
@@ -369,7 +372,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       }
       let target_result = resolve_node_bounded(n: alias_target, env: env, module_name: module_name, depth: depth + 1)
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
-      let resolved_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
+      let resolved_node = Node { name: type_name, span: n.span, ident_span: n.ident_span, children: target_result.resolved.children, connective: target_result.resolved.connective, params: type_arg_params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: target_result.resolved.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data }
       NodeResolveResult { resolved: resolved_node, diagnostics: concat(arity_diags, arg_diags, target_result.diagnostics) }
     } else {
       let substituted_children = decl.children |> map(child =>
@@ -377,7 +380,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
       )
       let is_recursive = is_recursive_type_by_name(env: env, name: type_name)
       let result = NodeResolveResult {
-        resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: [], inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
+        resolved: Node { name: type_name, span: n.span, ident_span: n.ident_span, children: substituted_children, connective: decl.connective, params: type_arg_params, inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport, properties: decl.properties, type_annotation: n.type_annotation, is_self_recursive: is_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, expr_data: n.expr_data },
         diagnostics: concat(arity_diags, arg_diags)
       }
       result
@@ -453,7 +456,10 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
           } else { resolved }
           let is_optional = n.return_cardinality == CardOptional
           let final_resolved = if is_optional { with_optional_cardinality(n: structurally_resolved) } else { structurally_resolved }
-          NodeResolveResult { resolved: final_resolved, diagnostics: [] }
+          let missing_generic_diags = if resolved.params |> count > 0 {
+            [make_error_node(diagnostic: ArityMismatch { name: authored_name(env: env, node: n), expected: resolved.params |> count, got: 0, span: n.span }, module_name: module_name)]
+          } else { [] }
+          NodeResolveResult { resolved: final_resolved, diagnostics: missing_generic_diags }
         None =>
           let n_is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
           let n_is_callable = n.params |> count > 0
