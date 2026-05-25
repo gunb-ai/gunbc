@@ -93,21 +93,6 @@ fn empty_canonical_symbol_set() -> Set<Symbol> {
 }
 
 
-fn direct_named_edge_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
-  NodeFold {
-    init: fn(_) {
-      base
-    },
-    step: fn(acc, e, _) {
-      match e.label {
-        Named { name: sym } => map_insert(acc, sym, sym)
-        Positional => acc
-      }
-    }
-  }
-}
-
-
 fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, Symbol>> {
   NodeFold {
     init: fn(n0) {
@@ -127,10 +112,12 @@ fn direct_atom_binding_fold(base: Map<Symbol, Symbol>) -> NodeFold<Map<Symbol, S
 fn harvest_conj_named_bindings(root: Node, acc: Map<Symbol, Symbol>) -> Map<Symbol, Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      fold_node(
-        n: root,
-        algebra: direct_named_edge_binding_fold(base: acc)
-      )
+      fold(root.children, init: acc, f: fn(a, e) {
+        match e.label {
+          Named { name: sym } => map_insert(a, sym, sym)
+          Positional => a
+        }
+      })
     _ => acc
   }
 }
