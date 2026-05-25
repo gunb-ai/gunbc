@@ -40,7 +40,6 @@ import v4.std.diagnostic {
 import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
-  Connective,
   Edge,
   Node,
   NodeFold,
