@@ -7,13 +7,15 @@
 //       expr_has_undefined_nonterminal, grammar_has_undefined_nonterminals,
 //       grammar_has_left_recursion_step, grammar_has_undefined_nonterminals_step, parse_sync_step.
 // Consumes: std diagnostic, std node, std algebra, std collection, compiler tokenize.
-// Status: T-7 parse walk realized; GrammarRoot carries sync_tokens for error recovery.
+// Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //
 // Walker semantics:
 //   PEG ordered choice: Choice tries left first; left wins if it matches.
 //   Grammar data must be non-left-recursive; checked at parse() entry.
-//   Repeat error recovery: on element failure with diagnostics, skip to next sync token.
-//   sync_tokens are declaration-start keywords (language-specific; declared on GrammarRoot).
+//   Repeat error recovery staged (T-8): recovery loop and sync_tokens are structurally
+//   correct but unreachable — parse_expr currently emits empty diagnostics on all rejections;
+//   the recovery branch fires only when parse_expr signals a committed mismatch (T-8 upstream
+//   signal not yet wired). sync_tokens are declaration-start keywords (language-specific).
 
 
 module v4.compiler.parse
@@ -44,6 +46,9 @@ type GrammarProduction {
 }
 
 
+// 🟡 gated — feature: T-8 parse error-recovery trigger — sync_tokens present; recovery loop
+// (parse_repeat_error_recover, parse_skip_to_sync) structurally correct but unreachable until
+// parse_expr emits non-empty diagnostics on committed Terminal mismatches. Dissolve-on: T-8.
 type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
@@ -637,6 +642,8 @@ fn parse_repeat(
           }
       }
     ParseExprRejected { diagnostics: failed_diags } =>
+      // 🟡 gated T-8: false branch (non-empty failed_diags) unreachable until parse_expr
+      // signals committed mismatches; currently all rejections carry diagnostics: [].
       match is_empty(xs: failed_diags) {
         true =>
           ParseExprAccepted {
