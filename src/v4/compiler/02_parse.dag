@@ -4,11 +4,11 @@
 // Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
 //       Node projection functions, left-recursion check, error-recovery helpers,
 //       ParseSyncState, TokenPeek, ParseRepeatAcc, parse_diag_cons, parse_token_first,
-//       parse_e1_syntax_error, expr_is_nullable_given_set, compute_nullable_set,
-//       expr_direct_left_corner_list, compute_left_corner_closure,
-//       expr_has_undefined_nonterminal, grammar_has_undefined_nonterminals,
-//       grammar_has_left_recursion_step, grammar_has_undefined_nonterminals_step,
-//       parse_sync_step, grammar_fuel.
+//       parse_e1_syntax_error, expr_is_nullable_given_set, compute_nullable_step,
+//       compute_nullable_set, expr_direct_left_corner_step, expr_direct_left_corner_list,
+//       compute_left_corner_closure, expr_has_undefined_nonterminal,
+//       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
+//       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel.
 // Consumes: std diagnostic, std node, std algebra, std collection, std nat, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
@@ -427,6 +427,15 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> B
 }
 
 
+fn compute_nullable_step(ns: Set<Symbol>, p: GrammarProduction) -> Set<Symbol> {
+  if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
+    set_symbol_insert(s: ns, item: p.name)
+  } else {
+    ns
+  }
+}
+
+
 // compute_nullable_set: fixpoint over productions.
 // Outer fold iterates |productions| times (convergence bound); inner fold adds nullable productions.
 fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
@@ -438,11 +447,7 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
         xs: root.productions,
         empty: acc,
         cons: fn(ns, p) {
-          if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
-            set_symbol_insert(s: ns, item: p.name)
-          } else {
-            ns
-          }
+          compute_nullable_step(ns: ns, p: p)
         }
       )
     }
