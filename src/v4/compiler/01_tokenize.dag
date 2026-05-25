@@ -170,7 +170,7 @@ fn char_in_class(c: Char, class: LexCharClass) -> Bool {
 // lex_match_prefix: match a literal string prefix against source.
 // Uses is_prefix_of (stdlib terminal) to avoid direct structural recursion on FreeMonoid.
 fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
-  if is_prefix_of(xs: prefix, ys: source, eq: fn(a, b) { a == b }) {
+  if is_prefix_of(prefix: prefix, xs: source, eq: fn(a, b) { a == b }) {
     LexMatchAccepted { remaining: list_skip(xs: source, n: length(xs: prefix)), lexeme: prefix }
   } else {
     LexMatchRejected
