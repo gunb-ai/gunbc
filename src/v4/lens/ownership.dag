@@ -8,6 +8,7 @@
 module v4.lens.ownership
 
 import v4.compiler.infer { InferredTree }
+import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -29,7 +30,6 @@ import v4.std.dependency {
   VerifiedBy,
   classified_dependency_view_eq
 }
-import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Witness }
 
@@ -119,32 +119,6 @@ fn ownership_classified_eq(
   classified_dependency_view_eq(a: a, b: b, classification_eq: ownership_mode_eq)
 }
 
-fn ownership_dependency_count(
-  xs: List<ClassifiedDependencyView<OwnershipMode>>,
-  item: ClassifiedDependencyView<OwnershipMode>
-) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if ownership_classified_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn ownership_dependency_facts_eq(
-  left: List<ClassifiedDependencyView<OwnershipMode>>,
-  right: List<ClassifiedDependencyView<OwnershipMode>>
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (ownership_dependency_count(xs: left, item: item) == ownership_dependency_count(xs: right, item: item))
-    })
-  }
-}
-
 fn ownership_fact_eq(a: OwnershipFact, b: OwnershipFact) -> Bool {
-  ownership_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: ownership_classified_eq)
 }

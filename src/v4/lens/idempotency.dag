@@ -8,6 +8,7 @@
 module v4.lens.idempotency
 
 import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -29,7 +30,6 @@ import v4.std.dependency {
   VerifiedBy,
   classified_dependency_view_eq
 }
-import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Witness }
 
@@ -105,32 +105,6 @@ fn idempotency_classified_eq(
   classified_dependency_view_eq(a: a, b: b, classification_eq: idempotency_verdict_eq)
 }
 
-fn idempotency_dependency_count(
-  xs: List<ClassifiedDependencyView<IdempotencyVerdict>>,
-  item: ClassifiedDependencyView<IdempotencyVerdict>
-) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if idempotency_classified_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn idempotency_dependency_facts_eq(
-  left: List<ClassifiedDependencyView<IdempotencyVerdict>>,
-  right: List<ClassifiedDependencyView<IdempotencyVerdict>>
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (idempotency_dependency_count(xs: left, item: item) == idempotency_dependency_count(xs: right, item: item))
-    })
-  }
-}
-
 fn idempotency_fact_eq(a: IdempotencyFact, b: IdempotencyFact) -> Bool {
-  idempotency_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: idempotency_classified_eq)
 }

@@ -8,13 +8,13 @@
 module v4.lens.effect
 
 import v4.compiler.infer { InferredTree }
+import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyView,
   classified_dependency_view_eq
 }
-import v4.std.integer { Int }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Witness }
 
@@ -64,32 +64,6 @@ fn effect_classified_eq(
   classified_dependency_view_eq(a: a, b: b, classification_eq: effect_classification_eq)
 }
 
-fn effect_dependency_count(
-  xs: List<ClassifiedDependencyView<EffectClassification>>,
-  item: ClassifiedDependencyView<EffectClassification>
-) -> Int {
-  fold(xs, init: 0, f: fn(acc, candidate) {
-    if effect_classified_eq(a: candidate, b: item) {
-      acc + 1
-    } else {
-      acc
-    }
-  })
-}
-
-fn effect_dependency_facts_eq(
-  left: List<ClassifiedDependencyView<EffectClassification>>,
-  right: List<ClassifiedDependencyView<EffectClassification>>
-) -> Bool {
-  if count(left) != count(right) {
-    false
-  } else {
-    fold(left, init: true, f: fn(acc, item) {
-      acc && (effect_dependency_count(xs: left, item: item) == effect_dependency_count(xs: right, item: item))
-    })
-  }
-}
-
 fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
-  effect_dependency_facts_eq(left: a.dependencies, right: b.dependencies)
+  bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
 }
