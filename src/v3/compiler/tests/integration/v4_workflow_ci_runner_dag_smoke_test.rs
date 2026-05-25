@@ -121,6 +121,18 @@ fn expr_string(expr: &SurfaceExpr) -> &str {
     }
 }
 
+fn expr_int(expr: &SurfaceExpr) -> i64 {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::Int(value),
+            ..
+        } => value
+            .parse()
+            .unwrap_or_else(|_| panic!("expected int literal expr, got non-integer `{value}`")),
+        other => panic!("expected int literal expr, got {other:?}"),
+    }
+}
+
 fn expr_bool(expr: &SurfaceExpr) -> bool {
     match expr {
         SurfaceExpr::Literal {
@@ -259,6 +271,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     let step_name = expr_string(record_body_field(live_signal, "step_name"));
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
     let non_blocking = expr_bool(record_body_field(live_signal, "non_blocking"));
+    let timeout_minutes = expr_int(record_body_field(live_signal, "timeout_minutes"));
     let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
     assert!(
         binding_smoke_step.contains(&format!(
@@ -282,6 +295,10 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
             "{CI_YML_PATH}: `{step_name}` must not set continue-on-error when modeled non_blocking is false"
         );
     }
+    assert!(
+        m1_step.contains(&format!("timeout-minutes: {timeout_minutes}")),
+        "{CI_YML_PATH}: `{step_name}` must set timeout-minutes from modeled timeout_minutes"
+    );
     assert!(
         m1_step.contains(&format!("run: bash {script_path}")),
         "{CI_YML_PATH}: `{step_name}` must invoke the modeled probe script"

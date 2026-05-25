@@ -86,6 +86,7 @@ type M1CiLiveWorkflowSignal {
   step_name: String
   script_path: String
   non_blocking: Bool
+  timeout_minutes: Int
 }
 
 
@@ -116,6 +117,7 @@ data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
   step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
   script_path: "scripts/v4-m1-rust-emit-probe.sh"
   non_blocking: true
+  timeout_minutes: 20
 }
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
