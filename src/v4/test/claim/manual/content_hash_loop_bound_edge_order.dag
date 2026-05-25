@@ -58,6 +58,16 @@ fn content_hash_loop_body() -> Node {
   }
 }
 
+fn content_hash_loop_body_two() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_leaf() },
+      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+    ]
+  }
+}
+
 fn content_hash_loop_bound_last() -> Node {
   Node {
     kind: ComputationNode { behavior: Loop },
@@ -84,6 +94,34 @@ fn content_hash_loop_bound_first() -> Node {
   }
 }
 
+fn content_hash_loop_bound_middle() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge {
+        label: Named { name: loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      Edge { label: Positional, target: content_hash_loop_body_two() }
+    ]
+  }
+}
+
+fn content_hash_loop_bound_last_two_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge {
+        label: Named { name: loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      }
+    ]
+  }
+}
+
 fn content_hash_loop_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: content_hash_loop_pass_sym } },
@@ -101,6 +139,8 @@ fn content_hash_loop_fail_node() -> Node {
 fn content_hash_loop_bound_edge_order_holds() -> Bool {
   content_hash(n: content_hash_loop_bound_last()) ==
     content_hash(n: content_hash_loop_bound_first())
+  && content_hash(n: content_hash_loop_bound_last_two_body()) ==
+    content_hash(n: content_hash_loop_bound_middle())
 }
 
 fn content_hash_loop_order_claim_input(ok: Bool) -> Node {

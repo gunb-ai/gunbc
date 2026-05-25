@@ -313,49 +313,15 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
     Positional => canonical_tag_positional_edge
   }
 }
-<<<<<<< HEAD
-// Loop well_formed permits mixed positional body edges plus one loop_bound_edge at any list index; content_hash canonicalizes bound last so placement does not affect digest.
-fn loop_collect_positional_children(children: List<Edge>) -> List<Edge> {
-  fold(children, init: [], f: fn(acc, e) {
-    match e.label {
-      Positional => list_push(acc, e)
-      Named { name: _ } => acc
-    }
-  })
-}
-fn loop_collect_bound_edge(children: List<Edge>) -> List<Edge> {
-  fold(children, init: [], f: fn(acc, e) {
-    match e.label {
-      Named { name: sym } =>
-        if sym == loop_bound_edge { list_push(acc, e) } else { acc }
-      Positional => acc
-    }
-  })
-}
-fn loop_content_hash_canonical_children(children: List<Edge>) -> List<Edge> {
-  append(
-    left: loop_collect_positional_children(children: children),
-    right: loop_collect_bound_edge(children: children)
-  )
-}
-fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
-  let n = match n.kind {
-    ComputationNode { behavior: Loop } =>
-      Node {
-        kind: n.kind,
-        children: loop_content_hash_canonical_children(children: n.children)
-=======
-fn is_loop_bound_edge(e: Edge) -> Bool {
-  match e.label {
-    Named { name: sym } => sym == loop_bound_edge
-    Positional => false
-  }
-}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
 fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
 }
 fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, e => is_loop_bound_edge(e: e))
+  filter(children, e => match e.label {
+    Named { name: sym } => sym == loop_bound_edge
+    Positional => false
+  })
 }
 fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
   concat(
@@ -369,7 +335,6 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
       Node {
         kind: n.kind,
         children: canonicalize_loop_children_for_content_hash(children: n.children)
->>>>>>> origin/session/crisp-bee-212
       }
     _ =>
       match node_edge_discipline(n: n) {
@@ -383,11 +348,9 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
       }
   }
 }
+// 🟢 TERMINAL — B1 merkle_fold via canonicalize_node_for_content_hash ∘ fold_node (child order differs from storage for LabeledEdges/Loop only).
 fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
-  let n = canonicalize_node_for_content_hash(n: n)
-  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
-  })
+  fold_node(n: canonicalize_node_for_content_hash(n: n), algebra: algebra)
 }
 
 
@@ -446,11 +409,7 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
-<<<<<<< HEAD
-// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized last; other PositionalEdges preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
-=======
 // 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized after body; other positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
->>>>>>> origin/session/crisp-bee-212
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
     n: n,
