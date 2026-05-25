@@ -7285,13 +7285,13 @@ pub fn rust_btree_set_element_ord_eligible(
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices, &elem_node);
-        ((((((((elem_name.clone().as_str() == "String".to_string().as_str())
+        ((((((elem_name.clone().as_str() == "String".to_string().as_str())
             || (elem_name.clone().as_str() == "Int".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
             || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
             || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
-            || rust_nominal_ord_type_eligible(elem_name.clone()))
+            || rust_nominal_ord_type_eligible(elem_name.clone())
     }
 }
 
