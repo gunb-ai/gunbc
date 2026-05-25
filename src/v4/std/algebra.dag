@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, list_skip, ListSkipState, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -270,6 +270,26 @@ fn is_prefix_of<T>(
           eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
       }
   }
+}
+
+
+// Drop the first n elements; O(|xs|). Uses fold rather than Empty/Cons matching.
+type ListSkipState<T> {
+  remaining: Int
+  result: FreeMonoid<T>
+}
+fn list_skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  fold_list(
+    xs: xs,
+    empty: ListSkipState { remaining: n, result: [] },
+    cons: fn(acc, item) {
+      if acc.remaining != 0 {
+        ListSkipState { remaining: acc.remaining - 1, result: acc.result }
+      } else {
+        ListSkipState { remaining: 0, result: list_snoc_item(xs: acc.result, item: item) }
+      }
+    }
+  ).result
 }
 
 
