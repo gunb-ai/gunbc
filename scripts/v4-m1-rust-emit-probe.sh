@@ -89,6 +89,7 @@ v2_error_lines=0
 v2_error_categories=""
 if [[ -f "$compile_log" ]]; then
   v2_error_lines="$(grep -cE '^[[:space:]]*error(\[[^]]+\])?: ' "$compile_log" 2>/dev/null || true)"
+  v2_error_lines="${v2_error_lines:-0}"
   v2_error_categories="$(
     grep -oE '^[[:space:]]*error(\[[^]]+\])?: ' "$compile_log" 2>/dev/null \
       | sed 's/^[[:space:]]*//' | sort | uniq -c | sort -rn | head -20 || true
@@ -119,15 +120,19 @@ else
 fi
 
 if [[ -f "$rustc_log" ]]; then
+  # grep exits 1 on zero matches; with pipefail that must not abort the probe
+  # before summary + non-strict exit 0 (modeled non_blocking / INVARIANTS P3/P5).
   rustc_error_total="$(grep -cE '^error\[E[0-9]+\]:' "$rustc_log" 2>/dev/null || true)"
+  rustc_error_total="${rustc_error_total:-0}"
   rustc_categories="$(
     grep -oE 'error\[E[0-9]+\]:' "$rustc_log" 2>/dev/null \
       | sort | uniq -c | sort -rn | head -25 || true
   )"
   rustc_files_with_errors="$(
     grep -oE '\-\-> src/[^:]+\.rs' "$rustc_log" 2>/dev/null \
-      | sed 's/^--> //' | sort -u | wc -l | tr -d ' '
+      | sed 's/^--> //' | sort -u | wc -l | tr -d ' ' || true
   )"
+  rustc_files_with_errors="${rustc_files_with_errors:-0}"
 fi
 
 {
