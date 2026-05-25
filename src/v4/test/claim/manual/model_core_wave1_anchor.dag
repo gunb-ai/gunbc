@@ -1,0 +1,116 @@
+// src/v4/test/claim/manual/model_core_wave1_anchor.dag
+// Scope: T-33 wave-1 ModelCore payload contract — Bool primitive, BooleanAlgebra inhabitance, law obligations, and fail-closed unbound axes.
+// Owns: claim_model_core_wave1_payload_contract.
+// Consumes: std/model_core.dag, std/logic.dag, std/algebra.dag, std/verification.dag.
+// Status: manual T-33 acceptance receipt.
+
+module v4.test.claim.manual.model_core_wave1_anchor
+
+import v4.std.algebra { length }
+import v4.std.logic {
+  bool_node,
+  bool_spec_fact_encoding_classical_two_valued,
+  bool_spec_fact_width_one_bit
+}
+import v4.std.model_core {
+  ModelCoreWave1BoolBoundedLatticeIdentities,
+  ModelCoreWave1BoolComplementBounds,
+  ModelCoreWave1BoolComplementInvolution,
+  model_core_wave1_atom,
+  model_core_wave1_bool_inhabitance,
+  model_core_wave1_bool_law_obligation,
+  model_core_wave1_bool_primitive_bundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_width,
+  wave1_model_core,
+  wave1_void
+}
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v4.std.witness { Holds, Violates }
+
+data model_core_wave1_payload_fail_atom: Symbol = model_core_wave1_payload_fail_atom
+
+fn model_core_wave1_payload_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: model_core_wave1_payload_fail_atom } },
+    children: []
+  }
+}
+
+fn wave1_model_core_bool_width_fact_holds() -> Bool {
+  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_width) {
+    Holds { value } => value == model_core_wave1_atom(id: bool_spec_fact_width_one_bit)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
+  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_encoding) {
+    Holds { value } => value == model_core_wave1_atom(id: bool_spec_fact_encoding_classical_two_valued)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn wave1_model_core_bool_unbound_axes_fail_closed() -> Bool {
+  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(primitive_fact_axis_signedness) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn wave1_model_core_primitives_contract() -> Bool {
+  wave1_model_core().primitives == [model_core_wave1_bool_primitive_bundle()] &&
+  model_core_wave1_bool_primitive_bundle().substrate_carrier == bool_node() &&
+  wave1_model_core_bool_width_fact_holds() &&
+  wave1_model_core_bool_encoding_fact_holds() &&
+  wave1_model_core_bool_unbound_axes_fail_closed()
+}
+
+fn wave1_model_core_inhabitance_contract() -> Bool {
+  wave1_model_core().inhabitance == [model_core_wave1_bool_inhabitance()]
+}
+
+fn wave1_model_core_laws_contract() -> Bool {
+  wave1_model_core().laws == [
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolBoundedLatticeIdentities),
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
+  ]
+}
+
+fn wave1_model_core_payload_contract_holds() -> Bool {
+  let core = wave1_model_core()
+  (wave1_void() == core) &&
+  (length(xs: core.primitives) == 1) &&
+  (length(xs: core.inhabitance) == 1) &&
+  (length(xs: core.laws) == 3) &&
+  wave1_model_core_primitives_contract() &&
+  wave1_model_core_inhabitance_contract() &&
+  wave1_model_core_laws_contract()
+}
+
+fn wave1_model_core_payload_claim_input(ok: Bool) -> Node {
+  if ok {
+    bool_node()
+  } else {
+    model_core_wave1_payload_fail_node()
+  }
+}
+
+data claim_model_core_wave1_payload_contract: TestClaim = CompilesClaim {
+  label: "T-33 ModelCore wave1 payload is Bool primitive + BooleanAlgebra inhabitance + three law obligations",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: wave1_model_core_payload_claim_input(ok: wave1_model_core_payload_contract_holds()),
+  expected_value: bool_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
