@@ -134,9 +134,6 @@ fn fold_list_node<T>(
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Parametric algebra Node constructors: Conj + named algebra/inhabitant edges (T-2 ratified shape).
-// The algebra child is a structural Conj/Disj projection of the declared type fields — not an opaque Atom.
-// Grounded for T-9 algebra_ref_is_grounded (non-bare-Atom TypeNode root); walkable by coercion fold.
 data algebra_edge: Symbol = algebra_edge
 data inhabitant_edge: Symbol = inhabitant_edge
 data magma_field_op: Symbol = magma_field_op
@@ -170,10 +167,48 @@ data free_monoid_variant_empty: Symbol = free_monoid_variant_empty
 data free_monoid_variant_cons: Symbol = free_monoid_variant_cons
 data free_monoid_field_head: Symbol = free_monoid_field_head
 data free_monoid_field_tail: Symbol = free_monoid_field_tail
+data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
 
 
 fn algebra_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [] }
+}
+
+
+// 🟡 gated — feature: free-monoid-type-tail-fixpoint
+fn free_monoid_tail_type_fixpoint(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Named { name: free_monoid_type_fixpoint }, target: algebra_empty_conj() },
+      ],
+    },
+    inhabitant: inhabitant,
+  )
+}
+
+
+fn free_monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Named { name: free_monoid_variant_empty }, target: algebra_empty_conj() },
+      Edge {
+        label: Named { name: free_monoid_variant_cons },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge { label: Named { name: free_monoid_field_head }, target: inhabitant },
+            Edge {
+              label: Named { name: free_monoid_field_tail },
+              target: free_monoid_tail_type_fixpoint(inhabitant: inhabitant),
+            },
+          ]
+        },
+      },
+    ]
+  }
 }
 
 
@@ -362,26 +397,6 @@ fn boolean_algebra_type_node(inhabitant: Node) -> Node {
       Edge {
         label: Named { name: boolean_algebra_field_complement },
         target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-      },
-    ]
-  }
-}
-
-
-fn free_monoid_type_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Disj },
-    children: [
-      Edge { label: Named { name: free_monoid_variant_empty }, target: algebra_empty_conj() },
-      Edge {
-        label: Named { name: free_monoid_variant_cons },
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge { label: Named { name: free_monoid_field_head }, target: inhabitant },
-            Edge { label: Named { name: free_monoid_field_tail }, target: algebra_empty_conj() },
-          ]
-        },
       },
     ]
   }
