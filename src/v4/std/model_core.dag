@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
-// Scope: Ratified Q1 shared ModelCore substrate for LanguageModel and HostModel extension.
-// Owns: ModelCore, PrimitiveFactBundle, PrimitiveFactAxisBinding, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
+// Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
 // Consumes: v4.std.collection, v4.std.node
 // Status: T-33 modeled.
 
@@ -8,8 +8,16 @@
 module v4.std.model_core
 
 
-import v4.std.collection { List }
+import v4.std.collection { List, Map }
+import v4.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile
+}
 import v4.std.node { Node, Symbol }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
@@ -18,19 +26,24 @@ data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
 data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
 data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_spelling
-// 🟡 needs-more-work — feature:primitive-fact-axis-overflow-disposition-unbound — scaffold:T-33-model-core · dissolve-on: rust.dag (or any LanguageModel extdep) evolves OverflowAction into a mode-aware carrier (debug/release + overflow_checks flag, e.g. via OverflowDisposition<IRCarrier>) and binds this axis in spec_facts (ledger: T-33 · TASKS.md § T-33)
 data primitive_fact_axis_overflow_disposition: Symbol = primitive_fact_axis_overflow_disposition
-
-
-type PrimitiveFactAxisBinding {
-  axis: Symbol
-  fact: Node
-}
 
 
 type PrimitiveFactBundle {
   substrate_carrier: Node
-  spec_facts: List<PrimitiveFactAxisBinding>
+  spec_facts: Map<Symbol, Node>
+}
+
+
+data primitive_fact_axis_unbound_reason: Symbol = primitive_fact_axis_unbound_reason
+
+
+fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: primitive_fact_axis_unbound_reason,
+    at: Textual { file: axis, extent: WholeFile },
+    correction: Unavailable { reason: UserInputBoundary }
+  }
 }
 
 
@@ -47,9 +60,19 @@ type AlgebraLawObligation {
 }
 
 
+type ResourceAccess {
+  resource: Node
+}
+
+
+type EffectSignature {
+  signature: Node
+}
+
+
 type PrimitiveOperationRef {
   operation: Node
-  effect_signature: Node
+  effect_signature: EffectSignature
 }
 
 
@@ -87,7 +110,7 @@ type ModelCore {
 }
 
 
-// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: LanguageModel or HostModel carries first non-empty ModelCore (T-4 / T-34)
+// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: LanguageModel or concrete runtime extdep carries first non-empty ModelCore (T-4 / T-34)
 fn wave1_void() -> ModelCore {
   ModelCore {
     primitives: [],

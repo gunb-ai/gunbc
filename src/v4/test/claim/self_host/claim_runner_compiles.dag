@@ -11,7 +11,8 @@ import v4.compiler.self_host {
 }
 import v4.std.diagnostic { Accepted, None }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.verification {T19ManualAnchorAbsent,
+import v4.std.verification {
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -19,7 +20,9 @@ import v4.std.verification {T19ManualAnchorAbsent,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  manual_claim_anchor
+}
 
 
 data runner_compiles_subject_symbol: Symbol = runner_compiles_subject_symbol
@@ -33,7 +36,7 @@ data runner_compiles_subject: Node = Node {
 
 data claim_runner_compiles: TestClaim = CompilesClaim {
   label: "self-host fixed-point runner shape compiles",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: runner_compiles_subject,
   expected_value: runner_compiles_subject,
   classification: TestClassification { tier: Tier1, layer: Integration }

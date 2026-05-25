@@ -23,7 +23,7 @@ module extdeps.tools
 
 import std.types { FilePath, NonEmptyStr }
 import extdeps.shell
-import extdeps.coreutils
+import extdeps.gnu_coreutils
 import extdeps.rustup { rustup_install_url }
 import extdeps.brew   { brew_install_url }
 import extdeps.apt
@@ -33,7 +33,7 @@ import extdeps.apt
 // Closed set of install paths. Each variant references its backing
 // extdeps file. Adding a new variant means modeling that source first.
 //
-//   SourceCoreutils → extdeps/coreutils.dag (cp, rm, grep, diff, ...)
+//   SourceCoreutils → extdeps/gnu_coreutils.dag (cp, rm, grep, diff, ...)
 //   SourceRustup    → extdeps/rustup.dag    (cargo, rustc)
 //   SourceBrew      → extdeps/brew.dag      (macOS Homebrew)
 //   SourceApt       → extdeps/apt.dag       (Debian/Ubuntu APT)

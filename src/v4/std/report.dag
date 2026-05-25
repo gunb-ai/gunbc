@@ -1,9 +1,36 @@
 // src/v4/std/report.dag
 // Scope: advisory report carrier.
-// Anchor: docs/r4-carve-out-routing.md C7.
-// Owns: Report, ReportReason, ReportSuggestion.
-// Consumes: std diagnostic, std node.
-// Status: scaffold for T-17; advisory discipline in C7-REPORT.
+// Owns: Report, ReportReason, ReportSuggestion, report_reason_to_diagnostic_reason, synthesis_gap_decision_tree_reason, synthesis_gap_information_theoretic_reason.
+// Consumes: std/diagnostic.dag; std/node.dag.
+// Status: T-17 closed ReportReason; T-23 adds ReportSuggestion + diagnostic seam.
+// Anchor: docs/r4-carve-out-routing.md
 
 module v4.std.report
 
+import v4.std.diagnostic { Locus }
+import v4.std.node { Symbol }
+
+// 🟢 coproduct dissolution
+type ReportReason
+  = SynthesisGapDecisionTree
+  | SynthesisGapInformationTheoretic
+
+data synthesis_gap_decision_tree_reason: Symbol = synthesis_gap_decision_tree_reason
+data synthesis_gap_information_theoretic_reason: Symbol = synthesis_gap_information_theoretic_reason
+
+fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
+  match reason {
+    SynthesisGapDecisionTree => synthesis_gap_decision_tree_reason
+    SynthesisGapInformationTheoretic => synthesis_gap_information_theoretic_reason
+  }
+}
+
+type Report {
+  reason: ReportReason
+  at: Locus
+}
+
+type ReportSuggestion {
+  report: Report
+  detail: Symbol
+}

@@ -10,9 +10,9 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Rejected,
   Unavailable,
   diagnostics_singleton
@@ -76,7 +76,7 @@ data fixed_point_not_realized: Symbol = fixed_point_not_realized
 fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: self_host_runner_not_realized,
-    at: PortLocus { port: self_host_runner_port },
+    at: port_locus(port: self_host_runner_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -106,7 +106,7 @@ fn bootstrap_roundtrip_scaffold(
   Violates {
     diagnostic: Diagnostic {
       reason: bootstrap_roundtrip_not_realized,
-      at: NodeLocus { node: expected_stage },
+      at: node_locus(node: expected_stage),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   }
@@ -120,7 +120,7 @@ fn fixed_point_scaffold(
   Violates {
     diagnostic: Diagnostic {
       reason: fixed_point_not_realized,
-      at: NodeLocus { node: reference_stage },
+      at: node_locus(node: reference_stage),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   }
@@ -134,7 +134,7 @@ fn stage_emission_equality_scaffold(
   Violates {
     diagnostic: Diagnostic {
       reason: stage_emission_equality_not_realized,
-      at: NodeLocus { node: reference_stage1 },
+      at: node_locus(node: reference_stage1),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   }

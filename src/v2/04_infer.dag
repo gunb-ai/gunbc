@@ -25,10 +25,10 @@ import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v2.std.core {
   Node, InternTable,
   intern, intern_str,
-  authored_name_at, NewlineIndex, has_child_named, build_newline_index,
+  authored_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
   module_node, module_imports, module_items, import_is_all,
   make_param_node, param_node_name_at, param_node_type_expr,
-  field_node_type_expr,
+  field_node_type_expr, field_node_name_at,
   Connective, Conj, Disj, NoConnective, Arrow,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
@@ -105,7 +105,7 @@ import v2.compiler.infer_env {
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
-  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
+  SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
 }
@@ -925,7 +925,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternDynamic { span: _ } => none
         PatternLookupBlocked => none
       }
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
@@ -1059,7 +1059,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, source_indices: scope.type_env.source_indices)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
@@ -1757,29 +1757,33 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               diagnostics: arg_diags
             }
           } else {
-          // Tier 3: type constructor or unknown
-          let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
-          let resolved_type = match type_match {
-            Some { value: tn } => tn
-            None => error_type
-          }
-          let call_diags = match type_match {
-            Some { value: _ } => []
-            None => [inference_error(
-              message: concat("function '", func_name, "' not found in scope"),
-              span: span,
-              module_name: scope.module_name
-            )]
-          }
-          InferResult {
-            typed: make_named_expr_node(
-              name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
-              children: typed_arg_nodes,
-              inferred: Some { value: Resolved { node: resolved_type } },
-              span: span,
-              name_span: node_name_span(n: texpr)
-            ),
-            diagnostics: concat(arg_diags, call_diags)
+          // Tier 3: variant constructor (`NodeAt(payload)`), type constructor, or unknown
+          match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
+            Some { value: ctor_result } => ctor_result
+            None =>
+              let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              let resolved_type = match type_match {
+                Some { value: tn } => tn
+                None => error_type
+              }
+              let call_diags = match type_match {
+                Some { value: _ } => []
+                None => [inference_error(
+                  message: concat("function '", func_name, "' not found in scope"),
+                  span: span,
+                  module_name: scope.module_name
+                )]
+              }
+              InferResult {
+                typed: make_named_expr_node(
+                  name: func_name, expr_data: ExprCall { call_semantics: Some { value: PlainCallSemantics }, descent_evidence: none },
+                  children: typed_arg_nodes,
+                  inferred: Some { value: Resolved { node: resolved_type } },
+                  span: span,
+                  name_span: node_name_span(n: texpr)
+                ),
+                diagnostics: concat(arg_diags, call_diags)
+              }
           }
         }
         }
@@ -2508,6 +2512,66 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           span: span,
           module_name: scope.module_name
         )]
+      }
+  }
+}
+
+// `NodeAt(payload)` parses as ExprCall; route known positional variant constructors to record-lit inference.
+fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
+  match lookup_variant_parent_enum(scope: scope, name: func_name) {
+    None => none
+    Some { value: parent_enum } =>
+      let si = scope.type_env.source_indices
+      match lookup_type_by_name(env: scope.type_env, name: parent_enum) {
+        Some { value: parent_node } =>
+          match find_child_named(n: parent_node, name: func_name, source_indices: si) {
+            Some { value: variant_node } =>
+              if variant_has_positional_payload_shape(variant: variant_node, source_indices: si) {
+                if call_args |> count == 1 {
+                  match call_args |> first {
+                    Some { value: arg } =>
+                      match arg_name_at(n: arg, source_indices: si) {
+                        Some { value: arg_name } =>
+                          let msg = concat(
+                            "positional variant constructor '", func_name,
+                            "' does not accept named arguments (got '", arg_name, ": ...')"
+                          )
+                          Some { value: InferResult {
+                            typed: semantic_expr_error_node(message: msg, span: arg.span),
+                            diagnostics: [inference_error(message: msg, span: arg.span, module_name: scope.module_name)]
+                          } }
+                        None =>
+                          let payload_expr = arg_value(n: arg)
+                          let payload_init = make_field_init_node(
+                            name: "0",
+                            value: payload_expr,
+                            span: payload_expr.span,
+                            name_span: kernel_span(name: "0")
+                          )
+                          Some { value: infer_record_lit(
+                            type_name: Some { value: func_name },
+                            field_inits: [payload_init],
+                            span: span,
+                            name_span: name_span,
+                            scope: scope
+                          ) }
+                      }
+                    None => none
+                  }
+                } else {
+                  let arity_msg = concat(
+                    "positional variant constructor '", func_name,
+                    "' expects exactly one argument"
+                  )
+                  Some { value: InferResult {
+                    typed: semantic_expr_error_node(message: arity_msg, span: span),
+                    diagnostics: [inference_error(message: arity_msg, span: span, module_name: scope.module_name)]
+                  } }
+                }
+              } else { none }
+            None => none
+          }
+        None => none
       }
   }
 }
@@ -3411,6 +3475,11 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
                     ArithmeticDescent { param: param_name, factor: ConstantShrink { steps: OneStep } }
                   } else { PreservedValue }
               }
+            // Lawful non-structural inhabitants flow through unchanged: an accessor
+            // application that does not strengthen evidence keeps the lattice level.
+            NonIncreasingValue => NonIncreasingValue
+            StrictAxisErased => StrictAxisErased
+            MixedTop => MixedTop
             SubValueUnknown => SubValueUnknown
           }
         None => SubValueUnknown
@@ -6054,6 +6123,13 @@ fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, Typed
 }
 
 
+fn variant_has_positional_payload_shape(variant: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  variant.children |> count == 1 && match variant.children |> first {
+    Some { value: f } => field_node_name_at(n: f, source_indices: source_indices) == "0"
+    None => false
+  }
+}
+
 fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
   let result = modules |> fold(init: empty_set(), f: (acc, m) =>
     let items = m.items
@@ -6071,12 +6147,38 @@ fn build_fielded_variants(modules: List<TypedModule>, type_summaries: Map<String
         let variants = item.children
         variants |> fold(init: inner, f: (vacc, variant) =>
           let has_fields = variant.children |> count > 0
-          if has_fields { set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant))) } else { vacc }
+          let is_positional_payload = variant_has_positional_payload_shape(variant: variant, source_indices: si)
+          if has_fields && !is_positional_payload { set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant))) } else { vacc }
         )
       } else { inner }
     )
   )
   result
+}
+
+fn build_positional_payload_variants(modules: List<TypedModule>, type_summaries: Map<String, TypeSummary>) -> Set<String> {
+  modules |> fold(init: empty_set(), f: (acc, m) =>
+    let items = m.items
+    let si = m.type_env.source_indices
+    items |> fold(init: acc, f: (inner, item) =>
+      let is_enum = match map_get(type_summaries, authored_name_at(source_indices: si, node: item)) {
+        Some { value: summary } => match summary.repr {
+          EnumRepr { unit_only: _ } => true
+          _ => false
+        }
+        None => false
+      }
+      if is_enum {
+        let enum_name = authored_name_at(source_indices: si, node: item)
+        let variants = item.children
+        variants |> fold(init: inner, f: (vacc, variant) =>
+          if variant_has_positional_payload_shape(variant: variant, source_indices: si) {
+            set_insert(vacc, concat(enum_name, "::", authored_name_at(source_indices: si, node: variant)))
+          } else { vacc }
+        )
+      } else { inner }
+    )
+  )
 }
 
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
@@ -6095,11 +6197,13 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     )
   )
   let fielded = build_fielded_variants(modules: modules, type_summaries: built.type_summaries)
+  let positional = build_positional_payload_variants(modules: modules, type_summaries: built.type_summaries)
   let vtoe = derive_variant_to_enum(type_summaries: built.type_summaries)
   EmitGraphInfo {
     type_summaries: built.type_summaries,
     recursive_type_set: all_recursive,
     fielded_variants: fielded,
+    positional_payload_variants: positional,
     shared_types: empty_set(),
     ownership_index: empty_map(),
     movable: empty_set(),

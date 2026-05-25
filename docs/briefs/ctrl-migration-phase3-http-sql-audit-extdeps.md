@@ -6,7 +6,7 @@
 
 - `dsl/extdeps/http/server.dag`
 - `dsl/extdeps/sql/migration.dag`
-- `dsl/extdeps/audit/event.dag`
+- `dsl/extdeps/audit/cloudevents.dag`
 
 ## Scope
 

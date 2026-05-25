@@ -14,7 +14,8 @@ import v4.compiler.parse {
   GrammarRoot,
   ModeledGrammar,
   Sequence,
-  Terminal
+  Terminal,
+  grammar_production_to_node
 }
 import v4.compiler.tokenize {
   CharClassPattern,
@@ -30,23 +31,39 @@ import v4.compiler.tokenize {
   SequencePattern,
   TokenRule
 }
-import v4.std.collection { List, Set }
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
   ModelCore,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
-  PrimitiveFactAxisBinding,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
+import v4.std.witness { Holds, Violates }
+import v4.compiler.target_carriers { TargetModel }
 import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
   target_model_edge_declared_inhabitants,
   target_model_edge_selection_policy,
-  target_model_edge_serialize_emitted,
+  target_model_edge_translation_rules,
   target_model_edge_serialize_source
 }
 import v4.std.node {
@@ -61,7 +78,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, free_monoid_fold }
+import v4.std.algebra { BooleanAlgebra, fold_list, list_append, list_snoc_item }
 import v4.std.cardinality { Never }
 import v4.std.text { String }
 
@@ -94,11 +111,14 @@ type RustScalar
   | UnitScalar
   | NeverScalar
 
+type RustIntegerCarrier {
+  kind: RustIntKind
+  width: RustIntWidth
+}
+
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
-  signedness: RustIntKind
-  width: RustIntWidth
-  overflow_release: OverflowAction
+  overflow_disposition: OverflowDisposition<RustIntegerCarrier>
   std_projection: Symbol
 }
 
@@ -159,10 +179,15 @@ type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type OverflowDisposition<IRCarrier>
-  = MustPanicOnOverflow
-  | MayPanicOrTwoComplementWrap
+// Anchor: Rust Reference §Operator expressions / Overflow.
+// 🟢 pretty-much-done — checked arithmetic overflow facts include debug defaults and explicit `-C overflow-checks`.
+type OverflowDisposition<IRCarrier> {
+  ir_carrier: IRCarrier
+  checked_arithmetic_debug_default: OverflowAction
+  checked_arithmetic_release_default: OverflowAction
+  checked_arithmetic_overflow_checks_enabled: OverflowAction
+  checked_arithmetic_overflow_checks_disabled: OverflowAction
+}
 
 type RustLanguageModel {
   lex: LexRules
@@ -170,6 +195,18 @@ type RustLanguageModel {
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
+}
+
+// T-11 rust-first grammar relation row: fixed terminals and bound terminals share
+// the Rust grammar production instead of an operator string template.
+type RustConcreteSyntaxToken
+  = RustFixedToken { token_class: Symbol }
+  | RustBoundToken { token_class: Symbol, binding: Symbol }
+
+type RustGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<RustConcreteSyntaxToken>
 }
 
 data rust_language_model_surface_id: Symbol = rust_language_model_surface_id
@@ -280,6 +317,13 @@ data rust_production_mvp1_fn_add: Symbol = rust_production_mvp1_fn_add
 data rust_surface_fn_item: Symbol = rust_surface_fn_item
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
 data rust_surface_bin_add: Symbol = rust_surface_bin_add
+data rust_binding_fn_add: Symbol = rust_binding_fn_add
+data rust_binding_param_x: Symbol = rust_binding_param_x
+data rust_binding_param_y: Symbol = rust_binding_param_y
+
+data rust_relation_token_fixed: Symbol = rust_relation_token_fixed
+data rust_relation_token_bound: Symbol = rust_relation_token_bound
+data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
 data rust_inhabitant_field_atom: Symbol = rust_inhabitant_field_atom
 data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
@@ -287,7 +331,7 @@ data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
 data rust_facts_field_surface_spelling: Symbol = rust_facts_field_surface_spelling
 data rust_facts_field_signedness: Symbol = rust_facts_field_signedness
 data rust_facts_field_width: Symbol = rust_facts_field_width
-data rust_facts_field_overflow_release: Symbol = rust_facts_field_overflow_release
+data rust_facts_field_overflow_disposition: Symbol = rust_facts_field_overflow_disposition
 data rust_facts_field_std_projection: Symbol = rust_facts_field_std_projection
 data rust_facts_field_scalar_classifier: Symbol = rust_facts_field_scalar_classifier
 data rust_facts_field_ieee754_binary: Symbol = rust_facts_field_ieee754_binary
@@ -296,6 +340,11 @@ data rust_facts_field_representation: Symbol = rust_facts_field_representation
 data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
 data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
 data rust_scalar_field_width: Symbol = rust_scalar_field_width
+data rust_overflow_field_ir_carrier: Symbol = rust_overflow_field_ir_carrier
+data rust_overflow_field_checked_arithmetic_debug_default: Symbol = rust_overflow_field_checked_arithmetic_debug_default
+data rust_overflow_field_checked_arithmetic_release_default: Symbol = rust_overflow_field_checked_arithmetic_release_default
+data rust_overflow_field_checked_arithmetic_checks_enabled: Symbol = rust_overflow_field_checked_arithmetic_checks_enabled
+data rust_overflow_field_checked_arithmetic_checks_disabled: Symbol = rust_overflow_field_checked_arithmetic_checks_disabled
 
 data rust_tag_signed: Symbol = rust_tag_signed
 data rust_tag_unsigned: Symbol = rust_tag_unsigned
@@ -316,124 +365,157 @@ data rust_tag_scalar_unit: Symbol = rust_tag_scalar_unit
 data rust_tag_scalar_never: Symbol = rust_tag_scalar_never
 
 data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
-data rust_mvp1_source_text_field: Symbol = rust_mvp1_source_text_field
-data rust_mvp1_source_grammar_field: Symbol = rust_mvp1_source_grammar_field
-// Sole MVP-1 token-sequence authority — grammar + serialize_source derive via free_monoid_fold.
-data rust_mvp1_source_token_classes: List<Symbol> = [
-  rust_token_kw_fn,
-  rust_token_ident,
-  rust_token_lparen,
-  rust_token_ident,
-  rust_token_colon,
-  rust_token_ty_i32,
-  rust_token_comma,
-  rust_token_ident,
-  rust_token_colon,
-  rust_token_ty_i32,
-  rust_token_rparen,
-  rust_token_arrow,
-  rust_token_ty_i32,
-  rust_token_lbrace,
-  rust_token_ident,
-  rust_token_plus,
-  rust_token_ident,
-  rust_token_rbrace
-]
+data rust_mvp1_source_text_field: Symbol = serialize_source_field_source_text
+data rust_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
+
+data rust_model_core_bridge_std_ordered_ring_representable_integer: Symbol = rust_model_core_bridge_std_ordered_ring_representable_integer
+data rust_model_core_bridge_std_approximate_field_ieee754_float: Symbol = rust_model_core_bridge_std_approximate_field_ieee754_float
+data rust_model_core_bridge_std_bool_boolean_algebra: Symbol = rust_model_core_bridge_std_bool_boolean_algebra
+
+data rust_model_core_bridge_law_integer_add_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_associative_when_representable
+data rust_model_core_bridge_law_integer_add_commutative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_commutative_when_representable
+data rust_model_core_bridge_law_integer_mul_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_mul_associative_when_representable
+data rust_model_core_bridge_law_integer_mul_commutative_when_representable: Symbol = rust_model_core_bridge_law_integer_mul_commutative_when_representable
+data rust_model_core_bridge_law_integer_distributive_when_representable: Symbol = rust_model_core_bridge_law_integer_distributive_when_representable
+data rust_model_core_bridge_law_integer_total_order_over_representable_values: Symbol = rust_model_core_bridge_law_integer_total_order_over_representable_values
+data rust_model_core_bridge_law_float_ieee754_rounding: Symbol = rust_model_core_bridge_law_float_ieee754_rounding
+data rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754: Symbol = rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754
+data rust_model_core_bridge_law_bool_bounded_lattice: Symbol = rust_model_core_bridge_law_bool_bounded_lattice
+data rust_model_core_bridge_law_bool_complement: Symbol = rust_model_core_bridge_law_bool_complement
+
+data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
+data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
+data rust_witness_bool_boolean_algebra: Symbol = rust_witness_bool_boolean_algebra
+
+data rust_effect_signature_pure_value: Symbol = rust_effect_signature_pure_value
+data rust_op_integer_add: Symbol = rust_op_integer_add
+data rust_op_integer_sub: Symbol = rust_op_integer_sub
+data rust_op_integer_mul: Symbol = rust_op_integer_mul
+data rust_op_integer_neg: Symbol = rust_op_integer_neg
+data rust_op_integer_div: Symbol = rust_op_integer_div
+data rust_op_integer_rem: Symbol = rust_op_integer_rem
+data rust_op_integer_compare: Symbol = rust_op_integer_compare
+data rust_op_float_add: Symbol = rust_op_float_add
+data rust_op_float_sub: Symbol = rust_op_float_sub
+data rust_op_float_mul: Symbol = rust_op_float_mul
+data rust_op_float_div: Symbol = rust_op_float_div
+data rust_op_float_compare: Symbol = rust_op_float_compare
+data rust_op_bool_and: Symbol = rust_op_bool_and
+data rust_op_bool_or: Symbol = rust_op_bool_or
+data rust_op_bool_not: Symbol = rust_op_bool_not
+
+data rust_partial_checked_integer_overflow: Symbol = rust_partial_checked_integer_overflow
+data rust_partial_integer_divide_by_zero: Symbol = rust_partial_integer_divide_by_zero
+data rust_partial_integer_remainder_by_zero: Symbol = rust_partial_integer_remainder_by_zero
+data rust_partial_signed_min_divide_by_negative_one: Symbol = rust_partial_signed_min_divide_by_negative_one
+data rust_precondition_integer_result_representable: Symbol = rust_precondition_integer_result_representable
+data rust_precondition_integer_divisor_nonzero: Symbol = rust_precondition_integer_divisor_nonzero
+data rust_precondition_signed_division_not_min_over_negative_one: Symbol = rust_precondition_signed_division_not_min_over_negative_one
+
+fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> OverflowDisposition<RustIntegerCarrier> {
+  OverflowDisposition {
+    ir_carrier: RustIntegerCarrier { kind: kind, width: width },
+    checked_arithmetic_debug_default: PanicOnOverflow,
+    checked_arithmetic_release_default: TwoComplementWrap,
+    checked_arithmetic_overflow_checks_enabled: PanicOnOverflow,
+    checked_arithmetic_overflow_checks_disabled: TwoComplementWrap
+  }
+}
+
+// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+fn rust_mvp1_concrete_tokens() -> List<RustConcreteSyntaxToken> {
+  [
+    RustFixedToken { token_class: rust_token_kw_fn },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_fn_add },
+    RustFixedToken { token_class: rust_token_lparen },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
+    RustFixedToken { token_class: rust_token_colon },
+    RustFixedToken { token_class: rust_token_ty_i32 },
+    RustFixedToken { token_class: rust_token_comma },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
+    RustFixedToken { token_class: rust_token_colon },
+    RustFixedToken { token_class: rust_token_ty_i32 },
+    RustFixedToken { token_class: rust_token_rparen },
+    RustFixedToken { token_class: rust_token_arrow },
+    RustFixedToken { token_class: rust_token_ty_i32 },
+    RustFixedToken { token_class: rust_token_lbrace },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
+    RustFixedToken { token_class: rust_token_plus },
+    RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
+    RustFixedToken { token_class: rust_token_rbrace }
+  ]
+}
 data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i8,
-  signedness: Signed,
-  width: Bits8,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits8),
   std_projection: rust_std_projection_int8,
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i16,
-  signedness: Signed,
-  width: Bits16,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits16),
   std_projection: rust_std_projection_int16,
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i32,
-  signedness: Signed,
-  width: Bits32,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32),
   std_projection: rust_std_projection_int32,
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i64,
-  signedness: Signed,
-  width: Bits64,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits64),
   std_projection: rust_std_projection_int64,
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i128,
-  signedness: Signed,
-  width: Bits128,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits128),
   std_projection: rust_std_projection_int128,
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u8,
-  signedness: Unsigned,
-  width: Bits8,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits8),
   std_projection: rust_std_projection_uint8,
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u16,
-  signedness: Unsigned,
-  width: Bits16,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits16),
   std_projection: rust_std_projection_uint16,
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u32,
-  signedness: Unsigned,
-  width: Bits32,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits32),
   std_projection: rust_std_projection_uint32,
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u64,
-  signedness: Unsigned,
-  width: Bits64,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits64),
   std_projection: rust_std_projection_uint64,
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u128,
-  signedness: Unsigned,
-  width: Bits128,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits128),
   std_projection: rust_std_projection_uint128,
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_isize,
-  signedness: Signed,
-  width: Pointer,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Pointer),
   std_projection: rust_std_projection_int_platform,
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_usize,
-  signedness: Unsigned,
-  width: Pointer,
-  overflow_release: TwoComplementWrap,
+  overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Pointer),
   std_projection: rust_std_projection_uint_platform,
 }
 
@@ -561,6 +643,40 @@ fn rust_overflow_node(overflow: OverflowAction) -> Node {
   }
 }
 
+fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
+  IntScalar { kind: carrier.kind, width: carrier.width }
+}
+
+fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCarrier>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_overflow_field_ir_carrier,
+        target: rust_scalar_node(
+          scalar: rust_integer_carrier_as_scalar(carrier: disposition.ir_carrier)
+        )
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_debug_default,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_debug_default)
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_release_default,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_release_default)
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_checks_enabled,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_enabled)
+      ),
+      rust_named_edge(
+        name: rust_overflow_field_checked_arithmetic_checks_disabled,
+        target: rust_overflow_node(overflow: disposition.checked_arithmetic_overflow_checks_disabled)
+      )
+    ]
+  }
+}
+
 fn rust_scalar_node(scalar: RustScalar) -> Node {
   match scalar {
     IntScalar { kind, width } => Node {
@@ -612,15 +728,15 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       ),
       rust_named_edge(
         name: rust_facts_field_signedness,
-        target: rust_int_kind_node(kind: facts.signedness)
+        target: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind)
       ),
       rust_named_edge(
         name: rust_facts_field_width,
-        target: rust_int_width_node(width: facts.width)
+        target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
       ),
       rust_named_edge(
-        name: rust_facts_field_overflow_release,
-        target: rust_overflow_node(overflow: facts.overflow_release)
+        name: rust_facts_field_overflow_disposition,
+        target: rust_overflow_disposition_node(disposition: facts.overflow_disposition)
       ),
       rust_named_edge(
         name: rust_facts_field_std_projection,
@@ -629,7 +745,7 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       rust_named_edge(
         name: rust_facts_field_scalar_classifier,
         target: rust_scalar_node(
-          scalar: IntScalar { kind: facts.signedness, width: facts.width }
+          scalar: rust_integer_carrier_as_scalar(carrier: facts.overflow_disposition.ir_carrier)
         )
       )
     ]
@@ -857,49 +973,77 @@ fn rust_mvp1_source_text_authority() -> String {
   rust_mvp1_source_text
 }
 
-// MVP serialize_source — literal symbol + grammar production + token sequence (aligned with source text).
+// MVP serialize_source — literal symbol + grammar production + token relation (aligned with source text).
 // dissolve-on: T-10 literal Node + bidirectional grammar-as-bidir emit/ingest round-trip.
-fn rust_mvp1_source_token_node(token_class: Symbol) -> Node {
-  rust_inhabitant_atom(id: token_class)
-}
-
-fn rust_mvp1_positional_token_edge(token_class: Symbol) -> Edge {
-  Edge {
-    label: Positional,
-    target: rust_mvp1_source_token_node(token_class: token_class)
+fn rust_concrete_token_class(token: RustConcreteSyntaxToken) -> Symbol {
+  match token {
+    RustFixedToken { token_class: c } => c
+    RustBoundToken { token_class: c, binding: _ } => c
   }
 }
 
-// Order-preserving snoc: free_monoid_fold visits tail→head but cons(empty, h) builds forward order.
-// Compile-time list snoc for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
+fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
+  match token {
+    RustFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: rust_inhabitant_atom(id: rust_relation_token_fixed)
+          ),
+          rust_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: rust_inhabitant_atom(id: c)
+          )
+        ]
+      }
+    RustBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          rust_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: rust_inhabitant_atom(id: rust_relation_token_bound)
+          ),
+          rust_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: rust_inhabitant_atom(id: c)
+          ),
+          rust_named_edge(
+            name: concrete_syntax_token_field_binding,
+            target: rust_inhabitant_atom(id: b)
+          )
+        ]
+      }
+  }
+}
+
+fn rust_mvp1_positional_token_edge(token: RustConcreteSyntaxToken) -> Edge {
+  Edge {
+    label: Positional,
+    target: rust_concrete_token_node(token: token)
+  }
+}
+
+// Order-preserving local wrappers for the Rust slice; std.collection owns the list recursion.
+// Compile-time list helpers for fixed MVP-1 length; dissolve-on: T-10 grammar-emitted edge list.
 fn rust_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
-  free_monoid_fold(
-    xs: xs,
-    empty: Cons { head: item, tail: Empty },
-    cons: fn(rest, existing) {
-      Cons { head: existing, tail: rest }
-    }
-  )
+  list_snoc_item(xs: xs, item: item)
 }
 
 fn rust_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
-  free_monoid_fold(
-    xs: right,
-    empty: left,
-    cons: fn(acc, item) {
-      rust_list_snoc_item(xs: acc, item: item)
-    }
-  )
+  list_append(left: left, right: right)
 }
 
 fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
-  free_monoid_fold(
-    xs: rust_mvp1_source_token_classes,
+  fold_list(
+    xs: rust_mvp1_concrete_tokens(),
     empty: Empty,
-    cons: fn(acc, token_class) {
+    cons: fn(acc, token) {
       rust_list_snoc_item(
         xs: acc,
-        item: rust_mvp1_positional_token_edge(token_class: token_class)
+        item: rust_mvp1_positional_token_edge(token: token)
       )
     }
   )
@@ -941,7 +1085,8 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
+fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token: RustConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = rust_concrete_token_class(token: token)
   if token_class == rust_token_kw_fn {
     acc
   } else {
@@ -953,18 +1098,69 @@ fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token_class: Symbol) -> Gra
 }
 
 fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  free_monoid_fold(
-    xs: rust_mvp1_source_token_classes,
+  fold_list(
+    xs: rust_mvp1_concrete_tokens(),
     empty: rust_grammar_terminal(token_class: rust_token_kw_fn),
-    cons: fn(acc, token_class) {
-      rust_grammar_sequence_fold_step(acc: acc, token_class: token_class)
+    cons: fn(acc, token) {
+      rust_grammar_sequence_fold_step(acc: acc, token: token)
     }
   )
 }
 
-fn rust_mvp1_target_model() -> Node {
-  // liveness anchor — pairs target_model with `rust_mvp1_source_text`; drops with T-10
-  let _authority = rust_mvp1_source_text_authority()
+fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
+  RustGrammarRelationRow {
+    production: rust_grammar_production_mvp1_fn_add(),
+    emitted: rust_mvp1_emitted_add_fn_node(),
+    tokens: rust_mvp1_concrete_tokens()
+  }
+}
+
+fn rust_relation_token_edges(tokens: List<RustConcreteSyntaxToken>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      rust_list_snoc_item(
+        xs: acc,
+        item: rust_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn rust_grammar_relation_row_node(row: RustGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: grammar_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      rust_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      rust_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: rust_relation_token_edges(tokens: row.tokens)
+        }
+      )
+    ]
+  }
+}
+
+fn rust_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_relation_rule_mvp1_fn_add,
+        target: rust_grammar_relation_row_node(row: rust_mvp1_grammar_relation_row())
+      )
+    ]
+  }
+}
+
+fn rust_mvp1_target_model_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -977,14 +1173,35 @@ fn rust_mvp1_target_model() -> Node {
         target: rust_declared_inhabitants_root()
       ),
       rust_named_edge(
-        name: target_model_edge_serialize_emitted,
-        target: rust_mvp1_emitted_add_fn_node()
+        name: target_model_edge_translation_rules,
+        target: rust_mvp1_translation_rules_node()
       ),
       rust_named_edge(
         name: target_model_edge_serialize_source,
         target: rust_mvp1_serialize_source_node()
       )
     ]
+  }
+}
+
+fn rust_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), rust_binding_fn_add, "add"),
+      rust_binding_param_x,
+      "x"
+    ),
+    rust_binding_param_y,
+    "y"
+  )
+}
+
+fn rust_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: rust_mvp1_target_model_node(),
+    lex: rust_wave1_lex(),
+    binding_spellings: rust_mvp1_binding_spellings(),
+    authority_source_text: rust_mvp1_source_text_authority()
   }
 }
 
@@ -1009,20 +1226,24 @@ fn rust_ident_lex_rule() -> LexRule {
   }
 }
 
+// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "fn " not "fn").
+// token_sequence_to_source concatenates spellings directly; the spaces here ARE the inter-token
+// spacing. This must be split into a separate layout field before forward-lex is wired for
+// these token classes (see Claude review 16906 secondary finding).
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn"),
+      rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: "+"),
-      rust_lex_rule(token_class: rust_token_arrow, text: "->"),
-      rust_lex_rule(token_class: rust_token_lbrace, text: "{"),
-      rust_lex_rule(token_class: rust_token_rbrace, text: "}"),
+      rust_lex_rule(token_class: rust_token_plus, text: " + "),
+      rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
+      rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
+      rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
       rust_lex_rule(token_class: rust_token_lparen, text: "("),
-      rust_lex_rule(token_class: rust_token_rparen, text: ")"),
-      rust_lex_rule(token_class: rust_token_comma, text: ","),
-      rust_lex_rule(token_class: rust_token_colon, text: ":")
+      rust_lex_rule(token_class: rust_token_rparen, text: ") "),
+      rust_lex_rule(token_class: rust_token_comma, text: ", "),
+      rust_lex_rule(token_class: rust_token_colon, text: ": ")
     ]
   }
 }
@@ -1044,7 +1265,8 @@ fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
 }
 
 fn rust_wave1_grammar_root() -> GrammarRoot {
-  GrammarRoot { start: rust_grammar_production_mvp1_fn_add() }
+  let start = rust_grammar_production_mvp1_fn_add()
+  GrammarRoot { start: rust_production_mvp1_fn_add, productions: [start] }
 }
 
 fn rust_wave1_grammar() -> Grammar {
@@ -1076,7 +1298,7 @@ fn rust_noninteger_catalog_surface_symbol_step(
 }
 
 fn rust_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: rust_integer_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1086,7 +1308,7 @@ fn rust_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_float_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: rust_float_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1096,7 +1318,7 @@ fn rust_float_catalog_surface_symbol(sym: Symbol) -> Bool {
 }
 
 fn rust_noninteger_catalog_surface_symbol(sym: Symbol) -> Bool {
-  free_monoid_fold(
+  fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: false,
     cons: fn(acc, facts) {
@@ -1138,51 +1360,76 @@ fn rust_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-fn rust_primitive_axis_binding(axis: Symbol, fact: Node) -> PrimitiveFactAxisBinding {
-  PrimitiveFactAxisBinding { axis: axis, fact: fact }
+fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn rust_float_spec_facts(facts: RustFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: rust_float_width_node(width: facts.width) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.ieee754_binary) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn rust_noninteger_spec_facts(facts: RustNonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: rust_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: rust_inhabitant_atom(id: facts.representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
 }
 
 fn rust_primitive_bundle_from_integer_facts(facts: RustIntegerPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_integer_facts_node(facts: facts),
-    spec_facts: [
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: rust_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: rust_int_width_node(width: facts.width)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_signedness,
-        fact: rust_int_kind_node(kind: facts.signedness)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: rust_inhabitant_atom(id: rust_repr_integer_twos_complement)
-      )
-    ]
+    spec_facts: rust_integer_spec_facts(facts: facts)
   }
 }
 
 fn rust_primitive_bundle_from_float_facts(facts: RustFloatPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_float_facts_node(facts: facts),
-    spec_facts: [
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: rust_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_width,
-        fact: rust_float_width_node(width: facts.width)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: rust_inhabitant_atom(id: facts.ieee754_binary)
-      )
-    ]
+    spec_facts: rust_float_spec_facts(facts: facts)
   }
 }
 
@@ -1191,21 +1438,12 @@ fn rust_primitive_bundle_from_noninteger_facts(
 ) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
     substrate_carrier: rust_noninteger_facts_node(facts: facts),
-    spec_facts: [
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_surface_spelling,
-        fact: rust_inhabitant_atom(id: facts.surface_spelling)
-      ),
-      rust_primitive_axis_binding(
-        axis: primitive_fact_axis_encoding,
-        fact: rust_inhabitant_atom(id: facts.representation)
-      )
-    ]
+    spec_facts: rust_noninteger_spec_facts(facts: facts)
   }
 }
 
 fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_integer_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1218,7 +1456,7 @@ fn rust_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_float_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1231,7 +1469,7 @@ fn rust_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
 }
 
 fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle> {
-  free_monoid_fold(
+  fold_list(
     xs: rust_noninteger_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
@@ -1241,6 +1479,257 @@ fn rust_primitive_bundles_from_noninteger_catalog() -> List<PrimitiveFactBundle>
       )
     }
   )
+}
+
+fn rust_symbol_node(id: Symbol) -> Node {
+  rust_inhabitant_atom(id: id)
+}
+
+fn rust_integer_algebra_witness_node(facts: RustIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_checked_integer_arithmetic, target: rust_symbol_node(id: rust_witness_checked_integer_arithmetic)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection)),
+      rust_named_edge(name: rust_facts_field_overflow_disposition, target: rust_overflow_disposition_node(disposition: facts.overflow_disposition))
+    ]
+  }
+}
+
+fn rust_float_algebra_witness_node(facts: RustFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_float_approximate_field, target: rust_symbol_node(id: rust_witness_float_approximate_field)),
+      rust_named_edge(name: rust_facts_field_ieee754_binary, target: rust_symbol_node(id: facts.ieee754_binary)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: facts.std_projection))
+    ]
+  }
+}
+
+fn rust_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(name: rust_witness_bool_boolean_algebra, target: rust_symbol_node(id: rust_witness_bool_boolean_algebra)),
+      rust_named_edge(name: rust_facts_field_std_projection, target: rust_symbol_node(id: rust_facts_bool.std_projection))
+    ]
+  }
+}
+
+fn rust_integer_algebra_inhabitance(facts: RustIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: rust_symbol_node(id: rust_model_core_bridge_std_ordered_ring_representable_integer),
+    inhabitant: rust_integer_facts_node(facts: facts),
+    witness: rust_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn rust_float_algebra_inhabitance(facts: RustFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: rust_symbol_node(id: rust_model_core_bridge_std_approximate_field_ieee754_float),
+    inhabitant: rust_float_facts_node(facts: facts),
+    witness: rust_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn rust_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  AlgebraInhabitanceDecl {
+    algebra: rust_symbol_node(id: rust_model_core_bridge_std_bool_boolean_algebra),
+    inhabitant: rust_noninteger_facts_node(facts: rust_facts_bool),
+    witness: rust_bool_algebra_witness_node()
+  }
+}
+
+fn rust_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(xs: acc, item: rust_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn rust_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_snoc_item(xs: acc, item: rust_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn rust_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    rust_bool_algebra_inhabitance()
+  ]
+}
+
+fn rust_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  rust_list_append(
+    left: rust_list_append(
+      left: rust_integer_algebra_inhabitance_decls(),
+      right: rust_float_algebra_inhabitance_decls()
+    ),
+    right: rust_bool_algebra_inhabitance_decls()
+  )
+}
+
+fn rust_model_core_law_obligation(witness: Node, law: Symbol) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: rust_symbol_node(id: law)
+  }
+}
+
+fn rust_integer_law_obligations(facts: RustIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = rust_integer_algebra_witness_node(facts: facts)
+  [
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_associative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_add_commutative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_associative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_mul_commutative_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_distributive_when_representable),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_integer_total_order_over_representable_values)
+  ]
+}
+
+fn rust_float_law_obligations(facts: RustFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = rust_float_algebra_witness_node(facts: facts)
+  [
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_ieee754_rounding),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_float_nan_inf_carried_by_ieee754)
+  ]
+}
+
+fn rust_bool_algebra_laws() -> List<AlgebraLawObligation> {
+  let witness = rust_bool_algebra_witness_node()
+  [
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_bounded_lattice),
+    rust_model_core_law_obligation(witness: witness, law: rust_model_core_bridge_law_bool_complement)
+  ]
+}
+
+fn rust_integer_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: rust_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_append(left: acc, right: rust_integer_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn rust_float_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: rust_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      rust_list_append(left: acc, right: rust_float_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn rust_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  rust_list_append(
+    left: rust_list_append(
+      left: rust_integer_algebra_laws(),
+      right: rust_float_algebra_laws()
+    ),
+    right: rust_bool_algebra_laws()
+  )
+}
+
+fn rust_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: rust_symbol_node(id: operation),
+    effect_signature: EffectSignature {
+      signature: rust_symbol_node(id: rust_effect_signature_pure_value)
+    }
+  }
+}
+
+fn rust_effect_semantics_wave2() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      rust_pure_operation(operation: rust_op_integer_add),
+      rust_pure_operation(operation: rust_op_integer_sub),
+      rust_pure_operation(operation: rust_op_integer_mul),
+      rust_pure_operation(operation: rust_op_integer_neg),
+      rust_pure_operation(operation: rust_op_integer_div),
+      rust_pure_operation(operation: rust_op_integer_rem),
+      rust_pure_operation(operation: rust_op_integer_compare),
+      rust_pure_operation(operation: rust_op_float_add),
+      rust_pure_operation(operation: rust_op_float_sub),
+      rust_pure_operation(operation: rust_op_float_mul),
+      rust_pure_operation(operation: rust_op_float_div),
+      rust_pure_operation(operation: rust_op_float_compare),
+      rust_pure_operation(operation: rust_op_bool_and),
+      rust_pure_operation(operation: rust_op_bool_or),
+      rust_pure_operation(operation: rust_op_bool_not)
+    ]
+  }
+}
+
+fn rust_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: rust_symbol_node(id: operation),
+    precondition: rust_symbol_node(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn rust_partiality_semantics_wave2() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_add,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_sub,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_mul,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_neg,
+        precondition: rust_precondition_integer_result_representable,
+        reason: rust_partial_checked_integer_overflow
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_div,
+        precondition: rust_precondition_integer_divisor_nonzero,
+        reason: rust_partial_integer_divide_by_zero
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_rem,
+        precondition: rust_precondition_integer_divisor_nonzero,
+        reason: rust_partial_integer_remainder_by_zero
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_div,
+        precondition: rust_precondition_signed_division_not_min_over_negative_one,
+        reason: rust_partial_signed_min_divide_by_negative_one
+      ),
+      rust_fail_closed_partial_operation(
+        operation: rust_op_integer_rem,
+        precondition: rust_precondition_signed_division_not_min_over_negative_one,
+        reason: rust_partial_signed_min_divide_by_negative_one
+      )
+    ]
+  }
 }
 
 fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
@@ -1256,10 +1745,10 @@ fn rust_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 fn rust_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: rust_wave1_primitive_fact_bundles(),
-    inhabitance: [],
-    laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    inhabitance: rust_model_core_inhabitance_decls(),
+    laws: rust_model_core_law_obligations(),
+    effects: rust_effect_semantics_wave2(),
+    partiality: rust_partiality_semantics_wave2()
   }
 }
 

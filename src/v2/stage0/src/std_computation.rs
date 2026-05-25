@@ -179,7 +179,7 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
         SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
         SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
         SizeBound::ExplicitCountZero => None,
-        SizeBound::ExplicitCountPositive { .. } => None,
+        SizeBound::ExplicitCountPositive { steps: _, .. } => None,
         SizeBound::Forever => None,
     }
 }
@@ -187,7 +187,7 @@ pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
 pub fn is_constant_bound(bound: Rc<SizeBound>) -> bool {
     match (*bound).clone() {
         SizeBound::ExplicitCountZero => true,
-        SizeBound::ExplicitCountPositive { .. } => true,
+        SizeBound::ExplicitCountPositive { steps: _, .. } => true,
         SizeBound::Forever => true,
         _ => false,
     }

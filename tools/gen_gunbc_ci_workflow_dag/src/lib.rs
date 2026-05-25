@@ -380,18 +380,88 @@ fn emit_job(id: &str, v: &Value) -> Result<String, Box<dyn std::error::Error>> {
     ))
 }
 
+/// Hosted-runner label prefixes that should never appear inside a `runs-on` sequence the
+/// generator emits as `SelfHosted`. `ubuntu-*`, `macos-*`, `windows-*` belong to GitHub's
+/// `HostedRunner` / `RunnerLabel` carrier; `ubicloud-*` belongs to a third-party hosted pool
+/// the gunbc CI used pre-migration. Admitting any of these into `SelfHosted` would silently
+/// misrepresent extdeps semantics — the project's runner pool is now exactly
+/// `[self-hosted, linux, arm64, srv1/srv2]`, so a sequence that mixes hosted-pool labels with
+/// self-hosted labels is by construction a modeling error to flag, not project.
+fn is_hosted_runner_label(s: &str) -> bool {
+    s.starts_with("ubuntu-")
+        || s.starts_with("macos-")
+        || s.starts_with("windows-")
+        || s.starts_with("ubicloud-")
+}
+
 fn emit_runs_on(v: &Value) -> Result<String, Box<dyn std::error::Error>> {
-    let s = v.as_str().ok_or("runs-on string")?;
+    // GitHub Actions `runs-on` accepts either a scalar (single label or `${{ }}` expression)
+    // or a sequence of labels (multi-label AND-match — every label must match for the runner
+    // to be eligible). The `SelfHosted { labels: List<String> }` substrate carrier
+    // (`dsl/extdeps/github/actions.dag`) is already shaped for a list, so the sequence form
+    // maps onto it ONLY for self-hosted label sets. Hosted-runner labels (`ubuntu-*`,
+    // `macos-*`, `windows-*`) and `${{ }}` expressions belong to `HostedRunner` and
+    // `RunsOnExpression` carriers respectively; admitting them inside `SelfHosted` would
+    // violate extdeps fidelity (P2 / Practice 5) and the fail-closed discipline (P1/P3).
+    if let Some(seq) = v.as_sequence() {
+        if seq.is_empty() {
+            return Err("runs-on sequence must be non-empty".into());
+        }
+        let mut labels: Vec<String> = Vec::new();
+        for it in seq {
+            let s = it.as_str().ok_or("runs-on sequence entry must be string")?;
+            if is_hosted_runner_label(s) {
+                return Err(format!(
+                    "runs-on sequence contains hosted-runner label `{s}` — \
+                     gen_gunbc_ci_workflow_dag does not model hosted+sequence combinations yet \
+                     (use the scalar form `runs-on: {s}` for hosted runners)"
+                )
+                .into());
+            }
+            if s.contains("${{") {
+                return Err(format!(
+                    "runs-on sequence contains expression `{s}` — gen_gunbc_ci_workflow_dag \
+                     does not model expression-form elements inside sequences yet \
+                     (use scalar `runs-on: ${{{{ ... }}}}` if you need a computed runner)"
+                )
+                .into());
+            }
+            labels.push(dag_string(s));
+        }
+        return Ok(format!(
+            "SelfHosted {{ labels: {} }}",
+            emit_list_literal(&labels)
+        ));
+    }
+    let s = v
+        .as_str()
+        .ok_or("runs-on must be string or sequence of strings")?;
     if s.starts_with("${{") {
         return Ok(format!(
             "RunsOnExpression {{ expression: {} }}",
             dag_string(s)
         ));
     }
-    match s {
-        "ubuntu-latest" => Ok("HostedRunner { label: UbuntuLatest }".to_string()),
-        _ => Ok(format!("SelfHosted {{ labels: [{}] }}", dag_string(s))),
+    // Known hosted-runner scalars: project into the `HostedRunner` carrier. The substrate
+    // `RunnerLabel` enum (`dsl/extdeps/github/actions.dag`) is the authority on which arms
+    // exist; today only `UbuntuLatest` is exercised by gunbc's CI, so that's the only arm
+    // wired up here. Any other hosted-family scalar (`ubuntu-24.04`, `macos-latest`,
+    // `windows-latest`, `ubicloud-*`) falls through to the fail-closed branch below — that's
+    // the same discipline the sequence path enforces, applied symmetrically to scalars.
+    if s == "ubuntu-latest" {
+        return Ok("HostedRunner { label: UbuntuLatest }".to_string());
     }
+    if is_hosted_runner_label(s) {
+        return Err(format!(
+            "runs-on scalar `{s}` is a hosted-runner-family label (`ubuntu-*`, `macos-*`, \
+             `windows-*`, `ubicloud-*`) but is not modeled — gen_gunbc_ci_workflow_dag only \
+             wires up the `ubuntu-latest` arm of substrate `RunnerLabel` today; extend both \
+             the enum (`dsl/extdeps/github/actions.dag`) and this match before using `{s}` \
+             in ci.yml"
+        )
+        .into());
+    }
+    Ok(format!("SelfHosted {{ labels: [{}] }}", dag_string(s)))
 }
 
 fn emit_needs_list(v: Option<&Value>) -> Result<String, Box<dyn std::error::Error>> {

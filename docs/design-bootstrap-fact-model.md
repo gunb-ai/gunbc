@@ -36,21 +36,22 @@ Each layer is a fact model (declared `.dag` data), not code:
 
 | Layer | Fact model | Status |
 |-------|-----------|--------|
-| v4 source language | the grammar-as-data for `.dag` (`src/v4/extdeps/languages/dag.dag`). On `main` `dag.dag` is an **admitted scaffold** — its `lex` / `grammar` `Node` trees are zero-production `Conj` roots (`Status: admitted; scaffold — fill per T-4 + T-6/T-7`): the carrier shape is admitted, the productions are not yet landed. The `LanguageModel` *carrier type* it instances is **not yet a declared authority** either — an open substrate item (Theme-A #9: `00_compile.dag` is parameterized over "declarative LanguageModels" but no `type LanguageModel` is declared; T-6/T-10 either declare the carrier or formally state "a model IS a `Node`"). | `dag.dag` admitted as a scaffold (zero-production lex/grammar, fill T-6/T-7); `LanguageModel` carrier = open (Theme-A #9) |
+| v4 source language | the grammar-as-data for `.dag` (`src/v4/extdeps/languages/dag.dag`). On `main` `dag.dag` is an **admitted scaffold** — its `lex` / `grammar` `Node` trees are zero-production `Conj` roots (`Status: admitted; scaffold — fill per T-4 + T-6/T-7`): the carrier shape is admitted, the productions are not yet landed. The `LanguageModel` carrier authority has landed in `src/v4/compiler/07_target_carriers.dag` as `type LanguageModel = Node` (Theme-A #9 resolved as "the model IS a `Node`"). | `dag.dag` admitted as a scaffold (zero-production lex/grammar, fill T-6/T-7); `LanguageModel` carrier = `Node` authority |
 | The v4 compiler | the `src/v4/compiler/*.dag` pipeline (tokenize…emit) | front-end modeled (`01_tokenize.dag` / `02_parse.dag`, CP-1a #3214); `00_compile` / `03_normalize` / `03_resolve` / `04_infer` / `05_emit` / `05_eval` are T-8/T-9/T-10/T-22 scaffolds |
 | The seed's comprehension boundary | the **frozen sub-model** — a subset of the `LanguageModel` (§4) | T-32 |
 | The snapshot | the v4 compiler pinned at version N, expressed in the frozen subset | T-32 |
-| The target language | `src/v4/extdeps/languages/rust.dag`; lower, `src/v4/extdeps/languages/machine_code.dag` | `rust.dag` modeled (T-4 rust-slice); `machine_code.dag` is a T-4.13 scaffold |
-| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/process.dag` + `src/v4/extdeps/file_system.dag` are its start | both T-4.5 scaffolds (module declaration only) |
+| The target language | `src/v4/extdeps/languages/rust.dag`; lower, `src/v4/extdeps/languages/machine_code.dag` | `rust.dag` modeled (T-4 rust-slice); `machine_code.dag` is D2-REV / 🟢 P4-3208 wave-1 fact-bundled |
+| The runtime | the execution substrate — syscall surface, memory model, ABI; `src/v4/extdeps/posix.dag` + `src/v4/extdeps/file_system.dag` are its start | `posix.dag` modeled; `file_system.dag` remains a Wave-2 fail-closed boundary scaffold |
 | The bootstrap orchestration | `src/v4/workflow/bootstrap.dag` — the staged chain | T-20 scaffold on `main`; staged-chain expansion in flight (#3213) |
 
-Of the layer models the seed projects from, only `rust.dag` is modeled
-today (the T-4 rust-slice); `machine_code.dag`, `process.dag`, and
-`file_system.dag` are scaffolds (T-4.13 / T-4.5). T-32's deliverable is
-two-fold: the *layer model* — the composition itself, the projection
-edges, the gate — and a precondition that those three scaffold files
-reach modeled state. The seed is their joint projection; T-32 specifies
-the joint, and depends on the per-file modeling landing.
+Of the layer models the seed projects from, `rust.dag`, the wave-1
+`machine_code.dag` fact bundles, and `posix.dag` are modeled today;
+`file_system.dag` is still a Wave-2 fail-closed boundary scaffold. T-32's
+deliverable is two-fold: the *layer model* — the composition itself, the
+projection edges, the gate — and a precondition that every projection
+input exposes the facts the footprint fold needs. The seed is their
+joint projection; T-32 specifies the joint, and depends on the per-file
+modeling completeness required by that footprint.
 
 ## 3. The seed is a projection
 
@@ -85,11 +86,8 @@ discovered only when the seed fails. It is modeled:
   the **generic walker over that sub-model** (the B2-OMNI principle —
   not a hand-written parser). "What the seed comprehends" *is* the
   sub-model, by construction — readable data, not code-archaeology.
-  *Prerequisite:* this presumes the `LanguageModel` carrier itself is a
-  declared authority — it is not yet (Theme-A #9, §2). Pinning that
-  carrier (or formally fixing "a model IS a `Node`") is **new substrate
-  T-32 Phase 1 must land before the frozen sub-model can be declared** —
-  it is not an existing authority to point at.
+  This uses the landed `src/v4/compiler/07_target_carriers.dag`
+  authority: `type LanguageModel = Node`.
 - **`footprint`** — a **fold over the seed's projection inputs**
   `{snapshot, target_model, runtime_model}` (§3) collecting every
   construct the seed must consume: the source-language constructs the
@@ -250,6 +248,26 @@ The `.dag` modeling extends from here: the frozen sub-model + the
 circularity's fixed-point equation + witness (§5) extend
 `src/v4/workflow/bootstrap.dag` beyond the staged chain (building on the
 T-20 expansion); the runtime model (§2) is the accumulation of
-`src/v4/extdeps/process.dag` / `src/v4/extdeps/file_system.dag` into a
+`src/v4/extdeps/posix.dag` / `src/v4/extdeps/file_system.dag` into a
 complete execution substrate. None of it dispatches before the operator
 ratifies this layer model as the Phase-1 definition.
+
+## 8. Operator-ratified Phase-1 decisions
+
+These are the Phase-1 operator decisions ratified for seed-reduction
+scoping. Phase 2 consumes these decisions; it does not reopen them.
+
+- ✅ **Frozen-sub-model declaration surface.** The `seed_capability`
+  substrate home is `src/v4/workflow/bootstrap.dag`, not `std/`. The
+  `footprint == seed_capability` equality gate also lives there.
+  `workflow/bootstrap.dag` is the sole bootstrap authority for this
+  boundary.
+- ✅ **Projection-input sufficiency gate.** Phase 2 cannot start until
+  `src/v4/extdeps/file_system.dag` is filled. `rust.dag`, wave-1
+  `machine_code.dag`, and `posix.dag` are already sufficient for the
+  projection-input side of this Phase-1 model; `file_system.dag` must
+  land (PR #3605) before seed-reduction begins.
+- ✅ **Seed-honesty discharge placement.** `workflow/bootstrap.dag` holds
+  the diverse double-compilation witness as a **distinct assertion** from
+  the T-15 bit-identical fixed-point check. The seed-honesty discharge
+  must not collapse into the reproduction witness.

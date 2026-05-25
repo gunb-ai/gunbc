@@ -82,10 +82,10 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 | T-7 | compiler/02_parse | LANDED | T-6 | LANDED (CP-1b tail) | Lane A |
 | T-8 | 03_normalize + 03_resolve (+T-28 bundled) | LANDED (seam scaffold until CP-1b closes) | T-7 | IMPL (CP-1b close) | Lane A |
 | **T-4** | extdeps/languages ×5 fact-bundles | WIP, **HELD** | T-3 (landed) + the **TASKS.md:286/:64 exact feeder set `{P1-KEYSTONE, T-30, T-29, T-25-core}`** — **P1-KEYSTONE** (= Practice-10 **A1-invariant** ratification — NOT the closed #3240 tracker, NOT the merged numeric #3226), **T-30**, **T-29** (cpp-slice; #3277 OPEN), **T-25-core**. Never a partial subset — all four gate T-4. | **OP + DESIGN** | T-4 mgr |
-| T-4.5 | extdeps/process + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
+| T-4.5 | extdeps/posix + file_system | SCAFFOLD | T-3, T-25-core | IMPL | T-4 mgr |
 | T-4.6 | extdeps/formats — T-4.6 owns **7** (TASKS.md:121): csv/json/json_schema/openapi/toml/yaml + `sql.dag` (v3 SQL port, single authority; v2-compile clean). Live `formats/` dir lists **8** files; the 8th, `spice.dag`, is **T-4.10's** (row below, LANDED #3168) — *not* a T-4.6 member, none displaced/retired | SCAFFOLD (T-4.6 7/7 present) | T-25-core, T-26 | IMPL | T-4 mgr |
-| T-4.7 | frameworks/react | SCAFFOLD | T-4 (ts) | CP1 (LanguageModel) | T-4 mgr |
-| T-4.8 | coordination | SCAFFOLD | T-4, T-4.7 | IFACE | T-4 mgr |
+| T-4.7 | frameworks/react | **SATISFIED** — `react.dag` header is `Status: T-4.7`; Rust smoke ratchet covers the pinned framework substrate | T-4 (ts) | LANDED | T-4 mgr |
+| T-4.8 | coordination | MODELED — decomposed PR #3207 `WireContractFacts` + `CoordinationBind` shape; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` per-effect rows present | T-4, T-4.7 | IMPL | T-4 mgr |
 | T-4.9 | languages/verilog | **PASS (IN-B)** per file header | T-1,T-2 | LANDED | T-4 mgr |
 | T-4.10 | formats/spice | **LANDED** (#3168 merged; receipt: `src/v4/extdeps/formats/spice.dag`, plus this row as the r4-program-dispatch-plan source-of-truth alignment) — *pre-D2-reversal canonical path; see rework-obligation note* | T-1 | LANDED | T-4 mgr |
 | T-4.11 | claim/english_ingest | SCAFFOLD | T-3/verification.dag | IFACE (AssertKind) | Lane B |
@@ -157,6 +157,14 @@ first) · `DESIGN` · `OP` (operator ruling) · `CP1` (needs v4 front-end output
 - **Coord flag:** T-29 residual #3277's worker (quick-bat-761) is **not in the
   T-4-mgr subtree** (absent from the graph). §2 attribution corrected to
   "open"; reparent/attribution routes via the owning manager, not assumed.
+- **T-4.7/T-4.8 coordination update:** T-4.7 is satisfied on this tree
+  (`src/v4/extdeps/frameworks/react.dag` plus its v3 smoke ratchet). T-4.8 is
+  modeled against the decomposed PR #3207 interface: `WireContractFacts`
+  carries exchange / settlement / consistency; `CoordinationBind` carries the
+  tracked `CoordinationEffectKind` bridge until binds reference canonical
+  obligation rows directly; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` is present as
+  per-effect obligation rows. T-4.6 does not gate T-4.8, but T-16 still
+  consumes both `WireContract`/`DeploymentUnit` and format-backed artifacts.
 
 ---
 

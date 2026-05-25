@@ -288,7 +288,7 @@ pub fn walk_expr(
                     )
                 }
             }
-            ExprData::ExprLiteral { .. } => accum,
+            ExprData::ExprLiteral { value: _, .. } => accum,
             ExprData::ExprFieldAccess { .. } => {
                 let base_node = field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
@@ -782,7 +782,7 @@ pub fn collect_callable_refs(
                 }
                 _ => v2_rt::rc_empty_set::<String>(),
             },
-            ExprData::ExprLiteral { .. } => v2_rt::rc_empty_set::<String>(),
+            ExprData::ExprLiteral { value: _, .. } => v2_rt::rc_empty_set::<String>(),
             ExprData::ExprFieldAccess { .. } => {
                 collect_callable_refs(&field_access_base(texpr.clone()), &si)
             }
@@ -792,7 +792,10 @@ pub fn collect_callable_refs(
                     v2_rt::rc_set_union(acc, collect_callable_refs(&arg_value(&a), &si))
                 },
             ),
-            ExprData::ExprMethodCall { .. } => {
+            ExprData::ExprMethodCall {
+                method_semantics: _,
+                ..
+            } => {
                 let recv = collect_callable_refs(&method_receiver(texpr.clone()), &si);
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
@@ -912,7 +915,9 @@ pub fn summarize_fold_acc_uses(
 ) -> Rc<FoldAccUseSummary> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*node.expr_data.clone()).clone() {
-            ExprData::ExprVar { .. } => {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
                 if (expr_var_name_at(node.clone(), si.clone()).as_str()
                     == acc_name.clone().as_str())
                 {
@@ -933,10 +938,12 @@ pub fn summarize_fold_acc_uses(
                     empty_fold_acc_use_summary()
                 }
             }
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base = field_access_base(node.clone());
                 let is_direct = match (*base.expr_data.clone()).clone() {
-                    ExprData::ExprVar { .. } => {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
                         (expr_var_name_at(base.clone(), si.clone()).as_str()
                             == acc_name.clone().as_str())
                     }
@@ -1051,7 +1058,7 @@ pub fn fold_body_constructs_acc_struct(
             let body = lambda_body(lambda_node.clone());
             let terminal = fold_terminal_expr(body);
             match (*terminal.expr_data.clone()).clone() {
-                ExprData::ExprRecordLit { .. } => {
+                ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     (authored_name_at(si, &terminal).as_str() == acc_type_name.as_str())
                 }
                 _ => false,

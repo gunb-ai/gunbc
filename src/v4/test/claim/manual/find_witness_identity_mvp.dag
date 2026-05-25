@@ -36,6 +36,7 @@ import v4.std.find_witness {
   find_witness,
   find_witness_reason_ambiguous_candidate,
   find_witness_reason_no_candidate,
+  find_witness_reason_not_realized,
   preservation_rule_constraint_satisfaction,
   preservation_rule_exact_structural_equality_zip_fold,
   verify_witness
@@ -48,11 +49,12 @@ import v4.std.node {
 }
 import v4.std.verification {
   CompilesClaim,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  manual_claim_anchor
 }
 import v4.std.witness { StructuralPropertyWitness }
 data identity_mvp_source_atom: Symbol = identity_mvp_source_atom
@@ -87,6 +89,12 @@ fn constraint_predicate() -> PreservationPredicate {
   PreservationPredicate {
     algebra: identity_source_node(),
     preservation_rule: preservation_rule_constraint_satisfaction
+  }
+}
+fn unknown_rule_predicate() -> PreservationPredicate {
+  PreservationPredicate {
+    algebra: identity_source_node(),
+    preservation_rule: identity_mvp_wrong_property
   }
 }
 fn candidate_set_identity_single() -> CandidateSet {
@@ -137,6 +145,12 @@ fn rejected_for_ambiguous_candidate(o: Outcome<FindWitnessResult>) -> Bool {
     Rejected { diagnostics: r } => r.head.reason == find_witness_reason_ambiguous_candidate
   }
 }
+fn rejected_for_not_realized(o: Outcome<FindWitnessResult>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } => r.head.reason == find_witness_reason_not_realized
+  }
+}
 fn quality_is_identity(q: CoercionQuality) -> Bool {
   match q {
     Identity => true
@@ -160,11 +174,20 @@ data witness_find_witness_non_identity_rejects: Bool = rejected_for_no_candidate
     multiplicity_policy: UniqueOnly
   )
 )
-data witness_find_witness_other_rule_rejects: Bool = rejected_for_no_candidate(
+data witness_find_witness_constraint_rule_accepts: Bool = match find_witness(
+  source_facts: identity_source_node(),
+  candidates: candidate_set_identity_single(),
+  predicate: constraint_predicate(),
+  multiplicity_policy: UniqueOnly
+) {
+  Accepted { value: fw, diagnostics: _ } => fw.candidate == identity_source_node()
+  Rejected { diagnostics: _ } => false
+}
+data witness_find_witness_other_rule_rejects: Bool = rejected_for_not_realized(
   o: find_witness(
     source_facts: identity_source_node(),
     candidates: candidate_set_identity_single(),
-    predicate: constraint_predicate(),
+    predicate: unknown_rule_predicate(),
     multiplicity_policy: UniqueOnly
   )
 )
@@ -256,7 +279,7 @@ fn identity_witness_expected() -> Node {
 }
 data claim_find_witness_identity_mvp_module_compiles: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: identity-MVP behavior anchors compile",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_source_node(),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -264,7 +287,7 @@ data claim_find_witness_identity_mvp_module_compiles: TestClaim = CompilesClaim 
 
 data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: identity candidate accepts",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_identity_accepts),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -272,15 +295,22 @@ data claim_find_witness_identity_accepts: TestClaim = CompilesClaim {
 
 data claim_find_witness_non_identity_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: non-identity candidate rejects",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_non_identity_rejects),
+  expected_value: identity_witness_expected(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+data claim_find_witness_constraint_rule_accepts: TestClaim = CompilesClaim {
+  label: "manual/find_witness_identity_mvp: constraint_satisfaction accepts identity candidate",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: identity_witness_claim_input(ok: witness_find_witness_constraint_rule_accepts),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
-  label: "manual/find_witness_identity_mvp: non-exact rule remains fail-closed",
-  t19_anchor: T19ManualAnchorAbsent,
+  label: "manual/find_witness_identity_mvp: unrealized preservation rule rejects before enumeration",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_other_rule_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -288,7 +318,7 @@ data claim_find_witness_other_rule_rejects: TestClaim = CompilesClaim {
 
 data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: UniqueOnly ambiguity rejects",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_unique_only_ambiguous_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -296,7 +326,7 @@ data claim_find_witness_unique_only_ambiguous_rejects: TestClaim = CompilesClaim
 
 data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: invalid declared priority rejects",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_selected_invalid_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -304,7 +334,7 @@ data claim_find_witness_selected_invalid_rejects: TestClaim = CompilesClaim {
 
 data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: invalid user selection rejects",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_find_witness_user_selected_invalid_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -312,7 +342,7 @@ data claim_find_witness_user_selected_invalid_rejects: TestClaim = CompilesClaim
 
 data claim_verify_witness_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: verify_witness accepts matching witness",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_accepts),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -320,7 +350,7 @@ data claim_verify_witness_accepts: TestClaim = CompilesClaim {
 
 data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: verify_witness rejects property mismatch",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_property_mismatch_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -328,7 +358,7 @@ data claim_verify_witness_property_mismatch_rejects: TestClaim = CompilesClaim {
 
 data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: verify_witness rejects evidence mismatch",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_verify_witness_evidence_mismatch_rejects),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -336,7 +366,7 @@ data claim_verify_witness_evidence_mismatch_rejects: TestClaim = CompilesClaim {
 
 data claim_coercion_fold_identity_accepts: TestClaim = CompilesClaim {
   label: "manual/find_witness_identity_mvp: coercion_fold identity accepts",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: identity_witness_claim_input(ok: witness_coercion_fold_identity_accepts),
   expected_value: identity_witness_expected(),
   classification: TestClassification { tier: Tier1, layer: Unit }

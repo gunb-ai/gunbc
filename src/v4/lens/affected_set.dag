@@ -1,13 +1,15 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set.
-// Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
-// Status: Wave-0 front: bounded changed-subgraph frontier fold landed; dissolves when CI use and .dag TestClaims land.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetReading, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set, re_exec_frontier_from_diff, affected_set_from_diff.
+// Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView, InferredTree; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
+// Status: T-21 IRT-1 filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI/T-24 node-precision closure via affected_set_from_diff.
 
 module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
+import v4.std.algebra { contains }
+import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
   AffectedExclusion,
@@ -21,7 +23,7 @@ import v4.std.change {
   ChangeSet,
   NodeChanged
 }
-import v4.std.dependency { DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy }
+import v4.std.dependency { DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
 import v4.std.diagnostic {
   Diagnostic,
   Diagnostics,
@@ -202,6 +204,29 @@ type AffectedSetFoldAcc
     }
 
 
+// 🟢 coproduct dissolution — T-21 edit/rebuild projection; preserves fail-closed evidence.
+type RerunNodeSet
+  = RerunNodeSetProduced {
+      nodes: List<Node>
+    }
+  | RerunNodeSetFailClosed {
+      evidence: AffectedSetEvidence
+    }
+
+
+type AffectedSetReading {
+  edit_locus: Node
+  affected: List<Node>
+  dependencies: List<DependencyView>
+}
+
+
+type AffectedSetClosureAcc {
+  frontier: List<Node>
+  dependencies: List<DependencyView>
+}
+
+
 fn empty_frontier() -> ReExecFrontier {
   ChangedSubgraphFrontier {
     boundary_exclusions: [],
@@ -246,8 +271,18 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 }
 
 
+// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy]
+}
+
+
+fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
+  contains(
+    xs: lens_frontier_dependency_kinds(),
+    item: kind,
+    eq: fn(left, right) { left == right }
+  )
 }
 
 
@@ -341,10 +376,93 @@ fn record_affected_dependency(
 
 
 fn dependency_in_lens_frontier(dependency: DependencyView) -> Bool {
-  match dependency.kind {
-    ProjectionDependsOn => true
-    VerifiedBy => true
-    _ => false
+  dependency_kind_in_lens_frontier_policy(kind: dependency.kind)
+}
+
+
+fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
+  fold(nodes, init: false, f: fn(found, node) {
+    found || (node == needle)
+  })
+}
+
+
+fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyView) -> AffectedSetClosureAcc {
+  if node_in_list(nodes: acc.frontier, needle: dependency.source) && (node_in_list(nodes: acc.frontier, needle: dependency.dependent) == false) {
+    AffectedSetClosureAcc {
+      frontier: list_push(acc.frontier, dependency.dependent),
+      dependencies: list_push(acc.dependencies, dependency)
+    }
+  } else {
+    acc
+  }
+}
+
+
+fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSetClosureAcc) -> AffectedSetClosureAcc {
+  fold(
+    dependencies,
+    init: acc,
+    f: fn(acc, dependency) {
+      affected_set_closure_step(acc: acc, dependency: dependency)
+    }
+  )
+}
+
+
+// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
+fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
+  fold(
+    dependencies,
+    init: AffectedSetClosureAcc {
+      frontier: [edit_locus],
+      dependencies: []
+    },
+    f: fn(acc, _) {
+      affected_set_closure_pass(dependencies: dependencies, acc: acc)
+    }
+  )
+}
+
+
+fn affected_set(graph: InferredTree, edit_locus: Node) -> AffectedSetReading {
+  let dependency_reading = dependency_lens(root: graph.root)
+  let closure = affected_set_closure(dependencies: dependency_reading, edit_locus: edit_locus)
+  AffectedSetReading {
+    edit_locus: edit_locus,
+    affected: closure.frontier,
+    dependencies: closure.dependencies
+  }
+}
+
+
+fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<Node> {
+  fold(changes.changes, init: nodes, f: fn(acc, change) {
+    list_push(acc, change.subject)
+  })
+}
+
+
+fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
+  fold(affected, init: nodes, f: fn(acc, row) {
+    list_push(acc, row.dependency.dependent)
+  })
+}
+
+
+fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
+  match affected_set_value {
+    AffectedSetProduced { changes: changes, affected: affected, exclusions: _, restricted_to: _ } =>
+      RerunNodeSetProduced {
+        nodes: append_affected_dependency_nodes(
+          nodes: append_changed_node_subjects(nodes: [], changes: changes),
+          affected: affected
+        )
+      }
+    AffectedSetFailClosed { changes: _, evidence: evidence } =>
+      RerunNodeSetFailClosed {
+        evidence: evidence
+      }
   }
 }
 
@@ -843,7 +961,7 @@ fn seed_affected_set_fold_acc_live(
 }
 
 
-fn affected_set(
+fn affected_set_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
@@ -853,6 +971,28 @@ fn affected_set(
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
         seed_affected_set_fold_acc_live(
+          read_model: read_model,
+          post_edit_dag: post_edit_dag,
+          acc: acc,
+          edit: edit
+        )
+      })
+    )
+  }
+}
+
+
+// IRT-1 canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
+fn re_exec_frontier_from_diff(
+  read_model: AffectedSetRead,
+  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+  dag: Dag,
+  diff: Diff
+) -> Witness<ReExecFrontier> {
+  Holds {
+    value: frontier_from_fold_acc(
+      acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
+        seed_edit_fold_acc(
           read_model: read_model,
           post_edit_dag: post_edit_dag,
           acc: acc,

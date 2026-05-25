@@ -62,7 +62,7 @@ pub enum PatternSubject {
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::TypeVariable { .. } => true,
+        InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
@@ -162,7 +162,7 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
     match (*subject).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
-        PatternSubject::PatternDynamic { .. } => error_type(),
+        PatternSubject::PatternDynamic { span: _, .. } => error_type(),
         PatternSubject::PatternLookupBlocked => error_type(),
     }
 }
@@ -188,6 +188,7 @@ pub fn lookup_variant_in_type(
     variant_name: &String,
     module_name: String,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -217,6 +218,10 @@ pub fn lookup_variant_in_type(
                         variant_name.clone(),
                         source_indices.clone(),
                     );
+                    let record_destructure = (((field_binding_count > 0)
+                        && (scrut_node.connective.clone() == Connective::Conj))
+                        && (authored_name_at(source_indices.clone(), &scrut_node).as_str()
+                            == variant_name.clone().as_str()));
                     let fallback = if (scrut_opt.clone()
                         && (variant_name.clone().as_str() == "Some".to_string().as_str()))
                     {
@@ -227,12 +232,16 @@ pub fn lookup_variant_in_type(
                         {
                             node_lookup_resolved(none_type())
                         } else {
-                            variant_not_found_result(
-                                &scrut_node,
-                                variant_name.clone(),
-                                module_name,
-                                source_indices.clone(),
-                            )
+                            if record_destructure {
+                                node_lookup_resolved(scrut_node.clone())
+                            } else {
+                                variant_not_found_result(
+                                    &scrut_node,
+                                    variant_name.clone(),
+                                    module_name,
+                                    source_indices.clone(),
+                                )
+                            }
                         }
                     };
                     match direct_match {
@@ -334,7 +343,7 @@ pub fn check_match_exhaustiveness(
                     for arm in arms.clone().iter().cloned() {
                         if match (*arm_pattern(arm.clone())).clone() {
                             MatchPattern::Wildcard => true,
-                            MatchPattern::Bind { .. } => true,
+                            MatchPattern::Bind { name: _, .. } => true,
                             _ => false,
                         } {
                             __found = true;

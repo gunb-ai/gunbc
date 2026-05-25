@@ -10,7 +10,8 @@
 module extdeps.cloud.gcp.sts
 
 import std.types { Url, HttpMethod, AuthScheme }
-import std.errors { GcpErrorShape, GitHubErrorShape }
+import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
+import extdeps.github.errors { GitHubErrorShape }
 
 // -- Token types ---------------------------------------------------
 
@@ -47,6 +48,10 @@ type GitHubOidcToken200Body {
   value: Secret
   count: Int
 }
+
+type MetadataRuntime {}
+
+data metadata_runtime: MetadataRuntime = {}
 
 // -- Constants -----------------------------------------------------
 
@@ -86,16 +91,16 @@ service gcp.STS {
     transport rest { method: POST, path: "/v1/token" }
     response {
       200 => StsTokenResponse
-      400 => GcpErrorShape
-      401 => GcpErrorShape
-      403 => GcpErrorShape
-      429 => GcpErrorShape
-      5xx => GcpErrorShape
+      400 => GcpOAuth2ErrorShape
+      401 => GcpOAuth2ErrorShape
+      403 => GcpOAuth2ErrorShape
+      429 => GcpOAuth2ErrorShape
+      5xx => GcpOAuth2ErrorShape
     }
     mock_response {
       200 => { access_token: "ya29.mock-sts-token", issued_token_type: "urn:ietf:params:oauth:token-type:access_token", token_type: "Bearer", expires_in: 3600 } "Token exchanged",
       400 => { error: "invalid_grant", error_description: "Subject token is expired" } "Invalid or expired token",
-      403 => { error: { code: 403, message: "WIF pool not bound to service account", status: "PERMISSION_DENIED" } } "WIF not configured"
+      403 => { error: "access_denied", error_description: "WIF pool not bound to service account" } "WIF not configured"
     }
   }
 }

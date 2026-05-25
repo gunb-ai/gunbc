@@ -1,8 +1,8 @@
 // src/v4/std/node.dag
 // Scope: v4 substrate root for type and computation nodes.
 // Anchor: THESIS.md "Substrate shape" + MODELING.md.
-// Owns: Symbol, Hash, Connective, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, ...
-// Consumes: none.
+// Owns: Symbol, Hash, Connective, ConnectiveCoproductVariant, Behavior, NodeKind, EdgeLabel, Edge, Node, NodeFold, fold_node, EdgeDiscipline, loop_bound_edge, LoopMeasureTargetLookup, loop_behavior_edges_conform, loop_bound_measure_target, loop_edge_contributes_to_iteration_fold, ...
+// Consumes: none (List return types use language surface; explicit v4.std.collection import introduces compile-cycle via collection→…→node).
 // Status: T-1 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 // Note: bind_outcome + Outcome helpers live in v4.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
 // (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
@@ -26,6 +26,51 @@ type Behavior
   | Branch
   | Loop
   | Bind
+
+
+// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate (docs/design-dissolution-lens.md L1.1) — bind task: src/v4/TASKS.md#t-1-stdnodedag--substrate-root — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
+// forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
+type ConnectiveCoproductVariant
+  = ConnectiveAtomArm
+  | ConnectiveConjArm
+  | ConnectiveDisjArm
+  | ConnectiveArrowArm
+  | ConnectiveCardinalityArm
+  | ConnectiveInstantiationArm
+
+
+fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
+  [
+    ConnectiveAtomArm,
+    ConnectiveConjArm,
+    ConnectiveDisjArm,
+    ConnectiveArrowArm,
+    ConnectiveCardinalityArm,
+    ConnectiveInstantiationArm,
+  ]
+}
+
+
+fn connective_from_coproduct_variant(
+  variant: ConnectiveCoproductVariant,
+  atom_identity: Symbol
+) -> Connective {
+  match variant {
+    ConnectiveAtomArm => Atom { identity: atom_identity }
+    ConnectiveConjArm => Conj
+    ConnectiveDisjArm => Disj
+    ConnectiveArrowArm => Arrow
+    ConnectiveCardinalityArm => Cardinality
+    ConnectiveInstantiationArm => Instantiation
+  }
+}
+
+
+fn behavior_coproduct_variants() -> List<Behavior> {
+  [Value, Transform, Branch, Loop, Bind]
+}
+
+
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NodeKind
   = TypeNode { connective: Connective }
@@ -38,6 +83,8 @@ type Edge {
   label: EdgeLabel
   target: Node
 }
+// 🟡 gated — substrate-shape bridge (docs/modeling-discipline.md Practice 2/10) — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
+data loop_bound_edge: Symbol = loop_bound_edge
 type Node {
   kind: NodeKind
   children: List<Edge>
@@ -100,6 +147,68 @@ fn name_occurrences(name: Symbol, children: List<Edge>) -> Int {
     }
   })
 }
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
+fn loop_positional_child_count(children: List<Edge>) -> Int {
+  fold(children, init: 0, f: fn(acc, e) {
+    match e.label {
+      Positional => acc + 1
+      Named { name: _ } => acc
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
+fn loop_body_edges_conform(children: List<Edge>) -> Bool {
+  fold(children, init: true, f: fn(acc, e) {
+    match e.label {
+      Positional => acc
+      Named { name: sym } => acc && (sym == loop_bound_edge)
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
+fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
+  let bound_edges = name_occurrences(name: loop_bound_edge, children: children)
+  (bound_edges == 1)
+  && loop_body_edges_conform(children: children)
+  && (loop_positional_child_count(children: children) >= 1)
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-bound-measure-target — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop loop_bound_edge target projection shared by cardinality witness; forbidden: parallel ad-hoc loop_bound_edge extraction outside well_formed/cardinality.
+type LoopMeasureTargetLookup
+  = Found { target: Node }
+  | Ambiguous
+  | Absent
+fn loop_bound_measure_target(children: List<Edge>) -> LoopMeasureTargetLookup {
+  fold(children, init: Absent, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == loop_bound_edge {
+          match acc {
+            Absent => Found { target: e.target }
+            Found { target: _ } => Ambiguous
+            Ambiguous => Ambiguous
+          }
+        } else {
+          acc
+        }
+      Positional => acc
+    }
+  })
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
+fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Loop } =>
+      match e.label {
+        Positional => true
+        Named { name: sym } => sym != loop_bound_edge
+      }
+    _ =>
+      match e.label {
+        Positional => true
+        Named { name: _ } => true
+      }
+  }
+}
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -136,7 +245,7 @@ fn behavior_edges_conform(children: List<Edge>, b: Behavior) -> Bool {
     Value => count(children) == 0
     Transform => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
     Branch => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
-    Loop => edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
+    Loop => loop_behavior_edges_conform(children: children)
     Bind => edges_conform(children: children, d: PositionalEdges) && (count(children) == 3)
   }
 }

@@ -472,6 +472,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // ratchet until `compile_to_dag` covers `module … service …` authoring files the same
     // way as expression programs (see INVARIANTS SG-0 receipt row).
     "src/v3/compiler/tests/integration/ctrl_pr_digests_dag_smoke_test.rs",
+    // Dissolution-lens subsumption carrier: parse-level ratchet for
+    // `src/v4/lens/subsumption.dag`; retires when v4 TestClaim/generated
+    // coverage owns the same carrier and first-row projection.
+    "src/v3/compiler/tests/integration/dissolution_subsumption_carrier_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
     // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
     // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
@@ -834,21 +838,37 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v2_oracle_no_remaining_test_consumers_test.rs",
     // T-15: tokenize/parse smoke on `src/v4/bin/main.dag` + trampoline source anchors (see harness module docs).
     "src/v3/compiler/tests/integration/v4_bin_main_dag_smoke_test.rs",
-    // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
-    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
-    "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // Wave-5-A / P3 commitment 6: validate_then_compile public terminal on 00_compile.dag.
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
+    // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
+    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
+    // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules` +
+    // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
+    // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
+    "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // Wave-2-C2 / T-4.5: extdeps/file_system.dag pure resource model (Practice 11 companion).
     "src/v3/compiler/tests/integration/v4_extdeps_file_system_dag_smoke_test.rs",
+    // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
+    // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
+    "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
     "src/v3/compiler/tests/integration/v4_extdeps_react_dag_smoke_test.rs",
-    // PREFIX T-23 v0: `compile_to_dag` smoke on `src/v4/lens/registry.dag` (P2-staging
-    // `LensIdV0` + `LensModulePathV0`; no generated consumer yet). SG-0 + INVARIANTS §P5(b) receipt.
+    // T-21 IRT-1: incremental re-exec frontier (`src/v4/lens/affected_set.dag`);
+    // `re_exec_frontier_from_diff` + mechanical reverification claim; SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_affected_set_dag_smoke_test.rs",
+    // T-23: lens application surface (`src/v4/lens/application.dag`); SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_application_dag_smoke_test.rs",
+    // T-21: git diff → edit_locus resolver (`src/v4/lens/edit_locus.dag`); SG-0 + INVARIANTS §P5(b).
+    "src/v3/compiler/tests/integration/v4_lens_edit_locus_dag_smoke_test.rs",
+    // PREFIX T-23 v0 + Lens-CI activation: parse-surface ratchet over
+    // `src/v4/lens/registry.dag` registry query rows, `src/v4/workflow/ci.dag`
+    // consumer wiring, and the live `.github/workflows/ci.yml` Lens-CI signal binding.
+    // Paired with the CI semantic `ci.dag` entry-root compile using `--target rust`
+    // (not known-hanging `--target dag`). SG-0 + INVARIANTS §P5(b) receipt.
     "src/v3/compiler/tests/integration/v4_lens_registry_dag_smoke_test.rs",
-    // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — T19ManualAnchorKey-driven
+    // T-19 testgen Wave-0: parse ratchet on `src/v4/lens/testgen.dag` — ManualAnchorKey-driven
     // `bootstrap_claim_generator_for_manual_anchor` + `testgen_concept_for_manual_claim` +
     // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
     // for closed `TestClaim` schema only (no std present-key helper).
@@ -860,6 +880,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when the same checks are `.dag`
     // TestClaims or generated harness coverage.
     "src/v3/compiler/tests/integration/v4_test_bootstrap_infra_closeout_test.rs",
+    // T-21/T-24: `workflow/ci.dag` Wave-0 selection consumes `RerunNodeSet` for TestClaim roster narrowing.
+    // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim harness replaces probe.
+    "src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs",
+    // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
+    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a

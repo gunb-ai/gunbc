@@ -1,7 +1,8 @@
 // src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag
 // Scope: B1 structural receipt — exactly one LensOwnedFnV0 registry row equals the canonical
 //   llvm_instruction_cost authority (fn_name + owner_module_path on the same row).
-// Does not corpus-scan for shadow fn defs elsewhere in v4 (deferred T-22 / M2 reflection).
+// Corpus scan for shadow fn defs: v4_p9_llvm_instruction_cost_single_owner_test.rs (P9 receipt);
+// M2 reflection execution of this claim over the full corpus is deferred to T-22.
 // Owns: claim_p9_llvm_instruction_cost_registry_owner
 // Consumes: v4.lens.registry, v4.std.algebra, v4.std.verification, v4.std.node
 // Status: compile-only registry receipt until T-22 corpus execution.
@@ -19,9 +20,10 @@ import v4.std.verification {
   EqualsClaim,
   TestClaim,
   TestClassification,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   Tier1,
-  Unit
+  Unit,
+  manual_claim_anchor
 }
 import v4.std.node { Atom, Conj, Node, TypeNode }
 
@@ -75,7 +77,7 @@ fn p9_registry_owner_receipt_rhs() -> Node {
 
 data claim_p9_llvm_instruction_cost_registry_owner: TestClaim = EqualsClaim {
   label: "P9: llvm_instruction_cost registry has exactly one canonical LensOwnedFnV0 row (fn + owner)",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: p9_registry_owner_authority_node,
   rhs: p9_registry_owner_receipt_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }

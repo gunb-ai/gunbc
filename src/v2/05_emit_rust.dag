@@ -20,7 +20,7 @@ import v2.std.core {
   param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, generic_param_name_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, generic_param_name_at,
   LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -108,7 +108,7 @@ import v2.compiler.infer {
 import v2.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, is_enum_in_summaries, find_variant_parent, is_known_variant,
-  variant_belongs_to_enum
+  variant_belongs_to_enum, variant_summary_key
 }
 import v2.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
 import std.induction { SubValueUnknown }
@@ -1029,6 +1029,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
+    positional_payload_variants: base_info.positional_payload_variants,
     shared_types: shared,
     ownership_index: ownership.ownership_index,
     movable: empty_set(),
@@ -1147,6 +1148,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     type_summaries: base_info.type_summaries,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
+    positional_payload_variants: base_info.positional_payload_variants,
     shared_types: shared,
     ownership_index: base_info.ownership_index,
     movable: base_info.movable,
@@ -1433,6 +1435,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
       fielded_variants: emit_info.fielded_variants,
+      positional_payload_variants: emit_info.positional_payload_variants,
       shared_types: emit_info.shared_types,
       ownership_index: emit_info.ownership_index,
       movable: fn_movable,
@@ -1707,7 +1710,7 @@ fn enum_derives(children: List<Node>) -> String {
 
 fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let derives = enum_derives(children: children)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy))
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy))
   let variants_str = variant_lines |> join(separator: "\n")
   // Wire contract: serde_enum_tag is "" for StringVariant/AsAuthored,
   // a rename_all attribute for SnakeCase, or the default _variant tag.
@@ -1720,8 +1723,11 @@ fn emit_enum_from_children(name: String, type_params: String, children: List<Nod
 }
 
 fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
-  // Only consider variants with fields (skip unit variants).
-  let fielded = children |> filter(child => child.children |> count > 0)
+  // Only consider record-fielded variants (skip unit and positional-payload tuple variants).
+  let fielded = children |> filter(child =>
+    child.children |> count > 0
+      && !variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+  )
   if fielded |> count == 0 { return [] }
   // Get field names from first fielded variant.
   let first_fields = match fielded |> first {
@@ -1740,7 +1746,10 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
-  let fielded = children |> filter(child => child.children |> count > 0)
+  let fielded = children |> filter(child =>
+    child.children |> count > 0
+      && !variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+  )
   if fielded |> count == 0 { return "compile_error!(\"enum shared accessor missing fielded variant\")" }
   let first_fielded = (fielded |> first).value
   let shared = all_shared |> filter(fname =>
@@ -1766,10 +1775,12 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
     // Generate match arms for each variant.
     let arms = children |> map(child =>
       let child_text = authored_name(env: env, node: child)
+      let sharing = language_spec(target: Rust).sharing
       if child.children |> count == 0 {
         concat("            ", name, "::", child_text, " => panic!(\"no ", fname, " on unit variant\"),")
+      } else if variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices) {
+        concat("            ", name, "::", child_text, "(_) => panic!(\"no ", fname, " on positional-payload variant\"),")
       } else {
-        let sharing = language_spec(target: Rust).sharing
         concat("            ", name, "::", child_text, " { ", emit_ident(name: fname, target: Rust), ": __val, .. } => ", apply_type_template1(template: sharing.clone_value, arg0: "__val"), ",")
       }
     )
@@ -1858,20 +1869,86 @@ fn variant_rename_validations_for_policy(children: List<Node>, env: TypeEnv, ser
     |> join(separator: "\n")
 }
 
-fn emit_variant_from_child(child: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
+// Field "0" type from topo-resolved enum binding (TypeEnv authority), not item.children snapshot.
+fn enum_variant_field_type_node(env: TypeEnv, enum_name: String, variant_name: String, field_name: String, fallback: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  match lookup_type_by_name(env: env, name: enum_name) {
+    Some { value: enum_node } =>
+      match find_child_named(n: enum_node, name: variant_name, source_indices: source_indices) {
+        Some { value: variant } =>
+          match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
+            Some { value: field } =>
+              if field.inferred != none { resolved_type(n: field) } else { fallback }
+            None => fallback
+          }
+        None => fallback
+      }
+    None => fallback
+  }
+}
+
+// Render generic application surface (`LocusAnchor<String>`) for enum variant payload slots.
+fn render_variant_payload_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if n.connective == NoConnective && n.children |> count > 0 {
+    let tn = authored_name_at(source_indices: source_indices, node: n)
+    let args = n.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices))
+    let spec = language_spec(target: Rust)
+    concat(coerce_primitive_type(target: Rust, dag_name: tn), spec.type_arg_open, args |> join(separator: ", "), spec.type_arg_close)
+  } else {
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
+// Single synthetic field "0" marks a positional sum-variant payload (parse authority).
+fn variant_is_synthetic_positional_payload(fields: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if fields |> count != 1 {
+    false
+  } else {
+    match fields |> first {
+      Some { value: f } => field_node_name_at(n: f, source_indices: source_indices) == "0"
+      None => false
+    }
+  }
+}
+
+fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let child_text = authored_name(env: env, node: child)
   let rename_attr = wire_variant_rename_attr_for_policy(authored: child_text, policy: serde_policy)
   if child.children |> count == 0 {
     // Unit variant -- no fields
     concat(rename_attr, "    ", child_text, ",")
-  } else if serde_policy.enum_attr == "#[serde(untagged)]" && child.children |> count == 1 {
-    let f = (child.children |> first).value
-    let rt_f = resolved_type(n: f)
-    let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
-    let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
-      concat("Box<", ty, ">")
-    } else { ty }
-    concat(rename_attr, "    ", child_text, "(", final_ty, "),")
+  } else if child.children |> count == 1 {
+    let positional_payload = variant_is_synthetic_positional_payload(fields: child.children, source_indices: env.source_indices)
+    let tuple_style = positional_payload || (serde_policy.enum_attr == "#[serde(untagged)]")
+    if tuple_style {
+      match child.children |> first {
+        Some { value: f } =>
+          let fallback = resolved_type(n: f)
+          let type_node = if positional_payload {
+            enum_variant_field_type_node(env: env, enum_name: enum_name, variant_name: child_text, field_name: "0", fallback: fallback, source_indices: env.source_indices)
+          } else { fallback }
+          let ty = if positional_payload {
+            render_variant_payload_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
+          } else {
+            render_rust_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
+          }
+          let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+            concat("Box<", ty, ">")
+          } else { ty }
+          concat(rename_attr, "    ", child_text, "(", final_ty, "),")
+        None => concat(rename_attr, "    ", child_text, ",")
+      }
+    } else {
+      let field_lines = child.children |> map(f =>
+        let rt_f = resolved_type(n: f)
+        let ty = render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+        let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
+          concat("Box<", ty, ">")
+        } else { ty }
+        concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
+      )
+      let fields_str = field_lines |> join(separator: "\n")
+      concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
+    }
   } else {
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
@@ -2173,11 +2250,54 @@ fn is_string_lit_pattern(p: MatchPattern) -> Bool {
   }
 }
 
+// Path-derived scratch binding for string-literal subpatterns (field "0" and named nested carriers).
+fn pattern_string_binding_name(path: List<String>) -> String {
+  if path |> count == 0 {
+    "__pos0_val"
+  } else {
+    let segments = path |> map(seg => emit_ident(name: seg, target: Rust))
+    concat("__pos_", segments |> join(separator: "_"), "_val")
+  }
+}
+
+fn positional_payload_string_guard(fb_pat: MatchPattern, bind_name: String) -> String {
+  match fb_pat {
+    LitPattern { value: LitStr { value: s } } =>
+      concat(bind_name, " == ", emit_string_literal(s: s, suffix: ""))
+    _ => ""
+  }
+}
+
+// Guards from one variant's field bindings, recursing into nested carrier patterns.
+fn collect_field_binding_string_guards(field_bindings: List<Node>, path_prefix: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let parts = field_bindings |> flat_map(fb =>
+    let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+    let fb_pat = field_binding_pattern(n: fb)
+    if is_string_lit_pattern(p: fb_pat) {
+      let field_path = if fb_name == "0" {
+        list_push(path_prefix, "0")
+      } else {
+        list_push(path_prefix, fb_name)
+      }
+      let bind_name = pattern_string_binding_name(path: field_path)
+      match positional_payload_string_guard(fb_pat: fb_pat, bind_name: bind_name) {
+        "" => []
+        guard => [guard]
+      }
+    } else {
+      let nested_path = list_push(path_prefix, fb_name)
+      let nested = collect_pattern_string_guards(pattern: fb_pat, path_prefix: nested_path, source_indices: source_indices)
+      if nested == "" { [] } else { [nested] }
+    }
+  )
+  parts |> join(separator: " && ")
+}
+
 // Collect guard conditions from string literal field bindings in a pattern.
 // Returns "" if no string literal fields, or "f1 == \"v1\" && f2 == \"v2\"".
 // This is needed because Rust can't match String fields with &str literals
 // directly -- we use ref bindings + guards instead.
-fn collect_pattern_string_guards(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
+fn collect_pattern_string_guards(pattern: MatchPattern, path_prefix: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match pattern {
     VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
       if n == "Some" && fbs |> count == 1 {
@@ -2191,20 +2311,28 @@ fn collect_pattern_string_guards(pattern: MatchPattern, source_indices: Map<Stri
                 _ => ""
               }
             } else {
-              collect_pattern_string_guards(pattern: fb_pat, source_indices: source_indices)
+              collect_pattern_string_guards(pattern: fb_pat, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
+            }
+          None => ""
+        }
+      } else if fbs |> count == 1 {
+        match fbs |> first {
+          Some { value: fb } =>
+            if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
+              let fb_pat = field_binding_pattern(n: fb)
+              let pos_path = list_push(list_push(path_prefix, n), "0")
+              if is_string_lit_pattern(p: fb_pat) {
+                positional_payload_string_guard(fb_pat: fb_pat, bind_name: pattern_string_binding_name(path: pos_path))
+              } else {
+                collect_pattern_string_guards(pattern: fb_pat, path_prefix: pos_path, source_indices: source_indices)
+              }
+            } else {
+              collect_field_binding_string_guards(field_bindings: fbs, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
             }
           None => ""
         }
       } else {
-        let str_bindings = fbs |> filter(fb => is_string_lit_pattern(p: field_binding_pattern(n: fb)))
-        let guards = str_bindings |> map(fb =>
-          match field_binding_pattern(n: fb) {
-            LitPattern { value: LitStr { value: s } } =>
-              concat(emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), " == ", emit_string_literal(s: s, suffix: ""))
-            _ => ""
-          }
-        )
-        guards |> join(separator: " && ")
+        collect_field_binding_string_guards(field_bindings: fbs, path_prefix: list_push(path_prefix, n), source_indices: source_indices)
       }
     _ => ""
   }
@@ -2240,12 +2368,12 @@ fn has_string_lit_with_bind(arms: List<Node>) -> Bool {
   has_lit && has_bind
 }
 
-fn emit_pattern(pattern: MatchPattern, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_pattern(pattern: MatchPattern, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      emit_variant_pattern(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
     Wildcard => "_"
   }
 }
@@ -2261,7 +2389,34 @@ fn pattern_parent_enum(name: String, parent_enum: String?, scrut_type: String, t
   }
 }
 
-fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+// Resolved subject type for synthetic field "0" — from per-variant field_type_map keyed
+// by EnumName::VariantName (build_emit_graph_info authority), not outer match scrutinee.
+fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, field_binding: Node, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+  let type_key = match parent_enum {
+    Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: variant_name)
+    None => variant_name
+  }
+  match lookup_emit_type_summary(emit_info: emit_info, type_name: type_key) {
+    Some { value: summary } =>
+      match map_get(summary.field_type_map, "0") {
+        Some { value: payload_type } => payload_type
+        None =>
+          match field_binding.inferred {
+            Some { value: Resolved { node: rt } } =>
+              authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: rt))
+            _ => ""
+          }
+      }
+    None =>
+      match field_binding.inferred {
+        Some { value: Resolved { node: rt } } =>
+          authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: rt))
+        _ => ""
+      }
+  }
+}
+
+fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   // RC1: Qualify variant names with parent enum using scrutinee type.
   // Some/None are Rust builtins -- never qualify. For all others, use the
   // scrutinee type so that variant name collisions (e.g. LitStr in both
@@ -2279,45 +2434,89 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, name), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
+        }
+      None => qualified
+    }
+  } else if field_bindings |> count == 1 {
+    match field_bindings |> first {
+      Some { value: fb } =>
+        if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
+          let fb_pat = field_binding_pattern(n: fb)
+          let pos_path = list_push(list_push(path_prefix, name), "0")
+          let bind_name = pattern_string_binding_name(path: pos_path)
+          if is_string_lit_pattern(p: fb_pat) {
+            concat(qualified, "(ref ", bind_name, ")")
+          } else {
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: pos_path, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, "(", inner_pat, ")")
+          }
+        } else {
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let fb_pat = field_binding_pattern(n: fb)
+          if is_string_lit_pattern(p: fb_pat) {
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), fb_name))
+            concat(qualified, " { ref ", bind_name, ", .. }")
+          } else {
+            let pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, name), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
+          }
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
     // Check qualified key first, then try all enum prefixes as fallback
     // (handles cases where scrut_type is missing for field access expressions).
-    let fielded_key = match resolved_parent {
+    let shape_key = match resolved_parent {
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+    let is_positional = set_contains(emit_info.positional_payload_variants, shape_key)
+      || set_contains(emit_info.positional_payload_variants, qualified)
+    let is_fielded = set_contains(emit_info.fielded_variants, shape_key)
       || set_contains(emit_info.fielded_variants, qualified)
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
+    if is_positional { concat(qualified, "(_)") }
+    else if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
-      let fielded_key2 = match resolved_parent {
+      // All bindings are wildcards — check variant shape facts (same as count == 0 branch).
+      let shape_key2 = match resolved_parent {
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+      let is_positional2 = set_contains(emit_info.positional_payload_variants, shape_key2)
+        || set_contains(emit_info.positional_payload_variants, qualified)
+      let is_fielded2 = set_contains(emit_info.fielded_variants, shape_key2)
         || set_contains(emit_info.fielded_variants, qualified)
-      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      if is_positional2 { concat(qualified, "(_)") }
+      else if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
+          let field_path = if fb_name == "0" {
+            list_push(list_push(path_prefix, name), "0")
+          } else {
+            list_push(list_push(path_prefix, name), fb_name)
+          }
+          let bind_name = pattern_string_binding_name(path: field_path)
+          concat("ref ", bind_name)
         } else {
             let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
-              let pat_str = emit_pattern(pattern: fb_pat, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+              let field_path = if fb_name == "0" {
+                list_push(list_push(path_prefix, name), "0")
+              } else {
+                list_push(list_push(path_prefix, name), fb_name)
+              }
+              let pat_str = emit_pattern(pattern: fb_pat, path_prefix: field_path, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
               concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
             }
         }
@@ -2383,13 +2582,18 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
           }
         } else { empty_rc_pattern_analysis() }
       } else {
-        let matches_rc_variant = match pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) {
+        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
+        let matches_rc_variant = match resolved_parent {
           Some { value: enum_name } => set_contains(shared_types, enum_name)
           None => false
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
-          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices).matches_rc_variant {
-            [field_binding_name_at(n: fb, source_indices: source_indices)]
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let inner_scrut = if fb_name == "0" {
+            positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+          } else { "" }
+          if analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: inner_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices).matches_rc_variant {
+            [fb_name]
           } else { [] }
         )
         RcPatternAnalysis {
@@ -2430,17 +2634,17 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
 }
 
-fn emit_pattern_rc_aware(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
     Bind { name: n } => emit_ident(name: n, target: Rust)
     LitPattern { value: v } => rust_literal_for_pattern(value: v)
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
-      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+      emit_variant_pattern_rc_aware(name: n, parent_enum: parent_enum, field_bindings: fbs, path_prefix: path_prefix, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
     Wildcard => "_"
   }
 }
 
-fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let resolved_parent = if name == "Some" || name == "None" { none }
     else { pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries) }
   let qualified = match resolved_parent {
@@ -2455,40 +2659,83 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
           "Some(ref __some_val)"
         } else {
           let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(path_prefix, name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
+        }
+      None => qualified
+    }
+  } else if field_bindings |> count == 1 {
+    match field_bindings |> first {
+      Some { value: fb } =>
+        if field_binding_name_at(n: fb, source_indices: source_indices) == "0" {
+          let fb_pat = field_binding_pattern(n: fb)
+          let pos_path = list_push(list_push(path_prefix, name), "0")
+          let bind_name = pattern_string_binding_name(path: pos_path)
+          if is_string_lit_pattern(p: fb_pat) {
+            concat(qualified, "(ref ", bind_name, ")")
+          } else {
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: name, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            let inner_pat = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: pos_path, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: payload_scrut, source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, "(", inner_pat, ")")
+          }
+        } else {
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          let fb_pat = field_binding_pattern(n: fb)
+          if is_string_lit_pattern(p: fb_pat) {
+            let bind_name = pattern_string_binding_name(path: list_push(list_push(path_prefix, name), fb_name))
+            concat(qualified, " { ref ", bind_name, ", .. }")
+          } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+            concat(qualified, " { ref ", emit_ident(name: fb_name, target: Rust), ", .. }")
+          } else {
+            let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: list_push(list_push(path_prefix, name), fb_name), rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+            concat(qualified, " { ", concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str), ", .. }")
+          }
         }
       None => qualified
     }
   } else if field_bindings |> count == 0 {
     // Check qualified key first, then try all enum prefixes as fallback
     // (handles cases where scrut_type is missing for field access expressions).
-    let fielded_key = match resolved_parent {
+    let shape_key = match resolved_parent {
       Some { value: parent } => concat(parent, "::", name)
       None => name
     }
-    let is_fielded = set_contains(emit_info.fielded_variants, fielded_key)
+    let is_positional = set_contains(emit_info.positional_payload_variants, shape_key)
+      || set_contains(emit_info.positional_payload_variants, qualified)
+    let is_fielded = set_contains(emit_info.fielded_variants, shape_key)
       || set_contains(emit_info.fielded_variants, qualified)
-    if is_fielded { concat(qualified, " { .. }") } else { qualified }
+    if is_positional { concat(qualified, "(_)") }
+    else if is_fielded { concat(qualified, " { .. }") } else { qualified }
   } else {
     let effective_bindings = field_bindings |> filter(fb =>
       match field_binding_pattern(n: fb) { Wildcard => false  _ => true }
     )
     if effective_bindings |> count == 0 {
-      // All bindings are wildcards — check fielded_variants (same as count == 0 branch).
-      let fielded_key2 = match resolved_parent {
+      // All bindings are wildcards — check variant shape facts (same as count == 0 branch).
+      let shape_key2 = match resolved_parent {
         Some { value: parent } => concat(parent, "::", name)
         None => name
       }
-      let is_fielded2 = set_contains(emit_info.fielded_variants, fielded_key2)
+      let is_positional2 = set_contains(emit_info.positional_payload_variants, shape_key2)
+        || set_contains(emit_info.positional_payload_variants, qualified)
+      let is_fielded2 = set_contains(emit_info.fielded_variants, shape_key2)
         || set_contains(emit_info.fielded_variants, qualified)
-      if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
+      if is_positional2 { concat(qualified, "(_)") }
+      else if is_fielded2 { concat(qualified, " { .. }") } else { qualified }
     } else {
       let binding_strs = effective_bindings |> map(fb =>
         let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
         let fb_pat = field_binding_pattern(n: fb)
         if is_string_lit_pattern(p: fb_pat) {
-          concat("ref ", emit_ident(name: fb_name, target: Rust))
+          let field_path = if fb_name == "0" {
+            list_push(list_push(path_prefix, name), "0")
+          } else {
+            list_push(list_push(path_prefix, name), fb_name)
+          }
+          let bind_name = pattern_string_binding_name(path: field_path)
+          concat("ref ", bind_name)
         } else {
           if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
             concat("ref ", emit_ident(name: fb_name, target: Rust))
@@ -2496,8 +2743,13 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
             let is_shorthand = match fb_pat { Bind { name: n } => n == fb_name  _ => false }
             if is_shorthand { emit_ident(name: fb_name, target: Rust) }
             else {
+              let field_path = if fb_name == "0" {
+                list_push(list_push(path_prefix, name), "0")
+              } else {
+                list_push(list_push(path_prefix, name), fb_name)
+              }
               let inner_analysis = analyze_rc_pattern(pattern: fb_pat, scrut_type: "", shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
-              let pat_str = emit_pattern_rc_aware(pattern: fb_pat, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
+              let pat_str = emit_pattern_rc_aware(pattern: fb_pat, path_prefix: field_path, rc_analysis: inner_analysis, shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
               concat(emit_ident(name: fb_name, target: Rust), ": ", pat_str)
             }
           }
@@ -2511,7 +2763,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
 
 fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   match pattern {
-    VariantPattern { name: n, parent_enum: _, field_bindings: fbs } =>
+    VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
       if n == "Some" || n == "None" {
         if fbs |> count == 1 {
           match fbs |> first {
@@ -2523,9 +2775,16 @@ fn rc_pattern_preludes(pattern: MatchPattern, rc_analysis: RcPatternAnalysis, sh
           }
         } else { "" }
       } else {
+        let resolved_parent = pattern_parent_enum(name: n, parent_enum: parent_enum, scrut_type: "", type_summaries: emit_info.type_summaries)
         let preludes = fbs |> flat_map(fb =>
-          if field_needs_rc_ref(field_name: field_binding_name_at(n: fb, source_indices: source_indices), rc_analysis: rc_analysis) {
-            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: field_binding_name_at(n: fb, source_indices: source_indices), target: Rust), ".as_ref() else { unreachable!() };")]
+          let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+          if fb_name == "0" {
+            let payload_scrut = positional_payload_scrut_type(parent_enum: resolved_parent, variant_name: n, field_binding: fb, emit_info: emit_info, source_indices: source_indices)
+            let inner_analysis = analyze_rc_pattern(pattern: field_binding_pattern(n: fb), scrut_type: payload_scrut, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+            let inner_preludes = rc_pattern_preludes(pattern: field_binding_pattern(n: fb), rc_analysis: inner_analysis, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+            if inner_preludes == "" { [] } else { [inner_preludes] }
+          } else if field_needs_rc_ref(field_name: fb_name, rc_analysis: rc_analysis) {
+            [concat("let ", emit_pattern(pattern: field_binding_pattern(n: fb), path_prefix: list_push(list_push([], n), fb_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info), " = ", emit_ident(name: fb_name, target: Rust), ".as_ref() else { unreachable!() };")]
           } else { [] }
         )
         preludes |> join(separator: " ")
@@ -3628,6 +3887,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_summaries: emit_info.type_summaries,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
+              positional_payload_variants: emit_info.positional_payload_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
               movable: emit_info.movable,
@@ -3650,6 +3910,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               type_summaries: emit_info.type_summaries,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
+              positional_payload_variants: emit_info.positional_payload_variants,
               shared_types: emit_info.shared_types,
               ownership_index: emit_info.ownership_index,
               movable: set_insert(emit_info.movable, acc_name),
@@ -4051,15 +4312,15 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
         LitStr { value: s } => concat("ref __s if __s == \"", escape_string_literal_body(s: s), "\"")
         _ => rust_literal_for_pattern(value: v)
       }
-      _ => emit_pattern(pattern: arm_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+      _ => emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
     }
   } else if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_indices: si)
+  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
   let arm_guard_str = match arm_g {
     Some { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     None => ""
@@ -4435,11 +4696,33 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // emit_typed_record_lit produces raw struct expressions.
         empty_raw
       } else {
+        let variant_summary_name = match effective_parent {
+          Some { value: parent } => variant_summary_key(enum_name: parent, variant_name: tn)
+          None => tn
+        }
+        let is_positional_ctor = fields |> count == 1 && match fields |> first {
+          Some { value: f } => field_init_node_name_at(n: f, source_indices: si) == "0"
+          None => false
+        }
+        if is_positional_ctor {
+          match fields |> first {
+            Some { value: f } =>
+              let f_value = field_init_node_value(n: f)
+              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+              let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: "0")
+                && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
+              let field_val = if needs_wrap {
+                concat("Some(", val_str, ")")
+              } else { val_str }
+              concat(display_tn, "(", field_val, ")")
+            None => concat(display_tn, "()")
+          }
+        } else {
         let field_strs = fields |> map(f =>
           let f_name = field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = field_init_node_value(n: f)
           let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: type_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: f_name)
+          let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
             && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
           let field_val = if needs_wrap {
             concat("Some(", val_str, ")")
@@ -4452,7 +4735,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // false positives from cross-module type name collisions in the summary registry.
         let provided_names = fields |> map(f => field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices))
         let provided_set = fold(provided_names, init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
-        let summary = lookup_emit_type_summary(emit_info: emit_info, type_name: tn)
+        let summary = lookup_emit_type_summary(emit_info: emit_info, type_name: variant_summary_name)
         let default_strs = match summary {
           Some { value: s } =>
             let fs = s.field_summaries
@@ -4463,11 +4746,11 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
                 Some { value: ft } => match rust_zero_value(type_name: ft) { Some { value: _ } => true, None => false }
                 None => false
               }
-              has_zv || is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: fname)
+              has_zv || is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname)
             )
             if all_defaultable {
               missing |> flat_map(fname =>
-                if is_optional_struct_field(emit_info: emit_info, struct_name: tn, field_name: fname) {
+                if is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: fname) {
                   [concat("    ", emit_ident(name: fname, target: Rust), ": None,")]
                 } else {
                   match map_get(ftm, fname) {
@@ -4489,6 +4772,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
         // Rc wrapping is the caller's responsibility (data_decl_body, emit_typed_expr, etc.).
         // emit_typed_record_lit produces raw struct expressions.
         raw
+        }
       }
   }
 }
@@ -4763,12 +5047,12 @@ fn emit_typed_tco_match_arm(arm: Node, fn_name: String, params: List<Node>, regi
   let si = scope.type_env.source_indices
   let rc_analysis = analyze_rc_pattern(pattern: arm_pat, scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: si)
   let pat_str = if rc_analysis.needs_rc_pattern {
-    emit_pattern_rc_aware(pattern: arm_pat, rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern_rc_aware(pattern: arm_pat, path_prefix: [], rc_analysis: rc_analysis, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   } else {
-    emit_pattern(pattern: arm_pat, shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
+    emit_pattern(pattern: arm_pat, path_prefix: [], shared_types: shared_types, scrut_type: scrut_type, source_indices: si, emit_info: emit_info)
   }
   // Collect guards from string literal field bindings (ref field + guard).
-  let field_guards = collect_pattern_string_guards(pattern: arm_pat, source_indices: si)
+  let field_guards = collect_pattern_string_guards(pattern: arm_pat, path_prefix: [], source_indices: si)
   let arm_guard_str = match arm_g {
     Some { value: g } => emit_typed_expr(texpr: g, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
     None => ""

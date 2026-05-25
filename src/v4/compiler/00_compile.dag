@@ -1,11 +1,11 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Owns: CoreNode, LanguageModel, HostModel, CompileMode, CompileOutput, Lens, LensApplicationMode,
-//       apply_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
+// Owns: CoreNode, LanguageModel, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
+//       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
-//       compile_eval_not_realized_diagnostic, apply_lens, run_required_lens_gates,
+//       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       compile_inferred, compile, validate_then_compile.
 // Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/07_target_carriers.dag,
 //           std/collection.dag, std/diagnostic.dag,
@@ -27,7 +27,7 @@ import v4.std.diagnostic {
   ExternalContractUnknown,
   Locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Rejected,
   Unavailable,
   bind_outcome,
@@ -41,49 +41,40 @@ import v4.std.text { String }
 import v4.std.witness { Witness }
 
 
-// 🟢 grounded — post-normalize substrate graph; Theme-A #9 forward until named ModelCore bundle lands.
 type CoreNode = Node
 
+type RuntimeTarget = Node
 
-// 🟢 grounded — host interpretation model peer (Ratified Q1); Eval terminal only.
-type HostModel = Node
-
-
-// 🟢 grounded — pre-ingest text slot; legacy staging only (not compile-core).
 type Source = String
 
-
-// 🟢 coproduct dissolution — ratified compile-core terminal modes (P1/P2).
+// 🟢 coproduct dissolution
 type CompileMode
   = TranslateTo { target: TargetModel }
-  | Eval { host_interp: HostModel }
+  | Eval { runtime: RuntimeTarget }
 
 
-// 🟢 coproduct dissolution — mode-dependent compile-core output (Output in design doc).
+// 🟢 coproduct dissolution
 type CompileOutput
   = TranslateResult { source: TargetSource }
   | EvalResult { value: Node }
 
 
-// 🟢 grounded — T-23 forward home for apply_lens; gate consumes InferredTree (P3 lens side-channel).
-type Lens {
+type CompileLens {
   gate: fn(InferredTree) -> Outcome<Witness<Node>>
 }
 
 
-// 🟢 coproduct dissolution — enforce vs introspect application mode (T-23 surface).
-type LensApplicationMode
-  = LensEnforce
-  | LensIntrospect
+// 🟢 coproduct dissolution
+type CompileLensMode
+  = CompileLensEnforce
+  | CompileLensIntrospect
 
 
-// 🟢 grounded — lens gate witness cites substrate Witness (Practice 3; not parallel fact payload).
 type LensGateWitness {
   witness: Witness<Node>
 }
 
 
-// 🟢 grounded — public terminal carrier; discharged only by validate_then_compile (P3 commitment 6).
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
@@ -123,21 +114,18 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-// T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
-// LensEnforce and LensIntrospect both call gate today; introspect demotion lands with application.dag.
-fn apply_lens(
-  lens: Lens,
+fn apply_compile_lens(
+  lens: CompileLens,
   inferred: InferredTree,
-  mode: LensApplicationMode
+  mode: CompileLensMode
 ) -> Outcome<Witness<Node>> {
   match mode {
-    LensEnforce => lens.gate(tree: inferred)
-    LensIntrospect => lens.gate(tree: inferred)
+    CompileLensEnforce => lens.gate(tree: inferred)
+    CompileLensIntrospect => lens.gate(tree: inferred)
   }
 }
 
 
-// list_push is kernel/prelude (see std/diagnostic.dag); not exported from std/collection.
 fn append_lens_gate_witness(
   witnesses: List<LensGateWitness>,
   witness: Witness<Node>
@@ -159,7 +147,7 @@ fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
 
 fn run_required_lens_gates(
   inferred: InferredTree,
-  lenses: List<Lens>
+  lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
   fold(
     lenses,
@@ -171,7 +159,7 @@ fn run_required_lens_gates(
           bind_outcome_accepted(
             od: od,
             inner: bind_outcome(
-              o: apply_lens(lens: lens, inferred: inferred, mode: LensEnforce),
+              o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
               f: fn(w) {
                 outcome_accepted(
                   value: append_lens_gate_witness(
@@ -214,17 +202,16 @@ fn compile_inferred(
           outcome_accepted(TranslateResult { source: target_source })
         }
       )
-    Eval { host_interp: _ } =>
+    Eval { runtime: _ } =>
       outcome_rejected(
         compile_eval_not_realized_diagnostic(
-          at: PortLocus { port: compile_stage_locus_port }
+          at: port_locus(port: compile_stage_locus_port)
         )
       )
   }
 }
 
 
-// Internal/advanced compile-core (P3 commitment 6). Not the public terminal — use validate_then_compile.
 fn compile(
   source: CoreNode,
   input_lang: LanguageModel,
@@ -250,11 +237,10 @@ fn validated_from_compile_output(
 }
 
 
-// Public terminal (P3 commitment 6): infer → required-lens gates on InferredTree → compile_inferred.
 fn validate_then_compile(
   source: CoreNode,
   input_lang: LanguageModel,
-  lenses: List<Lens>,
+  lenses: List<CompileLens>,
   mode: CompileMode
 ) -> Outcome<Validated<CompileOutput>> {
   bind_outcome(
@@ -285,12 +271,11 @@ fn validate_then_compile(
 }
 
 
-// Legacy Wave-1 ingest orchestrator (Source text path). Staging until ingest lands on compile-core.
 fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<TargetSource> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: compile_pipeline_not_realized_diagnostic(
-        at: PortLocus { port: compile_stage_locus_port }
+        at: port_locus(port: compile_stage_locus_port)
       )
     )
   }

@@ -1,0 +1,708 @@
+// src/v4/extdeps/languages/kotlin.dag
+// Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles.
+// Owns: KotlinIntWidth, KotlinScalar, KotlinIntegerPrimitiveFacts, KotlinFloatPrimitiveFacts, KotlinNonNumericPrimitiveFacts, KotlinLanguageModel, kotlin_*_facts, kotlin_model_core_wave1, kotlin_language_model_wave1.
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
+// Status: T-4 Kotlin wave-1; built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
+// Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html
+
+module v4.extdeps.languages.kotlin
+
+import v4.compiler.parse { Grammar, VoidGrammar }
+import v4.compiler.tokenize { LexRules, VoidLexRules }
+import v4.std.collection { List, Map, Set }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
+  primitive_fact_axis_width
+}
+import v4.std.witness { Holds, Violates }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+
+// Kotlin's specification defines only signed built-in integer types; unsigned
+// integers are not built-in classifier types in this spec section.
+// 🟢 coproduct dissolution — alternatives are one-at-a-time scalar widths.
+type KotlinIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+
+// 🟢 coproduct dissolution — alternatives are one-at-a-time floating widths.
+type KotlinFloatWidth
+  = Bits32
+  | Bits64
+
+// Kotlin spec leaves these runtime representations platform-specific.
+type KotlinRuntimeRepresentation {}
+
+// 🟢 coproduct dissolution — character/code-unit facts are separate from runtime representation.
+type KotlinCharacterEncoding
+  = Ucs2CodeUnit
+  | Ucs2CodeUnitSequence
+
+type KotlinSingletonInhabitance {}
+
+type KotlinControlFlowInhabitance {}
+
+// 🟢 coproduct dissolution — IEEE precision/value semantics, not runtime representation.
+type KotlinFloatValueFormat
+  = Ieee754Binary32Precision
+  | Ieee754Binary64Precision
+
+type KotlinIntegerOverflowUnspecified {}
+
+// 🟢 coproduct dissolution — one scalar classifier at a time.
+type KotlinScalar
+  = IntScalar { width: KotlinIntWidth }
+  | FloatScalar { width: KotlinFloatWidth }
+  | BoolScalar
+  | CharScalar
+  | StringScalar
+  | UnitScalar
+  | NothingScalar
+
+type KotlinIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  width: KotlinIntWidth
+  overflow: KotlinIntegerOverflowUnspecified
+  representation: KotlinRuntimeRepresentation
+}
+
+type KotlinFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: KotlinFloatWidth
+  value_format: KotlinFloatValueFormat
+  representation: KotlinRuntimeRepresentation
+}
+
+// 🟢 coproduct dissolution — nonnumeric value facts bind to their own axes.
+type KotlinNonNumericValueFact
+  = RuntimeRepresentationFact { representation: KotlinRuntimeRepresentation }
+  | CharacterEncodingFact { encoding: KotlinCharacterEncoding }
+  | SingletonInhabitanceFact { inhabitance: KotlinSingletonInhabitance }
+  | ControlFlowInhabitanceFact { inhabitance: KotlinControlFlowInhabitance }
+
+type KotlinNonNumericPrimitiveFacts {
+  surface_spelling: Symbol
+  scalar: KotlinScalar
+  value_fact: KotlinNonNumericValueFact
+}
+
+type KotlinLanguageModel {
+  lex: LexRules
+  grammar: Grammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+data kotlin_language_model_surface_id: Symbol = kotlin_language_model_surface_id
+
+data kotlin_surface_spelling_byte: Symbol = kotlin_surface_spelling_byte
+data kotlin_surface_spelling_short: Symbol = kotlin_surface_spelling_short
+data kotlin_surface_spelling_int: Symbol = kotlin_surface_spelling_int
+data kotlin_surface_spelling_long: Symbol = kotlin_surface_spelling_long
+data kotlin_surface_spelling_float: Symbol = kotlin_surface_spelling_float
+data kotlin_surface_spelling_double: Symbol = kotlin_surface_spelling_double
+data kotlin_surface_spelling_boolean: Symbol = kotlin_surface_spelling_boolean
+data kotlin_surface_spelling_char: Symbol = kotlin_surface_spelling_char
+data kotlin_surface_spelling_string: Symbol = kotlin_surface_spelling_string
+data kotlin_surface_spelling_unit: Symbol = kotlin_surface_spelling_unit
+data kotlin_surface_spelling_nothing: Symbol = kotlin_surface_spelling_nothing
+
+data kotlin_facts_field_surface_spelling: Symbol = kotlin_facts_field_surface_spelling
+data kotlin_facts_field_width: Symbol = kotlin_facts_field_width
+data kotlin_facts_field_signedness: Symbol = kotlin_facts_field_signedness
+data kotlin_facts_field_overflow: Symbol = kotlin_facts_field_overflow
+data kotlin_facts_field_value_format: Symbol = kotlin_facts_field_value_format
+data kotlin_facts_field_representation: Symbol = kotlin_facts_field_representation
+data kotlin_facts_field_character_encoding: Symbol = kotlin_facts_field_character_encoding
+data kotlin_facts_field_singleton_inhabitance: Symbol = kotlin_facts_field_singleton_inhabitance
+data kotlin_facts_field_control_flow_inhabitance: Symbol = kotlin_facts_field_control_flow_inhabitance
+data kotlin_facts_field_scalar_classifier: Symbol = kotlin_facts_field_scalar_classifier
+data kotlin_primitive_fact_axis_value_format: Symbol = kotlin_primitive_fact_axis_value_format
+data kotlin_primitive_fact_axis_runtime_representation: Symbol = kotlin_primitive_fact_axis_runtime_representation
+data kotlin_primitive_fact_axis_character_encoding: Symbol = kotlin_primitive_fact_axis_character_encoding
+data kotlin_primitive_fact_axis_singleton_inhabitance: Symbol = kotlin_primitive_fact_axis_singleton_inhabitance
+data kotlin_primitive_fact_axis_control_flow_inhabitance: Symbol = kotlin_primitive_fact_axis_control_flow_inhabitance
+data kotlin_primitive_fact_axis_scalar_classifier: Symbol = kotlin_primitive_fact_axis_scalar_classifier
+
+data kotlin_tag_signed: Symbol = kotlin_tag_signed
+data kotlin_tag_bits8: Symbol = kotlin_tag_bits8
+data kotlin_tag_bits16: Symbol = kotlin_tag_bits16
+data kotlin_tag_bits32: Symbol = kotlin_tag_bits32
+data kotlin_tag_bits64: Symbol = kotlin_tag_bits64
+data kotlin_tag_overflow_unspecified: Symbol = kotlin_tag_overflow_unspecified
+data kotlin_tag_platform_specific_runtime_representation: Symbol = kotlin_tag_platform_specific_runtime_representation
+data kotlin_tag_ieee754_binary32_precision: Symbol = kotlin_tag_ieee754_binary32_precision
+data kotlin_tag_ieee754_binary64_precision: Symbol = kotlin_tag_ieee754_binary64_precision
+data kotlin_tag_ucs2_code_unit: Symbol = kotlin_tag_ucs2_code_unit
+data kotlin_tag_ucs2_code_unit_sequence: Symbol = kotlin_tag_ucs2_code_unit_sequence
+data kotlin_tag_singleton_object: Symbol = kotlin_tag_singleton_object
+data kotlin_tag_uninhabited_control_flow: Symbol = kotlin_tag_uninhabited_control_flow
+data kotlin_tag_scalar_int: Symbol = kotlin_tag_scalar_int
+data kotlin_tag_scalar_float: Symbol = kotlin_tag_scalar_float
+data kotlin_tag_scalar_bool: Symbol = kotlin_tag_scalar_bool
+data kotlin_tag_scalar_char: Symbol = kotlin_tag_scalar_char
+data kotlin_tag_scalar_string: Symbol = kotlin_tag_scalar_string
+data kotlin_tag_scalar_unit: Symbol = kotlin_tag_scalar_unit
+data kotlin_tag_scalar_nothing: Symbol = kotlin_tag_scalar_nothing
+data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified = KotlinIntegerOverflowUnspecified {}
+data kotlin_platform_specific_runtime_representation: KotlinRuntimeRepresentation = KotlinRuntimeRepresentation {}
+data kotlin_singleton_object: KotlinSingletonInhabitance = KotlinSingletonInhabitance {}
+data kotlin_uninhabited_control_flow: KotlinControlFlowInhabitance = KotlinControlFlowInhabitance {}
+
+data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_byte,
+  width: Bits8,
+  overflow: kotlin_integer_overflow_unspecified,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_facts_short: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_short,
+  width: Bits16,
+  overflow: kotlin_integer_overflow_unspecified,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_facts_int: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_int,
+  width: Bits32,
+  overflow: kotlin_integer_overflow_unspecified,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_long,
+  width: Bits64,
+  overflow: kotlin_integer_overflow_unspecified,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_facts_float: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_float,
+  width: Bits32,
+  value_format: Ieee754Binary32Precision,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_facts_double: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_double,
+  width: Bits64,
+  value_format: Ieee754Binary64Precision,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_facts_boolean: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_boolean,
+  scalar: BoolScalar,
+  value_fact: RuntimeRepresentationFact { representation: kotlin_platform_specific_runtime_representation },
+}
+
+data kotlin_facts_char: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_char,
+  scalar: CharScalar,
+  value_fact: CharacterEncodingFact { encoding: Ucs2CodeUnit },
+}
+
+data kotlin_facts_string: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_string,
+  scalar: StringScalar,
+  value_fact: CharacterEncodingFact { encoding: Ucs2CodeUnitSequence },
+}
+
+data kotlin_facts_unit: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_unit,
+  scalar: UnitScalar,
+  value_fact: SingletonInhabitanceFact { inhabitance: kotlin_singleton_object },
+}
+
+data kotlin_facts_nothing: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrimitiveFacts {
+  surface_spelling: kotlin_surface_spelling_nothing,
+  scalar: NothingScalar,
+  value_fact: ControlFlowInhabitanceFact { inhabitance: kotlin_uninhabited_control_flow },
+}
+
+data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
+  kotlin_facts_byte,
+  kotlin_facts_short,
+  kotlin_facts_int,
+  kotlin_facts_long
+]
+
+data kotlin_float_facts_catalog: List<KotlinFloatPrimitiveFacts> = [
+  kotlin_facts_float,
+  kotlin_facts_double
+]
+
+data kotlin_nonnumeric_facts_catalog: List<KotlinNonNumericPrimitiveFacts> = [
+  kotlin_facts_boolean,
+  kotlin_facts_char,
+  kotlin_facts_string,
+  kotlin_facts_unit,
+  kotlin_facts_nothing
+]
+
+// canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn kotlin_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn kotlin_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
+  match width {
+    Bits8 => kotlin_atom(id: kotlin_tag_bits8)
+    Bits16 => kotlin_atom(id: kotlin_tag_bits16)
+    Bits32 => kotlin_atom(id: kotlin_tag_bits32)
+    Bits64 => kotlin_atom(id: kotlin_tag_bits64)
+  }
+}
+
+fn kotlin_float_width_node(width: KotlinFloatWidth) -> Node {
+  match width {
+    Bits32 => kotlin_atom(id: kotlin_tag_bits32)
+    Bits64 => kotlin_atom(id: kotlin_tag_bits64)
+  }
+}
+
+fn kotlin_overflow_node(overflow: KotlinIntegerOverflowUnspecified) -> Node {
+  let _witness = overflow
+  kotlin_atom(id: kotlin_tag_overflow_unspecified)
+}
+
+fn kotlin_runtime_representation_node(representation: KotlinRuntimeRepresentation) -> Node {
+  let _witness = representation
+  kotlin_atom(id: kotlin_tag_platform_specific_runtime_representation)
+}
+
+fn kotlin_character_encoding_node(encoding: KotlinCharacterEncoding) -> Node {
+  match encoding {
+    Ucs2CodeUnit => kotlin_atom(id: kotlin_tag_ucs2_code_unit)
+    Ucs2CodeUnitSequence => kotlin_atom(id: kotlin_tag_ucs2_code_unit_sequence)
+  }
+}
+
+fn kotlin_singleton_inhabitance_node(inhabitance: KotlinSingletonInhabitance) -> Node {
+  let _witness = inhabitance
+  kotlin_atom(id: kotlin_tag_singleton_object)
+}
+
+fn kotlin_control_flow_inhabitance_node(inhabitance: KotlinControlFlowInhabitance) -> Node {
+  let _witness = inhabitance
+  kotlin_atom(id: kotlin_tag_uninhabited_control_flow)
+}
+
+fn kotlin_float_value_format_node(value_format: KotlinFloatValueFormat) -> Node {
+  match value_format {
+    Ieee754Binary32Precision => kotlin_atom(id: kotlin_tag_ieee754_binary32_precision)
+    Ieee754Binary64Precision => kotlin_atom(id: kotlin_tag_ieee754_binary64_precision)
+  }
+}
+
+fn kotlin_scalar_node(scalar: KotlinScalar) -> Node {
+  match scalar {
+    IntScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        kotlin_named_edge(
+          name: kotlin_facts_field_scalar_classifier,
+          target: kotlin_atom(id: kotlin_tag_scalar_int)
+        ),
+        kotlin_named_edge(name: kotlin_facts_field_width, target: kotlin_int_width_node(width: width))
+      ]
+    }
+    FloatScalar { width } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        kotlin_named_edge(
+          name: kotlin_facts_field_scalar_classifier,
+          target: kotlin_atom(id: kotlin_tag_scalar_float)
+        ),
+        kotlin_named_edge(name: kotlin_facts_field_width, target: kotlin_float_width_node(width: width))
+      ]
+    }
+    BoolScalar => kotlin_atom(id: kotlin_tag_scalar_bool)
+    CharScalar => kotlin_atom(id: kotlin_tag_scalar_char)
+    StringScalar => kotlin_atom(id: kotlin_tag_scalar_string)
+    UnitScalar => kotlin_atom(id: kotlin_tag_scalar_unit)
+    NothingScalar => kotlin_atom(id: kotlin_tag_scalar_nothing)
+  }
+}
+
+fn kotlin_integer_facts_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_facts_field_surface_spelling,
+        target: kotlin_atom(id: facts.surface_spelling)
+      ),
+      kotlin_named_edge(name: kotlin_facts_field_signedness, target: kotlin_atom(id: kotlin_tag_signed)),
+      kotlin_named_edge(name: kotlin_facts_field_width, target: kotlin_int_width_node(width: facts.width)),
+      kotlin_named_edge(
+        name: kotlin_facts_field_overflow,
+        target: kotlin_overflow_node(overflow: facts.overflow)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_representation,
+        target: kotlin_runtime_representation_node(representation: facts.representation)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_scalar_classifier,
+        target: kotlin_scalar_node(scalar: IntScalar { width: facts.width })
+      )
+    ]
+  }
+}
+
+fn kotlin_float_facts_node(facts: KotlinFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_facts_field_surface_spelling,
+        target: kotlin_atom(id: facts.surface_spelling)
+      ),
+      kotlin_named_edge(name: kotlin_facts_field_width, target: kotlin_float_width_node(width: facts.width)),
+      kotlin_named_edge(
+        name: kotlin_facts_field_value_format,
+        target: kotlin_float_value_format_node(value_format: facts.value_format)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_representation,
+        target: kotlin_runtime_representation_node(representation: facts.representation)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_scalar_classifier,
+        target: kotlin_scalar_node(scalar: FloatScalar { width: facts.width })
+      )
+    ]
+  }
+}
+
+fn kotlin_nonnumeric_facts_node(facts: KotlinNonNumericPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_facts_field_surface_spelling,
+        target: kotlin_atom(id: facts.surface_spelling)
+      ),
+      kotlin_named_edge(
+        name: kotlin_nonnumeric_value_fact_field(value_fact: facts.value_fact),
+        target: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_scalar_classifier,
+        target: kotlin_scalar_node(scalar: facts.scalar)
+      )
+    ]
+  }
+}
+
+fn kotlin_nonnumeric_value_fact_field(value_fact: KotlinNonNumericValueFact) -> Symbol {
+  match value_fact {
+    RuntimeRepresentationFact { representation } => {
+      let _witness = representation
+      kotlin_facts_field_representation
+    }
+    CharacterEncodingFact { encoding } => {
+      let _witness = encoding
+      kotlin_facts_field_character_encoding
+    }
+    SingletonInhabitanceFact { inhabitance } => {
+      let _witness = inhabitance
+      kotlin_facts_field_singleton_inhabitance
+    }
+    ControlFlowInhabitanceFact { inhabitance } => {
+      let _witness = inhabitance
+      kotlin_facts_field_control_flow_inhabitance
+    }
+  }
+}
+
+fn kotlin_nonnumeric_value_fact_axis(value_fact: KotlinNonNumericValueFact) -> Symbol {
+  match value_fact {
+    RuntimeRepresentationFact { representation } => {
+      let _witness = representation
+      kotlin_primitive_fact_axis_runtime_representation
+    }
+    CharacterEncodingFact { encoding } => {
+      let _witness = encoding
+      kotlin_primitive_fact_axis_character_encoding
+    }
+    SingletonInhabitanceFact { inhabitance } => {
+      let _witness = inhabitance
+      kotlin_primitive_fact_axis_singleton_inhabitance
+    }
+    ControlFlowInhabitanceFact { inhabitance } => {
+      let _witness = inhabitance
+      kotlin_primitive_fact_axis_control_flow_inhabitance
+    }
+  }
+}
+
+fn kotlin_nonnumeric_value_fact_node(value_fact: KotlinNonNumericValueFact) -> Node {
+  match value_fact {
+    RuntimeRepresentationFact { representation } =>
+      kotlin_runtime_representation_node(representation: representation)
+    CharacterEncodingFact { encoding } =>
+      kotlin_character_encoding_node(encoding: encoding)
+    SingletonInhabitanceFact { inhabitance } =>
+      kotlin_singleton_inhabitance_node(inhabitance: inhabitance)
+    ControlFlowInhabitanceFact { inhabitance } =>
+      kotlin_control_flow_inhabitance_node(inhabitance: inhabitance)
+  }
+}
+
+fn kotlin_integer_spec_facts(facts: KotlinIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: kotlin_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: kotlin_int_width_node(width: facts.width) }
+        primitive_fact_axis_signedness =>
+          Holds { value: kotlin_atom(id: kotlin_tag_signed) }
+        primitive_fact_axis_overflow_disposition =>
+          Holds { value: kotlin_overflow_node(overflow: facts.overflow) }
+        kotlin_primitive_fact_axis_runtime_representation =>
+          Holds { value: kotlin_runtime_representation_node(representation: facts.representation) }
+        kotlin_primitive_fact_axis_scalar_classifier =>
+          Holds { value: kotlin_scalar_node(scalar: IntScalar { width: facts.width }) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn kotlin_float_spec_facts(facts: KotlinFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: kotlin_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_width =>
+          Holds { value: kotlin_float_width_node(width: facts.width) }
+        kotlin_primitive_fact_axis_value_format =>
+          Holds { value: kotlin_float_value_format_node(value_format: facts.value_format) }
+        kotlin_primitive_fact_axis_runtime_representation =>
+          Holds { value: kotlin_runtime_representation_node(representation: facts.representation) }
+        kotlin_primitive_fact_axis_scalar_classifier =>
+          Holds { value: kotlin_scalar_node(scalar: FloatScalar { width: facts.width }) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn kotlin_nonnumeric_spec_facts(facts: KotlinNonNumericPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: kotlin_atom(id: facts.surface_spelling) }
+        _ =>
+          if axis == kotlin_nonnumeric_value_fact_axis(value_fact: facts.value_fact) {
+            Holds {
+              value: kotlin_nonnumeric_value_fact_node(value_fact: facts.value_fact)
+            }
+          } else {
+            if axis == kotlin_primitive_fact_axis_scalar_classifier {
+              Holds { value: kotlin_scalar_node(scalar: facts.scalar) }
+            } else {
+              Violates {
+                diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+              }
+            }
+          }
+      }
+    }
+  }
+}
+
+fn kotlin_primitive_bundle_from_integer_facts(
+  facts: KotlinIntegerPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: kotlin_integer_facts_node(facts: facts),
+    spec_facts: kotlin_integer_spec_facts(facts: facts)
+  }
+}
+
+fn kotlin_primitive_bundle_from_float_facts(facts: KotlinFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: kotlin_float_facts_node(facts: facts),
+    spec_facts: kotlin_float_spec_facts(facts: facts)
+  }
+}
+
+fn kotlin_primitive_bundle_from_nonnumeric_facts(
+  facts: KotlinNonNumericPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: kotlin_nonnumeric_facts_node(facts: facts),
+    spec_facts: kotlin_nonnumeric_spec_facts(facts: facts)
+  }
+}
+
+fn kotlin_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: kotlin_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: kotlin_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn kotlin_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: kotlin_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: kotlin_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: kotlin_nonnumeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: kotlin_primitive_bundle_from_nonnumeric_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn kotlin_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
+      left: kotlin_primitive_bundles_from_integer_catalog(),
+      right: kotlin_primitive_bundles_from_float_catalog()
+    ),
+    right: kotlin_primitive_bundles_from_nonnumeric_catalog()
+  )
+}
+
+fn kotlin_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: KotlinIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn kotlin_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: KotlinFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn kotlin_nonnumeric_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: KotlinNonNumericPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn kotlin_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: kotlin_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      kotlin_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn kotlin_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: kotlin_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      kotlin_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn kotlin_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: kotlin_nonnumeric_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      kotlin_nonnumeric_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn kotlin_catalog_surface_symbol(sym: Symbol) -> Bool {
+  kotlin_integer_catalog_surface_symbol(sym: sym) ||
+    kotlin_float_catalog_surface_symbol(sym: sym) ||
+    kotlin_nonnumeric_catalog_surface_symbol(sym: sym)
+}
+
+fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      kotlin_catalog_surface_symbol(sym: sym)
+    }
+  }
+}
+
+fn kotlin_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: kotlin_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+fn kotlin_language_model_wave1() -> KotlinLanguageModel {
+  KotlinLanguageModel {
+    lex: VoidLexRules,
+    grammar: VoidGrammar,
+    language_identity: kotlin_language_model_surface_id,
+    canonical_symbols: kotlin_language_model_canonical_symbols(),
+    core: kotlin_model_core_wave1()
+  }
+}

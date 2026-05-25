@@ -1,9 +1,9 @@
 // src/v4/std/text.dag
 // Scope: Unicode text carriers.
-// Anchor: https://en.wikipedia.org/wiki/Unicode
 // Owns: Char, String.
-// Consumes: std nat, std algebra (String = FreeMonoid<Char>).
+// Consumes: std/algebra.dag (FreeMonoid); std/nat.dag (Nat).
 // Status: T-3 modeled.
+// Anchor: https://en.wikipedia.org/wiki/Unicode
 
 
 module v4.std.text

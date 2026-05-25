@@ -11,12 +11,20 @@ use v3_compiler::tokenize_for_test;
 
 const MODEL_CORE_DAG: &str = include_str!("../../../../v4/std/model_core.dag");
 const MODEL_CORE_PATH: &str = "src/v4/std/model_core.dag";
+const ALGEBRA_DAG: &str = include_str!("../../../../v4/std/algebra.dag");
+const ALGEBRA_PATH: &str = "src/v4/std/algebra.dag";
 
 fn model_core_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
     let tokens = tokenize_for_test(MODEL_CORE_DAG, MODEL_CORE_PATH)
         .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: tokenize: {e:?}"));
     parse_for_test(&tokens, MODEL_CORE_PATH)
         .unwrap_or_else(|e| panic!("{MODEL_CORE_PATH}: parse: {e:?}"))
+}
+
+fn algebra_surface_or_panic() -> v3_compiler::parse_surface::SurfaceModule {
+    let tokens = tokenize_for_test(ALGEBRA_DAG, ALGEBRA_PATH)
+        .unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: tokenize: {e:?}"));
+    parse_for_test(&tokens, ALGEBRA_PATH).unwrap_or_else(|e| panic!("{ALGEBRA_PATH}: parse: {e:?}"))
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
@@ -133,9 +141,10 @@ fn v4_std_model_core_declares_ratified_q1_carriers() {
     for name in [
         "ModelCore",
         "PrimitiveFactBundle",
-        "PrimitiveFactAxisBinding",
         "AlgebraInhabitanceDecl",
         "AlgebraLawObligation",
+        "EffectSignature",
+        "ResourceAccess",
         "EffectSemanticsDecl",
         "PartialitySemanticsDecl",
     ] {
@@ -190,9 +199,14 @@ fn v4_std_model_core_algebra_law_obligation_structural() {
 #[test]
 fn v4_std_model_core_effect_partiality_ops_use_node_authority() {
     let module = model_core_surface_or_panic();
-    for (type_name, field_name) in [
-        ("PrimitiveOperationRef", "operation"),
-        ("PartialOperationDecl", "operation"),
+    for (type_name, field_name, expected_type) in [
+        ("PrimitiveOperationRef", "operation", "Node"),
+        (
+            "PrimitiveOperationRef",
+            "effect_signature",
+            "EffectSignature",
+        ),
+        ("PartialOperationDecl", "operation", "Node"),
     ] {
         let fields: Vec<(String, String)> = type_record_fields(&module, type_name)
             .iter()
@@ -204,10 +218,33 @@ fn v4_std_model_core_effect_partiality_ops_use_node_authority() {
             .map(|(_, t)| t.as_str())
             .unwrap_or("missing");
         assert_eq!(
-            ty, "Node",
-            "{type_name}.{field_name} must reference modeled operation Node authority, not Symbol"
+            ty, expected_type,
+            "{type_name}.{field_name} must use its ModelCore substrate authority"
         );
     }
+}
+
+#[test]
+fn v4_std_model_core_effect_signature_resource_access_shape() {
+    let module = model_core_surface_or_panic();
+    let signature_fields: Vec<(String, String)> = type_record_fields(&module, "EffectSignature")
+        .iter()
+        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+        .collect();
+    assert_eq!(
+        signature_fields,
+        vec![("signature".to_string(), "Node".to_string())],
+        "EffectSignature must own effect identity only; BoundaryAllowance.resource is the single resource authority"
+    );
+    let resource_fields: Vec<(String, String)> = type_record_fields(&module, "ResourceAccess")
+        .iter()
+        .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
+        .collect();
+    assert_eq!(
+        resource_fields,
+        vec![("resource".to_string(), "Node".to_string())],
+        "ResourceAccess must be the ModelCore-owned minimal resource carrier"
+    );
 }
 
 #[test]
@@ -223,23 +260,10 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
             ("substrate_carrier".to_string(), "Node".to_string()),
             (
                 "spec_facts".to_string(),
-                "List<PrimitiveFactAxisBinding>".to_string(),
+                "Map<Symbol, Node>".to_string(),
             ),
         ],
-        "PrimitiveFactBundle.spec_facts must be a structured axis-keyed bundle, not an opaque Node"
-    );
-    let axis_fields: Vec<(String, String)> =
-        type_record_fields(&module, "PrimitiveFactAxisBinding")
-            .iter()
-            .map(|f| (f.name.clone(), surface_type_name(&f.ty)))
-            .collect();
-    assert_eq!(
-        axis_fields,
-        vec![
-            ("axis".to_string(), "Symbol".to_string()),
-            ("fact".to_string(), "Node".to_string()),
-        ],
-        "PrimitiveFactAxisBinding pairs a declared axis Symbol with a substrate fact Node"
+        "PrimitiveFactBundle.spec_facts must be axis-keyed Map<Symbol, Node> (duplicate axes structurally unrepresentable), not an opaque Node"
     );
     for axis in [
         "primitive_fact_axis_width",
@@ -251,7 +275,7 @@ fn v4_std_model_core_primitive_fact_bundle_uses_axis_keyed_spec_facts() {
     ] {
         assert!(
             surface_declares_data(&module, axis, "Symbol"),
-            "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactAxisBinding.axis"
+            "declared axis Symbol `{axis}` is the canonical key for PrimitiveFactBundle.spec_facts"
         );
     }
 }
@@ -263,5 +287,34 @@ fn v4_std_model_core_wave1_void_constructor_present() {
         function_count(&module, "wave1_void"),
         1,
         "wave1_void is a tracked 🟡 scaffold (feature:model-core-wave1-void-scaffold); not a silent default ModelCore"
+    );
+}
+
+#[test]
+fn v4_std_algebra_fold_list_node_pins_canonical_spine() {
+    let module = algebra_surface_or_panic();
+    assert_eq!(
+        function_count(&module, "fold_list_node"),
+        1,
+        "fold_list_node is the single exported FreeMonoid-to-Node spine encoder"
+    );
+    assert!(
+        surface_declares_data(&module, "fold_list_node_head", "Symbol"),
+        "fold_list_node must own its canonical head edge label"
+    );
+    assert!(
+        surface_declares_data(&module, "fold_list_node_tail", "Symbol"),
+        "fold_list_node must own its canonical tail edge label"
+    );
+    assert!(
+        ALGEBRA_DAG.contains("empty: Node { kind: TypeNode { connective: Conj }, children: [] }"),
+        "empty-list encoding is fixed by the helper, not supplied by callers"
+    );
+    assert!(
+        ALGEBRA_DAG.contains(
+            "Edge { label: Named { name: fold_list_node_head }, target: item_node(item) }"
+        ) && ALGEBRA_DAG
+            .contains("Edge { label: Named { name: fold_list_node_tail }, target: tail_node }"),
+        "cons encoding must use the canonical head/tail edge labels"
     );
 }

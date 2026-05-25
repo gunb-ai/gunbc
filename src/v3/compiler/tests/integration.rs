@@ -65,6 +65,8 @@ mod coverage_defect_acceptance_dag_test;
 mod cross_target_coverage_carrier_test;
 #[path = "integration/ctrl_pr_digests_dag_smoke_test.rs"]
 mod ctrl_pr_digests_dag_smoke_test;
+#[path = "integration/dissolution_subsumption_carrier_test.rs"]
+mod dissolution_subsumption_carrier_test;
 #[path = "integration/e6_g1a_option3_static_lens_test.rs"]
 mod e6_g1a_option3_static_lens_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
@@ -281,18 +283,30 @@ mod v4_bin_main_dag_smoke_test;
 mod v4_compiler_compile_public_terminal_smoke_test;
 #[path = "integration/v4_compiler_emit_translate_smoke_test.rs"]
 mod v4_compiler_emit_translate_smoke_test;
+#[path = "integration/v4_extdeps_coordination_dag_smoke_test.rs"]
+mod v4_extdeps_coordination_dag_smoke_test;
 #[path = "integration/v4_extdeps_file_system_dag_smoke_test.rs"]
 mod v4_extdeps_file_system_dag_smoke_test;
 #[path = "integration/v4_extdeps_react_dag_smoke_test.rs"]
 mod v4_extdeps_react_dag_smoke_test;
+#[path = "integration/v4_lens_affected_set_dag_smoke_test.rs"]
+mod v4_lens_affected_set_dag_smoke_test;
+#[path = "integration/v4_lens_application_dag_smoke_test.rs"]
+mod v4_lens_application_dag_smoke_test;
+#[path = "integration/v4_lens_edit_locus_dag_smoke_test.rs"]
+mod v4_lens_edit_locus_dag_smoke_test;
 #[path = "integration/v4_lens_registry_dag_smoke_test.rs"]
 mod v4_lens_registry_dag_smoke_test;
 #[path = "integration/v4_lens_testgen_dag_smoke_test.rs"]
 mod v4_lens_testgen_dag_smoke_test;
+#[path = "integration/v4_p9_llvm_instruction_cost_single_owner_test.rs"]
+mod v4_p9_llvm_instruction_cost_single_owner_test;
 #[path = "integration/v4_std_model_core_dag_smoke_test.rs"]
 mod v4_std_model_core_dag_smoke_test;
 #[path = "integration/v4_test_bootstrap_infra_closeout_test.rs"]
 mod v4_test_bootstrap_infra_closeout_test;
+#[path = "integration/v4_workflow_ci_runner_dag_smoke_test.rs"]
+mod v4_workflow_ci_runner_dag_smoke_test;
 #[path = "integration/value_body_substrate_mirror_isomorphism_test.rs"]
 mod value_body_substrate_mirror_isomorphism_test;
 #[path = "integration/common/wiring_scanner_test.rs"]

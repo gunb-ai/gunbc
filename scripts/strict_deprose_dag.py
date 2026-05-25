@@ -89,12 +89,16 @@ EXTRA_PART6_SLUGS_BY_REL: dict[str, frozenset[str]] = {
 
 
 def git_merge_base_lines(rel: str) -> list[str]:
-    out = subprocess.check_output(
-        ["git", "show", f"{MERGE_BASE}:{rel}"],
-        cwd=ROOT,
-        text=True,
-    )
-    return out.splitlines()
+    try:
+        out = subprocess.check_output(
+            ["git", "show", f"{MERGE_BASE}:{rel}"],
+            cwd=ROOT,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        return out.splitlines()
+    except subprocess.CalledProcessError:
+        return []
 
 
 def is_coproduct(lines: list[str], i: int) -> str | None:
@@ -251,6 +255,41 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "ConstantExpression",
         ):
             out[nm] = ("🟢", "CP-3229-VERILOG-CONSTEXPR-TERMINAL")
+    if rel.endswith("llvm_ir.dag"):
+        # Wave-1 fact-bundle coproducts (T-4 quiet-otter-381); absent at merge-base.
+        for nm, slug in (
+            ("LlvmWave1IntegerBits", "SL-3229-LLVM-WAVE1-INT-WIDTH"),
+            ("LlvmWave1FloatKind", "SL-3229-LLVM-WAVE1-FLOAT-KIND"),
+        ):
+            if nm == "LlvmWave1IntegerBits":
+                out.setdefault(nm, ("🟡", slug))
+            else:
+                out.setdefault(nm, ("🟢", slug))
+    if rel == "src/v4/extdeps/languages/typescript.dag":
+        # T-4 wave-1 catalog row tag (replaces merge-base TsEcma262NumericPrimitiveKind).
+        out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
+        out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+    if rel == "src/v4/extdeps/languages/swift.dag":
+        # New T-4/T-11 language slice (absent at merge-base).
+        for nm in (
+            "SwiftIntWidth",
+            "SwiftIntSignedness",
+            "SwiftFloatWidth",
+            "SwiftScalar",
+            "SwiftNonNumericPrimitiveFacts",
+            "SwiftConcreteSyntaxToken",
+        ):
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+    if rel == "src/v4/extdeps/languages/wasm.dag":
+        # New T-4/T-11 language slice (absent at merge-base).
+        for nm in (
+            "WasmIntWidth",
+            "WasmFloatWidth",
+            "WasmScalar",
+            "WasmConcreteSyntaxToken",
+        ):
+            out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
     return out
 
 
@@ -306,7 +345,14 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
     return stripped + "\n\n"
 
 
-def format_coproduct_tag(emoji: str, ref: str) -> str:
+def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if type_name == "LlvmWave1IntegerBits":
+        return (
+            "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "
+            "feature:llvm-wave1-int-bits-subset — "
+            "dissolve-on-arrival: llvm_integer_facts_catalog aligns with "
+            "LlvmType.IntegerType.bits NonZeroNat carrier (wave-2 · T-4 quiet-otter-381)."
+        )
     return f"// {emoji} coproduct dissolution · {ref}."
 
 
@@ -363,7 +409,7 @@ def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str
                 )
                 sys.exit(1)
             em, ref = tag_map[nm]
-            expected = format_coproduct_tag(em, ref)
+            expected = format_coproduct_tag(em, ref, type_name=nm)
             prev = bl[j - 1] if j > 0 else ""
             if COPRODUCT_TAG_RE.match(prev):
                 if prev != expected:
@@ -522,10 +568,26 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/typescript.dag",
-            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 primitive D2 resolver slice (T-4 typescript).",
+            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.",
             "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
-            "// Consumes: v4.std.logic (Bool, bool_boolean_algebra); v4.std.algebra (BooleanAlgebra).",
-            "// Status: ts_bool_grounding decl-ref present + v2-parse-verified — 🟡 P2/E-6 STAGING (no same-PR consumer; canonical fold specified-not-realized); non-bool numeric primitives 🟡 gated D2→fact-bundle debt (T-4 Phase-3 rework, node://adhoc-71ec74f4-080).",
+            "// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.",
+            "// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.",
+            "// 🟡",
+        ),
+        (
+            "src/v4/extdeps/languages/swift.dag",
+            "// Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.",
+            "// Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/",
+            "// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
+            "// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.",
+            "// 🟡",
+        ),
+        (
+            "src/v4/extdeps/languages/wasm.dag",
+            "// Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).",
+            "// Anchor: https://webassembly.github.io/spec/core/types.html#number-types",
+            "// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
+            "// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).",
             "// 🟡",
         ),
         (

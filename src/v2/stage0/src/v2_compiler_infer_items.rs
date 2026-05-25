@@ -84,7 +84,7 @@ pub fn inferred_to_outputs(
     } else {
         match (*inferred.clone().unwrap()).clone() {
             InferredNode::CompilerError { .. } => Rc::new(vec![]),
-            InferredNode::TypeVariable { .. } => Rc::new(vec![]),
+            InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
                 if has_structure {

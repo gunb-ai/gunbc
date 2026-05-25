@@ -1,16 +1,32 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
 // Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
-// Consumes: v4.std.collection, v4.std.node.
-// Status: Wave-2-A substrate: dependency facts are projected from Node edges, not authored as a parallel graph.
+// Consumes: v4.std.algebra (list_append), v4.std.collection, v4.std.node.
+// Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
 
 module v4.std.dependency
 
+import v4.std.algebra { list_append }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
-import v4.std.node { Edge, Node, NodeFold, fold_node }
+import v4.std.node {
+  Bind,
+  ComputationNode,
+  Edge,
+  Named,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  fold_node
+}
 
-// 🟢 closed set — P6 dependency classification taxonomy.
+data dependency_binds_to_edge: Symbol = dependency_binds_to_edge
+data dependency_module_import_edge: Symbol = dependency_module_import_edge
+data dependency_bootstrap_depends_edge: Symbol = dependency_bootstrap_depends_edge
+
+// 🟢 coproduct dissolution
 type DependencyKind
   = Contains
   | BindsTo
@@ -35,16 +51,6 @@ type DependencyView {
   usage_site: Node
 }
 
-// 🟢 parametric T-13 lens row — one carrier for every lens that projects
-// a per-edge classification over `DependencyView`. The dependency edge is
-// the single endpoint authority; classification is the lens-specific
-// projection. Practice 11 sub-rule (parallel-payload vs typed-reference):
-// no parallel `source`/`dependent`/`at`/`owner`/`use_site` fields — those
-// are read through `dependency.*` accessors below, never duplicated on
-// the row. Per-node InferredFacts are read at use-sites via
-// `tree.facts.lookup(...)`, NOT stored on the row (Practice 3 — facts
-// flow forward by reference). Concept-home is here in v4.std.dependency
-// (M9 / Practice 11 concept-home discipline).
 type ClassifiedDependencyView<C> {
   dependency: DependencyView
   classification: C
@@ -75,24 +81,41 @@ type DependencyFoldState {
   dependencies: List<DependencyView>
 }
 
-// 🟡 predicate dissolution — feature:dependency-usage-classifier-consumes-resolve-ground-facts.
+// 🟡 gated — feature:dependency-usage-classifier-consumes-resolve-ground-facts — dissolve-on: T-9 resolve stamps dependency_binds_to_edge / module / bootstrap labels inline
+fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
+  if sym == dependency_binds_to_edge {
+    match parent.kind {
+      ComputationNode { behavior: Bind } => Contains
+      _ => BindsTo
+    }
+  } else if sym == dependency_module_import_edge {
+    ModuleDependsOn
+  } else if sym == dependency_bootstrap_depends_edge {
+    BootstrapDependsOn
+  } else {
+    Contains
+  }
+}
+
 fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
-  Contains
+  match edge.label {
+    Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
+    Positional => Contains
+  }
 }
 
 fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
+  let kind = classify_node_edge_usage(parent: parent, edge: edge)
   DependencyView {
     source: parent,
     dependent: edge.target,
-    kind: classify_node_edge_usage(parent: parent, edge: edge),
+    kind: kind,
     usage_site: edge.target
   }
 }
 
 fn append_dependency_views(left: List<DependencyView>, right: List<DependencyView>) -> List<DependencyView> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
+  list_append(left: left, right: right)
 }
 
 fn dependency_fold_init(n: Node) -> DependencyFoldState {
@@ -179,9 +202,7 @@ fn ready_set(graph_node: Node) -> List<Node> {
 }
 
 fn append_nodes(left: List<Node>, right: List<Node>) -> List<Node> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
+  list_append(left: left, right: right)
 }
 
 fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
@@ -215,7 +236,7 @@ fn readiness_fold_layers(state: ReadinessFoldState) -> List<ReadinessLayer> {
   state.layers
 }
 
-// 🟡 predicate dissolution — feature:readiness-rank-layer-merge.
+// 🟡 gated — feature:readiness-rank-layer-merge — dissolve-on: readiness-rank merge in topological_layers fold
 fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
   readiness_fold_layers(
     state: fold_node(
@@ -226,7 +247,5 @@ fn topological_layers(graph_node: Node) -> List<ReadinessLayer> {
 }
 
 fn append_readiness_layers(left: List<ReadinessLayer>, right: List<ReadinessLayer>) -> List<ReadinessLayer> {
-  fold(right, init: left, f: fn(acc, item) {
-    list_push(acc, item)
-  })
+  list_append(left: left, right: right)
 }

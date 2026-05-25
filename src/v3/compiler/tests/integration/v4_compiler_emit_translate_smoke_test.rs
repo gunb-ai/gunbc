@@ -13,14 +13,19 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-//! land in the same PR.
+//! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
+//! `v4_rust_language_model_declares_t11_translation_rules`,
+//! `v4_java_language_model_declares_t11_translation_rules`,
+//! `v4_typescript_language_model_declares_t11_translation_rules`,
+//! `v4_swift_language_model_declares_t11_translation_rules`, and
+//! `v4_wasm_language_model_declares_t11_translation_rules` in INVARIANTS.md.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -29,6 +34,19 @@ const TRANSLATE_DAG: &str = include_str!("../../../../v4/compiler/06_translate.d
 const TRANSLATE_PATH: &str = "src/v4/compiler/06_translate.dag";
 const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
 const EMIT_PATH: &str = "src/v4/compiler/05_emit.dag";
+const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
+const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const JAVA_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/java.dag");
+const JAVA_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/java.dag";
+const TYPESCRIPT_LANGUAGE_DAG: &str =
+    include_str!("../../../../v4/extdeps/languages/typescript.dag");
+const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
+const SWIFT_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/swift.dag");
+const SWIFT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/swift.dag";
+const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/wasm.dag");
+const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
+const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
+const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
@@ -166,6 +184,200 @@ fn v4_emit_dag_does_not_import_find_witness() {
 }
 
 #[test]
+fn v4_rust_language_model_declares_t11_translation_rules() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "RustGrammarRelationRow"),
+        "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_mvp1_translation_rules_node"),
+        "{RUST_LANGUAGE_PATH}: must project MVP-1 Rust translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
+    let module = parse_module(RUST_LANGUAGE_DAG, RUST_LANGUAGE_PATH);
+    assert_eq!(
+        type_record_fields(&module, "OverflowDisposition")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("ir_carrier", "IRCarrier".to_string()),
+            (
+                "checked_arithmetic_debug_default",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_release_default",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_overflow_checks_enabled",
+                "OverflowAction".to_string(),
+            ),
+            (
+                "checked_arithmetic_overflow_checks_disabled",
+                "OverflowAction".to_string(),
+            ),
+        ],
+        "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model checked-arithmetic debug/release defaults and explicit overflow-checks behavior"
+    );
+    assert_eq!(
+        type_record_fields(&module, "RustIntegerPrimitiveFacts")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("surface_spelling", "Symbol".to_string()),
+            (
+                "overflow_disposition",
+                "OverflowDisposition<RustIntegerCarrier>".to_string(),
+            ),
+            ("std_projection", "Symbol".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: integer primitive facts must make the overflow disposition's carrier the single kind/width authority"
+    );
+    assert_eq!(
+        type_record_field_type(&module, "RustIntegerPrimitiveFacts", "overflow_disposition"),
+        Some("OverflowDisposition<RustIntegerCarrier>".to_string()),
+        "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "primitive_fact_axis_overflow_disposition"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust must import the shared overflow-disposition primitive fact axis"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_integer_overflow_disposition"),
+        "{RUST_LANGUAGE_PATH}: must declare the Rust Reference debug/release overflow disposition constructor"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_overflow_disposition_node"),
+        "{RUST_LANGUAGE_PATH}: must materialize overflow disposition facts as a Node for primitive bundles"
+    );
+}
+
+#[test]
+fn v4_java_language_model_declares_t11_translation_rules() {
+    let module = parse_module(JAVA_LANGUAGE_DAG, JAVA_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "JavaGrammarRelationRow"),
+        "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "java_mvp1_translation_rules_node"),
+        "{JAVA_LANGUAGE_PATH}: must project MVP-1 Java translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_typescript_language_model_declares_t11_translation_rules() {
+    let module = parse_module(TYPESCRIPT_LANGUAGE_DAG, TYPESCRIPT_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "TsGrammarRelationRow"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "ts_mvp1_translation_rules_node"),
+        "{TYPESCRIPT_LANGUAGE_PATH}: must project MVP-1 TypeScript translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_swift_language_model_declares_t11_translation_rules() {
+    let module = parse_module(SWIFT_LANGUAGE_DAG, SWIFT_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "SwiftGrammarRelationRow"),
+        "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "swift_mvp1_translation_rules_node"),
+        "{SWIFT_LANGUAGE_PATH}: must project MVP-1 Swift translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_wasm_language_model_declares_t11_translation_rules() {
+    let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "WasmGrammarRelationRow"),
+        "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "wasm_mvp1_translation_rules_node"),
+        "{WASM_LANGUAGE_PATH}: must project MVP-1 Wasm translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_go_language_model_tokenizes_and_parses() {
+    let _module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+}
+
+#[test]
+fn v4_go_language_model_declares_wave1_carriers() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "go_wave1_primitive_fact_bundles"),
+        "{GO_LANGUAGE_PATH}: must declare go_wave1_primitive_fact_bundles"
+    );
+    assert!(
+        surface_declares_fn(&module, "go_model_core_wave1"),
+        "{GO_LANGUAGE_PATH}: must declare go_model_core_wave1"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "model_core"], "ModelCore"),
+        "{GO_LANGUAGE_PATH}: must import ModelCore from v4.std.model_core"
+    );
+}
+
+#[test]
 fn v4_mvp1_rust_add_claim_tokenizes_and_parses() {
     let _module = parse_module(MVP1_CLAIM_DAG, MVP1_CLAIM_PATH);
 }
@@ -242,4 +454,81 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
         } => item_name == name,
         _ => false,
     })
+}
+
+fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::TypeAlias {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeRecord {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeSum {
+            name: item_name, ..
+        }
+        | SurfaceItem::TypeAtom {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn type_record_fields<'a>(
+    module: &'a v3_compiler::parse_surface::SurfaceModule,
+    name: &str,
+) -> &'a [SurfaceField] {
+    module
+        .items
+        .iter()
+        .find_map(|item| match item {
+            SurfaceItem::TypeRecord {
+                name: item_name,
+                fields,
+                ..
+            } if item_name == name => Some(fields.as_slice()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing type record `{name}`"))
+}
+
+fn type_record_field_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    record_name: &str,
+    field_name: &str,
+) -> Option<String> {
+    type_record_fields(module, record_name)
+        .iter()
+        .find(|field| field.name == field_name)
+        .map(|field| surface_type_name(&field.ty))
+}
+
+fn surface_type_name(ty: &SurfaceType) -> String {
+    match ty {
+        SurfaceType::Named { name, .. } => name.clone(),
+        SurfaceType::Parameterized { name, args, .. } => {
+            let rendered_args = args
+                .iter()
+                .map(type_angle_arg_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{name}<{rendered_args}>")
+        }
+        SurfaceType::Optional { inner, .. } => format!("{}?", surface_type_name(inner)),
+        SurfaceType::Arrow { inputs, output, .. } => {
+            let rendered_inputs = inputs
+                .iter()
+                .map(surface_type_name)
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("fn({rendered_inputs}) -> {}", surface_type_name(output))
+        }
+    }
+}
+
+fn type_angle_arg_name(arg: &TypeAngleArg) -> String {
+    match arg {
+        TypeAngleArg::TypeExpr { ty } => surface_type_name(ty),
+        TypeAngleArg::WidthNatLiteral { decimal, .. } => decimal.clone(),
+    }
 }

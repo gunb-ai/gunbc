@@ -38,7 +38,7 @@ module v4.test.claim.impossible_bug.idempotency_contract
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
-  NodeLocus,
+  node_locus,
   None,
   Outcome,
   Rejected,
@@ -47,7 +47,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier1,
@@ -55,15 +55,17 @@ import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  impossible_bug_reason_idempotency_repetition,
+  impossible_bug_reason_idempotency_violation,
+  manual_claim_anchor
+}
 
 
 data idempotent_position_symbol: Symbol = idempotent_position_symbol
 data idempotent_effect_symbol: Symbol = idempotent_effect_symbol
 data non_idempotent_effect_symbol: Symbol = non_idempotent_effect_symbol
 data repeated_append_effect_symbol: Symbol = repeated_append_effect_symbol
-data idempotency_violation_reason: Symbol = idempotency_violation_reason
-data idempotency_repetition_reason: Symbol = idempotency_repetition_reason
 data idempotency_position_field: Symbol = idempotency_position_field
 data idempotency_body_field: Symbol = idempotency_body_field
 
@@ -95,7 +97,7 @@ data falsification_repeated_append_in_idempotent_position: Node = idempotency_co
 
 data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
   label: "idempotent algebra inhabitant accepts idempotent structure",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: idempotent_inhabitant_input,
   expected_value: idempotent_inhabitant_input,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -104,12 +106,12 @@ data claim_idempotent_inhabitant_passes: TestClaim = CompilesClaim {
 
 data claim_repeated_append_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects repeated append composition",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_repeated_append_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: idempotency_repetition_reason,
-        at: NodeLocus { node: falsification_repeated_append_in_idempotent_position },
+        reason: impossible_bug_reason_idempotency_repetition,
+        at: node_locus(node: falsification_repeated_append_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
     ),
@@ -119,12 +121,12 @@ data claim_repeated_append_in_idempotent_position_caught: TestClaim = Diagnostic
 
 data claim_nonidempotent_in_idempotent_position_caught: TestClaim = DiagnosticClaim {
   label: "idempotent algebra inhabitance rejects non-idempotent composition",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_nonidempotent_in_idempotent_position,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
-        reason: idempotency_violation_reason,
-        at: NodeLocus { node: falsification_nonidempotent_in_idempotent_position },
+        reason: impossible_bug_reason_idempotency_violation,
+        at: node_locus(node: falsification_nonidempotent_in_idempotent_position),
         correction: Suggested { node: idempotent_inhabitant_input }
       }
     ),

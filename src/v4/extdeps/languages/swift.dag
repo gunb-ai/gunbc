@@ -1,0 +1,1157 @@
+// src/v4/extdeps/languages/swift.dag
+// Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.
+// Owns: SwiftIntWidth, SwiftIntSignedness, SwiftFloatWidth, SwiftStringRepresentation, SwiftCharacterRepresentation, SwiftUnitRepresentation, SwiftBoolRepresentation, SwiftIntegerOverflowSemantics, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, SwiftConcreteSyntaxToken, SwiftGrammarRelationRow, swift_language_model_surface_id, swift_surface_spelling_int, swift_surface_spelling_int8, swift_surface_spelling_int16, swift_surface_spelling_int32, swift_surface_spelling_int64, swift_surface_spelling_uint, swift_surface_spelling_uint8, swift_surface_spelling_uint16, swift_surface_spelling_uint32, swift_surface_spelling_uint64, swift_surface_spelling_float, swift_surface_spelling_double, swift_surface_spelling_bool, swift_surface_spelling_character, swift_surface_spelling_string, swift_surface_spelling_void, swift_facts_field_surface_spelling, swift_facts_field_signedness, swift_facts_field_width, swift_facts_field_overflow, swift_facts_field_ieee754_binary, swift_facts_field_scalar, swift_facts_field_value_fact, swift_primitive_fact_axis_scalar_classifier, swift_tag_signed, swift_tag_unsigned, swift_tag_bits8, swift_tag_bits16, swift_tag_bits32, swift_tag_bits64, swift_tag_pointer_word, swift_tag_trap_on_overflow, swift_tag_ieee754_binary32, swift_tag_ieee754_binary64, swift_tag_bool_representation, swift_tag_character_extended_grapheme_cluster, swift_tag_string_unicode_text, swift_tag_void_empty_tuple, swift_tag_scalar_int, swift_tag_scalar_float, swift_tag_scalar_bool, swift_tag_scalar_character, swift_tag_scalar_string, swift_tag_scalar_void, swift_inhabitant_int32, swift_inhabitant_field_int32, swift_inhabitant_field_atom, swift_inhabitant_field_facts, swift_token_kw_func, swift_token_kw_return, swift_token_ident, swift_token_ty_int32, swift_token_plus, swift_token_arrow, swift_token_lbrace, swift_token_rbrace, swift_token_lparen, swift_token_rparen, swift_token_comma, swift_token_colon, swift_production_mvp1_fn_add, swift_surface_fn_item, swift_surface_type_int32, swift_surface_bin_add, swift_binding_fn_add, swift_binding_param_x, swift_binding_param_y, swift_relation_token_fixed, swift_relation_token_bound, swift_relation_rule_mvp1_fn_add, swift_mvp1_source_literal, swift_mvp1_source_text_field, swift_mvp1_source_grammar_field, swift_mvp1_concrete_tokens, swift_mvp1_source_text, swift_integer_overflow_trap, swift_bool_representation, swift_character_representation, swift_string_representation, swift_unit_representation, swift_facts_int, swift_facts_int8, swift_facts_int16, swift_facts_int32, swift_facts_int64, swift_facts_uint, swift_facts_uint8, swift_facts_uint16, swift_facts_uint32, swift_facts_uint64, swift_facts_float, swift_facts_double, swift_facts_bool, swift_facts_character, swift_facts_string, swift_facts_void, swift_integer_facts_catalog, swift_float_facts_catalog, swift_nonnumeric_facts_catalog, swift_bool_grounding, swift_atom, swift_named_edge, swift_signedness_node, swift_width_node, swift_float_width_node, swift_overflow_node, swift_scalar_node, swift_nonnumeric_representation_node, swift_nonnumeric_scalar_classifier_node, swift_integer_facts_node, swift_float_facts_node, swift_nonnumeric_surface_spelling, swift_nonnumeric_facts_node, swift_integer_inhabitant_node, swift_inhabitant_int32_node, swift_declared_inhabitants_root, swift_mvp1_selection_policy_node, swift_mvp1_emitted_add_fn_node, swift_mvp1_source_text_authority, swift_concrete_token_class, swift_concrete_token_node, swift_mvp1_positional_token_edge, swift_mvp1_positional_edges_from_token_classes, swift_mvp1_serialize_source_prefix_edges, swift_mvp1_serialize_source_children, swift_mvp1_serialize_source_node, swift_grammar_terminal, swift_grammar_sequence_fold_step, swift_grammar_sequence_from_token_classes, swift_mvp1_grammar_relation_row, swift_relation_token_edges, swift_grammar_relation_row_node, swift_mvp1_translation_rules_node, swift_mvp1_target_model_node, swift_mvp1_binding_spellings, swift_mvp1_target_model, swift_lex_rule, swift_ident_lex_pattern, swift_ident_lex_rule, swift_wave1_lex_rules, swift_wave1_lex, swift_grammar_atom, swift_grammar_production_mvp1_fn_add, swift_wave1_grammar_root, swift_wave1_grammar, swift_wave1_lex_token_symbol, swift_empty_primitive_spec_facts, swift_primitive_fact_map_4, swift_primitive_fact_map_3, swift_primitive_fact_map_2, swift_primitive_bundle_from_integer_facts, swift_primitive_bundle_from_float_facts, swift_primitive_bundle_from_nonnumeric_facts, swift_primitive_bundles_from_integer_catalog, swift_primitive_bundles_from_float_catalog, swift_primitive_bundles_from_nonnumeric_catalog, swift_wave1_primitive_fact_bundles, swift_integer_catalog_surface_symbol_step, swift_float_catalog_surface_symbol_step, swift_nonnumeric_catalog_surface_symbol_step, swift_integer_catalog_surface_symbol, swift_float_catalog_surface_symbol, swift_nonnumeric_catalog_surface_symbol, swift_catalog_surface_symbol, swift_language_model_canonical_symbols, swift_model_core_wave1, swift_language_model_wave1
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
+// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
+// Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
+// Ledger: CP-3229-GREEN-TERMINAL.
+// 🟡
+
+module v4.extdeps.languages.swift
+
+import v4.compiler.parse {
+  Grammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Sequence,
+  Terminal,
+  grammar_production_to_node
+}
+import v4.compiler.tokenize {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule
+}
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_signedness,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic,
+  primitive_fact_axis_width
+}
+import v4.std.witness { Holds, Violates }
+import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules,
+  target_model_edge_serialize_source
+}
+import v4.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v4.std.logic { Bool, bool_boolean_algebra }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.text { String }
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SwiftIntWidth
+  = Bits8
+  | Bits16
+  | Bits32
+  | Bits64
+  | PointerWord
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SwiftIntSignedness
+  = Signed
+  | Unsigned
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SwiftFloatWidth
+  = Bits32
+  | Bits64
+
+type SwiftStringRepresentation {}
+
+type SwiftCharacterRepresentation {}
+
+type SwiftUnitRepresentation {}
+
+type SwiftBoolRepresentation {}
+
+type SwiftIntegerOverflowSemantics {}
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SwiftScalar
+  = IntScalar { signedness: SwiftIntSignedness, width: SwiftIntWidth }
+  | FloatScalar { width: SwiftFloatWidth }
+  | BoolScalar
+  | CharacterScalar
+  | StringScalar
+  | VoidScalar
+
+// 🟢 grounded.
+type SwiftIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  signedness: SwiftIntSignedness
+  width: SwiftIntWidth
+  overflow: SwiftIntegerOverflowSemantics
+}
+
+// 🟢 grounded.
+type SwiftFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  width: SwiftFloatWidth
+  ieee754_binary: Symbol
+}
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SwiftNonNumericPrimitiveFacts
+  = SwiftBoolPrimitiveFacts {
+      surface_spelling: Symbol
+      representation: SwiftBoolRepresentation
+    }
+  | SwiftCharacterPrimitiveFacts {
+      surface_spelling: Symbol
+      representation: SwiftCharacterRepresentation
+    }
+  | SwiftStringPrimitiveFacts {
+      surface_spelling: Symbol
+      representation: SwiftStringRepresentation
+    }
+  | SwiftVoidPrimitiveFacts {
+      surface_spelling: Symbol
+      representation: SwiftUnitRepresentation
+    }
+
+// 🟢 grounded.
+type SwiftLanguageModel {
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type SwiftConcreteSyntaxToken
+  = SwiftFixedToken { token_class: Symbol }
+  | SwiftBoundToken { token_class: Symbol, binding: Symbol }
+
+// 🟢 grounded.
+type SwiftGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<SwiftConcreteSyntaxToken>
+}
+
+data swift_language_model_surface_id: Symbol = swift_language_model_surface_id
+
+data swift_surface_spelling_int: Symbol = swift_surface_spelling_int
+data swift_surface_spelling_int8: Symbol = swift_surface_spelling_int8
+data swift_surface_spelling_int16: Symbol = swift_surface_spelling_int16
+data swift_surface_spelling_int32: Symbol = swift_surface_spelling_int32
+data swift_surface_spelling_int64: Symbol = swift_surface_spelling_int64
+data swift_surface_spelling_uint: Symbol = swift_surface_spelling_uint
+data swift_surface_spelling_uint8: Symbol = swift_surface_spelling_uint8
+data swift_surface_spelling_uint16: Symbol = swift_surface_spelling_uint16
+data swift_surface_spelling_uint32: Symbol = swift_surface_spelling_uint32
+data swift_surface_spelling_uint64: Symbol = swift_surface_spelling_uint64
+data swift_surface_spelling_float: Symbol = swift_surface_spelling_float
+data swift_surface_spelling_double: Symbol = swift_surface_spelling_double
+data swift_surface_spelling_bool: Symbol = swift_surface_spelling_bool
+data swift_surface_spelling_character: Symbol = swift_surface_spelling_character
+data swift_surface_spelling_string: Symbol = swift_surface_spelling_string
+data swift_surface_spelling_void: Symbol = swift_surface_spelling_void
+
+data swift_facts_field_surface_spelling: Symbol = swift_facts_field_surface_spelling
+data swift_facts_field_signedness: Symbol = swift_facts_field_signedness
+data swift_facts_field_width: Symbol = swift_facts_field_width
+data swift_facts_field_overflow: Symbol = swift_facts_field_overflow
+data swift_facts_field_ieee754_binary: Symbol = swift_facts_field_ieee754_binary
+data swift_facts_field_scalar: Symbol = swift_facts_field_scalar
+data swift_facts_field_value_fact: Symbol = swift_facts_field_value_fact
+
+data swift_primitive_fact_axis_scalar_classifier: Symbol = swift_primitive_fact_axis_scalar_classifier
+
+data swift_tag_signed: Symbol = swift_tag_signed
+data swift_tag_unsigned: Symbol = swift_tag_unsigned
+data swift_tag_bits8: Symbol = swift_tag_bits8
+data swift_tag_bits16: Symbol = swift_tag_bits16
+data swift_tag_bits32: Symbol = swift_tag_bits32
+data swift_tag_bits64: Symbol = swift_tag_bits64
+data swift_tag_pointer_word: Symbol = swift_tag_pointer_word
+data swift_tag_trap_on_overflow: Symbol = swift_tag_trap_on_overflow
+data swift_tag_ieee754_binary32: Symbol = swift_tag_ieee754_binary32
+data swift_tag_ieee754_binary64: Symbol = swift_tag_ieee754_binary64
+data swift_tag_bool_representation: Symbol = swift_tag_bool_representation
+data swift_tag_character_extended_grapheme_cluster: Symbol = swift_tag_character_extended_grapheme_cluster
+data swift_tag_string_unicode_text: Symbol = swift_tag_string_unicode_text
+data swift_tag_void_empty_tuple: Symbol = swift_tag_void_empty_tuple
+data swift_tag_scalar_int: Symbol = swift_tag_scalar_int
+data swift_tag_scalar_float: Symbol = swift_tag_scalar_float
+data swift_tag_scalar_bool: Symbol = swift_tag_scalar_bool
+data swift_tag_scalar_character: Symbol = swift_tag_scalar_character
+data swift_tag_scalar_string: Symbol = swift_tag_scalar_string
+data swift_tag_scalar_void: Symbol = swift_tag_scalar_void
+
+data swift_inhabitant_int32: Symbol = swift_inhabitant_int32
+data swift_inhabitant_field_int32: Symbol = swift_inhabitant_field_int32
+data swift_inhabitant_field_atom: Symbol = swift_inhabitant_field_atom
+data swift_inhabitant_field_facts: Symbol = swift_inhabitant_field_facts
+
+data swift_token_kw_func: Symbol = swift_token_kw_func
+data swift_token_kw_return: Symbol = swift_token_kw_return
+data swift_token_ident: Symbol = swift_token_ident
+data swift_token_ty_int32: Symbol = swift_token_ty_int32
+data swift_token_plus: Symbol = swift_token_plus
+data swift_token_arrow: Symbol = swift_token_arrow
+data swift_token_lbrace: Symbol = swift_token_lbrace
+data swift_token_rbrace: Symbol = swift_token_rbrace
+data swift_token_lparen: Symbol = swift_token_lparen
+data swift_token_rparen: Symbol = swift_token_rparen
+data swift_token_comma: Symbol = swift_token_comma
+data swift_token_colon: Symbol = swift_token_colon
+
+data swift_production_mvp1_fn_add: Symbol = swift_production_mvp1_fn_add
+
+data swift_surface_fn_item: Symbol = swift_surface_fn_item
+data swift_surface_type_int32: Symbol = swift_surface_type_int32
+data swift_surface_bin_add: Symbol = swift_surface_bin_add
+data swift_binding_fn_add: Symbol = swift_binding_fn_add
+data swift_binding_param_x: Symbol = swift_binding_param_x
+data swift_binding_param_y: Symbol = swift_binding_param_y
+
+data swift_relation_token_fixed: Symbol = swift_relation_token_fixed
+data swift_relation_token_bound: Symbol = swift_relation_token_bound
+data swift_relation_rule_mvp1_fn_add: Symbol = swift_relation_rule_mvp1_fn_add
+
+data swift_mvp1_source_literal: Symbol = swift_mvp1_source_literal
+data swift_mvp1_source_text_field: Symbol = serialize_source_field_source_text
+data swift_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
+
+fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
+  [
+    SwiftFixedToken { token_class: swift_token_kw_func },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_fn_add },
+    SwiftFixedToken { token_class: swift_token_lparen },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
+    SwiftFixedToken { token_class: swift_token_colon },
+    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftFixedToken { token_class: swift_token_comma },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
+    SwiftFixedToken { token_class: swift_token_colon },
+    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftFixedToken { token_class: swift_token_rparen },
+    SwiftFixedToken { token_class: swift_token_arrow },
+    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftFixedToken { token_class: swift_token_lbrace },
+    SwiftFixedToken { token_class: swift_token_kw_return },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
+    SwiftFixedToken { token_class: swift_token_plus },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
+    SwiftFixedToken { token_class: swift_token_rbrace }
+  ]
+}
+data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
+
+data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {}
+data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {}
+data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterRepresentation {}
+data swift_string_representation: SwiftStringRepresentation = SwiftStringRepresentation {}
+data swift_unit_representation: SwiftUnitRepresentation = SwiftUnitRepresentation {}
+
+data swift_facts_int: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_int,
+  signedness: Signed,
+  width: PointerWord,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_int8: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_int8,
+  signedness: Signed,
+  width: Bits8,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_int16: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_int16,
+  signedness: Signed,
+  width: Bits16,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_int32: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_int32,
+  signedness: Signed,
+  width: Bits32,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_int64: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_int64,
+  signedness: Signed,
+  width: Bits64,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_uint: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_uint,
+  signedness: Unsigned,
+  width: PointerWord,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_uint8: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_uint8,
+  signedness: Unsigned,
+  width: Bits8,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_uint16: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_uint16,
+  signedness: Unsigned,
+  width: Bits16,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_uint32: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_uint32,
+  signedness: Unsigned,
+  width: Bits32,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_uint64: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_uint64,
+  signedness: Unsigned,
+  width: Bits64,
+  overflow: swift_integer_overflow_trap,
+}
+
+data swift_facts_float: SwiftFloatPrimitiveFacts = SwiftFloatPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_float,
+  width: Bits32,
+  ieee754_binary: swift_tag_ieee754_binary32,
+}
+
+data swift_facts_double: SwiftFloatPrimitiveFacts = SwiftFloatPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_double,
+  width: Bits64,
+  ieee754_binary: swift_tag_ieee754_binary64,
+}
+
+data swift_facts_bool: SwiftNonNumericPrimitiveFacts = SwiftBoolPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_bool,
+  representation: swift_bool_representation,
+}
+
+data swift_facts_character: SwiftNonNumericPrimitiveFacts = SwiftCharacterPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_character,
+  representation: swift_character_representation,
+}
+
+data swift_facts_string: SwiftNonNumericPrimitiveFacts = SwiftStringPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_string,
+  representation: swift_string_representation,
+}
+
+data swift_facts_void: SwiftNonNumericPrimitiveFacts = SwiftVoidPrimitiveFacts {
+  surface_spelling: swift_surface_spelling_void,
+  representation: swift_unit_representation,
+}
+
+data swift_integer_facts_catalog: List<SwiftIntegerPrimitiveFacts> = [
+  swift_facts_int,
+  swift_facts_int8,
+  swift_facts_int16,
+  swift_facts_int32,
+  swift_facts_int64,
+  swift_facts_uint,
+  swift_facts_uint8,
+  swift_facts_uint16,
+  swift_facts_uint32,
+  swift_facts_uint64
+]
+
+data swift_float_facts_catalog: List<SwiftFloatPrimitiveFacts> = [
+  swift_facts_float,
+  swift_facts_double
+]
+
+data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
+  swift_facts_bool,
+  swift_facts_character,
+  swift_facts_string,
+  swift_facts_void
+]
+
+data swift_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn swift_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn swift_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn swift_signedness_node(signedness: SwiftIntSignedness) -> Node {
+  match signedness {
+    Signed => swift_atom(id: swift_tag_signed)
+    Unsigned => swift_atom(id: swift_tag_unsigned)
+  }
+}
+
+fn swift_width_node(width: SwiftIntWidth) -> Node {
+  match width {
+    Bits8 => swift_atom(id: swift_tag_bits8)
+    Bits16 => swift_atom(id: swift_tag_bits16)
+    Bits32 => swift_atom(id: swift_tag_bits32)
+    Bits64 => swift_atom(id: swift_tag_bits64)
+    PointerWord => swift_atom(id: swift_tag_pointer_word)
+  }
+}
+
+fn swift_float_width_node(width: SwiftFloatWidth) -> Node {
+  match width {
+    Bits32 => swift_atom(id: swift_tag_bits32)
+    Bits64 => swift_atom(id: swift_tag_bits64)
+  }
+}
+
+fn swift_overflow_node(overflow: SwiftIntegerOverflowSemantics) -> Node {
+  let _witness = overflow
+  swift_atom(id: swift_tag_trap_on_overflow)
+}
+
+fn swift_scalar_node(scalar: SwiftScalar) -> Node {
+  match scalar {
+    IntScalar { signedness: _, width: _ } => swift_atom(id: swift_tag_scalar_int)
+    FloatScalar { width: _ } => swift_atom(id: swift_tag_scalar_float)
+    BoolScalar => swift_atom(id: swift_tag_scalar_bool)
+    CharacterScalar => swift_atom(id: swift_tag_scalar_character)
+    StringScalar => swift_atom(id: swift_tag_scalar_string)
+    VoidScalar => swift_atom(id: swift_tag_scalar_void)
+  }
+}
+
+fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
+  match facts {
+    SwiftBoolPrimitiveFacts { representation: _ } =>
+      swift_atom(id: swift_tag_bool_representation)
+    SwiftCharacterPrimitiveFacts { representation: _ } =>
+      swift_atom(id: swift_tag_character_extended_grapheme_cluster)
+    SwiftStringPrimitiveFacts { representation: _ } =>
+      swift_atom(id: swift_tag_string_unicode_text)
+    SwiftVoidPrimitiveFacts { representation: _ } =>
+      swift_atom(id: swift_tag_void_empty_tuple)
+  }
+}
+
+fn swift_nonnumeric_scalar_classifier_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
+  match facts {
+    SwiftBoolPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_bool)
+    SwiftCharacterPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_character)
+    SwiftStringPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_string)
+    SwiftVoidPrimitiveFacts { surface_spelling: _, representation: _ } =>
+      swift_atom(id: swift_tag_scalar_void)
+  }
+}
+
+fn swift_integer_facts_node(facts: SwiftIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_facts_field_surface_spelling,
+        target: swift_atom(id: facts.surface_spelling)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_signedness,
+        target: swift_signedness_node(signedness: facts.signedness)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_width,
+        target: swift_width_node(width: facts.width)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_overflow,
+        target: swift_overflow_node(overflow: facts.overflow)
+      )
+    ]
+  }
+}
+
+fn swift_float_facts_node(facts: SwiftFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_facts_field_surface_spelling,
+        target: swift_atom(id: facts.surface_spelling)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_width,
+        target: swift_float_width_node(width: facts.width)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_ieee754_binary,
+        target: swift_atom(id: facts.ieee754_binary)
+      )
+    ]
+  }
+}
+
+fn swift_nonnumeric_surface_spelling(facts: SwiftNonNumericPrimitiveFacts) -> Symbol {
+  match facts {
+    SwiftBoolPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+    SwiftCharacterPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+    SwiftStringPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+    SwiftVoidPrimitiveFacts { surface_spelling, representation: _ } => surface_spelling
+  }
+}
+
+fn swift_nonnumeric_facts_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_facts_field_surface_spelling,
+        target: swift_atom(id: swift_nonnumeric_surface_spelling(facts: facts))
+      ),
+      swift_named_edge(
+        name: swift_facts_field_scalar,
+        target: swift_nonnumeric_scalar_classifier_node(facts: facts)
+      ),
+      swift_named_edge(
+        name: swift_facts_field_value_fact,
+        target: swift_nonnumeric_representation_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn swift_integer_inhabitant_node(id: Symbol, facts: SwiftIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(name: swift_inhabitant_field_atom, target: swift_atom(id: id)),
+      swift_named_edge(
+        name: swift_inhabitant_field_facts,
+        target: swift_integer_facts_node(facts: facts)
+      )
+    ]
+  }
+}
+
+fn swift_inhabitant_int32_node() -> Node {
+  swift_integer_inhabitant_node(id: swift_inhabitant_int32, facts: swift_facts_int32)
+}
+
+fn swift_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(name: swift_inhabitant_field_int32, target: swift_inhabitant_int32_node())
+    ]
+  }
+}
+
+fn swift_mvp1_selection_policy_node() -> Node {
+  swift_inhabitant_int32_node()
+}
+
+fn swift_mvp1_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: swift_inhabitant_int32_node() },
+      Edge { label: Positional, target: swift_inhabitant_int32_node() },
+      Edge { label: Positional, target: swift_inhabitant_int32_node() }
+    ]
+  }
+}
+
+fn swift_mvp1_source_text_authority() -> String {
+  swift_mvp1_source_text
+}
+
+fn swift_concrete_token_class(token: SwiftConcreteSyntaxToken) -> Symbol {
+  match token {
+    SwiftFixedToken { token_class: c } => c
+    SwiftBoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn swift_concrete_token_node(token: SwiftConcreteSyntaxToken) -> Node {
+  match token {
+    SwiftFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          swift_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: swift_atom(id: swift_relation_token_fixed)
+          ),
+          swift_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: swift_atom(id: c)
+          )
+        ]
+      }
+    SwiftBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          swift_named_edge(
+            name: concrete_syntax_token_field_kind,
+            target: swift_atom(id: swift_relation_token_bound)
+          ),
+          swift_named_edge(
+            name: concrete_syntax_token_field_class,
+            target: swift_atom(id: c)
+          ),
+          swift_named_edge(
+            name: concrete_syntax_token_field_binding,
+            target: swift_atom(id: b)
+          )
+        ]
+      }
+  }
+}
+
+fn swift_mvp1_positional_token_edge(token: SwiftConcreteSyntaxToken) -> Edge {
+  Edge {
+    label: Positional,
+    target: swift_concrete_token_node(token: token)
+  }
+}
+
+fn swift_mvp1_positional_edges_from_token_classes() -> List<Edge> {
+  fold_list(
+    xs: swift_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn swift_mvp1_serialize_source_prefix_edges() -> List<Edge> {
+  Cons {
+    head: swift_named_edge(
+      name: swift_mvp1_source_text_field,
+      target: swift_atom(id: swift_mvp1_source_literal)
+    ),
+    tail: Cons {
+      head: swift_named_edge(
+        name: swift_mvp1_source_grammar_field,
+        target: swift_atom(id: swift_production_mvp1_fn_add)
+      ),
+      tail: Empty
+    }
+  }
+}
+
+fn swift_mvp1_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: swift_mvp1_serialize_source_prefix_edges(),
+    right: swift_mvp1_positional_edges_from_token_classes()
+  )
+}
+
+fn swift_mvp1_serialize_source_node() -> Node {
+  let _authority = swift_mvp1_source_text_authority()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: swift_mvp1_serialize_source_children()
+  }
+}
+
+fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: SwiftConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = swift_concrete_token_class(token: token)
+  if token_class == swift_token_kw_func {
+    acc
+  } else {
+    Sequence {
+      left: swift_grammar_terminal(token_class: token_class),
+      right: acc
+    }
+  }
+}
+
+fn swift_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list(
+    xs: swift_mvp1_concrete_tokens(),
+    empty: swift_grammar_terminal(token_class: swift_token_kw_func),
+    cons: fn(acc, token) {
+      swift_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+fn swift_mvp1_grammar_relation_row() -> SwiftGrammarRelationRow {
+  SwiftGrammarRelationRow {
+    production: swift_grammar_production_mvp1_fn_add(),
+    emitted: swift_mvp1_emitted_add_fn_node(),
+    tokens: swift_mvp1_concrete_tokens()
+  }
+}
+
+fn swift_relation_token_edges(tokens: List<SwiftConcreteSyntaxToken>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_mvp1_positional_token_edge(token: token)
+      )
+    }
+  )
+}
+
+fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: grammar_relation_field_production,
+        target: grammar_production_to_node(production: row.production)
+      ),
+      swift_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      swift_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: swift_relation_token_edges(tokens: row.tokens)
+        }
+      )
+    ]
+  }
+}
+
+fn swift_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: swift_relation_rule_mvp1_fn_add,
+        target: swift_grammar_relation_row_node(row: swift_mvp1_grammar_relation_row())
+      )
+    ]
+  }
+}
+
+fn swift_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      swift_named_edge(
+        name: target_model_edge_selection_policy,
+        target: swift_mvp1_selection_policy_node()
+      ),
+      swift_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: swift_declared_inhabitants_root()
+      ),
+      swift_named_edge(
+        name: target_model_edge_translation_rules,
+        target: swift_mvp1_translation_rules_node()
+      ),
+      swift_named_edge(
+        name: target_model_edge_serialize_source,
+        target: swift_mvp1_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), swift_binding_fn_add, "add"),
+      swift_binding_param_x,
+      "x"
+    ),
+    swift_binding_param_y,
+    "y"
+  )
+}
+
+fn swift_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: swift_mvp1_target_model_node(),
+    lex: swift_wave1_lex(),
+    binding_spellings: swift_mvp1_binding_spellings(),
+    authority_source_text: swift_mvp1_source_text_authority()
+  }
+}
+
+fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: LiteralPattern { text: text }
+  }
+}
+
+fn swift_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn swift_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_ident,
+    pattern: swift_ident_lex_pattern()
+  }
+}
+
+fn swift_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      swift_lex_rule(token_class: swift_token_kw_func, text: "func "),
+      swift_lex_rule(token_class: swift_token_kw_return, text: "return "),
+      swift_ident_lex_rule(),
+      swift_lex_rule(token_class: swift_token_ty_int32, text: "Int32"),
+      swift_lex_rule(token_class: swift_token_plus, text: " + "),
+      swift_lex_rule(token_class: swift_token_arrow, text: " -> "),
+      swift_lex_rule(token_class: swift_token_lbrace, text: " { "),
+      swift_lex_rule(token_class: swift_token_rbrace, text: " }"),
+      swift_lex_rule(token_class: swift_token_lparen, text: "("),
+      swift_lex_rule(token_class: swift_token_rparen, text: ") "),
+      swift_lex_rule(token_class: swift_token_comma, text: ", "),
+      swift_lex_rule(token_class: swift_token_colon, text: ": ")
+    ]
+  }
+}
+
+fn swift_wave1_lex() -> LexRules {
+  ModeledLexRules { root: swift_wave1_lex_rules() }
+}
+
+fn swift_grammar_atom(id: Symbol) -> Node {
+  swift_atom(id: id)
+}
+
+fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_mvp1_fn_add,
+    expression: swift_grammar_sequence_from_token_classes(),
+    emitted: swift_grammar_atom(id: swift_surface_fn_item)
+  }
+}
+
+fn swift_wave1_grammar_root() -> GrammarRoot {
+  let start = swift_grammar_production_mvp1_fn_add()
+  GrammarRoot { start: swift_production_mvp1_fn_add, productions: [start] }
+}
+
+fn swift_wave1_grammar() -> Grammar {
+  ModeledGrammar { root: swift_wave1_grammar_root() }
+}
+
+fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  sym == swift_token_kw_func ||
+    sym == swift_token_kw_return ||
+    sym == swift_token_ident ||
+    sym == swift_token_ty_int32 ||
+    sym == swift_token_plus ||
+    sym == swift_token_arrow ||
+    sym == swift_token_lbrace ||
+    sym == swift_token_rbrace ||
+    sym == swift_token_lparen ||
+    sym == swift_token_rparen ||
+    sym == swift_token_comma ||
+    sym == swift_token_colon
+}
+
+fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+    }
+  }
+}
+
+fn swift_primitive_fact_map_4(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node,
+  axis3: Symbol,
+  fact3: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
+        axis1,
+        fact1
+      ),
+      axis2,
+      fact2
+    ),
+    axis3,
+    fact3
+  )
+}
+
+fn swift_primitive_fact_map_3(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node,
+  axis2: Symbol,
+  fact2: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(
+      map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
+      axis1,
+      fact1
+    ),
+    axis2,
+    fact2
+  )
+}
+
+fn swift_primitive_fact_map_2(
+  axis0: Symbol,
+  fact0: Node,
+  axis1: Symbol,
+  fact1: Node
+) -> Map<Symbol, Node> {
+  map_insert(
+    map_insert(swift_empty_primitive_spec_facts(), axis0, fact0),
+    axis1,
+    fact1
+  )
+}
+
+fn swift_primitive_bundle_from_integer_facts(facts: SwiftIntegerPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: swift_integer_facts_node(facts: facts),
+    spec_facts: swift_primitive_fact_map_4(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: swift_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_signedness,
+      fact1: swift_signedness_node(signedness: facts.signedness),
+      axis2: primitive_fact_axis_width,
+      fact2: swift_width_node(width: facts.width),
+      axis3: primitive_fact_axis_overflow_disposition,
+      fact3: swift_overflow_node(overflow: facts.overflow)
+    )
+  }
+}
+
+fn swift_primitive_bundle_from_float_facts(facts: SwiftFloatPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: swift_float_facts_node(facts: facts),
+    spec_facts: swift_primitive_fact_map_3(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: swift_atom(id: facts.surface_spelling),
+      axis1: primitive_fact_axis_width,
+      fact1: swift_float_width_node(width: facts.width),
+      axis2: primitive_fact_axis_encoding,
+      fact2: swift_atom(id: facts.ieee754_binary)
+    )
+  }
+}
+
+fn swift_primitive_bundle_from_nonnumeric_facts(
+  facts: SwiftNonNumericPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: swift_nonnumeric_facts_node(facts: facts),
+    spec_facts: swift_primitive_fact_map_2(
+      axis0: primitive_fact_axis_surface_spelling,
+      fact0: swift_atom(id: swift_nonnumeric_surface_spelling(facts: facts)),
+      axis1: swift_primitive_fact_axis_scalar_classifier,
+      fact1: swift_nonnumeric_scalar_classifier_node(facts: facts)
+    )
+  }
+}
+
+fn swift_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: swift_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn swift_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: swift_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn swift_primitive_bundles_from_nonnumeric_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: swift_nonnumeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_primitive_bundle_from_nonnumeric_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn swift_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: list_append(
+      left: swift_primitive_bundles_from_integer_catalog(),
+      right: swift_primitive_bundles_from_float_catalog()
+    ),
+    right: swift_primitive_bundles_from_nonnumeric_catalog()
+  )
+}
+
+fn swift_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: SwiftIntegerPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn swift_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: SwiftFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn swift_nonnumeric_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: SwiftNonNumericPrimitiveFacts
+) -> Bool {
+  acc || sym == swift_nonnumeric_surface_spelling(facts: facts)
+}
+
+fn swift_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: swift_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      swift_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn swift_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: swift_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      swift_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn swift_nonnumeric_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: swift_nonnumeric_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      swift_nonnumeric_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn swift_catalog_surface_symbol(sym: Symbol) -> Bool {
+  swift_integer_catalog_surface_symbol(sym: sym) ||
+    swift_float_catalog_surface_symbol(sym: sym) ||
+    swift_nonnumeric_catalog_surface_symbol(sym: sym)
+}
+
+fn swift_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      swift_catalog_surface_symbol(sym: sym) ||
+        swift_wave1_lex_token_symbol(sym: sym) ||
+        sym == swift_surface_fn_item ||
+        sym == swift_production_mvp1_fn_add ||
+        sym == swift_mvp1_source_literal
+    }
+  }
+}
+
+fn swift_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: swift_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+fn swift_language_model_wave1() -> SwiftLanguageModel {
+  SwiftLanguageModel {
+    language_identity: swift_language_model_surface_id,
+    canonical_symbols: swift_language_model_canonical_symbols(),
+    core: swift_model_core_wave1()
+  }
+}

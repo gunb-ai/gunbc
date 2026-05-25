@@ -9,18 +9,15 @@ module v4.test.claim.manual.diagnostic_assert_eval
 
 
 import v4.compiler.eval {
-  Pass,
-  Fail,
-  Deferred,
-  Verdict,
   aggregate_verdicts,
   eval_diagnostic,
   run_test_claim_assert
 }
+import v4.std.verdict { Verdict, Pass, Fail, Deferred }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
-  NodeLocus,
+  node_locus,
   NonEmptyDiagnostics,
   Outcome,
   Accepted,
@@ -35,10 +32,11 @@ import v4.std.node { Node, Symbol }
 import v4.std.verification {
   DiagnosticClaim,
   TestClaim,
-  T19ManualAnchorAbsent,
+  ManualAnchorAbsent,
   TestClassification,
   Tier1,
-  Unit
+  Unit,
+  manual_claim_anchor
 }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
@@ -55,7 +53,7 @@ fn diag_assert_node() -> Node {
 fn diag_assert_d() -> Diagnostic {
   Diagnostic {
     reason: diag_assert_reason,
-    at: NodeLocus { node: diag_assert_node() },
+    at: node_locus(node: diag_assert_node()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -64,7 +62,7 @@ fn diag_assert_d() -> Diagnostic {
 fn diag_assert_other_d() -> Diagnostic {
   Diagnostic {
     reason: diag_assert_other,
-    at: NodeLocus { node: diag_assert_node() },
+    at: node_locus(node: diag_assert_node()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -92,7 +90,7 @@ data accepted_actual: Outcome<Node> = Accepted {
 
 data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim match",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: diag_assert_node(),
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -101,7 +99,7 @@ data witness_diagnostic_claim_match: TestClaim = DiagnosticClaim {
 
 data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim mismatch",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: diag_assert_node(),
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -110,7 +108,7 @@ data witness_diagnostic_claim_mismatch: TestClaim = DiagnosticClaim {
 
 data witness_diagnostic_claim_accepted_fail: TestClaim = DiagnosticClaim {
   label: "witness: diagnostic claim accepted fail",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: diag_assert_node(),
   expected_rejection: rejected_expected_rejection,
   classification: TestClassification { tier: Tier1, layer: Unit }

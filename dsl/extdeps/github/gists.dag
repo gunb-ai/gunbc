@@ -11,7 +11,7 @@ module extdeps.github.gists
 
 import extdeps.github.github { GitHubUser, default_api_base }
 import std.types { Timestamp, GistId, Url, HttpMethod, AuthScheme }
-import std.errors { GitHubErrorShape }
+import extdeps.github.errors { GitHubErrorShape }
 
 // -- Gist model ----------------------------------------------------
 

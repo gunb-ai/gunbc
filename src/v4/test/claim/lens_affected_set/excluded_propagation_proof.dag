@@ -1,0 +1,77 @@
+// src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag
+// Scope: T-21 worked claim — second mark_excluded on the same key appends to Excluded.rest.
+// Owns: claim_excluded_propagation_proof.
+// Consumes: lens affected_set, lens affected_set_examples, std node, std verification.
+// Status: scaffold — compile-only until T-22 generated claim execution.
+
+module v4.test.claim.lens_affected_set.excluded_propagation_proof
+
+import v4.lens.affected_set {
+  DimensionNotRead,
+  ExclusionKey,
+  PropagationExclusionProof,
+  ReExecFrontier,
+  empty_frontier,
+  mark_excluded
+}
+import v4.lens.affected_set_examples {
+  affected_set_example_dimension,
+  affected_set_example_node,
+  expected_affected_set_excluded_proofs
+}
+import v4.std.logic { Bool }
+import v4.std.node { Conj, Node, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data excluded_propagation_key: ExclusionKey = ExclusionKey {
+  at: affected_set_example_node,
+  dimension: affected_set_example_dimension
+}
+
+data excluded_propagation_proof: PropagationExclusionProof = DimensionNotRead {
+  usage_site: affected_set_example_node,
+  changed_dimension: affected_set_example_dimension
+}
+
+fn excluded_propagation_accumulated_frontier() -> ReExecFrontier {
+  mark_excluded(
+    frontier: mark_excluded(
+      frontier: empty_frontier(),
+      key: excluded_propagation_key,
+      proof: excluded_propagation_proof
+    ),
+    key: excluded_propagation_key,
+    proof: excluded_propagation_proof
+  )
+}
+
+fn excluded_propagation_proof_claim_holds() -> Bool {
+  excluded_propagation_accumulated_frontier() == expected_affected_set_excluded_proofs
+}
+
+fn excluded_propagation_proof_claim_rhs() -> Node {
+  if excluded_propagation_proof_claim_holds() {
+    affected_set_example_node
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: []
+    }
+  }
+}
+
+data claim_excluded_propagation_proof: TestClaim = EqualsClaim {
+  label: "lens_affected_set/excluded_propagation_proof: mark_excluded accumulates proofs in Excluded.rest",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: excluded_propagation_proof_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

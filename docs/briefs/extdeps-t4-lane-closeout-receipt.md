@@ -21,7 +21,7 @@ Header-level audit of `src/v4/extdeps/**` and the five Shape-A language files un
 
 **Conclusion:** three of five Shape-A slices are on the green terminal ledger called out in headers; **cpp** and **typescript** remain explicitly gated. This does **not** satisfy a literal reading of “all five fact-bundles ratified (B).” The **keystone HOLD** on T-4 in `r4-program-dispatch-plan.md` (P1-KEYSTONE / T-25-core / T-30 / T-29 cluster, residual [#3277](https://github.com/gunb-ai/gunbc/pull/3277) per that plan) remains consistent with `TASKS.md` — no de-classification claimed here.
 
-### T-4.5 — `process.dag` + `file_system.dag`
+### T-4.5 — `posix.dag` + `file_system.dag`
 
 Both headers claim **T-4.5 modeled 2026-05-16** with POSIX anchors; `file_system.dag` retains **🟡** coproduct markers under `DECISIONS.md` OS-1 (expected until refinement / fact-density work lands).
 
@@ -35,8 +35,8 @@ Both headers claim **T-4.5 modeled 2026-05-16** with POSIX anchors; `file_system
 
 ### T-4.7 / T-4.8
 
-- `frameworks/react.dag` — explicit **scaffold** (“fill per TASKS.md T-4.7”).
-- `coordination.dag` — **Modeled with tracked scaffolds** (B3 row in `DECISIONS.md` still relevant).
+- `frameworks/react.dag` — **superseded after this receipt**: T-4.7 landed via PR #3206 / `31a23422a` with `v4_extdeps_react_dag` passing; treat the dependency as satisfied for T-4.8 coordination.
+- `coordination.dag` — **T-4.8 modeled** under the decomposed PR #3207 shape: `WireContractFacts` owns `ExchangePattern` / `SettlementGuarantee` / `ConsistencyGuarantee`; `CoordinationBind` owns the tracked `CoordinationEffectKind` bridge until binds reference canonical obligation rows directly; `WIRECONTRACT-OBLIGATION-TABLE-T4.8` is represented by executable per-effect `CoordinationEffectObligation` rows. T-4.6 remains a T-16 contract-shape alignment dependency, not a T-4.8 start blocker.
 
 ### T-4.9 … T-4.14 (stress / probe lanes)
 

@@ -5,8 +5,15 @@
 //! exist and remain joined; T-22 rows are parse/substrate ratchets only (not execution).
 //! This hand-Rust ratchet retires when T-22 generated harness coverage
 //! expresses the same bootstrap closeout checks as `.dag` `TestClaim` rows.
+//! **P5 receipt for same-path expansion:** explicit deferral to `ROADMAP.md`
+//! § "Nine lanes" row `T-PB-B` / `pb_rust_tests_outside_residual_zero`; this
+//! file remains inside the SG-0 T-PB-B test subset and dissolves when these
+//! T-22 closeout checks are emitted as `.dag` `TestClaim` rows or generated
+//! harness coverage.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{
@@ -25,13 +32,195 @@ const CONNECTIVE_ANCHORS_PATH: &str = "src/v4/test/claim/manual/connective_ancho
 const NAT_LAW_ANCHORS_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_LAW_ANCHORS_PATH: &str = "src/v4/test/claim/manual/nat_law_anchors.dag";
-const T19_MANIFEST_DAG: &str =
-    include_str!("../../../../v4/test/claim/manual/t19_manual_anchor_manifest.dag");
-const T19_MANIFEST_PATH: &str = "src/v4/test/claim/manual/t19_manual_anchor_manifest.dag";
+const MANIFEST_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/manual_anchor_manifest.dag");
+const MANIFEST_PATH: &str = "src/v4/test/claim/manual/manual_anchor_manifest.dag";
 const DIAGNOSTIC_ASSERT_EVAL_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/diagnostic_assert_eval.dag");
 const DIAGNOSTIC_ASSERT_EVAL_PATH: &str = "src/v4/test/claim/manual/diagnostic_assert_eval.dag";
 const EVAL_DAG: &str = include_str!("../../../../v4/compiler/05_eval.dag");
+const RUNTIME_DAG: &str = include_str!("../../../../v4/std/runtime.dag");
+const LBE_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/language_behavior_equivalence.dag");
+const LBE_GENERATED_PATH: &str = "src/v4/test/claim/generated/language_behavior_equivalence.dag";
+const COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/coproduct_exhaustiveness.dag");
+const COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH: &str =
+    "src/v4/test/claim/generated/coproduct_exhaustiveness.dag";
+const REFINEMENT_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/refinement_preservation.dag");
+const REFINEMENT_GENERATED_PATH: &str = "src/v4/test/claim/generated/refinement_preservation.dag";
+const IDEMPOTENT_OPERATION_GENERATED_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/idempotent_operation_conformance.dag");
+const IDEMPOTENT_OPERATION_GENERATED_PATH: &str =
+    "src/v4/test/claim/generated/idempotent_operation_conformance.dag";
+const EFFECTS_DAG: &str = include_str!("../../../../v4/std/effects.dag");
+const EFFECTS_PATH: &str = "src/v4/std/effects.dag";
+
+#[test]
+fn language_behavior_equivalence_generated_claims_parse() {
+    parse_module(LBE_GENERATED_DAG, LBE_GENERATED_PATH);
+}
+
+#[test]
+fn refinement_preservation_generated_claims_parse() {
+    parse_module(REFINEMENT_GENERATED_DAG, REFINEMENT_GENERATED_PATH);
+}
+
+#[test]
+fn refinement_preservation_receipts_present() {
+    assert!(
+        TESTGEN_DAG.contains("RefinementPreservation { subject: RefinementPreservationSubject }")
+            && TESTGEN_DAG.contains("fn testgen_emit_refinement_preservation_claim")
+            && TESTGEN_DAG.contains("-> Outcome<RefinementPreservationSubject>")
+            && TESTGEN_DAG.contains("refined: Refined<List<Node>>")
+            && TESTGEN_DAG.contains("refined_base(r: subject.refined)")
+            && TESTGEN_DAG.contains("ManualRefinementNonEmptyListBase")
+            && REFINEMENT_GENERATED_DAG
+                .contains("refinement_preservation_subject_nonempty_list_base()")
+            && REFINEMENT_GENERATED_DAG
+                .contains("refined_base(r: subject.refined) == subject.original")
+            && REFINEMENT_GENERATED_DAG.contains(
+                "data claim_refinement_nonempty_list_base_preserved: Outcome<TestClaim>"
+            )
+            && REFINEMENT_GENERATED_DAG.contains(
+                "data witness_refinement_preserves_nonempty_list_base: Bool"
+            ),
+        "generated refinement-preservation corpus must derive a TestClaim through testgen_emit and prove refined_base preserves the accepted base"
+    );
+}
+
+#[test]
+fn idempotent_operation_generated_claims_parse_and_pin_emission() {
+    parse_module(EFFECTS_DAG, EFFECTS_PATH);
+    parse_module(
+        IDEMPOTENT_OPERATION_GENERATED_DAG,
+        IDEMPOTENT_OPERATION_GENERATED_PATH,
+    );
+    assert!(
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("testgen_emit_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_read_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_upsert_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_delete_idempotent_operation_claim")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG
+                .contains("generated_idempotent_operation_sample_count_is_three"),
+        "idempotent-operation generator slice must produce at least three sample TestClaim rows"
+    );
+    assert!(
+        IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_label_only_skip_pins_rejection")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("generated_label_only_skip_is_rejected")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("import v4.std.node { Symbol }")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("Accepted { value: _, diagnostics: _ } => false")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("idempotent_operation_tautology_skip")
+            && IDEMPOTENT_OPERATION_GENERATED_DAG.contains("sample_label_only_subject")
+            && EFFECTS_DAG.contains("type ComposableIdempotentOperationSubject")
+            && EFFECTS_DAG.contains("Composable(ComposableIdempotentOperationSubject)")
+            && EFFECTS_DAG.contains("LabelOnlyIdempotentInhabitance")
+            && EFFECTS_DAG.contains("fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOperationSubject)")
+            && EFFECTS_DAG.contains("fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject)")
+            && EFFECTS_DAG.contains("ComputationNode { behavior: Transform }")
+            && EFFECTS_DAG.contains("key_source_path_param_value_field")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice(state: sample_state"),
+        "idempotent-operation claims must model f(f(x))==f(x) via nested Transform application in v4.std.effects, with an explicit label-only skip path in the generated corpus"
+    );
+    assert!(
+        EFFECTS_DAG.contains("type IdempotentShape")
+            && EFFECTS_DAG.contains("type EffectShape")
+            && EFFECTS_DAG.contains("ReadIdempotentSample")
+            && EFFECTS_DAG.contains("fn idempotent_operation_witness_node")
+            && EFFECTS_DAG.contains("classified_idempotent_effect_node"),
+        "v4.std.effects must carry canonical IdempotentShape/EffectShape witnesses for generator subjects"
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn testgen_emit_idempotent_operation_claim")
+            && TESTGEN_DAG.contains("import v4.std.effects")
+            && TESTGEN_DAG.contains("ComposableIdempotentOperationSubject")
+            && TESTGEN_DAG.contains("Composable(inner) =>")
+            && TESTGEN_DAG.contains("idempotent_operation_apply_twice")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_idempotent_operation_subjects"),
+        "testgen lens must emit idempotent-operation claims from v4.std.effects composable subjects, not parallel Symbol/Node subjects"
+    );
+}
+
+#[test]
+fn language_behavior_equivalence_run_test_claim_receipts_present() {
+    assert!(
+        LBE_GENERATED_DAG.contains("run_test_claim(")
+            && LBE_GENERATED_DAG.contains("fn lbe_claim_from_testgen_emit")
+            && LBE_GENERATED_DAG.contains("-> Outcome<TestClaim>")
+            && LBE_GENERATED_DAG.contains("Fail { actual: Rejected { diagnostics:")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG
+                .contains("data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue>")
+            && LBE_GENERATED_DAG.contains(
+                "data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue>"
+            )
+            && LBE_GENERATED_DAG.contains("run_test_claim_assert(")
+            && LBE_GENERATED_DAG.contains("witness_lbe_conj_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("witness_lbe_disj_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("witness_lbe_transform_snapshot_pass")
+            && LBE_GENERATED_DAG.contains("testgen_scheduled_language_behavior_generators"),
+        "generated LBE corpus must wire frozen-snapshot mocks through run_test_claim_assert and run_test_claim"
+    );
+    assert!(
+        TESTGEN_DAG.contains("LanguageBehaviorEquivalence {")
+            && TESTGEN_DAG.contains("type FrozenLanguageBehaviorSnapshot")
+            && TESTGEN_DAG.contains("fn testgen_emit_language_behavior_equivalence_claim")
+            && TESTGEN_DAG.contains("lbe_label_conj_dag_surface"),
+        "testgen lens must emit LBE claims with frozen snapshot + I/O mock carriers"
+    );
+}
+
+#[test]
+fn coproduct_exhaustiveness_generated_claim_parse_and_witnesses_present() {
+    parse_module(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG,
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_PATH,
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_compiles")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_diagnostic")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_equals")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_subject_testclaim_roundtrip")
+            && TESTGEN_DAG.contains("fn testgen_emit_coproduct_exhaustiveness_claim")
+            && TESTGEN_DAG.contains("fn testgen_scheduled_coproduct_exhaustiveness_generators")
+            && TESTGEN_DAG.contains("slot: DiagnosticExhaustiveness")
+            && TESTGEN_DAG.contains("value: DiagnosticClaim {")
+            && TESTGEN_DAG.contains("anchor: generated_claim_anchor(anchor: anchor)"),
+        "T-19 DiagnosticExhaustiveness must emit coproduct-exhaustiveness TestClaim data from lens/testgen"
+    );
+    assert!(
+        TESTGEN_DAG.contains("fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node")
+            && TESTGEN_DAG.contains("fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -> TestClaimCoproductVariant")
+            && TESTGEN_DAG.contains("variant: coproduct_exhaustiveness_anchor_omitted_variant(")
+            && TESTGEN_DAG.contains("anchor: anchor")
+            && TESTGEN_DAG.contains("at: node_locus(node: input)")
+            && !TESTGEN_DAG.contains("NodeLocus { node: input }"),
+        "coproduct-exhaustiveness generation must carry omitted variant into the input node and use canonical node_locus"
+    );
+    assert!(
+        COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+            .contains("fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim>")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("testgen_emit_coproduct_exhaustiveness_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_diagnostic_claim")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_uses_generated_anchor")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_all_variants_emit")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG
+                .contains("witness_coproduct_exhaustiveness_generator_count")
+            && COPRODUCT_EXHAUSTIVENESS_GENERATED_DAG.contains(
+                "length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) == 4"
+            ),
+        "generated coproduct-exhaustiveness corpus must consume the testgen emit helper and expose all four missing-arm witnesses"
+    );
+}
 
 #[test]
 fn t22_diagnostic_assert_eval_witnesses_parse() {
@@ -64,10 +253,33 @@ fn t22_eval_diagnostic_assert_not_deferred_in_substrate() {
             && EVAL_DAG.contains("eval_rejected_roundtrip_deferred"),
         "RoundTripClaim eval authority must stay Deferred (single authority; verification must not synthesize expected Outcome<Node>)"
     );
+    assert!(
+        !EVAL_DAG.contains("Accepted { value: inputs.root"),
+        "eval_node must not fabricate Accepted{{value:inputs.root}} on unrealized eval (CI-signal-integrity: would falsely Pass CompilesClaim/EqualsClaim where expected==input)"
+    );
+    assert!(
+        RUNTIME_DAG.contains("type RuntimeValueNodeProjection")
+            && RUNTIME_DAG.contains("RuntimeValueNodeUnrepresentable")
+            && RUNTIME_DAG.contains("fn runtime_value_node_projection(value: RuntimeValue) -> RuntimeValueNodeProjection")
+            && EVAL_DAG.contains("fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node>")
+            && EVAL_DAG.contains("runtime_value_node_projection(value: value)")
+            && EVAL_DAG.contains("eval_rejected_runtime_value_node_unrepresentable"),
+        "eval_node must consume std/runtime RuntimeValue-to-Node projection and fail closed when no faithful Node projection exists"
+    );
+    assert!(
+        !RUNTIME_DAG.contains("fn runtime_value_node(value: RuntimeValue) -> Node")
+            && !EVAL_DAG.contains("runtime_value_node(value: value)"),
+        "eval_node must not accept a hollow RuntimeValue-to-type alias as a realized Node"
+    );
+    assert!(
+        !EVAL_DAG.contains("eval_node_unrealized")
+            && !EVAL_DAG.contains("nd.head.reason == eval_node_unrealized"),
+        "eval_node_unrealized fail-closed scaffold must dissolve once eval_node projects RuntimeValue into Node"
+    );
 }
 
 #[test]
-fn t19_testgen_concept_surface_stays_closed_and_classified() {
+fn testgen_concept_surface_stays_closed_and_classified() {
     let module = parse_module(TESTGEN_DAG, TESTGEN_PATH);
 
     assert_eq!(
@@ -78,14 +290,16 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
             "DiagnosticExhaustiveness",
             "LensApplicability",
             "BidirectionalRoundtrip",
+            "LanguageBehaviorEquivalence",
+            "RefinementPreservation",
         ]),
-        "T-19 scheduling arms must stay the closed five-way set from TASKS.md"
+        "T-19 scheduling arms must stay the closed seven-way set (LBE + refinement-preservation activation)"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "Generator")),
         expected_field_type_map(&[
             ("classification", "TestClassification"),
-            ("t19_anchor", "T19ManualAnchorKey"),
+            ("anchor", "ClaimAnchorKey"),
             ("slot", "C"),
         ]),
         "Generator<C> must carry anchor, classification, and parameterized slot (assertion shape lives on TestClaim coproduct)"
@@ -93,10 +307,10 @@ fn t19_testgen_concept_surface_stays_closed_and_classified() {
 }
 
 #[test]
-fn t19_manual_manifest_matches_claim_anchor_discriminants() {
+fn manual_manifest_matches_claim_anchor_discriminants() {
     let connective = parse_module(CONNECTIVE_ANCHORS_DAG, CONNECTIVE_ANCHORS_PATH);
     let nat_laws = parse_module(NAT_LAW_ANCHORS_DAG, NAT_LAW_ANCHORS_PATH);
-    let manifest = parse_module(T19_MANIFEST_DAG, T19_MANIFEST_PATH);
+    let manifest = parse_module(MANIFEST_DAG, MANIFEST_PATH);
 
     let manifest_keys = manifest_anchor_values(&manifest);
     let claim_keys = claim_anchor_values(&[&connective, &nat_laws]);
@@ -108,11 +322,57 @@ fn t19_manual_manifest_matches_claim_anchor_discriminants() {
     );
     assert_eq!(
         claim_keys, manifest_keys,
-        "manual TestClaim.t19_anchor values must join to the manifest by the same T19ManualAnchorKey discriminants"
+        "manual TestClaim.anchor values must join to the manifest by the same ManualAnchorKey discriminants"
     );
     assert!(
-        !claim_keys.contains("T19ManualAnchorAbsent"),
+        !claim_keys.contains("ManualAnchorAbsent"),
         "the seventeen live manual anchors must not route through the absent sentinel"
+    );
+}
+
+#[test]
+fn claim_corpus_has_no_direct_manual_anchor_assignments() {
+    let root = workspace_root().join("src/v4/test/claim");
+    let mut dag_files = Vec::new();
+    collect_dag_files(&root, &mut dag_files);
+    dag_files.push(workspace_root().join("src/v4/lens/testgen.dag"));
+
+    let mut offenders = Vec::new();
+    for path in dag_files {
+        let source =
+            fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let file_str = path
+            .strip_prefix(workspace_root())
+            .unwrap_or(path.as_path())
+            .to_str()
+            .unwrap_or("")
+            .to_string();
+        let Ok(tokens) = tokenize_for_test(&source, &file_str) else {
+            continue;
+        };
+        let Ok(module) = parse_for_test(&tokens, &file_str) else {
+            continue;
+        };
+        for item in &module.items {
+            let SurfaceItem::Data {
+                name: data_name,
+                ty: SurfaceType::Named { name: ty_name, .. },
+                body: Some(body),
+                ..
+            } = item
+            else {
+                continue;
+            };
+            if ty_name == "TestClaim" && testclaim_anchor_is_direct_var(body) {
+                offenders.push(format!("{file_str}: data {data_name}"));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "TestClaim.anchor fields must use manual_claim_anchor(...) after the ClaimAnchorKey split:\n{}",
+        offenders.join("\n")
     );
 }
 
@@ -143,9 +403,14 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             ("right", "Symbol"),
             ("right_hash", "BootstrapHashPin"),
             ("pinned_hash", "BootstrapHashPin"),
-            ("via", "Symbol"),
         ]),
-        "FixptStage1Stage2 must carry both compared hashes and the fixed-point pin"
+        "FixptStage1Stage2 must carry only the canonical compared hashes and fixed-point pin"
+    );
+    assert!(
+        !BOOTSTRAP_DAG.contains("type BootstrapFixptWitness")
+            && BOOTSTRAP_DAG.contains("fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2>")
+            && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2>"),
+        "fixpt proof must flow through canonical Witness<FixptStage1Stage2> without an N-wrapper record"
     );
     assert_eq!(
         record_field_type_map(type_record(&module, "BootstrapPlan")),
@@ -211,7 +476,6 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
         "v4_stage2_binary",
         ("v4_stage1_hash", "v4_stage2_hash_pin"),
         ("v4_stage1_hash", "pinned_v4_fixed_point_hash_pin"),
-        "bit_identical_check",
     );
     assert!(
         BOOTSTRAP_DAG.contains("data v4_stage2_hash: Hash = v4_stage2_hash")
@@ -227,8 +491,14 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG
                 .contains("p.fixpt.right_hash.digest == p.self1.produces_hash.digest")
             && BOOTSTRAP_DAG
-                .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest"),
-        "bootstrap_plan_well_formed must enforce digest convergence via stage outputs, not data aliases (A2+A3)"
+                .contains("p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest")
+            && BOOTSTRAP_DAG.contains("match bootstrap_fixpt_witness(f: p.fixpt)")
+            && BOOTSTRAP_DAG.contains("Holds { value: _ } =>")
+            && BOOTSTRAP_DAG.contains("data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2>")
+            && !BOOTSTRAP_DAG.contains("BootstrapFixptWitness")
+            && !BOOTSTRAP_DAG.contains("fn bootstrap_fixpt_holds")
+            && !BOOTSTRAP_DAG.contains("p.fixpt.witness"),
+        "bootstrap_plan_well_formed must enforce digest convergence through canonical fixpt fields and consume the derived witness directly (A2+A3/P2)"
     );
     assert!(
         !BOOTSTRAP_DAG.contains("p.fixpt.left_hash.pin == p.fixpt.right_hash.pin")
@@ -251,6 +521,40 @@ fn t20_bootstrap_plan_keeps_self_hosting_chain_as_data() {
             && BOOTSTRAP_DAG.contains("right_hash: BootstrapHashPin { digest: v4_stage2_hash, pin: v4_stage2_hash_pin"),
         "mismatch regression must wire stage-2 and fixpt.right through v4_stage2_hash (not an unrelated seed digest)"
     );
+}
+
+/// Returns true when a `data x: TestClaim = …` body directly assigns a ManualAnchorKey
+/// variant to the `anchor` field (not wrapped in `manual_claim_anchor`).
+/// Helper-function bodies (arity_rejection_claim, testgen_emit_*, etc.) are Call
+/// expressions and are never flagged — they wrap the anchor internally.
+fn testclaim_anchor_is_direct_var(body: &SurfaceExpr) -> bool {
+    let SurfaceExpr::VariantRecord { fields, .. } = body else {
+        return false;
+    };
+    let Some(anchor_expr) = fields
+        .iter()
+        .find_map(|f| (f.name == "anchor").then_some(&f.value))
+    else {
+        return false;
+    };
+    matches!(anchor_expr, SurfaceExpr::Var { .. })
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
+}
+
+fn collect_dag_files(root: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(root).unwrap_or_else(|e| panic!("read_dir {}: {e}", root.display()));
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|e| panic!("read_dir entry {}: {e}", root.display()));
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_files(&path, out);
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            out.push(path);
+        }
+    }
 }
 
 fn parse_module(source: &str, file: &str) -> SurfaceModule {
@@ -359,7 +663,7 @@ fn manifest_anchor_values(module: &SurfaceModule) -> BTreeSet<&str> {
                 ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(SurfaceExpr::Var { name, .. }),
                 ..
-            } if ty_name == "T19ManualAnchorKey" => Some(name.as_str()),
+            } if ty_name == "ManualAnchorKey" => Some(name.as_str()),
             _ => None,
         })
         .collect()
@@ -374,15 +678,15 @@ fn claim_anchor_values<'a>(modules: &[&'a SurfaceModule]) -> BTreeSet<&'a str> {
                 ty: SurfaceType::Named { name: ty_name, .. },
                 body: Some(body),
                 ..
-            } if ty_name == "TestClaim" => Some(claim_t19_anchor_name(body)),
+            } if ty_name == "TestClaim" => Some(claim_anchor_name(body)),
             _ => None,
         })
         .collect()
 }
 
-fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
+fn claim_anchor_name(body: &SurfaceExpr) -> &str {
     let anchor_expr = match body {
-        SurfaceExpr::VariantRecord { fields, .. } => record_field_expr(fields, "t19_anchor"),
+        SurfaceExpr::VariantRecord { fields, .. } => record_field_expr(fields, "anchor"),
         SurfaceExpr::Call { target, args, .. } if target == "arity_rejection_claim" => {
             let SurfaceExpr::Record { fields, .. } = args
                 .first()
@@ -401,7 +705,24 @@ fn claim_t19_anchor_name(body: &SurfaceExpr) -> &str {
     };
     match anchor_expr {
         SurfaceExpr::Var { name, .. } => name.as_str(),
-        other => panic!("TestClaim.t19_anchor must be a discriminant var, got {other:?}"),
+        SurfaceExpr::Call { target, args, .. } if target == "manual_claim_anchor" => {
+            let SurfaceExpr::Record { fields, .. } = args
+                .first()
+                .unwrap_or_else(|| panic!("manual_claim_anchor must take one named-arg record"))
+            else {
+                panic!(
+                    "manual_claim_anchor args must desugar to Record, got {:?}",
+                    args.first()
+                );
+            };
+            match record_field_expr(fields, "anchor") {
+                SurfaceExpr::Var { name, .. } => name.as_str(),
+                other => panic!(
+                    "manual claim anchor wrapper must carry a discriminant var, got {other:?}"
+                ),
+            }
+        }
+        other => panic!("TestClaim.anchor must be a discriminant var, got {other:?}"),
     }
 }
 
@@ -456,7 +777,6 @@ fn assert_fixpt(
     expected_right: &str,
     expected_right_hash: (&str, &str),
     expected_pinned_hash: (&str, &str),
-    expected_via: &str,
 ) {
     let fields = match expr {
         SurfaceExpr::VariantRecord { target, fields, .. } => {
@@ -483,7 +803,6 @@ fn assert_fixpt(
         expected_pinned_hash,
         "FixptStage1Stage2.pinned_hash",
     );
-    assert_eq!(var_name(record_field_expr(fields, "via")), expected_via);
 }
 
 fn assert_hash_pin(expr: &SurfaceExpr, expected: (&str, &str), label: &str) {

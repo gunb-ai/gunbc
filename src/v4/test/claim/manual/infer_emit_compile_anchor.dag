@@ -11,6 +11,7 @@ module v4.test.claim.manual.infer_emit_compile_anchor
 
 import v4.compiler.compile { Source, compile_ingest_staging }
 import v4.compiler.target_carriers { LanguageModel, TargetModel, TargetSource }
+import v4.compiler.tokenize { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   AlgebraRef,
@@ -19,15 +20,16 @@ import v4.compiler.infer {
   infer
 }
 import v4.std.algebra { Empty }
-import v4.std.collection { Map }
+import v4.std.collection { Map, empty_map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Unavailable
 }
+import v4.std.algebra { Empty }
 import v4.std.node { Conj, Node, Symbol, TypeNode }
 import v4.std.constraints {
   CanonicalGroundingWitness,
@@ -43,7 +45,12 @@ data anchor_stub_empty_conj: Node = Node {
 }
 
 
-data anchor_stub_target_model: TargetModel = anchor_stub_empty_conj
+data anchor_stub_target_model: TargetModel = TargetModel {
+  bundle: anchor_stub_empty_conj,
+  lex: VoidLexRules,
+  binding_spellings: empty_map(),
+  authority_source_text: Empty
+}
 data anchor_stub_input_lang: LanguageModel = anchor_stub_empty_conj
 
 
@@ -78,7 +85,7 @@ data anchor_stub_inferred_facts: InferredFacts = InferredFacts {
   descent: Violates {
     diagnostic: Diagnostic {
       reason: anchor_stub_descent_not_derived,
-      at: NodeLocus { node: anchor_stub_empty_conj },
+      at: node_locus(node: anchor_stub_empty_conj),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   },
@@ -91,7 +98,7 @@ data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
     Violates {
       diagnostic: Diagnostic {
         reason: anchor_facts_map_lookup_not_realized,
-        at: PortLocus { port: anchor_facts_map_lookup_not_realized },
+        at: port_locus(port: anchor_facts_map_lookup_not_realized),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     }

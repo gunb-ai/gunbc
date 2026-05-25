@@ -4,7 +4,7 @@
 // Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
 // Consumes: std collection, std diagnostic, std node, std witness.
-// Status: W-T-10 — identity-MVP exact structural equality; candidate lists are substrate-closed (no Conj re-walk).
+// Status: W-T-10 — T-25-tail predicate prover for constraint_satisfaction + exact_structural_equality_zip_fold.
 
 
 module v4.std.find_witness
@@ -16,11 +16,17 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   None,
-  NodeLocus,
+  node_locus,
   Outcome,
   Rejected,
   Unavailable,
   outcome_rejected
+}
+import v4.std.constraint_satisfaction_predicate {
+  constraint_satisfaction_preservation_holds
+}
+import v4.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold_preservation_holds
 }
 import v4.std.node { Node, Symbol, well_formed }
 import v4.std.witness { StructuralPropertyWitness }
@@ -59,28 +65,28 @@ type MultiplicityPolicy
 fn find_witness_no_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_no_candidate,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_ambiguous_candidate_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_ambiguous_candidate,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_not_realized_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_not_realized,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn find_witness_invalid_witness_diagnostic(source_facts: Node) -> Diagnostic {
   Diagnostic {
     reason: find_witness_reason_invalid_witness,
-    at: NodeLocus { node: source_facts },
+    at: node_locus(node: source_facts),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -93,22 +99,28 @@ fn enumeration_candidate_list(
 ) -> List<Node> {
   candidates.candidates
 }
-// Called only after find_witness/verify_witness entry dispatches a realized preservation_rule.
 fn preservation_predicate_holds(
   source_facts: Node,
   candidate: Node,
   predicate: PreservationPredicate
 ) -> Bool {
-  if well_formed(n: source_facts) && well_formed(n: predicate.algebra) && well_formed(n: candidate) {
-    match predicate.preservation_rule {
-      preservation_rule_constraint_satisfaction => source_facts == candidate
-      preservation_rule_exact_structural_equality_zip_fold =>
-        (predicate.algebra == source_facts) && (candidate == source_facts)
-    }
-  } else {
-    false
+  match predicate.preservation_rule {
+    preservation_rule_constraint_satisfaction =>
+      constraint_satisfaction_preservation_holds(
+        source_facts: source_facts,
+        candidate: candidate,
+        algebra: predicate.algebra
+      )
+    preservation_rule_exact_structural_equality_zip_fold =>
+      exact_structural_equality_zip_fold_preservation_holds(
+        source_facts: source_facts,
+        candidate: candidate,
+        algebra: predicate.algebra
+      )
+    _ => false
   }
 }
+// Only called from find_witness_realized / verify_witness_realized after rule dispatch; unknown rules reject at entry via find_witness_not_realized.
 fn passing_candidate_count(
   source_facts: Node,
   candidates: CandidateSet,
@@ -240,6 +252,10 @@ fn find_witness_realized(
   predicate: PreservationPredicate,
   multiplicity_policy: MultiplicityPolicy
 ) -> Outcome<FindWitnessResult> {
+  if (predicate.preservation_rule != preservation_rule_constraint_satisfaction)
+    && (predicate.preservation_rule != preservation_rule_exact_structural_equality_zip_fold) {
+    outcome_rejected(find_witness_not_realized_diagnostic(source_facts: source_facts))
+  } else {
   let passing_count = passing_candidate_count(
     source_facts: source_facts,
     candidates: candidates,
@@ -279,6 +295,7 @@ fn find_witness_realized(
           )
       }
     }
+  }
   }
 }
 fn verify_witness(

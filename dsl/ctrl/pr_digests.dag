@@ -39,7 +39,7 @@
 module ctrl.pr_digests
 
 import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
-import std.errors { GitHubErrorShape }
+import extdeps.github.errors { GitHubErrorShape }
 import std.types { Url }
 
 // M9 anchor: verdict is a ctrl-side aggregate over existing GitHub pull

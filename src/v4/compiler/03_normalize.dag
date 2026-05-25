@@ -3,7 +3,7 @@
 // Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
 // Owns: NormalizedTree; SurfaceSugarKind; normalize; stage Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, compiler/02_parse.dag, extdeps/languages/dag.dag.
-// Status: scaffold — TASKS T-8.
+// Status: T-8 modeled — C3 sugar dissolution (ServiceSugar / FnSugar / TypeSugar / OperationSugar).
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 
 module v4.compiler.normalize
@@ -18,7 +18,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.diagnostic {
   Diagnostic,
-  NodeLocus,
+  node_locus,
   Outcome,
   UserInputBoundary,
   Accepted,
@@ -93,7 +93,7 @@ fn classify_sugar(n: Node) -> SurfaceSugarKind? {
 fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_malformed_sugar,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
@@ -102,7 +102,7 @@ fn malformed_sugar_diagnostic(n: Node) -> Diagnostic {
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: normalize_reason_post_normalize_not_well_formed,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }

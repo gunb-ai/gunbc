@@ -2,7 +2,7 @@
 
 use crate::helpers::*;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
@@ -370,6 +370,209 @@ fn generic_single_param() {
     assert_no_diagnostics(&result);
 }
 
+/// Sum variants may carry positional generic type payloads (`NodeAt(LocusAnchor<T>)`);
+/// nested record patterns on instantiated generic sub-carriers must not report
+/// spurious `variant 'LocusAnchor' not found in type 'LocusAnchor'`.
+#[test]
+fn generic_variant_positional_payload_nested_record_pattern() {
+    let source = r#"module test.generic_locus_anchor
+
+type LocusAnchor<A> { at: A }
+
+type Locus
+  = Textual { file: String, extent: String }
+  | NodeAt(LocusAnchor<String>)
+  | PortAt(LocusAnchor<String>)
+
+fn node_at_at(x: Locus) -> String {
+  match x {
+    NodeAt(LocusAnchor { at: p }) => p
+    PortAt(LocusAnchor { at: p }) => p
+    Textual { file: f, extent: _ } => f
+  }
+}
+
+fn make_node_at(s: String) -> Locus {
+  NodeAt(LocusAnchor { at: s })
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    for d in &diags {
+        eprintln!("  diag: {}", d);
+    }
+    assert_no_diagnostics(&result);
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.contains("variant 'LocusAnchor' not found")),
+        "expected no bogus VariantNotFound on generic sub-carrier, got: {:?}",
+        diags
+    );
+    let rs = find_file(&result, "src/test_generic_locus_anchor.rs");
+    assert!(
+        rs.contains("NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt pattern in emitted Rust, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("Locus::LocusAnchor"),
+        "nested payload pattern must not over-qualify with outer enum scrutinee, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("NodeAt { 0:"),
+        "positional payload must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt variant decl, got:\n{}",
+        rs
+    );
+    assert!(
+        rs.contains("Locus::NodeAt(LocusAnchor"),
+        "expected tuple-style NodeAt constructor, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("Locus::NodeAt { 0:") && !rs.contains("NodeAt { 0:"),
+        "positional payload constructor must not emit record-style NodeAt {{ 0: ... }}, got:\n{}",
+        rs
+    );
+}
+
+/// Positional variant constructors reject named call arguments (`NodeAt(bad: x)`).
+#[test]
+fn generic_variant_positional_constructor_rejects_named_arg() {
+    let source = r#"module test.positional_ctor_named_arg
+
+type LocusAnchor<A> { at: A }
+
+type Locus = NodeAt(LocusAnchor<String>)
+
+fn make_bad(s: String) -> Locus {
+  NodeAt(bad: LocusAnchor { at: s })
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags
+            .iter()
+            .any(|d| { d.contains("does not accept named arguments") && d.contains("bad") }),
+        "positional variant constructor must fail closed on named args, got: {:?}",
+        diags
+    );
+}
+
+/// Known positional variant constructors fail closed on wrong arity (no type-ctor fallback).
+#[test]
+fn generic_variant_positional_constructor_rejects_wrong_arity() {
+    let source = r#"module test.positional_ctor_wrong_arity
+
+type Box = Box(Int)
+
+fn make_bad(a: Int, b: Int) -> Box {
+  Box(a, b)
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.contains("expects exactly one argument") && d.contains("Box")),
+        "positional variant constructor must fail closed on wrong arity, got: {:?}",
+        diags
+    );
+}
+
+/// Two nested positional string-literal subpatterns get distinct scratch bindings and guards.
+#[test]
+fn generic_variant_positional_dual_string_literal_bindings() {
+    let source = r#"module test.positional_dual_str_pat
+
+type Tag<A> = Mk(A)
+
+type Row = Pair { left: Tag<String>, right: Tag<String> }
+
+fn f(x: Row) -> String {
+  match x {
+    Pair { left: Mk("a"), right: Mk("b") } => "ok"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let rs = find_file(&result, "src/test_positional_dual_str_pat.rs");
+    assert!(
+        rs.contains("__pos_pair_left_mk_0_val")
+            && rs.contains("__pos_pair_right_mk_0_val")
+            && rs.contains("__pos_pair_left_mk_0_val == \"a\"")
+            && rs.contains("__pos_pair_right_mk_0_val == \"b\""),
+        "expected distinct positional string-literal bindings and guards, got:\n{}",
+        rs
+    );
+    assert!(
+        !rs.contains("__pos0_val"),
+        "must not collapse positional string literals to a single __pos0_val, got:\n{}",
+        rs
+    );
+}
+
+/// Nested named-field string literals with the same field name get path-distinct bindings.
+#[test]
+fn generic_variant_nested_same_field_string_literal_bindings() {
+    let source = r#"module test.nested_same_field_str_pat
+
+type Inner = Has { tag: String }
+
+type Row = Pair { left: Inner, right: Inner }
+
+fn f(x: Row) -> String {
+  match x {
+    Pair { left: Has { tag: "a" }, right: Has { tag: "b" } } => "ok"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let rs = find_file(&result, "src/test_nested_same_field_str_pat.rs");
+    assert!(
+        rs.contains("__pos_pair_left_has_tag_val")
+            && rs.contains("__pos_pair_right_has_tag_val")
+            && rs.contains("__pos_pair_left_has_tag_val == \"a\"")
+            && rs.contains("__pos_pair_right_has_tag_val == \"b\""),
+        "expected path-distinct bindings for repeated nested field names, got:\n{}",
+        rs
+    );
+}
+
+/// Bare record-name patterns (no `{…}`) must not use the Conj record-destructure fallback.
+#[test]
+fn generic_record_bare_name_pattern_reports_variant_not_found() {
+    let source = r#"module test.bare_record_pat
+
+type LocusAnchor<A> { at: A }
+
+fn f(x: LocusAnchor<String>) -> String {
+  match x {
+    LocusAnchor => "bad"
+  }
+}
+"#;
+    let result = compile_dag(source);
+    let diags = diagnostic_messages(&result);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.contains("variant 'LocusAnchor' not found")),
+        "bare record-name pattern must fail closed, got: {:?}",
+        diags
+    );
+}
+
 // ── Match pattern binding tests ─────────────────────────────────────────
 
 #[test]
@@ -588,7 +791,7 @@ fn dag_pipeline_smoke() {
     );
     let content = find_file(&result, "dag-artifact.json");
     assert!(
-        content.contains("\"version\": \"0.1.0\""),
+        content.contains("\"version\": \"0.2.0\""),
         "dag artifact should contain version"
     );
     assert!(
@@ -600,8 +803,16 @@ fn dag_pipeline_smoke() {
         "dag artifact should reference dag_smoke"
     );
     assert!(
+        content.contains("\"nodes\""),
+        "dag artifact should include nodes table"
+    );
+    assert!(
+        content.contains("\"$ref\""),
+        "dag artifact should cite nodes by ref"
+    );
+    assert!(
         content.contains("\"module\""),
-        "dag artifact should include serialized module objects"
+        "dag artifact should include module refs"
     );
     assert!(
         content.contains("\"items\""),
@@ -622,6 +833,150 @@ fn dag_pipeline_smoke() {
     assert!(
         content.contains("\"kind\": \"ExprRecordLit\""),
         "dag artifact should capture expression variants"
+    );
+}
+
+/// Regression for recursive by-value DAG serialization: shared subgraphs must
+/// appear once in `nodes` and be cited via multiple `$ref`s (see artifact.dag).
+#[test]
+fn dag_artifact_shares_one_node_record() {
+    let source = "module share_test\n\ntype Box { value: Int }\n\nfn twice(x: Box) -> Box { x }\n";
+    let result = compile_dag_named("share_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    assert!(
+        !content.contains("\"$ref\": null"),
+        "missing refs must fail emit, not serialize null refs"
+    );
+    assert!(
+        !content.contains("\"$ref\": \"\""),
+        "missing refs must not serialize empty ref ids"
+    );
+
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+
+    for id in nodes.keys() {
+        let record_marker = format!("\"{id}\": {{");
+        assert_eq!(
+            content.matches(&record_marker).count(),
+            1,
+            "node id {id} should appear exactly once in the nodes table"
+        );
+    }
+
+    let mut shared = false;
+    for id in nodes.keys() {
+        let needle = format!("\"$ref\": \"{id}\"");
+        let ref_count = content.matches(&needle).count();
+        if ref_count >= 2 {
+            shared = true;
+        }
+    }
+    assert!(
+        shared,
+        "expected at least one nodes-table id cited at least twice via $ref (shared subgraph)"
+    );
+}
+
+#[test]
+fn dag_artifact_multi_module_names_resolve() {
+    let files = &[
+        ("lib.dag", "module lib\n\nfn helper() -> Int { 0 }\n"),
+        (
+            "main.dag",
+            "module main\nimport lib { helper }\n\nfn main() -> Int { helper() }\n",
+        ),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    assert!(
+        content.contains("lib") && content.contains("helper") && content.contains("main"),
+        "multi-module dag artifact should preserve authored names from merged source_indices"
+    );
+}
+
+#[test]
+fn dag_artifact_module_imports_not_serialized_as_params() {
+    let files = &[
+        ("dep.dag", "module dep\ntype Widget { label: String }\n"),
+        (
+            "imp_test.dag",
+            "module imp_test\nimport dep { Widget }\n\nfn f() -> Widget { Widget { label: \"x\" } }\n",
+        ),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+    let module_record = nodes.values().find(|v| {
+        v.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n == "imp_test")
+    });
+    let module_record = module_record.expect("module node record should exist in nodes table");
+    let imports = module_record
+        .get("imports")
+        .and_then(Value::as_array)
+        .expect("module record should have imports array");
+    assert!(
+        !imports.is_empty(),
+        "module record should serialize imports via imports field"
+    );
+    let params = module_record
+        .get("params")
+        .and_then(Value::as_array)
+        .expect("module record should have params array");
+    assert!(
+        params.is_empty(),
+        "module imports must not be duplicated as callable params (role-aware serialization)"
+    );
+}
+
+#[test]
+fn dag_artifact_callable_params_preserved() {
+    let source = "module params_test\n\nfn f(x: Int, label: String) -> Int { x }\n";
+    let result = compile_dag_named("params_test.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+    let fn_record = nodes.values().find(|v| {
+        v.get("name")
+            .and_then(Value::as_str)
+            .is_some_and(|n| n == "f")
+    });
+    let fn_record = fn_record.expect("callable node record for f should exist in nodes table");
+    let params = fn_record
+        .get("params")
+        .and_then(Value::as_array)
+        .expect("callable record should have params array");
+    assert_eq!(
+        params.len(),
+        2,
+        "callable params must survive DAG serialization (not cleared by import heuristic)"
+    );
+    let names: Vec<&str> = params
+        .iter()
+        .filter_map(|p| p.get("name").and_then(Value::as_str))
+        .collect();
+    assert!(
+        names.contains(&"x") && names.contains(&"label"),
+        "serialized params should include callable argument names, got {names:?}"
     );
 }
 
@@ -4505,7 +4860,7 @@ fn type_rendering_bare_list_not_map() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(HashMap::from([("List".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
 
     let rendered = render_node_type(
         &list_node,
@@ -4531,7 +4886,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v2_compiler::v2_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(HashMap::from([("Map".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
 
     let rendered = render_node_type(
         &map_node,
@@ -4562,7 +4917,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(HashMap::from([("FreeMonoid".to_string(), true)]));
+    let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         &free_monoid_conj,
@@ -8051,7 +8406,6 @@ fn anthropic_tool_result_content_accepts_text_and_image_blocks() {
     let source = r#"module anthropic_tool_result_content_test
 
 import extdeps.llm.anthropic
-import extdeps.llm.llm { TextContent, ImageContent, Base64Image }
 
 data tool_results: List<AnthropicChatMessage> = [
   UserMessage {
@@ -8063,17 +8417,15 @@ data tool_results: List<AnthropicChatMessage> = [
       },
       UserToolResultBlock {
         tool_use_id: "toolu_image",
-        content: ToolResultBlocks {
-          blocks: [
-            TextContent { text: "chart" },
-            ImageContent {
-              source: Base64Image {
-                media_type: "image/jpeg",
-                data: "/9j/4AAQSkZJRg..."
-              }
+        content: ToolResultBlocks([
+          AnthropicTextBlock { text: "chart" },
+          AnthropicImageBlock {
+            source: Base64Image {
+              media_type: "image/jpeg",
+              data: "/9j/4AAQSkZJRg..."
             }
-          ]
-        },
+          }
+        ]),
         is_error: none
       },
       UserToolResultBlock {
@@ -9901,6 +10253,13 @@ fn diag_render_node_type_evidence() {
                     v2_compiler::std_induction::SubValueRelation::PreservedValue => {
                         "PreservedValue"
                     }
+                    v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                        "NonIncreasingValue"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                        "StrictAxisErased"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                     v2_compiler::std_induction::SubValueRelation::SubValueUnknown => {
                         "SubValueUnknown"
                     }
@@ -9963,10 +10322,16 @@ fn diag_emitter_scc() {
         eprintln!("  Pattern: {:?}", info.pattern);
 
         // Collect CX-L2 tree edges
+        let scc_name_set = Rc::new(
+            info.member_set
+                .iter()
+                .map(|m| (m.clone(), true))
+                .collect::<HashMap<String, bool>>(),
+        );
         let edges = collect_scc_cx_l2_tree_edges(
             &info.members,
             &func_index,
-            Rc::new(info.member_set.as_ref().clone()),
+            scc_name_set,
             &Rc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
@@ -10030,6 +10395,13 @@ fn diag_emitter_scc() {
                             ..
                         } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                            "NonIncreasing"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                            "StrictAxisErased"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                     })
                     .collect();
@@ -10058,6 +10430,13 @@ fn diag_emitter_scc() {
                             ..
                         } => "Arith",
                         v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                        v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                            "NonIncreasing"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                            "StrictAxisErased"
+                        }
+                        v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                         v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                     })
                     .collect();
@@ -10092,6 +10471,13 @@ fn diag_emitter_scc() {
                         "Arith"
                     }
                     v2_compiler::std_induction::SubValueRelation::PreservedValue => "Preserved",
+                    v2_compiler::std_induction::SubValueRelation::NonIncreasingValue => {
+                        "NonIncreasing"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::StrictAxisErased => {
+                        "StrictAxisErased"
+                    }
+                    v2_compiler::std_induction::SubValueRelation::MixedTop => "MixedTop",
                     v2_compiler::std_induction::SubValueRelation::SubValueUnknown => "Unknown",
                 })
                 .collect();
@@ -10168,7 +10554,7 @@ fn count_ownership_violations(
 
     for proof in result.ownership.iter() {
         let movable = build_movable_set(proof.clone());
-        for (name, _) in movable.iter() {
+        for name in movable.iter() {
             // The proof says this binding should move.
             // Check if the emitted code clones it instead.
             let clone_pattern = format!("{}.clone()", name);

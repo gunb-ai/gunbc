@@ -638,10 +638,11 @@ fn gist_full_pipeline() {
     let gist_files = [
         "dsl/std/types.dag",
         "dsl/std/error_primitives.dag",
-        "dsl/std/errors.dag",
         "dsl/std/resources.dag",
         "dsl/extdeps/cloud/cloud.dag",
+        "dsl/extdeps/cloud/gcp/errors.dag",
         "dsl/extdeps/cloud/gcp/gcp.dag",
+        "dsl/extdeps/github/errors.dag",
         "dsl/extdeps/github/github.dag",
         "dsl/extdeps/github/auth.dag",
         "dsl/extdeps/github/gists.dag",

@@ -61,7 +61,7 @@ This list is **not exhaustive** — see `docs/design-*.md` for the full set. The
 Concretely, the user writes a `.dag` source file — types, functions, services, types-with-effects. The compiler is supposed to:
 
 1. Validate that the dependency graph is structurally coherent (type-checking, termination, no aliased mutation, no cross-target drift, …).
-2. Either **emit** that same graph as source code in a target language (Rust, Python, Go, TypeScript, C++, …), or **evaluate** it directly on a host runtime.
+2. Either **emit** that same graph as source code in a target language (Rust, Python, Go, TypeScript, C++, …), or **evaluate** it directly on a concrete runtime.
 3. Catch correctness violations that mainstream languages miss — complexity bounds, idempotency, cost, effect tracking — by reading the graph structurally rather than by testing.
 
 The ambition (eventually) is **omni-emission**: from one `.dag` source declaring a system (backend + frontend + database schema + the network glue between them), produce source code for each component AND the inter-component marshaling, with type-fidelity by construction. None of that is in scope for *this* doc — but the compiler's architecture must not preclude it.
@@ -103,7 +103,7 @@ The v4 compiler is:
 - **`traverse_node` / `sequence_node` / `bind_outcome`** are `fold_node` invocations with an Outcome-threading algebra; the combinator (not the algebra) interprets `StageDiagnosticPolicy` to thread failures. The algebra is pure-success-accumulator: `fn(R, Edge, R) -> Outcome<R>` (matches the landed `NodeFold<R>.step` shape — third parameter is the already-folded child result `R`, NOT the raw child `Node`; the Outcome wrapping is the only difference from the pure-catamorphism primitive). Single authority for failure handling = combinator. See "Derived combinators" below.
 - **`apply_diff`** is `sequence_outcome(diff.edits, fn(edit, candidate) -> fold_node(candidate, substitute_at(edit.at, edit.replacement)))` — sequential Outcome-bind-fold over the Diff's ordered Edits list, threading the candidate root through, with each Edit applied to the *current intermediate state* via `fold_node` substitution. **Sequential semantics matter**: each later Edit's Path resolves against the post-prior-Edit state, NOT the original root; if any Path fails to resolve in the current candidate, the whole Diff fails-closed (P3, per read/edit pipeline doc requirement). The agent-side mutation surface; composes with `fold_node` + `sequence_outcome`, not parallel to them.
 - **`LawfulRewriteWitness`** (P7, when implemented) is `find_witness` with an algebra-preserving precondition law as the `preservation_predicate`. Different lawful rewrites = different predicates over `find_witness`, not a separate primitive.
-3. **Compile-core has no boundary actions and no global terminal mode.** Graph consumers are **pure data-in / data-out** functions: `ground(ingestion_plan)` produces the grounded graph, `observe(graph, lens_plan)` reads it, `project(graph, projection_plan)` produces artifacts, and `authorize(policy, lens_report, projection_report)` decides terminal release. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` / `ProductionGoal` enum that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/process.dag`, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
+3. **Compile-core has no boundary actions and no global terminal mode.** Graph consumers are **pure data-in / data-out** functions: `ground(ingestion_plan)` produces the grounded graph, `observe(graph, lens_plan)` reads it, `project(graph, projection_plan)` produces artifacts, and `authorize(policy, lens_report, projection_report)` decides terminal release. No implicit text-reading, no implicit text-writing, no implicit "execute," and no public `CompileMode` / `ProductionGoal` enum that chooses among unrelated operations. All real-world I/O — reading source from disk, writing target source to disk, executing on a host, reporting diagnostics to stderr — is **modeled as effects against modeled resources** (`extdeps/file_system.dag` for files, `extdeps/posix.dag`, `extdeps/network.dag`, etc.), composed by *peripheral shims* outside the compile-core surface. The architecture itself doesn't think about text/files/processes; those are orthogonal concerns modeled independently.
 
 Everything else — every "pass," every "stage," every "language-specific" anything — is an **algebra** plugged into `fold_node` or another declared substrate primitive. The compiler knows no specific language code (Rust, Python, even `.dag` itself, beyond an irreducible bootstrap-seed for `dag.dag`); language-specific *data* lives in `LanguageModel` declarations under `extdeps/languages/`.
 
@@ -117,7 +117,7 @@ The doc that follows defines the orthogonal operation surfaces, why each piece i
 
 ## End-to-end I/O — orthogonal operations
 
-> **Text/data separation + I/O via modeled effects (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (`CoreNode`), not text. Text, files, and shell/OS are **orthogonal concepts modeled independently** in `extdeps/` — there's a small shim to ingest text into `CoreNode`, but the compiler core never sees text or files. **The architecturally pure approach:** all real-world I/O is a modeled effect against a modeled resource (file_system.dag, process.dag, network.dag, …), composed by peripheral shims outside the compile-core surface.
+> **Text/data separation + I/O via modeled effects (ratified 2026-05-20, operator-direct).** Compilation operates on **data** (`CoreNode`), not text. Text, files, and shell/OS are **orthogonal concepts modeled independently** in `extdeps/` — there's a small shim to ingest text into `CoreNode`, but the compiler core never sees text or files. **The architecturally pure approach:** all real-world I/O is a modeled effect against a modeled resource (file_system.dag, posix.dag, network.dag, …), composed by peripheral shims outside the compile-core surface.
 
 > **Orthogonality amendment (2026-05-21, operator-direct).** Compilation, lens analysis, artifact projection, and terminal authorization are separate graph consumers. They may consume the same grounded graph and may be orchestrated by one build/session layer, but they are not sub-modes of one another. Do **not** add one universal `SubgraphScope` carrier. The public session shape is a four-phase split: `ground`, `observe`, `project`, `authorize`.
 
@@ -181,7 +181,7 @@ All paths produce `CoreNode`; Node-in operations take it from there. **Translate
 
 P0 + P8 (consequence recomputation + the compiler obeys its own discipline) plus the operator's I/O-as-modeled-effect rule together imply: **there are NO hidden side effects anywhere in the architecture**. Every read, every write, every execute is a modeled effect against a modeled resource, carrying typed dependency edges (P6) and visible to lenses.
 
-This is what makes dry-run work as composition (lens identifies I/O → LawfulRewriteWitness substitutes → eval against mock_host_model). It's also what makes incremental rebuild work (every artifact's provenance is modeled; affected_set walks the typed effect dependencies). It's what makes self-modification safe (the compiler editing its own source goes through modeled `apply_diff`, not implicit file writes).
+This is what makes dry-run work as composition (lens identifies I/O → LawfulRewriteWitness substitutes → eval against a mock runtime). It's also what makes incremental rebuild work (every artifact's provenance is modeled; affected_set walks the typed effect dependencies). It's what makes self-modification safe (the compiler editing its own source goes through modeled `apply_diff`, not implicit file writes).
 
 **The slogan.** *No implicit I/O. Files are not the architecture. Effects are modeled, not assumed.*
 
@@ -207,7 +207,7 @@ All paths produce `CoreNode`; Node-in operations take it from there. This matter
 
 **`LanguageModel`** is a `.dag` model in `extdeps/languages/X.dag` — a fact-bundle declaring X's grammar (bidirectional), primitive types with their facts (width, signedness, range, …), algebra inhabitance (this type inhabits this algebra), sugar dissolutions, binding/scope rules, and version metadata. Resolve/ground/translate consult it for scope rules, inhabitance declarations, and target realization; `ingest_text` consults it for grammar + sugar.
 
-**`HostModel`** is a **distinct substrate type, peer of `LanguageModel`** — both extend a shared `ModelCore` (primitive types, algebra inhabitance, laws, effect / partiality semantics). `HostModel` declares host-side concerns that have no emit-side analog: runtime value representation, primitive operation interpretation, execution semantics, resource / effect boundary. **Ratified Q1** below; full carrier breakdown in "Carrier shapes — `ModelCore` / `LanguageModel` / `HostModel`."
+**Runtime evaluation** uses decomposed abstract runtime carriers in `std/runtime.dag` plus concrete runtime fact-bundles in `extdeps/runtimes/*.dag`. Both language models and concrete runtime bundles consume the shared `ModelCore` (primitive types, algebra inhabitance, laws, effect / partiality semantics). Runtime carriers declare concerns that have no emit-side analog: runtime value representation, primitive operation interpretation, execution semantics, resource / effect boundary. See "Carrier shapes — `ModelCore` / `LanguageModel` / runtime carriers."
 
 Each operation has its own output carrier: `InferredTree` for `ground`, `LensReport` for `observe`, `ProjectionReport` for `project`, and `Validated<ArtifactSet>` for terminal `authorize`. Target source and host results are artifact payloads inside projection reports and authorized artifact sets, not direct file-write authority.
 
@@ -251,11 +251,11 @@ Both source and target languages are `LanguageModel` data passed in as parameter
 
 This is a direct consequence of THESIS's "The derived homomorphism" claim plus [`docs/modeling-discipline.md`](modeling-discipline.md) Practice 10 Row 3, which classifies a hand-written cross-target emitter as "you re-wrote the compiler" — a whole-architecture failure, not a localized smell.
 
-### P2 — Eval is translate-to-host
+### P2 — Eval is translate-to-runtime
 
-Evaluation is structurally the same operation as translation, with the host runtime as the target. The compiler-side machinery (parse, normalize, resolve, ground, then the coercion fold) is shared. Eval differs from translate **only** in the terminal action: execute the resulting structure via the host's interpretation algebra (eval) vs. serialize it via the target's grammar (translate).
+Evaluation is structurally the same operation as translation, with the concrete runtime as the target. The compiler-side machinery (parse, normalize, resolve, ground, then the coercion fold) is shared. Eval differs from translate **only** in the terminal action: execute the resulting structure via the runtime interpretation algebra (eval) vs. serialize it via the target's grammar (translate).
 
-`HostModel` shape is **ratified per Q1**: distinct `HostModel` as a peer of `LanguageModel`, both over shared `ModelCore`.
+Runtime shape is decomposed per the 2026-05-21 option-C supersession: abstract runtime carriers in `std/runtime.dag`, concrete runtime bundles in `extdeps/runtimes/*.dag`, both over shared `ModelCore`.
 
 ### P3 — Lenses are pure readings over graphs
 
@@ -659,7 +659,7 @@ If implementation workers find themselves writing:
 
 The v4 compiler must receive the same structural benefits it provides to user programs. **Compiler stages, language models, lenses, test generation, target models, diagnostics, and glue derivation are themselves modeled as dependency graphs over the same substrate primitives.**
 
-A change to an upstream model — Node shape, grammar productions, `LanguageModel`, `ModelCore`, dependency kind, lens contract, coercion-fold witness shape, or `HostModel` — must produce a `ChangeSet`. The system computes the affected downstream compiler artifacts (via T-21 `affected_set`) and regenerates them where derivable. If a downstream artifact cannot be regenerated from the updated model, the compiler **fails closed** with an explicit diagnostic.
+A change to an upstream model — Node shape, grammar productions, `LanguageModel`, `ModelCore`, dependency kind, lens contract, coercion-fold witness shape, or runtime carrier — must produce a `ChangeSet`. The system computes the affected downstream compiler artifacts (via T-21 `affected_set`) and regenerates them where derivable. If a downstream artifact cannot be regenerated from the updated model, the compiler **fails closed** with an explicit diagnostic.
 
 **No compiler layer may depend on another layer through:**
 - Implicit convention.
@@ -775,7 +775,7 @@ These were primitives in earlier drafts; they are now **derived** from the 5-pri
   ┌───── INGEST LAYER (separable, multiple entry points) ─────┐  ┌──── COMPILE CORE (data → data) ────┐
 
   text ── parse(input_lang) ── normalize ─────┐               ┌────── resolve ── ground ──┬── translate(target_lang) ── serialize(target_lang.grammar) ── target_text
-  (or)                                        ├──> CoreNode ──┤                            └── eval(host_model) ── execute(host)
+  (or)                                        ├──> CoreNode ──┤                            └── eval(runtime) ── execute(runtime)
   programmatic / API ─────────────────────────┤
   (or)                                        │
   query-driven rewrite (e.g. affected_set) ───┤
@@ -795,7 +795,7 @@ Each stage is a fold/traverse over Node (potentially with a higher-order, effect
 | `ground` | COMPILE-CORE | **`InferredTree`** — each Node carries algebra-inhabitance witness + typeshape + the P6 semantic dependency graph. **Canonical-grounding invariant:** ground must produce *exactly one* canonical grounding per Node (with witness), OR an ambiguity diagnostic. Translate never receives an ambiguous source grounding. | substrate's `solve_constraints` primitive + algebra-inhabitance machinery |
 | `translate(target_lang)` | COMPILE-CORE | Target Node tree | optional `LawfulRewriteWitness` step (per P7, for structure-changing lowerings declared by `target_lang` / target runtime); then **the coercion fold** — exact zip-fold over (rewritten canonical grounding, target_lang's closed declared candidate inhabitants) |
 | `serialize(grammar)` | COMPILE-CORE | target source text | target_lang.dag (grammar productions, inverse direction) |
-| `eval(host_model)` | COMPILE-CORE | host Value | host_model's interpretation algebra |
+| `eval(runtime)` | COMPILE-CORE | RuntimeValue | runtime interpretation algebra |
 
 **Carrier shape progression:**
 ```
@@ -867,7 +867,7 @@ The artifact does **NOT** carry:
 
 ### `ModelCore` (shared substrate, factored per ratified Q1)
 
-`ModelCore` is the shared base for both `LanguageModel` and `HostModel`. Declares:
+`ModelCore` is the shared base consumed by both `LanguageModel` and concrete runtime bundles. Declares:
 - **Primitive types** (each a Practice-8 fact-bundle — width, signedness, range, encoding, …).
 - **Algebra inhabitance declarations** (which primitives inhabit which algebras).
 - **Laws / proof obligations** (associativity, commutativity, etc., for use by the coercion fold's preservation checks).
@@ -883,19 +883,19 @@ Declared in `extdeps/languages/X.dag`. In addition to `ModelCore`:
 - **Serialization rules** (the inverse-grammar direction; see Open Q12 for the bidirectional contract).
 - **Version / dialect / edition metadata** (Rust editions, Python versions, C++ standards, TypeScript config; see Open Q13).
 
-### `HostModel` (extends `ModelCore`, ratified Q1a)
+### Runtime carriers (option C)
 
-Structurally a peer of `LanguageModel` over the same `ModelCore`. In addition to `ModelCore`:
-- **Host value representation** (how a substrate primitive is represented at runtime).
-- **Primitive operation interpretation** (Transform → host function call; Branch → host if-expression; Value → host literal allocation).
+Abstract runtime carriers live in `std/runtime.dag`; concrete runtime bundles live in `extdeps/runtimes/*.dag`. In addition to `ModelCore`, a concrete runtime bundle provides:
+- **Value representation** (how a substrate primitive is represented at runtime).
+- **Primitive operation interpretation** (Transform → runtime function call; Branch → runtime branch choice; Value → runtime literal allocation).
 - **Execution semantics** (call/return, allocation, control transfer).
-- **Resource / effect boundary** (FFI, host exceptions, async/concurrency model, identity/reference semantics).
+- **Resource / effect boundary** (FFI, exceptions, async/concurrency model, identity/reference semantics).
 
-The shared `ModelCore` ensures that algebra-inhabitance and primitive-type declarations are consistent between language and host targets. Host-side concerns (allocation, runtime values, resource limits) are categorically different from emit-side concerns (grammar, serialization) and live only on `HostModel`.
+The shared `ModelCore` ensures that algebra-inhabitance and primitive-type declarations are consistent between language and runtime targets. Runtime-side concerns (allocation, runtime values, resource limits) are categorically different from emit-side concerns (grammar, serialization) and live in the runtime carrier plus concrete runtime extdep, not in `LanguageModel`.
 
 ### `TargetSource` / `Value`
 
-Terminal output. `TargetSource` is target-grammar-serialized text + diagnostics. `Value` is the host's runtime representation + diagnostics.
+Terminal output. `TargetSource` is target-grammar-serialized text + diagnostics. `RuntimeValue` is the runtime representation + diagnostics.
 
 ---
 
@@ -963,10 +963,10 @@ Per P0 + P3, **every downstream artifact is a projection of `InferredTree`**, bu
 | Consumer | Producer / Reading | Output | Notes |
 |---|---|---|---|
 | Target source code | projection producer: `translate(target_lang)` + `serialize` | `TargetSource` artifact | The compile direction uses the homomorphism (P1) inside a projection producer; it is not a lens reading. |
-| Host evaluation | projection producer: `eval(host_model)` | `Value` / eval artifact | Same homomorphism, terminal action = execute (P2). |
+| Runtime evaluation | projection producer: `eval(runtime)` | `RuntimeValue` / eval artifact | Same homomorphism, terminal action = execute (P2). |
 | Dimensional facts (cost / complexity / ownership / parallelism / termination / idempotency / effect) | lens family | `DimensionFact` readings | All consume `InferredTree`; produce side-channel readings (P3 commitment 3). |
 | **Test cases** | projection producer fed by test-claim readings | `TestClaim` / `TestCase` artifacts | Test generation may consult lens readings, but artifact materialization belongs to `project`, not to the lens read itself. Tests are NOT the source of truth for the model; they are behavioral probes generated FROM the model. See "Testgen as a projection family" below. |
-| **Dry-run / simulated execution** | projection producer: `io_boundary` reading + `LawfulRewriteWitness` substitution + `eval(mock_host_model)` | `Value` / dry-run artifact | Dry-run is composition of graph reading, lawful rewrite, and eval projection. It is not a new compiler primitive and not a lens-owned artifact. |
+| **Dry-run / simulated execution** | projection producer: `io_boundary` reading + `LawfulRewriteWitness` substitution + `eval(mock_runtime)` | `RuntimeValue` / dry-run artifact | Dry-run is composition of graph reading, lawful rewrite, and eval projection. It is not a new compiler primitive and not a lens-owned artifact. |
 | Inter-module glue (REST client/server, marshaling, schemas) | projection producer over shared transport model (P4) | per-module `TargetSource` + glue artifacts | The omni-stack story. Cross-link to P4. |
 | Migration / API-compat plans | projection producer using diff-over-trees + affected-set fold | structural change report + per-site remediation | Change-consequence story; uses `affected_set` (T-21). |
 | Affected-rebuild set | `affected_set(dag, Diff)` reading | `Witness<ReExecFrontier>` | Incrementality reading; consumed by projection regeneration. |
@@ -1028,26 +1028,26 @@ All profiles share the **same substrate**:
 
 1. **A lens identifies the I/O boundaries.** `io_boundary_lens(InferredTree) → Witness<List<IOBoundary>>` — fold over the tree, find every Node whose inhabitance involves an effectful primitive (network call, DB write, file I/O, time, randomness, host syscall). The lens reads `EffectDependsOn` / `ResourceDependsOn` edges from P6 to determine what counts as I/O.
 2. **A `LawfulRewriteWitness` substitutes mock stubs.** The substitution is target-declared: `dry_run.dag` (a runtime/policy model) declares "for each I/O primitive in the source's effect algebra, the rewrite produces a mock-host call that records-and-returns a canned value." The rewrite is witnessed by a "this preserves observable semantics modulo committed I/O" law per P7.
-3. **Eval with a mock host model.** `eval(mock_host_model)` runs the rewritten tree. The mock host's interpretation of the substituted operations records and returns mock values; nothing actually hits the real I/O surface.
+3. **Eval with a mock runtime.** `eval(mock_runtime)` runs the rewritten tree. The mock runtime's interpretation of the substituted operations records and returns mock values; nothing actually hits the real I/O surface.
 
 ```
 InferredTree
   ── io_boundary_lens(Introspect) ──> List<IOBoundary>
   ── LawfulRewriteWitness(dry_run substitution) ──> InferredTree' (with stubs)
-  ── eval(mock_host_model) ──> Value + recorded_io_log
+  ── eval(mock_runtime) ──> RuntimeValue + recorded_io_log
 ```
 
 No new compiler primitive needed. Dry-run is a **projection over graph readings**: a lens identifies, rewrite substitutes, eval runs against a different host.
 
 **The operator's intuition was right** — the actual interception happens via codegen-style substitution (the `LawfulRewriteWitness` produces an InferredTree with stub nodes where the I/O primitives were), not "the lens itself intercepts at runtime." Lenses are pure folds; they cannot intercept execution. But they CAN identify what needs intercepting; a rewrite witness does the substitution; eval runs the result.
 
-**Variations** (different lens invocations / different mock_host_model):
+**Variations** (different lens invocations / different mock runtime):
 - `dry_run.record` — execute, log every would-be I/O, return mock results.
 - `dry_run.assert` — execute against pre-declared expected I/O sequence; diagnostic if mismatch.
 - `dry_run.replay` — execute with prior I/O log as inputs (deterministic replay).
 - `dry_run.fuzz` — execute with random / boundary mock values; collect outcomes.
 
-Each is a different mock_host_model + optionally different lens for what counts as I/O (e.g., only network I/O vs all I/O). The compiler core machinery is unchanged.
+Each is a different mock runtime + optionally different lens for what counts as I/O (e.g., only network I/O vs all I/O). The compiler core machinery is unchanged.
 
 ### How tests and dry-run compose
 
@@ -1227,10 +1227,10 @@ Rust::Fn {
 fn add(x: i32, y: i32) -> i32 { x + y }
 ```
 
-**OR Stage 5b — `eval(host_model)` (T-22)** would, instead of translating to Rust, walk the InferredTree with the host's interpretation algebra:
-- `Arrow` becomes a host closure.
-- `std::int::add` becomes the host's runtime add.
-- Calling `add(2, 3)` produces `Value::Int(5)`.
+**OR Stage 5b — `eval(runtime)` (T-22)** would, instead of translating to Rust, walk the InferredTree with the runtime interpretation algebra:
+- `Arrow` becomes a runtime closure.
+- `std::int::add` becomes the runtime add.
+- Calling `add(2, 3)` produces a `RuntimeValue`.
 
 **Failure modes (fail-closed at every stage):**
 - `parse` fails → text doesn't match grammar → `Diagnostic(SyntaxError, locus)`.
@@ -1270,12 +1270,12 @@ The compiler scaffolds in `src/v4/compiler/` were authored across several ratifi
 | Scaffold | Current tree state | This doc's ratified contract | Status / migration |
 |---|---|---|---|
 | `00_compile.dag` `validate_then_compile` | `validate_then_compile(source, input_lang, lenses, mode) -> Outcome<Validated<CompileOutput>>`; manual TestClaims assert empty-lens bypass and rejecting-lens blocks. | Session terminal: `ground(IngestionPlan) -> observe -> project(ProjectionPlan) -> authorize`, with `authorize(...) -> Outcome<Validated<ArtifactSet>>`. Lens readings feed policy, not compile-core. | **Conflict in ownership/framing.** Keep `Validated<T>` as terminal-policy carrier, but move ownership out of compile-core and replace scalar language/mode inputs with `IngestionPlan`, `LensPlan` / `LensReport`, and `ProjectionPlan`. |
-| `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { host_interp }`, passed to `compile` and `validate_then_compile`. | Projection registry: `ProjectionRequest { producer: ProjectionProducerRef, subject, params, requirement }`. No closed compile/production enum. | **Conflict.** Split compile-core from projection planning; replace `CompileMode` with projection requests in the session layer. |
+| `00_compile.dag` `CompileMode` | `CompileMode = TranslateTo { target } | Eval { runtime }`, passed to `compile` and `validate_then_compile`. | Projection registry: `ProjectionRequest { producer: ProjectionProducerRef, subject, params, requirement }`. No closed compile/production enum. | **Conflict.** Split compile-core from projection planning; replace `CompileMode` with projection requests in the session layer. |
 | `00_compile.dag` legacy ingest | `Source = String` survives only for `compile_ingest_staging`. | Text is a peripheral `ingest_text` shim producing `CoreNode`; `ground(IngestionPlan)` consumes that input and returns the grounded graph consumed by lenses and projections. | **Staged.** Dissolve when `ingest_text` lands as a peripheral shim. |
 | `04_infer.dag` | No `v4.lens.*` import. `InferredFacts` carries `resolved_type`, `inhabits`, `descent`, and `canonical`. | No lens import in compiler core (P3 commitment 4). Cost and other dimensions are lens outputs over `InferredTree`, not infer facts. | **Lens-import violation resolved.** Keep this invariant: compiler core must not name a specific lens. |
 | `04_infer.dag` | `InferredFacts.canonical` carries a `CanonicalGroundingWitness`; the full P6 semantic dependency graph is not yet present on `InferredTree`. | Must produce *exactly one* canonical grounding per Node + the full P6 semantic dependency graph (`BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`) | Canonical witness carrier is staged; finish producer semantics and add the P6 dependency graph facts. Surface ambiguity as a diagnostic in ground; translate never receives ambiguous source. |
 | `05_emit.dag` | `emit = serialize_target ∘ translate`; `serialize_source_for_emitted` is a fail-closed equality/stub pending inverse grammar walk. | Translate by exact coercion fold, then serialize via target grammar. P7 `LawfulRewriteWitness` is the future extension point for structure-changing lowerings. | **Staged, shape aligned.** Replace the emitted-tree equality stub with grammar-as-bidirectional-data serialization when C5 inverse grammar walk lands. |
-| `05_eval.dag` | Standalone "primary execution path" with TestClaim runner | `eval(host_model)` — structurally `translate-to-host` per P2; differs from translate only in the terminal action (execute, not serialize) | Share the homomorphism mechanic with translate. Eval-specific machinery is only the host-interpretation algebra + the terminal `execute` action. |
+| `05_eval.dag` | Standalone "primary execution path" with TestClaim runner | `eval(runtime)` — structurally `translate-to-runtime` per P2; differs from translate only in the terminal action (execute, not serialize) | Share the homomorphism mechanic with translate. Eval-specific machinery is only the runtime interpretation algebra + the terminal `execute` action. |
 | `lens/application.dag` | `apply_lens(lens, SectionRef, Introspect/Enforce)` is framed as the only advisory-to-fail-closed bridge; `SectionRef = DeclarationScope | NodeScope`. | `observe(inferred, LensPlan) -> LensReport`; lens applications are data-producing reads. Authorization owns gating. | **Conflict.** Reframe `apply_lens` as graph read; move `Enforce` semantics to terminal policy. |
 | T-12/T-13 lens family | Cost/complexity headers already say `Node -> Witness<...>`; effect/parallelism/idempotency implementations currently take `InferredTree` plus dependency lists in helper functions. | Lens consumers take the grounded graph (`InferredTree` / future `InferredGraph`) and return typed readings. | **Mixed.** Preserve graph-read direction; distinguish proof witnesses from lens readings. |
 | `affected_set.dag` / TASKS prose | Several carriers and comments name changed "subgraphs." | Shared low-level `RegionRef`; refined `LensScope` / `ProjectionSubject`; no universal `SubgraphScope`. | **Terminology/audit follow-up.** Avoid introducing a universal subgraph carrier; existing names are local frontier vocabulary until reshaped. |
@@ -1312,7 +1312,7 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 6. **Prefer type-level invariants.** For checks like unused-parameter validity that can become refinements on `InferredTree` or earlier carriers, model the invariant directly. Keep measurement/report concerns as lens readings.
 
 **Out of scope for MVP** (deferred to follow-on waves; explicit defer with trigger):
-- **Eval / host interpretation** — `std/host.dag` + W-T-22-impl + W-EvalShim. Defer trigger: after MVP lands, when first end-to-end execution case (not codegen) is needed.
+- **Eval / runtime interpretation** — `std/runtime.dag` + `extdeps/runtimes/*.dag` + W-T-22-impl + W-EvalShim. Defer trigger: after MVP lands, when first end-to-end execution case (not codegen) is needed.
 - **File-to-file shim** — `extdeps/file_system.dag` refresh + W-EmitShim. Defer trigger: when MVP's `ground(test_ingestion_plan) -> project(test_graph, rust_projection_plan) -> authorize(...)` round-trips clean, file-to-file convenience is a small follow-on.
 - **Multi-target translate** — Python/Go/TypeScript/C++ targets. Defer trigger: after Rust MVP, language-by-language follow-on.
 - **Lawful rewrites + structure-changing lowerings** — `LawfulRewriteWitness` substrate (P7). Defer trigger: first MapReduce / CUDA / parallel-map case.
@@ -1337,9 +1337,9 @@ If a worker encounters a deeper scaffold-vs-design contradiction not catalogued 
 
 **Amended.** Lenses are pure readings over `Node`, sharing the `fold_node` primitive, with multi-lens dependency-management. Six commitments per P3 above; the old B-style/C-style wrapper question is superseded because caller policy, not compile-core, owns enforcement. The remaining substrate question is **Ratified Q6 — multi-lens execution derives from `fold_node` with a composed-lens-algebra** (below).
 
-### Ratified Q1 — `HostModel` is `Q1a + factored ModelCore` (2026-05-20)
+### Ratified Q1 supersession — option C runtime split (2026-05-21)
 
-**Resolved** (reviewer-recommended, operator-direct). A shared `ModelCore` substrate carries primitive types, algebra inhabitance, laws, effect semantics, partiality. `LanguageModel` and `HostModel` both extend it (see "Carrier shapes — `ModelCore` / `LanguageModel` / `HostModel`" above). Host-side concerns (allocation, execution model, runtime values, resource limits) are categorically different from emit-side concerns (grammar, serialization) and live only on `HostModel`; the `VoidGrammar` variant (Q1b) conflated them. Q1c ("eval = translate-to-machine-code + execute") hides too much (host execution involves real process state, runtime values, failure modes) and was rejected.
+**Resolved** (operator-direct). A shared `ModelCore` substrate carries primitive types, algebra inhabitance, laws, effect semantics, partiality. `LanguageModel` consumes it for grammar/serialization target modeling. Runtime evaluation consumes decomposed abstract carriers from `std/runtime.dag`, while concrete runtime fact-bundles live under `extdeps/runtimes/*.dag`. Runtime-side concerns (allocation, execution model, runtime values, resource limits) remain categorically different from emit-side concerns (grammar, serialization), but there is no single substrate-level runtime umbrella carrier. Q1c ("eval = translate-to-machine-code + execute") remains rejected because direct evaluation involves runtime values, process state, and failure modes.
 
 ### Ratified Q2 — `InferredTree` dimensional facts (2026-05-20)
 
@@ -1500,7 +1500,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **T-8 / T-9 / T-10 / T-22** | Task IDs in `src/v4/TASKS.md`. T-8 = normalize+resolve; T-9 = ground (infer); T-10 = translate; T-22 = eval. |
 | **D2 reversal** | A 2026-05-17 operator-ratified design course correction (recorded in `src/v4/TASKS.md`) that reshaped how language fact-bundles and the coercion fold are framed. The current "coercion fold (not search)" framing is post-D2. |
 | **fail-closed** | A discipline (Practice 1): every failure path produces a structured Diagnostic; no silent `None`s or panics. |
-| **`ModelCore`** | The shared substrate of `LanguageModel` and `HostModel` (per Ratified Q1) — primitive types, algebra inhabitance, laws, effect semantics, partiality. |
+| **`ModelCore`** | The shared substrate consumed by `LanguageModel` and concrete runtime bundles — primitive types, algebra inhabitance, laws, effect semantics, partiality. |
 | **`DependencyKind` / `DependencyView`** | Per P6 (sharpened 2026-05-20): `DependencyKind` is the **classification taxonomy** the dependency lens maps substrate usage patterns into; `DependencyView` is the **lens-output tuple** `(source, dependent, kind, usage_site)` emitted by the `dependency_lens` fold over the substrate. The `usage_site: Node` field is a **reference** to the substrate Node where the usage occurred (the import statement Node, the field-ref Node, the function-call Node — whichever the lens classified) — it carries the substrate's existing fact forward via Node reference per Practice 3 (Facts Flow Forward), enabling downstream consumers (diagnostics, `affected_set` provenance, T-21 frontier receipts) to cite the substrate authority. **NOT** an authored `DependencyEdge` carrier and **NOT** a copy of substrate facts into a parallel payload — the substrate's usage graph IS the dependency graph; the lens classifies and emits references back to substrate, never duplicates. Kinds (program-tier): `Contains`, `BindsTo`, `TypeDependsOn`, `DataDependsOn`, `EffectDependsOn`, `ResourceDependsOn`, `ModuleDependsOn`, `BarrierBefore`, `PlacementDependsOn`. Kinds (artifact-tier): `ModelDependsOn`, `ProjectionDependsOn`, `GeneratedFrom`, `VerifiedBy`. Kinds (bootstrap-tier): `PromotedBy`, `BootstrapDependsOn`. |
 | **synthesized attribute** | A fact computed bottom-up from a Node's children (e.g., typeshape, content_hash). Naturally fits `fold_node`. |
 | **inherited attribute** | A fact propagated top-down from a Node's parent / context (e.g., scope environment in resolve). Requires a higher-order algebra carrier per P5. |
@@ -1526,7 +1526,7 @@ Defer trigger: first attempt to compile against a non-current version (e.g., Pyt
 | **self-edit / stage0** | The compiler editing its own source via `apply_diff(self, Diff)`. Self-hosting (stage0 regeneration) is `project(self_graph, rust_stage0_projection_plan)` yielding a `ProjectionReport`, then `authorize(...)` + the P9 promotion gate before the generated artifact can replace the active seed — no special compile mode. See "Self-modification" section. |
 | **projection** | Per P0 + P3, every downstream artifact (tests, glue, schemas, migration plans, docs, dry-run results) is a projection of `InferredTree` computed by a projection producer and reported through `ProjectionReport`. Lens readings may feed projection producers, but they do not own artifact materialization. |
 | **testgen** | A projection family that produces `TestClaim` / `TestCase` artifacts from `InferredTree`, optionally consuming lens readings. Historical location/name predates the projection split. Tests are projections of the model, NOT the source of truth for the model. |
-| **dry-run** | A projection over graph readings: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_host_model)` runs the substituted tree. No new compiler primitive; composes lens reading + rewrite + eval projection. Variations: record, assert, replay, fuzz. |
+| **dry-run** | A projection over graph readings: `io_boundary_lens` identifies the I/O sites; a `LawfulRewriteWitness` substitutes mock stubs; `eval(mock_runtime)` runs the substituted tree. No new compiler primitive; composes lens reading + rewrite + eval projection. Variations: record, assert, replay, fuzz. |
 | **peripheral shim** | A user-facing convenience that composes modeled effects with session phases. Examples: `ingest_text` (file_read + parse + normalize), `compile_file_to_file` (file_read + ingest_text + ground + observe + project + authorize + file_write). Shims are NOT substrate primitives — they live outside the architecture's load-bearing surface. |
 | **modeled effect** | A real-world I/O operation declared as substrate data in `extdeps/` (file_read, file_write, network call, process spawn, …) — carries `EffectDependsOn` / `ResourceDependsOn` edges per P6; visible to lenses; substitutable by `LawfulRewriteWitness` for dry-run. There are no implicit side effects in the architecture. |
 | **`TestClaimProjection`** | Projection layer 1 of testgen — produces abstract behavioral claims (roundtrip / refinement-boundary / algebra-law / protocol-compatibility / effect-idempotency) as `TestClaim` Witnesses. |

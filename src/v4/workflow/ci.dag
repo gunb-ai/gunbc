@@ -1,20 +1,43 @@
 // src/v4/workflow/ci.dag
-// Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; ci.yml projection deferred.
-// Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline
-// Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.workflow.bootstrap
-// Status: filled — declarative core + eager well-formedness; structural v2 gate only.
+// Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection; ci.yml projection deferred.
+// Owns: CiCommand, CiJob, CiGate, CiPipeline, ci_pipeline_well_formed, ci_pipeline, ci_select_from_affected_set, ci_select_from_rerun_nodes, test_claim_in_rerun_frontier
+// Consumes: v4.lens.registry, v4.lens.affected_set, v4.std.change, v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.std.verification, v4.workflow.bootstrap
+// Status: filled — declarative core + eager well-formedness + T-21/T-24 affected-set TestClaim selection (structural v2 gate only).
 
 module v4.workflow.ci
 
 
-import v4.std.node { Symbol }
+import v4.lens.registry {
+  Complexity,
+  Cost,
+  EffectEnumeration,
+  Idempotency,
+  LensIdV0,
+  Parallelism,
+  UnusedParameters,
+  lens_registry_ids_resolve
+}
+import v4.lens.affected_set {
+  RerunNodeSet,
+  RerunNodeSetFailClosed,
+  RerunNodeSetProduced,
+  affected_set_rerun_nodes
+}
+import v4.std.change { AffectedSet }
+import v4.std.node { Node, Symbol }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.algebra {
   count_equal,
   count_where,
+  filter,
   for_all,
   length,
   unique
+}
+import v4.std.verification {
+  TestClaim,
+  test_claim_ci_selection_fail_closed,
+  test_claim_evaluation_touches_rerun_frontier
 }
 import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
 
@@ -24,6 +47,7 @@ type CiCommand
   = LintCommand
   | TestCommand
   | IgnoredTestCommand { test_name: String }
+  | LensCiCommand { required_lenses: List<LensIdV0> }
   | BootstrapStageCompile { produces: Symbol }
 
 type CiJob {
@@ -35,16 +59,46 @@ type CiJob {
 type CiGate {
   id: Symbol
   job: Symbol
+  run_policy: CiGateRunPolicy
 }
+
+// 🟡 coproduct dissolution — feature:project-github-actions-run-policy (docs/r3-program-plan.md gates #98/#100) — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `CiGate.run_policy` directly and this interim live-projection policy carrier is deleted; forbidden: adding GitHub Actions-only gate conditions outside `CiGate.run_policy`.
+type CiGateRunPolicy
+  = Always
+  | RequiresJobAttempt { job: Symbol }
 
 type CiPipeline {
   jobs: List<CiJob>
   gates: List<CiGate>
 }
 
+// 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
+type LensCiLiveWorkflowSignal {
+  smoke_step_name: String
+  semantic_step_name: String
+  semantic_target: String
+}
+
 
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
+data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data structural_v2_compile: Symbol = structural_v2_compile
+data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
+
+data lens_ci_required_lenses: List<LensIdV0> = [
+  Complexity,
+  Cost,
+  Parallelism,
+  EffectEnumeration,
+  Idempotency,
+  UnusedParameters
+]
+
+data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
+  smoke_step_name: "Lens-CI registry activation smoke"
+  semantic_step_name: "Lens-CI registry semantic v4 compile (rust target)"
+  semantic_target: "rust"
+}
 
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
@@ -52,10 +106,24 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: v2_compile_src_v4,
       command: BootstrapStageCompile { produces: v4_stage0_binary },
       needs: []
+    },
+    CiJob {
+      id: lens_ci_registry_execution,
+      command: LensCiCommand { required_lenses: lens_ci_required_lenses },
+      needs: [v2_compile_src_v4]
     }
   ],
   gates: [
-    CiGate { id: structural_v2_compile, job: v2_compile_src_v4 }
+    CiGate {
+      id: structural_v2_compile,
+      job: v2_compile_src_v4,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
+    },
+    CiGate {
+      id: lens_ci_registry_signal,
+      job: lens_ci_registry_execution,
+      run_policy: Always
+    }
   ]
 })
 
@@ -93,6 +161,15 @@ fn ci_gate_job_ids(gates: List<CiGate>) -> List<Symbol> {
   })
 }
 
+fn ci_gate_run_policy_job_ids(gates: List<CiGate>) -> List<Symbol> {
+  fold(gates, init: [], f: fn(acc, g) {
+    match g.run_policy {
+      Always => acc
+      RequiresJobAttempt { job } => concat([job], acc)
+    }
+  })
+}
+
 fn ci_member(s: Symbol, ids: List<Symbol>) -> Bool {
   count_equal(xs: ids, item: s, eq: fn(left, right) { left == right }) != 0
 }
@@ -119,6 +196,12 @@ fn ci_all_needs_resolve(jobs: List<CiJob>) -> Bool {
 
 fn ci_all_gate_jobs_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
   for_all(xs: ci_gate_job_ids(gates: gates), predicate: fn(job_sym) {
+    ci_symbol_resolves(s: job_sym, jobs: jobs)
+  })
+}
+
+fn ci_all_gate_run_policies_resolve(gates: List<CiGate>, jobs: List<CiJob>) -> Bool {
+  for_all(xs: ci_gate_run_policy_job_ids(gates: gates), predicate: fn(job_sym) {
     ci_symbol_resolves(s: job_sym, jobs: jobs)
   })
 }
@@ -161,6 +244,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     LintCommand => true
     TestCommand => true
     IgnoredTestCommand { test_name: _ } => true
+    LensCiCommand { required_lenses } => lens_registry_ids_resolve(lens_ids: required_lenses)
     BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
   }
 }
@@ -176,14 +260,18 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
     if ci_all_gate_ids_unique(gates: p.gates) {
       if ci_all_needs_resolve(jobs: p.jobs) {
         if ci_all_gate_jobs_resolve(gates: p.gates, jobs: p.jobs) {
-          if ci_acyclic(jobs: p.jobs) {
-            if ci_all_commands_authority_ok(jobs: p.jobs) {
-              Accepted { value: p, diagnostics: None }
+          if ci_all_gate_run_policies_resolve(gates: p.gates, jobs: p.jobs) {
+            if ci_acyclic(jobs: p.jobs) {
+              if ci_all_commands_authority_ok(jobs: p.jobs) {
+                Accepted { value: p, diagnostics: None }
+              } else {
+                Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
+              }
             } else {
-              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation)) }
+              Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle)) }
             }
           } else {
-            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dependency_cycle)) }
+            Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference)) }
           }
         } else {
           Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_dangling_reference)) }
@@ -197,4 +285,32 @@ fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: ci_diagnostic(reason: ci_duplicate_job_id)) }
   }
+}
+
+
+fn test_claim_in_rerun_frontier(claim: TestClaim, frontier: List<Node>) -> Bool {
+  test_claim_evaluation_touches_rerun_frontier(c: claim, frontier: frontier)
+}
+
+
+fn ci_select_from_rerun_nodes(roster: List<TestClaim>, rerun: RerunNodeSet) -> List<TestClaim> {
+  match rerun {
+    RerunNodeSetProduced { nodes: nodes } =>
+      filter(
+        xs: roster,
+        predicate: fn(claim) {
+          test_claim_ci_selection_fail_closed(c: claim)
+            || test_claim_in_rerun_frontier(claim: claim, frontier: nodes)
+        }
+      )
+    RerunNodeSetFailClosed { evidence: _ } => roster
+  }
+}
+
+
+fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -> List<TestClaim> {
+  ci_select_from_rerun_nodes(
+    roster: roster,
+    rerun: affected_set_rerun_nodes(affected_set_value: affected)
+  )
 }

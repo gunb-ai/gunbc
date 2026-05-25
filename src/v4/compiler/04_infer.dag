@@ -2,7 +2,7 @@
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
 // Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node.
 // Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
-// Status: Wave-3-A T-9 — staged fail-closed: descent Violates per node before solve_constraints; Holds path wires solve_constraints → find_witness(UniqueOnly) + AlgebraRef bridge (live once cardinality propagation lands).
+// Status: T-9 modeled — coercion substrate in std/coercion.dag.
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
 
@@ -10,19 +10,22 @@ module v4.compiler.infer
 
 
 import v4.compiler.resolve { ResolvedTree }
-import v4.std.cardinality { TerminationProof }
+import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { List, Map }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
   ConstraintGraph,
   ConstraintSolvePolicy,
+  constraint_property_being_canonical,
+  constraint_property_candidate_set_closedness,
   solve_constraints
 }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  Locus,
+  node_locus,
   Outcome,
   Unavailable,
   Accepted,
@@ -34,6 +37,7 @@ import v4.std.diagnostic {
   outcome_rejected,
   rejected_with_pending
 }
+import v4.std.logic { Bool }
 import v4.std.node {
   Edge,
   Node,
@@ -45,14 +49,13 @@ import v4.std.node {
 import v4.std.witness { Holds, Violates, Witness }
 
 
-// RULING-1: needs-more-work — typed bridge until algebra inhabitance authority lands.
+// AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
   algebra: Node
   witness: Node
 }
 
 
-// RULING-1: needs-more-work — inhabitance coordinates remain T-9 bridged.
 type InferredFacts {
   resolved_type: Node
   inhabits: AlgebraRef
@@ -61,7 +64,6 @@ type InferredFacts {
 }
 
 
-// RULING-1: needs-more-work — per-node fact table shape is present; producer semantics are T-9.
 type InferredTree {
   root: Node
   facts: Map<Node, InferredFacts>
@@ -74,6 +76,27 @@ type InferredFactsEntry {
 }
 
 
+fn inferred_facts_resolved_type_matches(
+  facts: InferredFacts,
+  candidate_type: Node
+) -> Bool {
+  candidate_type == facts.resolved_type
+}
+
+
+fn inferred_facts_inhabitance_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.inhabits.witness == facts.resolved_type)
+    && (facts.inhabits.algebra == facts.canonical.structural.evidence)
+}
+
+
+fn inferred_facts_canonical_well_grounded(facts: InferredFacts) -> Bool {
+  (facts.canonical.structural.property == constraint_property_being_canonical)
+    && (facts.canonical.closedness.property == constraint_property_candidate_set_closedness)
+    && (facts.canonical.closedness.evidence == facts.resolved_type)
+}
+
+
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
@@ -82,32 +105,36 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_facts_lookup_miss,
-    at: NodeLocus { node: key },
+    at: node_locus(node: key),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 fn infer_canonical_grounding_incoherent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: infer_canonical_grounding_incoherent,
-    at: NodeLocus { node: node },
+    at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 
-fn infer_descent_not_derived_diagnostic(n: Node) -> Diagnostic {
+fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: infer_descent_not_derived,
-    at: NodeLocus { node: n },
+    at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 
-// 🟡 coproduct dissolution — scaffold:T-9-descent-bridge · dissolve-on: cardinality propagation derives TerminationProof per node.
+// SPI-3: infer owns the reason symbol; substrate/cardinality owns the failing locus (fold preserves child Violates).
 fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
-  Violates {
-    diagnostic: infer_descent_not_derived_diagnostic(n: n)
+  match termination_proof_witness_for_node(n: n) {
+    Holds { value: proof } => Holds { value: proof }
+    Violates { diagnostic: upstream } =>
+      Violates {
+        diagnostic: infer_descent_not_derived_diagnostic(at: upstream.at)
+      }
   }
 }
 

@@ -14,9 +14,9 @@ import v4.std.diagnostic {
   ByteRange,
   Diagnostic,
   ExternalContractUnknown,
-  NodeLocus,
+  node_locus,
   Outcome,
-  PortLocus,
+  port_locus,
   Rejected,
   Suggested,
   Textual,
@@ -26,7 +26,7 @@ import v4.std.diagnostic {
   diagnostics_singleton
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
-import v4.std.verification {T19ManualAnchorAbsent,
+import v4.std.verification {ManualAnchorAbsent,
   TestClaim,
   TestClassification,
   Tier3,
@@ -34,7 +34,9 @@ import v4.std.verification {T19ManualAnchorAbsent,
   CompilesClaim,
   DiagnosticClaim,
   EqualsClaim,
-  RoundTripClaim}
+  RoundTripClaim,
+  manual_claim_anchor
+}
 
 
 data correction_bad_complexity_symbol: Symbol = correction_bad_complexity_symbol
@@ -112,12 +114,12 @@ data falsification_user_boundary_without_reason: Node = atom_node(s: correction_
 
 data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticClaim {
   label: "complexity diagnostic suggests structurally correct replacement",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_complexity_diagnostic_without_correct_code,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_complexity_reason,
-        at: NodeLocus { node: falsification_complexity_diagnostic_without_correct_code },
+        at: node_locus(node: falsification_complexity_diagnostic_without_correct_code),
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
@@ -127,12 +129,12 @@ data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticCl
 
 data claim_transport_diagnostic_suggests_shared_contract: TestClaim = DiagnosticClaim {
   label: "transport diagnostic suggests shared declaration replacement",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_transport_diagnostic_without_correct_code,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_transport_reason,
-        at: NodeLocus { node: falsification_transport_diagnostic_without_correct_code },
+        at: node_locus(node: falsification_transport_diagnostic_without_correct_code),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
@@ -142,12 +144,12 @@ data claim_transport_diagnostic_suggests_shared_contract: TestClaim = Diagnostic
 
 data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "ambiguous boundary diagnostic carries explicit unavailable correction reason",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_ambiguous_boundary_without_unavailable_reason,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_ambiguous_boundary_reason,
-        at: NodeLocus { node: falsification_ambiguous_boundary_without_unavailable_reason },
+        at: node_locus(node: falsification_ambiguous_boundary_without_unavailable_reason),
         correction: Unavailable { reason: AmbiguousIntent }
       }
     ),
@@ -157,7 +159,7 @@ data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim =
 
 data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries whole-file locus and suggested correction",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_textual_whole_file_without_locus,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -172,7 +174,7 @@ data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticCl
 
 data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries byte-range locus and suggested correction",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_textual_byte_range_without_locus,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
@@ -187,12 +189,12 @@ data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticCl
 
 data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
   label: "port diagnostic carries port locus and suggested correction",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_port_diagnostic_without_locus,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_port_reason,
-        at: PortLocus { port: correction_port_symbol },
+        at: port_locus(port: correction_port_symbol),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
@@ -202,12 +204,12 @@ data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
 
 data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "external contract diagnostic carries explicit unavailable correction reason",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_external_contract_without_reason,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_external_contract_reason,
-        at: NodeLocus { node: falsification_external_contract_without_reason },
+        at: node_locus(node: falsification_external_contract_without_reason),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ),
@@ -217,12 +219,12 @@ data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = 
 
 data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
   label: "user boundary diagnostic carries explicit unavailable correction reason",
-  t19_anchor: T19ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_user_boundary_without_reason,
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: correction_user_boundary_reason,
-        at: NodeLocus { node: falsification_user_boundary_without_reason },
+        at: node_locus(node: falsification_user_boundary_without_reason),
         correction: Unavailable { reason: UserInputBoundary }
       }
     ),

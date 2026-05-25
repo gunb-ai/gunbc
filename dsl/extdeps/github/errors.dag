@@ -1,0 +1,16 @@
+// extdeps/github/errors.dag -- GitHub REST API error envelope shape.
+//
+// Spec: https://docs.github.com/en/rest/overview/resources-in-the-rest-api#client-errors
+// API version: 2022-11-28 (X-GitHub-Api-Version header)
+
+module extdeps.github.errors
+
+type GitHubErrorShape {
+  message: String
+  documentation_url: String?
+}
+
+data github_error_example: GitHubErrorShape = {
+  message: "Not Found",
+  documentation_url: "https://docs.github.com/rest"
+}

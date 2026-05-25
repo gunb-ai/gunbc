@@ -51,7 +51,7 @@ use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::TypeVariable { .. } => true,
+        InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
@@ -1200,7 +1200,7 @@ pub fn resolve_optional_node(
                     module_name,
                 )]),
             }),
-            InferredNode::TypeVariable { .. } => Rc::new(NodeResolveResult {
+            InferredNode::TypeVariable { id: _, .. } => Rc::new(NodeResolveResult {
                 resolved: unit_type(),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1387,13 +1387,13 @@ pub fn resolve_string_part(
     module_name: String,
 ) -> Rc<StringPartResolveResult> {
     match (*part).clone() {
-        StringPart::Text { value, .. } => Rc::new(StringPartResolveResult {
+        StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
             part: Rc::new(StringPart::Text {
                 value: value.clone(),
             }),
             diagnostics: Rc::new(vec![]),
         }),
-        StringPart::Interpolation { expr, .. } => {
+        StringPart::Interpolation { expr: expr, .. } => {
             let expr_result = resolve_expr_types(&expr, &env, module_name);
             let resolved_expr = expr_result.expr.clone();
             let expr_diags = expr_result.diagnostics.clone();
@@ -1509,7 +1509,7 @@ pub fn resolve_expr_types(
 ) -> Rc<ExprResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { .. } => Rc::new(ExprResolveResult {
+            ExprData::ExprLiteral { value: _, .. } => Rc::new(ExprResolveResult {
                 expr: texpr.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1523,11 +1523,13 @@ pub fn resolve_expr_types(
                     module_name.clone(),
                 )]),
             }),
-            ExprData::ExprVar { .. } => Rc::new(ExprResolveResult {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => Rc::new(ExprResolveResult {
                 expr: texpr.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
-            ExprData::ExprFieldAccess { .. } => {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
                 let r = match texpr.children.clone().first().cloned() {
                     Some(base) => resolve_expr_types(&base, &env, module_name.clone()),
                     None => Rc::new(ExprResolveResult {
@@ -2093,7 +2095,7 @@ pub fn resolve_expr_types(
                     diagnostics: v2_rt::concat(lr.diagnostics.clone(), rr.diagnostics.clone()),
                 })
             }
-            ExprData::ExprUnaryOp { op, .. } => {
+            ExprData::ExprUnaryOp { op: op, .. } => {
                 let r = match texpr.children.clone().first().cloned() {
                     Some(o) => resolve_expr_types(&o, &env, module_name.clone()),
                     None => Rc::new(ExprResolveResult {
@@ -2143,7 +2145,7 @@ pub fn resolve_expr_types(
                     let mut __result = Vec::new();
                     for part_node in texpr.children.clone().iter().cloned() {
                         __result.push(match (*part_node.expr_data.clone()).clone() {
-                            ExprData::ExprLiteral { .. } => part_node.clone(),
+                            ExprData::ExprLiteral { value: _, .. } => part_node.clone(),
                             _ => match part_node.children.clone().first().cloned() {
                                 Some(inner) => {
                                     let r = resolve_expr_types(&inner, &env, module_name.clone());
@@ -2160,7 +2162,7 @@ pub fn resolve_expr_types(
                     for part_node in texpr.children.clone().iter().cloned() {
                         __result.extend(
                             (*match (*part_node.expr_data.clone()).clone() {
-                                ExprData::ExprLiteral { .. } => Rc::new(vec![]),
+                                ExprData::ExprLiteral { value: _, .. } => Rc::new(vec![]),
                                 _ => match part_node.children.clone().first().cloned() {
                                     Some(inner) => {
                                         let r =

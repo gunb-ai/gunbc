@@ -1,11 +1,11 @@
 //! **Layer:** integration
 //!
-//! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes manual-anchor-key-driven
-//! `Generator` wiring (`kind` + `t19_anchor` + `classification` + `slot: TestgenConcept`).
-//! `T19ManualAnchorAbsent` is fail-closed on bootstrap via `Outcome` on `manual_test_claim_for_manual_anchor`.
-//! `Generator.t19_anchor` repeats **`T19ManualAnchorKey`** from the selected manual **`TestClaim`** (single
-//! carrier authority; no mirrored present-only sum). `testgen_concept_for_manual_claim` matches on
-//! `claim.t19_anchor` so the slot projection stays aligned with the claim row.
+//! T-19 Wave-0: `src/v4/lens/testgen.dag` parses and exposes claim-anchor-key-driven
+//! `Generator` wiring (`kind` + `anchor` + `classification` + `slot: TestgenConcept`).
+//! `ManualAnchorAbsent` is fail-closed on bootstrap via `Outcome` on `manual_test_claim_for_manual_anchor`.
+//! `Generator.anchor` repeats **`ClaimAnchorKey`** from the selected **`TestClaim`** (single
+//! carrier authority; manual rows use `ManualClaimAnchor`). `testgen_concept_for_manual_claim`
+//! matches on `claim.anchor` so the slot projection stays aligned with the claim row.
 //! **Note:** `compile_to_dag` on this module alone does not resolve `import v4.std.*` peers
 //! (Import lowering is still M2-scoped); full merge compile lands with cross-file M2 per TASKS T-19.
 //!
@@ -28,6 +28,9 @@ const P9_REGISTRY_OWNER_PATH: &str =
     "src/v4/test/claim/lens_cost/p9_llvm_instruction_cost_registry_owner.dag";
 const NAT_LAW_DAG: &str = include_str!("../../../../v4/test/claim/manual/nat_law_anchors.dag");
 const NAT_SUBSTRATE_DAG: &str = include_str!("../../../../v4/std/nat.dag");
+const WITNESS_VALIDITY_DAG: &str =
+    include_str!("../../../../v4/test/claim/generated/witness_validity.dag");
+const WITNESS_VALIDITY_PATH: &str = "src/v4/test/claim/generated/witness_validity.dag";
 
 const NAT_MANUAL_CLAIM_DATA: [&str; 6] = [
     "claim_nat_add_left_identity",
@@ -81,12 +84,12 @@ fn v4_lens_testgen_wave0_verification_manual_anchor_key_only() {
         "TestClaim variants must use polarity-specific carriers, not Outcome<Node> (P2 illegal-states)"
     );
     assert!(
-        module_declares_type_sum_named(&verification, "T19ManualAnchorKey"),
-        "substrate must declare `type T19ManualAnchorKey` (parsed `TypeSum`)"
+        module_declares_type_sum_named(&verification, "ManualAnchorKey"),
+        "substrate must declare `type ManualAnchorKey` (parsed `TypeSum`)"
     );
     assert!(
-        !module_declares_type_sum_named(&verification, "T19PresentManualAnchorKey"),
-        "substrate must not declare a mirrored present-only `T19PresentManualAnchorKey` sum (Practice 5 single carrier)"
+        !module_declares_type_sum_named(&verification, "PresentManualAnchorKey"),
+        "substrate must not declare a mirrored present-only `PresentManualAnchorKey` sum (Practice 5 single carrier)"
     );
 }
 
@@ -97,7 +100,7 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
     assert_eq!(
         function_count(&testgen, "bootstrap_claim_generator_for_manual_anchor"),
         1,
-        "T-19 Wave-0: single generator entrypoint keyed by T19ManualAnchorKey"
+        "T-19 Wave-0: single generator entrypoint keyed by ManualAnchorKey"
     );
     assert_eq!(
         function_count(&testgen, "testgen_concept_for_manual_claim"),
@@ -120,17 +123,17 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
         "AssertKind must not be re-authored in testgen; assertion shape lives on TestClaim coproduct"
     );
     assert_eq!(
-        function_count(&verification, "t19_present_manual_anchor_key"),
+        function_count(&verification, "present_manual_anchor_key"),
         0,
-        "std must not host `t19_present_manual_anchor_key` (Wave-0 fail-close lives in lens/testgen only)"
+        "std must not host `present_manual_anchor_key` (Wave-0 fail-close lives in lens/testgen only)"
     );
     assert_eq!(
         function_count(&verification, "assert_kind_for_manual_anchor"),
         0,
-        "AssertKind bootstrap mapping must not live in verification (single `T19ManualAnchorKey` axis)"
+        "AssertKind bootstrap mapping must not live in verification (single `ManualAnchorKey` axis)"
     );
     assert_eq!(
-        function_count(&testgen, "t19_present_manual_anchor_key_for_claim"),
+        function_count(&testgen, "present_manual_anchor_key_for_claim"),
         0,
         "lens/testgen must not host a mirrored present-key conversion table (codex duplicate-authority fix)"
     );
@@ -146,8 +149,8 @@ fn v4_lens_testgen_wave0_function_inventory_matches_wave0() {
 fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
     assert!(
-        !TESTGEN_DAG.contains("t19_bootstrap_algebra")
-            && !TESTGEN_DAG.contains("t19_bootstrap_inhabitant"),
+        !TESTGEN_DAG.contains("bootstrap_algebra")
+            && !TESTGEN_DAG.contains("bootstrap_inhabitant"),
         "nat-law AlgebraLawSubject algebra/inhabitant must project from `v4.std.nat` substrate Symbol bundle (no shared bootstrap placeholders)"
     );
     let names = import_names_for_path(&testgen, &["v4", "std", "nat"]).expect(
@@ -164,8 +167,8 @@ fn v4_lens_testgen_wave0_nat_symbol_import_authority() {
         );
     }
     assert!(
-        !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key("),
-        "testgen must not define the retired `t19_present_manual_anchor_key(` std-style helper"
+        !TESTGEN_DAG.contains("fn present_manual_anchor_key("),
+        "testgen must not define the retired `present_manual_anchor_key(` std-style helper"
     );
 }
 
@@ -191,30 +194,29 @@ fn v4_lens_testgen_wave0_outcome_return_surfaces() {
         .expect("bootstrap_claim_generator_for_manual_anchor should have an explicit return type");
     assert!(
         type_is_outcome_generator_testgen_concept(bootstrap_rt),
-        "T-19 Wave-0 bootstrap must fail-close `T19ManualAnchorAbsent` via `Outcome<Generator<TestgenConcept>>`; got {bootstrap_rt:?}"
+        "T-19 Wave-0 bootstrap must fail-close `ManualAnchorAbsent` via `Outcome<Generator<TestgenConcept>>`; got {bootstrap_rt:?}"
     );
 }
 
 #[test]
-fn v4_lens_testgen_wave0_generator_t19_anchor_field_is_manual_key() {
+fn v4_lens_testgen_wave0_generator_anchor_field_is_claim_anchor_key() {
     let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
-    let anchor_ty =
-        generator_t19_anchor_field_ty(&testgen).expect("Generator should declare `t19_anchor`");
+    let anchor_ty = generator_anchor_field_ty(&testgen).expect("Generator should declare `anchor`");
     assert!(
         matches!(
             anchor_ty,
-            SurfaceType::Named { name: n, .. } if n == "T19ManualAnchorKey"
+            SurfaceType::Named { name: n, .. } if n == "ClaimAnchorKey"
         ),
-        "Generator.t19_anchor must be `T19ManualAnchorKey` (same carrier as `TestClaim.t19_anchor`); got {anchor_ty:?}"
+        "Generator.anchor must be `ClaimAnchorKey` (same carrier as `TestClaim.anchor`, with manual/generated variants separated); got {anchor_ty:?}"
     );
 }
 
 #[test]
-fn v4_lens_testgen_wave0_concept_projection_matches_claim_t19_anchor() {
+fn v4_lens_testgen_wave0_concept_projection_matches_claim_anchor() {
     assert!(
         TESTGEN_DAG.contains("fn testgen_concept_for_manual_claim")
-            && TESTGEN_DAG.contains("match test_claim_t19_anchor(c: claim)"),
-        "concept projection must match on `test_claim_t19_anchor(c: claim)` (single authority path with manual claim)"
+            && TESTGEN_DAG.contains("match test_claim_anchor(c: claim)"),
+        "concept projection must match on `test_claim_anchor(c: claim)` (single authority path with manual claim)"
     );
 }
 
@@ -225,20 +227,20 @@ fn v4_lens_testgen_wave0_generator_carries_claim_classification_and_anchor() {
         "Generator must take classification from manual TestClaim via substrate helper"
     );
     assert!(
-        TESTGEN_DAG.contains("t19_anchor: test_claim_t19_anchor(c: claim)"),
-        "Generator must take T19ManualAnchorKey from manual TestClaim via substrate helper"
+        TESTGEN_DAG.contains("anchor: test_claim_anchor(c: claim)"),
+        "Generator must take ManualAnchorKey from manual TestClaim via substrate helper"
     );
 }
 
 #[test]
 fn v4_lens_testgen_wave0_bootstrap_threads_claim_anchor_into_generator() {
     assert!(
-        !TESTGEN_DAG.contains("fn t19_present_manual_anchor_key_for_claim"),
+        !TESTGEN_DAG.contains("fn present_manual_anchor_key_for_claim"),
         "bootstrap must not use a mirrored present-key conversion helper"
     );
     assert!(
-        TESTGEN_DAG.contains("t19_anchor: test_claim_t19_anchor(c: claim)"),
-        "Generator must wire `t19_anchor` from the manual `TestClaim` row via substrate helper (single authority)"
+        TESTGEN_DAG.contains("anchor: test_claim_anchor(c: claim)"),
+        "Generator must wire `anchor` from the manual `TestClaim` row via substrate helper (single authority)"
     );
     assert!(
         TESTGEN_DAG.contains("match testgen_concept_for_manual_claim(claim: claim)"),
@@ -356,7 +358,7 @@ fn parse_module(source: &str, file: &str) -> v3_compiler::parse_surface::Surface
     parse_for_test(&tokens, file).unwrap_or_else(|diag| panic!("{file}: parse failed: {diag:?}"))
 }
 
-fn generator_t19_anchor_field_ty(
+fn generator_anchor_field_ty(
     module: &v3_compiler::parse_surface::SurfaceModule,
 ) -> Option<&SurfaceType> {
     for item in &module.items {
@@ -373,7 +375,7 @@ fn generator_t19_anchor_field_ty(
             continue;
         }
         for field in fields {
-            if field.name == "t19_anchor" {
+            if field.name == "anchor" {
                 return Some(&field.ty);
             }
         }
@@ -469,6 +471,76 @@ fn type_is_outcome_generator_testgen_concept(ty: &SurfaceType) -> bool {
         return false;
     };
     type_is_generator_testgen_concept(inner.as_ref())
+}
+
+// T-19 witness-validity generator category — structural guard for the new helper +
+// generated corpus. Folded into this file (no new `EXPECTED_HAND_AUTHORED_TEST` census
+// path) per INVARIANTS.md §P5 Dispatch-Discipline (b) same-path expansion.
+
+#[test]
+fn v4_lens_testgen_witness_validity_modules_tokenize_and_parse() {
+    parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    parse_module(WITNESS_VALIDITY_DAG, WITNESS_VALIDITY_PATH);
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_helper_returns_outcome_testclaim() {
+    let testgen = parse_module(TESTGEN_DAG, "src/v4/lens/testgen.dag");
+    let rt = fn_return_type(&testgen, "testgen_emit_witness_validity_claim")
+        .expect("testgen_emit_witness_validity_claim must be declared in v4.lens.testgen");
+    assert!(
+        type_is_outcome_named(rt, "TestClaim"),
+        "testgen_emit_witness_validity_claim must return `Outcome<TestClaim>`; got {rt:?}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_module_imports_helper_from_lens_testgen() {
+    let module = parse_module(WITNESS_VALIDITY_DAG, WITNESS_VALIDITY_PATH);
+    let names = import_names_for_path(&module, &["v4", "lens", "testgen"]).expect(
+        "witness_validity.dag must import from `v4.lens.testgen` (rows route through helper)",
+    );
+    assert!(
+        names
+            .iter()
+            .any(|n| n == "testgen_emit_witness_validity_claim"),
+        "witness_validity.dag must import `testgen_emit_witness_validity_claim`; got {names:?}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_module_pins_four_row_corpus_via_helper() {
+    // Behavior-pinning ratchet (codex 2026-05-22): pin the exact 4-row corpus this PR
+    // delivers — 1 positive + 3 negative arms — so dropping one row regresses the test.
+    let helper_calls = WITNESS_VALIDITY_DAG
+        .matches("testgen_emit_witness_validity_claim(")
+        .count();
+    assert_eq!(
+        helper_calls, 4,
+        "witness_validity.dag must contain exactly 4 helper-routed rows; got {helper_calls}"
+    );
+    let row_data_decls = WITNESS_VALIDITY_DAG
+        .matches("data row_witness_validity_")
+        .count();
+    assert_eq!(
+        row_data_decls, 4,
+        "witness_validity.dag must declare exactly 4 `data row_witness_validity_*` rows; got {row_data_decls}"
+    );
+}
+
+#[test]
+fn v4_lens_testgen_witness_validity_module_authors_no_testclaim_literals() {
+    for literal in [
+        "EqualsClaim {",
+        "DiagnosticClaim {",
+        "CompilesClaim {",
+        "RoundTripClaim {",
+    ] {
+        assert!(
+            !WITNESS_VALIDITY_DAG.contains(literal),
+            "witness_validity.dag must not author `{literal}` literals — claim polarity is decided by verify_witness inside the helper (tautology-skip discipline)"
+        );
+    }
 }
 
 fn function_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> usize {

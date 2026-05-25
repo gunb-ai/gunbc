@@ -43,7 +43,7 @@ fn ctrl_pr_digests_dag_tokenizes_and_matches_expected_surface() {
     for needle in [
         "module ctrl.pr_digests",
         "import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }",
-        "import std.errors { GitHubErrorShape }",
+        "import extdeps.github.errors { GitHubErrorShape }",
         "import std.types { Url }",
         "type MergeReadinessVerdict",
         "type AttachedUrl",

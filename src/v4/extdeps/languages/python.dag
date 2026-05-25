@@ -1,14 +1,39 @@
 // src/v4/extdeps/languages/python.dag
-// Scope: Python 3.14 Reference surface (flat scalar coproduct, singleton kinds, cost shape, partial D2 resolver).
-// Owns: PythonSingletonKind, PythonScalar, PythonCost, py_bool_grounding.
-// Consumes: Kernel-ambient Int; v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra; std/integer, std/float, std/cardinality when T-3 alias rows land.
-// Status: extdeps python slice; bool canonical-B decl-ref grounding is 🟡 E-6(b) staging; principal int unbounded—no overflow carrier in-file.
-// Anchor: https://docs.python.org/3.14/reference/
+// Scope: Python 3.14 Reference primitive fact-bundles + a wave-1 ModelCore staging carrier (no PythonLanguageModel / lex / grammar / MVP yet — those land behind T-11 rust-first specialization). `python_model_core_wave1` is an E-6(b) consumer-less scaffold, marked at its declaration with the dissolution trigger.
+// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_*_facts, python_*_facts_catalog, python_facts_node, python_*_primitive_bundle, python_model_core_wave1, py_bool_grounding.
+// Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
+// Status: T-4 python slice — Python Reference primitives (not CPython library types); int is honestly width-axis-omitted (unbounded — see C-PYINT below); ModelCore.primitives filled via fold; inhabitance/laws/effects/partiality empty (wave-2+); `python_model_core_wave1` itself is 🟡 E-6(b) consumer-less until PythonLanguageModel lands (wave-2). canonical-B bool decl-ref is 🟡 E-6(b) staging (mirrors rust slice).
+// Anchor: https://docs.python.org/3.14/reference/datamodel.html
+//
+// C-PYINT — Python `int` carries no `width` / `signedness` / `overflow_disposition` axis.
+// The reference defines `int` as an unbounded, signed integer with arbitrary precision; there
+// is no overflow event. We honestly omit the axis bindings rather than fabricate a width tag
+// (per fact-bundle reseed: "model the facts read from the spec, never a hollow alias").
 
 module v4.extdeps.languages.python
 
+import v4.std.collection { List, Map }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle,
+  primitive_fact_axis_encoding,
+  primitive_fact_axis_surface_spelling,
+  primitive_fact_axis_unbound_diagnostic
+}
+import v4.std.witness { Holds, Violates }
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra }
+import v4.std.algebra { BooleanAlgebra, fold_list }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type PythonSingletonKind
@@ -23,5 +48,519 @@ type PythonCost {
   allocation_cost: Int
 }
 
-// 🟡 canonical-B decl-ref (truth facet; int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
+// Spec-grounded fact rows. Field set per primitive reflects the axes the Python Reference
+// actually pins; absent axes are absent in spec_facts (see C-PYINT for int).
+type PythonIntegerPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+// Python Reference §3.2: "These represent machine-level double precision floating point
+// numbers. You are at the mercy of the underlying machine architecture (and C or Java
+// implementation) for the accepted range and handling of overflow." — so the reference
+// pins "machine-level double precision", not IEEE 754 binary64 specifically. We track the
+// reference wording; tightening to a specific binary standard is a CPython/ABI implementation
+// fact for a separate carrier (future work).
+type PythonFloatPrimitiveFacts {
+  surface_spelling: Symbol
+  machine_representation: Symbol
+  std_projection: Symbol
+}
+
+// Python Reference §3.2: "These represent complex numbers as a pair of machine-level double
+// precision floating point numbers." Component representation likewise tracks reference wording.
+type PythonComplexPrimitiveFacts {
+  surface_spelling: Symbol
+  component_machine_representation: Symbol
+  std_projection: Symbol
+}
+
+type PythonBoolPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+type PythonSingletonPrimitiveFacts {
+  surface_spelling: Symbol
+  kind: PythonSingletonKind
+  std_projection: Symbol
+}
+
+data python_surface_spelling_int: Symbol = python_surface_spelling_int
+data python_surface_spelling_float: Symbol = python_surface_spelling_float
+data python_surface_spelling_complex: Symbol = python_surface_spelling_complex
+data python_surface_spelling_bool: Symbol = python_surface_spelling_bool
+data python_surface_spelling_none: Symbol = python_surface_spelling_none
+data python_surface_spelling_notimplemented: Symbol = python_surface_spelling_notimplemented
+data python_surface_spelling_ellipsis: Symbol = python_surface_spelling_ellipsis
+
+data python_std_projection_int: Symbol = python_std_projection_int
+data python_std_projection_float: Symbol = python_std_projection_float
+data python_std_projection_complex: Symbol = python_std_projection_complex
+data python_std_projection_bool: Symbol = python_std_projection_bool
+data python_std_projection_none: Symbol = python_std_projection_none
+data python_std_projection_notimplemented: Symbol = python_std_projection_notimplemented
+data python_std_projection_ellipsis: Symbol = python_std_projection_ellipsis
+
+// Encoding-axis values, each grounded in the Python Language Reference §3 (datamodel).
+data python_repr_int_arbitrary_precision: Symbol = python_repr_int_arbitrary_precision
+data python_repr_float_machine_double_precision: Symbol = python_repr_float_machine_double_precision
+data python_repr_complex_pair_machine_double_precision: Symbol = python_repr_complex_pair_machine_double_precision
+data python_repr_bool_int_subtype: Symbol = python_repr_bool_int_subtype
+data python_repr_singleton_sole_inhabitant: Symbol = python_repr_singleton_sole_inhabitant
+
+data python_facts_field_surface_spelling: Symbol = python_facts_field_surface_spelling
+data python_facts_field_encoding: Symbol = python_facts_field_encoding
+data python_facts_field_machine_representation: Symbol = python_facts_field_machine_representation
+data python_facts_field_component_machine_representation: Symbol = python_facts_field_component_machine_representation
+data python_facts_field_std_projection: Symbol = python_facts_field_std_projection
+data python_facts_field_singleton_kind: Symbol = python_facts_field_singleton_kind
+
+data python_tag_singleton_none: Symbol = python_tag_singleton_none
+data python_tag_singleton_notimplemented: Symbol = python_tag_singleton_notimplemented
+data python_tag_singleton_ellipsis: Symbol = python_tag_singleton_ellipsis
+
+data python_facts_int: PythonIntegerPrimitiveFacts = PythonIntegerPrimitiveFacts {
+  surface_spelling: python_surface_spelling_int,
+  encoding: python_repr_int_arbitrary_precision,
+  std_projection: python_std_projection_int
+}
+
+data python_facts_float: PythonFloatPrimitiveFacts = PythonFloatPrimitiveFacts {
+  surface_spelling: python_surface_spelling_float,
+  machine_representation: python_repr_float_machine_double_precision,
+  std_projection: python_std_projection_float
+}
+
+data python_facts_complex: PythonComplexPrimitiveFacts = PythonComplexPrimitiveFacts {
+  surface_spelling: python_surface_spelling_complex,
+  component_machine_representation: python_repr_complex_pair_machine_double_precision,
+  std_projection: python_std_projection_complex
+}
+
+data python_facts_bool: PythonBoolPrimitiveFacts = PythonBoolPrimitiveFacts {
+  surface_spelling: python_surface_spelling_bool,
+  encoding: python_repr_bool_int_subtype,
+  std_projection: python_std_projection_bool
+}
+
+data python_facts_none: PythonSingletonPrimitiveFacts = PythonSingletonPrimitiveFacts {
+  surface_spelling: python_surface_spelling_none,
+  kind: NoneT,
+  std_projection: python_std_projection_none
+}
+
+data python_facts_notimplemented: PythonSingletonPrimitiveFacts = PythonSingletonPrimitiveFacts {
+  surface_spelling: python_surface_spelling_notimplemented,
+  kind: NotImplementedT,
+  std_projection: python_std_projection_notimplemented
+}
+
+data python_facts_ellipsis: PythonSingletonPrimitiveFacts = PythonSingletonPrimitiveFacts {
+  surface_spelling: python_surface_spelling_ellipsis,
+  kind: EllipsisT,
+  std_projection: python_std_projection_ellipsis
+}
+
+// Sole primitive-fact list authorities — ModelCore.primitives derives via fold; per-primitive
+// add a row here, not a separate enumerate-by-hand list elsewhere.
+data python_integer_facts_catalog: List<PythonIntegerPrimitiveFacts> = [
+  python_facts_int
+]
+
+data python_float_facts_catalog: List<PythonFloatPrimitiveFacts> = [
+  python_facts_float
+]
+
+data python_complex_facts_catalog: List<PythonComplexPrimitiveFacts> = [
+  python_facts_complex
+]
+
+data python_bool_facts_catalog: List<PythonBoolPrimitiveFacts> = [
+  python_facts_bool
+]
+
+data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
+  python_facts_none,
+  python_facts_notimplemented,
+  python_facts_ellipsis
+]
+
+// 🟡 canonical-B decl-ref (truth facet; bool is the int-subtype build-up = BoolScalar) · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
+
+fn python_inhabitant_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+fn python_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn python_singleton_kind_tag(kind: PythonSingletonKind) -> Symbol {
+  match kind {
+    NoneT => python_tag_singleton_none
+    NotImplementedT => python_tag_singleton_notimplemented
+    EllipsisT => python_tag_singleton_ellipsis
+  }
+}
+
+fn python_integer_facts_node(facts: PythonIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(
+        name: python_facts_field_surface_spelling,
+        target: python_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      python_named_edge(
+        name: python_facts_field_encoding,
+        target: python_inhabitant_atom(id: facts.encoding)
+      ),
+      python_named_edge(
+        name: python_facts_field_std_projection,
+        target: python_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn python_float_facts_node(facts: PythonFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(
+        name: python_facts_field_surface_spelling,
+        target: python_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      python_named_edge(
+        name: python_facts_field_machine_representation,
+        target: python_inhabitant_atom(id: facts.machine_representation)
+      ),
+      python_named_edge(
+        name: python_facts_field_std_projection,
+        target: python_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn python_complex_facts_node(facts: PythonComplexPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(
+        name: python_facts_field_surface_spelling,
+        target: python_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      python_named_edge(
+        name: python_facts_field_component_machine_representation,
+        target: python_inhabitant_atom(id: facts.component_machine_representation)
+      ),
+      python_named_edge(
+        name: python_facts_field_std_projection,
+        target: python_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn python_bool_facts_node(facts: PythonBoolPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(
+        name: python_facts_field_surface_spelling,
+        target: python_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      python_named_edge(
+        name: python_facts_field_encoding,
+        target: python_inhabitant_atom(id: facts.encoding)
+      ),
+      python_named_edge(
+        name: python_facts_field_std_projection,
+        target: python_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn python_singleton_facts_node(facts: PythonSingletonPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(
+        name: python_facts_field_surface_spelling,
+        target: python_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      python_named_edge(
+        name: python_facts_field_singleton_kind,
+        target: python_inhabitant_atom(id: python_singleton_kind_tag(kind: facts.kind))
+      ),
+      python_named_edge(
+        name: python_facts_field_std_projection,
+        target: python_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn python_integer_spec_facts(facts: PythonIntegerPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.encoding) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_float_spec_facts(facts: PythonFloatPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.machine_representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_complex_spec_facts(facts: PythonComplexPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.component_machine_representation) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_bool_spec_facts(facts: PythonBoolPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: facts.encoding) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+fn python_singleton_spec_facts(facts: PythonSingletonPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: python_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: python_inhabitant_atom(id: python_repr_singleton_sole_inhabitant) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
+// C-PYINT: only surface_spelling + encoding axes bind — width/signedness/overflow are
+// absent from the Python int spec and are honestly absent from spec_facts.
+fn python_primitive_bundle_from_integer_facts(
+  facts: PythonIntegerPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: python_integer_facts_node(facts: facts),
+    spec_facts: python_integer_spec_facts(facts: facts)
+  }
+}
+
+fn python_primitive_bundle_from_float_facts(
+  facts: PythonFloatPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: python_float_facts_node(facts: facts),
+    spec_facts: python_float_spec_facts(facts: facts)
+  }
+}
+
+fn python_primitive_bundle_from_complex_facts(
+  facts: PythonComplexPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: python_complex_facts_node(facts: facts),
+    spec_facts: python_complex_spec_facts(facts: facts)
+  }
+}
+
+// Python bool is `int`-subtype per the reference; the int-subtype encoding witnesses the
+// inheritance. No signedness binding — bool is not its own signed-integer fact, and binding
+// `primitive_fact_axis_signedness` here would re-assert the parent int's axes inside bool.
+fn python_primitive_bundle_from_bool_facts(
+  facts: PythonBoolPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: python_bool_facts_node(facts: facts),
+    spec_facts: python_bool_spec_facts(facts: facts)
+  }
+}
+
+fn python_primitive_bundle_from_singleton_facts(
+  facts: PythonSingletonPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: python_singleton_facts_node(facts: facts),
+    spec_facts: python_singleton_spec_facts(facts: facts)
+  }
+}
+
+// Order-preserving snoc + append, mirroring the rust slice — kept local to this file so the
+// fold authority isn't pulled in from a peer language extdep (substrate cohesion).
+fn python_list_snoc_item<T>(xs: List<T>, item: T) -> List<T> {
+  fold_list(
+    xs: xs,
+    empty: Cons { head: item, tail: Empty },
+    cons: fn(rest, existing) {
+      Cons { head: existing, tail: rest }
+    }
+  )
+}
+
+fn python_list_append<T>(left: List<T>, right: List<T>) -> List<T> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, item) {
+      python_list_snoc_item(xs: acc, item: item)
+    }
+  )
+}
+
+fn python_primitive_bundles_from_integer_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      python_list_snoc_item(
+        xs: acc,
+        item: python_primitive_bundle_from_integer_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_primitive_bundles_from_float_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      python_list_snoc_item(
+        xs: acc,
+        item: python_primitive_bundle_from_float_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_primitive_bundles_from_complex_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      python_list_snoc_item(
+        xs: acc,
+        item: python_primitive_bundle_from_complex_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_primitive_bundles_from_bool_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_bool_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      python_list_snoc_item(
+        xs: acc,
+        item: python_primitive_bundle_from_bool_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_primitive_bundles_from_singleton_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: python_singleton_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      python_list_snoc_item(
+        xs: acc,
+        item: python_primitive_bundle_from_singleton_facts(facts: facts)
+      )
+    }
+  )
+}
+
+fn python_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  python_list_append(
+    left: python_list_append(
+      left: python_list_append(
+        left: python_list_append(
+          left: python_primitive_bundles_from_integer_catalog(),
+          right: python_primitive_bundles_from_float_catalog()
+        ),
+        right: python_primitive_bundles_from_complex_catalog()
+      ),
+      right: python_primitive_bundles_from_bool_catalog()
+    ),
+    right: python_primitive_bundles_from_singleton_catalog()
+  )
+}
+
+// 🟡 needs-more-work — feature:python-language-model-wave1-consumer — E-6(b) bounded
+// exception — scaffold: T-4 python slice has no PythonLanguageModel carrier yet (lex /
+// grammar / MVP / canonical_symbols / language_identity are T-11 rust-first specialization
+// follow-on work), so this ModelCore is consumer-less in-tree. Dissolve-on: PythonLanguageModel
+// (mirroring RustLanguageModel) lands and binds `core: python_model_core_wave1()`.
+// Inhabitance / laws / effects / partiality stay empty until T-9 infer + T-33
+// effect/partiality substrate bind per-operator (separate, additive dissolution).
+fn python_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: python_wave1_primitive_fact_bundles(),
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}

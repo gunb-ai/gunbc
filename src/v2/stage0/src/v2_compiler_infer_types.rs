@@ -49,7 +49,7 @@ use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred).clone() {
-        InferredNode::TypeVariable { .. } => true,
+        InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
@@ -778,7 +778,7 @@ pub fn instantiate_algebra_type(
                     ),
                 })
             }
-            AlgebraTypeTemplate::OptionalOf { inner, .. } => {
+            AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => {
                 let ib = instantiate_algebra_type(inner.clone(), &base, &source_indices);
                 Rc::new(KernelTypeBuild {
                     ty: with_optional_cardinality(&ib.ty.clone()),
@@ -1350,7 +1350,7 @@ pub fn apply_type_substitution(
                 ),
             })
         }
-        AlgebraTypeTemplate::OptionalOf { inner, .. } => {
+        AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => {
             let ib = apply_type_substitution(inner.clone(), &subst, &receiver, &source_indices);
             Rc::new(KernelTypeBuild {
                 ty: with_optional_cardinality(&ib.ty.clone()),
@@ -1434,9 +1434,9 @@ pub fn template_return_has_variables(template: Rc<AlgebraFieldTemplate>) -> bool
 
 pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*t).clone() {
-        AlgebraTypeTemplate::AlgebraTypeVariable { .. } => true,
+        AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => true,
         AlgebraTypeTemplate::ContainerOf { element: inner, .. } => has_type_variable(inner.clone()),
-        AlgebraTypeTemplate::OptionalOf { inner, .. } => has_type_variable(inner.clone()),
+        AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => has_type_variable(inner.clone()),
         AlgebraTypeTemplate::TupleOf {
             first: f,
             second: s,
@@ -2211,10 +2211,10 @@ pub fn node_type_deps(
 
 pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
     match (*lit).clone() {
-        LiteralValue::LitStr { .. } => string_type(),
-        LiteralValue::LitInt { .. } => int_type(),
-        LiteralValue::LitFloat { .. } => float_type(),
-        LiteralValue::LitBool { .. } => bool_type(),
+        LiteralValue::LitStr { value: _, .. } => string_type(),
+        LiteralValue::LitInt { value: _, .. } => int_type(),
+        LiteralValue::LitFloat { value: _, .. } => float_type(),
+        LiteralValue::LitBool { value: _, .. } => bool_type(),
         LiteralValue::LitNull => with_optional_cardinality(&unit_type()),
     }
 }
