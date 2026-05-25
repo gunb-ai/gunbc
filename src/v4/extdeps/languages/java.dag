@@ -15,6 +15,7 @@ import v4.compiler.parse {
   ModeledGrammar,
   Sequence,
   Terminal,
+  grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.compiler.tokenize {
@@ -921,7 +922,7 @@ fn java_grammar_production_mvp1_method_add() -> GrammarProduction {
 
 fn java_wave1_grammar_root() -> GrammarRoot {
   let start = java_grammar_production_mvp1_method_add()
-  GrammarRoot { start: java_production_mvp1_method_add, productions: [start], sync_tokens: Set { member: fn(_) { false } } }
+  GrammarRoot { start: java_production_mvp1_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
 fn java_wave1_grammar() -> Grammar {

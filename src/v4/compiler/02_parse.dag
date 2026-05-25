@@ -196,6 +196,11 @@ fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
 }
 
 
+fn grammar_empty_sync_tokens() -> Set<Symbol> {
+  Set { member: fn(_) { false } }
+}
+
+
 fn grammar_empty_node() -> Node {
   Node {
     kind: TypeNode {
