@@ -96,11 +96,17 @@ if [[ -f "$compile_log" ]]; then
   )"
 fi
 
-rustc_status=127
+rustc_attempted=false
+rustc_skipped=true
+rustc_skip_reason=""
+rustc_status=""
 rustc_error_total=0
 rustc_categories=""
 rustc_files_with_errors=0
 if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
+  rustc_attempted=true
+  rustc_skipped=false
+  rustc_skip_reason=""
   echo "=== M1: cargo check on emitted tree ==="
   rustc_timeout="${V4_M1_RUSTC_TIMEOUT_SECS:-}"
   if [[ -n "${GITHUB_ACTIONS:-}" && -z "$rustc_timeout" ]]; then
@@ -116,7 +122,14 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   rustc_status=${PIPESTATUS[0]}
   set -e
 else
-  echo "=== M1: skipping cargo check (compile failed or no Cargo.toml) ===" | tee "$rustc_log"
+  if [[ "$compile_status" -ne 0 ]]; then
+    rustc_skip_reason="compile_failed (exit ${compile_status})"
+  elif [[ ! -f "$out/Cargo.toml" ]]; then
+    rustc_skip_reason="no Cargo.toml in emit output"
+  else
+    rustc_skip_reason="unknown"
+  fi
+  echo "=== M1: skipping cargo check (${rustc_skip_reason}) ===" | tee "$rustc_log"
 fi
 
 if [[ -f "$rustc_log" ]]; then
@@ -143,7 +156,13 @@ fi
   echo "v2 stderr error lines: ${v2_error_lines}"
   echo ".rs files on disk: ${rs_on_disk}"
   echo ""
-  echo "cargo check exit: ${rustc_status}"
+  echo "cargo check attempted: ${rustc_attempted}"
+  echo "cargo check skipped: ${rustc_skipped}"
+  if [[ "$rustc_attempted" == "true" ]]; then
+    echo "cargo check exit: ${rustc_status}"
+  else
+    echo "cargo check skip_reason: ${rustc_skip_reason}"
+  fi
   echo "rustc error[E####] lines: ${rustc_error_total}"
   echo "distinct .rs files with rustc errors: ${rustc_files_with_errors}"
   echo ""
@@ -169,7 +188,7 @@ elif [[ "$v2_diagnostics" != "0" ]]; then
   emit_notice "M1 compile diagnostics" "${compiled_receipt:-see log}"
 fi
 
-if [[ "$rustc_status" -ne 0 && "$rustc_status" -ne 127 ]]; then
+if [[ "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
   emit_notice "M1 rustc gap surface" "cargo check exit=${rustc_status}; ${rustc_error_total} error lines; ${rustc_files_with_errors} files"
 fi
 
@@ -179,7 +198,11 @@ if [[ "$strict" == "1" ]]; then
   if [[ "$compile_status" -ne 0 ]]; then
     exit "$compile_status"
   fi
-  if [[ "$rustc_status" -ne 0 && "$rustc_status" -ne 127 ]]; then
+  if [[ "$rustc_skipped" == "true" ]]; then
+    echo "error: strict mode requires cargo check after successful compile (skip_reason=${rustc_skip_reason})" >&2
+    exit 1
+  fi
+  if [[ "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
     exit "$rustc_status"
   fi
 fi
