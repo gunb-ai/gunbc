@@ -5,13 +5,18 @@
 //       RustfmtImportsLayout, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition,
 //       RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtConfig, rustfmt_defaults,
 //       rustfmt_layer.
-// Consumes: none (pure config substrate; no node/compiler dependency).
-// Status: T-4.16 scaffold — full option space grounded in rustfmt 1.x toml reference.
+// Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
+// Status: T-4.16 scaffold — full option space grounded in rustfmt 1.6 toml reference.
 // Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
 // Note: layer composition — consumer folds List<RustfmtConfig> via rustfmt_layer; each
 //       layer is a complete config. Field-granularity patch substrate (partial overrides) is
 //       🟡 gated — feature: formatter-config-patch — dissolve-on-arrival: patch type with
 //       per-field Override/Inherit variants replaces full-config layering.
+// Note: width/count fields use Int as a bootstrap affordance. Negative values are
+//       structurally constructible but spec-invalid (rustfmt rejects them at parse time).
+//       🟡 gated — feature: formatter-int-refinement — dissolve-on-arrival: replace Int
+//       with Refined<Int> (T-25-core) validated ≥1 (tab_spaces, max_width, comment_width)
+//       or ≥0 (remaining count fields); forbidden: ad-hoc negative-check guards.
 
 module v4.extdeps.formatters.rustfmt
 
@@ -95,6 +100,7 @@ type RustfmtNewlineStyle
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// Shared by both `edition` (parser edition) and `style_edition` (formatting style guide edition).
 type RustfmtEdition
   = RustfmtEdition2015
   | RustfmtEdition2018
@@ -122,20 +128,20 @@ type RustfmtHexLiteralCase
 type RustfmtConfig {
   // Indentation
   indent_style: RustfmtIndentStyle
-  tab_spaces: Int
+  tab_spaces: Int    // 🟡 gated: formatter-int-refinement — must be ≥1
   hard_tabs: Bool
 
   // Line width
-  max_width: Int
-  comment_width: Int
-  chain_width: Int
-  single_line_if_else_max_width: Int
-  fn_call_width: Int
-  attr_fn_like_width: Int
-  struct_lit_width: Int
-  struct_variant_width: Int
-  array_width: Int
-  short_array_element_width_threshold: Int
+  max_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥1
+  comment_width: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  chain_width: Int   // 🟡 gated: formatter-int-refinement — must be ≥0
+  single_line_if_else_max_width: Int // 🟡 gated: formatter-int-refinement — must be ≥0
+  fn_call_width: Int     // 🟡 gated: formatter-int-refinement — must be ≥0
+  attr_fn_like_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
+  struct_lit_width: Int    // 🟡 gated: formatter-int-refinement — must be ≥0
+  struct_variant_width: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
+  array_width: Int       // 🟡 gated: formatter-int-refinement — must be ≥0
+  short_array_element_width_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
 
   // Braces
   brace_style: RustfmtBraceStyle
@@ -161,8 +167,8 @@ type RustfmtConfig {
 
   // Newlines and blanks
   newline_style: RustfmtNewlineStyle
-  blank_lines_upper_bound: Int
-  blank_lines_lower_bound: Int
+  blank_lines_upper_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
+  blank_lines_lower_bound: Int  // 🟡 gated: formatter-int-refinement — must be ≥0
 
   // Comments
   wrap_comments: Bool
@@ -182,8 +188,16 @@ type RustfmtConfig {
   remove_nested_parens: Bool
   combine_control_expr: Bool
   hex_literal_case: RustfmtHexLiteralCase
-  enum_discrim_align_threshold: Int
+  enum_discrim_align_threshold: Int // 🟡 gated: formatter-int-refinement — must be ≥0
   edition: RustfmtEdition
+  // Controls which formatting style guide to apply (distinct from edition which controls parsing).
+  style_edition: RustfmtEdition
+  // Enables unstable rustfmt features; intended for rustfmt development, not production use.
+  unstable_features: Bool
+  // When non-empty, rustfmt rejects runs on versions older than this string.
+  required_version: String
+  // File path patterns (glob syntax) to exclude from formatting.
+  ignore: List<String>
 }
 
 
@@ -241,6 +255,10 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   hex_literal_case: RustfmtHexPreserve,
   enum_discrim_align_threshold: 0,
   edition: RustfmtEdition2015,
+  style_edition: RustfmtEdition2015,
+  unstable_features: false,
+  required_version: "",
+  ignore: [],
 }
 
 
