@@ -59,6 +59,11 @@ type GrammarProductionLookup
   | GrammarProductionMissing
 
 
+type GrammarSymbolFoldState {
+  found: Bool
+}
+
+
 data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
 data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
 data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
@@ -261,26 +266,24 @@ fn grammar_to_node(grammar: Grammar) -> Node {
 }
 
 
-fn grammar_symbol_fold(sym: Symbol) -> NodeFold<Bool> {
-  NodeFold {
-    init: fn(n0) {
-      match n0.kind {
-        TypeNode { connective: Atom { identity: id } } => id == sym
-        _ => false
-      }
-    },
-    step: fn(acc, _, child_has_symbol) {
-      acc || child_has_symbol
-    }
-  }
-}
-
-
 fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
-  fold_node(
+  let folded = fold_node(
     n: grammar_to_node(grammar: grammar),
-    algebra: grammar_symbol_fold(sym: sym)
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: id } } =>
+            GrammarSymbolFoldState { found: id == sym }
+          _ =>
+            GrammarSymbolFoldState { found: false }
+        }
+      },
+      step: fn(acc, _, child_has_symbol) {
+        GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
+      }
+    }
   )
+  folded.found
 }
 
 
