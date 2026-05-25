@@ -1,0 +1,250 @@
+// src/v4/std/datetime.dag
+// Scope: RFC 3339 clock-calendar instant facts for format-layer consumers.
+// Anchor: https://datatracker.ietf.org/doc/html/rfc3339
+// Owns: Instant, RFC 3339 date/time field carriers, nanosecond subsecond, and UTC offset carriers.
+// Consumes: std nat, std text, std refinement, std node.
+// Status: 🟢 T-3 modeled.
+
+module v4.std.datetime
+
+
+import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+import v4.std.refinement { Refined, Validation }
+import v4.std.text { String }
+
+
+type FourDigitYearLexeme {
+  text: String
+}
+
+
+type TwoDigitFieldLexeme {
+  text: String
+}
+
+
+type SubsecondLexeme {
+  text: String
+}
+
+
+type Year {
+  value: Refined<Nat>
+  lexeme: FourDigitYearLexeme
+}
+
+
+type MonthOrdinal {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type DayOrdinal {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type HourOfDay {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type MinuteOfHour {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type SecondOfMinute {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type Nanoseconds {
+  value: Refined<Nat>
+}
+
+
+type SubsecondDigitCount {
+  value: Refined<Nat>
+}
+
+
+// 🟢 coproduct dissolution — RFC 3339 secfrac is present or absent at the user-input boundary.
+type Subsecond
+  = NoSubsecond
+  | NanosecondSubsecond {
+      nanoseconds: Nanoseconds,
+      digits: SubsecondDigitCount,
+      lexeme: SubsecondLexeme,
+    }
+
+
+// 🟢 coproduct dissolution — RFC 3339 numeric UTC offsets are explicitly signed.
+type TzOffsetSign
+  = TzOffsetPlus
+  | TzOffsetMinus
+
+
+type TzOffsetHour {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type TzOffsetMinute {
+  value: Refined<Nat>
+  lexeme: TwoDigitFieldLexeme
+}
+
+
+type NumericTzOffset {
+  sign: TzOffsetSign
+  hour: TzOffsetHour
+  minute: TzOffsetMinute
+}
+
+
+// 🟢 coproduct dissolution — RFC 3339 time-offset grammar is "Z" or signed numeric offset.
+type TzOffset
+  = UtcZ
+  | SignedOffset { offset: NumericTzOffset }
+
+
+type Instant {
+  year: Year
+  month: MonthOrdinal
+  day: DayOrdinal
+  hour: HourOfDay
+  minute: MinuteOfHour
+  second: SecondOfMinute
+  subsecond: Subsecond
+  offset: TzOffset
+}
+
+
+data year_out_of_range: Symbol = year_out_of_range
+data month_out_of_range: Symbol = month_out_of_range
+data day_out_of_range: Symbol = day_out_of_range
+data hour_out_of_range: Symbol = hour_out_of_range
+data minute_out_of_range: Symbol = minute_out_of_range
+data second_out_of_range: Symbol = second_out_of_range
+data nanoseconds_out_of_range: Symbol = nanoseconds_out_of_range
+data subsecond_digits_out_of_range: Symbol = subsecond_digits_out_of_range
+data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
+data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
+
+
+fn year_admits(value: Nat) -> Bool {
+  (value >= 1) && (value <= 9999)
+}
+
+
+fn month_admits(value: Nat) -> Bool {
+  (value >= 1) && (value <= 12)
+}
+
+
+fn day_admits(value: Nat) -> Bool {
+  (value >= 1) && (value <= 31)
+}
+
+
+fn hour_admits(value: Nat) -> Bool {
+  value <= 23
+}
+
+
+fn minute_admits(value: Nat) -> Bool {
+  value <= 59
+}
+
+
+fn second_admits(value: Nat) -> Bool {
+  value <= 60
+}
+
+
+fn nanoseconds_admits(value: Nat) -> Bool {
+  value <= 999999999
+}
+
+
+fn subsecond_digit_count_admits(value: Nat) -> Bool {
+  (value >= 1) && (value <= 9)
+}
+
+
+fn tz_offset_hour_admits(value: Nat) -> Bool {
+  value <= 23
+}
+
+
+fn tz_offset_minute_admits(value: Nat) -> Bool {
+  value <= 59
+}
+
+
+data year_validation: Validation<Nat> = Validation {
+  reason: year_out_of_range,
+  admits: year_admits
+}
+
+
+data month_validation: Validation<Nat> = Validation {
+  reason: month_out_of_range,
+  admits: month_admits
+}
+
+
+data day_validation: Validation<Nat> = Validation {
+  reason: day_out_of_range,
+  admits: day_admits
+}
+
+
+data hour_validation: Validation<Nat> = Validation {
+  reason: hour_out_of_range,
+  admits: hour_admits
+}
+
+
+data minute_validation: Validation<Nat> = Validation {
+  reason: minute_out_of_range,
+  admits: minute_admits
+}
+
+
+data second_validation: Validation<Nat> = Validation {
+  reason: second_out_of_range,
+  admits: second_admits
+}
+
+
+data nanoseconds_validation: Validation<Nat> = Validation {
+  reason: nanoseconds_out_of_range,
+  admits: nanoseconds_admits
+}
+
+
+data subsecond_digit_count_validation: Validation<Nat> = Validation {
+  reason: subsecond_digits_out_of_range,
+  admits: subsecond_digit_count_admits
+}
+
+
+data tz_offset_hour_validation: Validation<Nat> = Validation {
+  reason: tz_offset_hour_out_of_range,
+  admits: tz_offset_hour_admits
+}
+
+
+data tz_offset_minute_validation: Validation<Nat> = Validation {
+  reason: tz_offset_minute_out_of_range,
+  admits: tz_offset_minute_admits
+}
