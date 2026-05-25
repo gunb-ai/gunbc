@@ -49,6 +49,7 @@ type CiCommand
   | IgnoredTestCommand { test_name: String }
   | LensCiCommand { required_lenses: List<LensIdV0> }
   | BootstrapStageCompile { produces: Symbol }
+  | M1RustEmitProbeCommand
 
 type CiJob {
   id: Symbol
@@ -79,11 +80,22 @@ type LensCiLiveWorkflowSignal {
   semantic_target: String
 }
 
+// 🟡 gated — live-workflow projection interim (M1 docs/v4-compilation-milestones.md) — dissolve-on-arrival:
+// emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` and this
+// carrier is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
+type M1CiLiveWorkflowSignal {
+  step_name: String
+  script_path: String
+  non_blocking: Bool
+}
+
 
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
 data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
+data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
+data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
 
 data lens_ci_required_lenses: List<LensIdV0> = [
   Complexity,
@@ -100,6 +112,12 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
   semantic_target: "rust"
 }
 
+data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+  step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
+  script_path: "scripts/v4-m1-rust-emit-probe.sh"
+  non_blocking: true
+}
+
 data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
   jobs: [
     CiJob {
@@ -110,6 +128,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     CiJob {
       id: lens_ci_registry_execution,
       command: LensCiCommand { required_lenses: lens_ci_required_lenses },
+      needs: [v2_compile_src_v4]
+    },
+    CiJob {
+      id: m1_rust_emit_probe_execution,
+      command: M1RustEmitProbeCommand,
       needs: [v2_compile_src_v4]
     }
   ],
@@ -122,6 +145,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     CiGate {
       id: lens_ci_registry_signal,
       job: lens_ci_registry_execution,
+      run_policy: Always
+    },
+    CiGate {
+      id: m1_rust_emit_probe_signal,
+      job: m1_rust_emit_probe_execution,
       run_policy: Always
     }
   ]
@@ -246,6 +274,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     IgnoredTestCommand { test_name: _ } => true
     LensCiCommand { required_lenses } => lens_registry_ids_resolve(lens_ids: required_lenses)
     BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
+    M1RustEmitProbeCommand => true
   }
 }
 
