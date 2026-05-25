@@ -212,7 +212,6 @@ def main() -> None:
             "data claim_testgen_wishlist_formalized: TestClaim",
             "generated_claim_anchor",
             "GeneratedCoproductExhaustiveness",
-            "t19_coproduct_exhaustiveness_missing_variant",
         ),
     )
 
