@@ -88,11 +88,12 @@ type RustfmtNewlineStyle
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// v1.6.0 Configurations.md "Possible values": "2015", "2018", "2021" — Edition2024 not in scope (stabilised Rust 1.85, 2025-02-20, after v1.6.0 release 2023-07-01).
+// v1.6.0 src/config/options.rs Edition enum: "2015", "2018", "2021", "2024" — four arms (Configurations.md omits "2024" but source is authoritative).
 type RustfmtEdition
   = RustfmtEdition2015
   | RustfmtEdition2018
   | RustfmtEdition2021
+  | RustfmtEdition2024
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
