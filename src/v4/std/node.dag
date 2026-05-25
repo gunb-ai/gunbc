@@ -313,11 +313,20 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
     Positional => canonical_tag_positional_edge
   }
 }
-fn canonical_children_for_content_hash(n: Node) -> List<Edge> {
-  match node_edge_discipline(n: n) {
+fn node_for_content_hash_fold(n: Node) -> Node {
+  let sorted = match node_edge_discipline(n: n) {
     LabeledEdges => sort_by(n.children, e => named_edge_sort_key(e: e))
     NoEdges => n.children
     PositionalEdges => n.children
+  }
+  Node {
+    kind: n.kind,
+    children: fold(sorted, init: [], f: fn(acc, e) {
+      append(
+        list: acc,
+        item: Edge { label: e.label, target: node_for_content_hash_fold(n: e.target) }
+      )
+    })
   }
 }
 
@@ -379,17 +388,18 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 
 // 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
-  let children = match node_edge_discipline(n: n) {
-    LabeledEdges => sort_by(n.children, e => named_edge_sort_key(e: e))
-    NoEdges => n.children
-    PositionalEdges => n.children
-  }
-  fold(children, init: canonical_hash_of_node_kind(kind: n.kind), f: fn(acc, e) {
-    hash_combine(
-      a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
-      b: content_hash(n: e.target)
-    )
-  })
+  fold_node(
+    n: node_for_content_hash_fold(n: n),
+    algebra: NodeFold {
+      init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
+      step: fn(acc, e, child_hash) {
+        hash_combine(
+          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+          b: child_hash
+        )
+      }
+    }
+  )
 }
 
 
