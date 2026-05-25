@@ -120,7 +120,7 @@ It may exist but produce wrong or empty output for any input.
 
 ## Milestone 2 — Stage0 can compile a trivial v4 program (first real execution)
 
-**Definition:** The stage0 binary, given a minimal .dag input (e.g. `module v4.trivial` / `data trivial: Symbol = trivial`), tokenizes it, parses it, resolves it, infers it, and emits valid Rust output. Note: the wave-1 dag.dag grammar requires a module header (`module <qualified_name>`) before any top-level items (`dag_grammar_module_expr`); data values must be identifiers or blocks — keywords like `true`/`false` are `dag_token_kw_true`/`dag_token_kw_false` (not ident tokens) and are rejected by `dag_grammar_data_value_expr`; params must be typed (`name: Type`); fn bodies must be blocks (`{ expr }`); and there are no arithmetic operators. The minimal fixture is the self-naming Symbol pattern used throughout dag.dag itself.
+**Definition:** The stage0 binary, given a minimal .dag input (e.g. `module v4.trivial` / `import v4.std.node { Symbol }` / `data trivial: Symbol = trivial`), tokenizes it, parses it, resolves it, infers it, and emits valid Rust output. Note: the wave-1 dag.dag grammar requires a module header (`module <qualified_name>`) before any top-level items (`dag_grammar_module_expr`); data values must be identifiers or blocks — keywords like `true`/`false` are `dag_token_kw_true`/`dag_token_kw_false` (not ident tokens) and are rejected by `dag_grammar_data_value_expr`; params must be typed (`name: Type`); fn bodies must be blocks (`{ expr }`); and there are no arithmetic operators. There is no implicit prelude: all types (including `Symbol`) must be imported from their defining std module — dag.dag itself imports `Symbol` explicitly from `v4.std.node` (line 51). The minimal fixture uses the self-naming Symbol pattern and requires one std import.
 
 **Evidence:** A CI test that invokes `v4-stage0-compiler compile trivial.dag --output-dir /tmp/out && rustc out/trivial.rs -o /tmp/trivial && /tmp/trivial` exits 0.
 
@@ -143,13 +143,13 @@ The first moment that v4 actually compiles something.
 - Implement `parse_expr` in 02_parse.dag (the remaining stub; `parse_production` and `parse()` structure already real)
 - Add `dag_language_model_wave1()` to dag.dag using `dag_wave1_grammar()` (not VoidGrammar) and wire into the pipeline
 - Wire T-10 emit to produce real Rust source text from a translated node tree
-- T-8 normalize + resolve: modeled and in the chain; single-file trivial input does not hit the T-28 cross-file bridge gate
+- T-8 normalize + resolve (including T-28 std module-graph substrate, bundled into T-8 per TASKS.md line 41): modeled and in the chain; the trivial fixture's `import v4.std.node { Symbol }` requires cross-file resolution — T-28 is exercised for std library name lookup even for the trivial case
 - T-9 infer: modeled and in the chain; requires T-4 algebra grounding (formal TASKS.md prerequisite) — T-9 fail-closes on bare-Atom bridge symbols until T-4 fills real Node constructors for each algebra type
 - T-4 algebra fact-bundle for Rust target: fill Node constructors for each algebra type (e.g. `ordered_ring_node`) so T-9 can ground algebra references in rust.dag instead of rejecting via `infer_algebra_ref_ungrounded`
 - T-33 std/model_core.dag: side-branch feeders {P1-KEYSTONE, T-30, T-29, T-25-core, T-33} must close before T-4 can start; watch item per TASKS.md
 
 **Sequential dependency:** `compile_ingest_staging` wiring → T-6 walk → T-7 `parse_expr` → T-8 normalize/resolve (modeled) → T-9 infer → T-10 emit → M2.
-T-8 is modeled and required but not a new implementation blocker for trivial single-file input.
+T-8 (and its bundled T-28 std module-graph substrate) is modeled and required; the trivial fixture's std import means T-28 is exercised, but T-28 is already in T-8's scope per TASKS.md — not a separate blocker.
 T-9 is modeled but requires T-4 algebra grounding (formal TASKS.md prerequisite); T-4 requires the T-33 side-branch feeders to close first.
 
 ---
