@@ -3172,6 +3172,44 @@ pub fn emit_struct_from_children(
     }
 }
 
+pub fn explicit_type_arg_strings(
+    type_node: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if ((type_node.params.clone().len() as i64) > 0) {
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in type_node.params.clone().iter().cloned() {
+                __result.push(render_rust_type(
+                    &param_node_type_expr(&p),
+                    shared_types.clone(),
+                    &source_indices.clone(),
+                ));
+            }
+            __result
+        })
+    } else {
+        if ((type_node.connective.clone() == Connective::NoConnective)
+            && ((type_node.children.clone().len() as i64) > 0))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in type_node.children.clone().iter().cloned() {
+                    __result.push(render_rust_type(
+                        &child_type_node(&c),
+                        shared_types.clone(),
+                        &source_indices.clone(),
+                    ));
+                }
+                __result
+            })
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
 pub fn apply_missing_generic_args(
     ty: String,
     type_node: Rc<Node>,
@@ -3193,58 +3231,133 @@ pub fn apply_missing_generic_args(
                     ty.clone()
                 } else {
                     {
-                        let args = if ((parent_generic_param_names.clone().len() as i64)
-                            >= expected.clone())
-                        {
-                            Rc::new(
-                                parent_generic_param_names
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .take(expected.clone() as usize)
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            summary.generic_param_names.clone()
-                        };
-                        let with_args = v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(type_name.clone(), "<".to_string()),
-                                args.join(&", ".to_string()),
-                            ),
-                            ">".to_string(),
+                        let explicit_args = explicit_type_arg_strings(
+                            type_node.clone(),
+                            Rc::new(std::collections::BTreeSet::new()),
+                            source_indices.clone(),
                         );
-                        if (ty.clone().as_str() == type_name.clone().as_str()) {
-                            with_args
-                        } else {
-                            if (ty.clone().as_str()
-                                == v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), type_name.clone()),
-                                    ">".to_string(),
-                                )
-                                .as_str())
+                        if ((explicit_args.clone().len() as i64) == expected.clone()) {
                             {
-                                v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), with_args),
-                                    ">".to_string(),
-                                )
-                            } else {
-                                if (ty.clone().as_str()
-                                    == v2_rt::concat(
-                                        v2_rt::concat("Box<".to_string(), type_name.clone()),
-                                        ">".to_string(),
-                                    )
-                                    .as_str())
-                                {
+                                let with_args = v2_rt::concat(
                                     v2_rt::concat(
-                                        v2_rt::concat("Box<".to_string(), with_args),
+                                        v2_rt::concat(type_name.clone(), "<".to_string()),
+                                        explicit_args.join(&", ".to_string()),
+                                    ),
+                                    ">".to_string(),
+                                );
+                                if (ty.clone().as_str() == type_name.clone().as_str()) {
+                                    with_args
+                                } else {
+                                    if (ty.clone().as_str()
+                                        == v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), type_name.clone()),
+                                            ">".to_string(),
+                                        )
+                                        .as_str())
+                                    {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), with_args),
+                                            ">".to_string(),
+                                        )
+                                    } else {
+                                        if (ty.clone().as_str()
+                                            == v2_rt::concat(
+                                                v2_rt::concat(
+                                                    "Box<".to_string(),
+                                                    type_name.clone(),
+                                                ),
+                                                ">".to_string(),
+                                            )
+                                            .as_str())
+                                        {
+                                            v2_rt::concat(
+                                                v2_rt::concat("Box<".to_string(), with_args),
+                                                ">".to_string(),
+                                            )
+                                        } else {
+                                            ty.clone()
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            ty.clone()
+                        }
+                    }
+                }
+            }
+            None => ty.clone(),
+        }
+    }
+}
+
+pub fn emit_struct_field_from_child(
+    child: &Rc<Node>,
+    parent_generic_param_names: Rc<Vec<String>>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    env: &Rc<TypeEnv>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let rt_child = resolved_type(child.clone());
+        let ty = if ((is_product_type(rt_child.clone()) && (rt_child.ident_span.clone() != None))
+            && ((rt_child.children.clone().len() as i64) > 2))
+        {
+            {
+                let rt_child_name = authored_name_at(env.source_indices.clone(), &rt_child);
+                match lookup_type_by_name(&env, rt_child_name.clone()) {
+                    Some(resolved) => {
+                        if ((resolved.params.clone().len() as i64) > 0) {
+                            {
+                                let base = coerce_primitive_type(
+                                    RenderTarget::Rust,
+                                    rt_child_name.clone(),
+                                );
+                                let param_names = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in resolved.params.clone().iter().cloned() {
+                                        __result.push(generic_param_name_at(
+                                            p.clone(),
+                                            env.source_indices.clone(),
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let with_params = v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(base, "<".to_string()),
+                                        param_names.join(&", ".to_string()),
+                                    ),
+                                    ">".to_string(),
+                                );
+                                if v2_rt::set_contains(&shared_types, rt_child_name.clone()) {
+                                    v2_rt::concat(
+                                        v2_rt::concat("Rc<".to_string(), with_params),
                                         ">".to_string(),
                                     )
                                 } else {
-                                    ty.clone()
+                                    with_params
                                 }
+                            } else {
+                                render_rust_type(
+                                    &rt_child,
+                                    shared_types.clone(),
+                                    &env.source_indices.clone(),
+                                )
                             }
                         }
+                    }
+                    None => render_rust_type(
+                        &rt_child,
+                        shared_types.clone(),
+                        &env.source_indices.clone(),
+                    ),
+                }
+            }
+        } else {
+            render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
+        };
                     }
                 }
             }
