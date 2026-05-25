@@ -82,6 +82,7 @@ type LensCiLiveWorkflowSignal {
 
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98/#100; docs/modeling-discipline.md Practice 10) — feature:project-github-actions-landed — consumer:v4.workflow.ci m1_ci_live_workflow_signal — bind src/v4/TASKS.md T-24 — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`M1RustEmitProbeCommand` directly and `m1_ci_live_workflow_signal` is deleted; forbidden: adding M1 probe step facts outside `ci_pipeline` + this binding.
 type M1CiLiveWorkflowSignal {
+  binding_smoke_step_name: String
   step_name: String
   script_path: String
   non_blocking: Bool
@@ -111,6 +112,7 @@ data lens_ci_live_workflow_signal: LensCiLiveWorkflowSignal = {
 }
 
 data m1_ci_live_workflow_signal: M1CiLiveWorkflowSignal = {
+  binding_smoke_step_name: "M1 v4 workflow CI model/YAML binding smoke"
   step_name: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)"
   script_path: "scripts/v4-m1-rust-emit-probe.sh"
   non_blocking: true

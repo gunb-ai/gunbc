@@ -240,8 +240,17 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: ci_pipeline must declare M1 job and gate"
     );
     let live_signal = data_body(&module, "m1_ci_live_workflow_signal");
+    let binding_smoke_step_name =
+        expr_string(record_body_field(live_signal, "binding_smoke_step_name"));
     let step_name = expr_string(record_body_field(live_signal, "step_name"));
     let script_path = expr_string(record_body_field(live_signal, "script_path"));
+    let binding_smoke_step = workflow_step_block(CI_YML, binding_smoke_step_name);
+    assert!(
+        binding_smoke_step.contains(
+            "cargo test -p v3-compiler --test integration v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet"
+        ),
+        "{CI_YML_PATH}: `{binding_smoke_step_name}` must execute the M1 model/YAML binding receipt (gunbc#846 zero-test-filter bypass)"
+    );
     let m1_step = workflow_step_block(CI_YML, step_name);
     assert!(
         m1_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
