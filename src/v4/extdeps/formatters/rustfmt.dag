@@ -141,7 +141,7 @@ type RustfmtTypePunctuationDensity
 
 
 // 🟡 gated — feature: formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥0/≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
-// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; forbidden: ad-hoc cross-field guards outside validation substrate.
+// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {comment_width (when >0),chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; zero-sentinel fields (comment_width=0) are exempt from the upper-bound check; forbidden: ad-hoc cross-field guards outside validation substrate.
 type RustfmtConfig {
   // Indentation
   indent_style: RustfmtIndentStyle
