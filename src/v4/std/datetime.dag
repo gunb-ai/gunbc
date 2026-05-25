@@ -1,6 +1,7 @@
 // src/v4/std/datetime.dag
 // Scope: RFC 3339 clock-calendar instant facts for format-layer consumers.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc3339
+// Anchor: https://en.wikipedia.org/wiki/Gregorian_calendar
 // Owns: Instant, RFC 3339 date/time field carriers, local date/time profiles,
 //       UTC offset carriers, and validation-discharge constructors.
 // Consumes: std diagnostic, std nat, std text, std refinement, std node.
@@ -12,7 +13,7 @@ module v4.std.datetime
 import v4.std.diagnostic { Accepted, Locus, Outcome, Rejected }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-import v4.std.refinement { Refined, Validation, refine }
+import v4.std.refinement { Refined, Validation, refine, refined_base }
 import v4.std.text { String }
 
 
@@ -171,28 +172,43 @@ type LocalDateTime {
 }
 
 
-// 🟢 coproduct dissolution — second 60 either is not present or is backed by leap-second evidence.
-type LeapSecondEvidence
-  = NoLeapSecond
-  | LeapSecondPermitted { authority: Symbol }
-
-
-type InstantFields {
+type OrdinaryInstantFields {
   date: CalendarDate
   time: ClockTime
   offset: TzOffset
-  leap_second: LeapSecondEvidence
 }
 
 
-type InstantValidity {
-  refined: Refined<InstantFields>
+type LeapSecondOccurrence {
+  date: CalendarDate
+  hour: HourOfDay
+  minute: MinuteOfHour
+  offset: TzOffset
+  authority: Symbol
 }
 
 
-type Instant {
-  validity: InstantValidity
+type LeapSecondInstantFields {
+  occurrence: LeapSecondOccurrence
+  second: SecondOfMinute
+  subsecond: Subsecond
 }
+
+
+type OrdinaryInstantValidity {
+  refined: Refined<OrdinaryInstantFields>
+}
+
+
+type LeapSecondInstantValidity {
+  refined: Refined<LeapSecondInstantFields>
+}
+
+
+// 🟢 coproduct dissolution — RFC 3339 separates ordinary instants from announced leap-second instants.
+type Instant
+  = OrdinaryInstant { validity: OrdinaryInstantValidity }
+  | LeapSecondInstant { validity: LeapSecondInstantValidity }
 
 
 type OffsetDateTime {
@@ -219,31 +235,47 @@ data subsecond_digits_out_of_range: Symbol = subsecond_digits_out_of_range
 data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
-data instant_invalid: Symbol = instant_invalid
+data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
+data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
 
 
 fn year_value(year: Year) -> Nat {
-  year.parsed.base.value
+  refined_four_digit_base(parsed: year.parsed).value
 }
 
 
 fn month_value(month: MonthOrdinal) -> Nat {
-  month.parsed.base.value
+  refined_two_digit_base(parsed: month.parsed).value
 }
 
 
 fn day_value(day: DayOrdinal) -> Nat {
-  day.parsed.base.value
+  refined_two_digit_base(parsed: day.parsed).value
 }
 
 
 fn second_value(second: SecondOfMinute) -> Nat {
-  second.parsed.base.value
+  refined_two_digit_base(parsed: second.parsed).value
+}
+
+
+fn minute_value(minute: MinuteOfHour) -> Nat {
+  refined_two_digit_base(parsed: minute.parsed).value
+}
+
+
+fn refined_four_digit_base(parsed: Refined<ParsedFourDigitYearLexeme>) -> ParsedFourDigitYearLexeme {
+  refined_base(r: parsed)
+}
+
+
+fn refined_two_digit_base(parsed: Refined<ParsedTwoDigitFieldLexeme>) -> ParsedTwoDigitFieldLexeme {
+  refined_base(r: parsed)
 }
 
 
 fn year_admits(parsed: ParsedFourDigitYearLexeme) -> Bool {
-  (parsed.value >= 1) && (parsed.value <= 9999)
+  parsed.value <= 9999
 }
 
 
@@ -292,14 +324,24 @@ fn tz_offset_minute_admits(parsed: ParsedTwoDigitFieldLexeme) -> Bool {
 }
 
 
-fn divisible_by(value: Nat, divisor: Nat) -> Bool {
-  (value % divisor) == 0
+fn divisible_by_4(value: Nat) -> Bool {
+  (value % 4) == 0
+}
+
+
+fn divisible_by_100(value: Nat) -> Bool {
+  (value % 100) == 0
+}
+
+
+fn divisible_by_400(value: Nat) -> Bool {
+  (value % 400) == 0
 }
 
 
 fn leap_year(value: Nat) -> Bool {
-  divisible_by(value: value, divisor: 4)
-    && (!divisible_by(value: value, divisor: 100) || divisible_by(value: value, divisor: 400))
+  divisible_by_4(value: value)
+    && (!divisible_by_100(value: value) || divisible_by_400(value: value))
 }
 
 
@@ -329,16 +371,29 @@ fn calendar_date_admits(fields: CalendarDateFields) -> Bool {
 }
 
 
-fn instant_admits(fields: InstantFields) -> Bool {
+fn calendar_date_fields(date: CalendarDate) -> CalendarDateFields {
+  refined_base(r: date.validity.refined)
+}
+
+
+fn leap_second_month_end(date: CalendarDate) -> Bool {
+  let fields = calendar_date_fields(date: date)
+  let month = month_value(month: fields.month)
+  let day = day_value(day: fields.day)
+  ((month == 6) && (day == 30)) || ((month == 12) && (day == 31))
+}
+
+
+fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
   let second = second_value(second: fields.time.fields.second)
-  if second == 60 {
-    match fields.leap_second {
-      NoLeapSecond => false
-      LeapSecondPermitted { authority: _ } => true
-    }
-  } else {
-    true
-  }
+  second <= 59
+}
+
+
+fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
+  let second = second_value(second: fields.second)
+  let minute = minute_value(minute: fields.occurrence.minute)
+  (second == 60) && (minute == 59) && leap_second_month_end(date: fields.occurrence.date)
 }
 
 
@@ -408,9 +463,15 @@ data calendar_date_validation: Validation<CalendarDateFields> = Validation {
 }
 
 
-data instant_validation: Validation<InstantFields> = Validation {
-  reason: instant_invalid,
-  admits: instant_admits
+data ordinary_instant_validation: Validation<OrdinaryInstantFields> = Validation {
+  reason: ordinary_instant_invalid,
+  admits: ordinary_instant_admits
+}
+
+
+data leap_second_instant_validation: Validation<LeapSecondInstantFields> = Validation {
+  reason: leap_second_instant_invalid,
+  admits: leap_second_instant_admits
 }
 
 
@@ -547,11 +608,23 @@ fn make_clock_time(fields: ClockTimeFields) -> ClockTime {
 }
 
 
-fn make_instant(fields: InstantFields, at: Locus) -> Outcome<Instant> {
-  match refine(base: fields, by: instant_validation, at: at) {
+fn make_ordinary_instant(fields: OrdinaryInstantFields, at: Locus) -> Outcome<Instant> {
+  match refine(base: fields, by: ordinary_instant_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted {
-        value: Instant { validity: InstantValidity { refined: refined } },
+        value: OrdinaryInstant { validity: OrdinaryInstantValidity { refined: refined } },
+        diagnostics: diagnostics
+      }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn make_leap_second_instant(fields: LeapSecondInstantFields, at: Locus) -> Outcome<Instant> {
+  match refine(base: fields, by: leap_second_instant_validation, at: at) {
+    Accepted { value: refined, diagnostics } =>
+      Accepted {
+        value: LeapSecondInstant { validity: LeapSecondInstantValidity { refined: refined } },
         diagnostics: diagnostics
       }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
