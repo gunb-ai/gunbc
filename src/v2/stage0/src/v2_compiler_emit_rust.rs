@@ -3218,7 +3218,7 @@ pub fn apply_missing_generic_args(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let type_name = authored_name_at(source_indices, &type_node);
+        let type_name = authored_name_at(source_indices.clone(), &type_node);
         match v2_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone()) {
             Some(summary) => {
                 let expected = (summary.generic_param_names.clone().len() as i64);
@@ -3283,81 +3283,6 @@ pub fn apply_missing_generic_args(
                         } else {
                             ty.clone()
                         }
-                    }
-                }
-            }
-            None => ty.clone(),
-        }
-    }
-}
-
-pub fn emit_struct_field_from_child(
-    child: &Rc<Node>,
-    parent_generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<std::collections::BTreeSet<String>>,
-    shared_types: &Rc<std::collections::BTreeSet<String>>,
-    env: &Rc<TypeEnv>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> String {
-    {
-        let rt_child = resolved_type(child.clone());
-        let ty = if ((is_product_type(rt_child.clone()) && (rt_child.ident_span.clone() != None))
-            && ((rt_child.children.clone().len() as i64) > 2))
-        {
-            {
-                let rt_child_name = authored_name_at(env.source_indices.clone(), &rt_child);
-                match lookup_type_by_name(&env, rt_child_name.clone()) {
-                    Some(resolved) => {
-                        if ((resolved.params.clone().len() as i64) > 0) {
-                            {
-                                let base = coerce_primitive_type(
-                                    RenderTarget::Rust,
-                                    rt_child_name.clone(),
-                                );
-                                let param_names = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for p in resolved.params.clone().iter().cloned() {
-                                        __result.push(generic_param_name_at(
-                                            p.clone(),
-                                            env.source_indices.clone(),
-                                        ));
-                                    }
-                                    __result
-                                });
-                                let with_params = v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(base, "<".to_string()),
-                                        param_names.join(&", ".to_string()),
-                                    ),
-                                    ">".to_string(),
-                                );
-                                if v2_rt::set_contains(&shared_types, rt_child_name.clone()) {
-                                    v2_rt::concat(
-                                        v2_rt::concat("Rc<".to_string(), with_params),
-                                        ">".to_string(),
-                                    )
-                                } else {
-                                    with_params
-                                }
-                            } else {
-                                render_rust_type(
-                                    &rt_child,
-                                    shared_types.clone(),
-                                    &env.source_indices.clone(),
-                                )
-                            }
-                        }
-                    }
-                    None => render_rust_type(
-                        &rt_child,
-                        shared_types.clone(),
-                        &env.source_indices.clone(),
-                    ),
-                }
-            }
-        } else {
-            render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
-        };
                     }
                 }
             }
