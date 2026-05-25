@@ -85,13 +85,12 @@ import v4.std.node {
   Atom,
   Arrow,
   Edge,
-  Hash,
   Node,
   Positional,
   Symbol,
   TypeNode
 }
-import v4.std.verdict { Fail, Pass, Verdict }
+import v4.std.verdict { Pass }
 import v4.std.verification {
   ManualAnchorAbsent,
   TestClaim,
@@ -370,6 +369,8 @@ data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 
+// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node>; bootstrap enforced via mvp1_emit_accepted_source.
+// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_emit_add_fn_accepts,
   context: infer_receipt_context(),
