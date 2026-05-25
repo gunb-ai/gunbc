@@ -141,19 +141,24 @@ fn model_core_wave1_atom(id: Symbol) -> Node {
 }
 
 
+fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
+  match axis {
+    primitive_fact_axis_width =>
+      Holds { value: bool_width_fact_node(width: facts.width) }
+    primitive_fact_axis_encoding =>
+      Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
+    _ =>
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+  }
+}
+
+
 fn model_core_wave1_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
-      match axis {
-        primitive_fact_axis_width =>
-          Holds { value: bool_width_fact_node(width: facts.width) }
-        primitive_fact_axis_encoding =>
-          Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
-        _ =>
-          Violates {
-            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
-          }
-      }
+      model_core_wave1_bool_fact_lookup(facts: facts, axis: axis)
     }
   }
 }
@@ -168,7 +173,7 @@ fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
 
 
 fn model_core_wave1_bool_fact_matches(axis: Symbol, expected: Node) -> Bool {
-  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(axis) {
+  match model_core_wave1_bool_fact_lookup(facts: bool_primitive_facts, axis: axis) {
     Holds { value } => value == expected
     Violates { diagnostic: _ } => false
   }
@@ -176,7 +181,7 @@ fn model_core_wave1_bool_fact_matches(axis: Symbol, expected: Node) -> Bool {
 
 
 fn model_core_wave1_bool_axis_fails_closed(axis: Symbol) -> Bool {
-  match model_core_wave1_bool_primitive_bundle().spec_facts.lookup(axis) {
+  match model_core_wave1_bool_fact_lookup(facts: bool_primitive_facts, axis: axis) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
