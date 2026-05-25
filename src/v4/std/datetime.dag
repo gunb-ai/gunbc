@@ -47,11 +47,6 @@ type SecondOfMinute {
 }
 
 
-type Nanoseconds {
-  value: Refined<Nat>
-}
-
-
 // 🟢 coproduct dissolution — RFC 3339 secfrac digits are decimal digits.
 type SecfracDigit
   = SecfracDigit0
@@ -223,7 +218,6 @@ data day_out_of_range: Symbol = day_out_of_range
 data hour_out_of_range: Symbol = hour_out_of_range
 data minute_out_of_range: Symbol = minute_out_of_range
 data second_out_of_range: Symbol = second_out_of_range
-data nanoseconds_out_of_range: Symbol = nanoseconds_out_of_range
 data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
@@ -288,11 +282,6 @@ fn minute_admits(value: Nat) -> Bool {
 
 fn second_admits(value: Nat) -> Bool {
   value <= 60
-}
-
-
-fn nanoseconds_admits(value: Nat) -> Bool {
-  value <= 999999999
 }
 
 
@@ -422,12 +411,6 @@ data second_validation: Validation<Nat> = Validation {
 }
 
 
-data nanoseconds_validation: Validation<Nat> = Validation {
-  reason: nanoseconds_out_of_range,
-  admits: nanoseconds_admits
-}
-
-
 data tz_offset_hour_validation: Validation<Nat> = Validation {
   reason: tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
@@ -496,13 +479,6 @@ fn make_minute_of_hour(value: Nat, at: Locus) -> Outcome<MinuteOfHour> {
 fn make_second_of_minute(value: Nat, at: Locus) -> Outcome<SecondOfMinute> {
   bind_outcome(o: refine(base: value, by: second_validation, at: at), f: fn(refined) {
     outcome_accepted(value: SecondOfMinute { value: refined })
-  })
-}
-
-
-fn make_nanoseconds(value: Nat, at: Locus) -> Outcome<Nanoseconds> {
-  bind_outcome(o: refine(base: value, by: nanoseconds_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: Nanoseconds { value: refined })
   })
 }
 
