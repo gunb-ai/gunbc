@@ -40,7 +40,7 @@ fidelity claim, needs only T-10). Both must be complete before T-15.
   T-7   compiler/02_parse.dag            [needs T-6]
   T-8   compiler/03_normalize.dag + 03_resolve.dag   [needs T-7; T-28 module-graph substrate is bundled here]
   T-9   compiler/04_infer.dag            [needs T-8, T-2, T-3, and T-4 — T-4 enters from the side branch below, not the spine]
-  T-10  compiler/05_emit.dag + 00_compile.dag       [needs T-9, T-4]
+  T-10  compiler/05_emit.dag + 00_compile.dag       [needs T-9, T-4, T-23]
   T-11  emit per-target specialization (extends T-10 across all 5 Shape A targets)   [needs T-10]
   T-16  Full-stack omni-emission demo: ONE .dag → Rust+C++ backend
         + SQL DDL schema (Shape-B, via T-4.6 sql.dag — Theme-A #4)
@@ -530,6 +530,8 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 ---
 
 ### T-10: compiler/05_emit.dag + compiler/00_compile.dag — emission + orchestrator
+
+**Dependencies:** `[needs T-9, T-4, T-23]` — spine infer/emit inputs plus **T-23** for the Enforce application substrate consumed by `apply_compile_lens` / `run_required_lens_gates` (see lens gate orchestration below; graph edge matches T-24's T-10 consume).
 
 **emit is `ingest` inverted, not a codegen backend.** emit is the **emit
 boundary** of the OMNI pivot — `ingest = emit⁻¹` over the **same**
