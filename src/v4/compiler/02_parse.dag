@@ -5,7 +5,7 @@
 //       Node projection functions, left-recursion check, error-recovery helpers,
 //       ParseSyncState, TokenPeek, ParseRepeatAcc, parse_diag_cons, parse_token_first,
 //       parse_e1_syntax_error, expr_is_nullable_given_set, compute_nullable_step,
-//       compute_nullable_set, expr_direct_left_corner_step, expr_direct_left_corner_list,
+//       compute_nullable_set, expr_direct_left_corner_list,
 //       compute_left_corner_closure, expr_has_undefined_nonterminal,
 //       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
 //       grammar_has_undefined_nonterminals_step, parse_sync_step, grammar_fuel,
@@ -501,29 +501,25 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 }
 
 
-fn expr_direct_left_corner_step(lhs: GrammarExpr, rhs: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
-  match expr_is_nullable_given_set(expr: lhs, nullable_set: nullable_set) {
-    true =>
-      list_append(
-        left: expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set),
-        right: expr_direct_left_corner_list(expr: rhs, nullable_set: nullable_set)
-      )
-    false =>
-      expr_direct_left_corner_list(expr: lhs, nullable_set: nullable_set)
-  }
-}
-
-
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
 // expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
 // Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
 // Sequence: when left is nullable, both left and right contribute left corners.
+// Note: Sequence arm uses list_append with the nullable-conditional inside right: to avoid
+// a top-level if/else type-unification failure in the v2 bootstrap compiler.
 fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
   match expr {
     Terminal { token_class: _ } => Empty
     Nonterminal { production: name } => Cons { head: name, tail: Empty }
     Sequence { left: left, right: right } =>
-      expr_direct_left_corner_step(lhs: left, rhs: right, nullable_set: nullable_set)
+      list_append(
+        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
+        right: if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
+          expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
+        } else {
+          Empty
+        }
+      )
     Choice { left: left, right: right } =>
       list_append(
         left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
