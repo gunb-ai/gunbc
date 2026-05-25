@@ -5,7 +5,7 @@
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag,
 //           std/module_graph.dag (ModuleGraph), compiler/03_normalize.dag,
 //           extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 realized — K-1 single-file resolution; resolve_with_graph wired (T-28 gated).
+// Status: T-8 (+ T-28) modeled — K-1 single-file resolution; resolve_with_graph cross-file binding surface.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -562,18 +562,38 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
 }
 
 
-// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace type gains a
-// per-module symbol table keyed by ModulePath so qualified binding can be represented, then wire
-// fold over graph.entries here (ledger: T-28 · TASKS.md §T-28).
-// Constraint: Map<Symbol,Symbol> bindings have no ModulePath dimension; a flat fold of all
-// ModuleEntry.root exports makes every symbol globally visible and cannot represent
-// qualified/ambiguous imports.
+// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace.bindings gains
+// module-qualified structure keyed by ModulePath, plus duplicate-export diagnostics for ambiguous
+// imports. Current M2 surface intentionally flattens ModuleEntry.root named exports into
+// Map<Symbol,Symbol>; this unblocks cross-file unqualified imports but cannot represent qualified
+// references or diagnose same-symbol exports across imported modules.
+fn namespace_from_tree_and_graph_fold(
+  entries: FreeMonoid<ModuleEntry>,
+  acc: Map<Symbol, Symbol>
+) -> Map<Symbol, Symbol> {
+  match entries {
+    Empty => acc
+    Cons { head: entry, tail: rest } =>
+      namespace_from_tree_and_graph_fold(
+        entries: rest,
+        acc: add_module_named_exports(root: entry.root, acc: acc)
+      )
+  }
+}
+
+
 fn namespace_from_tree_and_graph(
   tree: NormalizedTree,
   lm: DagLanguageModel,
   graph: ModuleGraph
 ) -> Namespace {
-  build_program_namespace(tree: tree, lm: lm)
+  Namespace {
+    bindings: namespace_from_tree_and_graph_fold(
+      entries: graph.entries,
+      acc: add_module_named_exports(root: tree, acc: empty_map())
+    ),
+    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
+  }
 }
 
 
