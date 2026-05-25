@@ -122,6 +122,25 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn render_rust_type_in_emit_context(
+    n: &Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    parent_generic_param_names: Rc<Vec<String>>,
+) -> String {
+    {
+        let ty = render_rust_type(&n, shared_types, &source_indices);
+        apply_missing_generic_args(
+            ty,
+            &n,
+            &parent_generic_param_names,
+            emit_info,
+            &source_indices,
+        )
+    }
+}
+
 pub fn render_rust_type(
     n: &Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
@@ -3172,15 +3191,53 @@ pub fn emit_struct_from_children(
     }
 }
 
+pub fn explicit_type_arg_strings(
+    type_node: &Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    if ((type_node.params.clone().len() as i64) > 0) {
+        Rc::new({
+            let mut __result = Vec::new();
+            for p in type_node.params.clone().iter().cloned() {
+                __result.push(render_rust_type(
+                    &param_node_type_expr(&p),
+                    shared_types.clone(),
+                    &source_indices,
+                ));
+            }
+            __result
+        })
+    } else {
+        if ((type_node.connective.clone() == Connective::NoConnective)
+            && ((type_node.children.clone().len() as i64) > 0))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in type_node.children.clone().iter().cloned() {
+                    __result.push(render_rust_type(
+                        &child_type_node(&c),
+                        shared_types.clone(),
+                        &source_indices,
+                    ));
+                }
+                __result
+            })
+        } else {
+            Rc::new(vec![])
+        }
+    }
+}
+
 pub fn apply_missing_generic_args(
     ty: String,
-    type_node: Rc<Node>,
+    type_node: &Rc<Node>,
     parent_generic_param_names: &Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let type_name = authored_name_at(source_indices, &type_node);
+        let type_name = authored_name_at(source_indices.clone(), &type_node);
         match v2_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone()) {
             Some(summary) => {
                 let expected = (summary.generic_param_names.clone().len() as i64);
@@ -3193,57 +3250,79 @@ pub fn apply_missing_generic_args(
                     ty.clone()
                 } else {
                     {
-                        let args = if ((parent_generic_param_names.clone().len() as i64)
-                            >= expected.clone())
-                        {
-                            Rc::new(
-                                parent_generic_param_names
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .take(expected.clone() as usize)
-                                    .collect::<Vec<_>>(),
-                            )
-                        } else {
-                            summary.generic_param_names.clone()
-                        };
-                        let with_args = v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(type_name.clone(), "<".to_string()),
-                                args.join(&", ".to_string()),
-                            ),
-                            ">".to_string(),
+                        let explicit_args = explicit_type_arg_strings(
+                            &type_node,
+                            v2_rt::rc_empty_set::<String>(),
+                            source_indices.clone(),
                         );
-                        if (ty.clone().as_str() == type_name.clone().as_str()) {
-                            with_args
+                        let args = if ((explicit_args.clone().len() as i64) == expected.clone()) {
+                            explicit_args.clone()
                         } else {
-                            if (ty.clone().as_str()
-                                == v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), type_name.clone()),
-                                    ">".to_string(),
-                                )
-                                .as_str())
-                            {
-                                v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), with_args),
-                                    ">".to_string(),
-                                )
+                            if ((explicit_args.clone().len() as i64) > 0) {
+                                Rc::new(vec![])
                             } else {
-                                if (ty.clone().as_str()
-                                    == v2_rt::concat(
-                                        v2_rt::concat("Box<".to_string(), type_name.clone()),
-                                        ">".to_string(),
-                                    )
-                                    .as_str())
+                                if ((parent_generic_param_names.clone().len() as i64)
+                                    >= expected.clone())
                                 {
-                                    v2_rt::concat(
-                                        v2_rt::concat("Box<".to_string(), with_args),
-                                        ">".to_string(),
+                                    Rc::new(
+                                        parent_generic_param_names
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .take(expected.clone() as usize)
+                                            .collect::<Vec<_>>(),
                                     )
                                 } else {
-                                    ty.clone()
+                                    summary.generic_param_names.clone()
                                 }
                             }
+                        };
+                        if ((args.clone().len() as i64) == expected.clone()) {
+                            {
+                                let with_args = v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(type_name.clone(), "<".to_string()),
+                                        args.clone().join(&", ".to_string()),
+                                    ),
+                                    ">".to_string(),
+                                );
+                                if (ty.clone().as_str() == type_name.clone().as_str()) {
+                                    with_args
+                                } else {
+                                    if (ty.clone().as_str()
+                                        == v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), type_name.clone()),
+                                            ">".to_string(),
+                                        )
+                                        .as_str())
+                                    {
+                                        v2_rt::concat(
+                                            v2_rt::concat("Rc<".to_string(), with_args),
+                                            ">".to_string(),
+                                        )
+                                    } else {
+                                        if (ty.clone().as_str()
+                                            == v2_rt::concat(
+                                                v2_rt::concat(
+                                                    "Box<".to_string(),
+                                                    type_name.clone(),
+                                                ),
+                                                ">".to_string(),
+                                            )
+                                            .as_str())
+                                        {
+                                            v2_rt::concat(
+                                                v2_rt::concat("Box<".to_string(), with_args),
+                                                ">".to_string(),
+                                            )
+                                        } else {
+                                            ty.clone()
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            ty.clone()
                         }
                     }
                 }
@@ -3322,10 +3401,10 @@ pub fn emit_struct_field_from_child(
         };
         let generic_ty = apply_missing_generic_args(
             ty,
-            rt_child.clone(),
+            &rt_child,
             &parent_generic_param_names,
             emit_info,
-            env.source_indices.clone(),
+            &env.source_indices.clone(),
         );
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
@@ -3643,10 +3722,10 @@ pub fn emit_enum_shared_accessors(
                                             shared_types.clone(),
                                             &env.source_indices.clone(),
                                         ),
-                                        resolved_type(f.clone()),
+                                        &resolved_type(f.clone()),
                                         &generic_param_names,
                                         emit_info.clone(),
-                                        env.source_indices.clone(),
+                                        &env.source_indices.clone(),
                                     ),
                                     None => "".to_string(),
                                 },
@@ -3701,10 +3780,10 @@ pub fn emit_enum_shared_accessors(
                                 shared_types.clone(),
                                 &env.source_indices.clone(),
                             ),
-                            resolved_type(f.clone()),
+                            &resolved_type(f.clone()),
                             &generic_param_names,
                             emit_info.clone(),
-                            env.source_indices.clone(),
+                            &env.source_indices.clone(),
                         ),
                         None => "compile_error!(\"enum shared accessor missing field metadata\")"
                             .to_string(),
@@ -4146,10 +4225,10 @@ pub fn emit_variant_from_child(
                                 };
                                 let ty = apply_missing_generic_args(
                                     raw_ty,
-                                    type_node.clone(),
+                                    &type_node,
                                     &parent_generic_param_names,
                                     emit_info.clone(),
-                                    env.source_indices.clone(),
+                                    &env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
                                     type_node.clone(),
@@ -4199,10 +4278,10 @@ pub fn emit_variant_from_child(
                                                 shared_types.clone(),
                                                 &env.source_indices.clone(),
                                             ),
-                                            rt_f.clone(),
+                                            &rt_f,
                                             &parent_generic_param_names,
                                             emit_info.clone(),
-                                            env.source_indices.clone(),
+                                            &env.source_indices.clone(),
                                         );
                                         let final_ty = if needs_box_wrapping(
                                             rt_f.clone(),
@@ -4267,10 +4346,10 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         &env.source_indices.clone(),
                                     ),
-                                    rt_f.clone(),
+                                    &rt_f,
                                     &parent_generic_param_names,
                                     emit_info.clone(),
-                                    env.source_indices.clone(),
+                                    &env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
                                     rt_f.clone(),
@@ -4343,13 +4422,28 @@ pub fn emit_fn_def(
             return v2_rt::concat(v2_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
         }
         let type_params_str = emit_type_params(&type_params, si.clone());
+        let fn_type_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), si.clone()));
+            }
+            __result
+        });
         let params_str = emit_params(
             value_params.clone(),
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
+            emit_info.clone(),
+            fn_type_param_names.clone(),
         );
-        let ret_str = emit_inferred(inferred, shared_types.clone(), si.clone());
+        let ret_str = emit_inferred(
+            inferred,
+            shared_types.clone(),
+            si.clone(),
+            emit_info.clone(),
+            fn_type_param_names.clone(),
+        );
         let body_scope = build_params_scope(&scope, value_params.clone());
         let depth = 0;
         let use_tco = is_tco_eligible(&name, &body, registry.clone(), &si);
@@ -4357,8 +4451,13 @@ pub fn emit_fn_def(
             && (use_tco.clone() == false));
         if use_tco.clone() {
             {
-                let tco_params_str =
-                    emit_tco_params(value_params.clone(), shared_types.clone(), si.clone());
+                let tco_params_str = emit_tco_params(
+                    value_params.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                    emit_info.clone(),
+                    fn_type_param_names.clone(),
+                );
                 let body_str = emit_typed_tco_body(
                     body.clone(),
                     name.clone(),
@@ -4586,11 +4685,13 @@ pub fn emit_func_def(
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
             emit_info.read_only_params.clone(),
+            emit_info.clone(),
         );
         let ret_str = emit_func_inferred(
             inferred,
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
         );
         let body_scope = build_params_scope(&scope, params.clone());
         let si = scope.type_env.clone().source_indices.clone();
@@ -4803,12 +4904,20 @@ pub fn emit_tco_params(
     params: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    parent_generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
             for p in params.iter().cloned() {
-                __result.push(emit_tco_param(&p, shared_types.clone(), &source_indices));
+                __result.push(emit_tco_param(
+                    &p,
+                    shared_types.clone(),
+                    &source_indices,
+                    emit_info.clone(),
+                    parent_generic_param_names.clone(),
+                ));
             }
             __result
         });
@@ -4820,10 +4929,18 @@ pub fn emit_tco_param(
     param: &Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    parent_generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let n = param_node_type_expr(&param);
-        let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
+        let ty = emit_rust_param_type_with_generics(
+            &n,
+            &shared_types,
+            &source_indices,
+            &emit_info,
+            &parent_generic_param_names,
+        );
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -4847,6 +4964,7 @@ pub fn emit_func_params(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         let param_strs = Rc::new({
@@ -4857,6 +4975,8 @@ pub fn emit_func_params(
                     shared_types.clone(),
                     &source_indices,
                     read_only_params.clone(),
+                    emit_info.clone(),
+                    Rc::new(vec![]),
                 ));
             }
             __result
@@ -4872,10 +4992,12 @@ pub fn emit_func_params(
                         ),
                         ": &".to_string(),
                     ),
-                    render_rust_type(
+                    render_rust_type_in_emit_context(
                         &resource_use_resource(&u),
                         shared_types.clone(),
                         &source_indices,
+                        emit_info.clone(),
+                        Rc::new(vec![]),
                     ),
                 ));
             }
@@ -4900,11 +5022,18 @@ pub fn emit_func_inferred(
     inferred: Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
             " -> Result<".to_string(),
-            render_rust_type(&inferred, shared_types, &source_indices),
+            render_rust_type_in_emit_context(
+                &inferred,
+                shared_types,
+                &source_indices,
+                emit_info,
+                Rc::new(vec![]),
+            ),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
     )
@@ -4915,6 +5044,8 @@ pub fn emit_params(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    parent_generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -4925,6 +5056,8 @@ pub fn emit_params(
                     shared_types.clone(),
                     &source_indices,
                     read_only_params.clone(),
+                    emit_info.clone(),
+                    parent_generic_param_names.clone(),
                 ));
             }
             __result
@@ -4974,15 +5107,78 @@ pub fn emit_rust_param_type(
     }
 }
 
+pub fn emit_rust_param_type_with_generics(
+    n: &Rc<Node>,
+    shared_types: &Rc<std::collections::BTreeSet<String>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: &Rc<EmitGraphInfo>,
+    parent_generic_param_names: &Rc<Vec<String>>,
+) -> String {
+    if ((n.params.clone().len() as i64) > 0) {
+        {
+            let param_types = Rc::new({
+                let mut __result = Vec::new();
+                for p in n.params.clone().iter().cloned() {
+                    __result.push(render_rust_type_in_emit_context(
+                        &param_node_type_expr(&p),
+                        shared_types.clone(),
+                        &source_indices,
+                        emit_info.clone(),
+                        parent_generic_param_names.clone(),
+                    ));
+                }
+                __result
+            });
+            let param_str = param_types.join(&", ".to_string());
+            let ret_str = match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => render_rust_type_in_emit_context(
+                    &rt,
+                    shared_types.clone(),
+                    &source_indices,
+                    emit_info.clone(),
+                    parent_generic_param_names.clone(),
+                ),
+                _ => "()".to_string(),
+            };
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat("impl Fn(".to_string(), param_str),
+                        ") -> ".to_string(),
+                    ),
+                    ret_str,
+                ),
+                " + Clone".to_string(),
+            )
+        }
+    } else {
+        render_rust_type_in_emit_context(
+            &n,
+            shared_types.clone(),
+            &source_indices,
+            emit_info.clone(),
+            parent_generic_param_names.clone(),
+        )
+    }
+}
+
 pub fn emit_param(
     param: &Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<std::collections::BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    parent_generic_param_names: Rc<Vec<String>>,
 ) -> String {
     {
         let n = param_node_type_expr(&param);
-        let ty = emit_rust_param_type(&n, &shared_types, &source_indices);
+        let ty = emit_rust_param_type_with_generics(
+            &n,
+            &shared_types,
+            &source_indices,
+            &emit_info,
+            &parent_generic_param_names,
+        );
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
         let is_borrowable = ((v2_rt::set_contains(&read_only_params, pname.clone())
@@ -5012,10 +5208,18 @@ pub fn emit_inferred(
     inferred: Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    parent_generic_param_names: Rc<Vec<String>>,
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
-        render_rust_type(&inferred, shared_types, &source_indices),
+        render_rust_type_in_emit_context(
+            &inferred,
+            shared_types,
+            &source_indices,
+            emit_info,
+            parent_generic_param_names,
+        ),
     )
 }
 
@@ -11283,7 +11487,7 @@ pub fn wrap_rust_record_field_value(
 ) -> String {
     {
         let is_bounded_lattice_field =
-            v2_rt::contains(struct_name.clone(), "BoundedLattice".to_string());
+            (struct_name.clone().as_str() == "BoundedLattice".to_string().as_str());
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
             v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
         } else {
@@ -16007,10 +16211,8 @@ pub fn emit_data_def_body(
             shared_types.clone(),
             &scope.type_env.clone().source_indices.clone(),
         );
-        if (((raw_ty_str.clone().as_str() == "BoundedLattice".to_string().as_str())
-            || (raw_ty_str.clone().as_str() == "Rc<BoundedLattice>".to_string().as_str()))
-            || v2_rt::contains(raw_ty_str.clone(), "BoundedLattice<".to_string()))
-        {
+        let type_name = authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node);
+        if (type_name.as_str() == "BoundedLattice".to_string().as_str()) {
             match (*value.expr_data.clone()).clone() {
                 ExprData::ExprRecordLit { parent_enum: _, .. } => {
                     let meet_str = match field_value_by_name(
