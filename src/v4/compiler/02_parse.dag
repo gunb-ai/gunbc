@@ -295,9 +295,13 @@ fn grammar_symbol_fold_step(
 }
 
 
+fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
+}
+
+
 fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
-  let folded = fold_node(n: grammar_to_node(grammar: grammar), algebra: grammar_symbol_fold(sym: sym))
-  folded.found
+  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
 
