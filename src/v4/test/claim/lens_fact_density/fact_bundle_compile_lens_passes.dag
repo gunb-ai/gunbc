@@ -1,17 +1,17 @@
 // src/v4/test/claim/lens_fact_density/fact_bundle_compile_lens_passes.dag
 // Scope: T-30 enforcement gate claim — fact_density_hollow_alias_lens admits a fact-bundle (NamedFieldFacts) root via apply_compile_lens.
 // Owns: claim_fact_bundle_compile_lens_passes.
-// Consumes: compiler compile, lens fact_density, lens_common infer_fixture, std diagnostic, std node, std verification.
+// Consumes: compiler compile, lens_common infer_fixture, std diagnostic, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.fact_bundle_compile_lens_passes
 
 import v4.compiler.compile {
   CompileLensEnforce,
-  apply_compile_lens
+  apply_compile_lens,
+  fact_density_lens
 }
 import v4.compiler.infer { InferredTree }
-import v4.lens.fact_density { fact_density_hollow_alias_lens }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
@@ -67,7 +67,7 @@ fn fact_bundle_cl_tree() -> InferredTree {
 
 fn fact_bundle_compile_lens_passes_holds() -> Bool {
   match apply_compile_lens(
-    lens: fact_density_hollow_alias_lens,
+    lens: fact_density_lens,
     inferred: fact_bundle_cl_tree(),
     mode: CompileLensEnforce
   ) {

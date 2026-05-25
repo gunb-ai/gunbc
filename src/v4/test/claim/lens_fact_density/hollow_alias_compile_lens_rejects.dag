@@ -1,7 +1,7 @@
 // src/v4/test/claim/lens_fact_density/hollow_alias_compile_lens_rejects.dag
 // Scope: T-30 enforcement gate claim — fact_density_hollow_alias_lens rejects a hollow alias (NoFact) root via apply_compile_lens.
 // Owns: claim_hollow_alias_compile_lens_rejects.
-// Consumes: compiler compile, lens fact_density, lens_common infer_fixture, std diagnostic, std verification.
+// Consumes: compiler compile, lens fact_density (locus only), lens_common infer_fixture, std diagnostic, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.hollow_alias_compile_lens_rejects
@@ -9,10 +9,10 @@ module v4.test.claim.lens_fact_density.hollow_alias_compile_lens_rejects
 import v4.compiler.compile {
   CompileLensEnforce,
   apply_compile_lens,
-  compile_lens_gate_rejected
+  fact_density_lens
 }
 import v4.compiler.infer { InferredTree }
-import v4.lens.fact_density { fact_density_hollow_alias_lens }
+import v4.lens.fact_density { fact_density_hollow_alias_locus }
 import v4.std.diagnostic { Accepted, Rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
@@ -57,11 +57,11 @@ fn hollow_alias_cl_tree() -> InferredTree {
 
 fn hollow_alias_compile_lens_rejects_holds() -> Bool {
   match apply_compile_lens(
-    lens: fact_density_hollow_alias_lens,
+    lens: fact_density_lens,
     inferred: hollow_alias_cl_tree(),
     mode: CompileLensEnforce
   ) {
-    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    Rejected { diagnostics: r } => r.head.reason == fact_density_hollow_alias_locus
     Accepted { value: _, diagnostics: _ } => false
   }
 }
