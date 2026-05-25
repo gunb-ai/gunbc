@@ -7,7 +7,8 @@
 //       parse_e1_syntax_error, expr_is_nullable_given_set, compute_nullable_step,
 //       compute_nullable_set, grammar_empty_corner_list, expr_direct_left_corner_list,
 //       compute_left_corner_closure, expr_has_undefined_nonterminal,
-//       grammar_has_undefined_nonterminals, grammar_has_left_recursion_step,
+//       grammar_has_undefined_nonterminals, grammar_validate_for_parse, ValidatedGrammarRoot,
+//       grammar_has_left_recursion_step,
 //       grammar_has_undefined_nonterminals_step, parse_sync_step, build_parse_table,
 //       grammar_carries_symbol.
 // Consumes: std diagnostic, std node, std algebra, std collection, std witness, compiler tokenize.
@@ -54,6 +55,11 @@ type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
   sync_tokens: Set<Symbol>
+}
+
+// Parse-table entrypoint carrier: produced only after undefined/duplicate/left-recursion gates pass.
+type ValidatedGrammarRoot {
+  root: GrammarRoot
 }
 
 

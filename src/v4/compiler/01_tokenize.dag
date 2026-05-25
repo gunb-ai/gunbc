@@ -462,7 +462,7 @@ fn lex_try_rules_prefer_longer(acc: LexRuleApply, candidate: LexRuleApply) -> Le
       match candidate {
         LexRuleNoMatch => acc
         _ =>
-          if nat_gte(a: lex_rule_apply_lexeme_length(apply: candidate), b: lex_rule_apply_lexeme_length(apply: acc)) {
+          if lex_rule_apply_lexeme_length(apply: candidate) >= lex_rule_apply_lexeme_length(apply: acc) {
             candidate
           } else {
             acc
