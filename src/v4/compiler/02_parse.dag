@@ -397,129 +397,147 @@ fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
 }
 
 
-// grammar_fuel: upper bound on cross-production expansion depth — one unit per production.
-// Passed as the fuel: Nat parameter to expr_is_nullable, expr_reaches_nonterminal_left,
-// and parse_expr so the complexity analyzer can prove termination on the Nonterminal arms.
-// 🟡 gated — P4-bounded-semantics interim — feature: grammar-recursion-depth-fuel —
-// production-count fuel is sound for grammars whose only recursive structure is left recursion
-// (rejected by grammar_has_left_recursion). For non-left-recursive cyclic grammars (e.g.,
-// right-recursive A → B A | ε), expansion depth equals input length, not production count;
-// those grammars pass validation but reject inputs whose recursion depth exceeds production count.
-// Dissolve-on: input-length-based fuel or grammar-recursion-depth static analysis.
+// grammar_fuel: production count as Nat — initial measure for parse_expr's Nonterminal arm.
+// Semantics: nat_monus(production_count, length(visited)) — remaining expansion budget.
+// With visited: List<Symbol> guarding re-entry of any production, expansion depth ≤
+// production_count for well-formed non-left-recursive grammars. P4 concern from prior
+// fuel-only scheme is resolved: visited cycle guard makes the bound tight.
 fn grammar_fuel(root: GrammarRoot) -> Nat {
   fold_list(xs: root.productions, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } })
 }
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived nullable query morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating nullable logic outside this function.
-// expr_is_nullable: true iff expr can match empty input.
-// Optional/Repeat are always nullable; Sequence requires both halves nullable; Choice either.
-// Nonterminal expands with a visited guard to prevent looping on nullable mutual recursion.
-fn expr_is_nullable(
-  expr: GrammarExpr,
-  fuel: Nat,
-  visited: Set<Symbol>,
-  root: GrammarRoot
-) -> Bool {
+// expr_is_nullable_given_set: true iff expr can match empty input given a pre-computed nullable set.
+// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
+// Nonterminal arms consult nullable_set rather than following production references.
+fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Bool {
   match expr {
     Terminal { token_class: _ } => false
-    Nonterminal { production: p } =>
-      match visited.member(p) {
-        true => false
-        false =>
-          match fuel {
-            Zero => false
-            Succ { prev: rest } =>
-              match grammar_lookup_production(root: root, name: p) {
-                GrammarProductionMissing => false
-                GrammarProductionFound { production: prod } =>
-                  expr_is_nullable(
-                    expr: prod.expression,
-                    fuel: rest,
-                    visited: set_symbol_insert(s: visited, item: p),
-                    root: root
-                  )
-              }
-          }
-      }
+    Nonterminal { production: name } => nullable_set.member(name)
     Sequence { left: left, right: right } =>
-      expr_is_nullable(expr: left, fuel: fuel, visited: visited, root: root) &&
-      expr_is_nullable(expr: right, fuel: fuel, visited: visited, root: root)
+      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) &&
+      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
     Choice { left: left, right: right } =>
-      expr_is_nullable(expr: left, fuel: fuel, visited: visited, root: root) ||
-      expr_is_nullable(expr: right, fuel: fuel, visited: visited, root: root)
+      expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) ||
+      expr_is_nullable_given_set(expr: right, nullable_set: nullable_set)
     Optional { element: _ } => true
     Repeat { element: _ } => true
   }
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
-// expr_reaches_nonterminal_left: true iff the transitive left corner of expr includes `name`.
-// For Sequence, if the left element is nullable, the right is also a left corner.
-// visited tracks expanded nonterminals; prevents looping on mutual left recursion.
-fn expr_reaches_nonterminal_left(
-  expr: GrammarExpr,
-  name: Symbol,
-  fuel: Nat,
-  visited: Set<Symbol>,
-  root: GrammarRoot
-) -> Bool {
-  match expr {
-    Terminal { token_class: _ } => false
-    Nonterminal { production: p } =>
-      p == name ||
-      match visited.member(p) {
-        true => false
-        false =>
-          match fuel {
-            Zero => false
-            Succ { prev: rest } =>
-              match grammar_lookup_production(root: root, name: p) {
-                GrammarProductionMissing => false
-                GrammarProductionFound { production: prod } =>
-                  expr_reaches_nonterminal_left(
-                    expr: prod.expression,
-                    name: name,
-                    fuel: rest,
-                    visited: set_symbol_insert(s: visited, item: p),
-                    root: root
-                  )
-              }
+// compute_nullable_set: fixpoint over productions.
+// Outer fold iterates |productions| times (convergence bound); inner fold adds nullable productions.
+fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
+  fold_list(
+    xs: root.productions,
+    empty: Set { member: fn(_) { false } },
+    cons: fn(acc, _) {
+      fold_list(
+        xs: root.productions,
+        empty: acc,
+        cons: fn(ns, p) {
+          if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
+            set_symbol_insert(s: ns, item: p.name)
+          } else {
+            ns
           }
-      }
+        }
+      )
+    }
+  )
+}
+
+
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr left-corner query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-corner reachability morphism over GrammarExpr coproduct; forbidden: duplicating left-corner logic or inlining nullable check outside this function.
+// expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
+// Structurally recursive on GrammarExpr (finite tree) — no fuel needed.
+// Sequence: when left is nullable, both left and right contribute left corners.
+fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
+  match expr {
+    Terminal { token_class: _ } => Empty
+    Nonterminal { production: name } => Cons { head: name, tail: Empty }
     Sequence { left: left, right: right } =>
-      expr_reaches_nonterminal_left(expr: left, name: name, fuel: fuel, visited: visited, root: root) ||
-      (expr_is_nullable(expr: left, fuel: fuel, visited: visited, root: root) &&
-       expr_reaches_nonterminal_left(expr: right, name: name, fuel: fuel, visited: visited, root: root))
+      if expr_is_nullable_given_set(expr: left, nullable_set: nullable_set) {
+        list_append(
+          left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
+          right: expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
+        )
+      } else {
+        expr_direct_left_corner_list(expr: left, nullable_set: nullable_set)
+      }
     Choice { left: left, right: right } =>
-      expr_reaches_nonterminal_left(expr: left, name: name, fuel: fuel, visited: visited, root: root) ||
-      expr_reaches_nonterminal_left(expr: right, name: name, fuel: fuel, visited: visited, root: root)
+      list_append(
+        left: expr_direct_left_corner_list(expr: left, nullable_set: nullable_set),
+        right: expr_direct_left_corner_list(expr: right, nullable_set: nullable_set)
+      )
     Optional { element: element } =>
-      expr_reaches_nonterminal_left(expr: element, name: name, fuel: fuel, visited: visited, root: root)
+      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
     Repeat { element: element } =>
-      expr_reaches_nonterminal_left(expr: element, name: name, fuel: fuel, visited: visited, root: root)
+      expr_direct_left_corner_list(expr: element, nullable_set: nullable_set)
   }
 }
 
 
-fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: GrammarRoot) -> Bool {
+// compute_left_corner_closure: transitive closure of left-corner reachability from start symbols.
+// Outer fold iterates |productions| times (convergence bound).
+// Inner fold expands each reachable symbol by its production's direct left corners.
+fn compute_left_corner_closure(
+  start: List<Symbol>,
+  nullable_set: Set<Symbol>,
+  root: GrammarRoot
+) -> List<Symbol> {
+  fold_list(
+    xs: root.productions,
+    empty: start,
+    cons: fn(reachable, _) {
+      fold_list(
+        xs: reachable,
+        empty: reachable,
+        cons: fn(acc, sym) {
+          match grammar_lookup_production(root: root, name: sym) {
+            GrammarProductionMissing => acc
+            GrammarProductionFound { production: prod } =>
+              fold_list(
+                xs: expr_direct_left_corner_list(expr: prod.expression, nullable_set: nullable_set),
+                empty: acc,
+                cons: fn(r, name) {
+                  if contains(xs: r, item: name, eq: fn(a, b) { a == b }) {
+                    r
+                  } else {
+                    list_snoc_item(xs: r, item: name)
+                  }
+                }
+              )
+          }
+        }
+      )
+    }
+  )
+}
+
+
+fn grammar_has_left_recursion_step(acc: Bool, p: GrammarProduction, root: GrammarRoot, nullable_set: Set<Symbol>) -> Bool {
   acc ||
-  expr_reaches_nonterminal_left(
-    expr: p.expression,
-    name: p.name,
-    fuel: grammar_fuel(root: root),
-    visited: Set { member: fn(_) { false } },
-    root: root
+  contains(
+    xs: compute_left_corner_closure(
+      start: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set),
+      nullable_set: nullable_set,
+      root: root
+    ),
+    item: p.name,
+    eq: fn(a, b) { a == b }
   )
 }
 
 
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
+  let nullable_set = compute_nullable_set(root: root)
   fold_list(
     xs: root.productions,
     empty: false,
-    cons: fn(acc, p) { grammar_has_left_recursion_step(acc: acc, p: p, root: root) }
+    cons: fn(acc, p) { grammar_has_left_recursion_step(acc: acc, p: p, root: root, nullable_set: nullable_set) }
   )
 }
 
@@ -668,7 +686,17 @@ fn parse_token_first(tokens: List<Token>) -> TokenPeek {
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarExpr structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived recursive-descent parse morphism over GrammarExpr coproduct (per-variant fold eliminating hand-written match arms); forbidden: duplicating parse walk logic or adding new GrammarExpr arms outside this function.
-fn parse_expr(expr: GrammarExpr, fuel: Nat, tokens: List<Token>, root: GrammarRoot) -> ParseExprResult {
+// parse_expr: recursive-descent parse walk.
+// measure: Nat — initial value grammar_fuel(root); decrements once per Nonterminal expansion.
+// visited: List<Symbol> — productions entered on this path; guards against cycles.
+// Semantics: measure = nat_monus(production_count, length(visited)) — remaining expansion budget.
+fn parse_expr(
+  expr: GrammarExpr,
+  tokens: List<Token>,
+  root: GrammarRoot,
+  measure: Nat,
+  visited: List<Symbol>
+) -> ParseExprResult {
   match expr {
     Terminal { token_class: class } =>
       match parse_token_first(tokens: tokens) {
@@ -692,37 +720,42 @@ fn parse_expr(expr: GrammarExpr, fuel: Nat, tokens: List<Token>, root: GrammarRo
           }
       }
     Nonterminal { production: prod_name } =>
-      match fuel {
-        Zero => ParseExprRejected { diagnostics: [] }
-        Succ { prev: rest } =>
-          match grammar_lookup_production(root: root, name: prod_name) {
-            GrammarProductionMissing =>
-              ParseExprRejected { diagnostics: [] }
-            GrammarProductionFound { production: production } =>
-              match parse_expr(expr: production.expression, fuel: rest, tokens: tokens, root: root) {
-                ParseExprRejected { diagnostics: diags } =>
-                  ParseExprRejected { diagnostics: diags }
-                ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
-                  ParseExprAccepted {
-                    remaining: remaining,
-                    captured: Node {
-                      kind: TypeNode { connective: Conj },
-                      children: [
-                        grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
-                        grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
-                      ]
-                    },
-                    diagnostics: diags
-                  }
-              }
-          }
+      if contains(xs: visited, item: prod_name, eq: fn(a, b) { a == b }) {
+        ParseExprRejected { diagnostics: [] }
+      } else {
+        match measure {
+          Zero => ParseExprRejected { diagnostics: [] }
+          Succ { prev: rest_measure } =>
+            let new_visited = list_snoc_item(xs: visited, item: prod_name)
+            match grammar_lookup_production(root: root, name: prod_name) {
+              GrammarProductionMissing =>
+                ParseExprRejected { diagnostics: [] }
+              GrammarProductionFound { production: production } =>
+                match parse_expr(expr: production.expression, tokens: tokens, root: root, measure: rest_measure, visited: new_visited) {
+                  ParseExprRejected { diagnostics: diags } =>
+                    ParseExprRejected { diagnostics: diags }
+                  ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
+                    ParseExprAccepted {
+                      remaining: remaining,
+                      captured: Node {
+                        kind: TypeNode { connective: Conj },
+                        children: [
+                          grammar_named_edge(name: grammar_production_identity_node_projection, target: production.emitted),
+                          grammar_named_edge(name: grammar_production_captured_node_projection, target: captured)
+                        ]
+                      },
+                      diagnostics: diags
+                    }
+                }
+            }
+        }
       }
     Sequence { left: left, right: right } =>
-      match parse_expr(expr: left, fuel: fuel, tokens: tokens, root: root) {
+      match parse_expr(expr: left, tokens: tokens, root: root, measure: measure, visited: visited) {
         ParseExprRejected { diagnostics: diags } =>
           ParseExprRejected { diagnostics: diags }
         ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1 } =>
-          match parse_expr(expr: right, fuel: fuel, tokens: rest1, root: root) {
+          match parse_expr(expr: right, tokens: rest1, root: root, measure: measure, visited: visited) {
             ParseExprRejected { diagnostics: diags2 } =>
               ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
             ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2 } =>
@@ -740,14 +773,14 @@ fn parse_expr(expr: GrammarExpr, fuel: Nat, tokens: List<Token>, root: GrammarRo
           }
       }
     Choice { left: left, right: right } =>
-      match parse_expr(expr: left, fuel: fuel, tokens: tokens, root: root) {
+      match parse_expr(expr: left, tokens: tokens, root: root, measure: measure, visited: visited) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
-          parse_expr(expr: right, fuel: fuel, tokens: tokens, root: root)
+          parse_expr(expr: right, tokens: tokens, root: root, measure: measure, visited: visited)
       }
     Optional { element: element } =>
-      match parse_expr(expr: element, fuel: fuel, tokens: tokens, root: root) {
+      match parse_expr(expr: element, tokens: tokens, root: root, measure: measure, visited: visited) {
         ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags } =>
           ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags }
         ParseExprRejected { diagnostics: _ } =>
@@ -768,7 +801,7 @@ fn parse_expr(expr: GrammarExpr, fuel: Nat, tokens: List<Token>, root: GrammarRo
           match acc.done {
             true => acc
             false =>
-              match parse_expr(expr: element, fuel: fuel, tokens: acc.remaining, root: root) {
+              match parse_expr(expr: element, tokens: acc.remaining, root: root, measure: measure, visited: visited) {
                 ParseExprRejected { diagnostics: _ } =>
                   ParseRepeatAcc {
                     remaining: acc.remaining,
@@ -808,7 +841,7 @@ fn parse_expr(expr: GrammarExpr, fuel: Nat, tokens: List<Token>, root: GrammarRo
 
 fn parse_production(tokens: List<Token>, root: GrammarRoot, production: GrammarProduction) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  match parse_expr(expr: production.expression, fuel: grammar_fuel(root: root), tokens: tokens, root: root) {
+  match parse_expr(expr: production.expression, tokens: tokens, root: root, measure: grammar_fuel(root: root), visited: []) {
     ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags } =>
       if is_empty(xs: remaining) {
         Accepted {

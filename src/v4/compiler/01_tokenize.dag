@@ -4,12 +4,14 @@
 // Owns: LexCharClass, LexPattern, LexRule, LexRuleSet, LexRules, Token, TokenStream,
 //       tokenize_lex_e0_source_not_exhausted, tokenize_lex_e0_source_not_exhausted_diagnostic,
 //       tokenize_lex_e1_unrecognized_char, tokenize_lex_e1_unrecognized_char_diagnostic,
-//       char_in_class, LexMatchResult, LexRuleApply,
-//       lex_string_fuel, lex_match_prefix, lex_match_pattern, lex_repeat_pattern,
+//       char_in_class, LexMatchResult, LexRuleApply, RepeatState, LexWalkAcc,
+//       lex_match_prefix, lex_match_pattern,
 //       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk,
 //       lex_rule_token_class_member, lex_rule_set_token_class_member, tokenize.
 // Consumes: std collection, std diagnostic, std node, std text, std nat, std algebra.
-// Status: T-6 lexer walk realized.
+// Status: T-6 lexer walk realized. Zero Annotation Mandate applied: fold-based lex_walk
+//         (LexWalkAcc over source chars), fold-based RepeatPattern/OneOrMorePattern arms in
+//         lex_match_pattern; lex_string_fuel and lex_repeat_pattern removed. T-22: 0 diagnostics.
 
 
 module v4.compiler.tokenize
@@ -20,7 +22,7 @@ import v4.std.diagnostic { Accepted, ByteRange, Diagnostic, ExternalContractUnkn
 import v4.std.node { Symbol }
 import v4.std.algebra { Cons, Empty, fold_list, is_empty, is_prefix_of, length, list_append, list_skip, list_snoc_item }
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
-import v4.std.nat { Nat, Zero, Succ, nat_lte, nat_gte }
+import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
 
 // 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
@@ -171,42 +173,19 @@ fn lex_match_prefix(prefix: String, source: String) -> LexMatchResult {
 }
 
 
-// Fuel for pattern-matching recursion: converts source length to Nat so the
-// complexity analyzer can witness structural descent in lex_repeat_pattern.
-fn lex_string_fuel(source: String) -> Nat {
-  fold_list(xs: source, empty: Zero, cons: fn(acc, _) { Succ { prev: acc } })
-}
-
-
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: LexPattern repeat combinator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived greedy-repeat morphism over LexPattern's RepeatPattern variant, eliminating the hand-rolled zero-width halt guard; forbidden: inlining repeat semantics into the pattern match arms of lex_match_pattern.
-// lex_repeat_pattern: greedy zero-or-more match of element against source.
-// Termination: zero-width matches (empty consumed) halt immediately; otherwise
-// each iteration strictly reduces source length (fuel: Succ { prev: rest } → rest descent).
-fn lex_repeat_pattern(pattern: LexPattern, source: String, fuel: Nat, acc_lexeme: String) -> LexMatchResult {
-  match fuel {
-    Zero => LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
-    Succ { prev: rest_fuel } =>
-      match lex_match_pattern(pattern: pattern, source: source, fuel: rest_fuel) {
-        LexMatchRejected =>
-          LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
-        LexMatchAccepted { remaining: rest, lexeme: consumed } =>
-          match string_is_empty(s: consumed) {
-            true => LexMatchAccepted { remaining: source, lexeme: acc_lexeme }
-            false =>
-              lex_repeat_pattern(
-                pattern: pattern,
-                source: rest,
-                fuel: rest_fuel,
-                acc_lexeme: list_append(left: acc_lexeme, right: consumed)
-              )
-          }
-      }
-  }
+// Accumulator for fold-based greedy repeat matching inside lex_match_pattern.
+type RepeatState {
+  remaining: String
+  lexeme: String
+  done: Bool
 }
 
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: LexPattern structural morphism substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived pattern-matching morphism over LexPattern coproduct (per-variant fold eliminating hand-written match arms); forbidden: adding new match arms outside the substrate derivation path.
-fn lex_match_pattern(pattern: LexPattern, source: String, fuel: Nat) -> LexMatchResult {
+// lex_match_pattern: structurally recursive on LexPattern (finite tree) — no fuel parameter needed.
+// RepeatPattern/OneOrMorePattern arms use fold_list(xs: source, ...) with RepeatState accumulator;
+// the closure calls lex_match_pattern(element, ...) where element is a StrictSubValue of pattern.
+fn lex_match_pattern(pattern: LexPattern, source: String) -> LexMatchResult {
   match pattern {
     EmptyPattern =>
       LexMatchAccepted { remaining: source, lexeme: Empty }
@@ -264,62 +243,104 @@ fn lex_match_pattern(pattern: LexPattern, source: String, fuel: Nat) -> LexMatch
           }
       }
     SequencePattern { left: left, right: right } =>
-      match lex_match_pattern(pattern: left, source: source, fuel: fuel) {
+      match lex_match_pattern(pattern: left, source: source) {
         LexMatchRejected => LexMatchRejected
         LexMatchAccepted { remaining: rest1, lexeme: lex1 } =>
-          match lex_match_pattern(pattern: right, source: rest1, fuel: fuel) {
+          match lex_match_pattern(pattern: right, source: rest1) {
             LexMatchRejected => LexMatchRejected
             LexMatchAccepted { remaining: rest2, lexeme: lex2 } =>
               LexMatchAccepted { remaining: rest2, lexeme: list_append(left: lex1, right: lex2) }
           }
       }
     ChoicePattern { left: left, right: right } =>
-      match lex_match_pattern(pattern: left, source: source, fuel: fuel) {
+      match lex_match_pattern(pattern: left, source: source) {
         LexMatchAccepted { remaining: rest, lexeme: lex } =>
           LexMatchAccepted { remaining: rest, lexeme: lex }
         LexMatchRejected =>
-          lex_match_pattern(pattern: right, source: source, fuel: fuel)
+          lex_match_pattern(pattern: right, source: source)
       }
     OptionalPattern { element: element } =>
-      match lex_match_pattern(pattern: element, source: source, fuel: fuel) {
+      match lex_match_pattern(pattern: element, source: source) {
         LexMatchAccepted { remaining: rest, lexeme: lex } =>
           LexMatchAccepted { remaining: rest, lexeme: lex }
         LexMatchRejected =>
           LexMatchAccepted { remaining: source, lexeme: Empty }
       }
     RepeatPattern { element: element } =>
-      match fuel {
-        Zero => LexMatchAccepted { remaining: source, lexeme: Empty }
-        Succ { prev: rest_fuel } =>
-          lex_repeat_pattern(pattern: element, source: source, fuel: rest_fuel, acc_lexeme: Empty)
-      }
-    OneOrMorePattern { element: element } =>
-      match fuel {
-        Zero => LexMatchRejected
-        Succ { prev: rest_fuel } =>
-          match lex_match_pattern(pattern: element, source: source, fuel: rest_fuel) {
-            LexMatchRejected => LexMatchRejected
-            LexMatchAccepted { remaining: rest, lexeme: lex } =>
-              lex_repeat_pattern(pattern: element, source: rest, fuel: rest_fuel, acc_lexeme: lex)
+      // fold_list(xs: source) bounds iterations to length(source); done: true short-circuits.
+      // Each successful step consumes ≥1 chars (zero-width guard) or sets done: true.
+      let init = RepeatState { remaining: source, lexeme: Empty, done: false }
+      let result = fold_list(
+        xs: source,
+        empty: init,
+        cons: fn(state, _) {
+          match state.done {
+            true => state
+            false =>
+              match lex_match_pattern(pattern: element, source: state.remaining) {
+                LexMatchRejected =>
+                  RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+                LexMatchAccepted { remaining: rest, lexeme: consumed } =>
+                  match string_is_empty(s: consumed) {
+                    true =>
+                      RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+                    false =>
+                      RepeatState {
+                        remaining: rest,
+                        lexeme: list_append(left: state.lexeme, right: consumed),
+                        done: false
+                      }
+                  }
+              }
           }
+        }
+      )
+      LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
+    OneOrMorePattern { element: element } =>
+      match lex_match_pattern(pattern: element, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: rest, lexeme: lex } =>
+          let init = RepeatState { remaining: rest, lexeme: lex, done: false }
+          let result = fold_list(
+            xs: rest,
+            empty: init,
+            cons: fn(state, _) {
+              match state.done {
+                true => state
+                false =>
+                  match lex_match_pattern(pattern: element, source: state.remaining) {
+                    LexMatchRejected =>
+                      RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+                    LexMatchAccepted { remaining: r, lexeme: c } =>
+                      match string_is_empty(s: c) {
+                        true =>
+                          RepeatState { remaining: state.remaining, lexeme: state.lexeme, done: true }
+                        false =>
+                          RepeatState {
+                            remaining: r,
+                            lexeme: list_append(left: state.lexeme, right: c),
+                            done: false
+                          }
+                      }
+                  }
+              }
+            }
+          )
+          LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
       }
     DelimitedPattern { open: open, body: body, close: close } =>
-      match fuel {
-        Zero => LexMatchRejected
-        Succ { prev: rest_fuel } =>
-          match lex_match_pattern(pattern: open, source: source, fuel: rest_fuel) {
+      match lex_match_pattern(pattern: open, source: source) {
+        LexMatchRejected => LexMatchRejected
+        LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
+          match lex_match_pattern(pattern: body, source: after_open) {
             LexMatchRejected => LexMatchRejected
-            LexMatchAccepted { remaining: after_open, lexeme: open_lex } =>
-              match lex_match_pattern(pattern: body, source: after_open, fuel: rest_fuel) {
+            LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
+              match lex_match_pattern(pattern: close, source: after_body) {
                 LexMatchRejected => LexMatchRejected
-                LexMatchAccepted { remaining: after_body, lexeme: body_lex } =>
-                  match lex_match_pattern(pattern: close, source: after_body, fuel: rest_fuel) {
-                    LexMatchRejected => LexMatchRejected
-                    LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
-                      LexMatchAccepted {
-                        remaining: after_close,
-                        lexeme: list_append(left: open_lex, right: list_append(left: body_lex, right: close_lex))
-                      }
+                LexMatchAccepted { remaining: after_close, lexeme: close_lex } =>
+                  LexMatchAccepted {
+                    remaining: after_close,
+                    lexeme: list_append(left: open_lex, right: list_append(left: body_lex, right: close_lex))
                   }
               }
           }
@@ -336,8 +357,8 @@ fn lex_rule_pattern(rule: LexRule) -> LexPattern {
 }
 
 
-fn lex_try_rule(rule: LexRule, source: String, fuel: Nat) -> LexRuleApply {
-  match lex_match_pattern(pattern: lex_rule_pattern(rule: rule), source: source, fuel: fuel) {
+fn lex_try_rule(rule: LexRule, source: String) -> LexRuleApply {
+  match lex_match_pattern(pattern: lex_rule_pattern(rule: rule), source: source) {
     LexMatchRejected => LexRuleNoMatch
     LexMatchAccepted { remaining: remaining, lexeme: lexeme } =>
       match rule {
@@ -350,13 +371,13 @@ fn lex_try_rule(rule: LexRule, source: String, fuel: Nat) -> LexRuleApply {
 }
 
 
-fn lex_try_rules(rules: List<LexRule>, source: String, fuel: Nat) -> LexRuleApply {
+fn lex_try_rules(rules: List<LexRule>, source: String) -> LexRuleApply {
   fold_list(
     xs: rules,
     empty: LexRuleNoMatch,
     cons: fn(acc, rule) {
       match acc {
-        LexRuleNoMatch => lex_try_rule(rule: rule, source: source, fuel: fuel)
+        LexRuleNoMatch => lex_try_rule(rule: rule, source: source)
         LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
           LexRuleToken { class: class, lexeme: lexeme, remaining: remaining }
         LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
@@ -367,56 +388,76 @@ fn lex_try_rules(rules: List<LexRule>, source: String, fuel: Nat) -> LexRuleAppl
 }
 
 
+// Accumulator for fold-based lex_walk.
+// fold_list(xs: source) bounds iterations to length(source); done: true short-circuits.
+// Each successful step consumes ≥1 chars (zero-width guard sets error: true).
+type LexWalkAcc {
+  remaining: String
+  tokens: List<Token>
+  pos: Int
+  done: Bool
+  error: Bool
+}
+
+
 // lex_walk: scan source left-to-right; emit tokens, discard trivia, error on E1.
-// Termination: walk_fuel is initialized to source length; each non-error iteration
-// consumes at least one character, so walk_fuel descends (Succ { prev: rest } → rest).
-fn lex_walk(
-  source: String,
-  tokens: List<Token>,
-  file: Symbol,
-  pos: Int,
-  rules: LexRuleSet,
-  walk_fuel: Nat
-) -> Outcome<TokenStream> {
-  match string_is_empty(s: source) {
-    true =>
-      Accepted { value: TokenStream { tokens: tokens }, diagnostics: None }
-    false =>
-      match walk_fuel {
-        Zero =>
-          let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
-          Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-        Succ { prev: rest_walk } =>
-          let at = Textual { file: file, extent: ByteRange { start: pos, end: pos } }
-          match lex_try_rules(rules: rules.rules, source: source, fuel: lex_string_fuel(source: source)) {
-            LexRuleNoMatch =>
-              Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-            LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
-              match string_is_empty(s: lexeme) {
-                true =>
-                  Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-                false =>
-                  lex_walk(source: remaining, tokens: tokens, file: file, pos: pos + length(xs: lexeme), rules: rules, walk_fuel: rest_walk)
-              }
-            LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
-              match string_is_empty(s: lexeme) {
-                true =>
-                  Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
-                false =>
-                  lex_walk(
-                    source: remaining,
-                    tokens: list_snoc_item(
-                      xs: tokens,
-                      item: Token { class: class, lexeme: lexeme, file: file, start: pos, end: pos + length(xs: lexeme) }
-                    ),
-                    file: file,
-                    pos: pos + length(xs: lexeme),
-                    rules: rules,
-                    walk_fuel: rest_walk
-                  )
+// fold_list(xs: source) provides the termination bound (length(source) iterations).
+// Each non-error step consumes ≥1 characters; done: true short-circuits remaining steps.
+fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStream> {
+  let init = LexWalkAcc { remaining: source, tokens: Empty, pos: 0, done: false, error: false }
+  let result = fold_list(
+    xs: source,
+    empty: init,
+    cons: fn(acc, _) {
+      match acc.done {
+        true => acc
+        false =>
+          match string_is_empty(s: acc.remaining) {
+            true =>
+              LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: false }
+            false =>
+              match lex_try_rules(rules: rules.rules, source: acc.remaining) {
+                LexRuleNoMatch =>
+                  LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
+                LexRuleTrivia { lexeme: lexeme, remaining: remaining } =>
+                  match string_is_empty(s: lexeme) {
+                    true =>
+                      LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
+                    false =>
+                      LexWalkAcc {
+                        remaining: remaining,
+                        tokens: acc.tokens,
+                        pos: acc.pos + length(xs: lexeme),
+                        done: false,
+                        error: false
+                      }
+                  }
+                LexRuleToken { class: class, lexeme: lexeme, remaining: remaining } =>
+                  match string_is_empty(s: lexeme) {
+                    true =>
+                      LexWalkAcc { remaining: acc.remaining, tokens: acc.tokens, pos: acc.pos, done: true, error: true }
+                    false =>
+                      LexWalkAcc {
+                        remaining: remaining,
+                        tokens: list_snoc_item(
+                          xs: acc.tokens,
+                          item: Token { class: class, lexeme: lexeme, file: file, start: acc.pos, end: acc.pos + length(xs: lexeme) }
+                        ),
+                        pos: acc.pos + length(xs: lexeme),
+                        done: false,
+                        error: false
+                      }
+                  }
               }
           }
       }
+    }
+  )
+  let at = Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
+  if result.error {
+    Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+  } else {
+    Accepted { value: TokenStream { tokens: result.tokens }, diagnostics: None }
   }
 }
 
@@ -434,6 +475,6 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
         Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: rule_set } =>
-      lex_walk(source: text, tokens: [], file: file, pos: 0, rules: rule_set, walk_fuel: lex_string_fuel(source: text))
+      lex_walk(source: text, file: file, rules: rule_set)
   }
 }
