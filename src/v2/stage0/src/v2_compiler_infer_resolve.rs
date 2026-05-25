@@ -1076,6 +1076,37 @@ pub fn resolve_node_bounded(
                                 } else {
                                     match lookup_type_for(&env, &n) {
                                         Some(resolved) => {
+                                            let type_name = authored_name(env.clone(), n.clone());
+                                            let n_is_type_var = if (n.inferred.clone() != None) {
+                                                is_type_variable(
+                                                    n.inferred.clone().clone().unwrap(),
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                            let bare_arity_diags =
+                                                if ((is_user_generic_use_site(&n, &env)
+                                                    && ((n.children.clone().len() as i64) == 0))
+                                                    && !n_is_type_var)
+                                                {
+                                                    Rc::new(vec![make_error_node(
+                                                        Rc::new(
+                                                            CompilerDiagnostic::ArityMismatch {
+                                                                name: type_name.clone(),
+                                                                expected: (resolved
+                                                                    .params
+                                                                    .clone()
+                                                                    .len()
+                                                                    as i64),
+                                                                got: 0,
+                                                                span: n.span.clone(),
+                                                            },
+                                                        ),
+                                                        module_name.clone(),
+                                                    )])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                };
                                             let structurally_resolved = if (((resolved
                                                 .connective
                                                 .clone()
@@ -1103,7 +1134,7 @@ pub fn resolve_node_bounded(
                                             };
                                             Rc::new(NodeResolveResult {
                                                 resolved: final_resolved,
-                                                diagnostics: Rc::new(vec![]),
+                                                diagnostics: bare_arity_diags,
                                             })
                                         }
                                         None => {
