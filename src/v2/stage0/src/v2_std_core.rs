@@ -46,7 +46,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
     pub text: String,
-    pub span: Rc<SourceSpan>,
+    pub span: Rc<Rc<SourceSpan>>,
     pub shape: TokenShape,
 }
 
@@ -313,13 +313,13 @@ pub enum OperationModifier {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompileResult {
-    pub files: Rc<Vec<Rc<TextFile>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub files: Rc<Rc<Vec<Rc<TextFile>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
-    pub path: String,
+    pub path: FilePath,
     pub content: String,
 }
 
@@ -430,13 +430,13 @@ impl CompilerDiagnostic {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorNode {
-    pub diagnostic: Rc<CompilerDiagnostic>,
+    pub diagnostic: Rc<Rc<CompilerDiagnostic>>,
     pub module_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorDAG {
-    pub errors: Rc<Vec<Rc<ErrorNode>>>,
+    pub errors: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
@@ -666,39 +666,39 @@ pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFuncSig {
     pub name: String,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Option<Rc<Node>>,
+    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub inferred: Rc<Option<Rc<Node>>>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub output_provenance: Rc<Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>>,
     pub variant_provenance:
-        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+        Rc<Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFuncEnv {
-    pub signatures: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    pub signatures: Rc<Rc<HashMap<String, Rc<DeclaredFuncSig>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
-    pub span: Rc<SourceSpan>,
-    pub ident_span: Option<Rc<SourceSpan>>,
-    pub children: Rc<Vec<Rc<Node>>>,
+    pub span: Rc<Rc<SourceSpan>>,
+    pub ident_span: Rc<Option<Rc<SourceSpan>>>,
+    pub children: Rc<Rc<Vec<Rc<Node>>>>,
     pub connective: Connective,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Option<Rc<InferredNode>>,
+    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub inferred: Rc<Option<Rc<InferredNode>>>,
     pub return_cardinality: Cardinality,
-    pub uses: Rc<Vec<Rc<Node>>>,
-    pub body: Option<Rc<Node>>,
-    pub transport: Option<Rc<Node>>,
-    pub properties: Rc<Vec<Rc<Node>>>,
-    pub type_annotation: Option<Rc<Node>>,
+    pub uses: Rc<Rc<Vec<Rc<Node>>>>,
+    pub body: Rc<Option<Rc<Node>>>,
+    pub transport: Rc<Option<Rc<Node>>>,
+    pub properties: Rc<Rc<Vec<Rc<Node>>>>,
+    pub type_annotation: Rc<Option<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
-    pub match_pattern: Option<Rc<MatchPattern>>,
-    pub expr_data: Rc<ExprData>,
+    pub match_pattern: Rc<Option<Rc<MatchPattern>>>,
+    pub expr_data: Rc<Rc<ExprData>>,
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
@@ -3273,7 +3273,7 @@ pub struct LineCol {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NewlineIndex {
     pub file: String,
-    pub offsets: Rc<Vec<i64>>,
+    pub offsets: Rc<Rc<Vec<i64>>>,
     pub source: String,
 }
 
@@ -3379,14 +3379,14 @@ pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InternTable {
-    pub strings: Rc<Vec<String>>,
-    pub index: Rc<HashMap<String, i64>>,
+    pub strings: Rc<Rc<Vec<String>>>,
+    pub index: Rc<Rc<HashMap<String, i64>>>,
     pub next_id: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InternResult {
-    pub table: Rc<InternTable>,
+    pub table: Rc<Rc<InternTable>>,
     pub id: i64,
 }
 

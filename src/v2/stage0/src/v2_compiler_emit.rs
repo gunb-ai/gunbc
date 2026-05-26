@@ -102,27 +102,27 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitResult {
-    pub files: Rc<Vec<Rc<TextFile>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub files: Rc<Rc<Vec<Rc<TextFile>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockEmitState {
-    pub text: Rc<Vec<String>>,
-    pub scope: Rc<InferScope>,
+    pub text: Rc<Rc<Vec<String>>>,
+    pub scope: Rc<Rc<InferScope>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoFrame {
-    pub expr: Rc<Node>,
-    pub scope: Rc<InferScope>,
+    pub expr: Rc<Rc<Node>>,
+    pub scope: Rc<Rc<InferScope>>,
     pub depth: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoReassignInput {
-    pub args: Rc<Vec<Rc<Node>>>,
-    pub scope: Rc<InferScope>,
+    pub args: Rc<Rc<Vec<Rc<Node>>>>,
+    pub scope: Rc<Rc<InferScope>>,
     pub depth: i64,
 }
 
@@ -139,7 +139,7 @@ pub enum BackendCapability {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BackendInfo {
     pub target_name: String,
-    pub capabilities: Rc<Vec<BackendCapability>>,
+    pub capabilities: Rc<Rc<Vec<BackendCapability>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -147,10 +147,10 @@ pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
     pub operation_name: String,
-    pub inferred: Rc<Node>,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub mock_field_inits: Rc<Vec<Rc<Node>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub inferred: Rc<Rc<Node>>,
+    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub mock_field_inits: Rc<Rc<Vec<Rc<Node>>>>,
+    pub source_indices: Rc<Rc<HashMap<String, Rc<NewlineIndex>>>>,
 }
 
 pub fn has_mock_prefix(name: String) -> bool {
@@ -4194,9 +4194,9 @@ pub fn suffix_escape_collides_with_reserved_chain(
 }
 
 pub fn emit_suffix_escape_ident(
-    converted: &String,
-    suffix: &String,
-    keywords: &Rc<Vec<String>>,
+    converted: String,
+    suffix: String,
+    keywords: Rc<Vec<String>>,
 ) -> String {
     {
         let is_reserved = {
@@ -4248,18 +4248,18 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
                     v2_rt::concat(p.clone(), converted.clone())
                 }
                 ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
-                    &converted,
-                    &s,
-                    &spec.reserved_words.clone().keywords.clone(),
+                    converted.clone(),
+                    s.clone(),
+                    spec.reserved_words.clone().keywords.clone(),
                 ),
                 ReservedWordStrategy::NoEscape => converted.clone(),
             }
         } else {
             match (*spec.reserved_words.clone().strategy.clone()).clone() {
                 ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
-                    &converted,
-                    &s,
-                    &spec.reserved_words.clone().keywords.clone(),
+                    converted.clone(),
+                    s.clone(),
+                    spec.reserved_words.clone().keywords.clone(),
                 ),
                 _ => converted.clone(),
             }
@@ -4289,9 +4289,9 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                     match (*spec.reserved_words.clone().strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
                             emit_suffix_escape_ident(
-                                &result,
-                                &s,
-                                &spec.reserved_words.clone().keywords.clone(),
+                                result.clone(),
+                                s.clone(),
+                                spec.reserved_words.clone().keywords.clone(),
                             )
                         }
                         ReservedWordStrategy::PrefixEscape { prefix: p, .. } => {
@@ -4303,9 +4303,9 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                     match (*spec.reserved_words.clone().strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
                             emit_suffix_escape_ident(
-                                &result,
-                                &s,
-                                &spec.reserved_words.clone().keywords.clone(),
+                                result.clone(),
+                                s.clone(),
+                                spec.reserved_words.clone().keywords.clone(),
                             )
                         }
                         _ => result.clone(),

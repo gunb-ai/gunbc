@@ -40,35 +40,35 @@ pub struct ItemInfo {
     pub name: String,
     pub module_name: String,
     pub kind: ItemKind,
-    pub service_names: Rc<Vec<String>>,
-    pub resource_names: Rc<Vec<String>>,
-    pub params: Rc<Vec<Rc<Node>>>,
+    pub service_names: Rc<Rc<Vec<String>>>,
+    pub resource_names: Rc<Rc<Vec<String>>>,
+    pub params: Rc<Rc<Vec<Rc<Node>>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Rc<Node>,
-    pub items: Rc<Vec<Rc<Node>>>,
-    pub type_env: Rc<TypeEnv>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub module: Rc<Rc<Node>>,
+    pub items: Rc<Rc<Vec<Rc<Node>>>>,
+    pub type_env: Rc<Rc<TypeEnv>>,
+    pub func_env: Rc<Rc<ResolvedFuncEnv>>,
+    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Rc<Rc<Vec<Rc<TypedModule>>>>,
+    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
+    pub modules: Rc<Rc<Vec<Rc<TypedModule>>>>,
+    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub emit_graph_info: Rc<Rc<EmitGraphInfo>>,
 }
 
 pub fn inferred_to_outputs(

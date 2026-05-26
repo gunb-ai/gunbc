@@ -17,19 +17,19 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
-    pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
-    pub recursive_types: Rc<Vec<i64>>,
-    pub recursive_type_set: Rc<HashMap<i64, bool>>,
-    pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub intern_table: Rc<InternTable>,
+    pub bindings: Rc<Rc<HashMap<i64, Rc<TypeBinding>>>>,
+    pub recursive_types: Rc<Rc<Vec<i64>>>,
+    pub recursive_type_set: Rc<Rc<HashMap<i64, bool>>>,
+    pub inductive_fields: Rc<Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>>,
+    pub source_indices: Rc<Rc<HashMap<String, Rc<NewlineIndex>>>>,
+    pub intern_table: Rc<Rc<InternTable>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinding {
     pub name: String,
-    pub resolved: Rc<Node>,
-    pub provenance: Rc<SubValueRelation>,
+    pub resolved: Rc<Rc<Node>>,
+    pub provenance: Rc<Rc<SubValueRelation>>,
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {

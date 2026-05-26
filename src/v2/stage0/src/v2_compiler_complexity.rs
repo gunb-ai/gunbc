@@ -156,15 +156,15 @@ pub enum Certainty {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexitySummary {
-    pub work: Rc<CostExpr>,
-    pub span: Rc<CostExpr>,
-    pub output_size: Rc<HashMap<String, Rc<CostExpr>>>,
+    pub work: Rc<Rc<CostExpr>>,
+    pub span: Rc<Rc<CostExpr>>,
+    pub output_size: Rc<Rc<HashMap<String, Rc<CostExpr>>>>,
     pub certainty: Certainty,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostInternTable {
-    pub summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
+    pub summaries: Rc<Rc<HashMap<String, Rc<ComplexitySummary>>>>,
 }
 
 pub fn empty_intern_table() -> Rc<CostInternTable> {
@@ -211,23 +211,23 @@ pub struct CallEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
-    pub members: Rc<Vec<String>>,
-    pub member_set: Rc<std::collections::BTreeSet<String>>,
-    pub pattern: Rc<LoweringTarget>,
+    pub members: Rc<Rc<Vec<String>>>,
+    pub member_set: Rc<Rc<std::collections::BTreeSet<String>>>,
+    pub pattern: Rc<Rc<LoweringTarget>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccBuildAcc {
-    pub assigned: Rc<std::collections::BTreeSet<String>>,
-    pub index: Rc<HashMap<String, Rc<SccInfo>>>,
+    pub assigned: Rc<Rc<std::collections::BTreeSet<String>>>,
+    pub index: Rc<Rc<HashMap<String, Rc<SccInfo>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccResult {
-    pub index: Rc<HashMap<String, Rc<SccInfo>>>,
-    pub topo_order: Rc<Vec<String>>,
-    pub processing_order: Rc<Vec<String>>,
-    pub call_graph: Rc<CallGraph>,
+    pub index: Rc<Rc<HashMap<String, Rc<SccInfo>>>>,
+    pub topo_order: Rc<Rc<Vec<String>>>,
+    pub processing_order: Rc<Rc<Vec<String>>>,
+    pub call_graph: Rc<Rc<CallGraph>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -279,32 +279,32 @@ pub struct ParserProgressEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEnv {
-    pub state_aliases: Rc<HashMap<String, DescentEvidence>>,
-    pub result_sources: Rc<HashMap<String, Rc<ParserResultSource>>>,
+    pub state_aliases: Rc<Rc<HashMap<String, DescentEvidence>>>,
+    pub result_sources: Rc<Rc<HashMap<String, Rc<ParserResultSource>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressAcc {
-    pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-    pub env: Rc<ParserProgressEnv>,
+    pub edges: Rc<Rc<Vec<Rc<ParserProgressEdge>>>>,
+    pub env: Rc<Rc<ParserProgressEnv>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentCheckAcc {
     pub ok: bool,
-    pub vars: Rc<HashMap<String, bool>>,
+    pub vars: Rc<Rc<HashMap<String, bool>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvidenceBlockAcc {
     pub evidence: Option<DescentEvidence>,
-    pub vars: Rc<HashMap<String, bool>>,
+    pub vars: Rc<Rc<HashMap<String, bool>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccEdgeBlockAcc {
-    pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-    pub vars: Rc<HashMap<String, bool>>,
+    pub edges: Rc<Rc<Vec<Rc<ParserProgressEdge>>>>,
+    pub vars: Rc<Rc<HashMap<String, bool>>>,
 }
 
 pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
@@ -7756,23 +7756,23 @@ pub fn cost_of_method_by_shape(
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
-    pub span: Rc<SourceSpan>,
+    pub span: Rc<Rc<SourceSpan>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
-    pub recurrence_bound: Rc<CostBound>,
-    pub stack_bound: Rc<CostBound>,
-    pub span: Rc<SourceSpan>,
+    pub recurrence_bound: Rc<Rc<CostBound>>,
+    pub stack_bound: Rc<Rc<CostBound>>,
+    pub span: Rc<Rc<SourceSpan>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
-    pub function_classes: Rc<HashMap<String, String>>,
-    pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
-    pub structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>,
+    pub function_classes: Rc<Rc<HashMap<String, String>>>,
+    pub violations: Rc<Rc<Vec<Rc<ComplexityViolation>>>>,
+    pub structural_bounds: Rc<Rc<Vec<Rc<StructuralBoundResult>>>>,
 }
 
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
@@ -8239,7 +8239,7 @@ pub fn short_var_name(index: i64) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Legend {
-    pub substitution: Rc<HashMap<String, String>>,
+    pub substitution: Rc<Rc<HashMap<String, String>>>,
     pub suffix: String,
 }
 
@@ -8459,8 +8459,8 @@ pub fn collect_size_vars(expr: Rc<CostExpr>) -> Rc<Vec<String>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeduplicateAcc {
-    pub seen: Rc<HashMap<String, bool>>,
-    pub out: Rc<Vec<String>>,
+    pub seen: Rc<Rc<HashMap<String, bool>>>,
+    pub out: Rc<Rc<Vec<String>>>,
 }
 
 pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
@@ -8488,9 +8488,9 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEntry {
     pub name: String,
-    pub body: Rc<Node>,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub span: Rc<SourceSpan>,
+    pub body: Rc<Rc<Node>>,
+    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub span: Rc<Rc<SourceSpan>>,
     pub is_tail_recursive: bool,
 }
 
@@ -8499,23 +8499,23 @@ pub struct RecursionContext;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SummaryResult {
-    pub summary: Rc<ComplexitySummary>,
-    pub table: Rc<CostInternTable>,
+    pub summary: Rc<Rc<ComplexitySummary>>,
+    pub table: Rc<Rc<CostInternTable>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoBuildAcc {
-    pub table: Rc<CostInternTable>,
-    pub classes: Rc<HashMap<String, String>>,
-    pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
-    pub fan_in: Rc<HashMap<String, i64>>,
-    pub processed: Rc<HashMap<String, bool>>,
+    pub table: Rc<Rc<CostInternTable>>,
+    pub classes: Rc<Rc<HashMap<String, String>>>,
+    pub violations: Rc<Rc<Vec<Rc<ComplexityViolation>>>>,
+    pub fan_in: Rc<Rc<HashMap<String, i64>>>,
+    pub processed: Rc<Rc<HashMap<String, bool>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchCostAccum {
-    pub result: Rc<SummaryResult>,
-    pub branch_costs: Rc<Vec<Rc<CostExpr>>>,
+    pub result: Rc<Rc<SummaryResult>>,
+    pub branch_costs: Rc<Rc<Vec<Rc<CostExpr>>>>,
 }
 
 pub fn cost_of_expr(

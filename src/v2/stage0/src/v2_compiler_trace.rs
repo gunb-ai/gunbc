@@ -14,7 +14,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpanMapping {
     pub generated_line: i64,
-    pub source_span: Rc<SourceSpan>,
+    pub source_span: Rc<Rc<SourceSpan>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -56,14 +56,14 @@ impl TraceEvent {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
     pub func_name: String,
-    pub span: Rc<SourceSpan>,
-    pub bindings: Rc<HashMap<String, String>>,
+    pub span: Rc<Rc<SourceSpan>>,
+    pub bindings: Rc<Rc<HashMap<String, String>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trace {
-    pub events: Rc<Vec<Rc<TraceEvent>>>,
-    pub stack: Rc<Vec<Rc<TraceFrame>>>,
+    pub events: Rc<Rc<Vec<Rc<TraceEvent>>>>,
+    pub stack: Rc<Rc<Vec<Rc<TraceFrame>>>>,
 }
 
 pub fn empty_trace() -> Rc<Trace> {
@@ -260,9 +260,9 @@ pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
     pub func_name: String,
-    pub inputs: Rc<HashMap<String, String>>,
+    pub inputs: Rc<Rc<HashMap<String, String>>>,
     pub expected_output: Option<String>,
-    pub trace: Option<Rc<Trace>>,
+    pub trace: Rc<Option<Rc<Trace>>>,
 }
 
 pub fn capture_repro(
@@ -281,7 +281,7 @@ pub fn capture_repro(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
     pub generated_file: String,
-    pub mappings: Rc<Vec<Rc<SpanMapping>>>,
+    pub mappings: Rc<Rc<Vec<Rc<SpanMapping>>>>,
 }
 
 pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<Rc<SourceSpan>> {

@@ -145,54 +145,54 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
-    pub resolved_item: Rc<Node>,
-    pub resolve_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub func_sig: Option<Rc<DeclaredFuncSig>>,
-    pub svc_entries: Rc<Vec<Rc<OpEntry>>>,
-    pub svc_local: Option<Rc<TypeBinding>>,
-    pub item_info: Rc<ItemInfo>,
+    pub resolved_item: Rc<Rc<Node>>,
+    pub resolve_diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub func_sig: Rc<Option<Rc<DeclaredFuncSig>>>,
+    pub svc_entries: Rc<Rc<Vec<Rc<OpEntry>>>>,
+    pub svc_local: Rc<Option<Rc<TypeBinding>>>,
+    pub item_info: Rc<Rc<ItemInfo>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleContext {
-    pub resolved_items: Rc<Vec<Rc<Node>>>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub resolved_items: Rc<Rc<Vec<Rc<Node>>>>,
+    pub func_env: Rc<Rc<ResolvedFuncEnv>>,
+    pub svc_registry: Rc<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+    pub locals: Rc<Rc<HashMap<String, Rc<TypeBinding>>>>,
+    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantFoldState {
-    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
+    pub locals: Rc<Rc<HashMap<String, Rc<TypeBinding>>>>,
+    pub collision_errors: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScope {
-    pub type_env: Rc<TypeEnv>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub match_bound_names: Rc<HashMap<String, bool>>,
+    pub type_env: Rc<Rc<TypeEnv>>,
+    pub func_env: Rc<Rc<ResolvedFuncEnv>>,
+    pub locals: Rc<Rc<HashMap<String, Rc<TypeBinding>>>>,
+    pub match_bound_names: Rc<Rc<HashMap<String, bool>>>,
     pub module_name: String,
-    pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    pub service_registry: Rc<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
+    pub lambda_param_provenance: Rc<Rc<HashMap<String, Rc<SubValueRelation>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferResult {
-    pub typed: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub typed: Rc<Rc<Node>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockInferState {
-    pub scope: Rc<InferScope>,
-    pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
-    pub last_type: Rc<Node>,
-    pub typed_stmts: Rc<Vec<Rc<Node>>>,
+    pub scope: Rc<Rc<InferScope>>,
+    pub diag_chunks: Rc<Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>>,
+    pub last_type: Rc<Rc<Node>>,
+    pub typed_stmts: Rc<Rc<Vec<Rc<Node>>>>,
 }
 
 pub fn infer_block_stmts(
@@ -251,81 +251,81 @@ pub fn infer_block_stmts(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedItemResult {
-    pub item: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub item: Rc<Rc<Node>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArmInferResult {
-    pub typed_arm: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub body_type: Rc<Node>,
+    pub typed_arm: Rc<Rc<Node>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub body_type: Rc<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternScopeResult {
-    pub scope: Rc<InferScope>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub scope: Rc<Rc<InferScope>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringPartInferResult {
-    pub typed_part: Rc<StringPart>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub typed_part: Rc<Rc<StringPart>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgInferResult {
-    pub typed_arg: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub typed_arg: Rc<Rc<Node>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInferResult {
-    pub typed_field: Rc<Node>,
-    pub infer_result: Rc<InferResult>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub typed_field: Rc<Rc<Node>>,
+    pub infer_result: Rc<Rc<InferResult>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuildTypeEnvResult {
-    pub env: Rc<TypeEnv>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub env: Rc<Rc<TypeEnv>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentModulesResult {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Rc<Rc<Vec<Rc<TypedModule>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantResult {
-    pub variant: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub variant: Rc<Rc<Node>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CycleDetectState {
-    pub recursive_names: Rc<HashMap<String, bool>>,
-    pub global_visited: Rc<HashMap<String, bool>>,
+    pub recursive_names: Rc<Rc<HashMap<String, bool>>>,
+    pub global_visited: Rc<Rc<HashMap<String, bool>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScopeComponents {
-    pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub func_sigs: Rc<Rc<HashMap<String, Rc<DeclaredFuncSig>>>>,
+    pub svc_registry: Rc<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+    pub svc_locals: Rc<Rc<HashMap<String, Rc<TypeBinding>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocalContributionState {
-    pub resolved_items: Rc<Vec<Rc<Node>>>,
-    pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
-    pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    pub resolved_items: Rc<Rc<Vec<Rc<Node>>>>,
+    pub func_sigs: Rc<Rc<HashMap<String, Rc<DeclaredFuncSig>>>>,
+    pub svc_registry: Rc<Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>>,
+    pub svc_locals: Rc<Rc<HashMap<String, Rc<TypeBinding>>>>,
+    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
+    pub diag_chunks: Rc<Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>>,
 }
 
 pub fn merge_scope_from_imports(
@@ -909,8 +909,8 @@ pub fn record_lit_expected_fields(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
-    pub ty: Rc<Node>,
-    pub miss_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub ty: Rc<Rc<Node>>,
+    pub miss_diags: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn list_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
@@ -990,8 +990,8 @@ pub fn set_element_types_mismatch(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
-    pub bt: Rc<Node>,
-    pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub bt: Rc<Rc<Node>>,
+    pub kernel_diags: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn infer_tier2b_builtin_with_kernel_diags(
@@ -1316,8 +1316,8 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodPipeFallback {
-    pub result_ty: Rc<Node>,
-    pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
+    pub result_ty: Rc<Rc<Node>>,
+    pub kernel_diags: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn method_pipe_map_keys_values_fallback(
@@ -4944,14 +4944,14 @@ impl SizeExpr {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentContext {
     pub fn_name: String,
-    pub param_names: Rc<HashMap<String, String>>,
-    pub param_order: Rc<Vec<String>>,
-    pub type_env: Rc<TypeEnv>,
-    pub sub_value_vars: Rc<HashMap<String, Rc<SubValueRelation>>>,
-    pub size_aliases: Rc<HashMap<String, Rc<SizeExpr>>>,
-    pub scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
-    pub func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    pub per_field_vars: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub param_names: Rc<Rc<HashMap<String, String>>>,
+    pub param_order: Rc<Rc<Vec<String>>>,
+    pub type_env: Rc<Rc<TypeEnv>>,
+    pub sub_value_vars: Rc<Rc<HashMap<String, Rc<SubValueRelation>>>>,
+    pub size_aliases: Rc<Rc<HashMap<String, Rc<SizeExpr>>>>,
+    pub scope_locals: Rc<Rc<HashMap<String, Rc<TypeBinding>>>>,
+    pub func_sigs: Rc<Rc<HashMap<String, Rc<ResolvedFuncSig>>>>,
+    pub per_field_vars: Rc<Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>,
 }
 
 pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<SizeExpr>> {
@@ -5271,8 +5271,8 @@ Rc::new(SubValueRelation::StrictSubValue {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockAnnotateAcc {
-    pub ctx: Rc<DescentContext>,
-    pub children: Rc<Vec<Rc<Node>>>,
+    pub ctx: Rc<Rc<DescentContext>>,
+    pub children: Rc<Rc<Vec<Rc<Node>>>>,
 }
 
 pub fn method_callback_element_position(semantics: Option<Rc<MethodSemantics>>) -> Option<i64> {
@@ -8411,8 +8411,8 @@ classify_body_provenance(arm_body(arm.clone()), param_names.clone(), param_types
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockProvFoldState {
-    pub prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-    pub last: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    pub prov: Rc<Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>,
+    pub last: Rc<Rc<HashMap<String, Rc<SubValueRelation>>>>,
 }
 
 pub fn call_args_by_name(
@@ -8690,8 +8690,8 @@ pub fn classify_terminal_per_field(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BodyTerminal {
-    pub expr: Rc<Node>,
-    pub let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub expr: Rc<Rc<Node>>,
+    pub let_prov: Rc<Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>,
 }
 
 pub fn unwrap_body_terminal(
@@ -9579,14 +9579,14 @@ pub fn annotate_descent_evidence(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferPropertiesResult {
-    pub props: Rc<Vec<Rc<Node>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub props: Rc<Rc<Vec<Rc<Node>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferTransportResult {
-    pub transport: Option<Rc<Node>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub transport: Rc<Option<Rc<Node>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn infer_property_values(
@@ -11665,8 +11665,8 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypecheckModuleResult {
-    pub typed: Rc<TypedModule>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub typed: Rc<Rc<TypedModule>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn typecheck_module(
@@ -11850,20 +11850,20 @@ pub fn typecheck_module(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnvResolveResult {
-    pub env: Rc<TypeEnv>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub env: Rc<Rc<TypeEnv>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingResult {
-    pub binding: Rc<TypeBinding>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub binding: Rc<Rc<TypeBinding>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingsAccum {
-    pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub bindings: Rc<Rc<HashMap<i64, Rc<TypeBinding>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 pub fn resolve_env_bindings(
