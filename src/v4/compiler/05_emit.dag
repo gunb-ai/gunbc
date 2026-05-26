@@ -31,8 +31,12 @@ import v4.extdeps.languages.dag {
   dag_production_import_decl,
   dag_production_module_header,
   dag_surface_data_decl,
+  dag_surface_expr,
   dag_surface_import_decl,
+  dag_surface_import_block,
   dag_surface_module_header,
+  dag_surface_qualified_name,
+  dag_surface_type_expr,
   dag_token_colon,
   dag_token_eq,
   dag_token_ident,
@@ -70,8 +74,6 @@ data emit_relation_dag_data_decl: Symbol = emit_relation_dag_data_decl
 data emit_binding_dag_module_name: Symbol = emit_binding_dag_module_name
 data emit_binding_dag_import_path: Symbol = emit_binding_dag_import_path
 data emit_binding_dag_data_name: Symbol = emit_binding_dag_data_name
-data emit_binding_dag_data_type: Symbol = emit_binding_dag_data_type
-data emit_binding_dag_data_value: Symbol = emit_binding_dag_data_value
 fn emit_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
@@ -106,6 +108,17 @@ fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
       emit_named_edge(
         name: concrete_syntax_token_field_binding,
         target: emit_atom(id: binding)
+      )
+    ]
+  }
+}
+fn emit_nonterminal_placeholder(surface: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      emit_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: emit_atom(id: surface)
       )
     ]
   }
@@ -169,7 +182,8 @@ fn emit_row_import_decl() -> Node {
     emitted: dag_surface_import_decl,
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_import),
-      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_import_path)
+      emit_nonterminal_placeholder(surface: dag_surface_qualified_name),
+      emit_nonterminal_placeholder(surface: dag_surface_import_block)
     ]
   )
 }
@@ -185,9 +199,9 @@ fn emit_row_data_decl() -> Node {
       emit_fixed_token(token_class: dag_token_kw_data),
       emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_name),
       emit_fixed_token(token_class: dag_token_colon),
-      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_type),
+      emit_nonterminal_placeholder(surface: dag_surface_type_expr),
       emit_fixed_token(token_class: dag_token_eq),
-      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_value)
+      emit_nonterminal_placeholder(surface: dag_surface_expr)
     ]
   )
 }
