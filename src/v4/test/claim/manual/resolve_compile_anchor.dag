@@ -245,7 +245,6 @@ fn resolve_module_with_admission_imported_binding_accepts() -> Bool {
       },
       imports: Cons {
         head: ModuleImport {
-          source: ModulePath { segments: Empty },
           target: ModulePath {
             segments: Cons {
               head: ModulePathSegment { name: anchor_imported_path_segment },

@@ -57,7 +57,6 @@ type ModuleImportVisibility
 
 
 type ModuleImport {
-  source: ModulePath
   target: ModulePath
   visibility: ModuleImportVisibility
 }
@@ -84,7 +83,6 @@ type ModuleAdmissionState
   | ModuleAdmissionRejected { diagnostic: Diagnostic }
 
 
-data module_resolve_import_source_mismatch: Symbol = module_resolve_import_source_mismatch
 data module_resolve_import_not_visible: Symbol = module_resolve_import_not_visible
 data module_resolve_ambiguous_export: Symbol = module_resolve_ambiguous_export
 
@@ -168,28 +166,22 @@ fn admit_import_entry(
     ModuleAdmissionRejected { diagnostic: d } =>
       ModuleAdmissionRejected { diagnostic: d }
     ModuleAdmissionAccepted { bindings: _, origins: _ } =>
-      if module_path_eq(a: import_edge.source, b: admission.subject.path) {
-        match import_edge.visibility {
-          ModuleImportHidden =>
-            ModuleAdmissionRejected {
-              diagnostic: module_resolve_diagnostic(reason: module_resolve_import_not_visible)
-            }
-          ModuleImportVisible =>
-            match module_graph_entry_for_path(graph: graph, path: import_edge.target) {
-              Holds { value: entry } =>
-                admit_module_named_exports(
-                  root: entry.root,
-                  origin: import_edge.target,
-                  state: state
-                )
-              Violates { diagnostic: d } =>
-                ModuleAdmissionRejected { diagnostic: d }
-            }
-        }
-      } else {
-        ModuleAdmissionRejected {
-          diagnostic: module_resolve_diagnostic(reason: module_resolve_import_source_mismatch)
-        }
+      match import_edge.visibility {
+        ModuleImportHidden =>
+          ModuleAdmissionRejected {
+            diagnostic: module_resolve_diagnostic(reason: module_resolve_import_not_visible)
+          }
+        ModuleImportVisible =>
+          match module_graph_entry_for_path(graph: graph, path: import_edge.target) {
+            Holds { value: entry } =>
+              admit_module_named_exports(
+                root: entry.root,
+                origin: import_edge.target,
+                state: state
+              )
+            Violates { diagnostic: d } =>
+              ModuleAdmissionRejected { diagnostic: d }
+          }
       }
   }
 }
