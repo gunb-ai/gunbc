@@ -4463,6 +4463,7 @@ fn rust_set_nominal_ord_decl_emits_carriers_before_btree_set_use() {
 module test_nominal_ord_set
 type Symbol
 type DiffId { id: Symbol }
+data root_fix_symbol: Symbol = root_fix_symbol
 type DiffBag { ids: Set<DiffId> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
@@ -4473,8 +4474,13 @@ type DiffBag { ids: Set<DiffId> }
     );
     let content = find_file(&result, "src/test_nominal_ord_set.rs");
     assert!(
-        content.contains("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol;"),
-        "Symbol must emit an Ord carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content.contains("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub &'static str);"),
+        "Symbol must emit an ordered identity carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\") }"),
+        "Symbol data should preserve authored identity, got:\n{}",
         content
     );
     assert!(
