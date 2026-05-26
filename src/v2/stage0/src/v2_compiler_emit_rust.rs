@@ -5084,24 +5084,12 @@ pub fn emit_param(
         let n = param_node_type_expr(&param);
         let ty = emit_rust_param_type(&n, &shared_types, &source_indices, &generic_param_names);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
-        let is_callable_param = ((n.params.clone().len() as i64) > 0);
-        let is_borrowable = false;
-        let final_ty = if is_borrowable {
-            apply_type_template1(
-                sharing_for_target(RenderTarget::Rust)
-                    .borrow_param_template
-                    .clone(),
-                ty,
-            )
-        } else {
-            ty
-        };
         v2_rt::concat(
             v2_rt::concat(
                 emit_ident(pname, RenderTarget::Rust),
                 rust_items().param_type_sep.clone(),
             ),
-            final_ty,
+            ty,
         )
     }
 }
@@ -8499,65 +8487,7 @@ pub fn emit_typed_call(
         );
         let is_rt = v2_rt::map_contains_key(&rt_functions(), func.clone());
         let is_rt_ref_map = v2_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
-        let callee_qualified = match callee.clone() {
-            Some(info) => v2_rt::concat(
-                v2_rt::concat(info.module_name.clone(), ".".to_string()),
-                func.clone(),
-            ),
-            None => func.clone(),
-        };
-        let callee_read_only =
-            match v2_rt::map_get(&emit_info.read_only_params_index.clone(), callee_qualified) {
-                Some(m) => m.clone(),
-                None => v2_rt::rc_empty_set::<String>(),
-            };
-        let callee_is_tco = match callee.clone() {
-            Some(info) => {
-                (info.is_self_recursive.clone() && (info.has_non_tail_self_call.clone() == false))
-            }
-            None => false,
-        };
-        let callee_borrow_positions = if true {
-            v2_rt::rc_empty_map::<String, bool>()
-        } else {
-            match callee.clone() {
-                Some(info) => Rc::new(
-                    info.params
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                .fold(
-                    v2_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
-                        let pname = param_node_name_at(
-                            pair.1.clone(),
-                            collection_scope.type_env.clone().source_indices.clone(),
-                        );
-                        let n = param_node_type_expr(&pair.1.clone());
-                        let is_callable = ((n.params.clone().len() as i64) > 0);
-                        let is_borrowable =
-                            ((v2_rt::set_contains(&callee_read_only, pname.clone())
-                                && (is_callable.clone() == false))
-                                && needs_reference_node(
-                                    &n,
-                                    collection_scope.type_env.clone().source_indices.clone(),
-                                ));
-                        if is_borrowable.clone() {
-                            v2_rt::rc_map_insert(acc.clone(), (pair.0.clone()).to_string(), true)
-                        } else {
-                            acc.clone()
-                        }
-                    },
-                ),
-                None => v2_rt::rc_empty_map::<String, bool>(),
-            }
-        };
+        let callee_borrow_positions = v2_rt::rc_empty_map::<String, bool>();
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -17629,14 +17559,7 @@ pub fn emit_main_call_args(wf: &Rc<WorkflowFunc>, has_services: bool) -> String 
             for p in wf.params.clone().iter().cloned() {
                 __result.push({
                     let pname = param_node_name_at(p.clone(), wf.source_indices.clone());
-                    let ident = emit_ident(pname.clone(), RenderTarget::Rust);
-                    let n = param_node_type_expr(&p);
-                    let is_borrowable = false;
-                    if is_borrowable.clone() {
-                        v2_rt::concat("&".to_string(), ident.clone())
-                    } else {
-                        ident.clone()
-                    }
+                    emit_ident(pname.clone(), RenderTarget::Rust)
                 });
             }
             __result
