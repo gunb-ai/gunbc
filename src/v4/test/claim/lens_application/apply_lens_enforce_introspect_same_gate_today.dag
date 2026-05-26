@@ -73,17 +73,20 @@ fn apply_lens_mode_enforce_rejects() -> Bool {
   }
 }
 
+fn introspect_result_witness_is_violates(w: Witness<Node>) -> Bool {
+  match w {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } => false
+  }
+}
+
 fn apply_lens_mode_introspect_admits_violates() -> Bool {
   match apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
     mode: CompileLensIntrospect
   ) {
-    Accepted { value: w, diagnostics: _ } =>
-      match w {
-        Violates { diagnostic: _ } => true
-        Holds { value: _ } => false
-      }
+    Accepted { value: w, diagnostics: _ } => introspect_result_witness_is_violates(w: w)
     Rejected { diagnostics: _ } => false
   }
 }

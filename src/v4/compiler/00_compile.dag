@@ -141,6 +141,26 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 }
 
 
+// Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
+// so introspect mode never blocks compilation. Extracted to avoid nested match directly in arm.
+fn apply_compile_lens_introspect(
+  lens: CompileLens,
+  inferred: InferredTree
+) -> Outcome<Witness<Node>> {
+  match lens.gate(tree: inferred) {
+    Accepted { value: w, diagnostics: _ } => outcome_accepted(value: w)
+    Rejected { diagnostics: _ } =>
+      outcome_accepted(
+        value: Violates {
+          diagnostic: compile_lens_gate_rejected_diagnostic(
+            at: port_locus(port: compile_stage_locus_port)
+          )
+        }
+      )
+  }
+}
+
+
 // 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
 // T-23 migration stub: mirrors v4.lens.application apply_lens / apply_lens_enforce split.
 // CompileLensEnforce: fail-closed — gate rejection propagates as Rejected.
@@ -152,11 +172,7 @@ fn apply_compile_lens(
 ) -> Outcome<Witness<Node>> {
   match mode {
     CompileLensEnforce => lens.gate(tree: inferred)
-    CompileLensIntrospect =>
-      match lens.gate(tree: inferred) {
-        Accepted { value: w, diagnostics: od } => Accepted { value: w, diagnostics: od }
-        Rejected { diagnostics: d } => outcome_accepted(value: Violates { diagnostic: d.head })
-      }
+    CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
   }
 }
 
