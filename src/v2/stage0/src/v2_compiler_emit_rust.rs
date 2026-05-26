@@ -3243,15 +3243,23 @@ pub fn emit_struct_field_from_child(
             env.source_indices.clone(),
         );
         let ty = if authored_child_rendered.clone().as_str()
-            != render_rust_type(&authored_child_type, shared_types.clone(), &env.source_indices.clone()).as_str()
+            != render_rust_type(
+                &authored_child_type,
+                shared_types.clone(),
+                &env.source_indices.clone(),
+            )
+            .as_str()
         {
             authored_child_rendered
         } else if render_rust_type_with_applied_binding(
             rt_child.clone(),
             shared_types.clone(),
             env.source_indices.clone(),
-        ) != render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
-        {
+        ) != render_rust_type(
+            &rt_child,
+            shared_types.clone(),
+            &env.source_indices.clone(),
+        ) {
             render_rust_type_with_applied_binding(
                 rt_child.clone(),
                 shared_types.clone(),
@@ -4126,7 +4134,12 @@ pub fn emit_variant_from_child(
                                     env.source_indices.clone(),
                                 );
                                 let ty = if bound_rendered.clone().as_str()
-                                    != render_rust_type(&type_node, shared_types.clone(), &env.source_indices.clone()).as_str()
+                                    != render_rust_type(
+                                        &type_node,
+                                        shared_types.clone(),
+                                        &env.source_indices.clone(),
+                                    )
+                                    .as_str()
                                 {
                                     bound_rendered
                                 } else {
