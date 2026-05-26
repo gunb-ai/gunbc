@@ -1,9 +1,10 @@
 // src/v4/compiler/03_module_resolve.dag
 //
 // Scope: Stage 3c — ModuleGraph admission for cross-file resolution.
-// Owns: module_namespace_for_subject; resolve_module_with_graph.
+// Owns: ModuleAdmission; module_namespace_for_subject; resolve_module_with_graph.
 // Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
-//           extdeps/languages/dag.dag, std/diagnostic.dag, std/module_graph.dag, std/witness.dag.
+//           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
+//           std/diagnostic.dag, std/module_graph.dag, std/node.dag, std/witness.dag.
 // Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
@@ -14,43 +15,198 @@ import v4.compiler.normalize { NormalizedTree }
 import v4.compiler.resolve {
   Namespace,
   ResolvedTree,
-  add_module_named_exports,
   build_program_namespace,
   resolve_with_namespace
 }
 import v4.extdeps.languages.dag { DagLanguageModel }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
+import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
   None,
   Outcome,
   Rejected,
-  diagnostics_singleton
+  Unavailable,
+  diagnostics_singleton,
+  port_locus
 }
 import v4.std.module_graph {
-  ModuleEntry,
   ModuleGraph,
   ModulePath,
+  module_path_eq,
   module_graph_entry_for_path
+}
+import v4.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
 }
 import v4.std.witness { Holds, Violates }
 
 
-// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace.bindings gains
-// module-qualified structure keyed by ModulePath, plus import/visibility/ambiguity rules. Current
-// admission is path-authoritative (module_graph_entry_for_path) but still admits the subject module's
-// root named exports into the unqualified Namespace while preserving resolve's K-1 single-tree scope.
-fn module_namespace_from_entry(
-  tree: NormalizedTree,
-  lm: DagLanguageModel,
-  entry: ModuleEntry
-) -> Namespace {
-  let base = build_program_namespace(tree: tree, lm: lm)
-  Namespace {
-    bindings: add_module_named_exports(
-      root: entry.root,
-      acc: base.bindings
-    ),
-    canonical_symbols: base.canonical_symbols
+type ModuleImportVisibility
+  = ModuleImportVisible
+  | ModuleImportHidden
+
+
+type ModuleImport {
+  source: ModulePath
+  target: ModulePath
+  visibility: ModuleImportVisibility
+}
+
+
+type ModuleAdmission {
+  subject: ModulePath
+  imports: FreeMonoid<ModuleImport>
+}
+
+
+type ModuleAdmissionState
+  = ModuleAdmissionAccepted {
+      bindings: Map<Symbol, Symbol>,
+      origins: Map<Symbol, ModulePath>
+    }
+  | ModuleAdmissionRejected { diagnostic: Diagnostic }
+
+
+data module_resolve_import_source_mismatch: Symbol = module_resolve_import_source_mismatch
+data module_resolve_import_not_visible: Symbol = module_resolve_import_not_visible
+data module_resolve_ambiguous_export: Symbol = module_resolve_ambiguous_export
+
+
+fn module_resolve_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn module_admission_initial(base: Namespace) -> ModuleAdmissionState {
+  ModuleAdmissionAccepted {
+    bindings: base.bindings,
+    origins: empty_map()
+  }
+}
+
+
+fn admit_export_symbol(
+  sym: Symbol,
+  origin: ModulePath,
+  state: ModuleAdmissionState
+) -> ModuleAdmissionState {
+  match state {
+    ModuleAdmissionRejected { diagnostic: d } =>
+      ModuleAdmissionRejected { diagnostic: d }
+    ModuleAdmissionAccepted { bindings: b, origins: os } =>
+      match map_get(os, sym) {
+        Some { value: _ } =>
+          ModuleAdmissionRejected {
+            diagnostic: module_resolve_diagnostic(reason: module_resolve_ambiguous_export)
+          }
+        None =>
+          ModuleAdmissionAccepted {
+            bindings: map_insert(m: b, key: sym, value: sym),
+            origins: map_insert(m: os, key: sym, value: origin)
+          }
+      }
+  }
+}
+
+
+fn admit_named_export_edge(
+  edge: Edge,
+  origin: ModulePath,
+  state: ModuleAdmissionState
+) -> ModuleAdmissionState {
+  match edge.label {
+    Named { name: sym } =>
+      admit_export_symbol(sym: sym, origin: origin, state: state)
+    Positional => state
+  }
+}
+
+
+fn admit_module_named_exports(
+  root: Node,
+  origin: ModulePath,
+  state: ModuleAdmissionState
+) -> ModuleAdmissionState {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: state, f: fn(acc, e) {
+        admit_named_export_edge(edge: e, origin: origin, state: acc)
+      })
+    _ => state
+  }
+}
+
+
+fn admit_import_entry(
+  graph: ModuleGraph,
+  admission: ModuleAdmission,
+  import_edge: ModuleImport,
+  state: ModuleAdmissionState
+) -> ModuleAdmissionState {
+  match state {
+    ModuleAdmissionRejected { diagnostic: d } =>
+      ModuleAdmissionRejected { diagnostic: d }
+    ModuleAdmissionAccepted { bindings: _, origins: _ } =>
+      if module_path_eq(a: import_edge.source, b: admission.subject) {
+        match import_edge.visibility {
+          ModuleImportHidden =>
+            ModuleAdmissionRejected {
+              diagnostic: module_resolve_diagnostic(reason: module_resolve_import_not_visible)
+            }
+          ModuleImportVisible =>
+            match module_graph_entry_for_path(graph: graph, path: import_edge.target) {
+              Holds { value: entry } =>
+                admit_module_named_exports(
+                  root: entry.root,
+                  origin: import_edge.target,
+                  state: state
+                )
+              Violates { diagnostic: d } =>
+                ModuleAdmissionRejected { diagnostic: d }
+            }
+        }
+      } else {
+        ModuleAdmissionRejected {
+          diagnostic: module_resolve_diagnostic(reason: module_resolve_import_source_mismatch)
+        }
+      }
+  }
+}
+
+
+fn admit_imports(
+  graph: ModuleGraph,
+  admission: ModuleAdmission,
+  imports: FreeMonoid<ModuleImport>,
+  state: ModuleAdmissionState
+) -> ModuleAdmissionState {
+  match imports {
+    Empty => state
+    Cons { head: import_edge, tail: rest } =>
+      admit_imports(
+        graph: graph,
+        admission: admission,
+        imports: rest,
+        state: admit_import_entry(
+          graph: graph,
+          admission: admission,
+          import_edge: import_edge,
+          state: state
+        )
+      )
   }
 }
 
@@ -59,16 +215,56 @@ fn module_namespace_for_subject(
   tree: NormalizedTree,
   lm: DagLanguageModel,
   graph: ModuleGraph,
-  subject: ModulePath
+  admission: ModuleAdmission
 ) -> Outcome<Namespace> {
-  match module_graph_entry_for_path(graph: graph, path: subject) {
-    Holds { value: entry } =>
+  let base = build_program_namespace(tree: tree, lm: lm)
+  match admit_imports(
+    graph: graph,
+    admission: admission,
+    imports: admission.imports,
+    state: admit_module_named_exports(
+      root: tree,
+      origin: admission.subject,
+      state: module_admission_initial(base: base)
+    )
+  ) {
+    ModuleAdmissionAccepted { bindings: b, origins: _ } =>
       Accepted {
-        value: module_namespace_from_entry(tree: tree, lm: lm, entry: entry),
+        value: Namespace {
+          bindings: b,
+          canonical_symbols: base.canonical_symbols
+        },
         diagnostics: None
       }
-    Violates { diagnostic: d } =>
+    ModuleAdmissionRejected { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+fn module_admission_for_subject(subject: ModulePath) -> ModuleAdmission {
+  ModuleAdmission {
+    subject: subject,
+    imports: Empty
+  }
+}
+
+
+fn resolve_module_with_admission(
+  tree: NormalizedTree,
+  lm: DagLanguageModel,
+  graph: ModuleGraph,
+  admission: ModuleAdmission
+) -> Outcome<ResolvedTree> {
+  match module_namespace_for_subject(
+    tree: tree,
+    lm: lm,
+    graph: graph,
+    admission: admission
+  ) {
+    Accepted { value: namespace, diagnostics: _ } =>
+      resolve_with_namespace(tree: tree, namespace: namespace)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -79,14 +275,15 @@ fn resolve_module_with_graph(
   graph: ModuleGraph,
   subject: ModulePath
 ) -> Outcome<ResolvedTree> {
-  match module_namespace_for_subject(
-    tree: tree,
-    lm: lm,
-    graph: graph,
-    subject: subject
-  ) {
-    Accepted { value: namespace, diagnostics: _ } =>
-      resolve_with_namespace(tree: tree, namespace: namespace)
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  match module_graph_entry_for_path(graph: graph, path: subject) {
+    Holds { value: _ } =>
+      resolve_module_with_admission(
+        tree: tree,
+        lm: lm,
+        graph: graph,
+        admission: module_admission_for_subject(subject: subject)
+      )
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
