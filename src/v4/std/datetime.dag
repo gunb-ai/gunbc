@@ -1,6 +1,8 @@
 // src/v4/std/datetime.dag
 // Scope: RFC 3339 clock-calendar instant facts for format-layer consumers.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc3339
+// Anchor: https://www.iers.org/SharedDocs/News/EN/BulletinC.html
+// Anchor: https://maia.usno.navy.mil/products/leap-second
 // Anchor: https://en.wikipedia.org/wiki/Gregorian_calendar
 // Owns: Instant, RFC 3339 date/time field carriers, local date/time profiles,
 //       UTC offset carriers, and validation-discharge constructors.
@@ -11,6 +13,7 @@ module v4.std.datetime
 
 
 import v4.std.diagnostic { Locus, Outcome, bind_outcome, outcome_accepted }
+import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
@@ -172,6 +175,24 @@ type LeapSecondInsertionOccurrence {
 }
 
 
+type LeapSecondAuthoritySource {
+  authority: Symbol
+}
+
+
+type LeapSecondInsertionDate {
+  year: Nat
+  month: Nat
+  day: Nat
+}
+
+
+type LeapSecondInsertionTable {
+  source: LeapSecondAuthoritySource
+  dates: List<LeapSecondInsertionDate>
+}
+
+
 type LeapSecondInstantFields {
   occurrence: LeapSecondInsertionOccurrence
   second: SecondOfMinute
@@ -232,6 +253,41 @@ data leap_second_insertion_occurrence_invalid: Symbol = leap_second_insertion_oc
 data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
 data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
 data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
+data iers_bulletin_c_leap_second_authority: Symbol = iers_bulletin_c_leap_second_authority
+
+
+data positive_utc_leap_second_insertions: LeapSecondInsertionTable = LeapSecondInsertionTable {
+  source: LeapSecondAuthoritySource { authority: iers_bulletin_c_leap_second_authority },
+  dates: [
+    leap_second_insertion_date(year: 1972, month: 6, day: 30),
+    leap_second_insertion_date(year: 1972, month: 12, day: 31),
+    leap_second_insertion_date(year: 1973, month: 12, day: 31),
+    leap_second_insertion_date(year: 1974, month: 12, day: 31),
+    leap_second_insertion_date(year: 1975, month: 12, day: 31),
+    leap_second_insertion_date(year: 1976, month: 12, day: 31),
+    leap_second_insertion_date(year: 1977, month: 12, day: 31),
+    leap_second_insertion_date(year: 1978, month: 12, day: 31),
+    leap_second_insertion_date(year: 1979, month: 12, day: 31),
+    leap_second_insertion_date(year: 1981, month: 6, day: 30),
+    leap_second_insertion_date(year: 1982, month: 6, day: 30),
+    leap_second_insertion_date(year: 1983, month: 6, day: 30),
+    leap_second_insertion_date(year: 1985, month: 6, day: 30),
+    leap_second_insertion_date(year: 1987, month: 12, day: 31),
+    leap_second_insertion_date(year: 1989, month: 12, day: 31),
+    leap_second_insertion_date(year: 1990, month: 12, day: 31),
+    leap_second_insertion_date(year: 1992, month: 6, day: 30),
+    leap_second_insertion_date(year: 1993, month: 6, day: 30),
+    leap_second_insertion_date(year: 1994, month: 6, day: 30),
+    leap_second_insertion_date(year: 1995, month: 12, day: 31),
+    leap_second_insertion_date(year: 1997, month: 6, day: 30),
+    leap_second_insertion_date(year: 1998, month: 12, day: 31),
+    leap_second_insertion_date(year: 2005, month: 12, day: 31),
+    leap_second_insertion_date(year: 2008, month: 12, day: 31),
+    leap_second_insertion_date(year: 2012, month: 6, day: 30),
+    leap_second_insertion_date(year: 2015, month: 6, day: 30),
+    leap_second_insertion_date(year: 2016, month: 12, day: 31),
+  ]
+}
 
 
 fn year_value(year: Year) -> Nat {
@@ -276,6 +332,15 @@ fn tz_offset_minute_value(minute: TzOffsetMinute) -> Nat {
 
 fn secfrac_digit_value(digit: SecfracDigit) -> Nat {
   refined_base(r: digit.value)
+}
+
+
+fn leap_second_insertion_date(year: Nat, month: Nat, day: Nat) -> LeapSecondInsertionDate {
+  LeapSecondInsertionDate {
+    year: year,
+    month: month,
+    day: day
+  }
 }
 
 
@@ -381,37 +446,21 @@ fn clock_time_fields(time: ClockTime) -> ClockTimeFields {
 }
 
 
+fn leap_second_insertion_date_matches(fields: CalendarDateFields, date: LeapSecondInsertionDate) -> Bool {
+  (year_value(year: fields.year) == date.year)
+    && (month_value(month: fields.month) == date.month)
+    && (day_value(day: fields.day) == date.day)
+}
+
+
 fn leap_second_announced_insertion_date(fields: CalendarDateFields) -> Bool {
-  let year = year_value(year: fields.year)
-  let month = month_value(month: fields.month)
-  let day = day_value(day: fields.day)
-  ((year == 1972) && (month == 6) && (day == 30))
-    || ((year == 1972) && (month == 12) && (day == 31))
-    || ((year == 1973) && (month == 12) && (day == 31))
-    || ((year == 1974) && (month == 12) && (day == 31))
-    || ((year == 1975) && (month == 12) && (day == 31))
-    || ((year == 1976) && (month == 12) && (day == 31))
-    || ((year == 1977) && (month == 12) && (day == 31))
-    || ((year == 1978) && (month == 12) && (day == 31))
-    || ((year == 1979) && (month == 12) && (day == 31))
-    || ((year == 1981) && (month == 6) && (day == 30))
-    || ((year == 1982) && (month == 6) && (day == 30))
-    || ((year == 1983) && (month == 6) && (day == 30))
-    || ((year == 1985) && (month == 6) && (day == 30))
-    || ((year == 1987) && (month == 12) && (day == 31))
-    || ((year == 1989) && (month == 12) && (day == 31))
-    || ((year == 1990) && (month == 12) && (day == 31))
-    || ((year == 1992) && (month == 6) && (day == 30))
-    || ((year == 1993) && (month == 6) && (day == 30))
-    || ((year == 1994) && (month == 6) && (day == 30))
-    || ((year == 1995) && (month == 12) && (day == 31))
-    || ((year == 1997) && (month == 6) && (day == 30))
-    || ((year == 1998) && (month == 12) && (day == 31))
-    || ((year == 2005) && (month == 12) && (day == 31))
-    || ((year == 2008) && (month == 12) && (day == 31))
-    || ((year == 2012) && (month == 6) && (day == 30))
-    || ((year == 2015) && (month == 6) && (day == 30))
-    || ((year == 2016) && (month == 12) && (day == 31))
+  fold_list(
+    xs: positive_utc_leap_second_insertions.dates,
+    empty: false,
+    cons: fn(acc, date) {
+      acc || leap_second_insertion_date_matches(fields: fields, date: date)
+    }
+  )
 }
 
 
