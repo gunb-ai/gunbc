@@ -219,7 +219,7 @@ pub enum IfValueForm {
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub wildcard_case: Option<String>,
-    pub variant_pattern: Rc<Option<Rc<VariantPatternSyntax>>>,
+    pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
     pub guard_prefix: Option<String>,
     pub empty_return_value: String,
     pub return_suffix: String,
@@ -377,7 +377,7 @@ pub struct LanguageSpec {
     pub sharing: Rc<SharingStrategy>,
     pub indexing: Rc<IndexingSemantics>,
     pub annotations: Rc<AnnotationRequirements>,
-    pub method_templates: Rc<Option<Rc<HashMap<String, String>>>>,
+    pub method_templates: Option<Rc<HashMap<String, String>>>,
     pub service_fields: Rc<ServiceFieldTemplates>,
     pub block_syntax: Rc<BlockSyntax>,
     pub for_each_syntax: Rc<ForEachSyntax>,

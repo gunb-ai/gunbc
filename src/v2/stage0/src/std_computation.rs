@@ -87,7 +87,7 @@ pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
     pub bound: Rc<SizeBound>,
     pub evidence: DescentEvidence,
-    pub factor: Rc<Option<Rc<ShrinkFactor>>>,
+    pub factor: Option<Rc<ShrinkFactor>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -104,7 +104,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Descend,
             bound: Rc::new(SizeBound::TreeSize { param: a.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Rc::new(None),
+            factor: None,
         }),
         CallPattern::CollectionShrinkCall {
             amount: p,
@@ -114,9 +114,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::CollectionSize { param: c.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Rc::new(Some(Rc::new(ShrinkFactor::ConstantShrink {
-                steps: p.clone(),
-            }))),
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
         CallPattern::ArithmeticSubtractCall {
             steps: p,
@@ -126,9 +124,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Rc::new(Some(Rc::new(ShrinkFactor::ConstantShrink {
-                steps: p.clone(),
-            }))),
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
         CallPattern::ArithmeticDivideCall {
             divisor: d,
@@ -138,21 +134,21 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Rc::new(Some(Rc::new(ShrinkFactor::ProportionalShrink {
+            factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
                 divisor: d.clone(),
-            }))),
+            })),
         }),
         CallPattern::ParserAdvanceCall { witness: w, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Rc::new(None),
+            factor: None,
         }),
         CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Rc::new(None),
+            factor: None,
         }),
         CallPattern::FoldBodyCall {
             outer_collection: oc,
@@ -161,13 +157,13 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             primitive: IterationPrimitive::Fold,
             bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
-            factor: Rc::new(None),
+            factor: None,
         }),
         CallPattern::SameArgumentCall => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
             bound: Rc::new(SizeBound::Forever),
             evidence: DescentEvidence::NonIncreasing,
-            factor: Rc::new(None),
+            factor: None,
         }),
     }
 }

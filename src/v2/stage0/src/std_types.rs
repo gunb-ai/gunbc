@@ -623,7 +623,7 @@ pub struct CodegenTarget {
     pub name: String,
     pub path: FilePath,
     pub backend: Option<CodegenBackend>,
-    pub target: Rc<Option<Rc<TargetTriple>>>,
+    pub target: Option<Rc<TargetTriple>>,
     pub runtime_env: Option<ExecutionEnv>,
 }
 

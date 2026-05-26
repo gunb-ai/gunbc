@@ -1817,7 +1817,7 @@ fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, 
   let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
-  } else if set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
+  } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
     concat("Rc<", generic_ty, ">")
   } else { generic_ty }
   // Check for from_key in child properties
@@ -4536,19 +4536,10 @@ fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shar
   }
 }
 
-fn rust_record_field_needs_option_rc(scope: InferScope, struct_name: String, field_name: String) -> Bool {
-  match rust_struct_field_type_node(scope: scope, struct_name: struct_name, field_name: field_name) {
-    Some { value: field_type } => field_type.return_cardinality == CardOptional
-    None => false
-  }
-}
-
 // BoundedLattice meet/join are fn carriers (Rc); top/bottom are stored values (Box).
 fn wrap_rust_record_field_value(raw: String, scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> String {
   let is_bounded_lattice_field = struct_name == "BoundedLattice"
   if rust_record_field_needs_fn_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
-    concat("Rc::new(", raw, ")")
-  } else if rust_record_field_needs_option_rc(scope: scope, struct_name: struct_name, field_name: field_name) {
     concat("Rc::new(", raw, ")")
   } else if is_bounded_lattice_field && (field_name == "meet" || field_name == "join") {
     concat("Rc::new(", raw, ")")

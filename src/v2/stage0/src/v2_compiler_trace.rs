@@ -262,7 +262,7 @@ pub struct ReproCase {
     pub func_name: String,
     pub inputs: Rc<HashMap<String, String>>,
     pub expected_output: Option<String>,
-    pub trace: Rc<Option<Rc<Trace>>>,
+    pub trace: Option<Rc<Trace>>,
 }
 
 pub fn capture_repro(

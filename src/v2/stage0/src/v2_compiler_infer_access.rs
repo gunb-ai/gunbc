@@ -21,7 +21,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessCheckResultNode {
-    pub inferred: Rc<Option<Rc<InferredNode>>>,
+    pub inferred: Option<Rc<InferredNode>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 

@@ -44,7 +44,7 @@ pub struct EdgeClassification {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
     pub name: String,
-    pub binding_kind: Rc<Option<Rc<VarBindingKind>>>,
+    pub binding_kind: Option<Rc<VarBindingKind>>,
     pub consumers: Rc<Vec<Rc<EdgeClassification>>>,
 }
 

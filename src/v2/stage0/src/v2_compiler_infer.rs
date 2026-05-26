@@ -147,9 +147,9 @@ use std::rc::Rc;
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
     pub resolve_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub func_sig: Rc<Option<Rc<DeclaredFuncSig>>>,
+    pub func_sig: Option<Rc<DeclaredFuncSig>>,
     pub svc_entries: Rc<Vec<Rc<OpEntry>>>,
-    pub svc_local: Rc<Option<Rc<TypeBinding>>>,
+    pub svc_local: Option<Rc<TypeBinding>>,
     pub item_info: Rc<ItemInfo>,
 }
 
@@ -9585,7 +9585,7 @@ pub struct InferPropertiesResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferTransportResult {
-    pub transport: Rc<Option<Rc<Node>>>,
+    pub transport: Option<Rc<Node>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
