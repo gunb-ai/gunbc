@@ -145,9 +145,8 @@ type LocalDateTime {
 
 
 type OrdinaryInstantFields {
-  date: CalendarDate
-  time: ClockTime
-  offset: TzOffset
+  utc_date: CalendarDate
+  utc_time: ClockTime
 }
 
 
@@ -212,9 +211,9 @@ type Instant
   | LeapSecondInstant { validity: LeapSecondInstantValidity }
 
 
-// 🟢 coproduct dissolution — RFC 3339 offset date-times either carry an ordinary instant or a leap-second offset spelling plus canonical UTC announcement.
+// 🟢 coproduct dissolution — RFC 3339 offset date-times either carry a canonical ordinary instant plus offset spelling or a leap-second offset spelling plus canonical UTC announcement.
 type OffsetDateTime
-  = OrdinaryOffsetDateTime { validity: OrdinaryInstantValidity }
+  = OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity, offset: TzOffset }
   | LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity }
 
 
@@ -536,7 +535,7 @@ fn leap_second_local_matches_utc(announcement: LeapSecondAnnouncement, fields: L
 
 
 fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
-  let time = clock_time_fields(time: fields.time)
+  let time = clock_time_fields(time: fields.utc_time)
   let second = second_value(second: time.second)
   second <= 59
 }
@@ -758,9 +757,9 @@ fn make_leap_second_instant(fields: LeapSecondInstantFields, at: Locus) -> Outco
 }
 
 
-fn make_ordinary_offset_datetime(fields: OrdinaryInstantFields, at: Locus) -> Outcome<OffsetDateTime> {
+fn make_ordinary_offset_datetime(fields: OrdinaryInstantFields, offset: TzOffset, at: Locus) -> Outcome<OffsetDateTime> {
   bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: OrdinaryOffsetDateTime { validity: OrdinaryInstantValidity { refined: refined } })
+    outcome_accepted(value: OrdinaryOffsetDateTime { instant: OrdinaryInstantValidity { refined: refined }, offset: offset })
   })
 }
 
