@@ -4474,12 +4474,12 @@ type DiffBag { ids: Set<DiffId> }
     );
     let content = find_file(&result, "src/test_nominal_ord_set.rs");
     assert!(
-        content.contains("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub &'static str);"),
+        content.contains("#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub String);"),
         "Symbol must emit an ordered identity carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\") }"),
+        content.contains("pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"),
         "Symbol data should preserve authored identity, got:\n{}",
         content
     );

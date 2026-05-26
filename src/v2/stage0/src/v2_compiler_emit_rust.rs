@@ -319,14 +319,6 @@ pub fn rust_diff_id_ord_carrier_shape_eligible(
     }
 }
 
-pub fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
-    if (type_name.as_str() == "DiffId".to_string().as_str()) {
-        rust_ord_derives_copy_text()
-    } else {
-        "".to_string()
-    }
-}
-
 pub fn rust_nominal_ord_derives_for_shape(
     name: String,
     children: Rc<Vec<Rc<Node>>>,
