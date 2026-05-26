@@ -1,7 +1,7 @@
 // src/v4/compiler/03_module_resolve.dag
 //
 // Scope: Stage 3c — ModuleGraph admission for cross-file resolution.
-// Owns: ModuleSubject; ModuleAdmission; module_namespace_for_subject; resolve_module_with_graph.
+// Owns: ModuleSubject; ModuleAdmission; module_namespace_for_subject; resolve_module_with_admission.
 // Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
 //           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
 //           std/diagnostic.dag, std/module_graph.dag, std/node.dag, std/witness.dag.
@@ -50,6 +50,7 @@ import v4.std.node {
 import v4.std.witness { Holds, Violates }
 
 
+// 🟢 coproduct dissolution — T-28-B admission visibility is a closed alternative: a declared import is either admitted into the subject namespace or rejected as hidden; no third visibility state is modeled.
 type ModuleImportVisibility
   = ModuleImportVisible
   | ModuleImportHidden
@@ -74,6 +75,7 @@ type ModuleAdmission {
 }
 
 
+// 🟡 gated — feature:T-28-B-module-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
 type ModuleAdmissionState
   = ModuleAdmissionAccepted {
       bindings: Map<Symbol, Symbol>,
@@ -247,14 +249,6 @@ fn module_namespace_for_subject(
 }
 
 
-fn module_admission_for_subject(subject: ModuleSubject) -> ModuleAdmission {
-  ModuleAdmission {
-    subject: subject,
-    imports: Empty
-  }
-}
-
-
 fn resolve_module_with_admission(
   lm: DagLanguageModel,
   graph: ModuleGraph,
@@ -268,23 +262,5 @@ fn resolve_module_with_admission(
     Accepted { value: namespace, diagnostics: _ } =>
       resolve_with_namespace(tree: admission.subject.tree, namespace: namespace)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-
-fn resolve_module_with_graph(
-  lm: DagLanguageModel,
-  graph: ModuleGraph,
-  subject: ModuleSubject
-) -> Outcome<ResolvedTree> {
-  match module_graph_entry_for_path(graph: graph, path: subject.path) {
-    Holds { value: _ } =>
-      resolve_module_with_admission(
-        lm: lm,
-        graph: graph,
-        admission: module_admission_for_subject(subject: subject)
-      )
-    Violates { diagnostic: d } =>
-      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
