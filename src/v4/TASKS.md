@@ -1491,14 +1491,14 @@ T-23 round-trip workflow.
 **Scope — two pieces (ingest side only):**
 
 1. **Virtual module-loader.** The module-admission stage (T-28-B) is
-   replaced with an agent-supplied store: a content-addressed map from
-   `ModulePath` to `Node` (pre-parsed `.dag` AST). The stage reads from
-   the store rather than the filesystem. Agents write to the store; the
-   compiler reads from it. No filesystem I/O anywhere in the compile path.
+   replaced with an agent-supplied path-keyed store: `Map<ModulePath, Node>`
+   (pre-parsed `.dag` AST). The stage reads from the store rather than the
+   filesystem. Agents write to the store; the compiler reads from it. No
+   filesystem I/O anywhere in the compile path.
    `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
    from 03_resolve.dag before the virtual loader can replace it.`
 
-2. **AgentStore carrier.** A mutable, content-addressed carrier in
+2. **AgentStore carrier.** A mutable, path-keyed carrier in
    `src/v4/std/agent.dag`:
    `AgentStore { entries: Map<ModulePath, Node> }` with operations
    `store_insert`, `store_lookup`, `store_delete`. The store is the
@@ -1506,6 +1506,11 @@ T-23 round-trip workflow.
    surface. Agents populate the store and invoke `compile_with_store` — the
    filesystem-free entry point alongside existing `compile_ingest_staging`
    in `00_compile.dag`.
+
+   **Path-keyed invariants (ratified 2026-05-26):**
+   - **Bijection:** exactly one `Node` per `ModulePath`; no two paths share a node identity.
+   - **Fail-closed on missing:** `compile_with_store` returns `Rejected<ModuleNotFound>` if a required `ModulePath` is absent from the store — no silent fallback to the filesystem.
+   - **Insert policy:** to be ratified at implementation time — candidates are last-write-wins or `Rejected<DuplicatePath>`; the worker must not choose silently.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — `InferenceResult`,
