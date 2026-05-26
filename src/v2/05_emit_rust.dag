@@ -1729,15 +1729,15 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
     }
     None => ""
   }
-  // Reserved keywords: emit_ident adds r# prefix, but serde needs a rename
-  // to match the original JSON key (e.g., "ref" → r#ref needs #[serde(rename = "ref")])
+  // Rust field escaping can change the emitted identifier; serde needs a rename
+  // to match the original JSON key (e.g., "ref" -> ref_, "self_" -> self__).
   let authored = authored_name(env: env, node: child)
   let snake = to_snake(name: authored)
-  let is_reserved = language_spec(target: Rust).reserved_words.keywords |> any(r => r == snake)
-  let keyword_rename = if is_reserved && rename_attr == "" {
+  let emitted = emit_ident(name: authored, target: Rust)
+  let keyword_rename = if emitted != snake && rename_attr == "" {
     concat("    #[serde(rename = \"", snake, "\")]\n")
   } else { "" }
-  concat(keyword_rename, rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: authored, target: Rust), ": ", final_ty, ",")
+  concat(keyword_rename, rename_attr, "    ", rust_visibility_prefix(), emitted, ": ", final_ty, ",")
 }
 
 fn enum_derives(children: List<Node>) -> String {

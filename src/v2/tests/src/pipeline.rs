@@ -2130,6 +2130,7 @@ fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
     );
     assert!(
         content.contains("#[serde(rename = \"self\")]")
+            && content.contains("#[serde(rename = \"self_\")]")
             && content.contains("pub self_: i64")
             && content.contains("pub self__: i64")
             && content.contains("fn wrap(self_: i64, self__: i64) -> SelfRecord")
