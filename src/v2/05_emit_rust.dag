@@ -3200,9 +3200,11 @@ fn rust_type_ord_eligible(n: Node, source_indices: Map<String, NewlineIndex>) ->
     } else if elem_name == "Float" || elem_name == "Json" {
       false
     } else if n.connective == Conj {
-      n.children |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+      let fields = n.children
+      fields |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
     } else if n.connective == Disj {
-      n.children |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+      let variants = n.children
+      variants |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
     } else {
       n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
     }
@@ -3220,9 +3222,11 @@ fn rust_type_copy_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -
     } else if elem_name == "String" || elem_name == "Float" || elem_name == "Json" || elem_name == "Secret" || elem_name == "Bytes" {
       false
     } else if n.connective == Conj {
-      n.children |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+      let fields = n.children
+      fields |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
     } else if n.connective == Disj {
-      n.children |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+      let variants = n.children
+      variants |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
     } else {
       n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
     }
