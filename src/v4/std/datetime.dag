@@ -217,14 +217,6 @@ type OffsetDateTime
   | LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity }
 
 
-// 🟢 coproduct dissolution — TOML §Date-Time exposes these four closed user-input profiles.
-type DateTimeValue
-  = OffsetDateTimeValue { value: OffsetDateTime }
-  | LocalDateTimeValue { value: LocalDateTime }
-  | LocalDateValue { value: LocalDate }
-  | LocalTimeValue { value: LocalTime }
-
-
 data year_out_of_range: Symbol = year_out_of_range
 data month_out_of_range: Symbol = month_out_of_range
 data day_out_of_range: Symbol = day_out_of_range
