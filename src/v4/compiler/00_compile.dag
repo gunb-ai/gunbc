@@ -207,12 +207,11 @@ fn run_required_lens_gates(
 
 
 fn run_required_lens_gates_on_subtree(
-  node: Node,
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
   fold_node(
-    n: node,
+    n: inferred.root,
     algebra: NodeFold {
       init: fn(n0) {
         run_required_lens_gates(
@@ -301,7 +300,7 @@ fn validate_then_compile(
     o: infer(tree: source),
     f: fn(inferred) {
       bind_outcome(
-        o: run_required_lens_gates_on_subtree(node: inferred.root, inferred: inferred, lenses: always_required_lenses()),
+        o: run_required_lens_gates_on_subtree(inferred: inferred, lenses: always_required_lenses()),
         f: fn(required_lens_witnesses) {
           bind_outcome(
             o: run_required_lens_gates(inferred: inferred, lenses: lenses),
