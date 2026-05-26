@@ -13,6 +13,7 @@ module v4.extdeps.formats.openapi
 import v4.extdeps.coordination { ExchangePattern, RequestReply }
 import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
+import v4.std.collection { Optional }
 import v4.std.network {
   DELETE,
   GET,
@@ -133,29 +134,13 @@ type OpenApiHttpMethod
   | OpenApiTrace
 
 
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiOptionalString.
-type OpenApiOptionalString
-  = OpenApiStringPresent { value: String }
-  | OpenApiStringAbsent
-
-
 type OpenApiReferenceObject {
   dollar_ref: String,
-  summary: OpenApiOptionalString,
-  description: OpenApiOptionalString,
+  summary: Optional<String>,
+  description: Optional<String>,
 }
 
 
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHeaderRequiredSlot.
-type OpenApiHeaderRequiredSlot
-  = OpenApiHeaderRequiredAbsent
-  | OpenApiHeaderRequiredPresent { value: Bool }
-
-
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHeaderDeprecatedSlot.
-type OpenApiHeaderDeprecatedSlot
-  = OpenApiHeaderDeprecatedAbsent
-  | OpenApiHeaderDeprecatedPresent { value: Bool }
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-OpenApiLinkTarget.
@@ -166,7 +151,7 @@ type OpenApiLinkTarget
 
 type OpenApiLinkObject {
   target: OpenApiLinkTarget,
-  description: OpenApiOptionalString,
+  description: Optional<String>,
   link_deferred_members: Map<OpenApiLinkDeferredKey, JsonValue>,
   link_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
@@ -179,17 +164,11 @@ type OpenApiLinkOrReference
 
 
 type OpenApiContact {
-  name: OpenApiOptionalString,
-  url: OpenApiOptionalString,
-  email: OpenApiOptionalString,
+  name: Optional<String>,
+  url: Optional<String>,
+  email: Optional<String>,
   contact_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
-
-
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiContactSlot.
-type OpenApiContactSlot
-  = OpenApiContactPresent { contact: OpenApiContact }
-  | OpenApiContactAbsent
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-OpenApiLicenseUrlOrIdentifierSlot.
@@ -206,19 +185,13 @@ type OpenApiLicense {
 }
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiLicenseSlot.
-type OpenApiLicenseSlot
-  = OpenApiLicensePresent { license: OpenApiLicense }
-  | OpenApiLicenseAbsent
-
-
 type OpenApiInfo {
   title: String,
-  summary: OpenApiOptionalString,
-  description: OpenApiOptionalString,
-  terms_of_service: OpenApiOptionalString,
-  contact: OpenApiContactSlot,
-  license: OpenApiLicenseSlot,
+  summary: Optional<String>,
+  description: Optional<String>,
+  terms_of_service: Optional<String>,
+  contact: Optional<OpenApiContact>,
+  license: Optional<OpenApiLicense>,
   version: String,
   info_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
@@ -244,9 +217,9 @@ type OpenApiHeaderPayloadSlot
 
 
 type OpenApiHeaderObject {
-  description: OpenApiOptionalString,
-  required: OpenApiHeaderRequiredSlot,
-  deprecated: OpenApiHeaderDeprecatedSlot,
+  description: Optional<String>,
+  required: Optional<Bool>,
+  deprecated: Optional<Bool>,
   payload: OpenApiHeaderPayloadSlot,
   header_deferred_members: Map<OpenApiHeaderDeferredKey, JsonValue>,
   header_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
