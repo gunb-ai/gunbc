@@ -4129,9 +4129,11 @@ pub fn suffix_escape_collides_with_reserved_chain(
                 } {
                     break true;
                 } else {
-                    let __tco_0 = base.clone();
-                    name = __tco_0;
-                    continue;
+                    {
+                        let __tco_0 = base.clone();
+                        name = __tco_0;
+                        continue;
+                    }
                 }
             }
         }
