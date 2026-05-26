@@ -131,6 +131,7 @@ data dag_production_binary_expr: Symbol = dag_production_binary_expr
 data dag_production_unary_expr: Symbol = dag_production_unary_expr
 data dag_production_postfix_expr: Symbol = dag_production_postfix_expr
 data dag_production_primary_expr: Symbol = dag_production_primary_expr
+data dag_production_block_expr: Symbol = dag_production_block_expr
 data dag_production_arg: Symbol = dag_production_arg
 data dag_production_field_init: Symbol = dag_production_field_init
 data dag_production_match_expr: Symbol = dag_production_match_expr
@@ -164,6 +165,7 @@ data dag_surface_binary_expr: Symbol = dag_surface_binary_expr
 data dag_surface_unary_expr: Symbol = dag_surface_unary_expr
 data dag_surface_postfix_expr: Symbol = dag_surface_postfix_expr
 data dag_surface_primary_expr: Symbol = dag_surface_primary_expr
+data dag_surface_block_expr: Symbol = dag_surface_block_expr
 data dag_surface_arg: Symbol = dag_surface_arg
 data dag_surface_field_init: Symbol = dag_surface_field_init
 data dag_surface_match_expr: Symbol = dag_surface_match_expr
@@ -573,7 +575,10 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
       left: dag_grammar_nonterminal(production: dag_production_if_expr),
       right: dag_grammar_choice(
         left: dag_grammar_nonterminal(production: dag_production_fn_literal),
-        right: dag_grammar_nonterminal(production: dag_production_binary_expr)
+        right: dag_grammar_choice(
+          left: dag_grammar_nonterminal(production: dag_production_block_expr),
+          right: dag_grammar_nonterminal(production: dag_production_binary_expr)
+        )
       )
     )
   )
@@ -864,6 +869,11 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
       )
     )
   )
+}
+
+
+fn dag_grammar_block_expr_expr() -> GrammarExpr {
+  dag_grammar_nonterminal(production: dag_production_fn_body)
 }
 
 
@@ -1313,6 +1323,11 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
     expression: dag_grammar_primary_expr_expr(),
     emitted: dag_surface_primary_expr
   )
+  let block_expr = dag_grammar_production(
+    name: dag_production_block_expr,
+    expression: dag_grammar_block_expr_expr(),
+    emitted: dag_surface_block_expr
+  )
   let arg = dag_grammar_production(
     name: dag_production_arg,
     expression: dag_grammar_arg_expr(),
@@ -1380,6 +1395,7 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
       unary_expr,
       postfix_expr,
       primary_expr,
+      block_expr,
       arg,
       field_init,
       match_expr,
