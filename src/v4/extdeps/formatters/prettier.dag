@@ -203,14 +203,60 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 
 
 type PrettierConfigPatch {
-  options: FieldPatch<PrettierFormattingOptions>
+  print_width: FieldPatch<Int>
+  tab_width: FieldPatch<Int>
+  use_tabs: FieldPatch<Bool>
+  semi: FieldPatch<Bool>
+  single_quote: FieldPatch<Bool>
+  quote_props: FieldPatch<PrettierQuoteProps>
+  jsx_single_quote: FieldPatch<Bool>
+  trailing_comma: FieldPatch<PrettierTrailingComma>
+  bracket_spacing: FieldPatch<Bool>
+  object_wrap: FieldPatch<PrettierObjectWrap>
+  bracket_same_line: FieldPatch<Bool>
+  arrow_parens: FieldPatch<PrettierArrowParens>
+  require_pragma: FieldPatch<Bool>
+  insert_pragma: FieldPatch<Bool>
+  check_ignore_pragma: FieldPatch<Bool>
+  prose_wrap: FieldPatch<PrettierProseWrap>
+  html_whitespace_sensitivity: FieldPatch<PrettierHtmlWhitespaceSensitivity>
+  vue_indent_script_and_style: FieldPatch<Bool>
+  single_attribute_per_line: FieldPatch<Bool>
+  end_of_line: FieldPatch<PrettierEndOfLine>
+  embedded_language_formatting: FieldPatch<PrettierEmbeddedLanguageFormatting>
+  experimental_ternaries: FieldPatch<Bool>
+  experimental_operator_position: FieldPatch<PrettierExperimentalOperatorPosition>
   overrides: FieldPatch<List<PrettierOverrideEntry>>
 }
 
 
 fn prettier_layer(base: PrettierConfig, patch: PrettierConfigPatch) -> PrettierConfig {
   PrettierConfig {
-    options: apply_field_patch(base: base.options, patch: patch.options),
+    options: PrettierFormattingOptions {
+      print_width: apply_field_patch(base: base.options.print_width, patch: patch.print_width),
+      tab_width: apply_field_patch(base: base.options.tab_width, patch: patch.tab_width),
+      use_tabs: apply_field_patch(base: base.options.use_tabs, patch: patch.use_tabs),
+      semi: apply_field_patch(base: base.options.semi, patch: patch.semi),
+      single_quote: apply_field_patch(base: base.options.single_quote, patch: patch.single_quote),
+      quote_props: apply_field_patch(base: base.options.quote_props, patch: patch.quote_props),
+      jsx_single_quote: apply_field_patch(base: base.options.jsx_single_quote, patch: patch.jsx_single_quote),
+      trailing_comma: apply_field_patch(base: base.options.trailing_comma, patch: patch.trailing_comma),
+      bracket_spacing: apply_field_patch(base: base.options.bracket_spacing, patch: patch.bracket_spacing),
+      object_wrap: apply_field_patch(base: base.options.object_wrap, patch: patch.object_wrap),
+      bracket_same_line: apply_field_patch(base: base.options.bracket_same_line, patch: patch.bracket_same_line),
+      arrow_parens: apply_field_patch(base: base.options.arrow_parens, patch: patch.arrow_parens),
+      require_pragma: apply_field_patch(base: base.options.require_pragma, patch: patch.require_pragma),
+      insert_pragma: apply_field_patch(base: base.options.insert_pragma, patch: patch.insert_pragma),
+      check_ignore_pragma: apply_field_patch(base: base.options.check_ignore_pragma, patch: patch.check_ignore_pragma),
+      prose_wrap: apply_field_patch(base: base.options.prose_wrap, patch: patch.prose_wrap),
+      html_whitespace_sensitivity: apply_field_patch(base: base.options.html_whitespace_sensitivity, patch: patch.html_whitespace_sensitivity),
+      vue_indent_script_and_style: apply_field_patch(base: base.options.vue_indent_script_and_style, patch: patch.vue_indent_script_and_style),
+      single_attribute_per_line: apply_field_patch(base: base.options.single_attribute_per_line, patch: patch.single_attribute_per_line),
+      end_of_line: apply_field_patch(base: base.options.end_of_line, patch: patch.end_of_line),
+      embedded_language_formatting: apply_field_patch(base: base.options.embedded_language_formatting, patch: patch.embedded_language_formatting),
+      experimental_ternaries: apply_field_patch(base: base.options.experimental_ternaries, patch: patch.experimental_ternaries),
+      experimental_operator_position: apply_field_patch(base: base.options.experimental_operator_position, patch: patch.experimental_operator_position),
+    },
     overrides: apply_field_patch(base: base.overrides, patch: patch.overrides),
   }
 }
