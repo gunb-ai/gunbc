@@ -595,6 +595,9 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
 
 
 fn dag_grammar_binary_op_choice() -> GrammarExpr {
+  // Mirrors the concrete binary operators currently admitted by v4 `.dag`
+  // source. Grammar-as-data projection from a canonical operator table is
+  // gated until the modeled language spec owns operator precedence directly.
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: dag_token_eq_eq),
     right: dag_grammar_choice(
@@ -667,6 +670,21 @@ fn dag_grammar_field_init_list_helper() -> GrammarExpr {
         element: dag_grammar_sequence(
           left: dag_grammar_terminal(token_class: dag_token_comma),
           right: dag_grammar_nonterminal(production: dag_production_field_init)
+        )
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_pattern_list_helper() -> GrammarExpr {
+  dag_grammar_optional(
+    element: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: dag_production_pattern),
+      right: dag_grammar_repeat(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: dag_token_comma),
+          right: dag_grammar_nonterminal(production: dag_production_pattern)
         )
       )
     )
@@ -827,7 +845,7 @@ fn dag_grammar_match_expr_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: dag_token_kw_match),
     right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: dag_production_postfix_expr),
+      left: dag_grammar_nonterminal(production: dag_production_binary_expr),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: dag_token_lbrace),
         right: dag_grammar_sequence(
@@ -851,15 +869,46 @@ fn dag_grammar_match_arm_expr() -> GrammarExpr {
 }
 
 
-fn dag_grammar_pattern_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: dag_token_ident),
-    right: dag_grammar_optional(
-      element: dag_grammar_sequence(
+fn dag_grammar_constructor_pattern_suffix_expr() -> GrammarExpr {
+  dag_grammar_optional(
+    element: dag_grammar_choice(
+      left: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: dag_token_lbrace),
         right: dag_grammar_sequence(
           left: dag_grammar_field_pattern_list_helper(),
           right: dag_grammar_terminal(token_class: dag_token_rbrace)
+        )
+      ),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_lparen),
+        right: dag_grammar_sequence(
+          left: dag_grammar_pattern_list_helper(),
+          right: dag_grammar_terminal(token_class: dag_token_rparen)
+        )
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_constructor_pattern_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: dag_token_ident),
+    right: dag_grammar_constructor_pattern_suffix_expr()
+  )
+}
+
+
+fn dag_grammar_pattern_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_constructor_pattern_expr(),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal(token_class: dag_token_kw_true),
+      right: dag_grammar_choice(
+        left: dag_grammar_terminal(token_class: dag_token_kw_false),
+        right: dag_grammar_choice(
+          left: dag_grammar_terminal(token_class: dag_token_int_literal),
+          right: dag_grammar_terminal(token_class: dag_token_string_literal)
         )
       )
     )
@@ -868,12 +917,15 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
 
 
 fn dag_grammar_field_pattern_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: dag_token_ident),
-    right: dag_grammar_sequence(
-      left: dag_grammar_terminal(token_class: dag_token_colon),
-      right: dag_grammar_nonterminal(production: dag_production_pattern)
-    )
+  dag_grammar_choice(
+    left: dag_grammar_sequence(
+      left: dag_grammar_terminal(token_class: dag_token_ident),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_colon),
+        right: dag_grammar_nonterminal(production: dag_production_pattern)
+      )
+    ),
+    right: dag_grammar_terminal(token_class: dag_token_ident)
   )
 }
 
