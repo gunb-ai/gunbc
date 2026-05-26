@@ -59,20 +59,17 @@ type EditDimension {
 }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed
-// RULING-1: 🟡 needs-more-work — scaffold carrier.
+// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — bind T-21 — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed
-// RULING-1: 🟡 needs-more-work — scaffold carrier.
+// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
 type PropagationExclusionProof
   = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed
-// RULING-1: 🟡 needs-more-work — scaffold carrier.
+// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
 
@@ -84,17 +81,13 @@ type BoundaryExclusion {
 }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed
-// RULING-1: 🟡 needs-more-work — scaffold carrier.
-// 🟡 coproduct dissolution — #3153-subsumed.
+// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — bind T-21 — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
 type FailClosedReason
   = ReasonSymbol { reason: Symbol }
   | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed
-// RULING-1: 🟡 needs-more-work — scaffold carrier.
-// 🟡 coproduct dissolution — #3153-subsumed.
+// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — bind T-21 — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
@@ -111,44 +104,34 @@ type ReExecFrontier
   | FailClosed { reason: FailClosedReason }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
-// RULING-1: 🟡 needs-more-work — boundary read.
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves into B1 content_hash plus B-5 purity/effect receipts.
+// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — bind T-21 — dissolve-on: B1/B-5 receipt primitives replace scaffold
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
-// RULING-1: 🟡 needs-more-work — boundary read.
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves when T-21 .dag TestClaims prove boundary cases.
+// 🟡 needs-more-work — feature:affected-set-boundary-receipt-carrier — bind T-21 — dissolve-on: T-21 TestClaims boundary coverage
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves when per-edit dimension deltas are generated.
-// RULING-1: 🟡 needs-more-work — boundary read.
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves when per-edit dimension deltas are generated.
+// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — bind T-21 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
-// RULING-1: 🟡 needs-more-work — propagation read.
-// 🟡 coproduct dissolution — #3153-subsumed; dissolves when B-4/B-5 edge receipts are generated.
+// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — bind T-21 — dissolve-on: B-4/B-5 edge receipts replace scaffold
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
 
-// 🟡 coproduct dissolution — #3153-subsumed; proves transitive frontier or fails closed.
-// RULING-1: 🟡 needs-more-work — frontier read.
-// 🟡 coproduct dissolution — #3153-subsumed; proves transitive frontier or fails closed.
+// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — bind T-21 — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
 type FrontierReceipt
   = FrontierProduced { dependencies: List<DependencyView> }
   | FrontierUnknown { reason: Symbol }

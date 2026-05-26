@@ -220,11 +220,16 @@ fn dag_block_comment_trivia_rule() -> LexRule {
 
 
 fn dag_wave1_lex_rules() -> LexRuleSet {
+  // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
+  // matches, so ident must precede keywords and specific literals that must win ties.
   LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
       dag_line_comment_trivia_rule(),
       dag_block_comment_trivia_rule(),
+      dag_string_literal_lex_rule(),
+      dag_int_literal_lex_rule(),
+      dag_ident_lex_rule(),
       dag_keyword_lex_rule(token_class: dag_token_kw_module, text: "module"),
       dag_keyword_lex_rule(token_class: dag_token_kw_import, text: "import"),
       dag_keyword_lex_rule(token_class: dag_token_kw_type, text: "type"),
@@ -236,9 +241,6 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: dag_token_kw_else, text: "else"),
       dag_keyword_lex_rule(token_class: dag_token_kw_true, text: "true"),
       dag_keyword_lex_rule(token_class: dag_token_kw_false, text: "false"),
-      dag_string_literal_lex_rule(),
-      dag_int_literal_lex_rule(),
-      dag_ident_lex_rule(),
       dag_literal_lex_rule(token_class: dag_token_arrow, text: "->"),
       dag_literal_lex_rule(token_class: dag_token_fat_arrow, text: "=>"),
       dag_literal_lex_rule(token_class: dag_token_eq_eq, text: "=="),
