@@ -197,7 +197,7 @@ Interpreter + lens dimensions (each needs T-9):
         runtime carriers plus a concrete runtime extdep; eval cannot be
         authored before the runtime carriers exist.
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
-  T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [needs T-9]
+  T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [FILES FILLED]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
          XL scope, research-tier risk)              [needs T-12 for current-complexity input]
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
@@ -639,7 +639,9 @@ if any emission step cannot be expressed as inverse grammar-data.)
 
 ---
 
-### T-13: lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag
+### T-13: lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag  [FILES FILLED]
+
+**Status:** Files filled. parallelism/effect/ownership/idempotency filled **PR #3468**; family-wide `ClassifiedDependencyView<C>` migration ratchet + Practice 11 dissolution **PR #3506**; structural_resolution **PR #3482**; lens-local bag_eq clones replaced with canonical `bag_eq` **PR #3640**. All five lenses registered in `lens/registry.dag` with `Bound` module paths.
 
 **I/O**: `(InferredTree, List<DependencyView>) -> Witness<...>` per lens — each
 `*_witness(tree, dependencies)` projects over `dependency_lens` output; facts at
