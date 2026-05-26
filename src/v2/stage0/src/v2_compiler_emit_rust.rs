@@ -131,6 +131,11 @@ pub fn render_rust_type(
         Some(InferredNode::TypeVariable { id: tv, .. }) => emit_ident(tv, RenderTarget::Rust),
         _ => {
             if ((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.len() as i64) == 0)
+                && ((authored_name_at(source_indices.clone(), &n).len() as i64) == 1))
+            {
+                emit_ident(authored_name_at(source_indices.clone(), &n), RenderTarget::Rust)
+            } else if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.len() as i64) > 0))
             {
                 render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
