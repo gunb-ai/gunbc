@@ -388,7 +388,7 @@ fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
 }
 
 // Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
-// 🟡 gated — feature:section-ref-to-subject-projection — `section` is decorative today; `section_subject` returns `root` for both DeclarationScope and NodeScope until opaque DeclarationId/NodeId types graduate (see gate on `section_subject` below).
+// 🟡 gated — feature:section-ref-to-subject-projection — `section` is decorative today; `section_subject` returns `root` for both DeclarationScope and NodeScope until opaque DeclarationId/NodeId types graduate (see gate on `section_subject` above).
 fn apply_lens<Output>(
   lens: Lens<Output>,
   section: SectionRef,
