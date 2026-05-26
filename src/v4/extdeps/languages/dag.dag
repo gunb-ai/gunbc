@@ -1207,14 +1207,14 @@ fn dag_grammar_module_production() -> GrammarProduction {
 }
 
 
-fn emit_row_module_header(emitted: Node, qualified_name: Node) -> Node {
+fn emit_row_module_header(qualified_name: Node) -> Node {
   emit_grammar_relation_row(
     production: dag_grammar_production(
       name: dag_production_module_header,
       expression: dag_grammar_module_header_expr(),
       emitted: dag_surface_module_header
     ),
-    emitted: emitted,
+    emitted: dag_surface_module_header,
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_module),
       qualified_name
@@ -1224,7 +1224,6 @@ fn emit_row_module_header(emitted: Node, qualified_name: Node) -> Node {
 
 
 fn emit_row_import_decl(
-  emitted: Node,
   qualified_name: Node,
   import_block: Node?
 ) -> Node {
@@ -1238,7 +1237,7 @@ fn emit_row_import_decl(
       expression: dag_grammar_import_decl_expr(),
       emitted: dag_surface_import_decl
     ),
-    emitted: emitted,
+    emitted: dag_surface_import_decl,
     tokens: match import_block {
       Some { value: block } => list_append(left: prefix, right: [block])
       None => prefix
@@ -1248,7 +1247,6 @@ fn emit_row_import_decl(
 
 
 fn emit_row_data_decl(
-  emitted: Node,
   name_binding: Symbol,
   type_expr: Node,
   expr: Node
@@ -1259,7 +1257,7 @@ fn emit_row_data_decl(
       expression: dag_grammar_data_decl_expr(),
       emitted: dag_surface_data_decl
     ),
-    emitted: emitted,
+    emitted: dag_surface_data_decl,
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_data),
       emit_bound_token(token_class: dag_token_ident, binding: name_binding),
