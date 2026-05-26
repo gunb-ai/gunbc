@@ -38,6 +38,7 @@ import v4.std.diagnostic {
   ExternalContractUnknown,
   Locus,
   Outcome,
+  Some,
   port_locus,
   Rejected,
   Unavailable,
@@ -45,7 +46,8 @@ import v4.std.diagnostic {
   bind_outcome_accepted,
   diagnostics_singleton,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  outcome_with_diagnostics
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
@@ -142,20 +144,20 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 
 
 // Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
-// so introspect mode never blocks compilation. Extracted to avoid nested match directly in arm.
+// so introspect mode never blocks compilation. Full NonEmptyDiagnostics from Rejected flows
+// forward as advisory Accepted.diagnostics; Violates.diagnostic carries the head.
+// Extracted to avoid nested match directly in arm (v2-compiler constraint).
 fn apply_compile_lens_introspect(
   lens: CompileLens,
   inferred: InferredTree
 ) -> Outcome<Witness<Node>> {
   match lens.gate(tree: inferred) {
-    Accepted { value: w, diagnostics: _ } => outcome_accepted(value: w)
-    Rejected { diagnostics: _ } =>
-      outcome_accepted(
-        value: Violates {
-          diagnostic: compile_lens_gate_rejected_diagnostic(
-            at: port_locus(port: compile_stage_locus_port)
-          )
-        }
+    Accepted { value: w, diagnostics: od } =>
+      outcome_with_diagnostics(value: w, diagnostics: od)
+    Rejected { diagnostics: d } =>
+      outcome_with_diagnostics(
+        value: Violates { diagnostic: d.head },
+        diagnostics: Some { diagnostics: d }
       )
   }
 }
