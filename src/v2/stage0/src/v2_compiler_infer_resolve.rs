@@ -2697,13 +2697,86 @@ pub fn resolve_item_types(
             }
             __result
         });
-        let child_results = Rc::new({
-            let mut __result = Vec::new();
-            for child in item.children.clone().iter().cloned() {
-                __result.push(resolve_item_types(&child, &env, &module_name));
-            }
-            __result
-        });
+        let child_results = if ((item.connective.clone() == Connective::Conj)
+            && (item.transport.clone() == None))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in item.children.clone().iter().cloned() {
+                    let fr = resolve_field(&child, &env, &module_name);
+                    __result.push(Rc::new(ItemResult {
+                        item: fr.field.clone(),
+                        diagnostics: fr.diagnostics.clone(),
+                    }));
+                }
+                __result
+            })
+        } else if ((item.connective.clone() == Connective::Disj)
+            && (item.transport.clone() == None))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for variant in item.children.clone().iter().cloned() {
+                    let field_results = Rc::new({
+                        let mut __field_results = Vec::new();
+                        for field in variant.children.clone().iter().cloned() {
+                            let fr = resolve_field(&field, &env, &module_name);
+                            __field_results.push(Rc::new(ItemResult {
+                                item: fr.field.clone(),
+                                diagnostics: fr.diagnostics.clone(),
+                            }));
+                        }
+                        __field_results
+                    });
+                    let resolved_fields = Rc::new({
+                        let mut __resolved_fields = Vec::new();
+                        for fr in field_results.clone().iter().cloned() {
+                            __resolved_fields.push(fr.item.clone());
+                        }
+                        __resolved_fields
+                    });
+                    let field_diags = Rc::new({
+                        let mut __field_diags = Vec::new();
+                        for fr in field_results.clone().iter().cloned() {
+                            __field_diags.extend((*fr.diagnostics.clone()).iter().cloned());
+                        }
+                        __field_diags
+                    });
+                    __result.push(Rc::new(ItemResult {
+                        item: Rc::new(Node {
+                            name: variant.name.clone(),
+                            span: variant.span.clone(),
+                            ident_span: variant.ident_span.clone(),
+                            children: resolved_fields,
+                            connective: variant.connective.clone(),
+                            params: variant.params.clone(),
+                            inferred: variant.inferred.clone(),
+                            return_cardinality: variant.return_cardinality.clone(),
+                            uses: variant.uses.clone(),
+                            body: variant.body.clone(),
+                            transport: variant.transport.clone(),
+                            properties: variant.properties.clone(),
+                            type_annotation: variant.type_annotation.clone(),
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        }),
+                        diagnostics: field_diags,
+                    }));
+                }
+                __result
+            })
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for child in item.children.clone().iter().cloned() {
+                    __result.push(resolve_item_types(&child, &env, &module_name));
+                }
+                __result
+            })
+        };
         let resolved_children = Rc::new({
             let mut __result = Vec::new();
             for cr in child_results.clone().iter().cloned() {

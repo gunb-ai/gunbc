@@ -1003,8 +1003,30 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   let resolved_props = map(prop_results, pr => pr.field_init)
   let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
 
-  // Resolve children recursively (W11: operations/capabilities as child Nodes)
-  let child_results = map(item.children, child => resolve_item_types(item: child, env: env, module_name: module_name))
+  // Resolve children recursively (W11: operations/capabilities as child Nodes).
+  // Product children are field nodes, not nested items, so resolve their type
+  // expressions through the field boundary to preserve applied generic facts.
+  let child_results = if item.connective == Conj && item.transport == none {
+    item.children |> map(child =>
+      let fr = resolve_field(field: child, env: env, module_name: module_name)
+      ItemResult { item: fr.field, diagnostics: fr.diagnostics }
+    )
+  } else if item.connective == Disj && item.transport == none {
+    item.children |> map(variant =>
+      let field_results = variant.children |> map(field =>
+        let fr = resolve_field(field: field, env: env, module_name: module_name)
+        ItemResult { item: fr.field, diagnostics: fr.diagnostics }
+      )
+      let resolved_fields = map(field_results, fr => fr.item)
+      let field_diags = flat_map(field_results, fr => fr.diagnostics)
+      ItemResult {
+        item: Node { name: variant.name, span: variant.span, ident_span: variant.ident_span, children: resolved_fields, connective: variant.connective, params: variant.params, inferred: variant.inferred, return_cardinality: variant.return_cardinality, uses: variant.uses, body: variant.body, transport: variant.transport, properties: variant.properties, type_annotation: variant.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        diagnostics: field_diags
+      }
+    )
+  } else {
+    map(item.children, child => resolve_item_types(item: child, env: env, module_name: module_name))
+  }
   let resolved_children = map(child_results, cr => cr.item)
   let child_diags = flat_map(child_results, cr => cr.diagnostics)
 
