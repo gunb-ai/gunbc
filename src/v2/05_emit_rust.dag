@@ -2269,12 +2269,7 @@ fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
   } else {
     let rendered = render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
-    let type_name = authored_name_at(source_indices: source_indices, node: n)
-    if (rendered == "NodeFold" || rendered == "Rc<NodeFold>") && generic_param_names |> count > 0 {
-      let args = generic_param_names |> join(separator: ", ")
-      if rendered == "Rc<NodeFold>" { concat("Rc<NodeFold<", args, ">>") }
-      else { concat("NodeFold<", args, ">") }
-    } else { rendered }
+    rendered
   }
 }
 
@@ -4184,7 +4179,7 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
 
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
-  if function_name == "init" || function_name == "step" {
+  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
     concat("(", recv_str, ".", function_name, ")(", arg_strs |> join(separator: ", "), ")")
@@ -4446,6 +4441,12 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
     Some { value: field_type } => field_type.connective == Arrow
     None => false
   }
+}
+
+fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
+  let receiver_type = resolved_type(n: receiver)
+  let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
+  rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
 }
 
 fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {

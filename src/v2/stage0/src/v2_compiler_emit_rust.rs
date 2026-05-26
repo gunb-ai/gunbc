@@ -5098,28 +5098,7 @@ pub fn emit_rust_param_type(
     } else {
         {
             let rendered = render_rust_type(&n, shared_types.clone(), &source_indices);
-            let type_name = authored_name_at(source_indices.clone(), &n);
-            if (((rendered.clone().as_str() == "NodeFold".to_string().as_str())
-                || (rendered.clone().as_str() == "Rc<NodeFold>".to_string().as_str()))
-                && ((generic_param_names.clone().len() as i64) > 0))
-            {
-                {
-                    let args = generic_param_names.clone().join(&", ".to_string());
-                    if (rendered.clone().as_str() == "Rc<NodeFold>".to_string().as_str()) {
-                        v2_rt::concat(
-                            v2_rt::concat("Rc<NodeFold<".to_string(), args),
-                            ">>".to_string(),
-                        )
-                    } else {
-                        v2_rt::concat(
-                            v2_rt::concat("NodeFold<".to_string(), args),
-                            ">".to_string(),
-                        )
-                    }
-                }
-            } else {
-                rendered.clone()
-            }
+            rendered.clone()
         }
     }
 }
@@ -10352,9 +10331,11 @@ pub fn emit_rust_generic_method_call(
 ) -> String {
     {
         let function_name = method_name;
-        if ((function_name.clone().as_str() == "init".to_string().as_str())
-            || (function_name.clone().as_str() == "step".to_string().as_str()))
-        {
+        if rust_receiver_has_callable_method_field(
+            receiver.clone(),
+            function_name.clone(),
+            scope.clone(),
+        ) {
             {
                 let recv_str = emit_typed_expr_base(
                     &receiver,
@@ -11379,6 +11360,19 @@ pub fn rust_record_field_needs_fn_rc(
     match rust_struct_field_type_node(&scope, struct_name, field_name) {
         Some(field_type) => (field_type.connective.clone() == Connective::Arrow),
         None => false,
+    }
+}
+
+pub fn rust_receiver_has_callable_method_field(
+    receiver: Rc<Node>,
+    method_name: String,
+    scope: Rc<InferScope>,
+) -> bool {
+    {
+        let receiver_type = resolved_type(receiver);
+        let receiver_type_name =
+            authored_name_at(scope.type_env.clone().source_indices.clone(), &receiver_type);
+        rust_record_field_needs_fn_rc(scope, receiver_type_name, method_name)
     }
 }
 

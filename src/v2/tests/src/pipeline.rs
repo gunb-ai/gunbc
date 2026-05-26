@@ -283,6 +283,28 @@ fn generic_fn_emits_type_params_without_synthesized_bounds() {
     );
 }
 
+#[test]
+fn generic_param_type_does_not_special_case_nodefold() {
+    let source = "\
+module gen_param_no_fabrication
+
+type NodeFold<S> {
+  seed: S
+}
+
+fn use_fold<T>(fold: NodeFold) -> NodeFold {
+  fold
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/gen_param_no_fabrication.rs");
+    assert!(
+        !content.contains("fold: NodeFold<T>") && !content.contains("fold: Rc<NodeFold<T>>"),
+        "bare generic parameter must not borrow enclosing fn type params, got:\n{content}"
+    );
+}
+
 // P3 fail-closed receipt for the `fn f<T>(T: T)` name-shadowing ambiguity
 // flagged by codex on PR #661. The emit-time type/value-param splitter keys
 // on name equality + post-resolve TypeVariable, so it can't distinguish the
