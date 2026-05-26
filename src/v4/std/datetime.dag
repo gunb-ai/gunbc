@@ -259,6 +259,16 @@ fn hour_value(hour: HourOfDay) -> Nat {
 }
 
 
+fn tz_offset_hour_value(hour: TzOffsetHour) -> Nat {
+  refined_base(r: hour.value)
+}
+
+
+fn tz_offset_minute_value(minute: TzOffsetMinute) -> Nat {
+  refined_base(r: minute.value)
+}
+
+
 fn year_admits(value: Nat) -> Bool {
   value <= 9999
 }
@@ -358,11 +368,80 @@ fn leap_second_month_end(fields: CalendarDateFields) -> Bool {
 }
 
 
+fn same_calendar_date(left: CalendarDateFields, right: CalendarDateFields) -> Bool {
+  (year_value(year: left.year) == year_value(year: right.year))
+    && (month_value(month: left.month) == month_value(month: right.month))
+    && (day_value(day: left.day) == day_value(day: right.day))
+}
+
+
+fn leap_second_next_day(utc: CalendarDateFields, local: CalendarDateFields) -> Bool {
+  let utc_year = year_value(year: utc.year)
+  let utc_month = month_value(month: utc.month)
+  let local_year = year_value(year: local.year)
+  let local_month = month_value(month: local.month)
+  let local_day = day_value(day: local.day)
+  match utc_month {
+    6 =>
+      (local_year == utc_year)
+        && (local_month == 7)
+        && (local_day == 1)
+    12 =>
+      (utc_year < 9999)
+        && (local_year == (utc_year + 1))
+        && (local_month == 1)
+        && (local_day == 1)
+    _ => false
+  }
+}
+
+
 fn leap_second_announcement_admits(announcement: LeapSecondAnnouncement) -> Bool {
   let fields = calendar_date_fields(date: announcement.utc_date)
   let hour = hour_value(hour: announcement.utc_hour)
   let minute = minute_value(minute: announcement.utc_minute)
   (hour == 23) && (minute == 59) && leap_second_month_end(fields: fields)
+}
+
+
+fn minute_of_day(hour: Nat, minute: Nat) -> Nat {
+  (hour * 60) + minute
+}
+
+
+fn tz_offset_minutes(offset: NumericTzOffset) -> Nat {
+  (tz_offset_hour_value(hour: offset.hour) * 60) + tz_offset_minute_value(minute: offset.minute)
+}
+
+
+fn leap_second_local_matches_utc(announcement: LeapSecondAnnouncement, fields: LeapSecondOffsetDateTimeFields) -> Bool {
+  let utc_date = calendar_date_fields(date: announcement.utc_date)
+  let local_date = calendar_date_fields(date: fields.local_date)
+  let local_total = minute_of_day(
+    hour: hour_value(hour: fields.local_hour),
+    minute: minute_value(minute: fields.local_minute)
+  )
+  match fields.offset {
+    UtcZ =>
+      same_calendar_date(left: utc_date, right: local_date)
+        && (local_total == 1439)
+    SignedOffset { offset: signed } =>
+      match signed.sign {
+        TzOffsetPlus =>
+          let offset_total = tz_offset_minutes(offset: signed)
+          if offset_total == 0 {
+            same_calendar_date(left: utc_date, right: local_date)
+              && (local_total == 1439)
+          } else {
+            leap_second_next_day(utc: utc_date, local: local_date)
+              && ((local_total + 1) == offset_total)
+          }
+        TzOffsetMinus =>
+          let offset_total = tz_offset_minutes(offset: signed)
+          same_calendar_date(left: utc_date, right: local_date)
+            && ((local_total + offset_total) == 1439)
+      }
+  }
 }
 
 
@@ -383,6 +462,7 @@ fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) ->
   let second = second_value(second: fields.second)
   (second == 60)
     && leap_second_announcement_admits(announcement: fields.announcement)
+    && leap_second_local_matches_utc(announcement: fields.announcement, fields: fields)
 }
 
 
