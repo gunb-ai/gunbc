@@ -82,7 +82,7 @@ import v4.std.target_model {
   target_model_edge_translation_rules
 }
 import v4.std.collection { List, Map, empty_map }
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item, zip_eq }
 import v4.std.text { String }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution
@@ -306,21 +306,6 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
       )
   }
 }
-fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
-    Cons { head: ha, tail: ta } =>
-      match b {
-        Empty => false
-        Cons { head: hb, tail: tb } =>
-          (ha == hb) && conj_positional_target_lists_equal(a: ta, b: tb)
-      }
-  }
-}
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
   row: Node
@@ -335,7 +320,7 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                if conj_positional_target_lists_equal(a: source_targets, b: row_targets) {
+                if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
