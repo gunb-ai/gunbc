@@ -126,7 +126,7 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<AlgebraFieldEntry>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -140,8 +140,8 @@ pub struct OperatorSpec {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SyntaxSpec {
-    pub item_forms: Rc<Rc<Vec<Rc<ItemForm>>>>,
-    pub operators: Rc<Rc<Vec<Rc<OperatorSpec>>>>,
-    pub keyword_literals: Rc<Rc<HashMap<String, Rc<LiteralValue>>>>,
-    pub keyword_set: Rc<Rc<HashMap<String, bool>>>,
+    pub item_forms: Rc<Vec<Rc<ItemForm>>>,
+    pub operators: Rc<Vec<Rc<OperatorSpec>>>,
+    pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
+    pub keyword_set: Rc<HashMap<String, bool>>,
 }

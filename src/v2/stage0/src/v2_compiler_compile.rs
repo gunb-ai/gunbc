@@ -82,27 +82,27 @@ pub struct SourceFile {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipelineResult {
-    pub files: Rc<Rc<Vec<Rc<TextFile>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub complexity: Rc<Rc<ComplexityReport>>,
-    pub ownership: Rc<Rc<Vec<Rc<OwnershipProof>>>>,
-    pub artifact_plan: Rc<Rc<ArtifactPlan>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
+    pub files: Rc<Vec<Rc<TextFile>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub artifact_plan: Rc<ArtifactPlan>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
-    pub graph: Rc<Option<Rc<ModuleGraph>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
-    pub intern_table: Rc<Rc<InternTable>>,
+    pub graph: Option<Rc<ModuleGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendAccum {
-    pub parse_results: Rc<Rc<Vec<Rc<ParseResult>>>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
-    pub intern_table: Rc<Rc<InternTable>>,
+    pub parse_results: Rc<Vec<Rc<ParseResult>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -147,7 +147,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                         __result.push(Rc::new(FuncEntry {
                             name: authored_name_at(
                                 m.type_env.clone().source_indices.clone(),
-                                item.clone(),
+                                &item,
                             ),
                             body: item.body.clone().clone().unwrap(),
                             params: item.params.clone(),
@@ -210,13 +210,10 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                     .cloned()
                     {
                         __result.push(analyze_ownership(
-                            authored_name_at(
-                                m.type_env.clone().source_indices.clone(),
-                                item.clone(),
-                            ),
+                            authored_name_at(m.type_env.clone().source_indices.clone(), &item),
                             item.params.clone(),
                             item.body.clone().clone().unwrap(),
-                            m.type_env.clone().source_indices.clone(),
+                            &m.type_env.clone().source_indices.clone(),
                         ));
                     }
                     __result
@@ -305,10 +302,10 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
 
 pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
     match artifact.target.clone() {
-        RenderTarget::Rust => emit_rust(typed),
-        RenderTarget::Python => emit_python(typed),
-        RenderTarget::Go => emit_go(typed),
-        RenderTarget::Dag => emit_dag_artifact(typed),
+        RenderTarget::Rust => emit_rust(&typed),
+        RenderTarget::Python => emit_python(&typed),
+        RenderTarget::Go => emit_go(&typed),
+        RenderTarget::Dag => emit_dag_artifact(&typed),
     }
 }
 
@@ -335,12 +332,12 @@ pub fn json_optional_string(value: Option<String>) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
-    pub seen: Rc<Rc<HashMap<String, String>>>,
-    pub order: Rc<Rc<Vec<Rc<Node>>>>,
-    pub collision_errors: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub seen: Rc<HashMap<String, String>>,
+    pub order: Rc<Vec<Rc<Node>>>,
+    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn dag_node_key(node: Rc<Node>) -> String {
+pub fn dag_node_key(node: &Rc<Node>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -404,7 +401,7 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     }
 }
 
-pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
+pub fn dag_node_surface_fingerprint(node: &Rc<Node>) -> String {
     {
         let child_names = Rc::new({
             let mut __result = Vec::new();
@@ -462,13 +459,13 @@ pub fn dag_node_fingerprint(mut node: Rc<Node>) -> String {
                 continue;
             }
             _ => {
-                break dag_node_surface_fingerprint(node.clone());
+                break dag_node_surface_fingerprint(&node);
             }
         }
     }
 }
 
-pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
+pub fn dag_node_key_collision_error(key: String, span: &Rc<SourceSpan>) -> Rc<ErrorNode> {
     {
         let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
         let detail = if synthetic {
@@ -493,13 +490,13 @@ pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<Err
     }
 }
 
-pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
+pub fn dag_node_missing_ref_error(node: &Rc<Node>) -> Rc<ErrorNode> {
     make_error_node(
         Rc::new(CompilerDiagnostic::InternalError {
             message: v2_rt::concat(
                 v2_rt::concat(
                     "dag artifact: node missing from nodes table (key=".to_string(),
-                    dag_node_key(node.clone()),
+                    dag_node_key(&node),
                 ),
                 ")".to_string(),
             ),
@@ -510,12 +507,12 @@ pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
 }
 
 pub fn dag_emit_check_ref_target(
-    node: Rc<Node>,
+    node: &Rc<Node>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    match v2_rt::map_get(&key_to_id, dag_node_key(node.clone())) {
+    match v2_rt::map_get(&key_to_id, dag_node_key(&node)) {
         Some(_) => Rc::new(vec![]),
-        None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
+        None => Rc::new(vec![dag_node_missing_ref_error(&node)]),
     }
 }
 
@@ -524,7 +521,7 @@ pub fn dag_emit_check_optional_ref_target(
     key_to_id: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match value {
-        Some(inner) => dag_emit_check_ref_target(inner.clone(), key_to_id),
+        Some(inner) => dag_emit_check_ref_target(&inner, key_to_id),
         None => Rc::new(vec![]),
     }
 }
@@ -534,16 +531,14 @@ pub fn dag_emit_check_inferred_ref_target(
     key_to_id: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match value.as_deref().cloned() {
-        Some(InferredNode::Resolved { node: n, .. }) => {
-            dag_emit_check_ref_target(n.clone(), key_to_id)
-        }
+        Some(InferredNode::Resolved { node: n, .. }) => dag_emit_check_ref_target(&n, key_to_id),
         _ => Rc::new(vec![]),
     }
 }
 
 pub fn dag_emit_check_node_refs(
-    node: Rc<Node>,
-    key_to_id: Rc<HashMap<String, String>>,
+    node: &Rc<Node>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     v2_rt::concat(
         v2_rt::concat(
@@ -556,12 +551,9 @@ pub fn dag_emit_check_node_refs(
                                     let mut __result = Vec::new();
                                     for c in node.children.clone().iter().cloned() {
                                         __result.extend(
-                                            (*dag_emit_check_ref_target(
-                                                c.clone(),
-                                                key_to_id.clone(),
-                                            ))
-                                            .iter()
-                                            .cloned(),
+                                            (*dag_emit_check_ref_target(&c, key_to_id.clone()))
+                                                .iter()
+                                                .cloned(),
                                         );
                                     }
                                     __result
@@ -570,12 +562,9 @@ pub fn dag_emit_check_node_refs(
                                     let mut __result = Vec::new();
                                     for p in node.params.clone().iter().cloned() {
                                         __result.extend(
-                                            (*dag_emit_check_ref_target(
-                                                p.clone(),
-                                                key_to_id.clone(),
-                                            ))
-                                            .iter()
-                                            .cloned(),
+                                            (*dag_emit_check_ref_target(&p, key_to_id.clone()))
+                                                .iter()
+                                                .cloned(),
                                         );
                                     }
                                     __result
@@ -585,7 +574,7 @@ pub fn dag_emit_check_node_refs(
                                 let mut __result = Vec::new();
                                 for u in node.uses.clone().iter().cloned() {
                                     __result.extend(
-                                        (*dag_emit_check_ref_target(u.clone(), key_to_id.clone()))
+                                        (*dag_emit_check_ref_target(&u, key_to_id.clone()))
                                             .iter()
                                             .cloned(),
                                     );
@@ -601,7 +590,7 @@ pub fn dag_emit_check_node_refs(
                     let mut __result = Vec::new();
                     for p in node.properties.clone().iter().cloned() {
                         __result.extend(
-                            (*dag_emit_check_ref_target(p.clone(), key_to_id.clone()))
+                            (*dag_emit_check_ref_target(&p, key_to_id.clone()))
                                 .iter()
                                 .cloned(),
                         );
@@ -622,11 +611,7 @@ pub fn dag_emit_ref_errors(
     Rc::new({
         let mut __result = Vec::new();
         for n in order.iter().cloned() {
-            __result.extend(
-                (*dag_emit_check_node_refs(n.clone(), key_to_id.clone()))
-                    .iter()
-                    .cloned(),
-            );
+            __result.extend((*dag_emit_check_node_refs(&n, &key_to_id)).iter().cloned());
         }
         __result
     })
@@ -640,7 +625,7 @@ pub fn dag_collect_nodes_list(
         .iter()
         .cloned()
         .fold(acc.clone(), |a: Rc<DagCollectAcc>, n: Rc<Node>| {
-            dag_collect_insert(n.clone(), a)
+            dag_collect_insert(&n, &a)
         })
 }
 
@@ -649,7 +634,7 @@ pub fn dag_collect_optional_node(
     acc: Rc<DagCollectAcc>,
 ) -> Rc<DagCollectAcc> {
     match value {
-        Some(inner) => dag_collect_insert(inner.clone(), acc),
+        Some(inner) => dag_collect_insert(&inner, &acc),
         None => acc,
     }
 }
@@ -659,7 +644,7 @@ pub fn dag_collect_inferred(
     acc: Rc<DagCollectAcc>,
 ) -> Rc<DagCollectAcc> {
     match value.as_deref().cloned() {
-        Some(InferredNode::Resolved { node: n, .. }) => dag_collect_insert(n.clone(), acc),
+        Some(InferredNode::Resolved { node: n, .. }) => dag_collect_insert(&n, &acc),
         _ => acc,
     }
 }
@@ -676,13 +661,13 @@ pub fn dag_collect_match_pattern(
             .iter()
             .cloned()
             .fold(acc, |a: Rc<DagCollectAcc>, fb: Rc<Node>| {
-                dag_collect_insert(fb.clone(), a)
+                dag_collect_insert(&fb, &a)
             }),
         MatchPattern::Wildcard => acc,
     }
 }
 
-pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
+pub fn dag_collect_node_tree(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
     {
         let acc = dag_collect_nodes_list(node.children.clone(), acc.clone());
         let acc = dag_collect_nodes_list(node.params.clone(), acc.clone());
@@ -699,9 +684,9 @@ pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCo
     }
 }
 
-pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
+pub fn dag_collect_insert(node: &Rc<Node>, acc: &Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
     {
-        let key = dag_node_key(node.clone());
+        let key = dag_node_key(&node);
         let fp = dag_node_fingerprint(node.clone());
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
             Some(prior) => {
@@ -716,7 +701,7 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
                             order: acc.order.clone(),
                             collision_errors: v2_rt::rc_list_push(
                                 acc.collision_errors.clone(),
-                                dag_node_key_collision_error(key.clone(), node.span.clone()),
+                                dag_node_key_collision_error(key.clone(), &node.span.clone()),
                             ),
                         })
                     } else {
@@ -730,18 +715,18 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
                     order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
                     collision_errors: acc.collision_errors.clone(),
                 });
-                dag_collect_node_tree(node.clone(), acc1)
+                dag_collect_node_tree(&node, &acc1)
             }
         }
     }
 }
 
 pub fn dag_collect_from_module(
-    module: Rc<TypedModule>,
-    acc: Rc<DagCollectAcc>,
+    module: &Rc<TypedModule>,
+    acc: &Rc<DagCollectAcc>,
 ) -> Rc<DagCollectAcc> {
     {
-        let acc = dag_collect_insert(module.module.clone(), acc.clone());
+        let acc = dag_collect_insert(&module.module.clone(), &acc);
         let acc = dag_collect_nodes_list(module_imports(module.module.clone()), acc.clone());
         module
             .items
@@ -749,7 +734,7 @@ pub fn dag_collect_from_module(
             .iter()
             .cloned()
             .fold(acc.clone(), |a: Rc<DagCollectAcc>, item: Rc<Node>| {
-                dag_collect_insert(item.clone(), a)
+                dag_collect_insert(&item, &a)
             })
     }
 }
@@ -761,7 +746,7 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
             order: Rc::new(vec![]),
             collision_errors: Rc::new(vec![]),
         }),
-        |acc: Rc<DagCollectAcc>, m: Rc<TypedModule>| dag_collect_from_module(m.clone(), acc),
+        |acc: Rc<DagCollectAcc>, m: Rc<TypedModule>| dag_collect_from_module(&m, &acc),
     )
 }
 
@@ -781,7 +766,7 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
         |acc: Rc<HashMap<String, String>>, pair: (i64, Rc<Node>)| {
             v2_rt::rc_map_insert(
                 acc,
-                dag_node_key(pair.1.clone()),
+                dag_node_key(&pair.1.clone()),
                 v2_rt::concat("n".to_string(), (pair.0.clone()).to_string()),
             )
         },
@@ -798,7 +783,7 @@ pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, 
 }
 
 pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
-    match v2_rt::map_get(&key_to_id, dag_node_key(node)) {
+    match v2_rt::map_get(&key_to_id, dag_node_key(&node)) {
         Some(id) => v2_rt::concat(
             v2_rt::concat("{\"$ref\": ".to_string(), json_quote(id.clone())),
             "}".to_string(),
@@ -829,7 +814,7 @@ pub fn json_optional_inferred_node_ref(
 
 pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
     match value {
-        Some(inner) => serialize_span(inner.clone()),
+        Some(inner) => serialize_span(&inner),
         None => "null".to_string(),
     }
 }
@@ -927,7 +912,7 @@ pub fn unary_op_name(value: UnaryOpKind) -> String {
     }
 }
 
-pub fn serialize_span(span: Rc<SourceSpan>) -> String {
+pub fn serialize_span(span: &Rc<SourceSpan>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -941,8 +926,8 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
 }
 
 pub fn serialize_import_node(
-    imp: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    imp: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
@@ -972,7 +957,7 @@ pub fn serialize_import_node(
                         v2_rt::concat(
                             v2_rt::concat(
                                 "{\"module_path\": ".to_string(),
-                                json_quote(authored_name_at(source_indices.clone(), imp.clone())),
+                                json_quote(authored_name_at(source_indices.clone(), &imp)),
                             ),
                             ", \"names\": ".to_string(),
                         ),
@@ -980,14 +965,14 @@ pub fn serialize_import_node(
                     ),
                     ", \"span\": ".to_string(),
                 ),
-                serialize_span(imp.span.clone()),
+                serialize_span(&imp.span.clone()),
             ),
             "}".to_string(),
         )
     }
 }
 
-pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
+pub fn serialize_field_summary(summary: &Rc<FieldSummary>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -1038,8 +1023,8 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 }
 
 pub fn serialize_field_binding(
-    binding: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    binding: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1104,7 +1089,7 @@ pub fn serialize_match_pattern(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for fb in field_bindings.clone().iter().cloned() {
-                        __result.push(serialize_field_binding(fb.clone(), source_indices.clone()));
+                        __result.push(serialize_field_binding(&fb, &source_indices));
                     }
                     __result
                 })),
@@ -1116,7 +1101,7 @@ pub fn serialize_match_pattern(
 }
 
 pub fn serialize_named_arg(
-    arg: Rc<Node>,
+    arg: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
@@ -1129,16 +1114,16 @@ pub fn serialize_named_arg(
                 ),
                 ", \"value\": ".to_string(),
             ),
-            serialize_node_ref(arg_value(arg.clone()), key_to_id),
+            serialize_node_ref(arg_value(&arg), key_to_id),
         ),
         "}".to_string(),
     )
 }
 
 pub fn serialize_match_arm(
-    arm: Rc<Node>,
+    arm: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1151,18 +1136,18 @@ pub fn serialize_match_arm(
                         ),
                         ", \"guard\": ".to_string(),
                     ),
-                    json_optional_node_ref(arm_guard(arm.clone()), key_to_id.clone()),
+                    json_optional_node_ref(arm_guard(&arm), key_to_id.clone()),
                 ),
                 ", \"body\": ".to_string(),
             ),
-            serialize_node_ref(arm_body(arm.clone()), key_to_id.clone()),
+            serialize_node_ref(arm_body(&arm), key_to_id.clone()),
         ),
         "}".to_string(),
     )
 }
 
 pub fn serialize_field_init(
-    field_init: Rc<Node>,
+    field_init: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
@@ -1175,7 +1160,7 @@ pub fn serialize_field_init(
                 ),
                 ", \"value\": ".to_string(),
             ),
-            serialize_node_ref(field_init_node_value(field_init.clone()), key_to_id),
+            serialize_node_ref(field_init_node_value(&field_init), key_to_id),
         ),
         "}".to_string(),
     )
@@ -1231,7 +1216,7 @@ pub fn serialize_method_semantics(
             fold_accumulator_type,
             ..
         }) => {
-            let mn = authored_name_at(source_indices.clone(), method_def.clone());
+            let mn = authored_name_at(source_indices.clone(), &method_def);
             v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
@@ -1262,11 +1247,7 @@ pub fn serialize_method_semantics(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for p in op_params.clone().iter().cloned() {
-                        __result.push(serialize_param(
-                            p.clone(),
-                            source_indices.clone(),
-                            key_to_id.clone(),
-                        ));
+                        __result.push(serialize_param(&p, source_indices.clone(), &key_to_id));
                     }
                     __result
                 })),
@@ -1287,7 +1268,7 @@ pub fn serialize_recursion_shape(shape: RecursionShape) -> String {
     }
 }
 
-pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
+pub fn serialize_inductive_field(field: &Rc<InductiveField>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -1372,7 +1353,7 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
                 v2_rt::concat(
                     v2_rt::concat(
                         "{\"_variant\": \"StrictSubValue\", \"field\": ".to_string(),
-                        serialize_inductive_field(f.clone()),
+                        serialize_inductive_field(&f),
                     ),
                     ", \"factor\": ".to_string(),
                 ),
@@ -1383,7 +1364,7 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
         SubValueRelation::IteratedSubValue { field: f, .. } => v2_rt::concat(
             v2_rt::concat(
                 "{\"_variant\": \"IteratedSubValue\", \"field\": ".to_string(),
-                serialize_inductive_field(f.clone()),
+                serialize_inductive_field(&f),
             ),
             "}".to_string(),
         ),
@@ -1428,13 +1409,13 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
 }
 
 pub fn serialize_expr_data(
-    expr_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    expr_node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> String {
     {
         let ch = expr_node.children.clone();
-        let name = authored_name_at(source_indices.clone(), expr_node.clone());
+        let name = authored_name_at(source_indices.clone(), &expr_node);
         match (*expr_node.expr_data.clone()).clone() {
             ExprData::NoExprData => "{\"kind\": \"NoExprData\"}".to_string(),
             ExprData::ExprLiteral { value: value, .. } => v2_rt::concat(
@@ -1510,7 +1491,7 @@ pub fn serialize_expr_data(
                                     ", \"summary\": ".to_string(),
                                 ),
                                 match summary.clone() {
-                                    Some(inner) => serialize_field_summary(inner.clone()),
+                                    Some(inner) => serialize_field_summary(&inner),
                                     None => "null".to_string(),
                                 },
                             ),
@@ -1920,7 +1901,7 @@ pub fn serialize_inferred_node_ref(
                     ),
                     ", \"span\": ".to_string(),
                 ),
-                serialize_span(span.clone()),
+                serialize_span(&span),
             ),
             "}".to_string(),
         ),
@@ -1935,7 +1916,7 @@ pub fn serialize_inferred_node_ref(
 }
 
 pub fn serialize_resource_use(
-    resource_use: Rc<Node>,
+    resource_use: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
@@ -1950,20 +1931,20 @@ pub fn serialize_resource_use(
                         ),
                         ", \"resource\": ".to_string(),
                     ),
-                    serialize_node_ref(resource_use_resource(resource_use.clone()), key_to_id),
+                    serialize_node_ref(resource_use_resource(&resource_use), key_to_id),
                 ),
                 ", \"span\": ".to_string(),
             ),
-            serialize_span(resource_use.span.clone()),
+            serialize_span(&resource_use.span.clone()),
         ),
         "}".to_string(),
     )
 }
 
 pub fn serialize_field(
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    field: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1986,7 +1967,7 @@ pub fn serialize_field(
                                                 ", \"type_expr\": ".to_string(),
                                             ),
                                             serialize_node_ref(
-                                                field_node_type_expr(field.clone()),
+                                                field_node_type_expr(&field),
                                                 key_to_id.clone(),
                                             ),
                                         ),
@@ -1999,7 +1980,7 @@ pub fn serialize_field(
                                 ", \"default_value\": ".to_string(),
                             ),
                             json_optional_node_ref(
-                                field_node_default_value(field.clone()),
+                                field_node_default_value(&field),
                                 key_to_id.clone(),
                             ),
                         ),
@@ -2012,16 +1993,16 @@ pub fn serialize_field(
                 ),
                 ", \"span\": ".to_string(),
             ),
-            serialize_span(field_node_span(field.clone())),
+            serialize_span(&field_node_span(field.clone())),
         ),
         "}".to_string(),
     )
 }
 
 pub fn serialize_param(
-    param: Rc<Node>,
+    param: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -2036,27 +2017,21 @@ pub fn serialize_param(
                                 ),
                                 ", \"type_expr\": ".to_string(),
                             ),
-                            serialize_node_ref(
-                                param_node_type_expr(param.clone()),
-                                key_to_id.clone(),
-                            ),
+                            serialize_node_ref(param_node_type_expr(&param), key_to_id.clone()),
                         ),
                         ", \"default_value\": ".to_string(),
                     ),
-                    json_optional_node_ref(
-                        param_node_default_value(param.clone()),
-                        key_to_id.clone(),
-                    ),
+                    json_optional_node_ref(param_node_default_value(&param), key_to_id.clone()),
                 ),
                 ", \"span\": ".to_string(),
             ),
-            serialize_span(param_node_span(param.clone())),
+            serialize_span(&param_node_span(param.clone())),
         ),
         "}".to_string(),
     )
 }
 
-pub fn is_module_shell_node(n: Rc<Node>) -> bool {
+pub fn is_module_shell_node(n: &Rc<Node>) -> bool {
     (((((((n.inferred.clone() == None)
         && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
         && (n.connective.clone() == Connective::NoConnective))
@@ -2066,7 +2041,7 @@ pub fn is_module_shell_node(n: Rc<Node>) -> bool {
         && {
             let mut __all = true;
             for p in n.params.clone().iter().cloned() {
-                if !(is_import_slot_node(p.clone())) {
+                if !(is_import_slot_node(&p)) {
                     __all = false;
                     break;
                 }
@@ -2075,7 +2050,7 @@ pub fn is_module_shell_node(n: Rc<Node>) -> bool {
         })
 }
 
-pub fn is_import_slot_node(n: Rc<Node>) -> bool {
+pub fn is_import_slot_node(n: &Rc<Node>) -> bool {
     (import_is_all(n.clone())
         || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
             && (n.body.clone() == None))
@@ -2083,21 +2058,17 @@ pub fn is_import_slot_node(n: Rc<Node>) -> bool {
 }
 
 pub fn serialize_node_params_json(
-    node: Rc<Node>,
+    node: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
-    if is_module_shell_node(node.clone()) {
+    if is_module_shell_node(&node) {
         "[]".to_string()
     } else {
         json_list(Rc::new({
             let mut __result = Vec::new();
             for param in node.params.clone().iter().cloned() {
-                __result.push(serialize_param(
-                    param.clone(),
-                    source_indices.clone(),
-                    key_to_id.clone(),
-                ));
+                __result.push(serialize_param(&param, source_indices.clone(), &key_to_id));
             }
             __result
         }))
@@ -2126,7 +2097,7 @@ pub fn serialize_module_imports_json(
                 json_list(Rc::new({
                     let mut __result = Vec::new();
                     for imp in imports.clone().iter().cloned() {
-                        __result.push(serialize_import_node(imp.clone(), source_indices.clone()));
+                        __result.push(serialize_import_node(&imp, &source_indices));
                     }
                     __result
                 }))
@@ -2138,21 +2109,21 @@ pub fn serialize_module_imports_json(
 }
 
 pub fn serialize_node_record(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), &node))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(&node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => json_quote(connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
+}), ", \"params\": ".to_string()), serialize_node_params_json(&node, source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(&item, source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(&prop, source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(&node, &source_indices, &key_to_id)), "}".to_string())
 }
 
 pub fn serialize_typed_module(
-    module: Rc<TypedModule>,
-    key_to_id: Rc<HashMap<String, String>>,
+    module: &Rc<TypedModule>,
+    key_to_id: &Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -2213,7 +2184,7 @@ pub fn serialize_dag_nodes_table(
                     json_quote(v2_rt::concat("n".to_string(), (pair.0.clone()).to_string())),
                     ": ".to_string(),
                 ),
-                serialize_node_record(pair.1.clone(), source_indices.clone(), key_to_id.clone()),
+                serialize_node_record(&pair.1.clone(), &source_indices, &key_to_id),
             ));
         }
         __result
@@ -2221,7 +2192,7 @@ pub fn serialize_dag_nodes_table(
     .join(&", ".to_string())
 }
 
-pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
+pub fn serialize_diagnostic(diagnostic: &Rc<ErrorNode>) -> String {
     {
         let severity = "error".to_string();
         v2_rt::concat(
@@ -2245,7 +2216,7 @@ pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
                                     ),
                                     ", \"span\": ".to_string(),
                                 ),
-                                serialize_span(diagnostic_to_span(diagnostic.diagnostic.clone())),
+                                serialize_span(&diagnostic_to_span(diagnostic.diagnostic.clone())),
                             ),
                             ", \"module_name\": ".to_string(),
                         ),
@@ -2260,7 +2231,7 @@ pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
     }
 }
 
-pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_dag_artifact(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let collected = collect_dag_nodes(typed.clone());
         if ((collected.collision_errors.clone().len() as i64) > 0) {
@@ -2284,7 +2255,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let modules_json = Rc::new({
             let mut __result = Vec::new();
             for m in typed.modules.clone().iter().cloned() {
-                __result.push(serialize_typed_module(m.clone(), key_to_id.clone()));
+                __result.push(serialize_typed_module(&m, &key_to_id));
             }
             __result
         })
@@ -2292,7 +2263,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let diagnostics_json = Rc::new({
             let mut __result = Vec::new();
             for d in typed.diagnostics.clone().iter().cloned() {
-                __result.push(serialize_diagnostic(d.clone()));
+                __result.push(serialize_diagnostic(&d));
             }
             __result
         })
@@ -2343,7 +2314,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
-pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: &String) -> Rc<Vec<Rc<ErrorNode>>> {
     if {
         let mut __found = false;
         for n in names.iter().cloned() {
@@ -2366,7 +2337,7 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
     }
 }
 
-pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn validate_boundaries(plan: &Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let names = Rc::new({
             let mut __result = Vec::new();
@@ -2380,8 +2351,8 @@ pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
             for b in plan.boundaries.clone().iter().cloned() {
                 __result.extend(
                     (*v2_rt::concat(
-                        boundary_ref_error(names.clone(), b.from_artifact.clone()),
-                        boundary_ref_error(names.clone(), b.to_artifact.clone()),
+                        boundary_ref_error(names.clone(), &b.from_artifact.clone()),
+                        boundary_ref_error(names.clone(), &b.to_artifact.clone()),
                     ))
                     .iter()
                     .cloned(),
@@ -2394,7 +2365,7 @@ pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
 
 pub fn emit_from_artifact_plan(
     typed: Rc<ResolvedGraph>,
-    artifact_plan: Rc<ArtifactPlan>,
+    artifact_plan: &Rc<ArtifactPlan>,
 ) -> Rc<EmitResult> {
     {
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
@@ -2405,7 +2376,7 @@ pub fn emit_from_artifact_plan(
                 )]),
             });
         }
-        let boundary_diags = validate_boundaries(artifact_plan.clone());
+        let boundary_diags = validate_boundaries(&artifact_plan);
         if ((boundary_diags.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
@@ -2461,10 +2432,10 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             |acc: Rc<FrontendAccum>, s: Rc<SourceFile>| {
                 let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
                 {
-                    let tokens = tokenize(s.content.clone(), s.path.clone());
-                    let si = build_newline_index(s.path.clone(), s.content.clone());
+                    let tokens = tokenize(&s.content.clone(), s.path.clone());
+                    let si = build_newline_index(s.path.clone(), &s.content.clone());
                     let parsed = parse_with_table(
-                        tokens.clone(),
+                        &tokens,
                         v2_rt::rc_map_insert(
                             v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                             si.file.clone(),
@@ -2517,7 +2488,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                         v2_rt::rc_map_insert(acc, si.file.clone(), si.clone())
                     },
                 );
-                let graph = resolve_modules(modules, source_indices);
+                let graph = resolve_modules(&modules, &source_indices);
                 Rc::new(FrontendResult {
                     graph: Some(graph.clone()),
                     diagnostics: v2_rt::concat(parse_diagnostics, graph.diagnostics.clone()),
@@ -2582,7 +2553,7 @@ pub fn compile_sources(
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
-                let norm = normalize_graph(graph.clone(), source_indices.clone());
+                let norm = normalize_graph(&graph, source_indices.clone());
                 let norm_diags = norm.diagnostics.clone();
                 let norm_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2615,7 +2586,7 @@ pub fn compile_sources(
                 let func_entries = extract_func_entries(typed.clone());
                 let recursion_ctx = build_recursion_context(typed.clone());
                 let complexity =
-                    build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
+                    build_complexity_report(&func_entries, recursion_ctx, source_indices.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
                 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
                 let type_errors = Rc::new({
@@ -2672,13 +2643,13 @@ pub fn compile_sources(
                         let mut __result = Vec::new();
                         for m in typed.modules.clone().iter().cloned() {
                             __result
-                                .push(authored_name_at(source_indices.clone(), m.module.clone()));
+                                .push(authored_name_at(source_indices.clone(), &m.module.clone()));
                         }
                         __result
                     }),
                     target,
                 );
-                let emit_result = emit_from_artifact_plan(typed.clone(), artifact_plan.clone());
+                let emit_result = emit_from_artifact_plan(typed.clone(), &artifact_plan);
                 let emit_files = emit_result.files.clone();
                 let emit_diags = emit_result.diagnostics.clone();
                 let emit_errors = Rc::new({
@@ -2719,12 +2690,12 @@ pub fn compile_sources(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedPipelineResult {
-    pub graph: Rc<Option<Rc<ResolvedGraph>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub source_indices: Rc<Rc<HashMap<String, Rc<NewlineIndex>>>>,
-    pub complexity: Rc<Rc<ComplexityReport>>,
-    pub ownership: Rc<Rc<Vec<Rc<OwnershipProof>>>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
+    pub graph: Option<Rc<ResolvedGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
@@ -2767,7 +2738,7 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
-                let norm = normalize_graph(graph.clone(), source_indices.clone());
+                let norm = normalize_graph(&graph, source_indices.clone());
                 let norm_diags = norm.diagnostics.clone();
                 let norm_errors = Rc::new({
                     let mut __result = Vec::new();
@@ -2800,7 +2771,7 @@ pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipel
                 let func_entries = extract_func_entries(typed.clone());
                 let recursion_ctx = build_recursion_context(typed.clone());
                 let complexity =
-                    build_complexity_report(func_entries, recursion_ctx, source_indices.clone());
+                    build_complexity_report(&func_entries, recursion_ctx, source_indices.clone());
                 let complexity_diags = complexity_diagnostics(complexity.clone());
                 let all_diags = v2_rt::concat(typed_diags.clone(), complexity_diags);
                 let type_errors = Rc::new({

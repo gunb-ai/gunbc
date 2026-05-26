@@ -186,7 +186,7 @@ pub fn handle_run_with_options(source_roots: Vec<String>, function: String, dry_
             let span = diagnostic_to_span(d.diagnostic.clone());
             let loc = match si.get(&span.file) {
                 Some(idx) => {
-                    let lc = byte_to_line_col(idx.clone(), span.start);
+                    let lc = byte_to_line_col(idx, span.start);
                     format!("{}:{}:{}", span.file, lc.line, lc.col)
                 }
                 None => span.file.clone(),

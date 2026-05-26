@@ -69,7 +69,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
             })
         };
     }
-    CACHED.with(|c: &Rc<BoundedLattice<DescentEvidence>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
@@ -94,8 +94,8 @@ pub fn optional_evidence_meet(
 }
 
 pub fn map_evidence_merge_at(
-    base: Rc<HashMap<String, DescentEvidence>>,
-    key: String,
+    base: &Rc<HashMap<String, DescentEvidence>>,
+    key: &String,
     new_val: DescentEvidence,
 ) -> Rc<HashMap<String, DescentEvidence>> {
     match v2_rt::map_get(&base, key.clone()) {
@@ -243,12 +243,12 @@ pub enum DescentSource {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TerminationProof {
-    pub dimensions: Rc<Rc<Vec<Rc<RankingDimension>>>>,
+    pub dimensions: Rc<Vec<Rc<RankingDimension>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProofEdge {
     pub caller: String,
     pub callee: String,
-    pub evidence: Rc<Rc<Vec<DescentEvidence>>>,
+    pub evidence: Rc<Vec<DescentEvidence>>,
 }

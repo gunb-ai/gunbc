@@ -83,7 +83,7 @@ fn transport_field_string(
         let n = find_property(props, prop_name, source_indices.clone())?;
         match (*n.expr_data).clone() {
             ExprData::ExprVar { .. } => {
-                let s = authored_name_at(source_indices, n);
+                let s = authored_name_at(source_indices, &n);
                 if s.is_empty() {
                     None
                 } else {

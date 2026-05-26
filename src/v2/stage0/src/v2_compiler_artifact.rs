@@ -37,8 +37,8 @@ pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
-    pub entry_modules: Rc<Rc<Vec<String>>>,
-    pub dependencies: Rc<Rc<Vec<String>>>,
+    pub entry_modules: Rc<Vec<String>>,
+    pub dependencies: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -61,8 +61,8 @@ pub struct Boundary {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactPlan {
-    pub artifacts: Rc<Rc<Vec<Rc<Artifact>>>>,
-    pub boundaries: Rc<Rc<Vec<Rc<Boundary>>>>,
+    pub artifacts: Rc<Vec<Rc<Artifact>>>,
+    pub boundaries: Rc<Vec<Rc<Boundary>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -93,8 +93,8 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactOutput {
-    pub artifact: Rc<Rc<Artifact>>,
-    pub files: Rc<Rc<Vec<Rc<TextFile>>>>,
+    pub artifact: Rc<Artifact>,
+    pub files: Rc<Vec<Rc<TextFile>>>,
 }
 
 pub fn default_artifact_plan(
@@ -118,7 +118,7 @@ pub type DagNodeId = String;
 #[serde(tag = "_variant")]
 pub enum DagInferredRecord {
     ResolvedRef {
-        node: DagNodeId,
+        node: String,
     },
     TypeVariableRef {
         id: String,
@@ -131,16 +131,16 @@ pub enum DagInferredRecord {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
-    pub module: DagNodeId,
-    pub items: Rc<Rc<Vec<DagNodeId>>>,
-    pub item_registry_keys: Rc<Rc<Vec<String>>>,
+    pub module: String,
+    pub items: Rc<Vec<String>>,
+    pub item_registry_keys: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
     pub severity: String,
     pub message: String,
-    pub span: Rc<Rc<SourceSpan>>,
+    pub span: Rc<SourceSpan>,
     pub module_name: Option<String>,
     pub category: Option<String>,
 }
@@ -148,9 +148,9 @@ pub struct DagDiagnosticRecord {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
     pub version: String,
-    pub nodes: Rc<Rc<HashMap<DagNodeId, String>>>,
-    pub modules: Rc<Rc<Vec<String>>>,
-    pub item_registry_keys: Rc<Rc<Vec<String>>>,
-    pub diagnostics: Rc<Rc<Vec<String>>>,
-    pub files: Rc<Rc<Vec<String>>>,
+    pub nodes: Rc<HashMap<String, String>>,
+    pub modules: Rc<Vec<String>>,
+    pub item_registry_keys: Rc<Vec<String>>,
+    pub diagnostics: Rc<Vec<String>>,
+    pub files: Rc<Vec<String>>,
 }

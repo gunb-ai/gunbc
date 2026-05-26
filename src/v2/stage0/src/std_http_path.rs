@@ -20,7 +20,7 @@ pub enum UrlPathToken {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathTemplate {
-    pub tokens: Rc<Rc<Vec<Rc<UrlPathToken>>>>,
+    pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -43,7 +43,7 @@ pub enum PathTemplateParseResult {
     },
 }
 
-pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
+pub fn parse_path_template(raw: &String) -> Rc<PathTemplateParseResult> {
     {
         let path_only = match Rc::new(
             raw.clone()
@@ -80,7 +80,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     tokens: Rc::new(vec![]),
                 }),
             }),
-            Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
+            Some(first_seg) => match (*parse_segment_tokens(&first_seg)).clone() {
                 PathSegmentTokensResult::MalformedPathSegment {
                     segment: s,
                     reason: r,
@@ -115,7 +115,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                             PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
                             PathTemplateParseResult::ParsedPathTemplate {
                                 template: path, ..
-                            } => match (*parse_segment_tokens(seg.clone())).clone() {
+                            } => match (*parse_segment_tokens(&seg)).clone() {
                                 PathSegmentTokensResult::MalformedPathSegment {
                                     segment: s,
                                     reason: r,
@@ -146,7 +146,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
     }
 }
 
-pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
+pub fn parse_segment_tokens(seg: &String) -> Rc<PathSegmentTokensResult> {
     if !v2_rt::contains(seg.clone(), "{".to_string()) {
         if v2_rt::contains(seg.clone(), "}".to_string()) {
             Rc::new(PathSegmentTokensResult::MalformedPathSegment {

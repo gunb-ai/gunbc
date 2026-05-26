@@ -104,7 +104,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
@@ -120,7 +120,7 @@ pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
                 Rc::new(__m)
             };
         }
-    CACHED.with(|c: &Rc<HashMap<String, Rc<LiteralValue>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
@@ -167,7 +167,7 @@ pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
@@ -260,7 +260,7 @@ pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
@@ -274,5 +274,5 @@ pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
     })
             };
         }
-    CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
+    CACHED.with(|c| c.clone())
 }

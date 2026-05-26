@@ -361,7 +361,7 @@ impl InterpContext {
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
             for item in module.items.iter() {
-                let name = authored_name_at(source_indices.clone(), item.clone());
+                let name = authored_name_at(source_indices.clone(), item);
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
                 }
@@ -369,7 +369,7 @@ impl InterpContext {
                 if let Some(info) = graph.item_registry.get(&name) {
                     if info.kind == ItemKind::ServiceItem {
                         for op in item.children.iter() {
-                            let op_name = authored_name_at(source_indices.clone(), op.clone());
+                            let op_name = authored_name_at(source_indices.clone(), op);
                             if !op_name.is_empty() {
                                 let key = format!("{}.{}", name, op_name);
                                 service_ops.insert(key, (item.clone(), op.clone()));
@@ -381,7 +381,7 @@ impl InterpContext {
                 if let Some(info) = graph.item_registry.get(&item.name) {
                     if info.kind == ItemKind::ServiceItem && !item.name.is_empty() {
                         for op in item.children.iter() {
-                            let op_name = authored_name_at(source_indices.clone(), op.clone());
+                            let op_name = authored_name_at(source_indices.clone(), op);
                             if !op_name.is_empty() {
                                 let key = format!("{}.{}", item.name, op_name);
                                 service_ops.insert(key, (item.clone(), op.clone()));
@@ -480,7 +480,7 @@ fn call_function(
     let param_names: Vec<String> = fn_node
         .params
         .iter()
-        .map(|p| authored_name_at(ctx.si(), p.clone()))
+        .map(|p| authored_name_at(ctx.si(), p))
         .collect();
 
     let mut bindings = HashMap::new();
@@ -499,9 +499,9 @@ fn call_function(
 
     // Fill default values for unbound parameters
     for param in fn_node.params.iter() {
-        let pname = authored_name_at(ctx.si(), param.clone());
+        let pname = authored_name_at(ctx.si(), param);
         if !bindings.contains_key(&pname) {
-            if let Some(default_node) = param_node_default_value(param.clone()) {
+            if let Some(default_node) = param_node_default_value(param) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
                 bindings.insert(pname, default_val);
             }
@@ -881,7 +881,7 @@ fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
         let pattern = arm_pattern(arm.clone());
         if let Some(bindings) = match_pattern(&pattern, &scrutinee_val, ctx) {
             let arm_env = Env::extend(env, bindings);
-            return eval_expr(&arm_body(arm.clone()), &arm_env, ctx);
+            return eval_expr(&arm_body(arm), &arm_env, ctx);
         }
     }
 
@@ -973,7 +973,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         .iter()
         .map(|arg_node| {
             let name = arg_name_at(arg_node.clone(), ctx.si());
-            let val = eval_expr(&arg_value(arg_node.clone()), env, ctx)?;
+            let val = eval_expr(&arg_value(arg_node), env, ctx)?;
             Ok((name, val))
         })
         .collect::<InterpResult<_>>()?;
@@ -1011,7 +1011,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
             .iter()
             .map(|a| {
                 let name = arg_name_at(a.clone(), ctx.si());
-                let val = eval_expr(&arg_value(a.clone()), env, ctx)?;
+                let val = eval_expr(&arg_value(a), env, ctx)?;
                 Ok((name, val))
             })
             .collect::<InterpResult<_>>()?;
@@ -1023,12 +1023,12 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
     let extra_args = method_arg_nodes(node.clone());
     let args: Vec<Value> = extra_args
         .iter()
-        .map(|a| eval_expr(&arg_value(a.clone()), env, ctx))
+        .map(|a| eval_expr(&arg_value(a), env, ctx))
         .collect::<InterpResult<_>>()?;
 
     match semantics.as_deref() {
         Some(MethodSemantics::AlgebraMethodSemantics { method_def, .. }) => {
-            let mn = authored_name_at(ctx.si(), method_def.clone());
+            let mn = authored_name_at(ctx.si(), method_def);
             eval_algebra_method(&mn, receiver_val, &args, env, ctx)
         }
         _ => {
@@ -1123,7 +1123,7 @@ fn eval_record_lit(
     let mut fields = HashMap::new();
     for child in node.children.iter() {
         let fname = field_init_node_name_at(child.clone(), ctx.si());
-        let fval = eval_expr(&field_init_node_value(child.clone()), env, ctx)?;
+        let fval = eval_expr(&field_init_node_value(child), env, ctx)?;
         fields.insert(fname, fval);
     }
 
@@ -1168,7 +1168,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node);
+    let target_name = authored_name_at(ctx.si(), &target_node);
 
     match (val, target_name.as_str()) {
         (Value::Int(n), "Float") => Ok(Value::Float(n as f64)),
@@ -1707,7 +1707,7 @@ fn build_service_param_env(
     for param in op_node.params.iter() {
         let name = param_node_name_at(param.clone(), ctx.si());
         if !bindings.contains_key(&name) {
-            if let Some(default_node) = param_node_default_value(param.clone()) {
+            if let Some(default_node) = param_node_default_value(param) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
                 bindings.insert(name, default_val);
             }
@@ -1786,7 +1786,7 @@ fn map_shell_outputs(
 
     let mut fields = HashMap::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
+        let field_name = authored_name_at(ctx.si(), child);
         // Check from_key property
         let from_key = extract_from_key(child, ctx);
         let value = match from_key.as_deref() {
@@ -1819,7 +1819,7 @@ fn map_shell_outputs(
 
     // Return as record with the type name
     Ok(Value::Record {
-        type_name: authored_name_at(ctx.si(), op_node.clone()),
+        type_name: authored_name_at(ctx.si(), op_node),
         fields: Rc::new(fields),
     })
 }
@@ -1829,7 +1829,7 @@ fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String
     for prop in field_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
         if prop_name == "from_key" || prop_name == "from" {
-            let val_node = field_init_node_value(prop.clone());
+            let val_node = field_init_node_value(prop);
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
                     return Some(s.clone());
@@ -1885,10 +1885,10 @@ fn dispatch_rest(
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
                     s.clone().to_uppercase()
                 } else {
-                    authored_name_at(si.clone(), m_node.clone()).to_uppercase()
+                    authored_name_at(si.clone(), &m_node).to_uppercase()
                 }
             } else {
-                authored_name_at(si.clone(), m_node.clone()).to_uppercase()
+                authored_name_at(si.clone(), &m_node).to_uppercase()
             }
         }
         None => "GET".to_string(),
@@ -1914,7 +1914,7 @@ fn dispatch_rest(
     for prop in transport.properties.iter() {
         let pname = field_init_node_name_at(prop.clone(), si.clone());
         if !reserved_props.contains(&pname.as_str()) {
-            let pval = eval_expr(&field_init_node_value(prop.clone()), param_env, ctx)?;
+            let pval = eval_expr(&field_init_node_value(prop), param_env, ctx)?;
             headers.push((pname, format!("{}", pval)));
         }
     }
@@ -1928,7 +1928,7 @@ fn dispatch_rest(
     ) {
         for child in query_record.children.iter() {
             let qname = field_init_node_name_at(child.clone(), si.clone());
-            let qval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
+            let qval = eval_expr(&field_init_node_value(child), param_env, ctx)?;
             match &qval {
                 Value::Null => {} // skip null query params
                 _ => query_params.push((qname, format!("{}", qval))),
@@ -2043,12 +2043,12 @@ fn resolve_auth(
     // Walk service config properties looking for auth-related declarations
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
-        let val_node = field_init_node_value(prop.clone());
+        let val_node = field_init_node_value(prop);
 
         match name.as_str() {
             "svc_auth" => {
                 // Auth scheme: Bearer, Header("x-api-key"), etc.
-                let scheme = authored_name_at(si.clone(), val_node.clone());
+                let scheme = authored_name_at(si.clone(), &val_node);
                 if scheme == "Bearer" {
                     header_name = "Authorization".to_string();
                 } else if scheme == "Header" || val_node.name == "Header" {
@@ -2074,7 +2074,7 @@ fn resolve_auth(
                 for child in val_node.children.iter() {
                     let field_name = field_init_node_name_at(child.clone(), si.clone());
                     if field_name == "name" {
-                        let field_val = field_init_node_value(child.clone());
+                        let field_val = field_init_node_value(child);
                         env_var_name = extract_string_value(&field_val);
                     }
                 }
@@ -2110,7 +2110,7 @@ fn find_service_config_string(
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
         if name == key {
-            let val_node = field_init_node_value(prop.clone());
+            let val_node = field_init_node_value(prop);
             // Try literal string
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {
@@ -2118,7 +2118,7 @@ fn find_service_config_string(
                 }
             }
             // Try authored name (for enum-like values)
-            let authored = authored_name_at(si.clone(), val_node);
+            let authored = authored_name_at(si.clone(), &val_node);
             if !authored.is_empty() {
                 return Some(authored);
             }
@@ -2220,11 +2220,11 @@ fn map_response_to_value(
     // Multi-field: map by from_key, defaulting to text for "text" and "body" fields
     let mut fields = HashMap::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
+        let field_name = authored_name_at(ctx.si(), child);
         fields.insert(field_name, Value::Str(text.to_string()));
     }
     Ok(Value::Record {
-        type_name: authored_name_at(ctx.si(), op_node.clone()),
+        type_name: authored_name_at(ctx.si(), op_node),
         fields: Rc::new(fields),
     })
 }
@@ -2245,7 +2245,7 @@ fn map_response_to_value_json(
     }
 
     // If the return type itself is a List (not a record), return the JSON directly
-    let type_name = authored_name_at(ctx.si(), return_type.clone());
+    let type_name = authored_name_at(ctx.si(), &return_type);
     if type_name == "List" && children.is_empty() {
         return Ok(json_to_value(json));
     }
@@ -2254,10 +2254,10 @@ fn map_response_to_value_json(
     // wrap the array in that field.
     if json.is_array() && !children.is_empty() {
         let mut fields = HashMap::new();
-        let first_field = authored_name_at(ctx.si(), children[0].clone());
+        let first_field = authored_name_at(ctx.si(), &children[0]);
         fields.insert(first_field, json_to_value(json));
         return Ok(Value::Record {
-            type_name: authored_name_at(ctx.si(), op_node.clone()),
+            type_name: authored_name_at(ctx.si(), op_node),
             fields: Rc::new(fields),
         });
     }
@@ -2265,7 +2265,7 @@ fn map_response_to_value_json(
     // Multi-field record: extract fields via from_key JSON paths
     let mut fields = HashMap::new();
     for child in children.iter() {
-        let field_name = authored_name_at(ctx.si(), child.clone());
+        let field_name = authored_name_at(ctx.si(), child);
         let from_key = extract_from_key(child, ctx);
         let val = match from_key {
             Some(path) => {
@@ -2297,7 +2297,7 @@ fn map_response_to_value_json(
     }
 
     Ok(Value::Record {
-        type_name: authored_name_at(ctx.si(), op_node.clone()),
+        type_name: authored_name_at(ctx.si(), op_node),
         fields: Rc::new(fields),
     })
 }
@@ -2333,9 +2333,9 @@ fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<V
     // Find first mock_* property
     for prop in op_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
-        if has_mock_prefix(prop_name.clone()) {
+        if has_mock_prefix(&prop_name) {
             // The mock property value is a record literal
-            let val_node = field_init_node_value(prop.clone());
+            let val_node = field_init_node_value(prop);
             return eval_expr(&val_node, &Env::empty(), ctx);
         }
     }

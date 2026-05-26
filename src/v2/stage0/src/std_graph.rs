@@ -18,30 +18,30 @@ pub struct GraphEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraph {
-    pub edges: Rc<Rc<Vec<Rc<GraphEdge>>>>,
+    pub edges: Rc<Vec<Rc<GraphEdge>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphAdjacencyViews {
-    pub forward: Rc<Rc<HashMap<String, Rc<Vec<String>>>>>,
-    pub reverse: Rc<Rc<HashMap<String, Rc<Vec<String>>>>>,
+    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
-    pub visited: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub order: Rc<Rc<Vec<String>>>,
+    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub order: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
-    pub visited: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub members: Rc<Rc<Vec<String>>>,
+    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub members: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccCycleAcc {
-    pub visited: Rc<Rc<std::collections::BTreeSet<String>>>,
+    pub visited: Rc<std::collections::BTreeSet<String>>,
     pub has_cycle: bool,
 }
 
@@ -84,7 +84,7 @@ pub fn build_call_graph_from_proof_edges(
 }
 
 pub fn build_adjacency_views(
-    names: Rc<Vec<String>>,
+    names: &Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<CallGraphAdjacencyViews> {
     {
@@ -127,20 +127,20 @@ pub fn forward_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    build_adjacency_views(names, graph).forward.clone()
+    build_adjacency_views(&names, graph).forward.clone()
 }
 
 pub fn reverse_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    build_adjacency_views(names, graph).reverse.clone()
+    build_adjacency_views(&names, graph).reverse.clone()
 }
 
 pub fn dfs_finish_order(
-    node: String,
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
-    acc: Rc<DfsFinishAcc>,
+    node: &String,
+    adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>,
+    acc: &Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
@@ -158,7 +158,7 @@ pub fn dfs_finish_order(
                         order: acc.order.clone(),
                     }),
                     |inner: Rc<DfsFinishAcc>, neighbor: String| {
-                        dfs_finish_order(neighbor.clone(), adjacency.clone(), inner)
+                        dfs_finish_order(&neighbor, &adjacency, &inner)
                     },
                 );
                 Rc::new(DfsFinishAcc {
@@ -171,9 +171,9 @@ pub fn dfs_finish_order(
 }
 
 pub fn dfs_collect_component(
-    node: String,
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
-    acc: Rc<SccComponentAcc>,
+    node: &String,
+    adjacency: &Rc<HashMap<String, Rc<Vec<String>>>>,
+    acc: &Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v2_rt::set_contains(&acc.visited.clone(), node.clone()) {
@@ -192,7 +192,7 @@ pub fn dfs_collect_component(
                         members: next_members,
                     }),
                     |inner: Rc<SccComponentAcc>, neighbor: String| {
-                        dfs_collect_component(neighbor.clone(), adjacency.clone(), inner)
+                        dfs_collect_component(&neighbor, &adjacency, &inner)
                     },
                 )
             }
@@ -200,16 +200,16 @@ pub fn dfs_collect_component(
     })
 }
 
-pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
+pub fn graph_has_multi_node_scc(names: &Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
     {
-        let adjacency = build_adjacency_views(names.clone(), graph);
+        let adjacency = build_adjacency_views(&names, graph);
         let finish = names.clone().iter().cloned().fold(
             Rc::new(DfsFinishAcc {
                 visited: v2_rt::rc_empty_set::<String>(),
                 order: Rc::new(vec![]),
             }),
             |acc: Rc<DfsFinishAcc>, name: String| {
-                dfs_finish_order(name.clone(), adjacency.forward.clone(), acc)
+                dfs_finish_order(&name, &adjacency.forward.clone(), &acc)
             },
         );
         let result = v2_rt::reverse(finish.order.clone()).iter().cloned().fold(
@@ -225,9 +225,9 @@ pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) ->
                 } else {
                     {
                         let component = dfs_collect_component(
-                            name.clone(),
-                            adjacency.reverse.clone(),
-                            Rc::new(SccComponentAcc {
+                            &name,
+                            &adjacency.reverse.clone(),
+                            &Rc::new(SccComponentAcc {
                                 visited: acc.visited.clone(),
                                 members: Rc::new(vec![]),
                             }),
@@ -273,7 +273,7 @@ pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool 
     }
 }
 
-pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
+pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: &Rc<Vec<Rc<ProofEdge>>>) -> bool {
     {
         let expected_dims = (proof.dimensions.clone().len() as i64);
         let non_descending = Rc::new({
@@ -314,7 +314,7 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
                 });
                 let nd_graph =
                     build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
-                (graph_has_multi_node_scc(members.clone(), nd_graph) == false)
+                (graph_has_multi_node_scc(&members, nd_graph) == false)
             }
         }
     }

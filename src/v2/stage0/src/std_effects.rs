@@ -88,8 +88,8 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
     pub operation_name: String,
-    pub shape: Rc<Rc<EffectShape>>,
-    pub evidence: Rc<Rc<IdempotencyEvidence>>,
+    pub shape: Rc<EffectShape>,
+    pub evidence: Rc<IdempotencyEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -137,8 +137,8 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
 pub struct DerivedOpEffect {
     pub operation_name: String,
     pub method: HttpMethod,
-    pub path_template: Rc<Rc<PathTemplate>>,
-    pub shape: Rc<Rc<EffectShape>>,
+    pub path_template: Rc<PathTemplate>,
+    pub shape: Rc<EffectShape>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -185,8 +185,8 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 
 pub fn derive_op_effect(
     operation_name: String,
-    method: HttpMethod,
-    path: Rc<PathTemplate>,
+    method: &HttpMethod,
+    path: &Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
     {
         let shape = derive_effect_shape(method.clone(), path.clone());
@@ -223,14 +223,14 @@ pub struct ModifierCheck {
     pub operation_name: String,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
-    pub derived_shape: Rc<Rc<EffectShape>>,
-    pub agreement: Rc<Rc<ModifierAgreement>>,
+    pub derived_shape: Rc<EffectShape>,
+    pub agreement: Rc<ModifierAgreement>,
 }
 
 pub fn check_modifier_vs_derivation(
-    op: Rc<DerivedOpEffect>,
-    declared_idempotent: bool,
-    declared_readonly: bool,
+    op: &Rc<DerivedOpEffect>,
+    declared_idempotent: &bool,
+    declared_readonly: &bool,
 ) -> Rc<ModifierCheck> {
     {
         let derived_idempotent = is_idempotent_effect(op.shape.clone());
@@ -275,7 +275,7 @@ pub fn check_modifier_vs_derivation(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
     pub operation_name: String,
-    pub effect_shape: Rc<Rc<EffectShape>>,
+    pub effect_shape: Rc<EffectShape>,
     pub claim: String,
     pub witness_required: bool,
 }

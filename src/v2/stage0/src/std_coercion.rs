@@ -44,7 +44,7 @@ pub struct CastRule {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
-    pub cast_rules: Rc<Rc<Vec<Rc<CastRule>>>>,
+    pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
@@ -54,7 +54,7 @@ pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {

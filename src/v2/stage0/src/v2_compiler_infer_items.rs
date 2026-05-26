@@ -40,39 +40,39 @@ pub struct ItemInfo {
     pub name: String,
     pub module_name: String,
     pub kind: ItemKind,
-    pub service_names: Rc<Rc<Vec<String>>>,
-    pub resource_names: Rc<Rc<Vec<String>>>,
-    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub service_names: Rc<Vec<String>>,
+    pub resource_names: Rc<Vec<String>>,
+    pub params: Rc<Vec<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Rc<Rc<Node>>,
-    pub items: Rc<Rc<Vec<Rc<Node>>>>,
-    pub type_env: Rc<Rc<TypeEnv>>,
-    pub func_env: Rc<Rc<ResolvedFuncEnv>>,
-    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
+    pub module: Rc<Node>,
+    pub items: Rc<Vec<Rc<Node>>>,
+    pub type_env: Rc<TypeEnv>,
+    pub func_env: Rc<ResolvedFuncEnv>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
-    pub modules: Rc<Rc<Vec<Rc<TypedModule>>>>,
-    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
-    pub modules: Rc<Rc<Vec<Rc<TypedModule>>>>,
-    pub item_registry: Rc<Rc<HashMap<String, Rc<ItemInfo>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub emit_graph_info: Rc<Rc<EmitGraphInfo>>,
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub emit_graph_info: Rc<EmitGraphInfo>,
 }
 
 pub fn inferred_to_outputs(
-    inferred: Option<Rc<InferredNode>>,
+    inferred: &Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
@@ -93,18 +93,15 @@ pub fn inferred_to_outputs(
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
-                                            let child_type = child_type_node(child.clone());
+                                            let child_type = child_type_node(&child);
                                             make_field_node(
-                                                authored_name_at(
-                                                    source_indices.clone(),
-                                                    child.clone(),
-                                                ),
+                                                &authored_name_at(source_indices.clone(), &child),
                                                 child_type.clone(),
                                                 Cardinality::Required,
                                                 None,
                                                 None,
                                                 span.clone(),
-                                                node_name_span(child.clone()),
+                                                node_name_span(&child),
                                             )
                                         });
                                     }
@@ -112,7 +109,7 @@ pub fn inferred_to_outputs(
                                 })
                             } else {
                                 Rc::new(vec![make_field_node(
-                                    "value".to_string(),
+                                    &"value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
                                     None,
@@ -123,7 +120,7 @@ pub fn inferred_to_outputs(
                             }
                         } else {
                             Rc::new(vec![make_field_node(
-                                "value".to_string(),
+                                &"value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
                                 None,
@@ -140,7 +137,7 @@ pub fn inferred_to_outputs(
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![make_field_node(
-                            "value".to_string(),
+                            &"value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
                             None,
@@ -155,7 +152,7 @@ pub fn inferred_to_outputs(
     }
 }
 
-pub fn item_kind(item: Rc<Node>) -> ItemKind {
+pub fn item_kind(item: &Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
@@ -201,7 +198,7 @@ pub fn variant_locals_from_items(
                 item.children.clone().iter().cloned().fold(
                     acc.clone(),
                     |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), child.clone());
+                        let child_name = authored_name_at(source_indices.clone(), &child);
                         v2_rt::rc_map_insert(
                             vacc,
                             child_name.clone(),

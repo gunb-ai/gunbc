@@ -14,7 +14,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpanMapping {
     pub generated_line: i64,
-    pub source_span: Rc<Rc<SourceSpan>>,
+    pub source_span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -56,14 +56,14 @@ impl TraceEvent {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
     pub func_name: String,
-    pub span: Rc<Rc<SourceSpan>>,
-    pub bindings: Rc<Rc<HashMap<String, String>>>,
+    pub span: Rc<SourceSpan>,
+    pub bindings: Rc<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trace {
-    pub events: Rc<Rc<Vec<Rc<TraceEvent>>>>,
-    pub stack: Rc<Rc<Vec<Rc<TraceFrame>>>>,
+    pub events: Rc<Vec<Rc<TraceEvent>>>,
+    pub stack: Rc<Vec<Rc<TraceFrame>>>,
 }
 
 pub fn empty_trace() -> Rc<Trace> {
@@ -73,21 +73,21 @@ pub fn empty_trace() -> Rc<Trace> {
     })
 }
 
-pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
+pub fn trace_push_event(trace: &Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
     Rc::new(Trace {
         events: v2_rt::rc_list_push(trace.events.clone(), event),
         stack: trace.stack.clone(),
     })
 }
 
-pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
+pub fn trace_push_frame(trace: &Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
         events: trace.events.clone(),
         stack: v2_rt::rc_list_push(trace.stack.clone(), frame),
     })
 }
 
-pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
+pub fn trace_pop_frame(trace: &Rc<Trace>) -> Rc<Trace> {
     {
         let n = (trace.stack.clone().len() as i64);
         if (n.clone() <= 1) {
@@ -182,7 +182,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
     }
 }
 
-pub fn format_span(sp: Rc<SourceSpan>) -> String {
+pub fn format_span(sp: &Rc<SourceSpan>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -206,7 +206,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
                 v2_rt::concat("> ".to_string(), id.clone()),
                 " at ".to_string(),
             ),
-            format_span(sp.clone()),
+            format_span(&sp),
         ),
         TraceEvent::TraceExit {
             node_id: id,
@@ -220,7 +220,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
                         v2_rt::concat("< ".to_string(), id.clone()),
                         " at ".to_string(),
                     ),
-                    format_span(sp.clone()),
+                    format_span(&sp),
                 ),
                 ": ".to_string(),
             ),
@@ -238,7 +238,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
                         v2_rt::concat("! ".to_string(), id.clone()),
                         " at ".to_string(),
                     ),
-                    format_span(sp.clone()),
+                    format_span(&sp),
                 ),
                 ": ".to_string(),
             ),
@@ -260,9 +260,9 @@ pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
     pub func_name: String,
-    pub inputs: Rc<Rc<HashMap<String, String>>>,
+    pub inputs: Rc<HashMap<String, String>>,
     pub expected_output: Option<String>,
-    pub trace: Rc<Option<Rc<Trace>>>,
+    pub trace: Option<Rc<Trace>>,
 }
 
 pub fn capture_repro(
@@ -281,7 +281,7 @@ pub fn capture_repro(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
     pub generated_file: String,
-    pub mappings: Rc<Rc<Vec<Rc<SpanMapping>>>>,
+    pub mappings: Rc<Vec<Rc<SpanMapping>>>,
 }
 
 pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<Rc<SourceSpan>> {
