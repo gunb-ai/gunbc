@@ -325,7 +325,7 @@ pub fn rust_nominal_ord_derives_for_shape(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if rust_diff_id_ord_carrier_shape_eligible(name, &children, source_indices) {
-        rust_ord_derives_copy_text()
+        rust_ord_derives_text()
     } else {
         "".to_string()
     }
