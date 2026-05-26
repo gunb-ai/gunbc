@@ -1179,26 +1179,59 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token: RustConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = rust_concrete_token_class(token: token)
-  if token_class == rust_token_kw_fn {
-    acc
-  } else {
-    Sequence {
-      left: rust_grammar_terminal(token_class: token_class),
-      right: acc
+fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+  Sequence {
+    left: rust_grammar_terminal(token_class: rust_token_kw_fn),
+    right: Sequence {
+      left: rust_grammar_terminal(token_class: rust_token_ident),
+      right: Sequence {
+        left: rust_grammar_terminal(token_class: rust_token_lparen),
+        right: Sequence {
+          left: rust_grammar_terminal(token_class: rust_token_ident),
+          right: Sequence {
+            left: rust_grammar_terminal(token_class: rust_token_colon),
+            right: Sequence {
+              left: rust_grammar_terminal(token_class: rust_token_ty_i32),
+              right: Sequence {
+                left: rust_grammar_terminal(token_class: rust_token_comma),
+                right: Sequence {
+                  left: rust_grammar_terminal(token_class: rust_token_ident),
+                  right: Sequence {
+                    left: rust_grammar_terminal(token_class: rust_token_colon),
+                    right: Sequence {
+                      left: rust_grammar_terminal(token_class: rust_token_ty_i32),
+                      right: Sequence {
+                        left: rust_grammar_terminal(token_class: rust_token_rparen),
+                        right: Sequence {
+                          left: rust_grammar_terminal(token_class: rust_token_arrow),
+                          right: Sequence {
+                            left: rust_grammar_terminal(token_class: rust_token_ty_i32),
+                            right: Sequence {
+                              left: rust_grammar_terminal(token_class: rust_token_lbrace),
+                              right: Sequence {
+                                left: rust_grammar_terminal(token_class: rust_token_ident),
+                                right: Sequence {
+                                  left: rust_grammar_terminal(token_class: rust_token_plus),
+                                  right: Sequence {
+                                    left: rust_grammar_terminal(token_class: rust_token_ident),
+                                    right: rust_grammar_terminal(token_class: rust_token_rbrace)
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
-}
-
-fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  fold_list(
-    xs: rust_mvp1_concrete_tokens(),
-    empty: rust_grammar_terminal(token_class: rust_token_kw_fn),
-    cons: fn(acc, token) {
-      rust_grammar_sequence_fold_step(acc: acc, token: token)
-    }
-  )
 }
 
 fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
