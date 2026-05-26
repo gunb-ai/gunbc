@@ -28,7 +28,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
     pub status: Rc<NodeLookupStatus>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,

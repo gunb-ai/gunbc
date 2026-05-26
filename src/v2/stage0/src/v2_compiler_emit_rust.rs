@@ -270,43 +270,6 @@ pub fn rust_ord_derives_copy_text() -> String {
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-pub fn rust_nominal_identity_carrier_def(name: String) -> String {
-    v2_rt::concat(
-        v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(rust_ord_derives_copy_text(), "\n".to_string()),
-                        rust_visibility_prefix(),
-                    ),
-                    rust_items().struct_keyword.clone(),
-                ),
-                " ".to_string(),
-            ),
-            name,
-        ),
-        "(pub &'static str);".to_string(),
-    )
-}
-
-pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
-    (type_name.as_str() == "Symbol".to_string().as_str())
-}
-
-pub fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
-    if (type_name.as_str() == "DiffId".to_string().as_str()) {
-        rust_ord_derives_copy_text()
-    } else {
-        "".to_string()
-    }
-}
-
-pub fn rust_nominal_ord_type_eligible(type_name: &String) -> bool {
-    (rust_nominal_identity_carrier_type_eligible(type_name.clone())
-        || (rust_nominal_ord_derives_for_type(type_name.clone()).as_str()
-            != "".to_string().as_str()))
-}
-
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust)
         .tag_attribute
@@ -320,7 +283,7 @@ pub fn rust_serde_tag_attr() -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustEnumWireSerde {
     pub enum_attr: String,
     pub rename_prefix: Option<String>,
@@ -1669,7 +1632,7 @@ pub fn build_shared_types(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProofEntry {
     pub name: String,
     pub proof: Rc<OwnershipProof>,
@@ -2770,7 +2733,7 @@ pub fn emit_typed_item(
                                     ),
                                     " ".to_string(),
                                 ),
-                                item_text.clone(),
+                                item_text,
                             ),
                             " = ".to_string(),
                         ),
@@ -2784,10 +2747,17 @@ pub fn emit_typed_item(
                 )
             } else {
                 if is_type_decl_item(&item, env.source_indices.clone()) {
-                    if (((item.params.clone().len() as i64) == 0)
-                        && rust_nominal_identity_carrier_type_eligible(item_text.clone()))
-                    {
-                        rust_nominal_identity_carrier_def(item_text.clone())
+                    if ((item.params.clone().len() as i64) == 0) {
+                        emit_struct_from_children(
+                            &item_text,
+                            "".to_string(),
+                            Rc::new(vec![]),
+                            &Rc::new(vec![]),
+                            emit_info.recursive_type_set.clone(),
+                            &shared_types,
+                            &env,
+                            &emit_info,
+                        )
                     } else {
                         "".to_string()
                     }
@@ -2871,7 +2841,7 @@ pub fn emit_typed_item(
                     } else {
                         if is_data_def_item(&item) {
                             emit_data_def(
-                                item_text.clone(),
+                                item_text,
                                 &item.type_annotation.clone().clone().unwrap(),
                                 &item.body.clone().clone().unwrap(),
                                 registry.clone(),
@@ -2890,7 +2860,7 @@ pub fn emit_typed_item(
                                     v2_rt::concat(
                                         v2_rt::concat(
                                             "compile_error!(\"unhandled item: ".to_string(),
-                                            item_text.clone(),
+                                            item_text,
                                         ),
                                         "\");".to_string(),
                                     )
@@ -3041,7 +3011,7 @@ pub fn emit_type_def_from_connective(
                     &item.children.clone(),
                     recursive_types,
                     &shared_types,
-                    env.clone(),
+                    &env,
                     &emit_info,
                 )
             }
@@ -3140,7 +3110,7 @@ pub fn emit_struct_from_children(
     children: &Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
-    env: Rc<TypeEnv>,
+    env: &Rc<TypeEnv>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -3151,8 +3121,56 @@ pub fn emit_struct_from_children(
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else {
-            if rust_nominal_ord_type_eligible(&name) {
-                rust_nominal_ord_derives_for_type(name.clone())
+            if rust_type_ord_eligible(
+                &Rc::new(Node {
+                    name: name.clone(),
+                    span: make_span(0, 0),
+                    ident_span: None,
+                    children: children.clone(),
+                    connective: Connective::Conj,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                }),
+                &env.source_indices.clone(),
+            ) {
+                if rust_type_copy_eligible(
+                    &Rc::new(Node {
+                        name: name.clone(),
+                        span: make_span(0, 0),
+                        ident_span: None,
+                        children: children.clone(),
+                        connective: Connective::Conj,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    &env.source_indices.clone(),
+                ) {
+                    rust_ord_derives_copy_text()
+                } else {
+                    rust_ord_derives_text()
+                }
             } else {
                 if v2_rt::set_contains(&shared_types, name.clone()) {
                     rust_struct_derives_text()
@@ -5848,7 +5866,7 @@ pub fn emit_variant_pattern(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcPatternAnalysis {
     pub matches_rc_variant: bool,
     pub matches_option_rc_variant: bool,
@@ -5856,9 +5874,7 @@ pub struct RcPatternAnalysis {
     pub ref_bound_fields: Rc<Vec<String>>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcMatchAnalysis {
     pub needs_option_deref: bool,
     pub needs_deref: bool,
@@ -7391,7 +7407,7 @@ pub fn rust_type_ord_eligible(
                                         return children_ord;
                                     } else {
                                         if is_disj {
-                                            false
+                                            return children_ord;
                                         } else {
                                             is_bare_unit
                                         }
@@ -7455,7 +7471,7 @@ pub fn rust_type_copy_eligible(
                             return children_copy;
                         } else {
                             if is_disj {
-                                false
+                                return children_copy;
                             } else {
                                 is_bare_unit
                             }
@@ -7471,16 +7487,7 @@ pub fn rust_btree_set_element_ord_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let elem_name = authored_name_at(source_indices, &elem_node);
-        (((((((elem_name.clone().as_str() == "String".to_string().as_str())
-            || (elem_name.clone().as_str() == "Int".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
-            || rust_nominal_ord_type_eligible(&elem_name))
-    }
+    rust_type_ord_eligible(&elem_node, &source_indices)
 }
 
 pub fn rust_empty_set_element_type_str(
@@ -14874,7 +14881,7 @@ pub fn path_segment_is_list_index(seg: &String) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePathProjection {
     pub expr: String,
     pub node: Option<Rc<Node>>,
@@ -16187,30 +16194,20 @@ pub fn emit_data_def(
             &shared_types,
             authored_name_at(scope.type_env.clone().source_indices.clone(), &type_node),
         );
-        if (is_simple_type_node(
+        if is_simple_type_node(
             type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ) || rust_nominal_identity_carrier_type_eligible(authored_name_at(
-            scope.type_env.clone().source_indices.clone(),
-            &type_node,
-        ))) {
+        ) {
             {
-                let val_str = match rust_nominal_identity_data_expr(
-                    &type_node,
-                    &value,
-                    &scope.type_env.clone().source_indices.clone(),
-                ) {
-                    Some(identity_expr) => identity_expr.clone(),
-                    None => emit_typed_expr(
-                        value.clone(),
-                        registry,
-                        &scope,
-                        depth,
-                        shared_types.clone(),
-                        emit_info,
-                        1024,
-                    ),
-                };
+                let val_str = emit_typed_expr(
+                    value.clone(),
+                    registry,
+                    &scope,
+                    depth,
+                    shared_types.clone(),
+                    emit_info,
+                    1024,
+                );
                 let kw = rust_items().func_keyword.clone();
                 v2_rt::concat(
                     v2_rt::concat(
@@ -16250,39 +16247,6 @@ pub fn emit_data_def(
                 let kw = rust_items().func_keyword.clone();
                 v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(rust_visibility_prefix(), kw), " ".to_string()), fn_name), "() -> ".to_string()), ty_str.clone()), " {\n".to_string()), "    thread_local! {\n".to_string()), "        static CACHED: ".to_string()), ty_str.clone()), " = {\n".to_string()), body), "\n".to_string()), "        };\n".to_string()), "    }\n".to_string()), "    CACHED.with(|c| c.clone())\n".to_string()), "}".to_string())
             }
-        }
-    }
-}
-
-pub fn rust_nominal_identity_data_expr(
-    type_node: &Rc<Node>,
-    value: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    {
-        let type_name = authored_name_at(source_indices.clone(), &type_node);
-        let is_identity_type = (((rust_nominal_identity_carrier_type_eligible(type_name.clone())
-            && (type_node.connective.clone() == Connective::NoConnective))
-            && ((type_node.children.clone().len() as i64) == 0))
-            && ((type_node.params.clone().len() as i64) == 0));
-        if is_identity_type {
-            match (*value.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let symbol_name = expr_var_name_at(value.clone(), source_indices.clone());
-                    Some(v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(type_name.clone(), "(\"".to_string()),
-                            escape_string_literal_body(symbol_name),
-                        ),
-                        "\")".to_string(),
-                    ))
-                }
-                _ => None,
-            }
-        } else {
-            None
         }
     }
 }

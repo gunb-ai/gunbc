@@ -100,28 +100,26 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitResult {
     pub files: Rc<Vec<Rc<TextFile>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockEmitState {
     pub text: Rc<Vec<String>>,
     pub scope: Rc<InferScope>,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoFrame {
     pub expr: Rc<Node>,
     pub scope: Rc<InferScope>,
     pub depth: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoReassignInput {
     pub args: Rc<Vec<Rc<Node>>>,
     pub scope: Rc<InferScope>,
@@ -138,7 +136,7 @@ pub enum BackendCapability {
     CapRcOwnership,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BackendInfo {
     pub target_name: String,
     pub capabilities: Rc<Vec<BackendCapability>>,
@@ -371,7 +369,7 @@ pub fn collect_type_names_from_node(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterpPart {
     pub format_segment: String,
     pub arg_expr: String,
@@ -2514,9 +2512,7 @@ pub fn extract_modifier_names(
     })
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceFieldSet {
     pub has_rest: bool,
     pub has_shell: bool,
