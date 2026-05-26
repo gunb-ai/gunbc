@@ -1,10 +1,12 @@
 // src/v4/compiler/05_emit.dag
-// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
-// Owns: serialize_source_for_emitted, serialize_target, emit.
+// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate + T-11 Shape-A specialization table.
+// Owns: ShapeAEmitTarget, EmitTargetSpecialization, serialize_source_for_emitted,
+//       shape_a_emit_specializations, shape_a_target_model, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
-//           std/diagnostic.dag.
-// Status: T-10 — emit = serialize_target ∘ translate; serialize delegates to
-// target_serialize_source_from_model grammar-inverse lex walk (no string templates).
+//           extdeps/languages/{rust,python,go,cpp,typescript}.dag, std/diagnostic.dag.
+// Status: T-11 — emit = serialize_target ∘ translate; serialize delegates to
+// target_serialize_source_from_model grammar-inverse lex walk (no string templates);
+// Shape-A specialization table covers rust/python/go/cpp/typescript MVP-1 target models.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
 
 
@@ -23,6 +25,49 @@ import v4.std.diagnostic {
   Outcome,
   bind_outcome
 }
+import v4.std.collection { List }
+import v4.std.node { Node }
+import v4.extdeps.languages.rust { rust_mvp1_target_model }
+import v4.extdeps.languages.python { python_mvp1_target_model }
+import v4.extdeps.languages.go { go_mvp1_target_model }
+import v4.extdeps.languages.cpp { cpp_mvp1_target_model }
+import v4.extdeps.languages.typescript { ts_mvp1_target_model }
+
+type ShapeAEmitTarget
+  = ShapeARust
+  | ShapeAPython
+  | ShapeAGo
+  | ShapeACpp
+  | ShapeATypeScript
+
+type EmitTargetSpecialization {
+  target: ShapeAEmitTarget
+  target_model: TargetModel
+}
+
+fn shape_a_emit_specializations(cpp_target_profile: Node) -> List<EmitTargetSpecialization> {
+  [
+    EmitTargetSpecialization { target: ShapeARust, target_model: rust_mvp1_target_model() },
+    EmitTargetSpecialization { target: ShapeAPython, target_model: python_mvp1_target_model() },
+    EmitTargetSpecialization { target: ShapeAGo, target_model: go_mvp1_target_model() },
+    EmitTargetSpecialization {
+      target: ShapeACpp,
+      target_model: cpp_mvp1_target_model(target_profile: cpp_target_profile)
+    },
+    EmitTargetSpecialization { target: ShapeATypeScript, target_model: ts_mvp1_target_model() }
+  ]
+}
+
+fn shape_a_target_model(target: ShapeAEmitTarget, cpp_target_profile: Node) -> TargetModel {
+  match target {
+    ShapeARust => rust_mvp1_target_model()
+    ShapeAPython => python_mvp1_target_model()
+    ShapeAGo => go_mvp1_target_model()
+    ShapeACpp => cpp_mvp1_target_model(target_profile: cpp_target_profile)
+    ShapeATypeScript => ts_mvp1_target_model()
+  }
+}
+
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel

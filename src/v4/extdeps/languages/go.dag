@@ -966,3 +966,221 @@ fn go_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
+
+fn go_int_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: go_inhabitant_field_atom, target: go_inhabitant_atom(id: go_inhabitant_int)),
+      go_named_edge(name: go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
+    ]
+  }
+}
+
+fn go_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: go_inhabitant_field_int, target: go_int_inhabitant_node())
+    ]
+  }
+}
+
+fn go_mvp1_selection_policy_node() -> Node {
+  go_int_inhabitant_node()
+}
+
+fn go_mvp1_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: go_int_inhabitant_node() },
+      Edge { label: Positional, target: go_int_inhabitant_node() },
+      Edge { label: Positional, target: go_int_inhabitant_node() }
+    ]
+  }
+}
+
+fn go_concrete_token_class(token: GoConcreteSyntaxToken) -> Symbol {
+  match token {
+    GoFixedToken { token_class: c } => c
+    GoBoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
+  match token {
+    GoFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: go_relation_token_fixed)),
+          go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c))
+        ]
+      }
+    GoBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: go_relation_token_bound)),
+          go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c)),
+          go_named_edge(name: concrete_syntax_token_field_binding, target: go_inhabitant_atom(id: b))
+        ]
+      }
+  }
+}
+
+fn go_positional_token_edge(token: GoConcreteSyntaxToken) -> Edge {
+  Edge { label: Positional, target: go_concrete_token_node(token: token) }
+}
+
+fn go_positional_edges_from_token_classes() -> List<Edge> {
+  fold_list(
+    xs: go_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: go_positional_token_edge(token: token))
+    }
+  )
+}
+
+fn go_mvp1_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      go_named_edge(name: go_mvp1_source_text_field, target: go_inhabitant_atom(id: go_mvp1_source_literal)),
+      go_named_edge(name: go_mvp1_source_grammar_field, target: go_inhabitant_atom(id: go_production_mvp1_fn_add))
+    ],
+    right: go_positional_edges_from_token_classes()
+  )
+}
+
+fn go_mvp1_serialize_source_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: go_mvp1_serialize_source_children() }
+}
+
+fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn go_grammar_sequence_fold_step(acc: GrammarExpr, token: GoConcreteSyntaxToken) -> GrammarExpr {
+  let token_class = go_concrete_token_class(token: token)
+  if token_class == go_token_kw_func {
+    acc
+  } else {
+    Sequence { left: go_grammar_terminal(token_class: token_class), right: acc }
+  }
+}
+
+fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
+  fold_list(
+    xs: go_mvp1_concrete_tokens(),
+    empty: go_grammar_terminal(token_class: go_token_kw_func),
+    cons: fn(acc, token) {
+      go_grammar_sequence_fold_step(acc: acc, token: token)
+    }
+  )
+}
+
+fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: go_production_mvp1_fn_add,
+    expression: go_grammar_sequence_from_token_classes(),
+    emitted: go_mvp1_emitted_add_fn_node()
+  }
+}
+
+fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
+  GoGrammarRelationRow {
+    production: go_grammar_production_mvp1_fn_add(),
+    emitted: go_mvp1_emitted_add_fn_node(),
+    tokens: go_mvp1_concrete_tokens()
+  }
+}
+
+fn go_relation_token_edges(tokens: List<GoConcreteSyntaxToken>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: go_positional_token_edge(token: token))
+    }
+  )
+}
+
+fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      go_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      go_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node { kind: TypeNode { connective: Conj }, children: go_relation_token_edges(tokens: row.tokens) }
+      )
+    ]
+  }
+}
+
+fn go_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: go_relation_rule_mvp1_fn_add, target: go_grammar_relation_row_node(row: go_mvp1_grammar_relation_row()))
+    ]
+  }
+}
+
+fn go_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
+      go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
+    ]
+  }
+}
+
+fn go_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), go_binding_fn_add, "add"),
+      go_binding_param_x,
+      "x"
+    ),
+    go_binding_param_y,
+    "y"
+  )
+}
+
+fn go_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: go_mvp1_target_model_node(),
+    lex: go_wave1_lex(),
+    binding_spellings: go_mvp1_binding_spellings(),
+    authority_source_text: go_mvp1_source_text
+  }
+}
+
+fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+}
+
+fn go_wave1_lex_rules() -> List<LexRule> {
+  [
+    go_lex_rule(token_class: go_token_kw_func, text: "func "),
+    go_lex_rule(token_class: go_token_lparen, text: "("),
+    go_lex_rule(token_class: go_token_ty_int, text: " int"),
+    go_lex_rule(token_class: go_token_comma, text: ", "),
+    go_lex_rule(token_class: go_token_rparen, text: ") "),
+    go_lex_rule(token_class: go_token_lbrace, text: "{ "),
+    go_lex_rule(token_class: go_token_kw_return, text: "return "),
+    go_lex_rule(token_class: go_token_plus, text: " + "),
+    go_lex_rule(token_class: go_token_rbrace, text: " }")
+  ]
+}
+
+fn go_wave1_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: go_wave1_lex_rules() } }
+}
