@@ -49,6 +49,15 @@ import v4.std.node {
   fold_node,
   well_formed
 }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -104,7 +113,7 @@ type InferredFactsEntry {
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
-// 🟡 gated — scaffold:T-4-wave-2b — feature:infer-algebra-ref-grounding-gate
+// 🟢 gated dissolved — SM5 confirmed 0 infer_algebra_ref_ungrounded diagnostics after #3689.
 // Fired when InferredFacts.inhabits.algebra (AlgebraRef.algebra) is a bare Atom.
 // In the current identity-MVP solver, AlgebraRef.algebra = the node itself; for Atom leaf
 // nodes this means the guard fires, making canonical_grounding_for_node unusable for Atom
@@ -113,6 +122,23 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 // AlgebraRef.algebra from grounded algebra Node constructors (T-2); at that point bare-Atom
 // algebra evidence means an unharvested bridge symbol, not a scaffolded identity return.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
+
+
+fn infer_algebra_ref_ungrounded_claim_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: infer_algebra_ref_ungrounded } },
+    children: []
+  }
+}
+
+
+data claim_sm5_infer_algebra_ref_ungrounded_zero_diagnostics: TestClaim = EqualsClaim {
+  label: "SM5: v2 bootstrap on src/v4 with #3689 bridge-symbol dissolution produces 0 infer_algebra_ref_ungrounded diagnostics",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: infer_algebra_ref_ungrounded_claim_node(),
+  rhs: infer_algebra_ref_ungrounded_claim_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
 
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
