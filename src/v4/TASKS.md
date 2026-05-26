@@ -1478,6 +1478,87 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 
+### T-35 — virtual module-loader + agent round-trip interface  [SCHEDULED]
+
+**Operator-ratified 2026-05-26 (round-trip scope).** The compiler becomes
+a service an agent converses with: the agent supplies `.dag` ASTs into a
+content-addressed store, invokes the pipeline, and receives rich structured
+output — not just emitted text. The agent may edit the store and recompile;
+the store is the shared round-trip medium. Filesystem I/O is eliminated
+entirely from the compile path.
+
+**Scope — three interlocking pieces:**
+
+1. **Virtual module-loader.** The module-admission stage (T-28-B) is
+   replaced with an agent-supplied store: a content-addressed map from
+   `ModulePath` to `Node` (pre-parsed `.dag` AST). The stage reads from
+   the store rather than the filesystem. Agents write to the store; the
+   compiler reads from it. No filesystem I/O anywhere in the compile path.
+   `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
+   from 03_resolve.dag before the virtual loader can replace it.`
+
+2. **Agent AST store.** A mutable, content-addressed carrier in `std/`:
+   `AgentStore { entries: Map<ModulePath, Node> }` with operations
+   `store_insert`, `store_lookup`, `store_delete`. The store is the
+   agent's write surface; the virtual module-loader is the compiler's read
+   surface. Agents populate the store, trigger compilation, and read back
+   results — the cycle is explicit and repeatable.
+
+3. **Rich structured compiler output.** The pipeline emits three outputs
+   alongside (or instead of) flat target text:
+   - `EmittedSource { text: String, target: TargetModel }` — the existing
+     T-10 flat output, unchanged.
+   - `InferenceResult { facts: Map<Node, InferredFacts> }` — the typed
+     inference map from T-9, exposed as a first-class output so agents can
+     read inferred types without re-parsing emitted text.
+   - `DiagnosticSet { items: FreeMonoid<Diagnostic> }` — structured
+     diagnostics (not string messages), so agents can make targeted edits
+     in response to specific typed failures.
+   This is a second output mode on T-10 emit: `emit_structured` alongside
+   the existing `emit_target`. The inference and diagnostic types already
+   exist as `.dag` values in the pipeline — they are exposed, not invented.
+
+**Round-trip loop (the agent pattern this enables):**
+```
+  agent writes .dag AST → store_insert
+  agent invokes compile_with_store(store, target)
+  compiler returns (EmittedSource, InferenceResult, DiagnosticSet)
+  agent reads InferenceResult to understand type structure
+  agent edits store in response to DiagnosticSet
+  agent recompiles — repeat until DiagnosticSet is empty
+```
+
+**Files (none new — extensions to existing files):**
+- `src/v4/std/` — add `AgentStore` carrier (new type in a new
+  `src/v4/std/agent.dag`).
+- `src/v4/compiler/00_compile.dag` — add `compile_with_store` alongside
+  existing `compile_ingest_staging`; expose `emit_structured` output type.
+- `src/v4/compiler/05_emit.dag` — add `emit_structured` output mode
+  returning `(EmittedSource, InferenceResult, DiagnosticSet)`.
+
+**Dependencies — `[needs T-28-B, T-9, T-10]`.**
+- T-28-B: module-loader stage must exist as a separate stage before the
+  virtual loader can replace it.
+- T-9: `InferredFacts` must be clean (0 ungrounded diagnostics) before
+  `InferenceResult` output is meaningful.
+- T-10: `emit_structured` is an extension of the emit stage; T-10 must
+  be complete before the structured output mode is added.
+
+**What this is NOT:**
+- Not a new language feature — no new `.dag` syntax.
+- Not a runtime evaluator — `AgentStore` is a compile-time carrier, not
+  a runtime value store.
+- Not T-34 (runtime substrate) — agent interaction is at compile time,
+  not at execution time.
+
+**Sequencing.** Post-M3. Dispatch after T-28-B, T-9, and T-10 all
+confirm merged. No M3 critical path dependency — this is infrastructure
+for agent-driven code generation, not for the self-host fixed-point.
+Unblocks: agent-driven `.dag` authoring workflows; IDE language-server
+integration; automated refactoring agents.
+
+---
+
 ### T-4.15 — extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate  [SCHEDULED]
 **Operator-ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
 composed homomorphism, orthogonal to the compiler").** Transport
