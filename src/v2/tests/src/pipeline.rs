@@ -3615,6 +3615,28 @@ fn check_has(c: Counter) -> Bool {
 }
 
 #[test]
+fn callable_field_method_uses_rust_identifier_renderer() {
+    let source = r#"module callable_keyword_field
+
+type Runner {
+  type: fn() -> Int
+}
+
+fn run(r: Runner) -> Int {
+  r.type()
+}
+"#;
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/callable_keyword_field.rs");
+    assert!(
+        content.contains("(r.r#type)()"),
+        "callable field method should escape Rust keyword field names, got:\n{}",
+        content
+    );
+}
+
+#[test]
 fn map_inline_lambda_propagates_result_type() {
     let source = r#"module map_inline_lambda
 
