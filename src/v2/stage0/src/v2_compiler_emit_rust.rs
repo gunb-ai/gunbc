@@ -3409,32 +3409,17 @@ pub fn emit_struct_field_from_child(
         };
         let authored = authored_name(env.clone(), child.clone());
         let snake = to_snake(authored.clone());
-        let is_reserved = {
-            let mut __found = false;
-            for r in language_spec(RenderTarget::Rust)
-                .reserved_words
-                .clone()
-                .keywords
-                .clone()
-                .iter()
-                .cloned()
-            {
-                if (r.clone().as_str() == snake.clone().as_str()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
+        let emitted = emit_ident(authored.clone(), RenderTarget::Rust);
+        let keyword_rename = if ((emitted.clone().as_str() != snake.clone().as_str())
+            && (rename_attr.clone().as_str() == "".to_string().as_str()))
+        {
+            v2_rt::concat(
+                v2_rt::concat("    #[serde(rename = \"".to_string(), snake.clone()),
+                "\")]\n".to_string(),
+            )
+        } else {
+            "".to_string()
         };
-        let keyword_rename =
-            if (is_reserved && (rename_attr.clone().as_str() == "".to_string().as_str())) {
-                v2_rt::concat(
-                    v2_rt::concat("    #[serde(rename = \"".to_string(), snake.clone()),
-                    "\")]\n".to_string(),
-                )
-            } else {
-                "".to_string()
-            };
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -3446,7 +3431,7 @@ pub fn emit_struct_field_from_child(
                             ),
                             rust_visibility_prefix(),
                         ),
-                        emit_ident(authored.clone(), RenderTarget::Rust),
+                        emitted.clone(),
                     ),
                     ": ".to_string(),
                 ),
