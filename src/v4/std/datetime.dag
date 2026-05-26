@@ -385,6 +385,11 @@ fn calendar_date_fields(date: CalendarDate) -> CalendarDateFields {
 }
 
 
+fn clock_time_fields(time: ClockTime) -> ClockTimeFields {
+  refined_base(r: time.validity.refined)
+}
+
+
 fn leap_second_month_end(fields: CalendarDateFields) -> Bool {
   let month = month_value(month: fields.month)
   let day = day_value(day: fields.day)
@@ -497,7 +502,8 @@ fn leap_second_local_matches_utc(announcement: LeapSecondAnnouncement, fields: L
 
 
 fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
-  let second = second_value(second: refined_base(r: fields.time.validity.refined).second)
+  let time = clock_time_fields(time: fields.time)
+  let second = second_value(second: time.second)
   second <= 59
 }
 
