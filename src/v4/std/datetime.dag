@@ -169,6 +169,17 @@ type LeapSecondInstantFields {
 }
 
 
+type LeapSecondOffsetDateTimeFields {
+  announcement: LeapSecondAnnouncement
+  local_date: CalendarDate
+  local_hour: HourOfDay
+  local_minute: MinuteOfHour
+  second: SecondOfMinute
+  subsecond: Subsecond
+  offset: TzOffset
+}
+
+
 type OrdinaryInstantValidity {
   refined: Refined<OrdinaryInstantFields>
 }
@@ -179,15 +190,21 @@ type LeapSecondInstantValidity {
 }
 
 
+type LeapSecondOffsetDateTimeValidity {
+  refined: Refined<LeapSecondOffsetDateTimeFields>
+}
+
+
 // 🟢 coproduct dissolution — RFC 3339 separates ordinary instants from announced leap-second instants.
 type Instant
   = OrdinaryInstant { validity: OrdinaryInstantValidity }
   | LeapSecondInstant { validity: LeapSecondInstantValidity }
 
 
-type OffsetDateTime {
-  instant: Instant
-}
+// 🟢 coproduct dissolution — RFC 3339 offset date-times either carry an ordinary instant or a leap-second offset spelling plus canonical UTC announcement.
+type OffsetDateTime
+  = OrdinaryOffsetDateTime { validity: OrdinaryInstantValidity }
+  | LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity }
 
 
 // 🟢 coproduct dissolution — TOML §Date-Time exposes these four closed user-input profiles.
@@ -209,6 +226,7 @@ data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
 data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
 data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
+data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
 
 
 fn year_value(year: Year) -> Nat {
@@ -361,6 +379,13 @@ fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
 }
 
 
+fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) -> Bool {
+  let second = second_value(second: fields.second)
+  (second == 60)
+    && leap_second_announcement_admits(announcement: fields.announcement)
+}
+
+
 data year_validation: Validation<Nat> = Validation {
   reason: year_out_of_range,
   admits: year_admits
@@ -424,6 +449,12 @@ data ordinary_instant_validation: Validation<OrdinaryInstantFields> = Validation
 data leap_second_instant_validation: Validation<LeapSecondInstantFields> = Validation {
   reason: leap_second_instant_invalid,
   admits: leap_second_instant_admits
+}
+
+
+data leap_second_offset_datetime_validation: Validation<LeapSecondOffsetDateTimeFields> = Validation {
+  reason: leap_second_offset_datetime_invalid,
+  admits: leap_second_offset_datetime_admits
 }
 
 
@@ -510,5 +541,22 @@ fn make_ordinary_instant(fields: OrdinaryInstantFields, at: Locus) -> Outcome<In
 fn make_leap_second_instant(fields: LeapSecondInstantFields, at: Locus) -> Outcome<Instant> {
   bind_outcome(o: refine(base: fields, by: leap_second_instant_validation, at: at), f: fn(refined) {
     outcome_accepted(value: LeapSecondInstant { validity: LeapSecondInstantValidity { refined: refined } })
+  })
+}
+
+
+fn make_ordinary_offset_datetime(fields: OrdinaryInstantFields, at: Locus) -> Outcome<OffsetDateTime> {
+  bind_outcome(o: refine(base: fields, by: ordinary_instant_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: OrdinaryOffsetDateTime { validity: OrdinaryInstantValidity { refined: refined } })
+  })
+}
+
+
+fn make_leap_second_offset_datetime(
+  fields: LeapSecondOffsetDateTimeFields,
+  at: Locus
+) -> Outcome<OffsetDateTime> {
+  bind_outcome(o: refine(base: fields, by: leap_second_offset_datetime_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: LeapSecondOffsetDateTime { validity: LeapSecondOffsetDateTimeValidity { refined: refined } })
   })
 }
