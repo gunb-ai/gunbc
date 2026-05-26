@@ -11,8 +11,8 @@
 //! definitions outside the canonical owner module.
 //!
 //! **TESTING.md:** M1(2.7) corpus scan; canonical owner and llvm_ir checks
-//! still use `SurfaceItem::Fn` / `FnExternalBody`. The all-v4 shadow scan is
-//! anchored to declaration spelling so newer v4 expression syntax in unrelated
+//! still use `SurfaceItem::Fn` / `FnExternalBody`. The all-v4 shadow scan uses
+//! a tiny declaration-header scanner so newer v4 expression syntax in unrelated
 //! modules cannot mask a P9 ownership regression.
 //!
 //! **ROADMAP:** T-PB-B / `pb_rust_tests_outside_residual_zero`; dissolves when M2
@@ -55,20 +55,77 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
     })
 }
 
-fn source_declares_target_fn(source: &str) -> bool {
-    source.lines().any(|line| {
-        let line = line.trim_start();
-        let Some(after_fn) = line.strip_prefix("fn") else {
-            return false;
-        };
-        if !after_fn.chars().next().is_some_and(char::is_whitespace) {
-            return false;
+fn is_ident_continue(c: char) -> bool {
+    c == '_' || c.is_ascii_alphanumeric()
+}
+
+fn next_header_token(source: &str, offset: usize) -> Option<(&str, usize)> {
+    let mut i = offset;
+    while i < source.len() {
+        let rest = &source[i..];
+        let c = rest.chars().next()?;
+        if c.is_whitespace() {
+            i += c.len_utf8();
+        } else if rest.starts_with("//") {
+            i += rest.find('\n').unwrap_or(rest.len());
+        } else if rest.starts_with("/*") {
+            i += rest
+                .find("*/")
+                .map(|end| end + "*/".len())
+                .unwrap_or(rest.len());
+        } else if c == '"' {
+            i += c.len_utf8();
+            while i < source.len() {
+                let rest = &source[i..];
+                let c = rest.chars().next()?;
+                i += c.len_utf8();
+                if c == '\\' {
+                    if let Some(escaped) = source[i..].chars().next() {
+                        i += escaped.len_utf8();
+                    }
+                } else if c == '"' {
+                    break;
+                }
+            }
+        } else if c == '(' {
+            return Some((&source[i..i + 1], i + 1));
+        } else if c == '_' || c.is_ascii_alphabetic() {
+            let start = i;
+            i += c.len_utf8();
+            while i < source.len() {
+                let c = source[i..].chars().next()?;
+                if is_ident_continue(c) {
+                    i += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            return Some((&source[start..i], i));
+        } else {
+            i += c.len_utf8();
         }
-        let Some(after_name) = after_fn.trim_start().strip_prefix(TARGET_FN_NAME) else {
+    }
+    None
+}
+
+fn source_declares_target_fn(source: &str) -> bool {
+    let mut offset = 0;
+    while let Some((token, next_offset)) = next_header_token(source, offset) {
+        offset = next_offset;
+        if token != "fn" {
+            continue;
+        }
+        let Some((name, after_name)) = next_header_token(source, offset) else {
             return false;
         };
-        after_name.trim_start().starts_with('(')
-    })
+        let Some((open_paren, _)) = next_header_token(source, after_name) else {
+            return false;
+        };
+        if name == TARGET_FN_NAME && open_paren == "(" {
+            return true;
+        }
+    }
+    false
 }
 
 fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -101,6 +158,15 @@ fn p9_source_declares_target_fn_accepts_decl_whitespace() {
     ));
     assert!(!source_declares_target_fn(
         "fn llvm_instruction_cost_extra(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(!source_declares_target_fn(
+        "// fn llvm_instruction_cost(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(!source_declares_target_fn(
+        "\"fn llvm_instruction_cost(i: LlvmInstruction) -> Int { 1 }\""
+    ));
+    assert!(source_declares_target_fn(
+        "fn /* inter-token comment */ llvm_instruction_cost /* ok */ (i: LlvmInstruction) -> Int { 1 }"
     ));
 }
 
