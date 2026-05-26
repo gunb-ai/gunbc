@@ -1012,14 +1012,24 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
   // expressions through the field boundary to preserve applied generic facts.
   let child_results = if item.connective == Conj && item.transport == none {
     item.children |> map(child =>
-      let fr = resolve_field(field: child, env: env, module_name: module_name)
-      ItemResult { item: fr.field, diagnostics: fr.diagnostics }
+      let authored_type = field_node_type_expr(n: child)
+      let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
+      let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
+      ItemResult {
+        item: Node { name: child.name, span: child.span, ident_span: child.ident_span, children: child.children, connective: child.connective, params: child.params, inferred: child.inferred, return_cardinality: child.return_cardinality, uses: child.uses, body: child.body, transport: child.transport, properties: concat(child.properties, tr.resolved.properties), type_annotation: child.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+        diagnostics: type_diags
+      }
     )
   } else if item.connective == Disj && item.transport == none {
     item.children |> map(variant =>
       let field_results = variant.children |> map(field =>
-        let fr = resolve_field(field: field, env: env, module_name: module_name)
-        ItemResult { item: fr.field, diagnostics: fr.diagnostics }
+        let authored_type = field_node_type_expr(n: field)
+        let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
+        let type_diags = concat(tr.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
+        ItemResult {
+          item: Node { name: field.name, span: field.span, ident_span: field.ident_span, children: field.children, connective: field.connective, params: field.params, inferred: field.inferred, return_cardinality: field.return_cardinality, uses: field.uses, body: field.body, transport: field.transport, properties: concat(field.properties, tr.resolved.properties), type_annotation: field.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+          diagnostics: type_diags
+        }
       )
       let resolved_fields = map(field_results, fr => fr.item)
       let field_diags = flat_map(field_results, fr => fr.diagnostics)

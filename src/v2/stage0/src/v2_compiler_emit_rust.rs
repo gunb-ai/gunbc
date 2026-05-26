@@ -127,38 +127,49 @@ pub fn render_rust_type(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if node_is_set_collection(&n, &source_indices) {
-        match n.children.clone().first().cloned() {
-            Some(elem_child) => {
-                let elem_node = child_type_node(&elem_child);
-                let elem_is_type_var = if (elem_node.inferred.clone() != None) {
-                    is_type_variable(elem_node.inferred.clone().clone().unwrap())
-                } else {
-                    false
-                };
-                if elem_is_type_var {
-                    emit_rust_compile_error_expr("Set element type unresolved".to_string())
-                } else {
-                    if !rust_btree_set_element_ord_eligible(
-                        elem_node.clone(),
-                        source_indices.clone(),
-                    ) {
-                        {
-                            let elem_name = authored_name_at(source_indices.clone(), &elem_node);
-                            emit_rust_compile_error_expr(v2_rt::concat(
-                                v2_rt::concat("Set element type ".to_string(), elem_name),
-                                " is not Ord-eligible for BTreeSet".to_string(),
-                            ))
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: tv, .. }) => emit_ident(tv, RenderTarget::Rust),
+        _ => {
+            if node_is_set_collection(&n, &source_indices) {
+                match n.children.clone().first().cloned() {
+                    Some(elem_child) => {
+                        let elem_node = child_type_node(&elem_child);
+                        let elem_is_type_var = if (elem_node.inferred.clone() != None) {
+                            is_type_variable(elem_node.inferred.clone().clone().unwrap())
+                        } else {
+                            false
+                        };
+                        if elem_is_type_var {
+                            emit_rust_compile_error_expr("Set element type unresolved".to_string())
+                        } else {
+                            if !rust_btree_set_element_ord_eligible(
+                                elem_node.clone(),
+                                source_indices.clone(),
+                            ) {
+                                {
+                                    let elem_name =
+                                        authored_name_at(source_indices.clone(), &elem_node);
+                                    emit_rust_compile_error_expr(v2_rt::concat(
+                                        v2_rt::concat("Set element type ".to_string(), elem_name),
+                                        " is not Ord-eligible for BTreeSet".to_string(),
+                                    ))
+                                }
+                            } else {
+                                render_node_type(
+                                    &n,
+                                    &RenderTarget::Rust,
+                                    &shared_types,
+                                    &source_indices,
+                                )
+                            }
                         }
-                    } else {
-                        render_node_type(&n, &RenderTarget::Rust, &shared_types, &source_indices)
                     }
+                    None => emit_rust_compile_error_expr("Set missing element type".to_string()),
                 }
+            } else {
+                render_node_type(&n, &RenderTarget::Rust, &shared_types, &source_indices)
             }
-            None => emit_rust_compile_error_expr("Set missing element type".to_string()),
         }
-    } else {
-        render_node_type(&n, &RenderTarget::Rust, &shared_types, &source_indices)
     }
 }
 
