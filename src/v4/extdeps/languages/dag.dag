@@ -91,6 +91,7 @@ data dag_token_plus: Symbol = dag_token_plus
 data dag_token_minus: Symbol = dag_token_minus
 data dag_token_star: Symbol = dag_token_star
 data dag_token_slash: Symbol = dag_token_slash
+data dag_token_percent: Symbol = dag_token_percent
 data dag_token_bang: Symbol = dag_token_bang
 data dag_token_eq: Symbol = dag_token_eq
 data dag_token_colon: Symbol = dag_token_colon
@@ -300,6 +301,7 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: dag_token_minus, text: "-"),
       dag_literal_lex_rule(token_class: dag_token_star, text: "*"),
       dag_literal_lex_rule(token_class: dag_token_slash, text: "/"),
+      dag_literal_lex_rule(token_class: dag_token_percent, text: "%"),
       dag_literal_lex_rule(token_class: dag_token_bang, text: "!"),
       dag_literal_lex_rule(token_class: dag_token_eq, text: "="),
       dag_literal_lex_rule(token_class: dag_token_colon, text: ":"),
@@ -612,7 +614,10 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
 fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: dag_token_star),
-    right: dag_grammar_terminal(token_class: dag_token_slash)
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal(token_class: dag_token_slash),
+      right: dag_grammar_terminal(token_class: dag_token_percent)
+    )
   )
 }
 
