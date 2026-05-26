@@ -1740,7 +1740,7 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
       } else { ty }
     None => ty
   }
-  let generic_ty = apply_missing_generic_args(ty: rendered_ty, type_node: authored_field_ty, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let generic_ty = apply_missing_generic_args(ty: rendered_ty, type_node: rt_child, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
   } else { generic_ty }

@@ -4869,7 +4869,7 @@ type Outer<A, B> {
         content
     );
     assert!(
-        content.contains("missing: NodeFold,"),
+        content.contains("missing: Rc<NodeFold>,"),
         "bare generic field should remain uninstantiated so downstream Rust fails closed, got:\n{}",
         content
     );

@@ -3436,7 +3436,7 @@ pub fn emit_struct_field_from_child(
         };
         let generic_ty = apply_missing_generic_args(
             rendered_ty,
-            &authored_field_ty,
+            &rt_child,
             &parent_generic_param_names,
             emit_info,
             &env.source_indices.clone(),
