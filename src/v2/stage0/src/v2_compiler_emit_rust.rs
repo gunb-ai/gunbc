@@ -267,22 +267,23 @@ pub fn rust_ord_derives_text() -> String {
 }
 
 pub fn rust_ord_derives_copy_text() -> String {
-    "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
-        .to_string()
+    "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-pub fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
+pub fn rust_nominal_ord_derives_for_type(type_name: &String) -> String {
     if (type_name.clone().as_str() == "Symbol".to_string().as_str()) {
         rust_ord_derives_copy_text()
-    } else if (type_name.clone().as_str() == "DiffId".to_string().as_str()) {
-        rust_ord_derives_text()
     } else {
-        "".to_string()
+        if (type_name.clone().as_str() == "DiffId".to_string().as_str()) {
+            rust_ord_derives_text()
+        } else {
+            "".to_string()
+        }
     }
 }
 
 pub fn rust_nominal_ord_type_eligible(type_name: String) -> bool {
-    (rust_nominal_ord_derives_for_type(type_name).as_str() != "".to_string().as_str())
+    (rust_nominal_ord_derives_for_type(&type_name).as_str() != "".to_string().as_str())
 }
 
 pub fn rust_serde_tag_attr() -> String {
@@ -3122,13 +3123,15 @@ pub fn emit_struct_from_children(
         };
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
-        } else if rust_nominal_ord_type_eligible(name.clone()) {
-            rust_nominal_ord_derives_for_type(name.clone())
         } else {
-            if v2_rt::set_contains(&shared_types, name.clone()) {
-                rust_struct_derives_text()
+            if rust_nominal_ord_type_eligible(name.clone()) {
+                rust_nominal_ord_derives_for_type(&name)
             } else {
-                rust_struct_derives_copy_text()
+                if v2_rt::set_contains(&shared_types, name.clone()) {
+                    rust_struct_derives_text()
+                } else {
+                    rust_struct_derives_copy_text()
+                }
             }
         };
         if ((children.clone().len() as i64) == 0) {
@@ -7285,13 +7288,13 @@ pub fn rust_btree_set_element_ord_eligible(
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices, &elem_node);
-        ((((((elem_name.clone().as_str() == "String".to_string().as_str())
+        (((((((elem_name.clone().as_str() == "String".to_string().as_str())
             || (elem_name.clone().as_str() == "Int".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
             || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
             || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
-            || rust_nominal_ord_type_eligible(elem_name.clone())
+            || rust_nominal_ord_type_eligible(elem_name.clone()))
     }
 }
 
