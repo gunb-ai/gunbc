@@ -883,23 +883,47 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn cpp_grammar_sequence_fold_step(acc: GrammarExpr, token: CppConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = cpp_concrete_token_class(token: token)
-  if token_class == cpp_token_ty_int {
-    acc
-  } else {
-    Sequence { left: cpp_grammar_terminal(token_class: token_class), right: acc }
-  }
-}
-
 fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
-  fold_list(
-    xs: cpp_mvp1_concrete_tokens(),
-    empty: cpp_grammar_terminal(token_class: cpp_token_ty_int),
-    cons: fn(acc, token) {
-      cpp_grammar_sequence_fold_step(acc: acc, token: token)
+  Sequence {
+    left: cpp_grammar_terminal(token_class: cpp_token_ty_int),
+    right: Sequence {
+      left: cpp_grammar_terminal(token_class: cpp_token_ident),
+      right: Sequence {
+        left: cpp_grammar_terminal(token_class: cpp_token_lparen),
+        right: Sequence {
+          left: cpp_grammar_terminal(token_class: cpp_token_ty_int),
+          right: Sequence {
+            left: cpp_grammar_terminal(token_class: cpp_token_ident),
+            right: Sequence {
+              left: cpp_grammar_terminal(token_class: cpp_token_comma),
+              right: Sequence {
+                left: cpp_grammar_terminal(token_class: cpp_token_ty_int),
+                right: Sequence {
+                  left: cpp_grammar_terminal(token_class: cpp_token_ident),
+                  right: Sequence {
+                    left: cpp_grammar_terminal(token_class: cpp_token_rparen),
+                    right: Sequence {
+                      left: cpp_grammar_terminal(token_class: cpp_token_lbrace),
+                      right: Sequence {
+                        left: cpp_grammar_terminal(token_class: cpp_token_ident),
+                        right: Sequence {
+                          left: cpp_grammar_terminal(token_class: cpp_token_plus),
+                          right: Sequence {
+                            left: cpp_grammar_terminal(token_class: cpp_token_ident),
+                            right: cpp_grammar_terminal(token_class: cpp_token_rbrace)
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-  )
+  }
 }
 
 fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction {

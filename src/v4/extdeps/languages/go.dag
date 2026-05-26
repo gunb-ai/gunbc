@@ -1063,23 +1063,53 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn go_grammar_sequence_fold_step(acc: GrammarExpr, token: GoConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = go_concrete_token_class(token: token)
-  if token_class == go_token_kw_func {
-    acc
-  } else {
-    Sequence { left: go_grammar_terminal(token_class: token_class), right: acc }
-  }
-}
-
 fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
-  fold_list(
-    xs: go_mvp1_concrete_tokens(),
-    empty: go_grammar_terminal(token_class: go_token_kw_func),
-    cons: fn(acc, token) {
-      go_grammar_sequence_fold_step(acc: acc, token: token)
+  Sequence {
+    left: go_grammar_terminal(token_class: go_token_kw_func),
+    right: Sequence {
+      left: go_grammar_terminal(token_class: go_token_ident),
+      right: Sequence {
+        left: go_grammar_terminal(token_class: go_token_lparen),
+        right: Sequence {
+          left: go_grammar_terminal(token_class: go_token_ident),
+          right: Sequence {
+            left: go_grammar_terminal(token_class: go_token_ty_int),
+            right: Sequence {
+              left: go_grammar_terminal(token_class: go_token_comma),
+              right: Sequence {
+                left: go_grammar_terminal(token_class: go_token_ident),
+                right: Sequence {
+                  left: go_grammar_terminal(token_class: go_token_ty_int),
+                  right: Sequence {
+                    left: go_grammar_terminal(token_class: go_token_rparen),
+                    right: Sequence {
+                      left: go_grammar_terminal(token_class: go_token_ty_int),
+                      right: Sequence {
+                        left: go_grammar_terminal(token_class: go_token_lbrace),
+                        right: Sequence {
+                          left: go_grammar_terminal(token_class: go_token_kw_return),
+                          right: Sequence {
+                            left: go_grammar_terminal(token_class: go_token_ident),
+                            right: Sequence {
+                              left: go_grammar_terminal(token_class: go_token_plus),
+                              right: Sequence {
+                                left: go_grammar_terminal(token_class: go_token_ident),
+                                right: go_grammar_terminal(token_class: go_token_rbrace)
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
-  )
+  }
 }
 
 fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
