@@ -33,7 +33,7 @@ import v4.extdeps.languages.go { go_mvp1_target_model }
 import v4.extdeps.languages.cpp { cpp_mvp1_target_model }
 import v4.extdeps.languages.typescript { ts_mvp1_target_model }
 
-// 🟢 coproduct dissolution — closed Shape-A compiler target set for T-11 rust/python/go/cpp/typescript.
+// 🟡 gated — Shape-A target-set bridge (Practice 7/P5) — feature:t11-target-model-row-projection — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — dissolve-on-arrival: derive this roster from target-model rows / target spec registry and delete ShapeAEmitTarget plus the hand-authored shape_a_emit_specializations target arms; forbidden: adding post-Shape-A targets here without the registry projection.
 type ShapeAEmitTarget
   = ShapeARust
   | ShapeAPython
