@@ -656,7 +656,57 @@ fn ct_coercion_tests() -> String {
     "    // =========================================================================\n",
     "    // Coercion registry tests (auto-generated from data declarations)\n",
     "    // =========================================================================\n\n",
-    test_fns |> join(separator: "\n"))
+    test_fns |> join(separator: "\n"),
+    ct_rust_btree_set_ord_eligibility_test())
+}
+
+fn ct_rust_btree_set_ord_eligibility_test() -> String {
+  concat(
+    "    fn named_type_node(name: &str) -> std::rc::Rc<crate::v2_std_core::Node> {\n",
+    "        let span = crate::v2_std_core::make_span(0, name.len() as i64);\n",
+    "        std::rc::Rc::new(crate::v2_std_core::Node {\n",
+    "            name: name.to_string(),\n",
+    "            ident: None,\n",
+    "            span: span.clone(),\n",
+    "            ident_span: Some(span),\n",
+    "            children: std::rc::Rc::new(Vec::new()),\n",
+    "            connective: crate::v2_std_core::Connective::NoConnective,\n",
+    "            params: std::rc::Rc::new(Vec::new()),\n",
+    "            inferred: None,\n",
+    "            return_cardinality: crate::v2_std_core::Cardinality::Required,\n",
+    "            uses: std::rc::Rc::new(Vec::new()),\n",
+    "            body: None,\n",
+    "            transport: None,\n",
+    "            properties: std::rc::Rc::new(Vec::new()),\n",
+    "            type_annotation: None,\n",
+    "            is_self_recursive: false,\n",
+    "            has_non_tail_self_call: false,\n",
+    "            match_pattern: None,\n",
+    "            expr_data: std::rc::Rc::new(crate::v2_std_core::ExprData::NoExprData),\n",
+    "        })\n",
+    "    }\n\n",
+    "    #[test]\n",
+    "    fn rust_btree_set_ord_eligibility_includes_symbol_and_diff_id_only() {\n",
+    "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
+    "        assert!(\n",
+    "            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(\n",
+    "                named_type_node(\"Symbol\"),\n",
+    "                source_indices.clone()\n",
+    "            )\n",
+    "        );\n",
+    "        assert!(\n",
+    "            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(\n",
+    "                named_type_node(\"DiffId\"),\n",
+    "                source_indices.clone()\n",
+    "            )\n",
+    "        );\n",
+    "        assert!(\n",
+    "            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(\n",
+    "                named_type_node(\"TestClaimId\"),\n",
+    "                source_indices\n",
+    "            )\n",
+    "        );\n",
+    "    }\n\n")
 }
 
 fn render_target_rust_enum(target: RenderTarget) -> String {
