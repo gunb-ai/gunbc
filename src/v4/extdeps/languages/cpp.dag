@@ -887,52 +887,36 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
-  Sequence {
-    left: cpp_grammar_terminal(token_class: cpp_token_ty_int),
-    right: Sequence {
-      left: cpp_grammar_terminal(token_class: cpp_token_ident),
-      right: Sequence {
-        left: cpp_grammar_terminal(token_class: cpp_token_lparen),
-        right: Sequence {
-          left: cpp_grammar_terminal(token_class: cpp_token_ty_int),
-          right: Sequence {
-            left: cpp_grammar_terminal(token_class: cpp_token_ident),
-            right: Sequence {
-              left: cpp_grammar_terminal(token_class: cpp_token_comma),
-              right: Sequence {
-                left: cpp_grammar_terminal(token_class: cpp_token_ty_int),
-                right: Sequence {
-                  left: cpp_grammar_terminal(token_class: cpp_token_ident),
-                  right: Sequence {
-                    left: cpp_grammar_terminal(token_class: cpp_token_rparen),
-                    right: Sequence {
-                      left: cpp_grammar_terminal(token_class: cpp_token_lbrace),
-                      right: Sequence {
-                        left: cpp_grammar_terminal(token_class: cpp_token_kw_return),
-                        right: Sequence {
-                          left: cpp_grammar_terminal(token_class: cpp_token_ident),
-                          right: Sequence {
-                            left: cpp_grammar_terminal(token_class: cpp_token_plus),
-                            right: Sequence {
-                              left: cpp_grammar_terminal(token_class: cpp_token_ident),
-                              right: Sequence {
-                                left: cpp_grammar_terminal(token_class: cpp_token_semicolon),
-                                right: cpp_grammar_terminal(token_class: cpp_token_rbrace)
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+// 🟡 gated — fold1 accumulator interim — feature:t11-grammar-from-token-row — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once available; forbidden: hand-authoring token-class sequence trees beside cpp_mvp1_concrete_tokens.
+type CppGrammarSequenceBuild
+  = CppGrammarSequenceEmpty
+  | CppGrammarSequenceBuilt { expression: GrammarExpr }
+
+fn cpp_grammar_sequence_append(acc: CppGrammarSequenceBuild, token: CppConcreteSyntaxToken) -> CppGrammarSequenceBuild {
+  let terminal = cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
+  match acc {
+    CppGrammarSequenceEmpty => CppGrammarSequenceBuilt { expression: terminal }
+    CppGrammarSequenceBuilt { expression: expression } =>
+      CppGrammarSequenceBuilt {
+        expression: Sequence { left: expression, right: terminal }
       }
+  }
+}
+
+fn cpp_grammar_sequence_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> CppGrammarSequenceBuild {
+  fold_list(
+    xs: tokens,
+    empty: CppGrammarSequenceEmpty,
+    cons: fn(acc, token) {
+      cpp_grammar_sequence_append(acc: acc, token: token)
     }
+  )
+}
+
+fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match cpp_grammar_sequence_from_tokens(tokens: cpp_mvp1_concrete_tokens()) {
+    CppGrammarSequenceBuilt { expression: expression } => expression
+    CppGrammarSequenceEmpty => cpp_grammar_terminal(token_class: cpp_token_ty_int)
   }
 }
 

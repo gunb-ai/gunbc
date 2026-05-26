@@ -1179,58 +1179,36 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  Sequence {
-    left: rust_grammar_terminal(token_class: rust_token_kw_fn),
-    right: Sequence {
-      left: rust_grammar_terminal(token_class: rust_token_ident),
-      right: Sequence {
-        left: rust_grammar_terminal(token_class: rust_token_lparen),
-        right: Sequence {
-          left: rust_grammar_terminal(token_class: rust_token_ident),
-          right: Sequence {
-            left: rust_grammar_terminal(token_class: rust_token_colon),
-            right: Sequence {
-              left: rust_grammar_terminal(token_class: rust_token_ty_i32),
-              right: Sequence {
-                left: rust_grammar_terminal(token_class: rust_token_comma),
-                right: Sequence {
-                  left: rust_grammar_terminal(token_class: rust_token_ident),
-                  right: Sequence {
-                    left: rust_grammar_terminal(token_class: rust_token_colon),
-                    right: Sequence {
-                      left: rust_grammar_terminal(token_class: rust_token_ty_i32),
-                      right: Sequence {
-                        left: rust_grammar_terminal(token_class: rust_token_rparen),
-                        right: Sequence {
-                          left: rust_grammar_terminal(token_class: rust_token_arrow),
-                          right: Sequence {
-                            left: rust_grammar_terminal(token_class: rust_token_ty_i32),
-                            right: Sequence {
-                              left: rust_grammar_terminal(token_class: rust_token_lbrace),
-                              right: Sequence {
-                                left: rust_grammar_terminal(token_class: rust_token_ident),
-                                right: Sequence {
-                                  left: rust_grammar_terminal(token_class: rust_token_plus),
-                                  right: Sequence {
-                                    left: rust_grammar_terminal(token_class: rust_token_ident),
-                                    right: rust_grammar_terminal(token_class: rust_token_rbrace)
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+// 🟡 gated — fold1 accumulator interim — feature:t11-grammar-from-token-row — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once available; forbidden: hand-authoring token-class sequence trees beside rust_mvp1_concrete_tokens.
+type RustGrammarSequenceBuild
+  = RustGrammarSequenceEmpty
+  | RustGrammarSequenceBuilt { expression: GrammarExpr }
+
+fn rust_grammar_sequence_append(acc: RustGrammarSequenceBuild, token: RustConcreteSyntaxToken) -> RustGrammarSequenceBuild {
+  let terminal = rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+  match acc {
+    RustGrammarSequenceEmpty => RustGrammarSequenceBuilt { expression: terminal }
+    RustGrammarSequenceBuilt { expression: expression } =>
+      RustGrammarSequenceBuilt {
+        expression: Sequence { left: expression, right: terminal }
       }
+  }
+}
+
+fn rust_grammar_sequence_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> RustGrammarSequenceBuild {
+  fold_list(
+    xs: tokens,
+    empty: RustGrammarSequenceEmpty,
+    cons: fn(acc, token) {
+      rust_grammar_sequence_append(acc: acc, token: token)
     }
+  )
+}
+
+fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match rust_grammar_sequence_from_tokens(tokens: rust_mvp1_concrete_tokens()) {
+    RustGrammarSequenceBuilt { expression: expression } => expression
+    RustGrammarSequenceEmpty => rust_grammar_terminal(token_class: rust_token_kw_fn)
   }
 }
 

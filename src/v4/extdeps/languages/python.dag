@@ -744,40 +744,36 @@ fn python_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
-  Sequence {
-    left: python_grammar_terminal(token_class: python_token_kw_def),
-    right: Sequence {
-      left: python_grammar_terminal(token_class: python_token_ident),
-      right: Sequence {
-        left: python_grammar_terminal(token_class: python_token_lparen),
-        right: Sequence {
-          left: python_grammar_terminal(token_class: python_token_ident),
-          right: Sequence {
-            left: python_grammar_terminal(token_class: python_token_comma),
-            right: Sequence {
-              left: python_grammar_terminal(token_class: python_token_ident),
-              right: Sequence {
-                left: python_grammar_terminal(token_class: python_token_rparen),
-                right: Sequence {
-                  left: python_grammar_terminal(token_class: python_token_colon),
-                  right: Sequence {
-                    left: python_grammar_terminal(token_class: python_token_kw_return),
-                    right: Sequence {
-                      left: python_grammar_terminal(token_class: python_token_ident),
-                      right: Sequence {
-                        left: python_grammar_terminal(token_class: python_token_plus),
-                        right: python_grammar_terminal(token_class: python_token_ident)
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+// 🟡 gated — fold1 accumulator interim — feature:t11-grammar-from-token-row — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once available; forbidden: hand-authoring token-class sequence trees beside python_mvp1_concrete_tokens.
+type PythonGrammarSequenceBuild
+  = PythonGrammarSequenceEmpty
+  | PythonGrammarSequenceBuilt { expression: GrammarExpr }
+
+fn python_grammar_sequence_append(acc: PythonGrammarSequenceBuild, token: PythonConcreteSyntaxToken) -> PythonGrammarSequenceBuild {
+  let terminal = python_grammar_terminal(token_class: python_concrete_token_class(token: token))
+  match acc {
+    PythonGrammarSequenceEmpty => PythonGrammarSequenceBuilt { expression: terminal }
+    PythonGrammarSequenceBuilt { expression: expression } =>
+      PythonGrammarSequenceBuilt {
+        expression: Sequence { left: expression, right: terminal }
       }
+  }
+}
+
+fn python_grammar_sequence_from_tokens(tokens: List<PythonConcreteSyntaxToken>) -> PythonGrammarSequenceBuild {
+  fold_list(
+    xs: tokens,
+    empty: PythonGrammarSequenceEmpty,
+    cons: fn(acc, token) {
+      python_grammar_sequence_append(acc: acc, token: token)
     }
+  )
+}
+
+fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match python_grammar_sequence_from_tokens(tokens: python_mvp1_concrete_tokens()) {
+    PythonGrammarSequenceBuilt { expression: expression } => expression
+    PythonGrammarSequenceEmpty => python_grammar_terminal(token_class: python_token_kw_def)
   }
 }
 
