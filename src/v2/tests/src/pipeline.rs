@@ -4876,6 +4876,29 @@ type NodeFold<S> {
   seed: S
 }
 
+#[test]
+fn explicit_same_name_generic_args_are_preserved() {
+    let source = "
+module test_same_name_generic_args
+
+type NodeFold<S> {
+  seed: S
+}
+
+type Outer<S> {
+  same: NodeFold<S>
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_same_name_generic_args.rs");
+    assert!(
+        content.contains("pub same: Rc<NodeFold<S>>,"),
+        "explicit same-name type arg should remain applied, got:\n{}",
+        content
+    );
+}
+
 type Outer<A, B> {
   good: NodeFold<B>
   missing: NodeFold
