@@ -1504,8 +1504,10 @@ T-23 round-trip workflow.
 
 2. **AgentStore carrier.** A mutable, ordered-entry carrier in
    `src/v4/std/agent.dag`:
-   `AgentStore { entries: FreeMonoid<ModuleEntry> }` with operations
-   `store_insert`, `store_lookup`, `store_delete`. The store is the
+   `AgentStore { entries: FreeMonoid<ModuleEntry> }` with exported operations
+   `store_insert`, `store_delete`; `store_lookup` is an internal fold helper
+   — not exported from `agent.dag`, not part of the agent write surface, not
+   a root-selection path (see Files section). The store is the
    agent's write surface; the virtual module-loader is the compiler's read
    surface. Agents populate the store and invoke `compile_with_store` —
    the filesystem-free entry point alongside existing
