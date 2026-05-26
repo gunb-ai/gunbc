@@ -233,6 +233,8 @@ data cpp_token_rparen: Symbol = cpp_token_rparen
 data cpp_token_comma: Symbol = cpp_token_comma
 data cpp_token_plus: Symbol = cpp_token_plus
 data cpp_token_lbrace: Symbol = cpp_token_lbrace
+data cpp_token_kw_return: Symbol = cpp_token_kw_return
+data cpp_token_semicolon: Symbol = cpp_token_semicolon
 data cpp_token_rbrace: Symbol = cpp_token_rbrace
 data cpp_production_mvp1_fn_add: Symbol = cpp_production_mvp1_fn_add
 data cpp_binding_fn_add: Symbol = cpp_binding_fn_add
@@ -258,9 +260,11 @@ fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
     CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
     CppFixedToken { token_class: cpp_token_rparen },
     CppFixedToken { token_class: cpp_token_lbrace },
+    CppFixedToken { token_class: cpp_token_kw_return },
     CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
     CppFixedToken { token_class: cpp_token_plus },
     CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
+    CppFixedToken { token_class: cpp_token_semicolon },
     CppFixedToken { token_class: cpp_token_rbrace }
   ]
 }
@@ -905,12 +909,18 @@ fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
                     right: Sequence {
                       left: cpp_grammar_terminal(token_class: cpp_token_lbrace),
                       right: Sequence {
-                        left: cpp_grammar_terminal(token_class: cpp_token_ident),
+                        left: cpp_grammar_terminal(token_class: cpp_token_kw_return),
                         right: Sequence {
-                          left: cpp_grammar_terminal(token_class: cpp_token_plus),
+                          left: cpp_grammar_terminal(token_class: cpp_token_ident),
                           right: Sequence {
-                            left: cpp_grammar_terminal(token_class: cpp_token_ident),
-                            right: cpp_grammar_terminal(token_class: cpp_token_rbrace)
+                            left: cpp_grammar_terminal(token_class: cpp_token_plus),
+                            right: Sequence {
+                              left: cpp_grammar_terminal(token_class: cpp_token_ident),
+                              right: Sequence {
+                                left: cpp_grammar_terminal(token_class: cpp_token_semicolon),
+                                right: cpp_grammar_terminal(token_class: cpp_token_rbrace)
+                              }
+                            }
                           }
                         }
                       }
@@ -1018,9 +1028,11 @@ fn cpp_wave1_lex_rules() -> List<LexRule> {
     cpp_lex_rule(token_class: cpp_token_lparen, text: "("),
     cpp_lex_rule(token_class: cpp_token_comma, text: ", "),
     cpp_lex_rule(token_class: cpp_token_rparen, text: ") "),
-    cpp_lex_rule(token_class: cpp_token_lbrace, text: "{ return "),
+    cpp_lex_rule(token_class: cpp_token_lbrace, text: "{ "),
+    cpp_lex_rule(token_class: cpp_token_kw_return, text: "return "),
     cpp_lex_rule(token_class: cpp_token_plus, text: " + "),
-    cpp_lex_rule(token_class: cpp_token_rbrace, text: "; }")
+    cpp_lex_rule(token_class: cpp_token_semicolon, text: ";"),
+    cpp_lex_rule(token_class: cpp_token_rbrace, text: " }")
   ]
 }
 
