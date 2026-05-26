@@ -240,6 +240,7 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
             .collect::<Vec<_>>(),
         vec![
             ("surface_spelling", "Symbol".to_string()),
+            ("range", "RustIntegerRangeFacts".to_string()),
             (
                 "overflow_disposition",
                 "OverflowDisposition<RustIntegerCarrier>".to_string(),
@@ -260,6 +261,14 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
             "primitive_fact_axis_overflow_disposition"
         ),
         "{RUST_LANGUAGE_PATH}: Rust must import the shared overflow-disposition primitive fact axis"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "primitive_fact_axis_range"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust must import the shared range primitive fact axis"
     );
     assert!(
         surface_declares_fn(&module, "rust_integer_overflow_disposition"),

@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
+// Owns: RustScalar, RustIntegerRangeFacts, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
 // Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11 Rust emit; layout-in-literals bridge gated to T-6 TokenLayout; bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
@@ -46,6 +46,7 @@ import v4.std.model_core {
   PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_range,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic,
@@ -125,8 +126,14 @@ type RustIntegerCarrier {
   width: RustIntWidth
 }
 
+type RustIntegerRangeFacts {
+  inclusive_min: Symbol
+  inclusive_max: Symbol
+}
+
 type RustIntegerPrimitiveFacts {
   surface_spelling: Symbol
+  range: RustIntegerRangeFacts
   overflow_disposition: OverflowDisposition<RustIntegerCarrier>
   std_projection: Symbol
 }
@@ -269,6 +276,31 @@ data rust_repr_unit: Symbol = rust_repr_unit
 data rust_repr_never: Symbol = rust_repr_never
 data rust_repr_integer_twos_complement: Symbol = rust_repr_integer_twos_complement
 
+data rust_range_i8_min: Symbol = rust_range_i8_min
+data rust_range_i8_max: Symbol = rust_range_i8_max
+data rust_range_i16_min: Symbol = rust_range_i16_min
+data rust_range_i16_max: Symbol = rust_range_i16_max
+data rust_range_i32_min: Symbol = rust_range_i32_min
+data rust_range_i32_max: Symbol = rust_range_i32_max
+data rust_range_i64_min: Symbol = rust_range_i64_min
+data rust_range_i64_max: Symbol = rust_range_i64_max
+data rust_range_i128_min: Symbol = rust_range_i128_min
+data rust_range_i128_max: Symbol = rust_range_i128_max
+data rust_range_u8_min: Symbol = rust_range_u8_min
+data rust_range_u8_max: Symbol = rust_range_u8_max
+data rust_range_u16_min: Symbol = rust_range_u16_min
+data rust_range_u16_max: Symbol = rust_range_u16_max
+data rust_range_u32_min: Symbol = rust_range_u32_min
+data rust_range_u32_max: Symbol = rust_range_u32_max
+data rust_range_u64_min: Symbol = rust_range_u64_min
+data rust_range_u64_max: Symbol = rust_range_u64_max
+data rust_range_u128_min: Symbol = rust_range_u128_min
+data rust_range_u128_max: Symbol = rust_range_u128_max
+data rust_range_isize_min: Symbol = rust_range_isize_min
+data rust_range_isize_max: Symbol = rust_range_isize_max
+data rust_range_usize_min: Symbol = rust_range_usize_min
+data rust_range_usize_max: Symbol = rust_range_usize_max
+
 data rust_inhabitant_i8: Symbol = rust_inhabitant_i8
 data rust_inhabitant_i16: Symbol = rust_inhabitant_i16
 data rust_inhabitant_i32: Symbol = rust_inhabitant_i32
@@ -352,11 +384,14 @@ data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
 data rust_facts_field_surface_spelling: Symbol = rust_facts_field_surface_spelling
 data rust_facts_field_signedness: Symbol = rust_facts_field_signedness
 data rust_facts_field_width: Symbol = rust_facts_field_width
+data rust_facts_field_range: Symbol = rust_facts_field_range
 data rust_facts_field_overflow_disposition: Symbol = rust_facts_field_overflow_disposition
 data rust_facts_field_std_projection: Symbol = rust_facts_field_std_projection
 data rust_facts_field_scalar_classifier: Symbol = rust_facts_field_scalar_classifier
 data rust_facts_field_ieee754_binary: Symbol = rust_facts_field_ieee754_binary
 data rust_facts_field_representation: Symbol = rust_facts_field_representation
+data rust_range_field_inclusive_min: Symbol = rust_range_field_inclusive_min
+data rust_range_field_inclusive_max: Symbol = rust_range_field_inclusive_max
 
 data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
 data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
@@ -442,6 +477,13 @@ fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> 
   }
 }
 
+fn rust_integer_range(inclusive_min: Symbol, inclusive_max: Symbol) -> RustIntegerRangeFacts {
+  RustIntegerRangeFacts {
+    inclusive_min: inclusive_min,
+    inclusive_max: inclusive_max
+  }
+}
+
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
 fn rust_mvp1_concrete_tokens() -> List<RustConcreteSyntaxToken> {
   [
@@ -469,72 +511,84 @@ data rust_mvp1_source_text: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_facts_i8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i8,
+  range: rust_integer_range(inclusive_min: rust_range_i8_min, inclusive_max: rust_range_i8_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits8),
   std_projection: rust_std_projection_int8,
 }
 
 data rust_facts_i16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i16,
+  range: rust_integer_range(inclusive_min: rust_range_i16_min, inclusive_max: rust_range_i16_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits16),
   std_projection: rust_std_projection_int16,
 }
 
 data rust_facts_i32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i32,
+  range: rust_integer_range(inclusive_min: rust_range_i32_min, inclusive_max: rust_range_i32_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits32),
   std_projection: rust_std_projection_int32,
 }
 
 data rust_facts_i64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i64,
+  range: rust_integer_range(inclusive_min: rust_range_i64_min, inclusive_max: rust_range_i64_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits64),
   std_projection: rust_std_projection_int64,
 }
 
 data rust_facts_i128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_i128,
+  range: rust_integer_range(inclusive_min: rust_range_i128_min, inclusive_max: rust_range_i128_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Bits128),
   std_projection: rust_std_projection_int128,
 }
 
 data rust_facts_u8: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u8,
+  range: rust_integer_range(inclusive_min: rust_range_u8_min, inclusive_max: rust_range_u8_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits8),
   std_projection: rust_std_projection_uint8,
 }
 
 data rust_facts_u16: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u16,
+  range: rust_integer_range(inclusive_min: rust_range_u16_min, inclusive_max: rust_range_u16_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits16),
   std_projection: rust_std_projection_uint16,
 }
 
 data rust_facts_u32: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u32,
+  range: rust_integer_range(inclusive_min: rust_range_u32_min, inclusive_max: rust_range_u32_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits32),
   std_projection: rust_std_projection_uint32,
 }
 
 data rust_facts_u64: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u64,
+  range: rust_integer_range(inclusive_min: rust_range_u64_min, inclusive_max: rust_range_u64_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits64),
   std_projection: rust_std_projection_uint64,
 }
 
 data rust_facts_u128: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_u128,
+  range: rust_integer_range(inclusive_min: rust_range_u128_min, inclusive_max: rust_range_u128_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Bits128),
   std_projection: rust_std_projection_uint128,
 }
 
 data rust_facts_isize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_isize,
+  range: rust_integer_range(inclusive_min: rust_range_isize_min, inclusive_max: rust_range_isize_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Signed, width: Pointer),
   std_projection: rust_std_projection_int_platform,
 }
 
 data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
   surface_spelling: rust_surface_spelling_usize,
+  range: rust_integer_range(inclusive_min: rust_range_usize_min, inclusive_max: rust_range_usize_max),
   overflow_disposition: rust_integer_overflow_disposition(kind: Unsigned, width: Pointer),
   std_projection: rust_std_projection_uint_platform,
 }
@@ -738,6 +792,22 @@ fn rust_noninteger_scalar_as_rust_scalar(scalar: RustNonIntegerScalar) -> RustSc
   }
 }
 
+fn rust_integer_range_node(range: RustIntegerRangeFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      rust_named_edge(
+        name: rust_range_field_inclusive_min,
+        target: rust_inhabitant_atom(id: range.inclusive_min)
+      ),
+      rust_named_edge(
+        name: rust_range_field_inclusive_max,
+        target: rust_inhabitant_atom(id: range.inclusive_max)
+      )
+    ]
+  }
+}
+
 fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -753,6 +823,10 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       rust_named_edge(
         name: rust_facts_field_width,
         target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_range,
+        target: rust_integer_range_node(range: facts.range)
       ),
       rust_named_edge(
         name: rust_facts_field_overflow_disposition,
@@ -1465,6 +1539,8 @@ fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node
           Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
         primitive_fact_axis_encoding =>
           Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
+        primitive_fact_axis_range =>
+          Holds { value: rust_integer_range_node(range: facts.range) }
         primitive_fact_axis_overflow_disposition =>
           Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
         _ =>

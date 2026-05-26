@@ -32,7 +32,7 @@ import v4.std.witness { Holds, Violates, Witness }
 
 data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
 data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
-// 🟡 needs-more-work — feature:primitive-fact-axis-range-unbound — scaffold:T-33-model-core · dissolve-on: rust.dag (or any LanguageModel extdep) gains a per-primitive range source carrier (e.g. range_min/range_max fields on RustIntegerPrimitiveFacts) and binds this axis in spec_facts (ledger: T-33 · TASKS.md § T-33)
+// Range is a first-class primitive fact axis; Rust integer bundles bind it from RustIntegerRangeFacts.
 data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
 data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_spelling
