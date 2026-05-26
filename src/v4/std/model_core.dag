@@ -1,7 +1,7 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_void
-// Consumes: v4.std.collection, v4.std.node
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, ModelCoreWave1BoolLawKey, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_model_core, wave1_void, model_core_wave1_bool_law_bounded_lattice_identities, model_core_wave1_bool_law_distributivity, model_core_wave1_bool_law_complement_involution, model_core_wave1_bool_law_complement_bounds, model_core_wave1_law_field_subject, model_core_wave1_law_field_algebra, model_core_wave1_law_field_kind
+// Consumes: v4.std.collection, v4.std.logic, v4.std.node
 // Status: T-33 modeled.
 
 
@@ -16,7 +16,17 @@ import v4.std.diagnostic {
   UserInputBoundary,
   WholeFile
 }
-import v4.std.node { Node, Symbol }
+import v4.std.logic {
+  BoolPrimitiveFacts,
+  bool_boolean_algebra_node,
+  bool_boolean_algebra_type_node,
+  bool_encoding_fact_node,
+  bool_node,
+  bool_primitive_facts,
+  bool_primitive_facts_node,
+  bool_width_fact_node
+}
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -110,13 +120,139 @@ type ModelCore {
 }
 
 
-// 🟡 needs-more-work — feature:model-core-wave1-void-scaffold — dissolve-on: (a) ModelCore is non-empty AND (b) every AlgebraInhabitanceDecl.algebra field is a grounded Node (not a bare Atom / bridge symbol). Condition (b) requires algebra.dag to export Node constructors (T-2) and T-4 Wave 2b to populate inhabitance with real algebra structure. A non-empty ModelCore that uses bridge-Symbol algebra fields does NOT satisfy this condition (T-4 / T-34).
-fn wave1_void() -> ModelCore {
+// 🟡 needs-more-work — feature:model-core-law-expression-carrier — scaffold:T-33-wave2 · the law-kind symbols below are bounded schedule keys for BooleanAlgebra law obligations; the law Node also carries the structural algebra Node and inhabitance witness. dissolve-on: std/algebra exports typed law/equation Nodes for BooleanAlgebra laws, replacing these kind atoms with structural law expressions.
+type ModelCoreWave1BoolLawKey
+  = ModelCoreWave1BoolBoundedLatticeIdentities
+  | ModelCoreWave1BoolDistributivity
+  | ModelCoreWave1BoolComplementInvolution
+  | ModelCoreWave1BoolComplementBounds
+data model_core_wave1_bool_law_bounded_lattice_identities: Symbol = model_core_wave1_bool_law_bounded_lattice_identities
+data model_core_wave1_bool_law_distributivity: Symbol = model_core_wave1_bool_law_distributivity
+data model_core_wave1_bool_law_complement_involution: Symbol = model_core_wave1_bool_law_complement_involution
+data model_core_wave1_bool_law_complement_bounds: Symbol = model_core_wave1_bool_law_complement_bounds
+data model_core_wave1_law_field_subject: Symbol = model_core_wave1_law_field_subject
+data model_core_wave1_law_field_algebra: Symbol = model_core_wave1_law_field_algebra
+data model_core_wave1_law_field_kind: Symbol = model_core_wave1_law_field_kind
+
+
+fn model_core_wave1_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: []
+  }
+}
+
+
+fn model_core_wave1_bool_fact_lookup(facts: BoolPrimitiveFacts, axis: Symbol) -> Witness<Node> {
+  match axis {
+    primitive_fact_axis_width =>
+      Holds { value: bool_width_fact_node(width: facts.width) }
+    primitive_fact_axis_encoding =>
+      Holds { value: bool_encoding_fact_node(encoding: facts.encoding) }
+    _ =>
+      Violates {
+        diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+      }
+  }
+}
+
+
+fn model_core_wave1_bool_spec_facts(facts: BoolPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      model_core_wave1_bool_fact_lookup(facts: facts, axis: axis)
+    }
+  }
+}
+
+
+fn model_core_wave1_bool_primitive_bundle() -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: bool_primitive_facts_node(facts: bool_primitive_facts),
+    spec_facts: model_core_wave1_bool_spec_facts(facts: bool_primitive_facts)
+  }
+}
+
+
+fn model_core_wave1_bool_inhabitance_witness() -> Node {
+  bool_boolean_algebra_node()
+}
+
+
+fn model_core_wave1_bool_algebra_node() -> Node {
+  bool_boolean_algebra_type_node()
+}
+
+
+fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
+  let witness = model_core_wave1_bool_inhabitance_witness()
+  AlgebraInhabitanceDecl {
+    algebra: model_core_wave1_bool_algebra_node(),
+    inhabitant: bool_node(),
+    witness: witness
+  }
+}
+
+
+fn model_core_wave1_bool_law_symbol(key: ModelCoreWave1BoolLawKey) -> Symbol {
+  match key {
+    ModelCoreWave1BoolBoundedLatticeIdentities => model_core_wave1_bool_law_bounded_lattice_identities
+    ModelCoreWave1BoolDistributivity => model_core_wave1_bool_law_distributivity
+    ModelCoreWave1BoolComplementInvolution => model_core_wave1_bool_law_complement_involution
+    ModelCoreWave1BoolComplementBounds => model_core_wave1_bool_law_complement_bounds
+  }
+}
+
+
+fn model_core_wave1_law_node(key: ModelCoreWave1BoolLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: model_core_wave1_law_field_subject },
+        target: model_core_wave1_bool_inhabitance_witness()
+      },
+      Edge {
+        label: Named { name: model_core_wave1_law_field_algebra },
+        target: model_core_wave1_bool_algebra_node()
+      },
+      Edge {
+        label: Named { name: model_core_wave1_law_field_kind },
+        target: model_core_wave1_atom(id: model_core_wave1_bool_law_symbol(key: key))
+      },
+    ]
+  }
+}
+
+
+fn model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolLawKey) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: model_core_wave1_bool_inhabitance_witness(),
+    law: model_core_wave1_law_node(key: key)
+  }
+}
+
+
+fn wave1_model_core() -> ModelCore {
   ModelCore {
-    primitives: [],
-    inhabitance: [],
-    laws: [],
+    primitives: [
+      model_core_wave1_bool_primitive_bundle(),
+    ],
+    inhabitance: [
+      model_core_wave1_bool_inhabitance(),
+    ],
+    laws: [
+      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolBoundedLatticeIdentities),
+      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolDistributivity),
+      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
+      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
+    ],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
   }
+}
+
+
+fn wave1_void() -> ModelCore {
+  wave1_model_core()
 }
