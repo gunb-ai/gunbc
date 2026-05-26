@@ -3221,6 +3221,10 @@ pub fn render_rust_field_type_with_applied_binding(
     ) != render_rust_type(&authored_type, shared_types.clone(), &source_indices)
     {
         render_rust_type_with_applied_binding(authored_type, shared_types, source_indices)
+    } else if (authored_type.connective.clone() == Connective::NoConnective)
+        && ((authored_type.children.clone().len() as i64) > 0)
+    {
+        render_rust_type(&authored_type, shared_types, &source_indices)
     } else {
         render_rust_type_with_applied_binding(resolved_type(field), shared_types, source_indices)
     }
