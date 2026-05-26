@@ -2116,6 +2116,32 @@ fn is_tco_candidate(texpr: Node, func_name: String, source_indices: Map<String, 
 // =========================================================================
 
 // Data-driven identifier rendering: reads naming_case and reserved_words from LanguageSpec.
+fn suffix_escape_collides_with_reserved_chain(name: String, suffix: String, keywords: List<String>) -> Bool {
+  let suffix_len = string_length(s: suffix)
+  let name_len = string_length(s: name)
+  if suffix_len == 0 || name_len < suffix_len {
+    false
+  } else if substring(s: name, start: name_len - suffix_len, end: name_len) != suffix {
+    false
+  } else {
+    let base = substring(s: name, start: 0, end: name_len - suffix_len)
+    if keywords |> any(r => r == base) {
+      true
+    } else {
+      suffix_escape_collides_with_reserved_chain(name: base, suffix: suffix, keywords: keywords)
+    }
+  }
+}
+
+fn emit_suffix_escape_ident(converted: String, suffix: String, keywords: List<String>) -> String {
+  let is_reserved = keywords |> any(r => r == converted)
+  if is_reserved || suffix_escape_collides_with_reserved_chain(name: converted, suffix: suffix, keywords: keywords) {
+    concat(converted, suffix)
+  } else {
+    converted
+  }
+}
+
 fn emit_ident(name: String, target: RenderTarget) -> String {
   let spec = language_spec(target: target)
   let converted = match spec.naming_case {
@@ -2128,11 +2154,14 @@ fn emit_ident(name: String, target: RenderTarget) -> String {
   if is_reserved {
     match spec.reserved_words.strategy {
       PrefixEscape { prefix: p } => concat(p, converted)
-      SuffixEscape { suffix: s } => concat(converted, s)
+      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: converted, suffix: s, keywords: spec.reserved_words.keywords)
       NoEscape => converted
     }
   } else {
-    converted
+    match spec.reserved_words.strategy {
+      SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: converted, suffix: s, keywords: spec.reserved_words.keywords)
+      _ => converted
+    }
   }
 }
 
@@ -2146,11 +2175,16 @@ fn emit_export_ident(name: String, target: RenderTarget) -> String {
       let is_reserved = spec.reserved_words.keywords |> any(r => r == result)
       if is_reserved {
         match spec.reserved_words.strategy {
-          SuffixEscape { suffix: s } => concat(result, s)
+          SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
           PrefixEscape { prefix: p } => concat(p, result)
           NoEscape => result
         }
-      } else { result }
+      } else {
+        match spec.reserved_words.strategy {
+          SuffixEscape { suffix: s } => emit_suffix_escape_ident(converted: result, suffix: s, keywords: spec.reserved_words.keywords)
+          _ => result
+        }
+      }
     KeywordVisibility { prefix: _ } =>
       emit_ident(name: name, target: target)
   }

@@ -2118,9 +2118,9 @@ fn emit_field_access_with_types() {
 #[test]
 fn rust_emit_mangles_self_field_and_param_without_raw_identifier() {
     let source = "module reserved_self\n\
-type SelfRecord { self: Int }\n\
-fn wrap(self: Int) -> SelfRecord { SelfRecord { self: self } }\n\
-fn unwrap(record: SelfRecord) -> Int { record.self }\n";
+type SelfRecord { self: Int  self_: Int }\n\
+fn wrap(self: Int, self_: Int) -> SelfRecord { SelfRecord { self: self, self_: self_ } }\n\
+fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/reserved_self.rs");
@@ -2131,10 +2131,12 @@ fn unwrap(record: SelfRecord) -> Int { record.self }\n";
     assert!(
         content.contains("#[serde(rename = \"self\")]")
             && content.contains("pub self_: i64")
-            && content.contains("fn wrap(self_: i64) -> SelfRecord")
+            && content.contains("pub self__: i64")
+            && content.contains("fn wrap(self_: i64, self__: i64) -> SelfRecord")
             && content.contains("self_: self_")
+            && content.contains("self__: self__")
             && content.contains("record.self_"),
-        "Rust emitter should consistently suffix-mangle `self`: {content}"
+        "Rust emitter should consistently and injectively suffix-mangle `self`: {content}"
     );
 }
 
