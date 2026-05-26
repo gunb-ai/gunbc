@@ -86,11 +86,6 @@ type ParseSyncState {
   result: List<Token>
 }
 
-type GrammarSyncTokenEdges {
-  seen: Set<Symbol>
-  edges: List<Edge>
-}
-
 // 🟡 coproduct dissolution — feature: GrammarRoot duplicate-name scan accumulator — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived membership fold over production names eliminates the hand-written accumulator; invalid-state-representable Bool flag dissolved into coproduct branches.
 type GrammarDupCheckResult
   = GrammarDupCheckUnique { seen: Set<Symbol> }
@@ -353,70 +348,10 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 
 
-fn grammar_sync_token_edges_add(acc: GrammarSyncTokenEdges, sync_tokens: Set<Symbol>, sym: Symbol) -> GrammarSyncTokenEdges {
-  if sync_tokens.member(sym) && !acc.seen.member(sym) {
-    GrammarSyncTokenEdges {
-      seen: set_symbol_insert(s: acc.seen, item: sym),
-      edges: list_snoc_item(
-        xs: acc.edges,
-        item: grammar_named_edge(name: sym, target: grammar_atom(identity: sym))
-      )
-    }
-  } else {
-    acc
-  }
-}
-
-
-fn grammar_expr_sync_token_edges(acc: GrammarSyncTokenEdges, expr: GrammarExpr, sync_tokens: Set<Symbol>) -> GrammarSyncTokenEdges {
-  match expr {
-    Terminal { token_class: token_class } =>
-      grammar_sync_token_edges_add(acc: acc, sync_tokens: sync_tokens, sym: token_class)
-    Nonterminal { production: _ } => acc
-    Sequence { left: left, right: right } =>
-      grammar_expr_sync_token_edges(
-        acc: grammar_expr_sync_token_edges(acc: acc, expr: left, sync_tokens: sync_tokens),
-        expr: right,
-        sync_tokens: sync_tokens
-      )
-    Choice { left: left, right: right } =>
-      grammar_expr_sync_token_edges(
-        acc: grammar_expr_sync_token_edges(acc: acc, expr: left, sync_tokens: sync_tokens),
-        expr: right,
-        sync_tokens: sync_tokens
-      )
-    Optional { element: element } =>
-      grammar_expr_sync_token_edges(acc: acc, expr: element, sync_tokens: sync_tokens)
-    Repeat { element: element } =>
-      grammar_expr_sync_token_edges(acc: acc, expr: element, sync_tokens: sync_tokens)
-  }
-}
-
-
-fn grammar_sync_tokens_step(acc: GrammarSyncTokenEdges, production: GrammarProduction, sync_tokens: Set<Symbol>) -> GrammarSyncTokenEdges {
-  grammar_expr_sync_token_edges(acc: acc, expr: production.expression, sync_tokens: sync_tokens)
-}
-
-
-fn grammar_sync_tokens_to_node(root: GrammarRoot) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: fold_list(
-      xs: root.productions,
-      empty: GrammarSyncTokenEdges {
-        seen: grammar_empty_sync_tokens(),
-        edges: Empty
-      },
-      cons: fn(acc, production) {
-        grammar_sync_tokens_step(acc: acc, production: production, sync_tokens: root.sync_tokens)
-      }
-    ).edges
-  }
-}
-
-
+// 🟡 gated — feature: parse-sync-tokens-node-edge — bind: src/v4/TASKS.md T-8 —
+// dissolve-on-arrival: Set<Symbol> becomes explicitly enumerable (membership list rather than
+// predicate closure), enabling direct edge emission for each sync token; forbidden: deriving sync
+// tokens by filtering production terminals (lossy heuristic).
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
@@ -424,8 +359,7 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
     },
     children: [
       grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
-      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions)),
-      grammar_named_edge(name: grammar_root_sync_tokens_node_projection, target: grammar_sync_tokens_to_node(root: root))
+      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
     ]
   }
 }
