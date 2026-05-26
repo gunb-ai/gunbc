@@ -296,7 +296,9 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         out["Signedness"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["IntegerBoundSign"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["IntegerRangeEndpoint"] = ("🟢", "CP-3229-GREEN-TERMINAL")
-        out["DecimalDigit"] = ("🟡", "CP-3229-GREEN-TERMINAL")
+        out["DecimalDigit"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["NonZeroDecimalDigit"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["DecimalMagnitude"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["IntegerIntervalBound"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["Representation"] = ("🟡", "SL-3229-INTEGER-REPRESENTATION-STUBS")
         out["OverflowDisposition"] = ("🟡", "SL-3229-INTEGER-OVERFLOW-SEMANTICS")
@@ -380,12 +382,6 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
             "feature:integer-overflow-disposition-semantics — "
             "dissolve-on-arrival: wrapping/saturating/trapping/undefined overflow are "
             "backed by width, bounds, and Outcome semantics consumed by T-4 fact-bundles."
-        )
-    if type_name == "DecimalDigit":
-        return (
-            "// 🟡 needs-more-work — feature:integer-decimal-canonical-magnitude — "
-            "dissolve-on: Zero | NonZeroDecimalDigit + tail List<DecimalDigit> "
-            "with canonical magnitude constructor"
         )
     if type_name == "NaNPropagation":
         return (
