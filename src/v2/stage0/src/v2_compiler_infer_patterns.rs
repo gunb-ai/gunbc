@@ -64,13 +64,13 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn synthesize_optional_some_variant(scrut: &Rc<Node>) -> Rc<Node> {
+pub fn synthesize_optional_some_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
-        let inner = extract_optional_inner_node(&scrut);
+        let inner = extract_optional_inner_node(scrut.clone());
         let value_field = Rc::new(Node {
             name: "value".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span(&"value".to_string())),
+            ident_span: Some(kernel_span("value".to_string())),
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -90,7 +90,7 @@ pub fn synthesize_optional_some_variant(scrut: &Rc<Node>) -> Rc<Node> {
         let some_node = Rc::new(Node {
             name: "Some".to_string(),
             span: scrut.span.clone(),
-            ident_span: Some(kernel_span(&"Some".to_string())),
+            ident_span: Some(kernel_span("Some".to_string())),
             children: Rc::new(vec![value_field]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -111,7 +111,7 @@ pub fn synthesize_optional_some_variant(scrut: &Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn pattern_subject_from_node(n: &Rc<Node>) -> Rc<PatternSubject> {
+pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
     {
         let is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
@@ -128,7 +128,9 @@ pub fn pattern_subject_from_node(n: &Rc<Node>) -> Rc<PatternSubject> {
 
 pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
     match n.as_deref().cloned() {
-        Some(InferredNode::Resolved { node: resolved, .. }) => pattern_subject_from_node(&resolved),
+        Some(InferredNode::Resolved { node: resolved, .. }) => {
+            pattern_subject_from_node(resolved.clone())
+        }
         _ => Rc::new(PatternSubject::PatternLookupBlocked),
     }
 }
@@ -150,7 +152,7 @@ pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<NodeLookupR
 pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject> {
     match (*result.status.clone()).clone() {
         NodeLookupStatus::LookupResolved { node: resolved, .. } => {
-            pattern_subject_from_node(&resolved)
+            pattern_subject_from_node(resolved.clone())
         }
         NodeLookupStatus::LookupFailed => Rc::new(PatternSubject::PatternLookupBlocked),
     }
@@ -165,7 +167,7 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 }
 
 pub fn variant_not_found_result(
-    scrut: &Rc<Node>,
+    scrut: Rc<Node>,
     variant_name: String,
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -173,7 +175,7 @@ pub fn variant_not_found_result(
     node_lookup_failed(Rc::new(vec![make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name,
-            type_name: authored_name_at(source_indices, &scrut),
+            type_name: authored_name_at(source_indices, scrut.clone()),
             span: scrut.span.clone(),
         }),
         module_name,
@@ -182,9 +184,9 @@ pub fn variant_not_found_result(
 
 pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
-    variant_name: &String,
+    variant_name: String,
     module_name: String,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
@@ -217,12 +219,12 @@ pub fn lookup_variant_in_type(
                     );
                     let record_destructure = (((field_binding_count > 0)
                         && (scrut_node.connective.clone() == Connective::Conj))
-                        && (authored_name_at(source_indices.clone(), &scrut_node).as_str()
+                        && (authored_name_at(source_indices.clone(), scrut_node.clone()).as_str()
                             == variant_name.clone().as_str()));
                     let fallback = if (scrut_opt.clone()
                         && (variant_name.clone().as_str() == "Some".to_string().as_str()))
                     {
-                        node_lookup_resolved(synthesize_optional_some_variant(&scrut_node))
+                        node_lookup_resolved(synthesize_optional_some_variant(scrut_node.clone()))
                     } else {
                         if (scrut_opt.clone()
                             && (variant_name.clone().as_str() == "None".to_string().as_str()))
@@ -233,7 +235,7 @@ pub fn lookup_variant_in_type(
                                 node_lookup_resolved(scrut_node.clone())
                             } else {
                                 variant_not_found_result(
-                                    &scrut_node,
+                                    scrut_node.clone(),
                                     variant_name.clone(),
                                     module_name,
                                     source_indices.clone(),
@@ -253,9 +255,9 @@ pub fn lookup_variant_in_type(
 
 pub fn lookup_field_in_variant(
     variant: Rc<PatternSubject>,
-    field_name: &String,
+    field_name: String,
     module_name: String,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -277,13 +279,13 @@ pub fn lookup_field_in_variant(
             source_indices.clone(),
         ) {
             Some(field_child) => {
-                let resolved = child_type_node(&field_child);
+                let resolved = child_type_node(field_child.clone());
                 node_lookup_resolved(resolved)
             }
             None => node_lookup_failed(Rc::new(vec![make_error_node(
                 Rc::new(CompilerDiagnostic::FieldNotFound {
                     field: field_name.clone(),
-                    type_name: authored_name_at(source_indices.clone(), &variant_node),
+                    type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
                     span: variant_node.span.clone(),
                 }),
                 module_name,
@@ -293,9 +295,9 @@ pub fn lookup_field_in_variant(
 }
 
 pub fn check_match_exhaustiveness(
-    scrutinee_type: &Rc<Node>,
-    arms: &Rc<Vec<Rc<Node>>>,
-    env: &Rc<TypeEnv>,
+    scrutinee_type: Rc<Node>,
+    arms: Rc<Vec<Rc<Node>>>,
+    env: Rc<TypeEnv>,
     span: Rc<SourceSpan>,
     module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
@@ -307,15 +309,15 @@ pub fn check_match_exhaustiveness(
             scrutinee_type.clone()
         } else {
             match lookup_type_by_name(
-                &env,
-                authored_name_at(env.source_indices.clone(), &scrutinee_type),
+                env.clone(),
+                authored_name_at(env.source_indices.clone(), scrutinee_type.clone()),
             ) {
                 Some(def) => def.clone(),
                 None => scrutinee_type.clone(),
             }
         };
         let resolved = if scrut_is_optional {
-            with_optional_cardinality(&resolved_raw)
+            with_optional_cardinality(resolved_raw)
         } else {
             resolved_raw
         };
@@ -330,7 +332,7 @@ pub fn check_match_exhaustiveness(
                     Rc::new({
                         let mut __result = Vec::new();
                         for c in resolved.children.clone().iter().cloned() {
-                            __result.push(authored_name_at(env.source_indices.clone(), &c));
+                            __result.push(authored_name_at(env.source_indices.clone(), c.clone()));
                         }
                         __result
                     })

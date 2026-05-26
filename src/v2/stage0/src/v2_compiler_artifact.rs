@@ -118,7 +118,7 @@ pub type DagNodeId = String;
 #[serde(tag = "_variant")]
 pub enum DagInferredRecord {
     ResolvedRef {
-        node: String,
+        node: DagNodeId,
     },
     TypeVariableRef {
         id: String,
@@ -131,8 +131,8 @@ pub enum DagInferredRecord {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
-    pub module: String,
-    pub items: Rc<Vec<String>>,
+    pub module: DagNodeId,
+    pub items: Rc<Vec<DagNodeId>>,
     pub item_registry_keys: Rc<Vec<String>>,
 }
 
@@ -148,7 +148,7 @@ pub struct DagDiagnosticRecord {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
     pub version: String,
-    pub nodes: Rc<HashMap<String, String>>,
+    pub nodes: Rc<HashMap<DagNodeId, String>>,
     pub modules: Rc<Vec<String>>,
     pub item_registry_keys: Rc<Vec<String>>,
     pub diagnostics: Rc<Vec<String>>,

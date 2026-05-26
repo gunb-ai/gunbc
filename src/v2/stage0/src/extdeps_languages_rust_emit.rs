@@ -22,7 +22,7 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
@@ -39,7 +39,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -56,7 +56,7 @@ pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<SimpleMethodSpec>>>| c.clone())
 }
 
 pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
@@ -94,7 +94,7 @@ pub fn rust_reserved() -> Rc<Vec<String>> {
             Rc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn rust_reserved_escape_suffix() -> String {
@@ -103,7 +103,7 @@ pub fn rust_reserved_escape_suffix() -> String {
             "_".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_string_types() -> Rc<Vec<String>> {
@@ -112,7 +112,7 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn rust_struct_derives() -> String {
@@ -121,7 +121,7 @@ pub fn rust_struct_derives() -> String {
             "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_struct_derives_copy() -> String {
@@ -130,7 +130,7 @@ pub fn rust_struct_derives_copy() -> String {
             "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_enum_derives() -> String {
@@ -139,7 +139,7 @@ pub fn rust_enum_derives() -> String {
             "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_enum_derives_copy() -> String {
@@ -148,7 +148,7 @@ pub fn rust_enum_derives_copy() -> String {
             "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_serde_tag() -> String {
@@ -157,7 +157,7 @@ pub fn rust_serde_tag() -> String {
             "#[serde(tag = \"_variant\")]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_serde_rename_template() -> String {
@@ -166,7 +166,7 @@ pub fn rust_serde_rename_template() -> String {
             "#[serde(rename = \"{0}\")]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_func_keyword() -> String {
@@ -175,7 +175,7 @@ pub fn rust_func_keyword() -> String {
             "fn".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_async_prefix() -> String {
@@ -184,7 +184,7 @@ pub fn rust_async_prefix() -> String {
             "async ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_struct_keyword() -> String {
@@ -193,7 +193,7 @@ pub fn rust_struct_keyword() -> String {
             "struct".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_enum_keyword() -> String {
@@ -202,7 +202,7 @@ pub fn rust_enum_keyword() -> String {
             "enum".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_type_alias_keyword() -> String {
@@ -211,7 +211,7 @@ pub fn rust_type_alias_keyword() -> String {
             "type".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_param_separator() -> String {
@@ -220,7 +220,7 @@ pub fn rust_param_separator() -> String {
             ", ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_return_arrow() -> String {
@@ -229,7 +229,7 @@ pub fn rust_return_arrow() -> String {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_param_type_sep() -> String {
@@ -238,7 +238,7 @@ pub fn rust_param_type_sep() -> String {
             ": ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_module_keyword() -> String {
@@ -247,7 +247,7 @@ pub fn rust_module_keyword() -> String {
             "mod".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_import_keyword() -> String {
@@ -256,7 +256,7 @@ pub fn rust_import_keyword() -> String {
             "use".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_import_from_keyword() -> String {
@@ -265,7 +265,7 @@ pub fn rust_import_from_keyword() -> String {
             "".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_lambda_template() -> String {
@@ -274,7 +274,7 @@ pub fn rust_lambda_template() -> String {
             "|{0}| {1}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_error_expr_template() -> String {
@@ -283,7 +283,7 @@ pub fn rust_error_expr_template() -> String {
             "panic!({0})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_list_literal_empty() -> String {
@@ -292,7 +292,7 @@ pub fn rust_list_literal_empty() -> String {
             "Rc::new(vec![])".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_list_literal_template() -> String {
@@ -301,7 +301,7 @@ pub fn rust_list_literal_template() -> String {
             "Rc::new(vec![{0}])".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_null_coalesce_template() -> String {
@@ -310,7 +310,7 @@ pub fn rust_null_coalesce_template() -> String {
             "{0}.unwrap_or_else(|| {1})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_error_type_template() -> String {
@@ -319,7 +319,7 @@ pub fn rust_error_type_template() -> String {
             "compile_error!(\"{0}\")".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_type_arg_open() -> String {
@@ -328,7 +328,7 @@ pub fn rust_type_arg_open() -> String {
             "<".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_type_arg_close() -> String {
@@ -337,7 +337,7 @@ pub fn rust_type_arg_close() -> String {
             ">".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_void_type() -> String {
@@ -346,7 +346,7 @@ pub fn rust_void_type() -> String {
             "()".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_tuple_empty() -> String {
@@ -355,7 +355,7 @@ pub fn rust_tuple_empty() -> String {
             "()".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_tuple_pair_template() -> String {
@@ -364,7 +364,7 @@ pub fn rust_tuple_pair_template() -> String {
             "({0}, {1})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_tuple_multi_template() -> String {
@@ -373,7 +373,7 @@ pub fn rust_tuple_multi_template() -> String {
             "({0})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_tuple_separator() -> String {
@@ -382,7 +382,7 @@ pub fn rust_tuple_separator() -> String {
             ", ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_source_extension() -> String {
@@ -391,7 +391,7 @@ pub fn rust_source_extension() -> String {
             ".rs".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_source_dir() -> String {
@@ -400,7 +400,7 @@ pub fn rust_source_dir() -> String {
             "src/".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_visibility() -> String {
@@ -409,7 +409,7 @@ pub fn rust_visibility() -> String {
             "pub ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -423,11 +423,11 @@ pub struct RuntimeFunction {
 pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<RuntimeFunction>>> = {
-            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}]))
+            serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}, {"name": "atom_identity_hash", "bridge_name": "atom_identity_hash", "passes_by_ref": false, "wraps_result": false}, {"name": "hash_combine", "bridge_name": "hash_combine", "passes_by_ref": false, "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<RuntimeFunction>>>| c.clone())
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
@@ -529,5 +529,5 @@ pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<HigherOrderMethodSpec>>>| c.clone())
 }

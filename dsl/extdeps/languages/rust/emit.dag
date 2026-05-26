@@ -209,7 +209,9 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "append",             bridge_name: "append",           passes_by_ref: false, wraps_result: true },
   { name: "contains",           bridge_name: "contains",         passes_by_ref: false, wraps_result: false },
   { name: "count",              bridge_name: "count",            passes_by_ref: false, wraps_result: false },
-  { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false }
+  { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false },
+  { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
+  { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false }
 ]
 
 // Derived indexes from rt_function_registry — all computed, single authority.

@@ -42,7 +42,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
@@ -62,7 +62,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
@@ -131,7 +131,7 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
@@ -157,7 +157,7 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
@@ -222,19 +222,19 @@ pub type GlobSegment = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Rc<Vec<PathSegment>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobPattern {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Rc<Vec<GlobSegment>>,
 }
 
 pub type FilePath = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceSpan {
-    pub file: String,
+    pub file: FilePath,
     pub start: i64,
     pub end: i64,
 }
@@ -320,14 +320,14 @@ pub enum FermiDepth {
 #[serde(tag = "_variant")]
 pub enum CredentialFlow {
     Stored {
-        secret_name: String,
+        secret_name: NonEmptyStr,
     },
     PlatformInjected {
-        env_var: String,
+        env_var: NonEmptyStr,
     },
     WorkloadIdentity {
-        audience: String,
-        service_account: Option<String>,
+        audience: NonEmptyStr,
+        service_account: Option<ServiceAccountEmail>,
         scopes: Rc<Vec<String>>,
     },
     InteractiveAuth {
@@ -462,7 +462,7 @@ pub enum AuthScheme {
 pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<String>,
+    pub expires_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -523,7 +523,7 @@ pub struct TestResult {
     pub ok: bool,
     pub stdout: String,
     pub stderr: String,
-    pub duration_ms: i64,
+    pub duration_ms: Milliseconds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -621,7 +621,7 @@ pub struct DagDiff {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CodegenTarget {
     pub name: String,
-    pub path: String,
+    pub path: FilePath,
     pub backend: Option<CodegenBackend>,
     pub target: Option<Rc<TargetTriple>>,
     pub runtime_env: Option<ExecutionEnv>,
@@ -645,6 +645,6 @@ pub struct PragmaDirective {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocSource {
-    pub path: String,
+    pub path: FilePath,
     pub kind: DocSourceKind,
 }
