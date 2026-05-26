@@ -3183,11 +3183,24 @@ pub fn render_rust_type_with_applied_binding(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match field_value_by_name(
-        n.clone(),
-        "__applied_type_args".to_string(),
-        source_indices.clone(),
-    ) {
+    let applied_opt = match Rc::new({
+        let mut __result = Vec::new();
+        for p in n.properties.clone().iter().cloned() {
+            if field_init_node_name_at(p.clone(), source_indices.clone()).as_str()
+                == "__applied_type_args"
+            {
+                __result.push(p);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(prop) => Some(field_init_node_value(&prop)),
+        None => None,
+    };
+    match applied_opt {
         Some(applied) if (applied.children.len() as i64) > 0 => {
             render_rust_type(&applied, shared_types, &source_indices)
         }
@@ -3201,11 +3214,11 @@ pub fn render_rust_field_type_with_applied_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     let authored_type = field_node_type_expr(&field);
-    if field_value_by_name(
+    if render_rust_type_with_applied_binding(
         authored_type.clone(),
-        "__applied_type_args".to_string(),
+        shared_types.clone(),
         source_indices.clone(),
-    ) != None
+    ) != render_rust_type(&authored_type, shared_types.clone(), &source_indices)
     {
         render_rust_type_with_applied_binding(authored_type, shared_types, source_indices)
     } else {
@@ -3224,22 +3237,20 @@ pub fn emit_struct_field_from_child(
     {
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(&child);
-        let ty = if field_value_by_name(
+        let authored_child_rendered = render_rust_type_with_applied_binding(
             authored_child_type.clone(),
-            "__applied_type_args".to_string(),
+            shared_types.clone(),
             env.source_indices.clone(),
-        ) != None
+        );
+        let ty = if authored_child_rendered.clone().as_str()
+            != render_rust_type(&authored_child_type, shared_types.clone(), &env.source_indices.clone()).as_str()
         {
-            render_rust_type_with_applied_binding(
-                authored_child_type.clone(),
-                shared_types.clone(),
-                env.source_indices.clone(),
-            )
-        } else if field_value_by_name(
+            authored_child_rendered
+        } else if render_rust_type_with_applied_binding(
             rt_child.clone(),
-            "__applied_type_args".to_string(),
+            shared_types.clone(),
             env.source_indices.clone(),
-        ) != None
+        ) != render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
         {
             render_rust_type_with_applied_binding(
                 rt_child.clone(),
@@ -4109,17 +4120,15 @@ pub fn emit_variant_from_child(
                                         &env.source_indices.clone(),
                                     )
                                 };
-                                let ty = if field_value_by_name(
+                                let bound_rendered = render_rust_type_with_applied_binding(
                                     type_node.clone(),
-                                    "__applied_type_args".to_string(),
+                                    shared_types.clone(),
                                     env.source_indices.clone(),
-                                ) != None
+                                );
+                                let ty = if bound_rendered.clone().as_str()
+                                    != render_rust_type(&type_node, shared_types.clone(), &env.source_indices.clone()).as_str()
                                 {
-                                    render_rust_type_with_applied_binding(
-                                        type_node.clone(),
-                                        shared_types.clone(),
-                                        env.source_indices.clone(),
-                                    )
+                                    bound_rendered
                                 } else {
                                     raw_ty.clone()
                                 };
