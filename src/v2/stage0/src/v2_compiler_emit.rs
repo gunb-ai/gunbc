@@ -4148,6 +4148,81 @@ pub fn is_tco_candidate(
     })
 }
 
+pub fn suffix_escape_collides_with_reserved_chain(
+    mut name: String,
+    mut suffix: String,
+    mut keywords: Rc<Vec<String>>,
+) -> bool {
+    loop {
+        let suffix_len = v2_rt::string_length(&suffix);
+        let name_len = v2_rt::string_length(&name);
+        if ((suffix_len.clone() == 0) || (name_len.clone() < suffix_len.clone())) {
+            break false;
+        } else {
+            if (v2_rt::substring(
+                &name,
+                (name_len.clone() - suffix_len.clone()),
+                name_len.clone(),
+            )
+            .as_str()
+                != suffix.clone().as_str())
+            {
+                break false;
+            } else {
+                let base = v2_rt::substring(&name, 0, (name_len.clone() - suffix_len.clone()));
+                if {
+                    let mut __found = false;
+                    for r in keywords.clone().iter().cloned() {
+                        if (r.clone().as_str() == base.clone().as_str()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    break true;
+                } else {
+                    {
+                        let __tco_0 = base.clone();
+                        name = __tco_0;
+                        continue;
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn emit_suffix_escape_ident(
+    converted: &String,
+    suffix: &String,
+    keywords: &Rc<Vec<String>>,
+) -> String {
+    {
+        let is_reserved = {
+            let mut __found = false;
+            for r in keywords.clone().iter().cloned() {
+                if (r.clone().as_str() == converted.clone().as_str()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        if (is_reserved
+            || suffix_escape_collides_with_reserved_chain(
+                converted.clone(),
+                suffix.clone(),
+                keywords.clone(),
+            ))
+        {
+            v2_rt::concat(converted.clone(), suffix.clone())
+        } else {
+            converted.clone()
+        }
+    }
+}
+
 pub fn emit_ident(name: String, target: RenderTarget) -> String {
     {
         let spec = language_spec(target);
@@ -4172,13 +4247,22 @@ pub fn emit_ident(name: String, target: RenderTarget) -> String {
                 ReservedWordStrategy::PrefixEscape { prefix: p, .. } => {
                     v2_rt::concat(p.clone(), converted.clone())
                 }
-                ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
-                    v2_rt::concat(converted.clone(), s.clone())
-                }
+                ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
+                    &converted,
+                    &s,
+                    &spec.reserved_words.clone().keywords.clone(),
+                ),
                 ReservedWordStrategy::NoEscape => converted.clone(),
             }
         } else {
-            converted.clone()
+            match (*spec.reserved_words.clone().strategy.clone()).clone() {
+                ReservedWordStrategy::SuffixEscape { suffix: s, .. } => emit_suffix_escape_ident(
+                    &converted,
+                    &s,
+                    &spec.reserved_words.clone().keywords.clone(),
+                ),
+                _ => converted.clone(),
+            }
         }
     }
 }
@@ -4204,7 +4288,11 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                 if is_reserved {
                     match (*spec.reserved_words.clone().strategy.clone()).clone() {
                         ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
-                            v2_rt::concat(result.clone(), s.clone())
+                            emit_suffix_escape_ident(
+                                &result,
+                                &s,
+                                &spec.reserved_words.clone().keywords.clone(),
+                            )
                         }
                         ReservedWordStrategy::PrefixEscape { prefix: p, .. } => {
                             v2_rt::concat(p.clone(), result.clone())
@@ -4212,7 +4300,16 @@ pub fn emit_export_ident(name: String, target: RenderTarget) -> String {
                         ReservedWordStrategy::NoEscape => result.clone(),
                     }
                 } else {
-                    result.clone()
+                    match (*spec.reserved_words.clone().strategy.clone()).clone() {
+                        ReservedWordStrategy::SuffixEscape { suffix: s, .. } => {
+                            emit_suffix_escape_ident(
+                                &result,
+                                &s,
+                                &spec.reserved_words.clone().keywords.clone(),
+                            )
+                        }
+                        _ => result.clone(),
+                    }
                 }
             }
             VisibilitySpec::KeywordVisibility { prefix: _, .. } => emit_ident(name, target.clone()),

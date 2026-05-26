@@ -332,7 +332,7 @@ type NullCoalesceStrategy
     }
 
 // "How does a language handle identifier conflicts with reserved words?"
-// Ref: Rust r# raw identifiers, Python _ suffix convention, Go capitalization
+// Ref: Rust/Python _ suffix convention, Go capitalization
 type ReservedWordStrategy
   = PrefixEscape {
       prefix: String             // e.g. "r#" for Rust
@@ -1037,7 +1037,7 @@ data rust_reserved_words: ReservedWords = {
     "macro", "override", "priv", "try", "typeof", "unsized",
     "virtual"
   ],
-  strategy: PrefixEscape { prefix: "r#" }
+  strategy: SuffixEscape { suffix: "_" }
 }
 
 data rust_value_semantics: ValueSemantics = OwnershipBased {

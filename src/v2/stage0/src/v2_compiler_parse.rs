@@ -2143,12 +2143,12 @@ pub fn parse_module(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Mod
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r#mod = Rc::new(Node {
+        let mod_ = Rc::new(Node {
             ident: Some(mod_ir.id.clone()),
             ..(*base_mod).clone()
         });
         Rc::new(ModuleResult {
-            module: r#mod,
+            module: mod_,
             tokens: tokens.clone(),
             ctx: ctx.clone(),
             err: None,

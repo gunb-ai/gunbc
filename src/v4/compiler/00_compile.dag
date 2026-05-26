@@ -6,13 +6,14 @@
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
-//       compile_inferred, compile, validate_then_compile.
+//       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
+//       fact_density_hollow_alias_compile_gate, fact_density_lens, always_required_lenses.
 // Consumes: compiler/01_tokenize.dag, compiler/02_parse.dag, compiler/03_normalize.dag,
 //           compiler/03_resolve.dag, compiler/04_infer.dag, compiler/05_emit.dag,
 //           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
-//           std/algebra.dag, std/collection.dag, std/diagnostic.dag,
+//           lens/fact_density.dag, std/algebra.dag, std/collection.dag, std/diagnostic.dag,
 //           std/module_graph.dag, std/node.dag, std/text.dag, std/witness.dag.
-// Status: Wave-5-A — compile_ingest_staging: tokenize → parse → normalize → resolve_with_graph → compile.
+// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve_with_graph → compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
 
@@ -27,7 +28,8 @@ import v4.compiler.resolve { resolve_with_graph }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
-import v4.std.algebra { Empty }
+import v4.lens.fact_density { fact_density_hollow_alias_gate }
+import v4.std.algebra { Empty, list_append }
 import v4.std.collection { List }
 import v4.std.module_graph { module_graph_from_entries }
 import v4.std.diagnostic {
@@ -45,7 +47,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -124,6 +126,21 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
+data fact_density_lens: CompileLens = CompileLens {
+  gate: fact_density_hollow_alias_compile_gate
+}
+
+
+fn always_required_lenses() -> List<CompileLens> {
+  [fact_density_lens]
+}
+
+
+fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  fact_density_hollow_alias_gate(node: tree.root)
+}
+
+
 // 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
 // T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
 // CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion lands with application.dag.
@@ -183,6 +200,34 @@ fn run_required_lens_gates(
               }
             )
           )
+      }
+    }
+  )
+}
+
+
+fn run_required_lens_gates_on_subtree(
+  inferred: InferredTree,
+  lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  fold_node(
+    n: inferred.root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        run_required_lens_gates(
+          inferred: InferredTree { root: n0, facts: inferred.facts },
+          lenses: lenses
+        )
+      },
+      step: fn(acc, _, child) {
+        bind_outcome(o: acc, f: fn(ws) {
+          bind_outcome(
+            o: child,
+            f: fn(child_ws) {
+              outcome_accepted(value: list_append(left: ws, right: child_ws))
+            }
+          )
+        })
       }
     }
   )
@@ -255,19 +300,27 @@ fn validate_then_compile(
     o: infer(tree: source),
     f: fn(inferred) {
       bind_outcome(
-        o: run_required_lens_gates(inferred: inferred, lenses: lenses),
-        f: fn(lens_witnesses) {
+        o: run_required_lens_gates_on_subtree(inferred: inferred, lenses: always_required_lenses()),
+        f: fn(required_lens_witnesses) {
           bind_outcome(
-            o: compile_inferred(
-              inferred: inferred,
-              mode: mode
-            ),
-            f: fn(compile_out) {
-              outcome_accepted(
-                value: validated_from_compile_output(
-                  output: compile_out,
-                  lens_witnesses: lens_witnesses
-                )
+            o: run_required_lens_gates(inferred: inferred, lenses: lenses),
+            f: fn(caller_lens_witnesses) {
+              bind_outcome(
+                o: compile_inferred(
+                  inferred: inferred,
+                  mode: mode
+                ),
+                f: fn(compile_out) {
+                  outcome_accepted(
+                    value: validated_from_compile_output(
+                      output: compile_out,
+                      lens_witnesses: list_append(
+                        left: required_lens_witnesses,
+                        right: caller_lens_witnesses
+                      )
+                    )
+                  )
+                }
               )
             }
           )

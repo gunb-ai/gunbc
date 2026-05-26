@@ -97,10 +97,10 @@ pub fn rust_reserved() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn rust_reserved_escape_prefix() -> String {
+pub fn rust_reserved_escape_suffix() -> String {
     thread_local! {
         static CACHED: String = {
-            "r#".to_string()
+            "_".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

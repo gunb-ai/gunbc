@@ -89,9 +89,8 @@ data rust_reserved: List<String> = [
 ]
 
 // -- Reserved word escape ------------------------------------------------
-// Ref: Rust Reference, Appendix B: Raw identifiers
-// Mirrors rust_reserved_words.strategy.prefix from std.languages.
-data rust_reserved_escape_prefix: String = "r#"
+// Mirrors rust_reserved_words.strategy.suffix from std.languages.
+data rust_reserved_escape_suffix: String = "_"
 
 // -- String-like types ---------------------------------------------------
 // Types that render as Rust &str/.as_str() for comparison operations.
