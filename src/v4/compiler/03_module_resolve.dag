@@ -21,7 +21,7 @@ import v4.compiler.resolve {
   try_edge_declared_binding
 }
 import v4.extdeps.languages.dag { DagLanguageModel }
-import v4.std.algebra { FreeMonoid, fold_list }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Accepted,
@@ -191,17 +191,20 @@ fn admit_imports(
   imports: FreeMonoid<ModuleImport>,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
-  fold_list(
-    xs: imports,
-    empty: state,
-    cons: fn(acc, import_edge) {
-      admit_import_entry(
+  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleimport — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleImport>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+  match imports {
+    Empty => state
+    Cons { head: import_edge, tail: rest } =>
+      admit_imports(
         graph: graph,
-        import_edge: import_edge,
-        state: acc
+        imports: rest,
+        state: admit_import_entry(
+          graph: graph,
+          import_edge: import_edge,
+          state: state
+        )
       )
-    }
-  )
+  }
 }
 
 
