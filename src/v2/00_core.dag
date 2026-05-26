@@ -689,7 +689,7 @@ fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, defa
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
     params: [], inferred: none, return_cardinality: cardinality,
-    uses: [], body: none, transport: none, properties: props,
+    uses: [], body: none, transport: none, properties: concat(props, type_expr.properties),
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }

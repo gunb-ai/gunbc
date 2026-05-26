@@ -1047,6 +1047,7 @@ pub fn make_param_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
+        let type_expr_props = type_expr.properties.clone();
         let children = match default_value {
             Some(dv) => Rc::new(vec![type_expr, dv.clone()]),
             None => Rc::new(vec![type_expr]),
@@ -1193,6 +1194,7 @@ pub fn make_field_node(
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
+        let type_expr_props = type_expr.properties.clone();
         let children = match default_value {
             Some(dv) => Rc::new(vec![type_expr, dv.clone()]),
             None => Rc::new(vec![type_expr]),
@@ -1232,7 +1234,7 @@ pub fn make_field_node(
             uses: Rc::new(vec![]),
             body: None,
             transport: None,
-            properties: props,
+            properties: v2_rt::concat(props, type_expr_props),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,

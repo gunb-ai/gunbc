@@ -3215,6 +3215,13 @@ pub fn render_rust_field_type_with_applied_binding(
 ) -> String {
     let authored_type = field_node_type_expr(&field);
     if render_rust_type_with_applied_binding(
+        field.clone(),
+        shared_types.clone(),
+        source_indices.clone(),
+    ) != render_rust_type(&field, shared_types.clone(), &source_indices)
+    {
+        render_rust_type_with_applied_binding(field, shared_types, source_indices)
+    } else if render_rust_type_with_applied_binding(
         authored_type.clone(),
         shared_types.clone(),
         source_indices.clone(),

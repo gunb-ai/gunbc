@@ -1668,7 +1668,9 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
 
 fn render_rust_field_type_with_applied_binding(field: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let authored_type = field_node_type_expr(n: field)
-  if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
+  if find_property(props: field.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
+    render_rust_type_with_applied_binding(n: field, shared_types: shared_types, source_indices: source_indices)
+  } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices)
   } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
     render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices)
