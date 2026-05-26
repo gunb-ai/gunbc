@@ -3359,7 +3359,14 @@ pub fn emit_struct_field_from_child(
             shared_types.clone(),
             env.source_indices.clone(),
         );
-        let ty = if child_rendered.clone().as_str()
+        let ty = if ((parent_generic_param_names.len() as i64) > 0) {
+            render_rust_decl_type(
+                authored_child_type.clone(),
+                parent_generic_param_names.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            )
+        } else if child_rendered.clone().as_str()
             != render_rust_type(&child, shared_types.clone(), &env.source_indices.clone()).as_str()
         {
             child_rendered
