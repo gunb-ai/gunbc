@@ -80,7 +80,7 @@ pub fn parse_path_template(raw: &String) -> Rc<PathTemplateParseResult> {
                     tokens: Rc::new(vec![]),
                 }),
             }),
-            Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
+            Some(first_seg) => match (*parse_segment_tokens(&first_seg)).clone() {
                 PathSegmentTokensResult::MalformedPathSegment {
                     segment: s,
                     reason: r,
@@ -115,7 +115,7 @@ pub fn parse_path_template(raw: &String) -> Rc<PathTemplateParseResult> {
                             PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
                             PathTemplateParseResult::ParsedPathTemplate {
                                 template: path, ..
-                            } => match (*parse_segment_tokens(seg.clone())).clone() {
+                            } => match (*parse_segment_tokens(&seg)).clone() {
                                 PathSegmentTokensResult::MalformedPathSegment {
                                     segment: s,
                                     reason: r,

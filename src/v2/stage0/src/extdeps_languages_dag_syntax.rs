@@ -99,7 +99,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
@@ -117,7 +117,7 @@ pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
                 Rc::new(__m)
             };
         }
-    CACHED.with(|c: &Rc<HashMap<String, Rc<LiteralValue>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
@@ -162,7 +162,7 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
@@ -178,7 +178,7 @@ pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
@@ -283,7 +283,7 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
@@ -307,7 +307,7 @@ pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
@@ -321,5 +321,5 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
     })
             };
         }
-    CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
+    CACHED.with(|c| c.clone())
 }

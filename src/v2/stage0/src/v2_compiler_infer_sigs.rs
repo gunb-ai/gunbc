@@ -62,10 +62,10 @@ pub fn collect_func_call_edges(
             __result.extend(
                 (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                     collect_calls_in_expr(
-                        authored_name_at(source_indices.clone(), item.clone()),
-                        item.body.clone().clone().unwrap(),
-                        local_func_set.clone(),
-                        source_indices.clone(),
+                        &authored_name_at(source_indices.clone(), &item),
+                        &item.body.clone().clone().unwrap(),
+                        &local_func_set,
+                        &source_indices,
                     )
                 } else {
                     Rc::new(vec![])
@@ -103,14 +103,9 @@ pub fn collect_calls_in_expr(
             let mut __result = Vec::new();
             for child in texpr.children.clone().iter().cloned() {
                 __result.extend(
-                    (*collect_calls_in_expr(
-                        caller.clone(),
-                        child.clone(),
-                        local_func_set.clone(),
-                        source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
+                    (*collect_calls_in_expr(&caller, &child, &local_func_set, &source_indices))
+                        .iter()
+                        .cloned(),
                 );
             }
             __result
@@ -156,12 +151,7 @@ pub fn func_reaches_self(
                         if if (c.clone().as_str() == root.clone().as_str()) {
                             true
                         } else {
-                            func_reaches_self(
-                                root.clone(),
-                                c.clone(),
-                                call_edges.clone(),
-                                next_visited.clone(),
-                            )
+                            func_reaches_self(root.clone(), &c, &call_edges, &next_visited)
                         } {
                             __found = true;
                             break;
@@ -200,7 +190,7 @@ pub fn collect_parent_resolved_sigs(
                         v2_rt::rc_map_insert(
                             acc.clone(),
                             dsig.name.clone(),
-                            declared_to_resolved(dsig.clone()),
+                            declared_to_resolved(&dsig),
                         )
                     } else {
                         acc.clone()
@@ -235,7 +225,7 @@ pub fn merge_remaining_declared(
                     v2_rt::rc_map_insert(
                         acc.clone(),
                         dsig.name.clone(),
-                        declared_to_resolved(dsig.clone()),
+                        declared_to_resolved(&dsig),
                     )
                 } else {
                     acc.clone()
@@ -268,7 +258,7 @@ pub fn topo_resolve_loop(
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
                                     dsig.name.clone(),
-                                    declared_to_resolved(dsig.clone()),
+                                    declared_to_resolved(&dsig),
                                 )
                             } else {
                                 acc.clone()
@@ -349,7 +339,7 @@ pub fn topo_resolve_loop(
                                     signatures: v2_rt::rc_map_insert(
                                         acc.signatures.clone(),
                                         fn_name.clone(),
-                                        declared_to_resolved(dsig.clone()),
+                                        declared_to_resolved(&dsig),
                                     ),
                                     diagnostics: acc.diagnostics.clone(),
                                 })
@@ -384,7 +374,7 @@ pub fn topo_resolve_loop(
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
                                     dsig.name.clone(),
-                                    declared_to_resolved(dsig.clone()),
+                                    declared_to_resolved(&dsig),
                                 )
                             } else {
                                 acc.clone()
@@ -417,7 +407,7 @@ pub fn topo_resolve_loop(
                             signatures: v2_rt::rc_map_insert(
                                 acc.signatures.clone(),
                                 fn_name.clone(),
-                                declared_to_resolved(dsig.clone()),
+                                declared_to_resolved(&dsig),
                             ),
                             diagnostics: acc.diagnostics.clone(),
                         })
@@ -491,7 +481,7 @@ pub fn resolve_func_sigs(
             .iter()
             .cloned()
             {
-                __result.push(authored_name_at(source_indices.clone(), item.clone()));
+                __result.push(authored_name_at(source_indices.clone(), &item));
             }
             __result
         });

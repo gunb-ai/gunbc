@@ -262,7 +262,7 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
-        let cycle_members = kahn_remove_loop(all_names.clone(), local_deps);
+        let cycle_members = kahn_remove_loop(&all_names, &local_deps);
         let sr_set = self_refs
             .iter()
             .cloned()

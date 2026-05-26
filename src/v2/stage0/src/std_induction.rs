@@ -165,16 +165,11 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
                 field: fb,
                 factor: fac_b,
                 ..
-            } => {
-                (inductive_field_eq(fa.clone(), fb.clone())
-                    && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
-            }
+            } => (inductive_field_eq(&fa, &fb) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
             _ => false,
         },
         SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
-            SubValueRelation::IteratedSubValue { field: fb, .. } => {
-                inductive_field_eq(fa.clone(), fb.clone())
-            }
+            SubValueRelation::IteratedSubValue { field: fb, .. } => inductive_field_eq(&fa, &fb),
             _ => false,
         },
         SubValueRelation::ArithmeticDescent {
@@ -968,7 +963,7 @@ pub fn derive_bound(
                     }
                 }
                 ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
-                    master_theorem(Rc::new(RecurrenceForm {
+                    master_theorem(&Rc::new(RecurrenceForm {
                         param: param,
                         branches: branches.clone(),
                         divisor: proportional_divisor_to_int(d.clone()),

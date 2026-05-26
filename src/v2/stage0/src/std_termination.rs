@@ -69,7 +69,7 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
             })
         };
     }
-    CACHED.with(|c: &Rc<BoundedLattice<DescentEvidence>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn promote_to_strict(evidence: DescentEvidence) -> DescentEvidence {
