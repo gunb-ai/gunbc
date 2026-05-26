@@ -7,7 +7,7 @@
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
-//       fact_density_lens, always_required_lenses.
+//       fact_density_hollow_alias_compile_gate, fact_density_lens, always_required_lenses.
 // Consumes: compiler/01_tokenize.dag, compiler/02_parse.dag, compiler/03_normalize.dag,
 //           compiler/03_resolve.dag, compiler/04_infer.dag, compiler/05_emit.dag,
 //           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
@@ -127,12 +127,17 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 
 
 data fact_density_lens: CompileLens = CompileLens {
-  gate: fact_density_hollow_alias_gate
+  gate: fact_density_hollow_alias_compile_gate
 }
 
 
 fn always_required_lenses() -> List<CompileLens> {
   [fact_density_lens]
+}
+
+
+fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  fact_density_hollow_alias_gate(carrier: tree.root)
 }
 
 

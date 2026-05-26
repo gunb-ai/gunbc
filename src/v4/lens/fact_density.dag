@@ -1,14 +1,13 @@
 // src/v4/lens/fact_density.dag
-// Scope: T-30 fact-density lens — classifies each type carrier by the spec facts it records; CompileLens gate that fails closed on hollow aliases (NoFact carriers) when wired into run_required_lens_gates.
+// Scope: T-30 fact-density lens — classifies each type carrier by the spec facts it records; structural gate that fails closed on hollow aliases (NoFact carriers).
 // Owns: SourceSpecReadFact, fact_density_kernel_ambient_string, fact_density_kernel_ambient_int, fact_density_kernel_ambient_bool, fact_density_kernel_ambient_char, fact_density_kernel_ambient_list, fact_density_kernel_ambient_map, symbol_is_kernel_ambient, named_fact_count, density_fact, connective_is_kernel_ambient_atom, connective_spec_fact, carrier_spec_fact, fact_density_hollow_alias_locus, fact_density_hollow_alias_gate.
-// Consumes: std node, std nat, std cardinality, std diagnostic, std witness, compiler infer.
-// Status: T-30 lens + CompileLens gate — enforcement runs via run_required_lens_gates (mechanism operator-ratified 2026-05-25).
+// Consumes: std node, std nat, std cardinality, std diagnostic, std witness.
+// Status: T-30 structural Node -> Outcome gate — enforcement adapter runs via run_required_lens_gates (mechanism operator-ratified 2026-05-25).
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/src/v4/TASKS.md
 
 module v4.lens.fact_density
 
 
-import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -112,8 +111,8 @@ fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
 data fact_density_hollow_alias_locus: Symbol = fact_density_hollow_alias_locus
 
 
-fn fact_density_hollow_alias_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
-  match carrier_spec_fact(carrier: tree.root) {
+fn fact_density_hollow_alias_gate(carrier: Node) -> Outcome<Witness<Node>> {
+  match carrier_spec_fact(carrier: carrier) {
     NoFact =>
       outcome_rejected(
         Diagnostic {
@@ -122,8 +121,8 @@ fn fact_density_hollow_alias_gate(tree: InferredTree) -> Outcome<Witness<Node>> 
           correction: Unavailable { reason: ExternalContractUnknown }
         }
       )
-    NotATypeCarrier => outcome_accepted(value: Holds { value: tree.root })
-    KernelAmbientAtom => outcome_accepted(value: Holds { value: tree.root })
-    NamedFieldFacts { density: _ } => outcome_accepted(value: Holds { value: tree.root })
+    NotATypeCarrier => outcome_accepted(value: Holds { value: carrier })
+    KernelAmbientAtom => outcome_accepted(value: Holds { value: carrier })
+    NamedFieldFacts { density: _ } => outcome_accepted(value: Holds { value: carrier })
   }
 }
