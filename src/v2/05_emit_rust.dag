@@ -147,7 +147,9 @@ import v2.compiler.emit {
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  if node_is_set_collection(n: n, source_indices: source_indices) {
+  match n.inferred {
+    Some { value: TypeVariable { id: tv } } => emit_ident(name: tv, target: Rust)
+    _ => if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Some { value: elem_child } =>
         let elem_node = child_type_node(ch: elem_child)
@@ -164,6 +166,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
     }
   } else {
     render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  }
   }
 }
 
@@ -1725,7 +1728,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Set<String>, share
       None => render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
     }
   } else {
-    render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
+    render_rust_type(n: authored_child_type, shared_types: shared_types, source_indices: env.source_indices)
   }
   let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {

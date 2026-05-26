@@ -3384,7 +3384,11 @@ pub fn emit_struct_field_from_child(
                 }
             }
         } else {
-            render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
+            render_rust_type(
+                &authored_child_type,
+                shared_types.clone(),
+                &env.source_indices.clone(),
+            )
         };
         let generic_ty = ty.clone();
         let final_ty = if needs_box_wrapping(
