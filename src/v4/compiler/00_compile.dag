@@ -13,7 +13,7 @@
 //           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
 //           lens/fact_density.dag, std/algebra.dag, std/collection.dag, std/diagnostic.dag,
 //           std/module_graph.dag, std/node.dag, std/text.dag, std/witness.dag.
-// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve_with_graph → compile.
+// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve_with_graph → validate_then_compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
 
@@ -40,6 +40,7 @@ import v4.std.diagnostic {
   Outcome,
   port_locus,
   Rejected,
+  Some,
   Unavailable,
   bind_outcome,
   bind_outcome_accepted,
@@ -143,7 +144,6 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 
 // 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
 // T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
-// CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion lands with application.dag.
 fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
@@ -151,7 +151,16 @@ fn apply_compile_lens(
 ) -> Outcome<Witness<Node>> {
   match mode {
     CompileLensEnforce => lens.gate(tree: inferred)
-    CompileLensIntrospect => lens.gate(tree: inferred)
+    CompileLensIntrospect =>
+      match lens.gate(tree: inferred) {
+        Accepted { value: witness, diagnostics: d } =>
+          Accepted { value: witness, diagnostics: d }
+        Rejected { diagnostics: r } =>
+          Accepted {
+            value: Violates { diagnostic: r.head },
+            diagnostics: Some { diagnostics: r }
+          }
+      }
   }
 }
 
@@ -357,12 +366,13 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
                     ),
                     f: fn(resolved) {
                       bind_outcome(
-                        o: compile(
+                        o: validate_then_compile(
                           source: resolved,
+                          lenses: [],
                           mode: TranslateTo { target: target }
                         ),
-                        f: fn(compile_out) {
-                          match compile_out {
+                        f: fn(validated) {
+                          match validated.value {
                             TranslateResult { source: target_source } =>
                               outcome_accepted(target_source)
                             EvalResult { value: _ } =>
