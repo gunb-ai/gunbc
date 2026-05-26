@@ -1656,7 +1656,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
 fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.type_annotation {
     Some { value: applied } =>
-      if applied.children |> count > 0 {
+      if applied.children |> count > 0 && authored_name_at(source_indices: source_indices, node: applied) == authored_name_at(source_indices: source_indices, node: n) {
         render_rust_type(n: applied, shared_types: shared_types, source_indices: source_indices)
       } else {
         render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)

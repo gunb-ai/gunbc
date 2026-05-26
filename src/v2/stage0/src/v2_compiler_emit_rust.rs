@@ -3184,7 +3184,11 @@ pub fn render_rust_type_with_applied_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.type_annotation.clone() {
-        Some(applied) if (applied.children.len() as i64) > 0 => {
+        Some(applied)
+            if ((applied.children.len() as i64) > 0)
+                && (authored_name_at(source_indices.clone(), &applied)
+                    == authored_name_at(source_indices.clone(), &n)) =>
+        {
             render_rust_type(&applied, shared_types, &source_indices)
         }
         _ => render_rust_type(&n, shared_types, &source_indices),
