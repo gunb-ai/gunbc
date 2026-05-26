@@ -120,9 +120,7 @@ fn expr_has_match_arm_body_match(expr: &SurfaceExpr) -> bool {
 fn module_has_match_arm_body_match(module: &v3_compiler::parse_surface::SurfaceModule) -> bool {
     module.items.iter().any(|item| match item {
         SurfaceItem::Fn { body, .. } => expr_has_match_arm_body_match(body),
-        SurfaceItem::Data { body, .. } => body
-            .as_ref()
-            .is_some_and(expr_has_match_arm_body_match),
+        SurfaceItem::Data { body, .. } => body.as_ref().is_some_and(expr_has_match_arm_body_match),
         _ => false,
     })
 }
