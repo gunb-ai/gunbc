@@ -3195,6 +3195,24 @@ pub fn render_rust_type_with_applied_binding(
     }
 }
 
+pub fn render_rust_field_type_with_applied_binding(
+    field: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let authored_type = field_node_type_expr(&field);
+    if field_value_by_name(
+        authored_type.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) != None
+    {
+        render_rust_type_with_applied_binding(authored_type, shared_types, source_indices)
+    } else {
+        render_rust_type_with_applied_binding(resolved_type(field), shared_types, source_indices)
+    }
+}
+
 pub fn emit_struct_field_from_child(
     child: &Rc<Node>,
     parent_generic_param_names: Rc<Vec<String>>,
@@ -3205,7 +3223,19 @@ pub fn emit_struct_field_from_child(
 ) -> String {
     {
         let rt_child = resolved_type(child.clone());
+        let authored_child_type = field_node_type_expr(&child);
         let ty = if field_value_by_name(
+            authored_child_type.clone(),
+            "__applied_type_args".to_string(),
+            env.source_indices.clone(),
+        ) != None
+        {
+            render_rust_type_with_applied_binding(
+                authored_child_type.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            )
+        } else if field_value_by_name(
             rt_child.clone(),
             "__applied_type_args".to_string(),
             env.source_indices.clone(),
@@ -3584,8 +3614,8 @@ pub fn emit_enum_shared_accessors(
                                 .first()
                                 .cloned()
                                 {
-                                    Some(f) => render_rust_type_with_applied_binding(
-                                        resolved_type(f.clone()),
+                                    Some(f) => render_rust_field_type_with_applied_binding(
+                                        f.clone(),
                                         shared_types.clone(),
                                         env.source_indices.clone(),
                                     ),
@@ -3636,8 +3666,8 @@ pub fn emit_enum_shared_accessors(
                     .first()
                     .cloned()
                     {
-                        Some(f) => render_rust_type_with_applied_binding(
-                            resolved_type(f.clone()),
+                        Some(f) => render_rust_field_type_with_applied_binding(
+                            f.clone(),
                             shared_types.clone(),
                             env.source_indices.clone(),
                         ),
@@ -4135,8 +4165,8 @@ pub fn emit_variant_from_child(
                                 for f in child.children.clone().iter().cloned() {
                                     __result.push({
                                         let rt_f = resolved_type(f.clone());
-                                        let ty = render_rust_type_with_applied_binding(
-                                            rt_f.clone(),
+                                        let ty = render_rust_field_type_with_applied_binding(
+                                            f.clone(),
                                             shared_types.clone(),
                                             env.source_indices.clone(),
                                         );
@@ -4197,8 +4227,8 @@ pub fn emit_variant_from_child(
                         for f in child.children.clone().iter().cloned() {
                             __result.push({
                                 let rt_f = resolved_type(f.clone());
-                                let ty = render_rust_type_with_applied_binding(
-                                    rt_f.clone(),
+                                let ty = render_rust_field_type_with_applied_binding(
+                                    f.clone(),
                                     shared_types.clone(),
                                     env.source_indices.clone(),
                                 );

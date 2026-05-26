@@ -1666,13 +1666,25 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, sou
   }
 }
 
+fn render_rust_field_type_with_applied_binding(field: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let authored_type = field_node_type_expr(n: field)
+  if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
+    render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
 fn emit_struct_field_from_child(child: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = resolved_type(n: child)
   // Fix self-referential Conj types: when a field's resolved type is a full
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
-  let ty = if find_property(props: rt_child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+  let authored_child_type = field_node_type_expr(n: child)
+  let ty = if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+    render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, source_indices: env.source_indices)
+  } else if find_property(props: rt_child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
     render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   } else if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     let rt_child_name = authored_name_at(source_indices: env.source_indices, node: rt_child)
@@ -1775,7 +1787,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-        Some { value: f } => render_rust_type_with_applied_binding(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices)
+        Some { value: f } => render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
         None => ""
       }
     )
@@ -1789,7 +1801,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-      Some { value: f } => render_rust_type_with_applied_binding(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices)
+      Some { value: f } => render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
       None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     // Generate match arms for each variant.
@@ -1961,7 +1973,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
     } else {
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
-        let ty = render_rust_type_with_applied_binding(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+        let ty = render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
         let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
           concat("Box<", ty, ">")
         } else { ty }
@@ -1974,7 +1986,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
-      let ty = render_rust_type_with_applied_binding(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
+      let ty = render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
         concat("Box<", ty, ">")
       } else { ty }
