@@ -19,6 +19,7 @@ import v4.std.model_core {
   ModelCoreWave1BoolBoundedLatticeIdentities,
   ModelCoreWave1BoolComplementBounds,
   ModelCoreWave1BoolComplementInvolution,
+  ModelCoreWave1BoolDistributivity,
   model_core_wave1_bool_fact_lookup,
   model_core_wave1_bool_inhabitance,
   model_core_wave1_bool_law_obligation,
