@@ -672,9 +672,7 @@ pub fn resolve_node_bounded(
                     }
                 }
             }
-        } else if (((n.children.clone().len() as i64) == 0)
-            && is_user_generic_use_site(&n, &env))
-        {
+        } else if (((n.children.clone().len() as i64) == 0) && is_user_generic_use_site(&n, &env)) {
             {
                 let type_name = authored_name(env.clone(), n.clone());
                 let decl = match lookup_type_for(&env, &n) {
