@@ -251,7 +251,7 @@ pub enum CostShape {
     ShapeSortBody,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldTemplate {
     pub name: String,
     pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,

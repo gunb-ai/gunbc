@@ -25,7 +25,7 @@ pub struct TypeEnv {
     pub intern_table: Rc<InternTable>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,

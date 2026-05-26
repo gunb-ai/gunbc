@@ -33,7 +33,7 @@ pub struct ResolvedFuncEnv {
     pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ResolveFuncSigsResult {
     pub func_env: Rc<ResolvedFuncEnv>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -45,7 +45,7 @@ pub struct SigsAccum {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
     pub caller: String,
     pub callee: String,

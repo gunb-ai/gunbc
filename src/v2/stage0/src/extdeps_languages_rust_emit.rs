@@ -42,7 +42,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
     CACHED.with(|c| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SimpleMethodSpec {
     pub method_name: String,
     pub template: String,
@@ -412,7 +412,7 @@ pub fn rust_visibility() -> String {
     CACHED.with(|c| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct RuntimeFunction {
     pub name: String,
     pub bridge_name: String,
@@ -514,7 +514,7 @@ pub fn rt_passes_by_ref(name: String) -> bool {
     v2_rt::map_contains_key(&rt_ref_map_functions(), name)
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct HigherOrderMethodSpec {
     pub method_name: String,
     pub inline_template: String,
