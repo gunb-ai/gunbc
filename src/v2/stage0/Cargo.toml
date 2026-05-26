@@ -18,3 +18,4 @@ path = "src/main.rs"
 [[bin]]
 name = "regen_stage0"
 path = "src/bin/regen_stage0.rs"
+# cache-bust-v2-binary-20260526

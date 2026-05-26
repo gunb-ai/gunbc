@@ -1,11 +1,10 @@
 // src/v4/compiler/03_resolve.dag
 //
-// Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def; T-28 cross-file binding via ModuleGraph.
-// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_graph; Symbol reasons.
+// Scope: Stage 3b — NormalizedTree→ResolvedTree; K-1 Atom use→def.
+// Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_namespace; Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag,
-//           std/module_graph.dag (ModuleGraph), compiler/03_normalize.dag,
-//           extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 (+ T-28) modeled — K-1 single-file resolution; resolve_with_graph cross-file binding surface.
+//           compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
+// Status: T-8 modeled — K-1 single-file resolution; cross-file module admission lives in compiler/03_module_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -18,7 +17,6 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.collection { Set }
-import v4.std.module_graph { ModuleEntry, ModuleGraph }
 import v4.std.diagnostic {
   Diagnostic,
   node_locus,
@@ -59,7 +57,7 @@ type Namespace {
 }
 
 
-// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension goes through resolve_with_graph, not a third Scope arm.
+// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension enters through compiler/03_module_resolve.dag, not a third Scope arm.
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
@@ -560,52 +558,4 @@ fn resolve_with_namespace(tree: NormalizedTree, namespace: Namespace) -> Outcome
   } else {
     Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: tree)) }
   }
-}
-
-
-// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace.bindings gains
-// module-qualified structure keyed by ModulePath, plus duplicate-export diagnostics for ambiguous
-// imports. Current M2 surface intentionally flattens ModuleEntry.root named exports into
-// Map<Symbol,Symbol>; this unblocks cross-file unqualified imports but cannot represent qualified
-// references or diagnose same-symbol exports across imported modules.
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — same v2 bootstrap limitation as module_graph_entry_for_path_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleEntry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn namespace_from_tree_and_graph_fold(
-  entries: FreeMonoid<ModuleEntry>,
-  acc: Map<Symbol, Symbol>
-) -> Map<Symbol, Symbol> {
-  match entries {
-    Empty => acc
-    Cons { head: entry, tail: rest } =>
-      namespace_from_tree_and_graph_fold(
-        entries: rest,
-        acc: add_module_named_exports(root: entry.root, acc: acc)
-      )
-  }
-}
-
-
-fn namespace_from_tree_and_graph(
-  tree: NormalizedTree,
-  lm: DagLanguageModel,
-  graph: ModuleGraph
-) -> Namespace {
-  Namespace {
-    bindings: namespace_from_tree_and_graph_fold(
-      entries: graph.entries,
-      acc: add_module_named_exports(root: tree, acc: empty_map())
-    ),
-    canonical_symbols: dag_language_model_canonical_symbols(lm: lm)
-  }
-}
-
-
-fn resolve_with_graph(
-  tree: NormalizedTree,
-  lm: DagLanguageModel,
-  graph: ModuleGraph
-) -> Outcome<ResolvedTree> {
-  resolve_with_namespace(
-    tree: tree,
-    namespace: namespace_from_tree_and_graph(tree: tree, lm: lm, graph: graph)
-  )
 }
