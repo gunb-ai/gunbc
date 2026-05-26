@@ -179,7 +179,7 @@ def check_generated_eval(eval_rs: Path) -> None:
     require_order(
         runtime_body,
         [
-            "fold_node(node, &Rc::new(NodeFold",
+            "fold_node(node, Rc::new(NodeFold",
             "init: Rc::new(|n0| eval_fold_init",
             "step: Rc::new(|acc, e, child| eval_fold_step",
             "eval_fold_state_value(folded)",
@@ -344,7 +344,7 @@ def check_generated_fixture(fixture_rs: Path) -> None:
     require_order(
         actual_body,
         [
-            "eval(&eval_mvp2_inferred_tree(), eval_mvp2_interpretation_algebra(), &Rc::new(Inputs",
+            "eval(eval_mvp2_inferred_tree(), eval_mvp2_interpretation_algebra(), Rc::new(Inputs",
             "root: eval_mvp2_add_subgraph()",
         ],
         fixture_rs,
