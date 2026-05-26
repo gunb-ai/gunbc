@@ -1489,8 +1489,7 @@ compile path by replacing file reads with an agent-supplied AST store.
 This is the **ingest-side** infrastructure that T-23/AGENT-1 composes
 over — T-35 owns the no-filesystem entry point; T-23 owns the non-text
 AGENT-SURFACE contract (lens reads, `apply_diff`, structured output).
-These are complementary, not overlapping: T-35 is a prerequisite of the
-T-23 round-trip workflow.
+These are complementary, not overlapping.
 
 **Scope — two pieces (ingest side only):**
 
@@ -1598,8 +1597,7 @@ to define a new agent output surface.
   (InferenceResult, DiagnosticSet, apply_diff). Those live in T-23.
 
 **Sequencing.** Post-M3. Dispatch after T-28-B confirms merged.
-Unblocks: T-23/AGENT-1 round-trip workflows; IDE integration; automated
-`.dag` authoring agents.
+Unblocks: IDE integration; automated `.dag` authoring agent workflows.
 
 ---
 
