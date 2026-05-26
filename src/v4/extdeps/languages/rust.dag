@@ -398,22 +398,6 @@ data rust_overflow_field_checked_arithmetic_checks_disabled: Symbol = rust_overf
 
 data rust_tag_signed: Symbol = rust_tag_signed
 data rust_tag_unsigned: Symbol = rust_tag_unsigned
-data rust_tag_bound_negative: Symbol = rust_tag_bound_negative
-data rust_tag_bound_nonnegative: Symbol = rust_tag_bound_nonnegative
-data rust_tag_bound_concrete: Symbol = rust_tag_bound_concrete
-data rust_tag_bound_pointer_width: Symbol = rust_tag_bound_pointer_width
-data rust_tag_range_inclusive_min: Symbol = rust_tag_range_inclusive_min
-data rust_tag_range_inclusive_max: Symbol = rust_tag_range_inclusive_max
-data rust_tag_digit_0: Symbol = rust_tag_digit_0
-data rust_tag_digit_1: Symbol = rust_tag_digit_1
-data rust_tag_digit_2: Symbol = rust_tag_digit_2
-data rust_tag_digit_3: Symbol = rust_tag_digit_3
-data rust_tag_digit_4: Symbol = rust_tag_digit_4
-data rust_tag_digit_5: Symbol = rust_tag_digit_5
-data rust_tag_digit_6: Symbol = rust_tag_digit_6
-data rust_tag_digit_7: Symbol = rust_tag_digit_7
-data rust_tag_digit_8: Symbol = rust_tag_digit_8
-data rust_tag_digit_9: Symbol = rust_tag_digit_9
 data rust_tag_bits8: Symbol = rust_tag_bits8
 data rust_tag_bits16: Symbol = rust_tag_bits16
 data rust_tag_bits32: Symbol = rust_tag_bits32
@@ -487,94 +471,10 @@ fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> 
   }
 }
 
-fn rust_integer_range(
-  inclusive_min: RustIntegerBound,
-  inclusive_max: RustIntegerBound,
-  interval: IntegerIntervalSpec
-) -> RustIntegerRangeFacts {
+fn rust_integer_range(interval: IntegerIntervalSpec) -> RustIntegerRangeFacts {
   RustIntegerRangeFacts {
-    inclusive_min: inclusive_min,
-    inclusive_max: inclusive_max,
     interval: interval
   }
-}
-
-fn rust_concrete_integer_bound(
-  sign: RustIntegerBoundSign,
-  digits: List<RustDecimalDigit>
-) -> RustIntegerBound {
-  ConcreteIntegerBound { sign: sign, digits: digits }
-}
-
-fn rust_pointer_width_integer_bound(
-  kind: RustIntKind,
-  endpoint: RustRangeEndpoint
-) -> RustIntegerBound {
-  PointerWidthIntegerBound { kind: kind, endpoint: endpoint }
-}
-
-fn rust_i8_min_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: Negative, digits: [Digit1, Digit2, Digit8])
-}
-
-fn rust_i8_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit1, Digit2, Digit7])
-}
-
-fn rust_i16_min_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: Negative, digits: [Digit3, Digit2, Digit7, Digit6, Digit8])
-}
-
-fn rust_i16_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit3, Digit2, Digit7, Digit6, Digit7])
-}
-
-fn rust_i32_min_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: Negative, digits: [Digit2, Digit1, Digit4, Digit7, Digit4, Digit8, Digit3, Digit6, Digit4, Digit8])
-}
-
-fn rust_i32_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit2, Digit1, Digit4, Digit7, Digit4, Digit8, Digit3, Digit6, Digit4, Digit7])
-}
-
-fn rust_i64_min_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: Negative, digits: [Digit9, Digit2, Digit2, Digit3, Digit3, Digit7, Digit2, Digit0, Digit3, Digit6, Digit8, Digit5, Digit4, Digit7, Digit7, Digit5, Digit8, Digit0, Digit8])
-}
-
-fn rust_i64_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit9, Digit2, Digit2, Digit3, Digit3, Digit7, Digit2, Digit0, Digit3, Digit6, Digit8, Digit5, Digit4, Digit7, Digit7, Digit5, Digit8, Digit0, Digit7])
-}
-
-fn rust_i128_min_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: Negative, digits: [Digit1, Digit7, Digit0, Digit1, Digit4, Digit1, Digit1, Digit8, Digit3, Digit4, Digit6, Digit0, Digit4, Digit6, Digit9, Digit2, Digit3, Digit1, Digit7, Digit3, Digit1, Digit6, Digit8, Digit7, Digit3, Digit0, Digit3, Digit7, Digit1, Digit5, Digit8, Digit8, Digit4, Digit1, Digit0, Digit5, Digit7, Digit2, Digit8])
-}
-
-fn rust_i128_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit1, Digit7, Digit0, Digit1, Digit4, Digit1, Digit1, Digit8, Digit3, Digit4, Digit6, Digit0, Digit4, Digit6, Digit9, Digit2, Digit3, Digit1, Digit7, Digit3, Digit1, Digit6, Digit8, Digit7, Digit3, Digit0, Digit3, Digit7, Digit1, Digit5, Digit8, Digit8, Digit4, Digit1, Digit0, Digit5, Digit7, Digit2, Digit7])
-}
-
-fn rust_zero_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit0])
-}
-
-fn rust_u8_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit2, Digit5, Digit5])
-}
-
-fn rust_u16_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit6, Digit5, Digit5, Digit3, Digit5])
-}
-
-fn rust_u32_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit4, Digit2, Digit9, Digit4, Digit9, Digit6, Digit7, Digit2, Digit9, Digit5])
-}
-
-fn rust_u64_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit1, Digit8, Digit4, Digit4, Digit6, Digit7, Digit4, Digit4, Digit0, Digit7, Digit3, Digit7, Digit0, Digit9, Digit5, Digit5, Digit1, Digit6, Digit1, Digit5])
-}
-
-fn rust_u128_max_bound() -> RustIntegerBound {
-  rust_concrete_integer_bound(sign: NonNegative, digits: [Digit3, Digit4, Digit0, Digit2, Digit8, Digit2, Digit3, Digit6, Digit6, Digit9, Digit2, Digit0, Digit9, Digit3, Digit8, Digit4, Digit6, Digit3, Digit4, Digit6, Digit3, Digit3, Digit7, Digit4, Digit6, Digit0, Digit7, Digit4, Digit3, Digit1, Digit7, Digit6, Digit8, Digit2, Digit1, Digit1, Digit4, Digit5, Digit5])
 }
 
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
