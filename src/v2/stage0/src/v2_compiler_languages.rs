@@ -318,7 +318,7 @@ pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
     }
 }
 
-pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
+pub fn service_return_str(spec: &Rc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
             v2_rt::concat(spec.items.clone().return_arrow.clone(), ret_type)

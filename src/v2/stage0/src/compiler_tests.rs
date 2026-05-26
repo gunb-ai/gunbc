@@ -675,10 +675,6 @@ mod compiler_tests {
             "String"
         );
         assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Symbol".into()),
-            "String"
-        );
-        assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "Bytes".into()),
             "Vec<u8>"
         );
@@ -865,7 +861,6 @@ mod compiler_tests {
         assert_eq!(is_copy(RenderTarget::Rust, "Bool".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "Unit".into()), Some(true));
         assert_eq!(is_copy(RenderTarget::Rust, "String".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Symbol".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));

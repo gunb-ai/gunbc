@@ -70,7 +70,7 @@ pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
@@ -163,5 +163,5 @@ pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
