@@ -12,6 +12,7 @@ module v4.std.integer
 
 import v4.std.algebra {
   AbelianGroup,
+  Empty,
   fold_list,
   Group,
   list_snoc_item,
