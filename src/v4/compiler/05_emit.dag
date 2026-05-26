@@ -1,7 +1,8 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface over TargetModel: grammar-inverse serialize_target ∘ translate.
-// Owns: emit_atom, emit_named_edge, emit_positional_edge, emit_fixed_token,
-//       emit_bound_token, emit_tokens_node, emit_grammar_relation_row,
+// Owns: emit_atom, emit_named_edge, emit_positional_edge,
+//       emit_fixed_token(token_class, kind), emit_bound_token(token_class, binding, kind),
+//       emit_tokens_node, emit_grammar_relation_row,
 //       serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/02_parse.dag, compiler/04_infer.dag, compiler/06_translate.dag,
 //           compiler/07_target_carriers.dag, std/algebra.dag, std/collection.dag,
@@ -31,6 +32,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node {
   Atom,
+  Arrow,
   Conj,
   Edge,
   Named,
@@ -44,6 +46,7 @@ import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens
@@ -60,18 +63,22 @@ fn emit_named_edge(name: Symbol, target: Node) -> Edge {
 fn emit_positional_edge(target: Node) -> Edge {
   Edge { label: Positional, target: target }
 }
-fn emit_fixed_token(token_class: Symbol) -> Node {
+fn emit_fixed_token(token_class: Symbol, kind: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       emit_named_edge(
         name: concrete_syntax_token_field_class,
         target: emit_atom(id: token_class)
+      ),
+      emit_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: emit_atom(id: kind)
       )
     ]
   }
 }
-fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
+fn emit_bound_token(token_class: Symbol, binding: Symbol, kind: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -82,13 +89,17 @@ fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
       emit_named_edge(
         name: concrete_syntax_token_field_binding,
         target: emit_atom(id: binding)
+      ),
+      emit_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: emit_atom(id: kind)
       )
     ]
   }
 }
 fn emit_tokens_node(tokens: List<Node>) -> Node {
   Node {
-    kind: TypeNode { connective: Conj },
+    kind: TypeNode { connective: Arrow },
     children: fold_list(
       xs: tokens,
       empty: Empty,

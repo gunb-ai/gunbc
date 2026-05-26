@@ -49,6 +49,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node {
   Atom,
+  Arrow,
   Conj,
   Edge,
   Named,
@@ -288,9 +289,9 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: emitted))
   }
 }
-fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
+fn arrow_positional_targets(parent: Node) -> Outcome<List<Node>> {
   match parent.kind {
-    TypeNode { connective: Conj } =>
+    TypeNode { connective: Arrow } =>
       Accepted {
         value: fold(parent.children, init: Empty, f: fn(acc, e) {
           match e.label {
@@ -306,7 +307,7 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
       )
   }
 }
-fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
+fn arrow_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
   match a {
     Empty =>
       match b {
@@ -317,7 +318,7 @@ fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) 
       match b {
         Empty => false
         Cons { head: hb, tail: tb } =>
-          (ha == hb) && conj_positional_target_lists_equal(a: ta, b: tb)
+          (ha == hb) && arrow_positional_target_lists_equal(a: ta, b: tb)
       }
   }
 }
@@ -330,12 +331,12 @@ fn grammar_serialize_source_matches_row(
       o: grammar_relation_row_tokens_root(row: row),
       f: fn(tokens_root) {
         bind_outcome(
-          o: conj_positional_targets(parent: serialize_source),
+          o: arrow_positional_targets(parent: serialize_source),
           f: fn(source_targets) {
             bind_outcome(
-              o: conj_positional_targets(parent: tokens_root),
+              o: arrow_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                if conj_positional_target_lists_equal(a: source_targets, b: row_targets) {
+                if arrow_positional_target_lists_equal(a: source_targets, b: row_targets) {
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
@@ -543,7 +544,7 @@ fn target_serialize_source_from_model(
                 o: grammar_relation_row_tokens_root(row: row),
                 f: fn(tokens_root) {
                   bind_outcome(
-                    o: conj_positional_targets(parent: tokens_root),
+                    o: arrow_positional_targets(parent: tokens_root),
                     f: fn(tokens) {
                       token_sequence_to_source(tokens: tokens, target: target)
                     }
