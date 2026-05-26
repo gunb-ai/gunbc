@@ -328,6 +328,10 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         "{PYTHON_LANGUAGE_PATH}: Python TargetModel must consume the shared translation-rules edge"
     );
     assert!(
+        import_includes_name(&module, &["v4", "std", "algebra"], "Empty"),
+        "{PYTHON_LANGUAGE_PATH}: Python T-11 folds must import Empty from v4.std.algebra"
+    );
+    assert!(
         surface_declares_type(&module, "PythonGrammarRelationRow"),
         "{PYTHON_LANGUAGE_PATH}: must declare the grammar relation row carrier"
     );
