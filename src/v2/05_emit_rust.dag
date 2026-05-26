@@ -172,6 +172,10 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
   }
 }
 
+fn empty_string_bool_map() -> Map<String, Bool> {
+  empty_map()
+}
+
 fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
@@ -3599,7 +3603,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
-  let callee_borrow_positions = map_remove(map_insert(empty_map(), "", false), "")
+  let callee_borrow_positions = empty_string_bool_map()
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second

@@ -42,7 +42,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
@@ -62,7 +62,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, i64>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
@@ -131,7 +131,7 @@ pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
@@ -157,7 +157,7 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
