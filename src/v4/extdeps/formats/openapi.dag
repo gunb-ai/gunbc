@@ -1,7 +1,7 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
 // Owns: OpenAPI 3.1 document/wire-contract fact-bundles and HTTP method/status bridges.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, std/refinement.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
 //         document/operation wire-contract facts.
@@ -13,7 +13,9 @@ module v4.extdeps.formats.openapi
 import v4.extdeps.coordination { ExchangePattern, RequestReply }
 import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
+import v4.std.nat { Nat }
 import v4.std.network {
+  CONNECT,
   DELETE,
   GET,
   HEAD,
@@ -25,7 +27,8 @@ import v4.std.network {
   TRACE,
   UriReference
 }
-import v4.std.nat { Nat }
+import v4.std.node { Symbol }
+import v4.std.refinement { Refined, Validation }
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-OpenApiSpecificationExtensionKey.
@@ -121,16 +124,34 @@ type OpenApiSchema {
 }
 
 
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethod.
-type OpenApiHttpMethod
-  = OpenApiGet
-  | OpenApiPut
-  | OpenApiPost
-  | OpenApiDelete
-  | OpenApiOptions
-  | OpenApiHead
-  | OpenApiPatch
-  | OpenApiTrace
+// Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
+// OAS 3.1 §4.8.9 admits GET PUT POST DELETE OPTIONS HEAD PATCH TRACE; excludes CONNECT (RFC 9110 §9.3.6 — tunnel semantics, not routable as an API operation method).
+data openapi_http_method_connect_excluded: Symbol = openapi_http_method_connect_excluded
+
+fn openapi_http_method_admitted(method: HttpMethod) -> Bool {
+  match method {
+    CONNECT  => False
+    DELETE   => True
+    GET      => True
+    HEAD     => True
+    OPTIONS  => True
+    PATCH    => True
+    POST     => True
+    PUT      => True
+    TRACE    => True
+  }
+}
+
+data openapi_http_method_validation: Validation<HttpMethod> = Validation {
+  reason: openapi_http_method_connect_excluded,
+  admits: openapi_http_method_admitted,
+}
+
+// Refinement of HttpMethod admitted by OAS 3.1 (all methods except CONNECT).
+// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE admitted-method constructor at parse boundary (T-6/T-7) — SL-3229-OPENAPI-NETWORK-BRIDGE-PARSE.
+type OpenApiAdmittedHttpMethod {
+  refined: Refined<HttpMethod>
+}
 
 
 // 🟢 coproduct dissolution — T-4.6-P4-OpenApiOptionalString.
@@ -371,7 +392,7 @@ type OpenApiOperation {
 
 
 type OpenApiPathItem {
-  routes: Map<OpenApiHttpMethod, OpenApiOperation>,
+  routes: Map<OpenApiAdmittedHttpMethod, OpenApiOperation>,
   path_deferred_members: Map<OpenApiPathItemDeferredKey, JsonValue>,
   path_specification_extensions: Map<OpenApiSpecificationExtensionKey, JsonValue>,
 }
@@ -506,64 +527,6 @@ type OpenApiUniqueNameProfileFacts {
 }
 
 
-type OpenApiHttpMethodBridgeRow {
-  oas_method: OpenApiHttpMethod,
-  network_method: HttpMethod,
-}
-
-
-data openapi_http_method_bridge_get: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiGet,
-  network_method: GET,
-}
-
-data openapi_http_method_bridge_put: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiPut,
-  network_method: PUT,
-}
-
-data openapi_http_method_bridge_post: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiPost,
-  network_method: POST,
-}
-
-data openapi_http_method_bridge_delete: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiDelete,
-  network_method: DELETE,
-}
-
-data openapi_http_method_bridge_options: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiOptions,
-  network_method: OPTIONS,
-}
-
-data openapi_http_method_bridge_head: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiHead,
-  network_method: HEAD,
-}
-
-data openapi_http_method_bridge_patch: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiPatch,
-  network_method: PATCH,
-}
-
-data openapi_http_method_bridge_trace: OpenApiHttpMethodBridgeRow = {
-  oas_method: OpenApiTrace,
-  network_method: TRACE,
-}
-
-data openapi_http_method_bridge_catalog: List<OpenApiHttpMethodBridgeRow> = [
-  openapi_http_method_bridge_get,
-  openapi_http_method_bridge_put,
-  openapi_http_method_bridge_post,
-  openapi_http_method_bridge_delete,
-  openapi_http_method_bridge_options,
-  openapi_http_method_bridge_head,
-  openapi_http_method_bridge_patch,
-  openapi_http_method_bridge_trace,
-]
-
-
 type OpenApiHttpStatusCodeBoundedRangeWitness {}
 
 type OpenApiHttpStatusCodeFacts {
@@ -656,7 +619,7 @@ fn openapi_http_status_code_value(
 data openapi_operation_exchange_request_reply: ExchangePattern = RequestReply
 
 type OpenApiOperationWireContractFacts {
-  http_method_bridge: OpenApiHttpMethodBridgeRow,
+  admitted_method: OpenApiAdmittedHttpMethod,
   path_template: OpenApiPathTemplateKey,
 }
 
@@ -670,5 +633,5 @@ type OpenApiDocumentWireContractFacts {
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
-// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_http_method_bridge_catalog + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
+// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_http_method_validation + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
 // 🟡 gated — feature: operation WireContractFacts composition with coordination.dag WireContractFacts + ExchangePattern authority — SL-3229-OPENAPI-WIRECONTRACT-COORDINATION.
