@@ -115,13 +115,10 @@ fn source_declares_target_fn(source: &str) -> bool {
         if token != "fn" {
             continue;
         }
-        let Some((name, after_name)) = next_header_token(source, offset) else {
+        let Some((name, _after_name)) = next_header_token(source, offset) else {
             return false;
         };
-        let Some((open_paren, _)) = next_header_token(source, after_name) else {
-            return false;
-        };
-        if name == TARGET_FN_NAME && open_paren == "(" {
+        if name == TARGET_FN_NAME {
             return true;
         }
     }
@@ -158,6 +155,9 @@ fn p9_source_declares_target_fn_accepts_decl_whitespace() {
     ));
     assert!(source_declares_target_fn(
         "fn llvm_instruction_cost\n(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(source_declares_target_fn(
+        "fn llvm_instruction_cost<T>(i: LlvmInstruction) -> Int { 1 }"
     ));
     assert!(!source_declares_target_fn(
         "fn llvm_instruction_cost_extra(i: LlvmInstruction) -> Int { 1 }"
