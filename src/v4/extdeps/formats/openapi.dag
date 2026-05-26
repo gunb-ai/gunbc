@@ -373,7 +373,7 @@ type OpenApiOpenapiField3_1
 
 type OpenApiDocument {
   openapi: OpenApiOpenapiField3_1,
-  json_schema_dialect: OpenApiOptionalString,
+  json_schema_dialect: Optional<String>,
   info: OpenApiInfo,
   root: OpenApiDocumentRoot,
   root_deferred_members: Map<OpenApiOpenapiObjectDeferredKey, JsonValue>,

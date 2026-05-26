@@ -11,21 +11,18 @@ module v4.extdeps.frameworks.react
 type ReactCrossDeclRef
 
 // Anchor: https://react.dev/reference/react/useEffect
-// 🟡 dissolve-on: Optional kernel-ambient in v3 isolated-compile — these collapse to Optional<ReactCrossDeclRef>
 // 🟢 coproduct dissolution
 type ReactOptRef
   = RefPresent { ref: ReactCrossDeclRef }
   | RefAbsent
 
 // Anchor: https://react.dev/reference/react/createElement
-// 🟡 dissolve-on: Optional kernel-ambient in v3 isolated-compile — these collapse to Optional<ReactCrossDeclRef>
 // 🟢 coproduct dissolution
 type ReactOptKey
   = KeyPresent { key_ref: ReactCrossDeclRef }
   | KeyAbsent
 
 // Anchor: https://react.dev/reference/react/hooks
-// 🟡 dissolve-on: Optional kernel-ambient in v3 isolated-compile — these collapse to Optional<ReactCrossDeclRef>
 // 🟢 coproduct dissolution
 type ReactOptValue
   = ValuePresent { value_ref: ReactCrossDeclRef }
