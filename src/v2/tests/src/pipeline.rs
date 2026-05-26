@@ -2135,7 +2135,8 @@ fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
             && content.contains("fn wrap(self_: i64, self__: i64) -> SelfRecord")
             && content.contains("self_: self_")
             && content.contains("self__: self__")
-            && content.contains("record.self_"),
+            && content.contains("record.self_")
+            && content.contains("record.self__"),
         "Rust emitter should consistently and injectively suffix-mangle `self`: {content}"
     );
 }
