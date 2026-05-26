@@ -39,7 +39,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
     }
 }
 
-pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
+pub fn is_recursive_type_by_name(env: &Rc<TypeEnv>, name: String) -> bool {
     match intern_find(env.intern_table.clone(), name) {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => false,
@@ -53,7 +53,7 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     }
 }
 
-pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+pub fn lookup_type_by_name(env: &Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match intern_find(env.intern_table.clone(), name) {
         Some(id) => lookup_type(env.clone(), id.clone()),
         None => None,
@@ -61,20 +61,20 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
 }
 
 pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
-    authored_name_at(env.source_indices.clone(), node)
+    authored_name_at(env.source_indices.clone(), &node)
 }
 
-pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
+pub fn lookup_type_for(env: &Rc<TypeEnv>, node: &Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
         Some(id) => lookup_type(env.clone(), id.clone()),
-        None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
+        None => lookup_type_by_name(&env, authored_name(env.clone(), node.clone())),
     }
 }
 
-pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
+pub fn is_recursive_type_for(env: &Rc<TypeEnv>, node: &Rc<Node>) -> bool {
     match node.ident.clone() {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
-        None => is_recursive_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
+        None => is_recursive_type_by_name(&env, authored_name(env.clone(), node.clone())),
     }
 }
 
@@ -106,8 +106,8 @@ pub fn is_inductive_field(
 }
 
 pub fn put_inductive_field(
-    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    type_name: String,
+    fields: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    type_name: &String,
     variant_name: String,
     field_name: String,
     shape: RecursionShape,
@@ -135,8 +135,8 @@ pub fn put_inductive_field(
 }
 
 pub fn put_inductive_field_cross(
-    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    type_name: String,
+    fields: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    type_name: &String,
     variant_name: String,
     field_name: String,
     shape: RecursionShape,
@@ -166,7 +166,7 @@ pub fn put_inductive_field_cross(
 
 pub fn merge_inductive_fields(
     left: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    right: &Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v2_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
@@ -208,7 +208,7 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
-pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
+pub fn merge_envs(envs: &Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
@@ -232,7 +232,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         let merged_inductive_fields = envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| {
-                merge_inductive_fields(acc, env.inductive_fields.clone())
+                merge_inductive_fields(acc, &env.inductive_fields.clone())
             },
         );
         let merged_source_indices = envs.clone().iter().cloned().fold(

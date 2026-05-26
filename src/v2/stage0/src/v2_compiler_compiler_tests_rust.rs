@@ -91,7 +91,7 @@ pub fn ct_coercion_tests() -> String {
         let test_fns = Rc::new({
             let mut __result = Vec::new();
             for e in entries.iter().cloned() {
-                __result.push(render_coercion_test_rust(e.clone()));
+                __result.push(render_coercion_test_rust(&e));
             }
             __result
         });
@@ -108,7 +108,7 @@ pub fn render_target_rust_enum(target: RenderTarget) -> String {
     }
 }
 
-pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
+pub fn render_coercion_test_rust(entry: &Rc<CoercionTestEntry>) -> String {
     {
         let assertions = Rc::new({
             let mut __result = Vec::new();

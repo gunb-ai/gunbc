@@ -185,8 +185,8 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 
 pub fn derive_op_effect(
     operation_name: String,
-    method: HttpMethod,
-    path: Rc<PathTemplate>,
+    method: &HttpMethod,
+    path: &Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
     {
         let shape = derive_effect_shape(method.clone(), path.clone());
@@ -228,9 +228,9 @@ pub struct ModifierCheck {
 }
 
 pub fn check_modifier_vs_derivation(
-    op: Rc<DerivedOpEffect>,
-    declared_idempotent: bool,
-    declared_readonly: bool,
+    op: &Rc<DerivedOpEffect>,
+    declared_idempotent: &bool,
+    declared_readonly: &bool,
 ) -> Rc<ModifierCheck> {
     {
         let derived_idempotent = is_idempotent_effect(op.shape.clone());

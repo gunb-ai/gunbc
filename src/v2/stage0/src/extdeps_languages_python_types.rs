@@ -17,7 +17,7 @@ pub fn python_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
@@ -27,7 +27,7 @@ pub fn python_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<InhabitantDecl>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_callable() -> Rc<CallableRepr> {
@@ -37,7 +37,7 @@ pub fn python_callable() -> Rc<CallableRepr> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<CallableRepr>| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -53,7 +53,7 @@ pub fn dataclass_decorator() -> String {
             "@dataclass".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn dataclass_import() -> String {
@@ -62,7 +62,7 @@ pub fn dataclass_import() -> String {
             "from dataclasses import dataclass, field".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn field_default_template() -> String {
@@ -71,7 +71,7 @@ pub fn field_default_template() -> String {
             "field(default={value})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn field_default_factory_template() -> String {
@@ -80,7 +80,7 @@ pub fn field_default_factory_template() -> String {
             "field(default_factory={factory})".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_enum_import() -> String {
@@ -89,7 +89,7 @@ pub fn python_enum_import() -> String {
             "from enum import Enum, auto".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn enum_class_template() -> String {
@@ -98,7 +98,7 @@ pub fn enum_class_template() -> String {
             "class {name}(Enum):\n{variants}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn enum_auto_value() -> String {
@@ -107,7 +107,7 @@ pub fn enum_auto_value() -> String {
             "auto()".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn union_syntax() -> String {
@@ -116,7 +116,7 @@ pub fn union_syntax() -> String {
             "{a} | {b}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn optional_syntax() -> String {
@@ -125,7 +125,7 @@ pub fn optional_syntax() -> String {
             "{type} | None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn typing_optional() -> String {
@@ -134,7 +134,7 @@ pub fn typing_optional() -> String {
             "Optional[{type}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_optional_template() -> String {
@@ -143,7 +143,7 @@ pub fn python_optional_template() -> String {
             "Optional[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn typing_union() -> String {
@@ -152,7 +152,7 @@ pub fn typing_union() -> String {
             "Union[{types}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_typing_import() -> String {
@@ -161,7 +161,7 @@ pub fn python_typing_import() -> String {
             "from typing import Optional, Union".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn type_alias_template() -> String {
@@ -170,7 +170,7 @@ pub fn type_alias_template() -> String {
             "{name} = {type}".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn generic_param_template() -> String {
@@ -179,7 +179,7 @@ pub fn generic_param_template() -> String {
             "[{params}]".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn typing_generic_import() -> String {
@@ -188,7 +188,7 @@ pub fn typing_generic_import() -> String {
             "from typing import Generic, TypeVar".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn none_literal() -> String {
@@ -197,7 +197,7 @@ pub fn none_literal() -> String {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn none_check_template() -> String {
@@ -206,7 +206,7 @@ pub fn none_check_template() -> String {
             "{expr} is None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn none_not_check_template() -> String {
@@ -215,7 +215,7 @@ pub fn none_not_check_template() -> String {
             "{expr} is not None".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn pass_statement() -> String {
@@ -224,7 +224,7 @@ pub fn pass_statement() -> String {
             "pass".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn type_checker() -> String {
@@ -233,7 +233,7 @@ pub fn type_checker() -> String {
             "mypy".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn type_checker_strict() -> String {
@@ -242,7 +242,7 @@ pub fn type_checker_strict() -> String {
             "mypy --strict".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c| c.clone())
 }
 
 pub fn python_cast_syntax() -> Rc<CastSyntax> {
@@ -252,5 +252,5 @@ pub fn python_cast_syntax() -> Rc<CastSyntax> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<CastSyntax>| c.clone())
+    CACHED.with(|c| c.clone())
 }
