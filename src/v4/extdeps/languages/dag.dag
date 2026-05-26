@@ -907,11 +907,20 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
                   right: dag_grammar_terminal(token_class: dag_token_rbracket)
                 )
               ),
-              right: dag_grammar_sequence(
-                left: dag_grammar_terminal(token_class: dag_token_lparen),
+              right: dag_grammar_choice(
+                left: dag_grammar_sequence(
+                  left: dag_grammar_terminal(token_class: dag_token_lbrace),
+                  right: dag_grammar_sequence(
+                    left: dag_grammar_field_init_list_helper(),
+                    right: dag_grammar_terminal(token_class: dag_token_rbrace)
+                  )
+                ),
                 right: dag_grammar_sequence(
-                  left: dag_grammar_nonterminal(production: dag_production_expr),
-                  right: dag_grammar_terminal(token_class: dag_token_rparen)
+                  left: dag_grammar_terminal(token_class: dag_token_lparen),
+                  right: dag_grammar_sequence(
+                    left: dag_grammar_nonterminal(production: dag_production_expr),
+                    right: dag_grammar_terminal(token_class: dag_token_rparen)
+                  )
                 )
               )
             )
