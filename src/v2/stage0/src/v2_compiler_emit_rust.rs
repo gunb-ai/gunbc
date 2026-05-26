@@ -3183,12 +3183,12 @@ pub fn render_rust_type_with_applied_binding(
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match n.type_annotation.clone() {
-        Some(applied)
-            if ((applied.children.len() as i64) > 0)
-                && (authored_name_at(source_indices.clone(), &applied)
-                    == authored_name_at(source_indices.clone(), &n)) =>
-        {
+    match field_value_by_name(
+        n.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) if (applied.children.len() as i64) > 0 => {
             render_rust_type(&applied, shared_types, &source_indices)
         }
         _ => render_rust_type(&n, shared_types, &source_indices),
@@ -3205,7 +3205,12 @@ pub fn emit_struct_field_from_child(
 ) -> String {
     {
         let rt_child = resolved_type(child.clone());
-        let ty = if rt_child.type_annotation.clone() != None {
+        let ty = if field_value_by_name(
+            rt_child.clone(),
+            "__applied_type_args".to_string(),
+            env.source_indices.clone(),
+        ) != None
+        {
             render_rust_type_with_applied_binding(
                 rt_child.clone(),
                 shared_types.clone(),
@@ -4074,7 +4079,12 @@ pub fn emit_variant_from_child(
                                         &env.source_indices.clone(),
                                     )
                                 };
-                                let ty = if type_node.type_annotation.clone() != None {
+                                let ty = if field_value_by_name(
+                                    type_node.clone(),
+                                    "__applied_type_args".to_string(),
+                                    env.source_indices.clone(),
+                                ) != None
+                                {
                                     render_rust_type_with_applied_binding(
                                         type_node.clone(),
                                         shared_types.clone(),

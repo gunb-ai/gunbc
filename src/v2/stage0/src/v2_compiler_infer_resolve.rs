@@ -1257,15 +1257,42 @@ pub fn resolve_optional_node(
     }
 }
 
+pub fn missing_generic_args_diagnostics(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    if (((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
+        && is_user_generic_use_site(&n, &env)
+    {
+        let type_name = authored_name(env.clone(), n.clone());
+        let decl = match lookup_type_for(&env, &n) {
+            Some(d) => d.clone(),
+            None => n.clone(),
+        };
+        Rc::new(vec![make_error_node(
+            Rc::new(CompilerDiagnostic::ArityMismatch {
+                name: type_name,
+                expected: decl.params.clone().len() as i64,
+                got: 0,
+                span: n.span.clone(),
+            }),
+            module_name,
+        )])
+    } else {
+        Rc::new(vec![])
+    }
+}
+
 pub fn resolve_field(field: &Rc<Node>, env: &Rc<TypeEnv>, module_name: &String) -> Rc<FieldResult> {
     {
-        let type_result = resolve_node(
-            field_node_type_expr(&field),
-            env.clone(),
-            module_name.clone(),
-        );
+        let authored_type = field_node_type_expr(&field);
+        let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
         let type_resolved = type_result.resolved.clone();
-        let type_diags = type_result.diagnostics.clone();
+        let type_diags = v2_rt::concat(
+            type_result.diagnostics.clone(),
+            missing_generic_args_diagnostics(authored_type, env.clone(), module_name.clone()),
+        );
         let default_resolved = match field_node_default_value(&field) {
             Some(default_value) => Some(resolve_expr_types(
                 &default_value,
@@ -1298,13 +1325,13 @@ pub fn resolve_field(field: &Rc<Node>, env: &Rc<TypeEnv>, module_name: &String) 
 
 pub fn resolve_param(param: &Rc<Node>, env: &Rc<TypeEnv>, module_name: &String) -> Rc<ParamResult> {
     {
-        let type_result = resolve_node(
-            param_node_type_expr(&param),
-            env.clone(),
-            module_name.clone(),
-        );
+        let authored_type = param_node_type_expr(&param);
+        let type_result = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
         let type_resolved = type_result.resolved.clone();
-        let type_diags = type_result.diagnostics.clone();
+        let type_diags = v2_rt::concat(
+            type_result.diagnostics.clone(),
+            missing_generic_args_diagnostics(authored_type, env.clone(), module_name.clone()),
+        );
         let default_resolved = match param_node_default_value(&param) {
             Some(default_value) => Some(resolve_expr_types(
                 &default_value,
