@@ -3,18 +3,14 @@
 // Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid.
 // Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
 // Status: T-4.16 follow-on — formatter ConfigPatch monoid substrate.
-// External authority: right-biased optional-value patch monoid — FieldPatch<T> is 1 + T
-//   (Inherit = absent/identity, Override { value } = present/payload). Not a two-element
-//   lattice: for non-singleton T, distinct Override values are distinct patches, not a
-//   shared top. Monoid op is right-biased (later layer wins); identity is Inherit.
-//   Standard layered-config pattern: NixOS module system, Home Manager mkOverride.
+// Anchor: https://en.wikipedia.org/wiki/Monoid (NixOS module system / Home Manager override/inherit pattern)
 
 module v4.std.patch
 
 import v4.std.algebra { Magma, Semigroup, Monoid }
 
 // 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
-// Per-field optional-value patch: Inherit = no opinion (identity), Override = explicit replacement.
+// FieldPatch<T> = 1 + T: Inherit = absent/identity, Override = present payload.
 type FieldPatch<T>
   = Override { value: T }
   | Inherit
@@ -28,9 +24,6 @@ fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
 }
 
 
-// Right-biased semigroup composition: later layer wins.
-// compose(left, Override{v}) = Override{v}; compose(left, Inherit) = left.
-// Identity: Inherit (compose(Inherit, p) = p and compose(p, Inherit) = p).
 fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPatch<T> {
   match right {
     Override { value: v } => Override { value: v }

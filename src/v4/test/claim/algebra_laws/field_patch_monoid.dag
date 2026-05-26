@@ -1,0 +1,129 @@
+// src/v4/test/claim/algebra_laws/field_patch_monoid.dag
+// Scope: TestClaim corpus for FieldPatch<T> right-biased optional-value patch monoid laws.
+// Owns: claim rows for compose_field_patch left/right identity, associativity; apply_field_patch behavior.
+// Consumes: v4.std.patch v4.std.node v4.std.verification.
+// Status: T-4.16 follow-on behavior receipts; execution deferred to T-22 runner bridge.
+// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
+
+module v4.test.claim.algebra_laws.field_patch_monoid
+
+import v4.std.patch { FieldPatch, Override, Inherit, compose_field_patch, apply_field_patch }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+
+data fp_pass_sym: Symbol = fp_pass_sym
+data fp_fail_sym: Symbol = fp_fail_sym
+
+
+fn fp_pass_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: fp_pass_sym } }, children: [] }
+}
+fn fp_fail_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: fp_fail_sym } }, children: [] }
+}
+fn fp_ok(b: Bool) -> Node {
+  if b { fp_pass_node() } else { fp_fail_node() }
+}
+
+
+fn field_patch_bool_eq(a: FieldPatch<Bool>, b: FieldPatch<Bool>) -> Bool {
+  match a {
+    Override { value: va } => match b {
+      Override { value: vb } => va == vb
+      Inherit => false
+    }
+    Inherit => match b {
+      Override { value: _ } => false
+      Inherit => true
+    }
+  }
+}
+
+
+// Monoid left identity: compose(Inherit, p) == p
+data witness_left_identity: Bool = field_patch_bool_eq(
+  a: compose_field_patch(left: Inherit, right: Override { value: true }),
+  b: Override { value: true }
+)
+
+
+// Monoid right identity: compose(p, Inherit) == p
+data witness_right_identity: Bool = field_patch_bool_eq(
+  a: compose_field_patch(left: Override { value: true }, right: Inherit),
+  b: Override { value: true }
+)
+
+
+// Associativity: (a ∘ b) ∘ c == a ∘ (b ∘ c) for a=Override{true}, b=Override{false}, c=Inherit
+data witness_associativity: Bool = field_patch_bool_eq(
+  a: compose_field_patch(
+    left: compose_field_patch(left: Override { value: true }, right: Override { value: false }),
+    right: Inherit
+  ),
+  b: compose_field_patch(
+    left: Override { value: true },
+    right: compose_field_patch(left: Override { value: false }, right: Inherit)
+  )
+)
+
+
+// apply: Inherit defers to base
+data witness_inherit_preserves: Bool = apply_field_patch(base: true, patch: Inherit) == true
+
+
+// apply: Override replaces base
+data witness_override_replaces: Bool = apply_field_patch(base: true, patch: Override { value: false }) == false
+
+
+data claim_left_identity: TestClaim = CompilesClaim {
+  label: "field_patch/compose: Inherit is left identity",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_left_identity),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_right_identity: TestClaim = CompilesClaim {
+  label: "field_patch/compose: Inherit is right identity",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_right_identity),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_associativity: TestClaim = CompilesClaim {
+  label: "field_patch/compose: right-biased composition is associative",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_associativity),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_inherit_preserves: TestClaim = CompilesClaim {
+  label: "field_patch/apply: Inherit preserves base field value",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_inherit_preserves),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_override_replaces: TestClaim = CompilesClaim {
+  label: "field_patch/apply: Override replaces base field value",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_override_replaces),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
