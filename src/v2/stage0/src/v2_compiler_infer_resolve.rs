@@ -672,8 +672,7 @@ pub fn resolve_node_bounded(
                     }
                 }
             }
-        } else if false
-        {
+        } else if false {
             {
                 let type_name = authored_name(env.clone(), n.clone());
                 let decl = match lookup_type_for(&env, &n) {
