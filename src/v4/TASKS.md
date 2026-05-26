@@ -1555,18 +1555,23 @@ to define a new agent output surface.
   (e.g., first-entry convention, implicit main path); the `root: ModulePath`
   parameter is the only declared authority.
 
-  **Scope of T-35's change:** replace the `entries: Empty` argument to
-  `module_graph_from_entries` (currently in `compile_ingest_staging`) with
-  entries derived from the `AgentStore`. `module_graph_from_entries` in
-  `std/module_graph.dag` remains the canonical `ModuleGraph` construction path
-  and admission authority — T-35 does NOT bypass it or replace `ModuleGraph`
-  with a parallel lookup. The `AgentStore` is an entry source;
-  `module_graph_from_entries` enforces path uniqueness and builds the graph
-  exactly as it does today. `compile_with_store` then delegates to the same
-  existing `compile` orchestrator chain as `compile_ingest_staging` — T-35
-  does NOT implement or modify the infer/emit pipeline. Output type inherits
-  from the existing orchestrator contract (`Outcome<TargetSource>`); T-35
-  workers must not redefine it.
+  **Scope of T-35's change:** Two operations replace the filesystem path in the
+  ingest flow. (1) **Root retrieval:** `store_lookup(path: root, store: store)`
+  → `CoreNode` replaces the filesystem `read_file` step, producing the root
+  compilation subject. This is declared above in the Signature block; it is
+  fail-closed (`Rejected` if the root path is absent). (2) **Dependency set:**
+  `store.entries` replaces the `entries: Empty` argument to
+  `module_graph_from_entries` (currently in `compile_ingest_staging`), providing
+  the full set of pre-parsed modules for graph construction. No other part of the
+  ingest pipeline changes. `module_graph_from_entries` in `std/module_graph.dag`
+  remains the canonical `ModuleGraph` construction path and admission authority —
+  T-35 does NOT bypass it or replace `ModuleGraph` with a parallel lookup. The
+  `AgentStore` is an entry source; `module_graph_from_entries` enforces path
+  uniqueness and builds the graph exactly as it does today. `compile_with_store`
+  then delegates to the same existing `compile` orchestrator chain as
+  `compile_ingest_staging` — T-35 does NOT implement or modify the infer/emit
+  pipeline. Output type inherits from the existing orchestrator contract
+  (`Outcome<TargetSource>`); T-35 workers must not redefine it.
 
 **Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
 - **T-28-B** is the hard implementation prerequisite: the module-admission
