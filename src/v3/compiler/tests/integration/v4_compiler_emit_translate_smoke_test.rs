@@ -194,10 +194,6 @@ fn v4_emit_dag_declares_shape_a_specialization_table() {
         surface_declares_fn(&module, "shape_a_emit_specializations"),
         "{EMIT_PATH}: must declare the per-target specialization table"
     );
-    assert!(
-        surface_declares_fn(&module, "shape_a_target_model"),
-        "{EMIT_PATH}: must expose target-model lookup over the table"
-    );
 }
 
 #[test]

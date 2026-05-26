@@ -1,7 +1,7 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate + T-11 Shape-A specialization table.
 // Owns: ShapeAEmitTarget, EmitTargetSpecialization, serialize_source_for_emitted,
-//       shape_a_emit_specializations, shape_a_target_model, serialize_target, emit.
+//       shape_a_emit_specializations, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
 //           extdeps/languages/{rust,python,go,cpp,typescript}.dag, std/diagnostic.dag.
 // Status: T-11 — emit = serialize_target ∘ translate; serialize delegates to
@@ -57,16 +57,6 @@ fn shape_a_emit_specializations(cpp_target_profile: Node) -> List<EmitTargetSpec
     },
     EmitTargetSpecialization { target: ShapeATypeScript, target_model: ts_mvp1_target_model() }
   ]
-}
-
-fn shape_a_target_model(target: ShapeAEmitTarget, cpp_target_profile: Node) -> TargetModel {
-  match target {
-    ShapeARust => rust_mvp1_target_model()
-    ShapeAPython => python_mvp1_target_model()
-    ShapeAGo => go_mvp1_target_model()
-    ShapeACpp => cpp_mvp1_target_model(target_profile: cpp_target_profile)
-    ShapeATypeScript => ts_mvp1_target_model()
-  }
 }
 
 fn serialize_source_for_emitted(
