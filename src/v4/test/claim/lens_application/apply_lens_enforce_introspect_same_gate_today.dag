@@ -1,8 +1,8 @@
 // src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
-// Scope: T-23 worked claim — Enforce and Introspect both call lens.gate today (rejecting gate fires for both).
+// Scope: T-23 worked claim — CompileLensEnforce propagates rejection; CompileLensIntrospect demotes rejection to Accepted(Violates).
 // Owns: claim_apply_lens_enforce_introspect_same_gate_today.
 // Consumes: compiler compile, lens_common fixture, std verification.
-// Status: scaffold — compile-only until application.dag fills introspect demotion.
+// Status: Wave-5-A — scaffold dissolved; introspect demotion implemented in apply_compile_lens_introspect.
 
 module v4.test.claim.lens_application.apply_lens_enforce_introspect_same_gate_today
 
@@ -27,7 +27,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
-import v4.std.witness { Witness }
+import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -73,19 +73,26 @@ fn apply_lens_mode_gate_rejects_enforce() -> Bool {
   }
 }
 
-fn apply_lens_mode_gate_rejects_introspect() -> Bool {
+fn witness_violates_with_gate_reason(w: Witness<Node>) -> Bool {
+  match w {
+    Violates { diagnostic: d } => d.reason == compile_lens_gate_rejected
+    Holds { value: _ } => false
+  }
+}
+
+fn apply_lens_mode_gate_demotes_introspect() -> Bool {
   match apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
     mode: CompileLensIntrospect
   ) {
-    Rejected { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
-    Accepted { value: _, diagnostics: _ } => false
+    Accepted { value: w, diagnostics: _ } => witness_violates_with_gate_reason(w: w)
+    Rejected { diagnostics: _ } => false
   }
 }
 
 fn apply_lens_enforce_introspect_same_gate_today_claim_holds() -> Bool {
-  apply_lens_mode_gate_rejects_enforce() && apply_lens_mode_gate_rejects_introspect()
+  apply_lens_mode_gate_rejects_enforce() && apply_lens_mode_gate_demotes_introspect()
 }
 
 fn apply_lens_enforce_introspect_same_gate_today_claim_rhs() -> Node {
@@ -100,7 +107,7 @@ fn apply_lens_enforce_introspect_same_gate_today_claim_rhs() -> Node {
 }
 
 data claim_apply_lens_enforce_introspect_same_gate_today: TestClaim = EqualsClaim {
-  label: "lens_application/apply_lens_enforce_introspect_same_gate_today: both modes surface gate rejection",
+  label: "lens_application/apply_lens_enforce_introspect_same_gate_today: enforce propagates rejection, introspect demotes to Accepted(Violates)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_mode_root,
   rhs: apply_lens_enforce_introspect_same_gate_today_claim_rhs(),
