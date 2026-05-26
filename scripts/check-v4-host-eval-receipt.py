@@ -166,7 +166,7 @@ def check_generated_eval(eval_rs: Path) -> None:
     require_order(
         eval_body,
         [
-            "pub fn eval(tree: &Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: &Rc<Inputs>) -> Rc<Outcome>",
+            "pub fn eval(tree: Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: Rc<Inputs>) -> Rc<Outcome>",
             "well_formed(tree.root.clone())",
             "well_formed(inputs.root.clone())",
             "eval_runtime_node(inputs.root.clone(), tree.clone(), interpretation, empty_evaluation_environment(), eval_runtime())",
@@ -179,7 +179,7 @@ def check_generated_eval(eval_rs: Path) -> None:
     require_order(
         runtime_body,
         [
-            "fold_node(node, &Rc::new(NodeFold",
+            "fold_node(node, Rc::new(NodeFold",
             "init: Rc::new(|n0| eval_fold_init",
             "step: Rc::new(|acc, e, child| eval_fold_step",
             "eval_fold_state_value(folded)",
@@ -239,7 +239,7 @@ def check_generated_eval(eval_rs: Path) -> None:
         branch_body,
         [
             "eval_first_runtime_argument",
-            "v2_rt::choose_branch",
+            "choose_branch",
             "eval_runtime_node(chosen.clone(), tree.clone(), interpretation.clone(), environment.clone(), runtime.clone())",
         ],
         eval_rs,
@@ -252,7 +252,7 @@ def check_generated_eval(eval_rs: Path) -> None:
         [
             "eval_bind_key",
             "eval_bind_value_argument",
-            "v2_rt::bind_value",
+            "bind_value",
             "eval_bind_body",
             "eval_runtime_node(body.clone(), tree.clone(), interpretation.clone(), bound_environment.clone(), runtime.clone())",
         ],
@@ -319,7 +319,7 @@ def check_generated_fixture(fixture_rs: Path) -> None:
     require_order(
         call_body,
         [
-            "if eval_mvp2_args_are_two_literals(&args)",
+            "if eval_mvp2_args_are_two_literals(args)",
             "Outcome::Accepted",
             "value: eval_mvp2_five_value()",
             "diagnostics: None",
@@ -344,7 +344,7 @@ def check_generated_fixture(fixture_rs: Path) -> None:
     require_order(
         actual_body,
         [
-            "eval(&eval_mvp2_inferred_tree(), eval_mvp2_interpretation_algebra(), &Rc::new(Inputs",
+            "eval(eval_mvp2_inferred_tree(), eval_mvp2_interpretation_algebra(), Rc::new(Inputs",
             "root: eval_mvp2_add_subgraph()",
         ],
         fixture_rs,
