@@ -881,6 +881,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `manual_test_claim_for_manual_anchor` in `src/v4/lens/testgen.dag`; `src/v4/std/verification.dag`
     // for closed `TestClaim` schema only (no std present-key helper).
     "src/v3/compiler/tests/integration/v4_lens_testgen_dag_smoke_test.rs",
+    // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
+    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
+    "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // T-33: parse ratchet on `src/v4/std/model_core.dag` — Ratified Q1 ModelCore carrier.
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_std_model_core_dag_smoke_test.rs` in INVARIANTS.md.
     "src/v3/compiler/tests/integration/v4_std_model_core_dag_smoke_test.rs",
@@ -891,9 +894,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-21/T-24: `workflow/ci.dag` Wave-0 selection consumes `RerunNodeSet` for TestClaim roster narrowing.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim harness replaces probe.
     "src/v3/compiler/tests/integration/v4_workflow_ci_runner_dag_smoke_test.rs",
-    // P9 single-owner: corpus scan for `fn llvm_instruction_cost` under src/v4/ (replaces dissolved
-    // v4_lens_cost_dag_smoke_test.rs ratchet). SG-0 + INVARIANTS §P5(b) receipt.
-    "src/v3/compiler/tests/integration/v4_p9_llvm_instruction_cost_single_owner_test.rs",
     // §1.8 gate #96 (`value_body_substrate_mirror_isomorphism_executable`):
     // CI-visible generated Rust `ValueBody` mirror vs `substrate.dag`
     // constructor isomorphism. Dissolves when `ValueBody` no longer has a
