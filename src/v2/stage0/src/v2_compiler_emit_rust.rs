@@ -3471,6 +3471,14 @@ pub fn emit_struct_field_from_child(
                 v2_rt::concat("Box<".to_string(), generic_ty),
                 ">".to_string(),
             )
+        } else if v2_rt::set_contains(
+            shared_types,
+            authored_name_at(env.source_indices.clone(), &rt_child),
+        ) {
+            v2_rt::concat(
+                v2_rt::concat("Rc<".to_string(), generic_ty),
+                ">".to_string(),
+            )
         } else {
             generic_ty
         };
