@@ -3171,12 +3171,12 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
-fn rust_node_children_ord_eligible(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node.children |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+fn rust_child_list_ord_eligible(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  items |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
 }
 
-fn rust_node_children_copy_eligible(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node.children |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+fn rust_child_list_copy_eligible(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  items |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
 }
 
 fn rust_type_ord_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -3208,9 +3208,9 @@ fn rust_type_ord_eligible(n: Node, source_indices: Map<String, NewlineIndex>) ->
     } else if elem_name == "Float" || elem_name == "Json" {
       false
     } else if n.connective == Conj {
-      rust_node_children_ord_eligible(node: n, source_indices: source_indices)
+      rust_child_list_ord_eligible(items: n.children, source_indices: source_indices)
     } else if n.connective == Disj {
-      rust_node_children_ord_eligible(node: n, source_indices: source_indices)
+      rust_child_list_ord_eligible(items: n.children, source_indices: source_indices)
     } else {
       n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
     }
@@ -3228,9 +3228,9 @@ fn rust_type_copy_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -
     } else if elem_name == "String" || elem_name == "Float" || elem_name == "Json" || elem_name == "Secret" || elem_name == "Bytes" {
       false
     } else if n.connective == Conj {
-      rust_node_children_copy_eligible(node: n, source_indices: source_indices)
+      rust_child_list_copy_eligible(items: n.children, source_indices: source_indices)
     } else if n.connective == Disj {
-      rust_node_children_copy_eligible(node: n, source_indices: source_indices)
+      rust_child_list_copy_eligible(items: n.children, source_indices: source_indices)
     } else {
       n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
     }
