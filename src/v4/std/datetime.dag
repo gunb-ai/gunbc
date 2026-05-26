@@ -224,6 +224,7 @@ data second_out_of_range: Symbol = second_out_of_range
 data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
+data clock_time_fields_invalid: Symbol = clock_time_fields_invalid
 data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
 data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
 data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
@@ -451,6 +452,12 @@ fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
 }
 
 
+fn clock_time_fields_admits(fields: ClockTimeFields) -> Bool {
+  let second = second_value(second: fields.second)
+  second <= 59
+}
+
+
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
   (second == 60)
@@ -517,6 +524,12 @@ data tz_offset_minute_validation: Validation<Nat> = Validation {
 data calendar_date_validation: Validation<CalendarDateFields> = Validation {
   reason: calendar_date_invalid,
   admits: calendar_date_admits
+}
+
+
+data clock_time_validation: Validation<ClockTimeFields> = Validation {
+  reason: clock_time_fields_invalid,
+  admits: clock_time_fields_admits
 }
 
 
@@ -606,8 +619,10 @@ fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<Calendar
 }
 
 
-fn make_clock_time(fields: ClockTimeFields) -> ClockTime {
-  ClockTime { fields: fields }
+fn make_clock_time(fields: ClockTimeFields, at: Locus) -> Outcome<ClockTime> {
+  bind_outcome(o: refine(base: fields, by: clock_time_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: ClockTime { fields: refined_base(r: refined) })
+  })
 }
 
 
