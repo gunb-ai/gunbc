@@ -2783,8 +2783,11 @@ pub fn resolve_item_types(
                         let mut __field_results = Vec::new();
                         for field in variant.children.clone().iter().cloned() {
                             let authored_type = field_node_type_expr(&field);
-                            let tr =
-                                resolve_node(authored_type.clone(), env.clone(), module_name.clone());
+                            let tr = resolve_node(
+                                authored_type.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            );
                             let type_diags = v2_rt::concat(
                                 tr.diagnostics.clone(),
                                 missing_generic_args_diagnostics(
