@@ -270,22 +270,6 @@ pub fn rust_ord_derives_copy_text() -> String {
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
-pub fn rust_nominal_ord_derives_for_type(type_name: &String) -> String {
-    if (type_name.clone().as_str() == "Symbol".to_string().as_str()) {
-        rust_ord_derives_copy_text()
-    } else {
-        if (type_name.clone().as_str() == "DiffId".to_string().as_str()) {
-            rust_ord_derives_text()
-        } else {
-            "".to_string()
-        }
-    }
-}
-
-pub fn rust_nominal_ord_type_eligible(type_name: String) -> bool {
-    (rust_nominal_ord_derives_for_type(&type_name).as_str() != "".to_string().as_str())
-}
-
 pub fn rust_serde_tag_attr() -> String {
     match serialization_for_target(RenderTarget::Rust)
         .tag_attribute
@@ -2749,7 +2733,7 @@ pub fn emit_typed_item(
                                     ),
                                     " ".to_string(),
                                 ),
-                                item_text.clone(),
+                                item_text,
                             ),
                             " = ".to_string(),
                         ),
@@ -2763,7 +2747,7 @@ pub fn emit_typed_item(
                 )
             } else {
                 if is_type_decl_item(&item, env.source_indices.clone()) {
-                    if rust_nominal_ord_type_eligible(item_text.clone()) {
+                    if ((item.params.clone().len() as i64) == 0) {
                         emit_struct_from_children(
                             &item_text,
                             "".to_string(),
@@ -2771,7 +2755,7 @@ pub fn emit_typed_item(
                             &Rc::new(vec![]),
                             emit_info.recursive_type_set.clone(),
                             &shared_types,
-                            env.clone(),
+                            &env,
                             &emit_info,
                         )
                     } else {
@@ -2857,7 +2841,7 @@ pub fn emit_typed_item(
                     } else {
                         if is_data_def_item(&item) {
                             emit_data_def(
-                                item_text.clone(),
+                                item_text,
                                 &item.type_annotation.clone().clone().unwrap(),
                                 &item.body.clone().clone().unwrap(),
                                 registry.clone(),
@@ -2876,7 +2860,7 @@ pub fn emit_typed_item(
                                     v2_rt::concat(
                                         v2_rt::concat(
                                             "compile_error!(\"unhandled item: ".to_string(),
-                                            item_text.clone(),
+                                            item_text,
                                         ),
                                         "\");".to_string(),
                                     )
@@ -3027,7 +3011,7 @@ pub fn emit_type_def_from_connective(
                     &item.children.clone(),
                     recursive_types,
                     &shared_types,
-                    env.clone(),
+                    &env,
                     &emit_info,
                 )
             }
@@ -3126,7 +3110,7 @@ pub fn emit_struct_from_children(
     children: &Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
-    env: Rc<TypeEnv>,
+    env: &Rc<TypeEnv>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -3137,8 +3121,56 @@ pub fn emit_struct_from_children(
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else {
-            if rust_nominal_ord_type_eligible(name.clone()) {
-                rust_nominal_ord_derives_for_type(&name)
+            if rust_type_ord_eligible(
+                &Rc::new(Node {
+                    name: name.clone(),
+                    span: make_span(0, 0),
+                    ident_span: None,
+                    children: children.clone(),
+                    connective: Connective::Conj,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                }),
+                &env.source_indices.clone(),
+            ) {
+                if rust_type_copy_eligible(
+                    &Rc::new(Node {
+                        name: name.clone(),
+                        span: make_span(0, 0),
+                        ident_span: None,
+                        children: children.clone(),
+                        connective: Connective::Conj,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    &env.source_indices.clone(),
+                ) {
+                    rust_ord_derives_copy_text()
+                } else {
+                    rust_ord_derives_text()
+                }
             } else {
                 if v2_rt::set_contains(&shared_types, name.clone()) {
                     rust_struct_derives_text()
@@ -7295,20 +7327,167 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
     }
 }
 
+pub fn rust_type_ord_eligible(
+    n: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let elem_is_type_var = if (n.inferred.clone() != None) {
+            is_type_variable(n.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let children = n.children.clone();
+        let children_ord = {
+            let mut __all = true;
+            for child in children.iter().cloned() {
+                if !(rust_type_ord_eligible(&child_type_node(&child), &source_indices)) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        };
+        let is_conj = (n.connective.clone() == Connective::Conj);
+        let is_disj = (n.connective.clone() == Connective::Disj);
+        let is_bare_unit = (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && ((n.params.clone().len() as i64) == 0));
+        if elem_is_type_var {
+            false
+        } else {
+            if node_is_set_collection(&n, &source_indices) {
+                match n.children.clone().first().cloned() {
+                    Some(elem_child) => {
+                        rust_type_ord_eligible(&child_type_node(&elem_child), &source_indices)
+                    }
+                    None => false,
+                }
+            } else {
+                if node_is_element_collection(&n, source_indices.clone()) {
+                    {
+                        let collection_name = authored_name_at(source_indices.clone(), &n);
+                        if ((collection_name.clone().as_str() == "List".to_string().as_str())
+                            || (collection_name.clone().as_str()
+                                == "NonEmptyList".to_string().as_str()))
+                        {
+                            match n.children.clone().first().cloned() {
+                                Some(elem_child) => rust_type_ord_eligible(
+                                    &child_type_node(&elem_child),
+                                    &source_indices,
+                                ),
+                                None => false,
+                            }
+                        } else {
+                            false
+                        }
+                    }
+                } else {
+                    if node_is_keyed_collection(&n, source_indices.clone()) {
+                        false
+                    } else {
+                        {
+                            let elem_name = authored_name_at(source_indices.clone(), &n);
+                            if ((((((elem_name.clone().as_str()
+                                == "String".to_string().as_str())
+                                || (elem_name.clone().as_str() == "Int".to_string().as_str()))
+                                || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
+                                || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
+                                || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
+                                || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
+                            {
+                                true
+                            } else {
+                                if ((elem_name.clone().as_str() == "Float".to_string().as_str())
+                                    || (elem_name.clone().as_str() == "Json".to_string().as_str()))
+                                {
+                                    false
+                                } else {
+                                    if is_conj {
+                                        return children_ord;
+                                    } else {
+                                        if is_disj {
+                                            return children_ord;
+                                        } else {
+                                            is_bare_unit
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn rust_type_copy_eligible(
+    n: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let elem_is_type_var = if (n.inferred.clone() != None) {
+            is_type_variable(n.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let children = n.children.clone();
+        let children_copy = {
+            let mut __all = true;
+            for child in children.iter().cloned() {
+                if !(rust_type_copy_eligible(&child_type_node(&child), &source_indices)) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        };
+        let is_conj = (n.connective.clone() == Connective::Conj);
+        let is_disj = (n.connective.clone() == Connective::Disj);
+        let is_bare_unit = (((n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0))
+            && ((n.params.clone().len() as i64) == 0));
+        if (elem_is_type_var || node_is_collection(&n, source_indices.clone())) {
+            false
+        } else {
+            {
+                let elem_name = authored_name_at(source_indices.clone(), &n);
+                if (((elem_name.clone().as_str() == "Int".to_string().as_str())
+                    || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
+                    || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
+                {
+                    true
+                } else {
+                    if (((((elem_name.clone().as_str() == "String".to_string().as_str())
+                        || (elem_name.clone().as_str() == "Float".to_string().as_str()))
+                        || (elem_name.clone().as_str() == "Json".to_string().as_str()))
+                        || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
+                        || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
+                    {
+                        false
+                    } else {
+                        if is_conj {
+                            return children_copy;
+                        } else {
+                            if is_disj {
+                                return children_copy;
+                            } else {
+                                is_bare_unit
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
 pub fn rust_btree_set_element_ord_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    {
-        let elem_name = authored_name_at(source_indices, &elem_node);
-        (((((((elem_name.clone().as_str() == "String".to_string().as_str())
-            || (elem_name.clone().as_str() == "Int".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
-            || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
-            || rust_nominal_ord_type_eligible(elem_name.clone()))
-    }
+    rust_type_ord_eligible(&elem_node, &source_indices)
 }
 
 pub fn rust_empty_set_element_type_str(
