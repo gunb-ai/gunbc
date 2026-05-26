@@ -365,6 +365,13 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
 
 
 def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if ref == "SL-T11-GRAMMAR-FROM-TOKEN-ROW":
+        return (
+            "// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — "
+            "feature:t11-grammar-from-token-row — "
+            "dissolve-on-arrival: replace the fold1 accumulator with a std "
+            "fold_non_empty/list-to-sequence helper consumed by T-11 grammar rows."
+        )
     if type_name == "LlvmWave1IntegerBits":
         return (
             "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "

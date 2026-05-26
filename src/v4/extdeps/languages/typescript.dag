@@ -464,7 +464,7 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution · SL-T11-GRAMMAR-FROM-TOKEN-ROW.
+// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper consumed by T-11 grammar rows.
 type TsGrammarSequenceBuild
   = TsGrammarSequenceEmpty
   | TsGrammarSequenceBuilt { expression: GrammarExpr }
