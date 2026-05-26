@@ -131,11 +131,6 @@ pub fn render_rust_type(
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv,
         _ => {
             if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.len() as i64) == 0)
-                && ((authored_name_at(source_indices.clone(), &n).len() as i64) == 1))
-            {
-                authored_name_at(source_indices.clone(), &n)
-            } else if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.len() as i64) > 0))
             {
                 render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
@@ -189,7 +184,15 @@ pub fn render_rust_applied_type_arg(
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv,
-        _ => render_rust_type(&n, shared_types, &source_indices),
+        _ => {
+            if ((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.len() as i64) == 0))
+            {
+                authored_name_at(source_indices.clone(), &n)
+            } else {
+                render_rust_type(&n, shared_types, &source_indices)
+            }
+        }
     }
 }
 
