@@ -78,7 +78,7 @@ type IntegerRangeEndpoint
   = IntegerRangeInclusiveMin
   | IntegerRangeInclusiveMax
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// 🟡 needs-more-work — feature:integer-decimal-canonical-magnitude — dissolve-on: Zero | NonZeroDecimalDigit + tail List<DecimalDigit> with canonical magnitude constructor
 type DecimalDigit
   = D0
   | D1
