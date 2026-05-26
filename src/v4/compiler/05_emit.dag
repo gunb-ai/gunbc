@@ -1,6 +1,6 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface over TargetModel: grammar-inverse serialize_target ∘ translate.
-// Owns: emit_row_module_header, emit_row_import_decl, emit_row_data_decl,
+// Owns: emit_row_module_header,
 //       serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
 //           extdeps/languages/dag.dag, std/diagnostic.dag, std/target_model.dag.
@@ -24,24 +24,10 @@ import v4.compiler.translate {
   translate
 }
 import v4.extdeps.languages.dag {
-  dag_grammar_data_decl_expr,
-  dag_grammar_import_decl_expr,
   dag_grammar_module_header_expr,
-  dag_production_data_decl,
-  dag_production_import_decl,
   dag_production_module_header,
-  dag_surface_data_decl,
-  dag_surface_expr,
-  dag_surface_import_decl,
-  dag_surface_import_block,
   dag_surface_module_header,
-  dag_surface_qualified_name,
-  dag_surface_type_expr,
-  dag_token_colon,
-  dag_token_eq,
   dag_token_ident,
-  dag_token_kw_data,
-  dag_token_kw_import,
   dag_token_kw_module
 }
 import v4.std.diagnostic {
@@ -72,8 +58,6 @@ data emit_relation_dag_module_header: Symbol = emit_relation_dag_module_header
 data emit_relation_dag_import_decl: Symbol = emit_relation_dag_import_decl
 data emit_relation_dag_data_decl: Symbol = emit_relation_dag_data_decl
 data emit_binding_dag_module_name: Symbol = emit_binding_dag_module_name
-data emit_binding_dag_import_path: Symbol = emit_binding_dag_import_path
-data emit_binding_dag_data_name: Symbol = emit_binding_dag_data_name
 fn emit_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
@@ -108,17 +92,6 @@ fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
       emit_named_edge(
         name: concrete_syntax_token_field_binding,
         target: emit_atom(id: binding)
-      )
-    ]
-  }
-}
-fn emit_nonterminal_placeholder(surface: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      emit_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: emit_atom(id: surface)
       )
     ]
   }
@@ -172,39 +145,8 @@ fn emit_row_module_header() -> Node {
     ]
   )
 }
-fn emit_row_import_decl() -> Node {
-  emit_grammar_relation_row(
-    production: GrammarProduction {
-      name: dag_production_import_decl,
-      expression: dag_grammar_import_decl_expr(),
-      emitted: emit_atom(id: dag_surface_import_decl)
-    },
-    emitted: dag_surface_import_decl,
-    tokens: [
-      emit_fixed_token(token_class: dag_token_kw_import),
-      emit_nonterminal_placeholder(surface: dag_surface_qualified_name),
-      emit_nonterminal_placeholder(surface: dag_surface_import_block)
-    ]
-  )
-}
-fn emit_row_data_decl() -> Node {
-  emit_grammar_relation_row(
-    production: GrammarProduction {
-      name: dag_production_data_decl,
-      expression: dag_grammar_data_decl_expr(),
-      emitted: emit_atom(id: dag_surface_data_decl)
-    },
-    emitted: dag_surface_data_decl,
-    tokens: [
-      emit_fixed_token(token_class: dag_token_kw_data),
-      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_name),
-      emit_fixed_token(token_class: dag_token_colon),
-      emit_nonterminal_placeholder(surface: dag_surface_type_expr),
-      emit_fixed_token(token_class: dag_token_eq),
-      emit_nonterminal_placeholder(surface: dag_surface_expr)
-    ]
-  )
-}
+// Scope gate: emit_row_import_decl and emit_row_data_decl are blocked pending
+// nonterminal dispatch infrastructure in 06_translate.dag (follow-on task tracked by PM).
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel
