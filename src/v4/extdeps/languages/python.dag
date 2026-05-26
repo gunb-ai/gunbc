@@ -81,6 +81,7 @@ type PythonCost {
   allocation_cost: Int
 }
 
+// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
 type PythonConcreteSyntaxToken
   = PythonFixedToken { token_class: Symbol }
   | PythonBoundToken { token_class: Symbol, binding: Symbol }

@@ -33,6 +33,7 @@ import v4.extdeps.languages.go { go_mvp1_target_model }
 import v4.extdeps.languages.cpp { cpp_mvp1_target_model }
 import v4.extdeps.languages.typescript { ts_mvp1_target_model }
 
+// 🟢 coproduct dissolution — closed Shape-A compiler target set for T-11 rust/python/go/cpp/typescript.
 type ShapeAEmitTarget
   = ShapeARust
   | ShapeAPython

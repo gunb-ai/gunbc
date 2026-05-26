@@ -127,6 +127,7 @@ type GoCost {
   allocation_cost: Int
 }
 
+// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
 type GoConcreteSyntaxToken
   = GoFixedToken { token_class: Symbol }
   | GoBoundToken { token_class: Symbol, binding: Symbol }

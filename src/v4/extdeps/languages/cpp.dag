@@ -173,6 +173,7 @@ type CppLanguageModel {
   core: ModelCore
 }
 
+// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
 type CppConcreteSyntaxToken
   = CppFixedToken { token_class: Symbol }
   | CppBoundToken { token_class: Symbol, binding: Symbol }
