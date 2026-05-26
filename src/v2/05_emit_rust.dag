@@ -176,6 +176,10 @@ fn empty_string_bool_map() -> Map<String, Bool> {
   empty_map()
 }
 
+fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
+  string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
+}
+
 fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: TypeVariable { id: tv } } => tv
@@ -1813,7 +1817,7 @@ fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, 
   let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
-  } else if set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) {
+  } else if set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
     concat("Rc<", generic_ty, ">")
   } else { generic_ty }
   // Check for from_key in child properties
@@ -7258,7 +7262,7 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    let location = if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx, span.start);\n",
+    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
     "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n",
     "        } else {\n",
     "            span.file.clone()\n",
@@ -7277,8 +7281,8 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx, span.start);\n",
-    "            let line_text = source_line_at(idx, lc.line);\n",
+    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
+    "            let line_text = source_line_at(idx.clone(), lc.line);\n",
     "            let line_num = format!(\"{}\", lc.line);\n",
     "            let gutter_width = line_num.len();\n",
     "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n",
