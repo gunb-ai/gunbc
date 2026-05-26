@@ -55,8 +55,6 @@ import v4.std.target_model {
   grammar_relation_field_tokens
 }
 data emit_relation_dag_module_header: Symbol = emit_relation_dag_module_header
-data emit_relation_dag_import_decl: Symbol = emit_relation_dag_import_decl
-data emit_relation_dag_data_decl: Symbol = emit_relation_dag_data_decl
 data emit_binding_dag_module_name: Symbol = emit_binding_dag_module_name
 fn emit_atom(id: Symbol) -> Node {
   Node {
