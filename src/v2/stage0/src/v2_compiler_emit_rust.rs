@@ -230,7 +230,9 @@ pub fn render_rust_decl_type(
     let name = authored_name_at(source_indices.clone(), &n);
     if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.len() as i64) == 0)
-        && generic_param_names.iter().any(|g| g.as_str() == name.as_str()))
+        && generic_param_names
+            .iter()
+            .any(|g| g.as_str() == name.as_str()))
     {
         emit_ident(name, RenderTarget::Rust)
     } else if ((n.connective.clone() == Connective::NoConnective)
@@ -250,7 +252,10 @@ pub fn render_rust_decl_type(
             __result
         });
         v2_rt::concat(
-            v2_rt::concat(v2_rt::concat(base, "<".to_string()), args.join(&", ".to_string())),
+            v2_rt::concat(
+                v2_rt::concat(base, "<".to_string()),
+                args.join(&", ".to_string()),
+            ),
             ">".to_string(),
         )
     } else {
