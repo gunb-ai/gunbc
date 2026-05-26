@@ -1,7 +1,7 @@
 // src/v4/std/integer.dag
-// Scope: Abstract Int/UInt, fixed-width projections, interval facts, divide/modulo carriers and diagnostics.
-// Owns: GroupCompletion, Int, UInt, Compose, Signedness, Representation, OverflowDisposition, IntegerIntervalSpec, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, IntPlatform, UIntPlatform, int_add, int_negate, int_mul, int_compare, int_is_zero, int_abelian_group, int_ordered_ring, integer_div_by_zero, integer_modulo_by_zero, integer_divide_by_zero_diagnostic, integer_modulo_by_zero_diagnostic, int_div, int_mod
-// Consumes: std/node.dag (Instantiation, Symbol, Node); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
+// Scope: Abstract Int/UInt, fixed-width projections, divide/modulo carriers and diagnostics.
+// Owns: GroupCompletion, Int, UInt, Compose, Signedness, Representation, OverflowDisposition, Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128, IntPlatform, UIntPlatform, IntegerBoundSign, IntegerRangeEndpoint, IntegerIntervalBound, IntegerIntervalSpec, integer_interval_field_inclusive_min, integer_interval_field_inclusive_max, integer_bound_field_kind, integer_bound_field_sign, integer_bound_field_decimal_digits, integer_bound_field_signedness, integer_bound_field_endpoint, integer_tag_bound_concrete, integer_tag_bound_pointer_width, integer_tag_bound_negative, integer_tag_bound_nonnegative, integer_tag_signed, integer_tag_unsigned, integer_tag_range_inclusive_min, integer_tag_range_inclusive_max, integer_tag_digit_0, integer_tag_digit_1, integer_tag_digit_2, integer_tag_digit_3, integer_tag_digit_4, integer_tag_digit_5, integer_tag_digit_6, integer_tag_digit_7, integer_tag_digit_8, integer_tag_digit_9, integer_interval, integer_concrete_bound, integer_pointer_width_bound, int8_interval_spec, int16_interval_spec, int32_interval_spec, int64_interval_spec, int128_interval_spec, uint8_interval_spec, uint16_interval_spec, uint32_interval_spec, uint64_interval_spec, uint128_interval_spec, int_platform_interval_spec, uint_platform_interval_spec, integer_inhabitant_atom, integer_named_edge, integer_bound_sign_node, integer_signedness_node, integer_range_endpoint_node, integer_decimal_digit_node, integer_decimal_digit_edge, integer_decimal_digits_node, integer_interval_bound_node, integer_interval_spec_node, int_add, int_negate, int_mul, int_compare, int_is_zero, int_abelian_group, int_ordered_ring, integer_div_by_zero, integer_modulo_by_zero, integer_divide_by_zero_diagnostic, integer_modulo_by_zero_diagnostic, int_div, int_mod
+// Consumes: std/node.dag (Instantiation, Symbol); std/nat.dag (Nat); std/machine.dag (MachineWidth, PointerWidth, Word8, Word16, Word32, Word64, Word128); std/algebra.dag (Magma, Semigroup, Monoid, Group, AbelianGroup, Ring, OrderedRing, Ordering); std/diagnostic.dag (Diagnostic, Locus, Correction, NoCorrectionReason, Outcome<T> Tier-2 divide/modulo).
 // Status: std integer vocabulary (widths, group completion, divide/modulo outcomes).
 // Anchor: https://en.wikipedia.org/wiki/Integer
 // Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERIFY, SL-3229-INTEGER-GROUP-COMPLETION, SL-3229-INTEGER-OVERFLOW-SEMANTICS, SL-3229-INTEGER-REPRESENTATION-STUBS.
@@ -67,24 +67,22 @@ type UInt128 = Compose<UInt, MachineWidth<Word128>>
 type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerBoundSign
   = IntegerBoundNegative
   | IntegerBoundNonNegative
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerRangeEndpoint
   = IntegerRangeInclusiveMin
   | IntegerRangeInclusiveMax
 
-// Fixed-width integer intervals carry concrete decimal Nat digits. Platform
-// intervals carry the signedness/PointerWidth relation instead of pretending to
-// know a target width before target selection.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerIntervalBound
   = IntegerConcreteBound { sign: IntegerBoundSign, decimal_digits: List<Nat> }
   | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
 
+// 🟢 grounded.
 type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound
   inclusive_max: IntegerIntervalBound

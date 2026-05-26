@@ -294,6 +294,9 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
         # (absent at merge-base).
         out["Signedness"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerBoundSign"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerRangeEndpoint"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerIntervalBound"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["Representation"] = ("🟡", "SL-3229-INTEGER-REPRESENTATION-STUBS")
         out["OverflowDisposition"] = ("🟡", "SL-3229-INTEGER-OVERFLOW-SEMANTICS")
     if rel == "src/v4/std/float.dag":
