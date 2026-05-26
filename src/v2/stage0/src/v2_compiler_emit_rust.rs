@@ -3575,16 +3575,10 @@ pub fn emit_enum_shared_accessors(
                                 .first()
                                 .cloned()
                                 {
-                                    Some(f) => apply_missing_generic_args(
-                                        render_rust_type(
-                                            &resolved_type(f.clone()),
-                                            shared_types.clone(),
-                                            &env.source_indices.clone(),
-                                        ),
-                                        &resolved_type(f.clone()),
-                                        &generic_param_names,
-                                        emit_info.clone(),
-                                        &env.source_indices.clone(),
+                                    Some(f) => render_rust_type_with_applied_binding(
+                                        resolved_type(f.clone()),
+                                        shared_types.clone(),
+                                        env.source_indices.clone(),
                                     ),
                                     None => "".to_string(),
                                 },
@@ -3633,16 +3627,10 @@ pub fn emit_enum_shared_accessors(
                     .first()
                     .cloned()
                     {
-                        Some(f) => apply_missing_generic_args(
-                            render_rust_type(
-                                &resolved_type(f.clone()),
-                                shared_types.clone(),
-                                &env.source_indices.clone(),
-                            ),
-                            &resolved_type(f.clone()),
-                            &generic_param_names,
-                            emit_info.clone(),
-                            &env.source_indices.clone(),
+                        Some(f) => render_rust_type_with_applied_binding(
+                            resolved_type(f.clone()),
+                            shared_types.clone(),
+                            env.source_indices.clone(),
                         ),
                         None => "compile_error!(\"enum shared accessor missing field metadata\")"
                             .to_string(),
@@ -4082,13 +4070,15 @@ pub fn emit_variant_from_child(
                                         &env.source_indices.clone(),
                                     )
                                 };
-                                let ty = apply_missing_generic_args(
-                                    raw_ty,
-                                    &type_node,
-                                    &parent_generic_param_names,
-                                    emit_info.clone(),
-                                    &env.source_indices.clone(),
-                                );
+                                let ty = if type_node.type_annotation.clone() != None {
+                                    render_rust_type_with_applied_binding(
+                                        type_node.clone(),
+                                        shared_types.clone(),
+                                        env.source_indices.clone(),
+                                    )
+                                } else {
+                                    raw_ty.clone()
+                                };
                                 let final_ty = if needs_box_wrapping(
                                     type_node.clone(),
                                     recursive_types.clone(),
@@ -4131,16 +4121,10 @@ pub fn emit_variant_from_child(
                                 for f in child.children.clone().iter().cloned() {
                                     __result.push({
                                         let rt_f = resolved_type(f.clone());
-                                        let ty = apply_missing_generic_args(
-                                            render_rust_type(
-                                                &rt_f,
-                                                shared_types.clone(),
-                                                &env.source_indices.clone(),
-                                            ),
-                                            &rt_f,
-                                            &parent_generic_param_names,
-                                            emit_info.clone(),
-                                            &env.source_indices.clone(),
+                                        let ty = render_rust_type_with_applied_binding(
+                                            rt_f.clone(),
+                                            shared_types.clone(),
+                                            env.source_indices.clone(),
                                         );
                                         let final_ty = if needs_box_wrapping(
                                             rt_f.clone(),
@@ -4199,16 +4183,10 @@ pub fn emit_variant_from_child(
                         for f in child.children.clone().iter().cloned() {
                             __result.push({
                                 let rt_f = resolved_type(f.clone());
-                                let ty = apply_missing_generic_args(
-                                    render_rust_type(
-                                        &rt_f,
-                                        shared_types.clone(),
-                                        &env.source_indices.clone(),
-                                    ),
-                                    &rt_f,
-                                    &parent_generic_param_names,
-                                    emit_info.clone(),
-                                    &env.source_indices.clone(),
+                                let ty = render_rust_type_with_applied_binding(
+                                    rt_f.clone(),
+                                    shared_types.clone(),
+                                    env.source_indices.clone(),
                                 );
                                 let final_ty = if needs_box_wrapping(
                                     rt_f.clone(),
@@ -10191,7 +10169,7 @@ pub fn emit_rust_generic_method_call(
                                     v2_rt::concat("(".to_string(), recv_str),
                                     ".".to_string(),
                                 ),
-                                function_name.clone(),
+                                emit_ident(function_name.clone(), RenderTarget::Rust),
                             ),
                             ")(".to_string(),
                         ),
