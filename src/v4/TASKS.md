@@ -1531,13 +1531,18 @@ to define a new agent output surface.
 **Files:**
 - `src/v4/std/agent.dag` — new file; `AgentStore` carrier only.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point.
-  **Scope of T-35's change:** replace the module-admission step (currently
-  `module_graph_from_entries(entries: Empty)` in `compile_ingest_staging`) with
-  a store-based lookup. `compile_with_store` delegates to the same existing
-  `compile` orchestrator chain as `compile_ingest_staging` — T-35 does NOT
-  implement or modify the infer/emit pipeline. Output type inherits from the
-  existing orchestrator contract (`Outcome<TargetSource>`); T-35 workers must
-  not redefine it.
+  **Scope of T-35's change:** replace the `entries: Empty` argument to
+  `module_graph_from_entries` (currently in `compile_ingest_staging`) with
+  entries derived from the `AgentStore`. `module_graph_from_entries` in
+  `std/module_graph.dag` remains the canonical `ModuleGraph` construction path
+  and admission authority — T-35 does NOT bypass it or replace `ModuleGraph`
+  with a parallel `Map<ModulePath, Node>` lookup. The `AgentStore` is an entry
+  source; `module_graph_from_entries` enforces path uniqueness and builds the
+  graph exactly as it does today. `compile_with_store` then delegates to the
+  same existing `compile` orchestrator chain as `compile_ingest_staging` — T-35
+  does NOT implement or modify the infer/emit pipeline. Output type inherits
+  from the existing orchestrator contract (`Outcome<TargetSource>`); T-35
+  workers must not redefine it.
 
 **Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
 - **T-28-B** is the hard implementation prerequisite: the module-admission
