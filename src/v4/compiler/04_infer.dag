@@ -126,13 +126,24 @@ data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 
 
 data sm5_bootstrap_src_v4: Symbol = sm5_bootstrap_src_v4
+data sm5_external_host_v2_bootstrap_receipt: Symbol = sm5_external_host_v2_bootstrap_receipt
+data sm5_v2_compile_src_v4_command: Symbol = sm5_v2_compile_src_v4_command
+data sm5_v2_compile_src_v4_output_251_files_0_diagnostics: Symbol = sm5_v2_compile_src_v4_output_251_files_0_diagnostics
 data sm5_infer_algebra_ref_ungrounded_census: Symbol = sm5_infer_algebra_ref_ungrounded_census
 data sm5_diagnostic_census_pass: Symbol = sm5_diagnostic_census_pass
 data sm5_diagnostic_census_fail: Symbol = sm5_diagnostic_census_fail
 
 
+type Sm5BootstrapDiagnosticCensusSource {
+  authority: Symbol
+  command: Symbol
+  observed_output: Symbol
+}
+
+
 type Sm5DiagnosticCensus {
   fact: Symbol
+  source: Sm5BootstrapDiagnosticCensusSource
   source_root: Symbol
   diagnostic: Symbol
   count: Nat
@@ -141,6 +152,11 @@ type Sm5DiagnosticCensus {
 
 data sm5_src_v4_infer_algebra_ref_ungrounded_census: Sm5DiagnosticCensus = Sm5DiagnosticCensus {
   fact: sm5_infer_algebra_ref_ungrounded_census,
+  source: Sm5BootstrapDiagnosticCensusSource {
+    authority: sm5_external_host_v2_bootstrap_receipt,
+    command: sm5_v2_compile_src_v4_command,
+    observed_output: sm5_v2_compile_src_v4_output_251_files_0_diagnostics
+  },
   source_root: sm5_bootstrap_src_v4,
   diagnostic: infer_algebra_ref_ungrounded,
   count: Zero
@@ -165,6 +181,9 @@ fn sm5_diagnostic_census_fail_node() -> Node {
 
 fn sm5_infer_algebra_ref_ungrounded_census_is_zero(census: Sm5DiagnosticCensus) -> Bool {
   if census.fact == sm5_infer_algebra_ref_ungrounded_census &&
+    census.source.authority == sm5_external_host_v2_bootstrap_receipt &&
+    census.source.command == sm5_v2_compile_src_v4_command &&
+    census.source.observed_output == sm5_v2_compile_src_v4_output_251_files_0_diagnostics &&
     census.source_root == sm5_bootstrap_src_v4 &&
     census.diagnostic == infer_algebra_ref_ungrounded {
     is_zero(n: census.count)
@@ -184,7 +203,7 @@ fn sm5_diagnostic_census_claim_input(census: Sm5DiagnosticCensus) -> Node {
 
 
 data claim_sm5_infer_algebra_ref_ungrounded_zero_diagnostics: TestClaim = CompilesClaim {
-  label: "SM5: sm5_infer_algebra_ref_ungrounded_census records v2 bootstrap on src/v4 after #3689 produced 0 infer_algebra_ref_ungrounded diagnostics",
+  label: "SM5: host v2 bootstrap receipt sm5_infer_algebra_ref_ungrounded_census records src/v4 after #3689 produced 0 infer_algebra_ref_ungrounded diagnostics",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sm5_diagnostic_census_claim_input(census: sm5_src_v4_infer_algebra_ref_ungrounded_census),
   expected_value: sm5_diagnostic_census_pass_node(),
