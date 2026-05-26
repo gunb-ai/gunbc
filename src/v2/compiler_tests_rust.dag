@@ -686,7 +686,7 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "        })\n",
     "    }\n\n",
     "    #[test]\n",
-    "    fn rust_btree_set_ord_eligibility_includes_symbol_and_diff_id_only() {\n",
+	    "    fn rust_btree_set_ord_eligibility_follows_structural_carriers() {\n",
     "        let source_indices = std::rc::Rc::new(HashMap::new());\n",
     "        assert!(\n",
     "            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(\n",
@@ -701,11 +701,11 @@ fn ct_rust_btree_set_ord_eligibility_test() -> String {
     "            )\n",
     "        );\n",
     "        assert!(\n",
-    "            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(\n",
-    "                named_type_node(\"TestClaimId\"),\n",
-    "                source_indices\n",
-    "            )\n",
-    "        );\n",
+	    "            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(\n",
+	    "                named_type_node(\"TestClaimId\"),\n",
+	    "                source_indices\n",
+	    "            )\n",
+	    "        );\n",
     "    }\n\n")
 }
 

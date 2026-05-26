@@ -3171,13 +3171,69 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
   if ch.inferred != none { is_type_variable(inferred: ch.inferred.value) } else { false }
 }
 
+fn rust_type_ord_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let elem_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if elem_is_type_var {
+    false
+  } else if node_is_set_collection(n: n, source_indices: source_indices) {
+    match n.children |> first {
+      Some { value: elem_child } => rust_type_ord_eligible(n: child_type_node(ch: elem_child), source_indices: source_indices)
+      None => false
+    }
+  } else if node_is_element_collection(n: n, source_indices: source_indices) {
+    let collection_name = authored_name_at(source_indices: source_indices, node: n)
+    if collection_name == "List" || collection_name == "NonEmptyList" {
+      match n.children |> first {
+        Some { value: elem_child } => rust_type_ord_eligible(n: child_type_node(ch: elem_child), source_indices: source_indices)
+        None => false
+      }
+    } else {
+      false
+    }
+  } else if node_is_keyed_collection(n: n, source_indices: source_indices) {
+    false
+  } else {
+    let elem_name = authored_name_at(source_indices: source_indices, node: n)
+    if elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+      || elem_name == "Secret" || elem_name == "Bytes" {
+      true
+    } else if elem_name == "Float" || elem_name == "Json" {
+      false
+    } else if n.connective == Conj {
+      n.children |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+    } else if n.connective == Disj {
+      n.children |> all(child => rust_type_ord_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+    } else {
+      n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
+    }
+  }
+}
+
+fn rust_type_copy_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let elem_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
+  if elem_is_type_var || node_is_collection(n: n, source_indices: source_indices) {
+    false
+  } else {
+    let elem_name = authored_name_at(source_indices: source_indices, node: n)
+    if elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit" {
+      true
+    } else if elem_name == "String" || elem_name == "Float" || elem_name == "Json" || elem_name == "Secret" || elem_name == "Bytes" {
+      false
+    } else if n.connective == Conj {
+      n.children |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+    } else if n.connective == Disj {
+      n.children |> all(child => rust_type_copy_eligible(n: child_type_node(ch: child), source_indices: source_indices))
+    } else {
+      n.connective == NoConnective && (n.children |> count) == 0 && (n.params |> count) == 0
+    }
+  }
+}
+
 // BTreeSet requires T: Ord. Whitelist kernel types with known Ord Rust carriers
-// plus nominal carriers that the Rust emitter also derives Ord for.
-// Float (no total Ord), Json (serde_json::Value), and other nominal types fail-closed.
+// plus nominal carriers whose emitted Rust shape can derive Ord.
+// Float (no total Ord), Json (serde_json::Value), and keyed maps fail-closed.
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
-  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
-    || elem_name == "Secret" || elem_name == "Bytes" || rust_nominal_ord_type_eligible(type_name: elem_name)
+  rust_type_ord_eligible(n: elem_node, source_indices: source_indices)
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
