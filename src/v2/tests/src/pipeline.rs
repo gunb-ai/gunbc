@@ -2119,6 +2119,7 @@ fn emit_field_access_with_types() {
 fn rust_emit_mangles_self_field_and_param_without_raw_identifier() {
     let source = "module reserved_self\n\
 type SelfRecord { self: Int  self_: Int }\n\
+type SelfEnum = SelfVariant { self: Int  self_: Int }\n\
 fn wrap(self: Int, self_: Int) -> SelfRecord { SelfRecord { self: self, self_: self_ } }\n\
 fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
     let result = compile_dag(source);
@@ -2139,6 +2140,12 @@ fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
             && content.contains("record.self_")
             && content.contains("record.self__"),
         "Rust emitter should consistently and injectively suffix-mangle `self`: {content}"
+    );
+    assert!(
+        content.contains("SelfVariant {")
+            && content.contains("        #[serde(rename = \"self\")]\n        self_: i64,")
+            && content.contains("        #[serde(rename = \"self_\")]\n        self__: i64,"),
+        "Rust enum variant fields should preserve authored serde wire names after suffix-mangling: {content}"
     );
 }
 
