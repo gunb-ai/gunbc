@@ -388,7 +388,10 @@ fn calendar_date_fields(date: CalendarDate) -> CalendarDateFields {
 fn leap_second_month_end(fields: CalendarDateFields) -> Bool {
   let month = month_value(month: fields.month)
   let day = day_value(day: fields.day)
-  ((month == 6) && (day == 30)) || ((month == 12) && (day == 31))
+  ((month == 3) && (day == 31))
+    || ((month == 6) && (day == 30))
+    || ((month == 9) && (day == 30))
+    || ((month == 12) && (day == 31))
 }
 
 
@@ -406,9 +409,17 @@ fn leap_second_next_day(utc: CalendarDateFields, local: CalendarDateFields) -> B
   let local_month = month_value(month: local.month)
   let local_day = day_value(day: local.day)
   match utc_month {
+    3 =>
+      (local_year == utc_year)
+        && (local_month == 4)
+        && (local_day == 1)
     6 =>
       (local_year == utc_year)
         && (local_month == 7)
+        && (local_day == 1)
+    9 =>
+      (local_year == utc_year)
+        && (local_month == 10)
         && (local_day == 1)
     12 =>
       (utc_year < 9999)
