@@ -3245,35 +3245,34 @@ pub fn apply_missing_generic_args(
                             ),
                             ">".to_string(),
                         );
-                        if (explicit_args.clone().as_ref() == declaration_formals.clone().as_ref())
+                        if (ty.clone().as_str() == formal_ty.clone().as_str()) {
+                            type_name.clone()
+                        } else if (ty.clone().as_str()
+                            == v2_rt::concat(
+                                v2_rt::concat("Rc<".to_string(), formal_ty.clone()),
+                                ">".to_string(),
+                            )
+                            .as_str())
                         {
-                            if (ty.clone().as_str() == formal_ty.clone().as_str()) {
-                                type_name.clone()
-                            } else if (ty.clone().as_str()
-                                == v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), formal_ty.clone()),
-                                    ">".to_string(),
-                                )
-                                .as_str())
-                            {
-                                v2_rt::concat(
-                                    v2_rt::concat("Rc<".to_string(), type_name.clone()),
-                                    ">".to_string(),
-                                )
-                            } else if (ty.clone().as_str()
-                                == v2_rt::concat(
-                                    v2_rt::concat("Box<".to_string(), formal_ty.clone()),
-                                    ">".to_string(),
-                                )
-                                .as_str())
-                            {
-                                v2_rt::concat(
-                                    v2_rt::concat("Box<".to_string(), type_name.clone()),
-                                    ">".to_string(),
-                                )
-                            } else {
-                                ty.clone()
-                            }
+                            v2_rt::concat(
+                                v2_rt::concat("Rc<".to_string(), type_name.clone()),
+                                ">".to_string(),
+                            )
+                        } else if (ty.clone().as_str()
+                            == v2_rt::concat(
+                                v2_rt::concat("Box<".to_string(), formal_ty.clone()),
+                                ">".to_string(),
+                            )
+                            .as_str())
+                        {
+                            v2_rt::concat(
+                                v2_rt::concat("Box<".to_string(), type_name.clone()),
+                                ">".to_string(),
+                            )
+                        } else if (explicit_args.clone().as_ref()
+                            == declaration_formals.clone().as_ref())
+                        {
+                            ty.clone()
                         } else if v2_rt::contains(
                             ty.clone(),
                             v2_rt::concat(type_name.clone(), "<".to_string()),
