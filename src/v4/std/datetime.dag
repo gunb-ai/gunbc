@@ -162,15 +162,37 @@ type LeapSecondAnnouncement {
 }
 
 
-type LeapSecondInstantFields {
+// 🟢 coproduct dissolution — RFC 3339 §5.7 distinguishes inserted and deleted leap seconds.
+type LeapSecondAdjustment
+  = LeapSecondInsertion
+  | LeapSecondDeletion
+
+
+type LeapSecondOccurrenceFields {
   announcement: LeapSecondAnnouncement
+  adjustment: LeapSecondAdjustment
+}
+
+
+type LeapSecondOccurrenceValidity {
+  refined: Refined<LeapSecondOccurrenceFields>
+}
+
+
+type LeapSecondOccurrence {
+  validity: LeapSecondOccurrenceValidity
+}
+
+
+type LeapSecondInstantFields {
+  occurrence: LeapSecondOccurrence
   second: SecondOfMinute
   subsecond: Subsecond
 }
 
 
 type LeapSecondOffsetDateTimeFields {
-  announcement: LeapSecondAnnouncement
+  occurrence: LeapSecondOccurrence
   local_date: CalendarDate
   local_hour: HourOfDay
   local_minute: MinuteOfHour
@@ -225,6 +247,7 @@ data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
 data clock_time_fields_invalid: Symbol = clock_time_fields_invalid
+data leap_second_occurrence_invalid: Symbol = leap_second_occurrence_invalid
 data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
 data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
 data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
@@ -405,6 +428,31 @@ fn leap_second_announcement_admits(announcement: LeapSecondAnnouncement) -> Bool
 }
 
 
+fn leap_second_occurrence_admits(fields: LeapSecondOccurrenceFields) -> Bool {
+  leap_second_announcement_admits(announcement: fields.announcement)
+}
+
+
+fn leap_second_occurrence_fields(occurrence: LeapSecondOccurrence) -> LeapSecondOccurrenceFields {
+  refined_base(r: occurrence.validity.refined)
+}
+
+
+fn leap_second_occurrence_announcement(occurrence: LeapSecondOccurrence) -> LeapSecondAnnouncement {
+  let fields = leap_second_occurrence_fields(occurrence: occurrence)
+  fields.announcement
+}
+
+
+fn leap_second_occurrence_is_insertion(occurrence: LeapSecondOccurrence) -> Bool {
+  let fields = leap_second_occurrence_fields(occurrence: occurrence)
+  match fields.adjustment {
+    LeapSecondInsertion => true
+    LeapSecondDeletion => false
+  }
+}
+
+
 fn minute_of_day(hour: Nat, minute: Nat) -> Nat {
   (hour * 60) + minute
 }
@@ -461,15 +509,16 @@ fn clock_time_fields_admits(fields: ClockTimeFields) -> Bool {
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
   (second == 60)
-    && leap_second_announcement_admits(announcement: fields.announcement)
+    && leap_second_occurrence_is_insertion(occurrence: fields.occurrence)
 }
 
 
 fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) -> Bool {
   let second = second_value(second: fields.second)
+  let announcement = leap_second_occurrence_announcement(occurrence: fields.occurrence)
   (second == 60)
-    && leap_second_announcement_admits(announcement: fields.announcement)
-    && leap_second_local_matches_utc(announcement: fields.announcement, fields: fields)
+    && leap_second_occurrence_is_insertion(occurrence: fields.occurrence)
+    && leap_second_local_matches_utc(announcement: announcement, fields: fields)
 }
 
 
@@ -530,6 +579,12 @@ data calendar_date_validation: Validation<CalendarDateFields> = Validation {
 data clock_time_validation: Validation<ClockTimeFields> = Validation {
   reason: clock_time_fields_invalid,
   admits: clock_time_fields_admits
+}
+
+
+data leap_second_occurrence_validation: Validation<LeapSecondOccurrenceFields> = Validation {
+  reason: leap_second_occurrence_invalid,
+  admits: leap_second_occurrence_admits
 }
 
 
@@ -622,6 +677,13 @@ fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<Calendar
 fn make_clock_time(fields: ClockTimeFields, at: Locus) -> Outcome<ClockTime> {
   bind_outcome(o: refine(base: fields, by: clock_time_validation, at: at), f: fn(refined) {
     outcome_accepted(value: ClockTime { fields: refined_base(r: refined) })
+  })
+}
+
+
+fn make_leap_second_occurrence(fields: LeapSecondOccurrenceFields, at: Locus) -> Outcome<LeapSecondOccurrence> {
+  bind_outcome(o: refine(base: fields, by: leap_second_occurrence_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: LeapSecondOccurrence { validity: LeapSecondOccurrenceValidity { refined: refined } })
   })
 }
 
