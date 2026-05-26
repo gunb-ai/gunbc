@@ -102,3 +102,22 @@ fn v4_compiler_parse_table_entrypoints_and_claim_wiring() {
         "{CLAIM_PATH}: claim must exercise parse_production"
     );
 }
+
+#[test]
+fn v4_token_position_indices_emits_exact_suffix_positions() {
+    let _parse = parse_module(PARSE_DAG, PARSE_DAG_PATH);
+    let token_position_body = PARSE_DAG
+        .split("fn token_position_indices")
+        .nth(1)
+        .and_then(|tail| tail.split("fn parse_wrap_production_captured").next())
+        .expect("token_position_indices body should be present");
+
+    assert!(
+        !token_position_body.contains("item: length(xs: tokens)"),
+        "{PARSE_DAG_PATH}: token_position_indices must not append the terminal index twice"
+    );
+    assert!(
+        token_position_body.contains("list_snoc_item(xs: acc, item: length(xs: acc))"),
+        "{PARSE_DAG_PATH}: token_position_indices should append one new suffix index per token"
+    );
+}

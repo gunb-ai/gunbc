@@ -84,6 +84,23 @@ fn v4_compile_dag_declares_ratified_compile_core() {
 }
 
 #[test]
+fn v4_compile_ingest_staging_uses_validated_terminal_and_nonempty_graph() {
+    let _module = parse_module(COMPILE_DAG, COMPILE_PATH);
+    assert!(
+        COMPILE_DAG.contains("o: validate_then_compile("),
+        "{COMPILE_PATH}: compile_ingest_staging must route through validate_then_compile so always_required_lenses fire"
+    );
+    assert!(
+        !COMPILE_DAG.contains("module_graph_from_entries(entries: Empty)"),
+        "{COMPILE_PATH}: compile_ingest_staging must not resolve against an empty module graph"
+    );
+    assert!(
+        COMPILE_DAG.contains("head: compile_ingest_staging_module_entry(root: normalized)"),
+        "{COMPILE_PATH}: compile_ingest_staging must seed the graph with the normalized staging source"
+    );
+}
+
+#[test]
 fn v4_compile_dag_imports_target_carriers_not_emit_cycle() {
     let module = parse_module(COMPILE_DAG, COMPILE_PATH);
     assert!(
