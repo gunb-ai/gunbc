@@ -166,7 +166,7 @@ def check_generated_eval(eval_rs: Path) -> None:
     require_order(
         eval_body,
         [
-            "pub fn eval(tree: &Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: &Rc<Inputs>) -> Rc<Outcome>",
+            "pub fn eval(tree: Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: Rc<Inputs>) -> Rc<Outcome>",
             "well_formed(tree.root.clone())",
             "well_formed(inputs.root.clone())",
             "eval_runtime_node(inputs.root.clone(), tree.clone(), interpretation, empty_evaluation_environment(), eval_runtime())",
