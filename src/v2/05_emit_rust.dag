@@ -1653,57 +1653,15 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
 }
 
-fn explicit_type_arg_strings(type_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  if type_node.params |> count > 0 {
-    type_node.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
-  } else if type_node.connective == NoConnective && type_node.children |> count > 0 {
-    type_node.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices))
-  } else {
-    []
-  }
-}
-
-fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  let type_name = authored_name_at(source_indices: source_indices, node: type_node)
-  match map_get(emit_info.type_summaries, type_name) {
-    Some { value: summary } =>
-      let expected = summary.generic_param_names |> count
-      if expected == 0 {
-        ty
+fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.type_annotation {
+    Some { value: applied } =>
+      if applied.children |> count > 0 {
+        render_rust_type(n: applied, shared_types: shared_types, source_indices: source_indices)
       } else {
-        let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
-        let declaration_formals = summary.generic_param_names
-        let formal_ty = concat(type_name, "<", declaration_formals |> join(separator: ", "), ">")
-        if ty == formal_ty {
-          type_name
-        } else if ty == concat("Rc<", formal_ty, ">") {
-          concat("Rc<", type_name, ">")
-        } else if ty == concat("Box<", formal_ty, ">") {
-          concat("Box<", type_name, ">")
-        } else if explicit_args == declaration_formals {
-          ty
-        } else if contains(ty, concat(type_name, "<")) {
-          ty
-        } else {
-          let inferred_args = if explicit_args |> count == expected { explicit_args }
-            else { [] }
-          if inferred_args |> count == expected {
-            let with_args = concat(type_name, "<", inferred_args |> join(separator: ", "), ">")
-            if ty == type_name {
-              with_args
-            } else if ty == concat("Rc<", type_name, ">") {
-              concat("Rc<", with_args, ">")
-            } else if ty == concat("Box<", type_name, ">") {
-              concat("Box<", with_args, ">")
-            } else {
-              ty
-            }
-          } else {
-            ty
-          }
-        }
+        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
-    None => ty
+    None => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
@@ -1713,7 +1671,9 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
   // Fix self-referential Conj types: when a field's resolved type is a full
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
-  let ty = if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
+  let ty = if rt_child.type_annotation != none {
+    render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
+  } else if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     let rt_child_name = authored_name_at(source_indices: env.source_indices, node: rt_child)
     match lookup_type_by_name(env: env, name: rt_child_name) {
       Some { value: resolved } =>
@@ -1731,16 +1691,7 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   }
-  let authored_field_ty = field_node_type_expr(n: child)
-  let rendered_ty = match map_get(emit_info.type_summaries, authored_name_at(source_indices: env.source_indices, node: authored_field_ty)) {
-    Some { value: summary } =>
-      let authored_args = explicit_type_arg_strings(type_node: authored_field_ty, shared_types: shared_types, source_indices: env.source_indices)
-      if summary.generic_param_names |> count > 0 && authored_args != summary.generic_param_names {
-        render_rust_type(n: authored_field_ty, shared_types: shared_types, source_indices: env.source_indices)
-      } else { ty }
-    None => ty
-  }
-  let generic_ty = apply_missing_generic_args(ty: rendered_ty, type_node: rt_child, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
   } else { generic_ty }
@@ -1823,7 +1774,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-        Some { value: f } => apply_missing_generic_args(ty: render_rust_type(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices), type_node: resolved_type(n: f), parent_generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+        Some { value: f } => render_rust_type_with_applied_binding(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices)
         None => ""
       }
     )
@@ -1837,7 +1788,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-      Some { value: f } => apply_missing_generic_args(ty: render_rust_type(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices), type_node: resolved_type(n: f), parent_generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+      Some { value: f } => render_rust_type_with_applied_binding(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices)
       None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     // Generate match arms for each variant.
@@ -1999,7 +1950,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
           } else {
             render_rust_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
           }
-          let ty = apply_missing_generic_args(ty: raw_ty, type_node: type_node, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+          let ty = if type_node.type_annotation != none { render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, source_indices: env.source_indices) } else { raw_ty }
           let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
@@ -2009,7 +1960,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
     } else {
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
-        let ty = apply_missing_generic_args(ty: render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices), type_node: rt_f, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+        let ty = render_rust_type_with_applied_binding(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
         let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
           concat("Box<", ty, ">")
         } else { ty }
@@ -2022,7 +1973,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
-      let ty = apply_missing_generic_args(ty: render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices), type_node: rt_f, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+      let ty = render_rust_type_with_applied_binding(n: rt_f, shared_types: shared_types, source_indices: env.source_indices)
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
         concat("Box<", ty, ">")
       } else { ty }
@@ -4182,7 +4133,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
     let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
-    concat("(", recv_str, ".", function_name, ")(", arg_strs |> join(separator: ", "), ")")
+    concat("(", recv_str, ".", emit_ident(name: function_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")")
   } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
     concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))

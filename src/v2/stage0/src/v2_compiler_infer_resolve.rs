@@ -741,6 +741,26 @@ pub fn resolve_node_bounded(
                         }
                         __result
                     });
+                    let applied_type_args = Some(Rc::new(Node {
+                        name: type_name.clone(),
+                        span: n.span.clone(),
+                        ident_span: n.ident_span.clone(),
+                        children: resolved_args.clone(),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: None,
+                        return_cardinality: n.return_cardinality.clone(),
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }));
                     let slot_bindings = Rc::new(
                         decl.params
                             .clone()
@@ -835,7 +855,7 @@ pub fn resolve_node_bounded(
                                 body: n.body.clone(),
                                 transport: n.transport.clone(),
                                 properties: target_result.resolved.clone().properties.clone(),
-                                type_annotation: n.type_annotation.clone(),
+                                type_annotation: applied_type_args.clone(),
                                 is_self_recursive: is_recursive,
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
@@ -879,7 +899,7 @@ pub fn resolve_node_bounded(
                                     body: n.body.clone(),
                                     transport: n.transport.clone(),
                                     properties: decl.properties.clone(),
-                                    type_annotation: n.type_annotation.clone(),
+                                    type_annotation: applied_type_args.clone(),
                                     is_self_recursive: is_recursive,
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
