@@ -134,7 +134,10 @@ pub fn render_rust_type(
                 && ((n.children.len() as i64) == 0)
                 && ((authored_name_at(source_indices.clone(), &n).len() as i64) == 1))
             {
-                emit_ident(authored_name_at(source_indices.clone(), &n), RenderTarget::Rust)
+                emit_ident(
+                    authored_name_at(source_indices.clone(), &n),
+                    RenderTarget::Rust,
+                )
             } else if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.len() as i64) > 0))
             {
