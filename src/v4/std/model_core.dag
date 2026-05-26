@@ -1,6 +1,6 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, ModelCoreWave1BoolLawKey, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_model_core, wave1_void, model_core_wave1_bool_law_bounded_lattice_identities, model_core_wave1_bool_law_complement_involution, model_core_wave1_bool_law_complement_bounds, model_core_wave1_law_field_subject, model_core_wave1_law_field_algebra, model_core_wave1_law_field_kind
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, ModelCoreWave1BoolLawKey, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_model_core, wave1_void, model_core_wave1_bool_law_bounded_lattice_identities, model_core_wave1_bool_law_distributivity, model_core_wave1_bool_law_complement_involution, model_core_wave1_bool_law_complement_bounds, model_core_wave1_law_field_subject, model_core_wave1_law_field_algebra, model_core_wave1_law_field_kind
 // Consumes: v4.std.collection, v4.std.logic, v4.std.node
 // Status: T-33 modeled.
 
@@ -123,9 +123,11 @@ type ModelCore {
 // 🟡 needs-more-work — feature:model-core-law-expression-carrier — scaffold:T-33-wave2 · the law-kind symbols below are bounded schedule keys for BooleanAlgebra law obligations; the law Node also carries the structural algebra Node and inhabitance witness. dissolve-on: std/algebra exports typed law/equation Nodes for BooleanAlgebra laws, replacing these kind atoms with structural law expressions.
 type ModelCoreWave1BoolLawKey
   = ModelCoreWave1BoolBoundedLatticeIdentities
+  | ModelCoreWave1BoolDistributivity
   | ModelCoreWave1BoolComplementInvolution
   | ModelCoreWave1BoolComplementBounds
 data model_core_wave1_bool_law_bounded_lattice_identities: Symbol = model_core_wave1_bool_law_bounded_lattice_identities
+data model_core_wave1_bool_law_distributivity: Symbol = model_core_wave1_bool_law_distributivity
 data model_core_wave1_bool_law_complement_involution: Symbol = model_core_wave1_bool_law_complement_involution
 data model_core_wave1_bool_law_complement_bounds: Symbol = model_core_wave1_bool_law_complement_bounds
 data model_core_wave1_law_field_subject: Symbol = model_core_wave1_law_field_subject
@@ -195,6 +197,7 @@ fn model_core_wave1_bool_inhabitance() -> AlgebraInhabitanceDecl {
 fn model_core_wave1_bool_law_symbol(key: ModelCoreWave1BoolLawKey) -> Symbol {
   match key {
     ModelCoreWave1BoolBoundedLatticeIdentities => model_core_wave1_bool_law_bounded_lattice_identities
+    ModelCoreWave1BoolDistributivity => model_core_wave1_bool_law_distributivity
     ModelCoreWave1BoolComplementInvolution => model_core_wave1_bool_law_complement_involution
     ModelCoreWave1BoolComplementBounds => model_core_wave1_bool_law_complement_bounds
   }
@@ -240,6 +243,7 @@ fn wave1_model_core() -> ModelCore {
     ],
     laws: [
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolBoundedLatticeIdentities),
+      model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolDistributivity),
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
     ],
