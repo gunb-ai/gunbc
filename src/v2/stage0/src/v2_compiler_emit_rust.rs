@@ -2749,7 +2749,7 @@ pub fn emit_typed_item(
                                     ),
                                     " ".to_string(),
                                 ),
-                                item_text,
+                                item_text.clone(),
                             ),
                             " = ".to_string(),
                         ),
@@ -2763,7 +2763,20 @@ pub fn emit_typed_item(
                 )
             } else {
                 if is_type_decl_item(&item, env.source_indices.clone()) {
-                    "".to_string()
+                    if rust_nominal_ord_type_eligible(item_text.clone()) {
+                        emit_struct_from_children(
+                            &item_text,
+                            "".to_string(),
+                            Rc::new(vec![]),
+                            &Rc::new(vec![]),
+                            emit_info.recursive_type_set.clone(),
+                            &shared_types,
+                            env.clone(),
+                            &emit_info,
+                        )
+                    } else {
+                        "".to_string()
+                    }
                 } else {
                     if is_function_item(&item) {
                         {
@@ -2844,7 +2857,7 @@ pub fn emit_typed_item(
                     } else {
                         if is_data_def_item(&item) {
                             emit_data_def(
-                                item_text,
+                                item_text.clone(),
                                 &item.type_annotation.clone().clone().unwrap(),
                                 &item.body.clone().clone().unwrap(),
                                 registry.clone(),
@@ -2863,7 +2876,7 @@ pub fn emit_typed_item(
                                     v2_rt::concat(
                                         v2_rt::concat(
                                             "compile_error!(\"unhandled item: ".to_string(),
-                                            item_text,
+                                            item_text.clone(),
                                         ),
                                         "\");".to_string(),
                                     )

@@ -4458,6 +4458,38 @@ fn indexed_names(names: List<String>) -> List<String> {
 // function signatures, and construction sites disagree on Rc wrapping.
 
 #[test]
+fn rust_set_nominal_ord_decl_emits_carriers_before_btree_set_use() {
+    let source = "\
+module test_nominal_ord_set
+type Symbol
+type DiffId { id: Symbol }
+type DiffBag { ids: Set<DiffId> }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert!(
+        has_file(&result, "src/test_nominal_ord_set.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
+    let content = find_file(&result, "src/test_nominal_ord_set.rs");
+    assert!(
+        content.contains("#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol;"),
+        "Symbol must emit an Ord carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub struct DiffId {\n    pub id: Symbol,"),
+        "DiffId should carry the emitted Symbol type, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub ids: std::collections::BTreeSet<DiffId>,"),
+        "Set<DiffId> should lower to BTreeSet<DiffId>, got:\n{}",
+        content
+    );
+}
+
+#[test]
 fn rc_wrap_struct_field_and_construction() {
     let source = "\
 module test_rc_struct
