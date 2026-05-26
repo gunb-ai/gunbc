@@ -134,7 +134,7 @@ pub fn kahn_remove_loop(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnState {
-    pub in_degree: Rc<Rc<HashMap<String, i64>>>,
+    pub in_degree: Rc<HashMap<String, i64>>,
     pub removed_count: i64,
 }
 

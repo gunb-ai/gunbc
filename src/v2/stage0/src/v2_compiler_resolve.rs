@@ -20,14 +20,14 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleGraph {
-    pub modules: Rc<Rc<Vec<Rc<ResolvedModule>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub modules: Rc<Vec<Rc<ResolvedModule>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedModule {
-    pub module: Rc<Rc<Node>>,
-    pub resolved_imports: Rc<Rc<Vec<Rc<ResolvedImport>>>>,
+    pub module: Rc<Node>,
+    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub dep_order: i64,
 }
 
@@ -35,8 +35,8 @@ pub struct ResolvedModule {
 pub struct ResolvedImport {
     pub module_path: String,
     pub is_all: bool,
-    pub specific_names: Rc<Rc<Vec<String>>>,
-    pub target_module: Rc<Option<Rc<Node>>>,
+    pub specific_names: Rc<Vec<String>>,
+    pub target_module: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -47,8 +47,8 @@ pub struct DepEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveAccum {
-    pub imports_by_name: Rc<Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
@@ -189,8 +189,8 @@ pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) ->
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleResolveResult {
-    pub resolved_imports: Rc<Rc<Vec<Rc<ResolvedImport>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn resolve_module_imports(
@@ -249,8 +249,8 @@ pub fn resolve_module_imports(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolveResult {
-    pub resolved: Rc<Rc<ResolvedImport>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub resolved: Rc<ResolvedImport>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn resolve_import(
@@ -416,8 +416,8 @@ pub fn get_variant_names(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuplicateCheckState {
-    pub seen_names: Rc<Rc<HashMap<String, bool>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub seen_names: Rc<HashMap<String, bool>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn check_duplicate_modules(
@@ -465,8 +465,8 @@ pub fn check_duplicate_modules(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
-    pub sorted: Rc<Rc<Vec<String>>>,
-    pub cycle_error: Rc<Option<Rc<ErrorNode>>>,
+    pub sorted: Rc<Vec<String>>,
+    pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
 pub fn adjacency_add_edge(
@@ -695,8 +695,8 @@ pub fn topological_sort(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnDrainState {
-    pub sorted: Rc<Rc<Vec<String>>>,
-    pub in_degree_map: Rc<Rc<HashMap<String, i64>>>,
+    pub sorted: Rc<Vec<String>>,
+    pub in_degree_map: Rc<HashMap<String, i64>>,
 }
 
 pub fn kahn_drain(

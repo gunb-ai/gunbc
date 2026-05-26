@@ -82,27 +82,27 @@ pub struct SourceFile {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipelineResult {
-    pub files: Rc<Rc<Vec<Rc<TextFile>>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub complexity: Rc<Rc<ComplexityReport>>,
-    pub ownership: Rc<Rc<Vec<Rc<OwnershipProof>>>>,
-    pub artifact_plan: Rc<Rc<ArtifactPlan>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
+    pub files: Rc<Vec<Rc<TextFile>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub artifact_plan: Rc<ArtifactPlan>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
-    pub graph: Rc<Option<Rc<ModuleGraph>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
-    pub intern_table: Rc<Rc<InternTable>>,
+    pub graph: Option<Rc<ModuleGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendAccum {
-    pub parse_results: Rc<Rc<Vec<Rc<ParseResult>>>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
-    pub intern_table: Rc<Rc<InternTable>>,
+    pub parse_results: Rc<Vec<Rc<ParseResult>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
@@ -335,9 +335,9 @@ pub fn json_optional_string(value: Option<String>) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
-    pub seen: Rc<Rc<HashMap<String, String>>>,
-    pub order: Rc<Rc<Vec<Rc<Node>>>>,
-    pub collision_errors: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub seen: Rc<HashMap<String, String>>,
+    pub order: Rc<Vec<Rc<Node>>>,
+    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
@@ -2719,12 +2719,12 @@ pub fn compile_sources(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedPipelineResult {
-    pub graph: Rc<Option<Rc<ResolvedGraph>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
-    pub source_indices: Rc<Rc<HashMap<String, Rc<NewlineIndex>>>>,
-    pub complexity: Rc<Rc<ComplexityReport>>,
-    pub ownership: Rc<Rc<Vec<Rc<OwnershipProof>>>>,
-    pub newline_indices: Rc<Rc<Vec<Rc<NewlineIndex>>>>,
+    pub graph: Option<Rc<ResolvedGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
 pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {

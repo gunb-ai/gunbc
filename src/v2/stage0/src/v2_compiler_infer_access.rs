@@ -21,14 +21,14 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessCheckResultNode {
-    pub inferred: Rc<Option<Rc<InferredNode>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub inferred: Option<Rc<InferredNode>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedCollectionParts {
-    pub key_type: Rc<Rc<Node>>,
-    pub value_type: Rc<Rc<Node>>,
+    pub key_type: Rc<Node>,
+    pub value_type: Rc<Node>,
 }
 
 pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {

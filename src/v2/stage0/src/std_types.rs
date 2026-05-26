@@ -222,19 +222,19 @@ pub type GlobSegment = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
-    pub segments: Rc<Rc<Vec<PathSegment>>>,
+    pub segments: Rc<Vec<NonEmptyStr>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobPattern {
-    pub segments: Rc<Rc<Vec<GlobSegment>>>,
+    pub segments: Rc<Vec<NonEmptyStr>>,
 }
 
 pub type FilePath = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceSpan {
-    pub file: FilePath,
+    pub file: String,
     pub start: i64,
     pub end: i64,
 }
@@ -320,14 +320,14 @@ pub enum FermiDepth {
 #[serde(tag = "_variant")]
 pub enum CredentialFlow {
     Stored {
-        secret_name: NonEmptyStr,
+        secret_name: String,
     },
     PlatformInjected {
-        env_var: NonEmptyStr,
+        env_var: String,
     },
     WorkloadIdentity {
-        audience: NonEmptyStr,
-        service_account: Option<ServiceAccountEmail>,
+        audience: String,
+        service_account: Option<String>,
         scopes: Rc<Vec<String>>,
     },
     InteractiveAuth {
@@ -409,7 +409,7 @@ pub struct TargetTriple {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RuntimePlatform {
-    pub host: Rc<Rc<TargetTriple>>,
+    pub host: Rc<TargetTriple>,
     pub env: ExecutionEnv,
 }
 
@@ -461,17 +461,17 @@ pub enum AuthScheme {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessToken {
     pub token: String,
-    pub scheme: Rc<Rc<AuthScheme>>,
-    pub expires_at: Option<Timestamp>,
+    pub scheme: Rc<AuthScheme>,
+    pub expires_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Credential {
     pub token: String,
-    pub scheme: Rc<Rc<AuthScheme>>,
+    pub scheme: Rc<AuthScheme>,
     pub header_name: Option<String>,
     pub source_id: String,
-    pub required_scopes: Rc<Rc<Vec<String>>>,
+    pub required_scopes: Rc<Vec<String>>,
     pub expires_in: Option<i64>,
 }
 
@@ -523,7 +523,7 @@ pub struct TestResult {
     pub ok: bool,
     pub stdout: String,
     pub stderr: String,
-    pub duration_ms: Milliseconds,
+    pub duration_ms: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -553,7 +553,7 @@ pub struct DocumentLine {
 pub struct DocumentSection {
     pub title: String,
     pub has_title: bool,
-    pub lines: Rc<Rc<Vec<Rc<DocumentLine>>>>,
+    pub lines: Rc<Vec<Rc<DocumentLine>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -561,14 +561,14 @@ pub struct Document {
     pub header: String,
     pub has_header: bool,
     pub comment_prefix: String,
-    pub sections: Rc<Rc<Vec<Rc<DocumentSection>>>>,
+    pub sections: Rc<Vec<Rc<DocumentSection>>>,
     pub trailing_newline: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
     pub path: String,
-    pub document: Rc<Rc<Document>>,
+    pub document: Rc<Document>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -586,14 +586,14 @@ pub struct ToolEntry {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRegistry {
-    pub tools: Rc<Rc<Vec<Rc<ToolEntry>>>>,
+    pub tools: Rc<Vec<Rc<ToolEntry>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagTopology {
-    pub nodes: Rc<Rc<Vec<Rc<TopologyNode>>>>,
-    pub edges: Rc<Rc<Vec<Rc<TopologyEdge>>>>,
-    pub subdag_boundaries: Rc<Rc<Vec<String>>>,
+    pub nodes: Rc<Vec<Rc<TopologyNode>>>,
+    pub edges: Rc<Vec<Rc<TopologyEdge>>>,
+    pub subdag_boundaries: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -613,17 +613,17 @@ pub struct TopologyEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiff {
-    pub added: Rc<Rc<Vec<String>>>,
-    pub removed: Rc<Rc<Vec<String>>>,
-    pub changed: Rc<Rc<Vec<String>>>,
+    pub added: Rc<Vec<String>>,
+    pub removed: Rc<Vec<String>>,
+    pub changed: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CodegenTarget {
     pub name: String,
-    pub path: FilePath,
+    pub path: String,
     pub backend: Option<CodegenBackend>,
-    pub target: Rc<Option<Rc<TargetTriple>>>,
+    pub target: Option<Rc<TargetTriple>>,
     pub runtime_env: Option<ExecutionEnv>,
 }
 
@@ -645,6 +645,6 @@ pub struct PragmaDirective {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocSource {
-    pub path: FilePath,
+    pub path: String,
     pub kind: DocSourceKind,
 }

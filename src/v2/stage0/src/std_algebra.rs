@@ -254,8 +254,8 @@ pub enum CostShape {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldTemplate {
     pub name: String,
-    pub param_types: Rc<Rc<Vec<Rc<AlgebraTypeTemplate>>>>,
-    pub return_type: Rc<Rc<AlgebraTypeTemplate>>,
+    pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
+    pub return_type: Rc<AlgebraTypeTemplate>,
     pub size_effect: Option<CollectionSizeEffect>,
     pub cost_shape: Option<CostShape>,
     pub callback_element_position: Option<i64>,

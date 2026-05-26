@@ -354,8 +354,8 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelTypeBuild {
-    pub ty: Rc<Rc<Node>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub ty: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
@@ -2370,7 +2370,7 @@ pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<AlgebraFieldKind>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldMatch {
     pub field_kind: AlgebraFieldKind,
-    pub field_node: Rc<Rc<Node>>,
+    pub field_node: Rc<Node>,
 }
 
 pub fn first_matching_algebra_field(
@@ -2414,7 +2414,7 @@ pub fn first_matching_algebra_field(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BinOpInferred {
-    pub result_type: Rc<Rc<Node>>,
+    pub result_type: Rc<Node>,
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 

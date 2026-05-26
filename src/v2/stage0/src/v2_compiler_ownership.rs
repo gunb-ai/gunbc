@@ -44,8 +44,8 @@ pub struct EdgeClassification {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
     pub name: String,
-    pub binding_kind: Rc<Option<Rc<VarBindingKind>>>,
-    pub consumers: Rc<Rc<Vec<Rc<EdgeClassification>>>>,
+    pub binding_kind: Option<Rc<VarBindingKind>>,
+    pub consumers: Rc<Vec<Rc<EdgeClassification>>>,
 }
 
 pub fn semantic_consumer_count(usage: Rc<BindingUsage>) -> i64 {
@@ -121,22 +121,22 @@ pub struct FoldAccUnwrapProof {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUseSummary {
     pub whole_acc_uses: i64,
-    pub field_moves: Rc<Rc<Vec<String>>>,
+    pub field_moves: Rc<Vec<String>>,
     pub nested_acc_refs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProof {
     pub func_name: String,
-    pub bindings: Rc<Rc<HashMap<String, Rc<BindingUsage>>>>,
-    pub decisions: Rc<Rc<Vec<Rc<OwnershipDecision>>>>,
-    pub fold_acc_unwrap: Rc<Rc<Vec<Rc<FoldAccUnwrapProof>>>>,
+    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
+    pub decisions: Rc<Vec<Rc<OwnershipDecision>>>,
+    pub fold_acc_unwrap: Rc<Vec<Rc<FoldAccUnwrapProof>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsageAccum {
-    pub bindings: Rc<Rc<HashMap<String, Rc<BindingUsage>>>>,
-    pub fold_call_nodes: Rc<Rc<Vec<Rc<Node>>>>,
+    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
+    pub fold_call_nodes: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {

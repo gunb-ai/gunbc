@@ -20,8 +20,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizeResult {
-    pub graph: Rc<Rc<ModuleGraph>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub graph: Rc<ModuleGraph>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn check_bare_containers(

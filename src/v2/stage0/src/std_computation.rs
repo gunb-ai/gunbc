@@ -85,9 +85,9 @@ pub enum ShrinkFactor {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
-    pub bound: Rc<Rc<SizeBound>>,
+    pub bound: Rc<SizeBound>,
     pub evidence: DescentEvidence,
-    pub factor: Rc<Option<Rc<ShrinkFactor>>>,
+    pub factor: Option<Rc<ShrinkFactor>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

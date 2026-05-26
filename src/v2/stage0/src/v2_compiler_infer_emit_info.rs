@@ -49,32 +49,32 @@ impl TypeRepr {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeSummary {
     pub name: String,
-    pub repr: Rc<Rc<TypeRepr>>,
-    pub field_summaries: Rc<Rc<HashMap<String, Rc<FieldSummary>>>>,
-    pub field_type_map: Rc<Rc<HashMap<String, String>>>,
-    pub variant_name_set: Rc<Rc<HashMap<String, bool>>>,
-    pub generic_param_names: Rc<Rc<Vec<String>>>,
+    pub repr: Rc<TypeRepr>,
+    pub field_summaries: Rc<HashMap<String, Rc<FieldSummary>>>,
+    pub field_type_map: Rc<HashMap<String, String>>,
+    pub variant_name_set: Rc<HashMap<String, bool>>,
+    pub generic_param_names: Rc<Vec<String>>,
     pub has_fn_fields: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
-    pub type_summaries: Rc<Rc<HashMap<String, Rc<TypeSummary>>>>,
-    pub recursive_type_set: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub fielded_variants: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub positional_payload_variants: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub shared_types: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub ownership_index: Rc<Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>>,
-    pub movable: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub variant_to_enum: Rc<Rc<HashMap<String, String>>>,
-    pub owned_bindings: Rc<Rc<std::collections::BTreeSet<String>>>,
-    pub read_only_params_index: Rc<Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>>,
-    pub read_only_params: Rc<Rc<std::collections::BTreeSet<String>>>,
+    pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    pub recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    pub fielded_variants: Rc<std::collections::BTreeSet<String>>,
+    pub positional_payload_variants: Rc<std::collections::BTreeSet<String>>,
+    pub shared_types: Rc<std::collections::BTreeSet<String>>,
+    pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    pub movable: Rc<std::collections::BTreeSet<String>>,
+    pub variant_to_enum: Rc<HashMap<String, String>>,
+    pub owned_bindings: Rc<std::collections::BTreeSet<String>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    pub read_only_params: Rc<std::collections::BTreeSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
-    pub type_summaries: Rc<Rc<HashMap<String, Rc<TypeSummary>>>>,
+    pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {

@@ -30,8 +30,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
-    pub status: Rc<Rc<NodeLookupStatus>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub status: Rc<NodeLookupStatus>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

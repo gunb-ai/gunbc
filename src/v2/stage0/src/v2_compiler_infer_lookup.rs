@@ -53,9 +53,9 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KnownMethodResolution {
-    pub semantics: Rc<Option<Rc<MethodSemantics>>>,
-    pub result_type: Rc<Option<Rc<Node>>>,
-    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub semantics: Option<Rc<MethodSemantics>>,
+    pub result_type: Option<Rc<Node>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn lookup_in_scope(
@@ -371,17 +371,17 @@ pub fn field_summary_for_type(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodFieldResult {
-    pub field_node: Rc<Rc<Node>>,
-    pub result_type: Rc<Rc<Node>>,
+    pub field_node: Rc<Node>,
+    pub result_type: Rc<Node>,
     pub size_effect: Option<CollectionSizeEffect>,
     pub cost_shape: Option<CostShape>,
-    pub algebra_template: Rc<Option<Rc<AlgebraFieldTemplate>>>,
+    pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralMethodLookup {
-    pub resolution: Rc<Option<Rc<MethodFieldResult>>>,
-    pub kernel_diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
+    pub resolution: Option<Rc<MethodFieldResult>>,
+    pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn lookup_field_in_product(

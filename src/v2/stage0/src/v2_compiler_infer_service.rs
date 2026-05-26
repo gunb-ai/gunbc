@@ -25,21 +25,21 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UniqueAccum {
-    pub seen: Rc<Rc<HashMap<String, bool>>>,
-    pub result: Rc<Rc<Vec<String>>>,
+    pub seen: Rc<HashMap<String, bool>>,
+    pub result: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpEntry {
     pub name: String,
-    pub outputs: Rc<Rc<Vec<Rc<Node>>>>,
-    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub outputs: Rc<Vec<Rc<Node>>>,
+    pub params: Rc<Vec<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
-    pub result_type: Rc<Rc<Node>>,
-    pub op_params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub result_type: Rc<Node>,
+    pub op_params: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn is_typed_service_call_receiver(

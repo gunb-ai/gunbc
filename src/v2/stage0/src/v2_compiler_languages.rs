@@ -90,8 +90,8 @@ pub enum ReservedWordStrategy {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReservedWords {
-    pub keywords: Rc<Rc<Vec<String>>>,
-    pub strategy: Rc<Rc<ReservedWordStrategy>>,
+    pub keywords: Rc<Vec<String>>,
+    pub strategy: Rc<ReservedWordStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -143,7 +143,7 @@ pub enum ImportTrigger {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportRule {
-    pub trigger: Rc<Rc<ImportTrigger>>,
+    pub trigger: Rc<ImportTrigger>,
     pub import_path: String,
 }
 
@@ -219,7 +219,7 @@ pub enum IfValueForm {
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub wildcard_case: Option<String>,
-    pub variant_pattern: Rc<Option<Rc<VariantPatternSyntax>>>,
+    pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
     pub guard_prefix: Option<String>,
     pub empty_return_value: String,
     pub return_suffix: String,
@@ -369,21 +369,21 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
     pub target_name: String,
-    pub reserved_words: Rc<Rc<ReservedWords>>,
-    pub scaffold: Rc<Rc<ProjectScaffold>>,
-    pub serialization: Rc<Rc<SerializationSpec>>,
-    pub test_conventions: Rc<Rc<TestConventions>>,
-    pub visibility: Rc<Rc<VisibilitySpec>>,
-    pub sharing: Rc<Rc<SharingStrategy>>,
-    pub indexing: Rc<Rc<IndexingSemantics>>,
-    pub annotations: Rc<Rc<AnnotationRequirements>>,
-    pub method_templates: Rc<Option<Rc<HashMap<String, String>>>>,
-    pub service_fields: Rc<Rc<ServiceFieldTemplates>>,
-    pub block_syntax: Rc<Rc<BlockSyntax>>,
-    pub for_each_syntax: Rc<Rc<ForEachSyntax>>,
-    pub tco: Rc<Rc<TcoSyntax>>,
-    pub items: Rc<Rc<ItemKeywords>>,
-    pub expression_semantics: Rc<Rc<ExpressionSemantics>>,
+    pub reserved_words: Rc<ReservedWords>,
+    pub scaffold: Rc<ProjectScaffold>,
+    pub serialization: Rc<SerializationSpec>,
+    pub test_conventions: Rc<TestConventions>,
+    pub visibility: Rc<VisibilitySpec>,
+    pub sharing: Rc<SharingStrategy>,
+    pub indexing: Rc<IndexingSemantics>,
+    pub annotations: Rc<AnnotationRequirements>,
+    pub method_templates: Option<Rc<HashMap<String, String>>>,
+    pub service_fields: Rc<ServiceFieldTemplates>,
+    pub block_syntax: Rc<BlockSyntax>,
+    pub for_each_syntax: Rc<ForEachSyntax>,
+    pub tco: Rc<TcoSyntax>,
+    pub items: Rc<ItemKeywords>,
+    pub expression_semantics: Rc<ExpressionSemantics>,
     pub lambda_template: String,
     pub error_expr_template: String,
     pub list_literal_empty: String,
@@ -393,17 +393,17 @@ pub struct LanguageSpec {
     pub type_arg_open: String,
     pub type_arg_close: String,
     pub void_type: String,
-    pub tuple_syntax: Rc<Rc<TupleSyntax>>,
-    pub string_interp: Rc<Rc<StringInterpSyntax>>,
+    pub tuple_syntax: Rc<TupleSyntax>,
+    pub string_interp: Rc<StringInterpSyntax>,
     pub callable_type_template: Option<String>,
     pub naming_case: NamingCase,
     pub async_call_prefix: String,
     pub bridge_method_prefix: String,
     pub bridge_method_case: NamingCase,
-    pub bridge_method_overrides: Rc<Rc<HashMap<String, String>>>,
-    pub record_lit: Rc<Rc<RecordLitSyntax>>,
-    pub service_method: Rc<Rc<ServiceMethodStrategy>>,
-    pub service_return: Rc<Rc<ServiceReturnStrategy>>,
+    pub bridge_method_overrides: Rc<HashMap<String, String>>,
+    pub record_lit: Rc<RecordLitSyntax>,
+    pub service_method: Rc<ServiceMethodStrategy>,
+    pub service_return: Rc<ServiceReturnStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -454,10 +454,10 @@ pub struct EscapePair {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
-    pub style: Rc<Rc<InterpStyle>>,
+    pub style: Rc<InterpStyle>,
     pub format_template: String,
     pub plain_template: String,
-    pub escape_pairs: Rc<Rc<Vec<Rc<EscapePair>>>>,
+    pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {

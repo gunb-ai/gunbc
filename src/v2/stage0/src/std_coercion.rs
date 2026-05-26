@@ -44,7 +44,7 @@ pub struct CastRule {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
-    pub cast_rules: Rc<Rc<Vec<Rc<CastRule>>>>,
+    pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
 pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
