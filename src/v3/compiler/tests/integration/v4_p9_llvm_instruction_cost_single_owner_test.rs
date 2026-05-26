@@ -10,8 +10,10 @@
 //! (registry exclusivity) with a corpus scan for shadow `fn llvm_instruction_cost`
 //! definitions outside the canonical owner module.
 //!
-//! **TESTING.md:** M1(2.7) tokenize/parse surface scan (`SurfaceItem::Fn` /
-//! `FnExternalBody`); per-file isolation matches peer v4 smoke harness posture.
+//! **TESTING.md:** M1(2.7) corpus scan; canonical owner and llvm_ir checks
+//! still use `SurfaceItem::Fn` / `FnExternalBody`. The all-v4 shadow scan uses
+//! a tiny declaration-header scanner so newer v4 expression syntax in unrelated
+//! modules cannot mask a P9 ownership regression.
 //!
 //! **ROADMAP:** T-PB-B / `pb_rust_tests_outside_residual_zero`; dissolves when M2
 //! reflection or generated harness executes the `.dag` claim over the full corpus.
@@ -53,6 +55,76 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
     })
 }
 
+fn is_ident_continue(c: char) -> bool {
+    c == '_' || c.is_ascii_alphanumeric()
+}
+
+fn next_header_token(source: &str, offset: usize) -> Option<(&str, usize)> {
+    let mut i = offset;
+    while i < source.len() {
+        let rest = &source[i..];
+        let c = rest.chars().next()?;
+        if c.is_whitespace() {
+            i += c.len_utf8();
+        } else if rest.starts_with("//") {
+            i += rest.find('\n').unwrap_or(rest.len());
+        } else if rest.starts_with("/*") {
+            i += rest
+                .find("*/")
+                .map(|end| end + "*/".len())
+                .unwrap_or(rest.len());
+        } else if c == '"' {
+            i += c.len_utf8();
+            while i < source.len() {
+                let rest = &source[i..];
+                let c = rest.chars().next()?;
+                i += c.len_utf8();
+                if c == '\\' {
+                    if let Some(escaped) = source[i..].chars().next() {
+                        i += escaped.len_utf8();
+                    }
+                } else if c == '"' {
+                    break;
+                }
+            }
+        } else if c == '(' {
+            return Some((&source[i..i + 1], i + 1));
+        } else if c == '_' || c.is_ascii_alphabetic() {
+            let start = i;
+            i += c.len_utf8();
+            while i < source.len() {
+                let c = source[i..].chars().next()?;
+                if is_ident_continue(c) {
+                    i += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            return Some((&source[start..i], i));
+        } else {
+            i += c.len_utf8();
+        }
+    }
+    None
+}
+
+fn source_declares_target_fn(source: &str) -> bool {
+    let mut offset = 0;
+    while let Some((token, next_offset)) = next_header_token(source, offset) {
+        offset = next_offset;
+        if token != "fn" {
+            continue;
+        }
+        let Some((name, _after_name)) = next_header_token(source, offset) else {
+            return false;
+        };
+        if name == TARGET_FN_NAME {
+            return true;
+        }
+    }
+    false
+}
+
 fn collect_dag_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
     for ent in entries {
@@ -71,6 +143,34 @@ fn rel_path(root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
+}
+
+#[test]
+fn p9_source_declares_target_fn_accepts_decl_whitespace() {
+    assert!(source_declares_target_fn(
+        "fn llvm_instruction_cost (i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(source_declares_target_fn(
+        "\tfn\tllvm_instruction_cost\t(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(source_declares_target_fn(
+        "fn llvm_instruction_cost\n(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(source_declares_target_fn(
+        "fn llvm_instruction_cost<T>(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(!source_declares_target_fn(
+        "fn llvm_instruction_cost_extra(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(!source_declares_target_fn(
+        "// fn llvm_instruction_cost(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(!source_declares_target_fn(
+        "\"fn llvm_instruction_cost(i: LlvmInstruction) -> Int { 1 }\""
+    ));
+    assert!(source_declares_target_fn(
+        "fn /* inter-token comment */ llvm_instruction_cost /* ok */ (i: LlvmInstruction) -> Int { 1 }"
+    ));
 }
 
 #[test]
@@ -93,8 +193,7 @@ fn v4_p9_llvm_instruction_cost_defined_only_in_lens_cost_dag() {
         let rel = rel_path(&root, &path);
         let source =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let module = parse_module(&source, &rel);
-        if surface_declares_fn(&module, TARGET_FN_NAME) {
+        if source_declares_target_fn(&source) {
             defs.push(rel);
         }
     }
