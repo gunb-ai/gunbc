@@ -321,7 +321,7 @@ fn validate_then_compile(
                       )
                     )
                   )
-                )
+                }
               )
             }
           )
