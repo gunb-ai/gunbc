@@ -3300,10 +3300,7 @@ pub fn apply_missing_generic_args(
                                     } else {
                                         if (ty.clone().as_str()
                                             == v2_rt::concat(
-                                                v2_rt::concat(
-                                                    "Rc<".to_string(),
-                                                    type_name.clone(),
-                                                ),
+                                                v2_rt::concat("Rc<".to_string(), type_name.clone()),
                                                 ">".to_string(),
                                             )
                                             .as_str())
