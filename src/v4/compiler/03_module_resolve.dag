@@ -13,7 +13,6 @@ module v4.compiler.module_resolve
 
 import v4.compiler.normalize { NormalizedTree }
 import v4.compiler.resolve {
-  DeclaredBinding,
   Namespace,
   ResolvedTree,
   build_program_namespace,
@@ -37,7 +36,6 @@ import v4.std.diagnostic {
 import v4.std.module_graph {
   ModuleGraph,
   ModulePath,
-  module_path_eq,
   module_graph_entry_for_path
 }
 import v4.std.node {
