@@ -3380,7 +3380,15 @@ pub fn emit_struct_field_from_child(
             authored_name_at(env.source_indices.clone(), &authored_field_ty),
         ) {
             Some(summary) => {
-                if ((summary.generic_param_names.clone().len() as i64) > 0) {
+                let authored_args = explicit_type_arg_strings(
+                    &authored_field_ty,
+                    shared_types.clone(),
+                    env.source_indices.clone(),
+                );
+                if (((summary.generic_param_names.clone().len() as i64) > 0)
+                    && (authored_args.clone().as_ref()
+                        != summary.generic_param_names.clone().as_ref()))
+                {
                     render_rust_type(
                         &authored_field_ty,
                         shared_types.clone(),

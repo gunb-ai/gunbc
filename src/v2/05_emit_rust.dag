@@ -1721,7 +1721,8 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
   let authored_field_ty = field_node_type_expr(n: child)
   let rendered_ty = match map_get(emit_info.type_summaries, authored_name_at(source_indices: env.source_indices, node: authored_field_ty)) {
     Some { value: summary } =>
-      if summary.generic_param_names |> count > 0 {
+      let authored_args = explicit_type_arg_strings(type_node: authored_field_ty, shared_types: shared_types, source_indices: env.source_indices)
+      if summary.generic_param_names |> count > 0 && authored_args != summary.generic_param_names {
         render_rust_type(n: authored_field_ty, shared_types: shared_types, source_indices: env.source_indices)
       } else { ty }
     None => ty
