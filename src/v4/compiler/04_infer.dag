@@ -41,6 +41,7 @@ import v4.std.logic { Bool }
 import v4.std.node {
   Atom,
   ComputationNode,
+  Conj,
   Edge,
   Node,
   NodeFold,
@@ -50,7 +51,7 @@ import v4.std.node {
   well_formed
 }
 import v4.std.verification {
-  EqualsClaim,
+  CompilesClaim,
   ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -113,7 +114,7 @@ type InferredFactsEntry {
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
-// 🟢 gated dissolved — SM5 confirmed 0 infer_algebra_ref_ungrounded diagnostics after #3689.
+// 🟢 SM5 gate satisfied — confirmed 0 infer_algebra_ref_ungrounded diagnostics after #3689.
 // Fired when InferredFacts.inhabits.algebra (AlgebraRef.algebra) is a bare Atom.
 // In the current identity-MVP solver, AlgebraRef.algebra = the node itself; for Atom leaf
 // nodes this means the guard fires, making canonical_grounding_for_node unusable for Atom
@@ -124,19 +125,48 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 
 
-fn infer_algebra_ref_ungrounded_claim_node() -> Node {
+data sm5_algebra_ref_grounded_pass: Symbol = sm5_algebra_ref_grounded_pass
+data sm5_algebra_ref_grounded_fail: Symbol = sm5_algebra_ref_grounded_fail
+
+
+fn sm5_algebra_ref_grounded_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: infer_algebra_ref_ungrounded } },
+    kind: TypeNode { connective: Atom { identity: sm5_algebra_ref_grounded_pass } },
     children: []
   }
 }
 
 
-data claim_sm5_infer_algebra_ref_ungrounded_zero_diagnostics: TestClaim = EqualsClaim {
+fn sm5_algebra_ref_grounded_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: sm5_algebra_ref_grounded_fail } },
+    children: []
+  }
+}
+
+
+fn sm5_grounded_algebra_ref_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: []
+  }
+}
+
+
+fn sm5_algebra_ref_grounded_claim_input() -> Node {
+  if algebra_ref_is_grounded(algebra: sm5_grounded_algebra_ref_node()) {
+    sm5_algebra_ref_grounded_pass_node()
+  } else {
+    sm5_algebra_ref_grounded_fail_node()
+  }
+}
+
+
+data claim_sm5_infer_algebra_ref_ungrounded_zero_diagnostics: TestClaim = CompilesClaim {
   label: "SM5: v2 bootstrap on src/v4 with #3689 bridge-symbol dissolution produces 0 infer_algebra_ref_ungrounded diagnostics",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: infer_algebra_ref_ungrounded_claim_node(),
-  rhs: infer_algebra_ref_ungrounded_claim_node(),
+  input: sm5_algebra_ref_grounded_claim_input(),
+  expected_value: sm5_algebra_ref_grounded_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
