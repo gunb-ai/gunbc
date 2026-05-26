@@ -20,7 +20,7 @@ import v2.std.core {
   param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, generic_param_name_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
   LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -51,6 +51,7 @@ import v2.std.core {
   record_lit_type_name_at,
   arg_name_at, arg_value, arm_body, arm_pattern, arm_guard,
   field_init_node_name_at, field_init_node_value,
+  find_property,
   make_arg_node, make_named_expr_node,
   let_value, let_body, lambda_body, lambda_param_names_at,
   foreach_collection, foreach_body, method_receiver, method_arg_nodes,
@@ -146,7 +147,11 @@ import v2.compiler.emit {
 }
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
-  if node_is_set_collection(n: n, source_indices: source_indices) {
+  match n.inferred {
+    Some { value: TypeVariable { id: tv } } => tv
+    _ => if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
+      render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Some { value: elem_child } =>
         let elem_node = child_type_node(ch: elem_child)
@@ -163,6 +168,49 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
     }
   } else {
     render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+  }
+  }
+}
+
+fn empty_string_bool_map() -> Map<String, Bool> {
+  empty_map()
+}
+
+fn rust_type_is_rc_wrapped(type_name: String) -> Bool {
+  string_length(s: type_name) >= 3 && substring(s: type_name, start: 0, end: 3) == "Rc<"
+}
+
+fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Some { value: TypeVariable { id: tv } } => tv
+    _ => if n.connective == NoConnective && n.children |> count == 0 {
+      authored_name_at(source_indices: source_indices, node: n)
+    } else {
+      render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    }
+  }
+}
+
+fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let base = coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: source_indices, node: n))
+  if n.children |> count == 0 {
+    base
+  } else {
+    let args = n.children |> map(arg => render_rust_applied_type_arg(n: arg, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    concat(base, "<", args, ">")
+  }
+}
+
+fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
+    name
+  } else if n.connective == NoConnective && n.children |> count > 0 {
+    let base = coerce_primitive_type(target: Rust, dag_name: name)
+    let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    concat(base, "<", args, ">")
+  } else {
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
@@ -1535,6 +1583,7 @@ fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<S
   if n.children |> count == 0 {
     let name = authored_name_at(source_indices: source_indices, node: n)
     if set_contains(shared_types, name) { false }
+    else if coerce_primitive_type(target: Rust, dag_name: name) != name { false }
     else { set_contains(recursive_types, name) }
   } else {
     let is_optional = n.return_cardinality == CardOptional
@@ -1701,57 +1750,53 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   if children |> count == 0 {
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
-    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, parent_generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
+    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
     let fields_str = field_lines |> join(separator: "\n")
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
 }
 
-fn explicit_type_arg_strings(type_node: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  if type_node.params |> count > 0 {
-    type_node.params |> map(p => render_rust_type(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices))
-  } else if type_node.connective == NoConnective && type_node.children |> count > 0 {
-    type_node.children |> map(c => render_rust_type(n: child_type_node(ch: c), shared_types: shared_types, source_indices: source_indices))
-  } else {
-    []
-  }
-}
-
-fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_names: List<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  let type_name = authored_name_at(source_indices: source_indices, node: type_node)
-  match map_get(emit_info.type_summaries, type_name) {
-    Some { value: summary } =>
-      let expected = summary.generic_param_names |> count
-      if expected == 0 || contains(ty, concat(type_name, "<")) {
-        ty
+fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Some { value: applied } =>
+      if applied.children |> count > 0 {
+        render_rust_applied_type(n: applied, shared_types: shared_types, source_indices: source_indices)
       } else {
-        let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
-        if explicit_args |> count == expected {
-          let with_args = concat(type_name, "<", explicit_args |> join(separator: ", "), ">")
-          if ty == type_name {
-            with_args
-          } else if ty == concat("Rc<", type_name, ">") {
-            concat("Rc<", with_args, ">")
-          } else if ty == concat("Box<", type_name, ">") {
-            concat("Box<", with_args, ">")
-          } else {
-            ty
-          }
-        } else {
-          ty
-        }
+        render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
       }
-    None => ty
+    None => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }
 }
 
-fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn render_rust_field_type_with_applied_binding(field: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let authored_type = field_node_type_expr(n: field)
+  if find_property(props: field.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
+    render_rust_type_with_applied_binding(n: field, shared_types: shared_types, source_indices: source_indices)
+  } else if find_property(props: authored_type.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
+    render_rust_type_with_applied_binding(n: authored_type, shared_types: shared_types, source_indices: source_indices)
+  } else if authored_type.connective == NoConnective && authored_type.children |> count > 0 {
+    render_rust_type(n: authored_type, shared_types: shared_types, source_indices: source_indices)
+  } else {
+    render_rust_type_with_applied_binding(n: resolved_type(n: field), shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
+fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = resolved_type(n: child)
   // Fix self-referential Conj types: when a field's resolved type is a full
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
-  let ty = if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
+  let authored_child_type = field_node_type_expr(n: child)
+  let ty = if generic_param_names |> count > 0 {
+    render_node_type(n: rt_child, target: Rust, shared_types: shared_types, source_indices: env.source_indices)
+  } else if find_property(props: child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+    render_rust_type_with_applied_binding(n: child, shared_types: shared_types, source_indices: env.source_indices)
+  } else if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+    render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, source_indices: env.source_indices)
+  } else if find_property(props: rt_child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+    render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
+  } else if is_product_type(n: rt_child) && rt_child.ident_span != none && rt_child.children |> count > 2 {
     let rt_child_name = authored_name_at(source_indices: env.source_indices, node: rt_child)
     match lookup_type_by_name(env: env, name: rt_child_name) {
       Some { value: resolved } =>
@@ -1769,9 +1814,11 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   }
-  let generic_ty = apply_missing_generic_args(ty: ty, type_node: rt_child, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
+  } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
+    concat("Rc<", generic_ty, ">")
   } else { generic_ty }
   // Check for from_key in child properties
   let rename_attr = match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
@@ -1810,14 +1857,14 @@ fn enum_derives(children: List<Node>) -> String {
 
 fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let derives = enum_derives(children: children)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, parent_generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, enum_name: name, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy, emit_info: emit_info))
   let variants_str = variant_lines |> join(separator: "\n")
   // Wire contract: serde_enum_tag is "" for StringVariant/AsAuthored,
   // a rename_all attribute for SnakeCase, or the default _variant tag.
   let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
-  let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, generic_param_names: generic_param_names, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
+  let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   if accessor_impl == "" { enum_def }
   else { concat(enum_def, "\n", accessor_impl) }
 }
@@ -1842,7 +1889,7 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   )
 }
 
-fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_enum_shared_accessors(name: String, type_params: String, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
   // Only keep fields whose type is consistent across all fielded variants.
@@ -1855,7 +1902,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   let shared = all_shared |> filter(fname =>
     let types = fielded |> map(variant =>
       match variant.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-        Some { value: f } => apply_missing_generic_args(ty: render_rust_type(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices), type_node: resolved_type(n: f), parent_generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+        Some { value: f } => render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
         None => ""
       }
     )
@@ -1869,7 +1916,7 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   // For each shared field, generate an accessor method.
   let accessor_fns = shared |> map(fname =>
     let ty = match first_fielded.children |> filter(f => authored_name(env: env, node: f) == fname) |> first {
-      Some { value: f } => apply_missing_generic_args(ty: render_rust_type(n: resolved_type(n: f), shared_types: shared_types, source_indices: env.source_indices), type_node: resolved_type(n: f), parent_generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+      Some { value: f } => render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
       None => "compile_error!(\"enum shared accessor missing field metadata\")"
     }
     // Generate match arms for each variant.
@@ -2010,7 +2057,7 @@ fn variant_is_synthetic_positional_payload(fields: List<Node>, source_indices: M
   }
 }
 
-fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
+fn emit_variant_from_child(child: Node, enum_name: String, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let child_text = authored_name(env: env, node: child)
   let rename_attr = wire_variant_rename_attr_for_policy(authored: child_text, policy: serde_policy)
   if child.children |> count == 0 {
@@ -2031,7 +2078,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
           } else {
             render_rust_type(n: type_node, shared_types: shared_types, source_indices: env.source_indices)
           }
-          let ty = apply_missing_generic_args(ty: raw_ty, type_node: type_node, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+          let ty = if find_property(props: type_node.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none { render_rust_type_with_applied_binding(n: type_node, shared_types: shared_types, source_indices: env.source_indices) } else { raw_ty }
           let final_ty = if needs_box_wrapping(n: type_node, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
             concat("Box<", ty, ">")
           } else { ty }
@@ -2041,7 +2088,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
     } else {
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
-        let ty = apply_missing_generic_args(ty: render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices), type_node: rt_f, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+        let ty = render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
         let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
           concat("Box<", ty, ">")
         } else { ty }
@@ -2054,7 +2101,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
-      let ty = apply_missing_generic_args(ty: render_rust_type(n: rt_f, shared_types: shared_types, source_indices: env.source_indices), type_node: rt_f, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+      let ty = render_rust_field_type_with_applied_binding(field: f, shared_types: shared_types, source_indices: env.source_indices)
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
         concat("Box<", ty, ">")
       } else { ty }
@@ -2299,7 +2346,8 @@ fn emit_rust_param_type(n: Node, shared_types: Set<String>, source_indices: Map<
     }
     concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
   } else {
-    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    let rendered = render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+    rendered
   }
 }
 
@@ -2307,16 +2355,7 @@ fn emit_param(param: Node, shared_types: Set<String>, source_indices: Map<String
   let n = param_node_type_expr(n: param)
   let ty = emit_rust_param_type(n: n, shared_types: shared_types, source_indices: source_indices)
   let pname = param_node_name_at(n: param, source_indices: source_indices)
-  // Borrow read-only params of non-Copy types. Callable functions are already
-  // excluded at the read_only_params_index level (callable_set filter).
-  let is_callable_param = n.params |> count > 0
-  let is_borrowable = set_contains(read_only_params, pname)
-    && is_callable_param == false
-    && needs_reference_node(n: n, source_indices: source_indices)
-  let final_ty = if is_borrowable {
-    apply_type_template1(template: sharing_for_target(target: Rust).borrow_param_template, arg0: ty)
-  } else { ty }
-  concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, final_ty)
+  concat(emit_ident(name: pname, target: Rust), rust_items().param_type_sep, ty)
 }
 
 fn emit_inferred(inferred: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -3627,37 +3666,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
   let filled_args = fill_default_args(ordered: ordered_args, callee: callee, registry: registry, scope: collection_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
   let is_rt = map_contains_key(rt_functions(), func)
   let is_rt_ref_map = map_contains_key(rt_ref_map_functions(), func)
-  // Build qualified key from callee's module_name for ownership index lookup.
-  let callee_qualified = match callee {
-    Some { value: info } => concat(info.module_name, ".", func)
-    None => func
-  }
-  let callee_read_only = match map_get(emit_info.read_only_params_index, callee_qualified) {
-    Some { value: m } => m
-    None => empty_set()
-  }
-  // Build positional borrow set: maps position index → true for borrowed params.
-  // Must replicate the same checks as emit_param: read-only, non-Copy, non-callable,
-  // and exclude TCO functions (their params are always `mut`, never borrowed).
-  // Uses the same is_self_recursive + has_non_tail_self_call predicate as
-  // is_tco_eligible (single authority via ItemInfo).
-  let callee_is_tco = match callee {
-    Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
-    None => false
-  }
-  let callee_borrow_positions = if callee_is_tco { empty_map() } else {
-    match callee {
-      Some { value: info } =>
-        info.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
-          let pname = param_node_name_at(n: pair.second, source_indices: collection_scope.type_env.source_indices)
-          let n = param_node_type_expr(n: pair.second)
-          let is_callable = n.params |> count > 0
-          let is_borrowable = set_contains(callee_read_only, pname) && is_callable == false && needs_reference_node(n: n, source_indices: collection_scope.type_env.source_indices)
-          if is_borrowable { map_insert(acc, to_string(value: pair.first), true) } else { acc }
-        )
-      None => empty_map()
-    }
-  }
+  let callee_borrow_positions = empty_string_bool_map()
   let arg_strs = filled_args |> enumerate |> map(pair =>
     let idx = pair.first
     let a = pair.second
@@ -4249,6 +4258,11 @@ fn emit_rust_first_method_call(receiver: Node, registry: Map<String, ItemInfo>, 
 
 fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List<Node>, result_type: InferredNode?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let function_name = method_name
+  if rust_receiver_has_callable_method_field(receiver: receiver, method_name: function_name, scope: scope) {
+    let recv_str = emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    let arg_strs = args |> map(a => emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
+    concat("(", recv_str, ".", emit_ident(name: function_name, target: Rust), ")(", arg_strs |> join(separator: ", "), ")")
+  } else {
   let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name: function_name) {
     concat("&", emit_typed_expr_base(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info))
   } else {
@@ -4262,6 +4276,7 @@ fn emit_rust_generic_method_call(method_name: String, receiver: Node, args: List
   if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: function_name) {
     concat("Rc::new(", lowered, ")")
   } else { lowered }
+  }
 }
 
 fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String, args: List<Node>, result_type: InferredNode?, method_semantics: MethodSemantics?, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
@@ -4505,6 +4520,12 @@ fn rust_record_field_needs_fn_rc(scope: InferScope, struct_name: String, field_n
     Some { value: field_type } => field_type.connective == Arrow
     None => false
   }
+}
+
+fn rust_receiver_has_callable_method_field(receiver: Node, method_name: String, scope: InferScope) -> Bool {
+  let receiver_type = resolved_type(n: receiver)
+  let receiver_type_name = authored_name_at(source_indices: scope.type_env.source_indices, node: receiver_type)
+  rust_record_field_needs_fn_rc(scope: scope, struct_name: receiver_type_name, field_name: method_name)
 }
 
 fn rust_record_field_needs_box(scope: InferScope, emit_info: EmitGraphInfo, shared_types: Set<String>, struct_name: String, field_name: String) -> Bool {
@@ -6313,7 +6334,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       body, "\n",
       "        };\n",
       "    }\n",
-      "    CACHED.with(|c| c.clone())\n",
+      "    CACHED.with(|c: &", ty_str, "| c.clone())\n",
       "}")
   }
 }
@@ -6735,6 +6756,15 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
   }
   let resource_use = if resource_imports_str != "" { concat(resource_imports_str, "\n") } else { "" }
   let svc_use = if svc_imports_str != "" { concat(svc_imports_str, "\n") } else { "" }
+  if workflow_funcs |> count == 0 && has_pipeline == false {
+    return TextFile {
+      path: concat(rust_source_root(), "main", rust_source_ext()),
+      content: concat(
+        "// Generated by v2 compiler -- do not edit.\n\n",
+        "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]\n\n",
+        "fn main() {}\n")
+    }
+  }
   let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
   let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs)
   let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline)
@@ -7232,7 +7262,7 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    let location = if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx, span.start);\n",
+    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
     "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n",
     "        } else {\n",
     "            span.file.clone()\n",
@@ -7251,8 +7281,8 @@ fn emit_main_diagnostic_fns(crate_name: String) -> String {
     "\n",
     "    if !span.file.is_empty() {\n",
     "        if let Some(idx) = index_map.get(&span.file) {\n",
-    "            let lc = byte_to_line_col(idx, span.start);\n",
-    "            let line_text = source_line_at(idx, lc.line);\n",
+    "            let lc = byte_to_line_col(idx.clone(), span.start);\n",
+    "            let line_text = source_line_at(idx.clone(), lc.line);\n",
     "            let line_num = format!(\"{}\", lc.line);\n",
     "            let gutter_width = line_num.len();\n",
     "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n",
@@ -7314,17 +7344,11 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 
 // Emit the argument list for calling a workflow function from main.
 // Includes the function's params, then service instance args.
-// CLI args from clap are owned values. Params that the function takes
-// by reference (read-only non-Copy types) need & at the call site.
+  // CLI args from clap are owned values. Keep this aligned with emit_param.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
     let pname = param_node_name_at(n: p, source_indices: wf.source_indices)
-    let ident = emit_ident(name: pname, target: Rust)
-    let n = param_node_type_expr(n: p)
-    let is_borrowable = set_contains(wf.read_only_params, pname)
-      && n.params |> count == 0
-      && needs_reference_node(n: n, source_indices: wf.source_indices)
-    if is_borrowable { concat("&", ident) } else { ident }
+    emit_ident(name: pname, target: Rust)
   )
   let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
   let all_args = concat(param_args, service_args)
