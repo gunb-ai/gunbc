@@ -1544,15 +1544,26 @@ to define a new agent output surface.
 **Files:**
 - `src/v4/std/agent.dag` — new file; `AgentStore` carrier only.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point.
+  **Signature:** `compile_with_store(root: ModulePath, store: AgentStore, target: TargetModel) -> Outcome<TargetSource>`.
+  The `root` parameter is the sole root-selection authority: the caller names
+  which store entry is the compilation entry point. `compile_with_store`
+  performs `store_lookup(root)` → `CoreNode` (fail-closed: `Rejected` if the
+  root path is absent from the store, using the same module-admission
+  diagnostic carrier as the missing-module case). The full store feeds
+  `module_graph_from_entries` via `store_entries` for dependency resolution.
+  T-35 workers must not introduce a secondary root-selection mechanism
+  (e.g., first-entry convention, implicit main path); the `root: ModulePath`
+  parameter is the only declared authority.
+
   **Scope of T-35's change:** replace the `entries: Empty` argument to
   `module_graph_from_entries` (currently in `compile_ingest_staging`) with
   entries derived from the `AgentStore`. `module_graph_from_entries` in
   `std/module_graph.dag` remains the canonical `ModuleGraph` construction path
   and admission authority — T-35 does NOT bypass it or replace `ModuleGraph`
-  with a parallel `Map<ModulePath, Node>` lookup. The `AgentStore` is an entry
-  source; `module_graph_from_entries` enforces path uniqueness and builds the
-  graph exactly as it does today. `compile_with_store` then delegates to the
-  same existing `compile` orchestrator chain as `compile_ingest_staging` — T-35
+  with a parallel lookup. The `AgentStore` is an entry source;
+  `module_graph_from_entries` enforces path uniqueness and builds the graph
+  exactly as it does today. `compile_with_store` then delegates to the same
+  existing `compile` orchestrator chain as `compile_ingest_staging` — T-35
   does NOT implement or modify the infer/emit pipeline. Output type inherits
   from the existing orchestrator contract (`Outcome<TargetSource>`); T-35
   workers must not redefine it.
