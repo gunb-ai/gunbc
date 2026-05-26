@@ -319,7 +319,7 @@ pub struct CompileResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
-    pub path: String,
+    pub path: FilePath,
     pub content: String,
 }
 
@@ -667,7 +667,7 @@ pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) 
 pub struct DeclaredFuncSig {
     pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Option<Rc<Node>>,
+    pub inferred: Rc<Option<Rc<Node>>>,
     pub is_async: bool,
     pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     pub variant_provenance:
@@ -684,20 +684,20 @@ pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
-    pub ident_span: Option<Rc<SourceSpan>>,
+    pub ident_span: Rc<Option<Rc<SourceSpan>>>,
     pub children: Rc<Vec<Rc<Node>>>,
     pub connective: Connective,
     pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Option<Rc<InferredNode>>,
+    pub inferred: Rc<Option<Rc<InferredNode>>>,
     pub return_cardinality: Cardinality,
     pub uses: Rc<Vec<Rc<Node>>>,
-    pub body: Option<Rc<Node>>,
-    pub transport: Option<Rc<Node>>,
+    pub body: Rc<Option<Rc<Node>>>,
+    pub transport: Rc<Option<Rc<Node>>>,
     pub properties: Rc<Vec<Rc<Node>>>,
-    pub type_annotation: Option<Rc<Node>>,
+    pub type_annotation: Rc<Option<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
-    pub match_pattern: Option<Rc<MatchPattern>>,
+    pub match_pattern: Rc<Option<Rc<MatchPattern>>>,
     pub expr_data: Rc<ExprData>,
 }
 

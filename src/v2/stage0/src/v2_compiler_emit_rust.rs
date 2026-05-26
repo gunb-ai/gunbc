@@ -14940,7 +14940,7 @@ pub fn path_segment_is_list_index(seg: String) -> bool {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePathProjection {
     pub expr: String,
-    pub node: Option<Rc<Node>>,
+    pub node: Rc<Option<Rc<Node>>>,
     pub ok: bool,
 }
 

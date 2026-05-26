@@ -73,8 +73,8 @@ pub struct ParseContext {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseResult {
-    pub module: Option<Rc<Node>>,
-    pub error: Option<Rc<ErrorNode>>,
+    pub module: Rc<Option<Rc<Node>>>,
+    pub error: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -131,7 +131,7 @@ impl EatResult {
 pub struct TokenResult {
     pub token: Rc<Token>,
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -139,7 +139,7 @@ pub struct NameResult {
     pub name: String,
     pub span: Rc<SourceSpan>,
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -147,7 +147,7 @@ pub struct ExprResult {
     pub expr: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -155,7 +155,7 @@ pub struct ItemResult {
     pub item: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -163,7 +163,7 @@ pub struct TypeResult {
     pub type_expr: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -171,7 +171,7 @@ pub struct ModuleResult {
     pub module: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,7 +179,7 @@ pub struct ImportResult {
     pub import: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -187,7 +187,7 @@ pub struct VariantResult {
     pub variant: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -195,7 +195,7 @@ pub struct PredResult {
     pub predicate: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -203,7 +203,7 @@ pub struct ParamResult {
     pub param: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -211,7 +211,7 @@ pub struct TransportResult {
     pub transport: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -219,7 +219,7 @@ pub struct OpResult {
     pub operation: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -227,7 +227,7 @@ pub struct CapResult {
     pub capability: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -235,7 +235,7 @@ pub struct PatternResult {
     pub pattern: Rc<MatchPattern>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -243,7 +243,7 @@ pub struct ArmResult {
     pub arm: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -251,7 +251,7 @@ pub struct ArgResult {
     pub arg: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -259,7 +259,7 @@ pub struct FieldResult {
     pub field: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -267,7 +267,7 @@ pub struct FieldInitResult {
     pub field: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -275,7 +275,7 @@ pub struct ResUseResult {
     pub resource_use: Rc<Node>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -284,21 +284,21 @@ pub struct ItemPrefixResult {
     pub name_span: Rc<SourceSpan>,
     pub type_params: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Option<Rc<InferredNode>>,
+    pub inferred: Rc<Option<Rc<InferredNode>>>,
     pub uses: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceConfig {
     pub endpoint: Rc<Node>,
-    pub auth: Option<Rc<Node>>,
-    pub auth_input: Option<Rc<Node>>,
-    pub auth_source: Option<Rc<Node>>,
-    pub rate_limit: Option<Rc<Node>>,
-    pub retry: Option<Rc<Node>>,
+    pub auth: Rc<Option<Rc<Node>>>,
+    pub auth_input: Rc<Option<Rc<Node>>>,
+    pub auth_source: Rc<Option<Rc<Node>>>,
+    pub rate_limit: Rc<Option<Rc<Node>>>,
+    pub retry: Rc<Option<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -306,7 +306,7 @@ pub struct ConfigResult {
     pub config: Rc<ServiceConfig>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -365,7 +365,7 @@ pub struct ImportsResult {
     pub imports: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -373,7 +373,7 @@ pub struct ItemsResult {
     pub items: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -381,7 +381,7 @@ pub struct NamesResult {
     pub names: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -389,7 +389,7 @@ pub struct FieldsResult {
     pub fields: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -397,7 +397,7 @@ pub struct FieldInitsResult {
     pub fields: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -405,7 +405,7 @@ pub struct VariantsResult {
     pub variants: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -413,7 +413,7 @@ pub struct PredsResult {
     pub predicates: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -421,7 +421,7 @@ pub struct ParamsResult {
     pub params: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -429,7 +429,7 @@ pub struct UsesResult {
     pub uses: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -437,7 +437,7 @@ pub struct ArgsResult {
     pub args: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -445,7 +445,7 @@ pub struct StmtsResult {
     pub stmts: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -453,7 +453,7 @@ pub struct ExprsResult {
     pub exprs: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -461,7 +461,7 @@ pub struct ArmsResult {
     pub arms: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -469,7 +469,7 @@ pub struct ModsResult {
     pub modifiers: Rc<Vec<OperationModifier>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -477,7 +477,7 @@ pub struct BindingsResult {
     pub field_bindings: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
@@ -490,18 +490,18 @@ pub fn parse_recovery_placeholder() -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OptRetResult {
-    pub inferred: Option<Rc<InferredNode>>,
+    pub inferred: Rc<Option<Rc<InferredNode>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardResult {
-    pub guard: Option<Rc<Node>>,
+    pub guard: Rc<Option<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -509,7 +509,7 @@ pub struct FromKeyResult {
     pub from_key: Option<String>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -518,7 +518,7 @@ pub struct PostfixResult {
     pub changed: bool,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -533,7 +533,7 @@ pub struct LambdaCheckResult {
     pub params: Rc<Vec<Rc<ParserParam>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -542,7 +542,7 @@ pub struct IdentCollectResult {
     pub params: Rc<Vec<Rc<ParserParam>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -551,7 +551,7 @@ pub struct RangeArgsResult {
     pub max_val: Option<i64>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -560,17 +560,17 @@ pub struct NamedIntResult {
     pub arg_value: i64,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceBodyResult {
-    pub config: Option<Rc<ServiceConfig>>,
+    pub config: Rc<Option<Rc<ServiceConfig>>>,
     pub transport: Rc<Node>,
     pub operations: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -579,7 +579,7 @@ pub struct IOResult {
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -588,7 +588,7 @@ pub struct ResPropResult {
     pub capabilities: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -596,7 +596,7 @@ pub struct ResponsesResult {
     pub responses: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -604,7 +604,7 @@ pub struct MocksResult {
     pub mocks: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -612,7 +612,7 @@ pub struct ExitEntriesResult {
     pub entries: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -620,7 +620,7 @@ pub struct RespEntriesResult {
     pub entries: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -628,7 +628,7 @@ pub struct MockEntriesResult {
     pub entries: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -636,33 +636,33 @@ pub struct OpBodyResult {
     pub inputs: Rc<Vec<Rc<Node>>>,
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub modifier_props: Rc<Vec<Rc<Node>>>,
-    pub transport: Option<Rc<Node>>,
+    pub transport: Rc<Option<Rc<Node>>>,
     pub exit_props: Rc<Vec<Rc<Node>>>,
     pub response_props: Rc<Vec<Rc<Node>>>,
     pub mock_props: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnitResult {
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringLitResult {
     pub value: String,
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IntLitResult {
     pub value: i64,
     pub tokens: Rc<Vec<Rc<Token>>>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2143,12 +2143,12 @@ pub fn parse_module(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Mod
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r#mod = Rc::new(Node {
+        let mod_ = Rc::new(Node {
             ident: Some(mod_ir.id.clone()),
             ..(*base_mod).clone()
         });
         Rc::new(ModuleResult {
-            module: r#mod,
+            module: mod_,
             tokens: tokens.clone(),
             ctx: ctx.clone(),
             err: None,
@@ -4750,7 +4750,7 @@ pub struct TypeArgsResult {
     pub args: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 pub fn collect_type_args(
@@ -5828,7 +5828,7 @@ pub struct ResConfigResult {
     pub fields: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 pub fn parse_resource_config_args(
@@ -11260,7 +11260,7 @@ pub struct ConstraintsResult {
     pub constraints: Rc<Vec<Rc<Node>>>,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub ctx: Rc<ParseContext>,
-    pub err: Option<Rc<ErrorNode>>,
+    pub err: Rc<Option<Rc<ErrorNode>>>,
 }
 
 pub fn parse_constraint_annotations(

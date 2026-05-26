@@ -92,7 +92,7 @@ pub struct PipelineResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
-    pub graph: Option<Rc<ModuleGraph>>,
+    pub graph: Rc<Option<Rc<ModuleGraph>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
@@ -2719,7 +2719,7 @@ pub fn compile_sources(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedPipelineResult {
-    pub graph: Option<Rc<ResolvedGraph>>,
+    pub graph: Rc<Option<Rc<ResolvedGraph>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub complexity: Rc<ComplexityReport>,

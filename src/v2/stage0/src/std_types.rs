@@ -222,19 +222,19 @@ pub type GlobSegment = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Rc<Vec<PathSegment>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobPattern {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Rc<Vec<GlobSegment>>,
 }
 
 pub type FilePath = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceSpan {
-    pub file: String,
+    pub file: FilePath,
     pub start: i64,
     pub end: i64,
 }
@@ -320,14 +320,14 @@ pub enum FermiDepth {
 #[serde(tag = "_variant")]
 pub enum CredentialFlow {
     Stored {
-        secret_name: String,
+        secret_name: NonEmptyStr,
     },
     PlatformInjected {
-        env_var: String,
+        env_var: NonEmptyStr,
     },
     WorkloadIdentity {
-        audience: String,
-        service_account: Option<String>,
+        audience: NonEmptyStr,
+        service_account: Option<ServiceAccountEmail>,
         scopes: Rc<Vec<String>>,
     },
     InteractiveAuth {
@@ -462,7 +462,7 @@ pub enum AuthScheme {
 pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<String>,
+    pub expires_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -523,7 +523,7 @@ pub struct TestResult {
     pub ok: bool,
     pub stdout: String,
     pub stderr: String,
-    pub duration_ms: i64,
+    pub duration_ms: Milliseconds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -621,9 +621,9 @@ pub struct DagDiff {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CodegenTarget {
     pub name: String,
-    pub path: String,
+    pub path: FilePath,
     pub backend: Option<CodegenBackend>,
-    pub target: Option<Rc<TargetTriple>>,
+    pub target: Rc<Option<Rc<TargetTriple>>>,
     pub runtime_env: Option<ExecutionEnv>,
 }
 
@@ -645,6 +645,6 @@ pub struct PragmaDirective {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocSource {
-    pub path: String,
+    pub path: FilePath,
     pub kind: DocSourceKind,
 }

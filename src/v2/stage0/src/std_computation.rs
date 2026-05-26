@@ -87,7 +87,7 @@ pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
     pub bound: Rc<SizeBound>,
     pub evidence: DescentEvidence,
-    pub factor: Option<Rc<ShrinkFactor>>,
+    pub factor: Rc<Option<Rc<ShrinkFactor>>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

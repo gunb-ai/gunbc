@@ -36,7 +36,7 @@ pub struct ResolvedImport {
     pub module_path: String,
     pub is_all: bool,
     pub specific_names: Rc<Vec<String>>,
-    pub target_module: Option<Rc<Node>>,
+    pub target_module: Rc<Option<Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -466,7 +466,7 @@ pub fn check_duplicate_modules(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
     pub sorted: Rc<Vec<String>>,
-    pub cycle_error: Option<Rc<ErrorNode>>,
+    pub cycle_error: Rc<Option<Rc<ErrorNode>>>,
 }
 
 pub fn adjacency_add_edge(
