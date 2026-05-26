@@ -91,14 +91,14 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn emit_go(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let registry = typed.item_registry.clone();
         let test_projections = extract_test_projections(typed.clone());
         let module_files = Rc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
-                __result.push(emit_go_module(&tm, registry.clone()));
+                __result.push(emit_go_module(tm.clone(), registry.clone()));
             }
             __result
         });
@@ -108,17 +108,17 @@ pub fn emit_go(typed: &Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_go_test_file(
-                        &authored_name_at(
+                        authored_name_at(
                             tm.type_env.clone().source_indices.clone(),
-                            &tm.module.clone(),
+                            tm.module.clone(),
                         ),
-                        &Rc::new({
+                        Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
                                 if (p.module_name.clone().as_str()
                                     == authored_name_at(
                                         tm.type_env.clone().source_indices.clone(),
-                                        &tm.module.clone(),
+                                        tm.module.clone(),
                                     )
                                     .as_str())
                                 {
@@ -174,7 +174,7 @@ pub fn go_mock_expr_uses_fmt(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let rendered = emit_simple_expr(&expr, &RenderTarget::Go, &source_indices);
+        let rendered = emit_simple_expr(expr, RenderTarget::Go, source_indices);
         ((Rc::new(
             rendered
                 .split(&"fmt.Sprintf(".to_string())
@@ -195,7 +195,7 @@ pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String 
                     let mut __found = false;
                     for mp in p.mock_field_inits.clone().iter().cloned() {
                         if go_mock_expr_uses_fmt(
-                            field_init_node_value(&mp),
+                            field_init_node_value(mp.clone()),
                             p.source_indices.clone(),
                         ) {
                             __found = true;
@@ -218,7 +218,7 @@ pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String 
     }
 }
 
-pub fn go_test_signature_comment(projection: &Rc<TestProjection>) -> String {
+pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({
             let mut __result = Vec::new();
@@ -229,7 +229,7 @@ pub fn go_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                         " ".to_string(),
                     ),
                     emit_node_type(
-                        param_node_type_expr(&p),
+                        param_node_type_expr(p.clone()),
                         RenderTarget::Go,
                         projection.source_indices.clone(),
                     ),
@@ -268,8 +268,8 @@ pub fn go_test_signature_comment(projection: &Rc<TestProjection>) -> String {
 }
 
 pub fn emit_go_test_file(
-    module_name: &String,
-    projections: &Rc<Vec<Rc<TestProjection>>>,
+    module_name: String,
+    projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
         Rc::new(TextFile {
@@ -282,7 +282,7 @@ pub fn emit_go_test_file(
             let tests_str = Rc::new({
                 let mut __result = Vec::new();
                 for p in projections.clone().iter().cloned() {
-                    __result.push(emit_go_operation_test(&p, 0));
+                    __result.push(emit_go_operation_test(p.clone(), 0));
                 }
                 __result
             })
@@ -324,25 +324,25 @@ pub fn emit_go_test_file(
                 "\n".to_string(),
             );
             Rc::new(TextFile {
-                path: test_file_path(module_name.clone(), &RenderTarget::Go),
+                path: test_file_path(module_name.clone(), RenderTarget::Go),
                 content: content,
             })
         }
     }
 }
 
-pub fn emit_go_operation_test(projection: &Rc<TestProjection>, depth: i64) -> String {
+pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
     {
-        let test_name = test_function_name(&projection, RenderTarget::Go);
+        let test_name = test_function_name(projection.clone(), RenderTarget::Go);
         let struct_name = sanitize_service_name(projection.service_name.clone());
         let indent = make_indent((depth.clone() + 1));
         let mock_setup = Rc::new({
             let mut __result = Vec::new();
             for mp in projection.mock_field_inits.clone().iter().cloned() {
                 __result.push(emit_go_mock_prop_setup(
-                    &mp,
+                    mp.clone(),
                     (depth.clone() + 1),
-                    &projection.source_indices.clone(),
+                    projection.source_indices.clone(),
                 ));
             }
             __result
@@ -379,7 +379,9 @@ pub fn emit_go_operation_test(projection: &Rc<TestProjection>, depth: i64) -> St
                                                             ),
                                                             indent.clone(),
                                                         ),
-                                                        go_test_signature_comment(&projection),
+                                                        go_test_signature_comment(
+                                                            projection.clone(),
+                                                        ),
                                                     ),
                                                     "\n".to_string(),
                                                 ),
@@ -408,9 +410,9 @@ pub fn emit_go_operation_test(projection: &Rc<TestProjection>, depth: i64) -> St
 }
 
 pub fn emit_go_mock_prop_setup(
-    mock_prop: &Rc<Node>,
+    mock_prop: Rc<Node>,
     depth: i64,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -421,22 +423,22 @@ pub fn emit_go_mock_prop_setup(
             " := ".to_string(),
         ),
         emit_simple_expr(
-            &field_init_node_value(&mock_prop),
-            &RenderTarget::Go,
-            &source_indices,
+            field_init_node_value(mock_prop.clone()),
+            RenderTarget::Go,
+            source_indices.clone(),
         ),
     )
 }
 
 pub fn emit_go_module(
-    typed_module: &Rc<TypedModule>,
+    typed_module: Rc<TypedModule>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
-        let scope = module_emit_scope(&typed_module);
+        let scope = module_emit_scope(typed_module.clone());
         let si = typed_module.type_env.clone().source_indices.clone();
-        let mod_name_str = authored_name_at(si.clone(), &m);
+        let mod_name_str = authored_name_at(si.clone(), m.clone());
         let pkg_name = go_package_name(mod_name_str.clone());
         let pkg_decl = v2_rt::concat(
             v2_rt::concat(
@@ -450,7 +452,7 @@ pub fn emit_go_module(
             pkg_name,
         );
         let imports_str = emit_go_imports(
-            &typed_module.items.clone(),
+            typed_module.items.clone(),
             module_imports(m.clone()),
             si.clone(),
         );
@@ -462,7 +464,11 @@ pub fn emit_go_module(
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
-                __result.push(emit_go_typed_item(&item, registry.clone(), &scope));
+                __result.push(emit_go_typed_item(
+                    item.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                ));
             }
             __result
         })
@@ -537,7 +543,7 @@ pub fn go_package_name(module_name: String) -> String {
 }
 
 pub fn emit_go_imports(
-    items: &Rc<Vec<Rc<Node>>>,
+    items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -545,7 +551,7 @@ pub fn emit_go_imports(
         let has_services = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if is_service_item(&item) {
+                if is_service_item(item.clone()) {
                     __found = true;
                     break;
                 }
@@ -555,7 +561,7 @@ pub fn emit_go_imports(
         let has_types = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if is_type_def_item(&item) {
+                if is_type_def_item(item.clone()) {
                     __found = true;
                     break;
                 }
@@ -565,20 +571,20 @@ pub fn emit_go_imports(
         let has_functions = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if is_function_item(&item) {
+                if is_function_item(item.clone()) {
                     __found = true;
                     break;
                 }
             }
             __found
         };
-        let std_imports = collect_go_std_imports(&has_services, has_types, has_functions);
+        let std_imports = collect_go_std_imports(has_services, has_types, has_functions);
         let pkg_imports = Rc::new({
             let mut __result = Vec::new();
             for imp in imports.iter().cloned() {
                 __result.push({
                     let mod_name =
-                        module_to_filename(authored_name_at(source_indices.clone(), &imp));
+                        module_to_filename(authored_name_at(source_indices.clone(), imp.clone()));
                     v2_rt::concat(
                         v2_rt::concat("\t\"generated/".to_string(), mod_name.clone()),
                         "\"".to_string(),
@@ -603,7 +609,7 @@ pub fn emit_go_imports(
 }
 
 pub fn collect_go_std_imports(
-    has_services: &bool,
+    has_services: bool,
     has_types: bool,
     has_functions: bool,
 ) -> Rc<Vec<String>> {
@@ -628,63 +634,63 @@ pub fn collect_go_std_imports(
 }
 
 pub fn emit_go_typed_item(
-    item: &Rc<Node>,
+    item: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: &Rc<InferScope>,
+    scope: Rc<InferScope>,
 ) -> String {
     {
         let env = scope.type_env.clone();
         let item_text = authored_name(env.clone(), item.clone());
-        if is_type_def_item(&item) {
-            emit_go_type_def_from_connective(&item, &env)
+        if is_type_def_item(item.clone()) {
+            emit_go_type_def_from_connective(item.clone(), env.clone())
         } else {
-            if is_type_alias_item(&item, env.source_indices.clone()) {
+            if is_type_alias_item(item.clone(), env.source_indices.clone()) {
                 emit_go_type_alias(
                     item_text,
                     resolved_type(item.clone()),
                     env.source_indices.clone(),
                 )
             } else {
-                if is_type_decl_item(&item, env.source_indices.clone()) {
+                if is_type_decl_item(item.clone(), env.source_indices.clone()) {
                     "".to_string()
                 } else {
-                    if is_function_item(&item) {
+                    if is_function_item(item.clone()) {
                         if ((item.uses.clone().len() as i64) > 0) {
                             emit_go_func_def(
-                                &item_text,
-                                &item.params.clone(),
+                                item_text,
+                                item.params.clone(),
                                 resolved_type(item.clone()),
-                                &item.uses.clone(),
+                                item.uses.clone(),
                                 item.body.clone().clone().unwrap(),
-                                &registry,
-                                &scope,
+                                registry,
+                                scope.clone(),
                             )
                         } else {
                             emit_go_fn_def(
-                                &item_text,
-                                &item.params.clone(),
+                                item_text,
+                                item.params.clone(),
                                 resolved_type(item.clone()),
-                                &item.body.clone().clone().unwrap(),
-                                &registry,
-                                &scope,
+                                item.body.clone().clone().unwrap(),
+                                registry,
+                                scope.clone(),
                             )
                         }
                     } else {
-                        if is_data_def_item(&item) {
+                        if is_data_def_item(item.clone()) {
                             emit_go_data_def(
                                 item_text,
                                 item.type_annotation.clone().clone().unwrap(),
                                 item.body.clone().clone().unwrap(),
                                 registry,
-                                &scope,
+                                scope.clone(),
                                 0,
                             )
                         } else {
-                            if is_service_def_item(&item) {
+                            if is_service_def_item(item.clone()) {
                                 emit_go_service_def(item.clone(), registry, env.clone())
                             } else {
-                                if is_resource_def_item(&item) {
-                                    emit_go_resource_def(&item, &env)
+                                if is_resource_def_item(item.clone()) {
+                                    emit_go_resource_def(item.clone(), env.clone())
                                 } else {
                                     v2_rt::concat(
                                         v2_rt::concat(
@@ -711,21 +717,21 @@ pub fn emit_go_typed_item(
     }
 }
 
-pub fn emit_go_type_def_from_connective(item: &Rc<Node>, env: &Rc<TypeEnv>) -> String {
+pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
         if is_product {
-            emit_go_struct_from_children(item_text, &item.children.clone(), env.clone())
+            emit_go_struct_from_children(item_text, item.children.clone(), env.clone())
         } else {
-            emit_go_sum_from_children(&item_text, &item.children.clone(), env.clone())
+            emit_go_sum_from_children(item_text, item.children.clone(), env.clone())
         }
     }
 }
 
 pub fn emit_go_struct_from_children(
     name: String,
-    children: &Rc<Vec<Rc<Node>>>,
+    children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
 ) -> String {
     if ((children.clone().len() as i64) == 0) {
@@ -758,7 +764,7 @@ pub fn emit_go_struct_from_children(
             let field_lines = Rc::new({
                 let mut __result = Vec::new();
                 for child in children.clone().iter().cloned() {
-                    __result.push(emit_go_struct_field_from_child(&child, &env));
+                    __result.push(emit_go_struct_field_from_child(child.clone(), env.clone()));
                 }
                 __result
             });
@@ -797,7 +803,7 @@ pub fn emit_go_struct_from_children(
     }
 }
 
-pub fn emit_go_struct_field_from_child(child: &Rc<Node>, env: &Rc<TypeEnv>) -> String {
+pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
         let ty = emit_node_type(
@@ -823,8 +829,8 @@ pub fn emit_go_struct_field_from_child(child: &Rc<Node>, env: &Rc<TypeEnv>) -> S
 }
 
 pub fn emit_go_sum_from_children(
-    name: &String,
-    children: &Rc<Vec<Rc<Node>>>,
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -863,7 +869,11 @@ pub fn emit_go_sum_from_children(
                 let variant_structs = Rc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
-                        __result.push(emit_go_variant_struct(&name, &child, &env));
+                        __result.push(emit_go_variant_struct(
+                            name.clone(),
+                            child.clone(),
+                            env.clone(),
+                        ));
                     }
                     __result
                 });
@@ -940,7 +950,7 @@ pub fn emit_go_sum_from_children(
     }
 }
 
-pub fn emit_go_variant_struct(parent_name: &String, child: &Rc<Node>, env: &Rc<TypeEnv>) -> String {
+pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let struct_name = v2_rt::concat(
             parent_name.clone(),
@@ -999,7 +1009,7 @@ pub fn emit_go_variant_struct(parent_name: &String, child: &Rc<Node>, env: &Rc<T
                 let field_lines = Rc::new({
                     let mut __result = Vec::new();
                     for f in child.children.clone().iter().cloned() {
-                        __result.push(emit_go_struct_field_from_child(&f, &env));
+                        __result.push(emit_go_struct_field_from_child(f.clone(), env.clone()));
                     }
                     __result
                 });
@@ -1067,28 +1077,28 @@ pub fn emit_go_type_alias(
 }
 
 pub fn emit_go_fn_def(
-    name: &String,
-    params: &Rc<Vec<Rc<Node>>>,
+    name: String,
+    params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
-    body: &Rc<Node>,
-    registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: &Rc<InferScope>,
+    body: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let params_str = emit_params_shared(params.clone(), &RenderTarget::Go, si.clone());
-        let ret_str = emit_inferred_shared(&inferred, &RenderTarget::Go, si.clone());
-        let body_scope = build_params_scope(&scope, params.clone());
-        let use_tco = is_tco_eligible(&name, &body, registry.clone(), &si);
+        let params_str = emit_params_shared(params.clone(), RenderTarget::Go, si.clone());
+        let ret_str = emit_inferred_shared(inferred, RenderTarget::Go, si.clone());
+        let body_scope = build_params_scope(scope.clone(), params.clone());
+        let use_tco = is_tco_eligible(name.clone(), body.clone(), registry.clone(), si.clone());
         if use_tco {
             {
                 let body_str = emit_tco_unified(
                     body.clone(),
-                    &name,
-                    &params,
-                    &RenderTarget::Go,
-                    &registry,
-                    &body_scope,
+                    name.clone(),
+                    params.clone(),
+                    RenderTarget::Go,
+                    registry.clone(),
+                    body_scope,
                     1,
                     |pat| emit_unified_pattern(pat.clone(), RenderTarget::Go, si.clone()),
                 );
@@ -1128,7 +1138,7 @@ pub fn emit_go_fn_def(
         } else {
             {
                 let body_str =
-                    emit_go_typed_expr(body.clone(), registry.clone(), &body_scope, 1, 1024);
+                    emit_go_typed_expr(body.clone(), registry.clone(), body_scope, 1, 1024);
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
@@ -1173,13 +1183,13 @@ pub fn emit_go_fn_def(
 }
 
 pub fn emit_go_func_def(
-    name: &String,
-    params: &Rc<Vec<Rc<Node>>>,
+    name: String,
+    params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
-    uses: &Rc<Vec<Rc<Node>>>,
+    uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    registry: &Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: &Rc<InferScope>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
 ) -> String {
     {
         let service_names = match lookup_item(registry.clone(), name.clone()) {
@@ -1197,21 +1207,26 @@ pub fn emit_go_func_def(
             RenderTarget::Go,
             scope.type_env.clone().source_indices.clone(),
         );
-        let body_scope = build_params_scope(&scope, params.clone());
+        let body_scope = build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
         let body_scope = uses.clone().iter().cloned().fold(
             body_scope.clone(),
             |s: Rc<InferScope>, u: Rc<Node>| {
                 extend_scope(
-                    &s,
-                    &resource_use_name_at(u.clone(), si.clone()),
-                    resource_use_resource(&u),
+                    s,
+                    resource_use_name_at(u.clone(), si.clone()),
+                    resource_use_resource(u.clone()),
                     Rc::new(SubValueRelation::SubValueUnknown),
                 )
             },
         );
-        let body_str =
-            emit_unified_typed_func_body(&body, &RenderTarget::Go, &registry, &body_scope, 1);
+        let body_str = emit_unified_typed_func_body(
+            body,
+            RenderTarget::Go,
+            registry.clone(),
+            body_scope.clone(),
+            1,
+        );
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -1257,7 +1272,11 @@ pub fn emit_go_func_params(
         let param_strs = Rc::new({
             let mut __result = Vec::new();
             for p in params.iter().cloned() {
-                __result.push(emit_param_shared(&p, &RenderTarget::Go, &source_indices));
+                __result.push(emit_param_shared(
+                    p.clone(),
+                    RenderTarget::Go,
+                    source_indices.clone(),
+                ));
             }
             __result
         });
@@ -1273,7 +1292,7 @@ pub fn emit_go_func_params(
                         " ".to_string(),
                     ),
                     emit_node_type(
-                        resource_use_resource(&u),
+                        resource_use_resource(u.clone()),
                         RenderTarget::Go,
                         source_indices.clone(),
                     ),
@@ -1299,15 +1318,15 @@ pub fn emit_go_func_params(
 pub fn emit_go_typed_expr(
     texpr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: &Rc<InferScope>,
+    scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
 ) -> String {
     emit_unified_typed_expr(
         texpr,
-        &RenderTarget::Go,
+        RenderTarget::Go,
         registry,
-        &scope,
+        scope.clone(),
         depth,
         fuel,
         |pat| {
@@ -1327,13 +1346,13 @@ pub fn emit_go_transport_body(
     depth: i64,
 ) -> String {
     emit_unified_transport_dispatch(
-        &transport,
+        transport,
         op_name,
-        &source_indices,
+        source_indices,
         depth,
         RenderTarget::Go,
-        |n, t, d, si| emit_go_rest_call(n.clone(), &t, d.clone(), &si),
-        |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), &si),
+        |n, t, d, si| emit_go_rest_call(n.clone(), t.clone(), d.clone(), si.clone()),
+        |n, t, d, si| emit_go_shell_call(n.clone(), t.clone(), d.clone(), si.clone()),
         |n, d| emit_go_file_call(n.clone(), d.clone()),
         |n, d| emit_go_local_call(n.clone(), d.clone()),
     )
@@ -1345,10 +1364,10 @@ pub fn emit_go_service_def(
     env: Rc<TypeEnv>,
 ) -> String {
     emit_unified_service_def(
-        &item,
-        &RenderTarget::Go,
+        item,
+        RenderTarget::Go,
         registry,
-        &env,
+        env,
         |name, transport, ops, si| {
             emit_go_service_struct(name.clone(), transport.clone(), ops.clone(), si.clone())
         },
@@ -1370,9 +1389,8 @@ pub fn emit_go_service_struct(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
-        let fs = compute_service_fields(&fallback_transport, &op_children, &source_indices);
-        let decls =
-            service_field_decls(&fs, &language_spec(RenderTarget::Go).service_fields.clone());
+        let fs = compute_service_fields(fallback_transport, op_children, source_indices);
+        let decls = service_field_decls(fs, language_spec(RenderTarget::Go).service_fields.clone());
         if ((decls.clone().len() as i64) == 0) {
             v2_rt::concat(
                 v2_rt::concat(
@@ -1435,9 +1453,9 @@ pub fn emit_go_service_struct(
 
 pub fn emit_go_rest_call(
     op_name: String,
-    transport: &Rc<Node>,
+    transport: Rc<Node>,
     depth: i64,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let prefix = make_indent(depth);
@@ -1492,9 +1510,9 @@ pub fn emit_go_rest_call(
                             "\", ".to_string(),
                         ),
                         emit_simple_expr(
-                            &field_init_node_value(&h),
-                            &RenderTarget::Go,
-                            &source_indices,
+                            field_init_node_value(h.clone()),
+                            RenderTarget::Go,
+                            source_indices.clone(),
                         ),
                     ),
                     ")".to_string(),
@@ -1525,7 +1543,7 @@ pub fn emit_go_shell_call(
     op_name: String,
     transport: Rc<Node>,
     depth: i64,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let prefix = make_indent(depth);
@@ -1554,9 +1572,9 @@ pub fn emit_go_shell_call(
                             "=\" + ".to_string(),
                         ),
                         emit_simple_expr(
-                            &field_init_node_value(&e),
-                            &RenderTarget::Go,
-                            &source_indices,
+                            field_init_node_value(e.clone()),
+                            RenderTarget::Go,
+                            source_indices.clone(),
                         ),
                     ),
                     ")".to_string(),
@@ -1622,7 +1640,7 @@ pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
     }
 }
 
-pub fn emit_go_resource_def(item: &Rc<Node>, env: &Rc<TypeEnv>) -> String {
+pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let cap_children = Rc::new({
@@ -1637,7 +1655,7 @@ pub fn emit_go_resource_def(item: &Rc<Node>, env: &Rc<TypeEnv>) -> String {
         let methods = Rc::new({
             let mut __result = Vec::new();
             for c in cap_children.iter().cloned() {
-                __result.push(emit_go_capability_method(&c, 1, &env));
+                __result.push(emit_go_capability_method(c.clone(), 1, env.clone()));
             }
             __result
         });
@@ -1665,7 +1683,7 @@ pub fn emit_go_resource_def(item: &Rc<Node>, env: &Rc<TypeEnv>) -> String {
     }
 }
 
-pub fn emit_go_capability_method(cap_node: &Rc<Node>, depth: i64, env: &Rc<TypeEnv>) -> String {
+pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -1679,7 +1697,7 @@ pub fn emit_go_capability_method(cap_node: &Rc<Node>, depth: i64, env: &Rc<TypeE
                         " ".to_string(),
                     ),
                     emit_node_type(
-                        param_node_type_expr(&p),
+                        param_node_type_expr(p.clone()),
                         RenderTarget::Go,
                         env.source_indices.clone(),
                     ),
@@ -1720,7 +1738,7 @@ pub fn emit_go_data_def(
     type_node: Rc<Node>,
     value: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: &Rc<InferScope>,
+    scope: Rc<InferScope>,
     depth: i64,
 ) -> String {
     {
@@ -1729,7 +1747,7 @@ pub fn emit_go_data_def(
             RenderTarget::Go,
             scope.type_env.clone().source_indices.clone(),
         );
-        let val_str = emit_go_typed_expr(value, registry, &scope, depth, 1024);
+        let val_str = emit_go_typed_expr(value, registry, scope.clone(), depth, 1024);
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(

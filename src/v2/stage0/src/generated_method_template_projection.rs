@@ -24,7 +24,7 @@ pub fn rust_method_template_emit() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
@@ -50,7 +50,7 @@ pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn go_method_template_emit() -> Rc<HashMap<String, String>> {
@@ -72,5 +72,5 @@ pub fn go_method_template_emit() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
