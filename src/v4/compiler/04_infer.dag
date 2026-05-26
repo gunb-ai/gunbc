@@ -38,7 +38,6 @@ import v4.std.diagnostic {
   rejected_with_pending
 }
 import v4.std.logic { Bool }
-import v4.std.nat { Nat, Zero, is_zero }
 import v4.std.node {
   Atom,
   ComputationNode,
@@ -49,15 +48,6 @@ import v4.std.node {
   TypeNode,
   fold_node,
   well_formed
-}
-import v4.std.verification {
-  CompilesClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -114,7 +104,10 @@ type InferredFactsEntry {
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
-// 🟢 SM5 gate satisfied — confirmed 0 infer_algebra_ref_ungrounded diagnostics after #3689.
+// 🟡 gated — scaffold:T-4-wave-2b — feature:infer-algebra-ref-grounding-gate
+// SM5 external evidence: v2 bootstrap on src/v4 after #3689 produced 0
+// infer_algebra_ref_ungrounded diagnostics. Keep this marker yellow until a modeled
+// bootstrap diagnostic-census/evaluator fact derives that zero count from the compiler run.
 // Fired when InferredFacts.inhabits.algebra (AlgebraRef.algebra) is a bare Atom.
 // In the current identity-MVP solver, AlgebraRef.algebra = the node itself; for Atom leaf
 // nodes this means the guard fires, making canonical_grounding_for_node unusable for Atom
@@ -123,68 +116,6 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 // AlgebraRef.algebra from grounded algebra Node constructors (T-2); at that point bare-Atom
 // algebra evidence means an unharvested bridge symbol, not a scaffolded identity return.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
-
-
-data sm5_bootstrap_src_v4: Symbol = sm5_bootstrap_src_v4
-data sm5_diagnostic_census_pass: Symbol = sm5_diagnostic_census_pass
-data sm5_diagnostic_census_fail: Symbol = sm5_diagnostic_census_fail
-
-
-type Sm5DiagnosticCensus {
-  source_root: Symbol
-  diagnostic: Symbol
-  count: Nat
-}
-
-
-data sm5_src_v4_infer_algebra_ref_ungrounded_census: Sm5DiagnosticCensus = Sm5DiagnosticCensus {
-  source_root: sm5_bootstrap_src_v4,
-  diagnostic: infer_algebra_ref_ungrounded,
-  count: Zero
-}
-
-
-fn sm5_diagnostic_census_pass_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: sm5_diagnostic_census_pass } },
-    children: []
-  }
-}
-
-
-fn sm5_diagnostic_census_fail_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: sm5_diagnostic_census_fail } },
-    children: []
-  }
-}
-
-
-fn sm5_infer_algebra_ref_ungrounded_census_is_zero(census: Sm5DiagnosticCensus) -> Bool {
-  if census.source_root == sm5_bootstrap_src_v4 && census.diagnostic == infer_algebra_ref_ungrounded {
-    is_zero(n: census.count)
-  } else {
-    false
-  }
-}
-
-
-fn sm5_diagnostic_census_claim_input(census: Sm5DiagnosticCensus) -> Node {
-  if sm5_infer_algebra_ref_ungrounded_census_is_zero(census: census) {
-    sm5_diagnostic_census_pass_node()
-  } else {
-    sm5_diagnostic_census_fail_node()
-  }
-}
-
-
-data claim_sm5_infer_algebra_ref_ungrounded_zero_diagnostics: TestClaim = CompilesClaim {
-  label: "SM5: v2 bootstrap on src/v4 with #3689 bridge-symbol dissolution produces 0 infer_algebra_ref_ungrounded diagnostics",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: sm5_diagnostic_census_claim_input(census: sm5_src_v4_infer_algebra_ref_ungrounded_census),
-  expected_value: sm5_diagnostic_census_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
-}
 
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
