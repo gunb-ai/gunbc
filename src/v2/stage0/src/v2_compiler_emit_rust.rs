@@ -3357,6 +3357,15 @@ pub fn emit_struct_field_from_child(
     {
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(&child);
+        eprintln!(
+            "DBG field={} parent_generics={:?} authored_name={} authored_inferred={:?} authored_children={} child_props={}",
+            authored_name_at(env.source_indices.clone(), child),
+            parent_generic_param_names,
+            authored_name_at(env.source_indices.clone(), &authored_child_type),
+            authored_child_type.inferred,
+            authored_child_type.children.len(),
+            child.properties.len()
+        );
         let child_rendered = render_rust_type_with_applied_binding(
             child.clone(),
             shared_types.clone(),
