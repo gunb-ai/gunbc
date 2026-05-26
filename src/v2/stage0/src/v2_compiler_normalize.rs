@@ -25,9 +25,9 @@ pub struct NormalizeResult {
 }
 
 pub fn check_bare_containers(
-    n: &Rc<Node>,
-    module_name: &String,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Rc<Node>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let has_structure = ((match n.body.clone() {
@@ -39,7 +39,7 @@ pub fn check_bare_containers(
             ExprData::NoExprData => false,
             _ => true,
         };
-        let nname = authored_name_at(source_indices.clone(), &n);
+        let nname = authored_name_at(source_indices.clone(), n.clone());
         let self_diags = if is_expr {
             Rc::new(vec![])
         } else {
@@ -70,9 +70,13 @@ pub fn check_bare_containers(
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
                 __result.extend(
-                    (*check_bare_containers(&c, &module_name, &source_indices))
-                        .iter()
-                        .cloned(),
+                    (*check_bare_containers(
+                        c.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
@@ -81,19 +85,27 @@ pub fn check_bare_containers(
             let mut __result = Vec::new();
             for p in n.params.clone().iter().cloned() {
                 __result.extend(
-                    (*check_bare_containers(&p, &module_name, &source_indices))
-                        .iter()
-                        .cloned(),
+                    (*check_bare_containers(
+                        p.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
         });
         let type_ann_diags = match n.type_annotation.clone() {
-            Some(ta) => check_bare_containers(&ta, &module_name, &source_indices),
+            Some(ta) => {
+                check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
+            }
             None => Rc::new(vec![]),
         };
         let body_diags = match n.body.clone() {
-            Some(b) => check_bare_containers(&b, &module_name, &source_indices),
+            Some(b) => {
+                check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
+            }
             None => Rc::new(vec![]),
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
@@ -101,9 +113,11 @@ pub fn check_bare_containers(
         } else {
             match n.inferred.clone() {
                 Some(inf) => match (*inf.clone()).clone() {
-                    InferredNode::Resolved { node: rn, .. } => {
-                        check_bare_containers(&rn, &module_name, &source_indices)
-                    }
+                    InferredNode::Resolved { node: rn, .. } => check_bare_containers(
+                        rn.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ),
                     _ => Rc::new(vec![]),
                 },
                 None => Rc::new(vec![]),
@@ -113,9 +127,13 @@ pub fn check_bare_containers(
             let mut __result = Vec::new();
             for u in n.uses.clone().iter().cloned() {
                 __result.extend(
-                    (*check_bare_containers(&u, &module_name, &source_indices))
-                        .iter()
-                        .cloned(),
+                    (*check_bare_containers(
+                        u.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
@@ -124,9 +142,13 @@ pub fn check_bare_containers(
             let mut __result = Vec::new();
             for p in n.properties.clone().iter().cloned() {
                 __result.extend(
-                    (*check_bare_containers(&p, &module_name, &source_indices))
-                        .iter()
-                        .cloned(),
+                    (*check_bare_containers(
+                        p.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
                 );
             }
             __result
@@ -154,7 +176,7 @@ pub fn check_bare_containers(
 }
 
 pub fn normalize_graph(
-    graph: &Rc<ModuleGraph>,
+    graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NormalizeResult> {
     {
@@ -169,12 +191,9 @@ pub fn normalize_graph(
                             for item in items.clone().iter().cloned() {
                                 __result.extend(
                                     (*check_bare_containers(
-                                        &item,
-                                        &authored_name_at(
-                                            source_indices.clone(),
-                                            &m.module.clone(),
-                                        ),
-                                        &source_indices,
+                                        item.clone(),
+                                        authored_name_at(source_indices.clone(), m.module.clone()),
+                                        source_indices.clone(),
                                     ))
                                     .iter()
                                     .cloned(),

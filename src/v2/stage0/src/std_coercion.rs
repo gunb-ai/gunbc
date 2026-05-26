@@ -54,7 +54,7 @@ pub fn dag_cast_rules() -> Rc<Vec<Rc<CastRule>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
 pub fn dag_can_cast(source_type: String, target_type: String) -> bool {

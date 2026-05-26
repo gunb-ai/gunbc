@@ -51,13 +51,13 @@ pub fn map_of_type_variables() -> Rc<Node> {
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    make_container_type(&"List".to_string(), type_variable_node(id))
+    make_container_type("List".to_string(), type_variable_node(id))
         .ty
         .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    make_container_type(&"List".to_string(), element).ty.clone()
+    make_container_type("List".to_string(), element).ty.clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
@@ -74,14 +74,14 @@ pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
             .diagnostics
             .clone(),
             make_container_type(
-                &"List".to_string(),
+                "List".to_string(),
                 type_variable_node("collection_element".to_string()),
             )
             .diagnostics
             .clone(),
         ),
         make_container_type(
-            &"Set".to_string(),
+            "Set".to_string(),
             type_variable_node("set_elem".to_string()),
         )
         .diagnostics
@@ -102,7 +102,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v2_rt::rc_map_insert(
             m.clone(),
             "parse_int".to_string(),
-            with_optional_cardinality(&int_type()),
+            with_optional_cardinality(int_type()),
         );
         let m = v2_rt::rc_map_insert(m.clone(), "char_at".to_string(), string_type());
         let m = v2_rt::rc_map_insert(m.clone(), "substring".to_string(), string_type());
@@ -114,7 +114,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v2_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
         let m = v2_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
         let set_ty = make_container_type(
-            &"Set".to_string(),
+            "Set".to_string(),
             type_variable_node("set_elem".to_string()),
         )
         .ty
@@ -129,17 +129,17 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v2_rt::rc_map_insert(
             m.clone(),
             "lookup".to_string(),
-            with_optional_cardinality(&type_variable_node("map_value".to_string())),
+            with_optional_cardinality(type_variable_node("map_value".to_string())),
         );
         let m = v2_rt::rc_map_insert(
             m.clone(),
             "map_get".to_string(),
-            with_optional_cardinality(&type_variable_node("map_value".to_string())),
+            with_optional_cardinality(type_variable_node("map_value".to_string())),
         );
         let m = v2_rt::rc_map_insert(
             m.clone(),
             "Some".to_string(),
-            with_optional_cardinality(&type_variable_node("some_inner".to_string())),
+            with_optional_cardinality(type_variable_node("some_inner".to_string())),
         );
         let m = v2_rt::rc_map_insert(
             m.clone(),
