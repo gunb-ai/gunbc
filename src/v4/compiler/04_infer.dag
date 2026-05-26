@@ -49,7 +49,6 @@ import v4.std.node {
   fold_node,
   well_formed
 }
-import v4.std.verification { TestClaim }
 import v4.std.witness { Holds, Violates, Witness }
 
 
@@ -114,11 +113,6 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 // AlgebraRef.algebra from grounded algebra Node constructors (T-2); at that point bare-Atom
 // algebra evidence means an unharvested bridge symbol, not a scaffolded identity return.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
-
-
-data claim_sm5_infer_algebra_ref_ungrounded_zero: TestClaim = TestClaim {
-  description: "v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (SM5 verified 2026-05-26)"
-}
 
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
