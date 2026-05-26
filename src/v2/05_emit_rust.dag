@@ -1422,15 +1422,15 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
     emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
-	  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
-	    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
+  } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
+    concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if item.params |> count == 0 {
+    if (item.params |> count) == 0 {
       emit_struct_from_children(name: item_text, type_params: "", generic_param_names: [], children: [], recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info)
     } else {
       ""
     }
-	  } else if is_function_item(item: item) {
+  } else if is_function_item(item: item) {
     let fn_movable = match map_get(emit_info.ownership_index, qualified_name) {
       Some { value: m } => m
       None => empty_set()
