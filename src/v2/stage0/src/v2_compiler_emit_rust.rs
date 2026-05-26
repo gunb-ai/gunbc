@@ -3407,34 +3407,39 @@ pub fn emit_struct_field_from_child(
             },
             None => "".to_string(),
         };
-        let authored = authored_name(env.clone(), child.clone());
+        emit_rust_field_definition(
+            &authored_name(env.clone(), child.clone()),
+            final_ty,
+            &rename_attr,
+            &"    ".to_string(),
+            rust_visibility_prefix(),
+        )
+    }
+}
+
+pub fn emit_rust_field_definition(
+    authored: &String,
+    final_ty: String,
+    rename_attr: &String,
+    indent: &String,
+    visibility: String,
+) -> String {
+    {
         let snake = to_snake(authored.clone());
-        let is_reserved = {
-            let mut __found = false;
-            for r in language_spec(RenderTarget::Rust)
-                .reserved_words
-                .clone()
-                .keywords
-                .clone()
-                .iter()
-                .cloned()
-            {
-                if (r.clone().as_str() == snake.clone().as_str()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        };
-        let keyword_rename =
-            if (is_reserved && (rename_attr.clone().as_str() == "".to_string().as_str())) {
+        let emitted = emit_ident(authored.clone(), RenderTarget::Rust);
+        let keyword_rename = if ((emitted.clone().as_str() != snake.clone().as_str())
+            && (rename_attr.clone().as_str() == "".to_string().as_str()))
+        {
+            v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat("    #[serde(rename = \"".to_string(), snake.clone()),
-                    "\")]\n".to_string(),
-                )
-            } else {
-                "".to_string()
-            };
+                    v2_rt::concat(indent.clone(), "#[serde(rename = \"".to_string()),
+                    snake.clone(),
+                ),
+                "\")]\n".to_string(),
+            )
+        } else {
+            "".to_string()
+        };
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -3442,11 +3447,11 @@ pub fn emit_struct_field_from_child(
                         v2_rt::concat(
                             v2_rt::concat(
                                 v2_rt::concat(keyword_rename, rename_attr.clone()),
-                                "    ".to_string(),
+                                indent.clone(),
                             ),
-                            rust_visibility_prefix(),
+                            visibility,
                         ),
-                        emit_ident(authored.clone(), RenderTarget::Rust),
+                        emitted.clone(),
                     ),
                     ": ".to_string(),
                 ),
@@ -4255,21 +4260,12 @@ pub fn emit_variant_from_child(
                                         } else {
                                             ty.clone()
                                         };
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                v2_rt::concat(
-                                                    v2_rt::concat(
-                                                        "        ".to_string(),
-                                                        emit_ident(
-                                                            authored_name(env.clone(), f.clone()),
-                                                            RenderTarget::Rust,
-                                                        ),
-                                                    ),
-                                                    ": ".to_string(),
-                                                ),
-                                                final_ty.clone(),
-                                            ),
-                                            ",".to_string(),
+                                        emit_rust_field_definition(
+                                            &authored_name(env.clone(), f.clone()),
+                                            final_ty.clone(),
+                                            &"".to_string(),
+                                            &"        ".to_string(),
+                                            "".to_string(),
                                         )
                                     });
                                 }
@@ -4323,21 +4319,12 @@ pub fn emit_variant_from_child(
                                 } else {
                                     ty.clone()
                                 };
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                "        ".to_string(),
-                                                emit_ident(
-                                                    authored_name(env.clone(), f.clone()),
-                                                    RenderTarget::Rust,
-                                                ),
-                                            ),
-                                            ": ".to_string(),
-                                        ),
-                                        final_ty.clone(),
-                                    ),
-                                    ",".to_string(),
+                                emit_rust_field_definition(
+                                    &authored_name(env.clone(), f.clone()),
+                                    final_ty.clone(),
+                                    &"".to_string(),
+                                    &"        ".to_string(),
+                                    "".to_string(),
                                 )
                             });
                         }

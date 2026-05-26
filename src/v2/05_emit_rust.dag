@@ -1729,15 +1729,18 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
     }
     None => ""
   }
-  // Reserved keywords: emit_ident adds r# prefix, but serde needs a rename
-  // to match the original JSON key (e.g., "ref" → r#ref needs #[serde(rename = "ref")])
-  let authored = authored_name(env: env, node: child)
+  emit_rust_field_definition(authored: authored_name(env: env, node: child), final_ty: final_ty, rename_attr: rename_attr, indent: "    ", visibility: rust_visibility_prefix())
+}
+
+fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: String, indent: String, visibility: String) -> String {
+  // Rust field escaping can change the emitted identifier; serde needs a rename
+  // to match the original JSON key (e.g., "ref" -> ref_, "self_" -> self__).
   let snake = to_snake(name: authored)
-  let is_reserved = language_spec(target: Rust).reserved_words.keywords |> any(r => r == snake)
-  let keyword_rename = if is_reserved && rename_attr == "" {
-    concat("    #[serde(rename = \"", snake, "\")]\n")
+  let emitted = emit_ident(name: authored, target: Rust)
+  let keyword_rename = if emitted != snake && rename_attr == "" {
+    concat(indent, "#[serde(rename = \"", snake, "\")]\n")
   } else { "" }
-  concat(keyword_rename, rename_attr, "    ", rust_visibility_prefix(), emit_ident(name: authored, target: Rust), ": ", final_ty, ",")
+  concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
 }
 
 fn enum_derives(children: List<Node>) -> String {
@@ -1987,7 +1990,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
         let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
           concat("Box<", ty, ">")
         } else { ty }
-        concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
+        emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "")
       )
       let fields_str = field_lines |> join(separator: "\n")
       concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
@@ -2000,7 +2003,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, parent_generic_param_
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
         concat("Box<", ty, ">")
       } else { ty }
-      concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
+      emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "")
     )
     let fields_str = field_lines |> join(separator: "\n")
     concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")

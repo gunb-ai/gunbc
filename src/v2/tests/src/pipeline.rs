@@ -2116,6 +2116,40 @@ fn emit_field_access_with_types() {
 }
 
 #[test]
+fn rust_emit_mangles_self_field_and_param_without_raw_identifier() {
+    let source = "module reserved_self\n\
+type SelfRecord { self: Int  self_: Int }\n\
+type SelfEnum = SelfVariant { self: Int  self_: Int }\n\
+fn wrap(self: Int, self_: Int) -> SelfRecord { SelfRecord { self: self, self_: self_ } }\n\
+fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/reserved_self.rs");
+    assert!(
+        !content.contains("r#self"),
+        "Rust emitter must not raw-escape reserved `self`: {content}"
+    );
+    assert!(
+        content.contains("#[serde(rename = \"self\")]")
+            && content.contains("#[serde(rename = \"self_\")]")
+            && content.contains("pub self_: i64")
+            && content.contains("pub self__: i64")
+            && content.contains("fn wrap(self_: i64, self__: i64) -> SelfRecord")
+            && content.contains("self_: self_")
+            && content.contains("self__: self__")
+            && content.contains("record.self_")
+            && content.contains("record.self__"),
+        "Rust emitter should consistently and injectively suffix-mangle `self`: {content}"
+    );
+    assert!(
+        content.contains("SelfVariant {")
+            && content.contains("        #[serde(rename = \"self\")]\n        self_: i64,")
+            && content.contains("        #[serde(rename = \"self_\")]\n        self__: i64,"),
+        "Rust enum variant fields should preserve authored serde wire names after suffix-mangling: {content}"
+    );
+}
+
+#[test]
 fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     let source = "module callable_sig\n\ntype Mapper = fn(Int) -> Int\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
     let result = compile_dag(source);

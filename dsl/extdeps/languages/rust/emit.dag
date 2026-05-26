@@ -89,9 +89,8 @@ data rust_reserved: List<String> = [
 ]
 
 // -- Reserved word escape ------------------------------------------------
-// Ref: Rust Reference, Appendix B: Raw identifiers
-// Mirrors rust_reserved_words.strategy.prefix from std.languages.
-data rust_reserved_escape_prefix: String = "r#"
+// Mirrors rust_reserved_words.strategy.suffix from std.languages.
+data rust_reserved_escape_suffix: String = "_"
 
 // -- String-like types ---------------------------------------------------
 // Types that render as Rust &str/.as_str() for comparison operations.
@@ -279,4 +278,3 @@ data rust_higher_order_methods: List<HigherOrderMethodSpec> = [
   { method_name: "all", inline_template: "\{ let mut __all = true; for \{param\} in \{iter\} \{ if !(\{body\}) \{ __all = false; break; \} \} __all \}", fn_ref_template: "\{iter\}.all(\{arg\})", wraps_in_sharing: false },
   { method_name: "flat_map", inline_template: "\{ let mut __result = Vec::new(); for \{param\} in \{iter\} \{ __result.extend(\{inner_iter\}); \} __result \}", fn_ref_template: "\{iter\}.flat_map(\{arg\}).collect::<Vec<_>>()", wraps_in_sharing: true }
 ]
-
