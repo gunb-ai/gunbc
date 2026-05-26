@@ -1545,7 +1545,7 @@ to define a new agent output surface.
 **Files:**
 - `src/v4/std/agent.dag` — new file; `AgentStore` carrier only.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point.
-  **Signature:** `compile_with_store(root: ModulePath, store: AgentStore, target: TargetModel) -> Outcome<TargetSource>`.
+  **Signature:** `compile_with_store(root: ModulePath, store: AgentStore, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
   The `root` parameter is the sole root-selection authority: the caller names
   which store entry is the compilation entry point. `compile_with_store` runs
   admission first: `module_graph_from_entries(entries: store.entries)` →
@@ -1572,18 +1572,20 @@ to define a new agent output surface.
   `module_graph_from_entries` in `std/module_graph.dag` remains the canonical
   `ModuleGraph` construction path and admission authority — T-35 does NOT
   bypass it or replace `ModuleGraph` with a parallel lookup. `compile_with_store`
-  then delegates to the same existing `compile` orchestrator chain as
-  `compile_ingest_staging` — T-35 does NOT implement or modify the infer/emit
-  pipeline. Output type inherits from the existing orchestrator contract
-  (`Outcome<TargetSource>`); T-35 workers must not redefine it.
+  then routes through `validate_then_compile` — the sole public compile terminal
+  in `00_compile.dag` — with an empty caller-lenses list; the always-required
+  lens gates (fact-density) run on agent-supplied code via
+  `always_required_lenses()`. T-35 does NOT implement or modify the infer/emit
+  pipeline. Output type is `Outcome<Validated<CompileOutput>>`, the same carrier
+  as `validate_then_compile`; T-35 workers must not redefine it.
 
 **Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
   replace it. T-35 workers cannot proceed without T-28-B.
 - **T-9 and T-10** are execution prerequisites, not implementation
-  prerequisites: `compile_with_store` delegates to the same pipeline as
-  `compile_ingest_staging`, so its output is stub/Diagnostic-only until T-9
+  prerequisites: `compile_with_store` routes through `validate_then_compile`,
+  so its output is stub/Diagnostic-only until T-9
   (infer) and T-10 (emit) are complete. T-35 workers do NOT implement
   infer/emit — they wire the store into the existing orchestrator. Workers
   must not expand scope into T-9/T-10 territory even if the pipeline is
