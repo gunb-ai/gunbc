@@ -11370,8 +11370,10 @@ pub fn rust_receiver_has_callable_method_field(
 ) -> bool {
     {
         let receiver_type = resolved_type(receiver);
-        let receiver_type_name =
-            authored_name_at(scope.type_env.clone().source_indices.clone(), &receiver_type);
+        let receiver_type_name = authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            &receiver_type,
+        );
         rust_record_field_needs_fn_rc(scope, receiver_type_name, method_name)
     }
 }
