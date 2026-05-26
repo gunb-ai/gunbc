@@ -156,6 +156,9 @@ fn p9_source_declares_target_fn_accepts_decl_whitespace() {
     assert!(source_declares_target_fn(
         "\tfn\tllvm_instruction_cost\t(i: LlvmInstruction) -> Int { 1 }"
     ));
+    assert!(source_declares_target_fn(
+        "fn llvm_instruction_cost\n(i: LlvmInstruction) -> Int { 1 }"
+    ));
     assert!(!source_declares_target_fn(
         "fn llvm_instruction_cost_extra(i: LlvmInstruction) -> Int { 1 }"
     ));
