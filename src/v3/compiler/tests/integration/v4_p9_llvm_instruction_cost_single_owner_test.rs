@@ -10,8 +10,10 @@
 //! (registry exclusivity) with a corpus scan for shadow `fn llvm_instruction_cost`
 //! definitions outside the canonical owner module.
 //!
-//! **TESTING.md:** M1(2.7) tokenize/parse surface scan (`SurfaceItem::Fn` /
-//! `FnExternalBody`); per-file isolation matches peer v4 smoke harness posture.
+//! **TESTING.md:** M1(2.7) corpus scan; canonical owner and llvm_ir checks
+//! still use `SurfaceItem::Fn` / `FnExternalBody`. The all-v4 shadow scan is
+//! anchored to declaration spelling so newer v4 expression syntax in unrelated
+//! modules cannot mask a P9 ownership regression.
 //!
 //! **ROADMAP:** T-PB-B / `pb_rust_tests_outside_residual_zero`; dissolves when M2
 //! reflection or generated harness executes the `.dag` claim over the full corpus.
@@ -50,6 +52,16 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
             name: item_name, ..
         } => item_name == name,
         _ => false,
+    })
+}
+
+fn source_declares_target_fn(source: &str) -> bool {
+    source.lines().any(|line| {
+        let line = line.trim_start();
+        line.starts_with("fn ")
+            && line["fn ".len()..]
+                .trim_start()
+                .starts_with(&format!("{TARGET_FN_NAME}("))
     })
 }
 
@@ -93,8 +105,7 @@ fn v4_p9_llvm_instruction_cost_defined_only_in_lens_cost_dag() {
         let rel = rel_path(&root, &path);
         let source =
             fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-        let module = parse_module(&source, &rel);
-        if surface_declares_fn(&module, TARGET_FN_NAME) {
+        if source_declares_target_fn(&source) {
             defs.push(rel);
         }
     }
