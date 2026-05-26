@@ -148,9 +148,9 @@ import v2.compiler.emit {
 
 fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
-    Some { value: TypeVariable { id: tv } } => emit_ident(name: tv, target: Rust)
+    Some { value: TypeVariable { id: tv } } => tv
     _ => if n.connective == NoConnective && n.children |> count == 0 && string_length(s: authored_name_at(source_indices: source_indices, node: n)) == 1 {
-      emit_ident(name: authored_name_at(source_indices: source_indices, node: n), target: Rust)
+      authored_name_at(source_indices: source_indices, node: n)
     } else if n.connective == NoConnective && n.children |> count > 0 {
       render_rust_applied_type(n: n, shared_types: shared_types, source_indices: source_indices)
     } else if node_is_set_collection(n: n, source_indices: source_indices) {
@@ -176,7 +176,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, source_indices: Map<Stri
 
 fn render_rust_applied_type_arg(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
-    Some { value: TypeVariable { id: tv } } => emit_ident(name: tv, target: Rust)
+    Some { value: TypeVariable { id: tv } } => tv
     _ => render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
   }
 }
@@ -194,7 +194,7 @@ fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
-    emit_ident(name: name, target: Rust)
+    name
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let base = coerce_primitive_type(target: Rust, dag_name: name)
     let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")

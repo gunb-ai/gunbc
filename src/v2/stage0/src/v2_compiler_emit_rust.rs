@@ -128,16 +128,13 @@ pub fn render_rust_type(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => emit_ident(tv, RenderTarget::Rust),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => tv,
         _ => {
             if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.len() as i64) == 0)
                 && ((authored_name_at(source_indices.clone(), &n).len() as i64) == 1))
             {
-                emit_ident(
-                    authored_name_at(source_indices.clone(), &n),
-                    RenderTarget::Rust,
-                )
+                authored_name_at(source_indices.clone(), &n)
             } else if ((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.len() as i64) > 0))
             {
@@ -191,7 +188,7 @@ pub fn render_rust_applied_type_arg(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: tv, .. }) => emit_ident(tv, RenderTarget::Rust),
+        Some(InferredNode::TypeVariable { id: tv, .. }) => tv,
         _ => render_rust_type(&n, shared_types, &source_indices),
     }
 }
@@ -242,7 +239,7 @@ pub fn render_rust_decl_type(
             .iter()
             .any(|g| g.as_str() == name.as_str()))
     {
-        emit_ident(name, RenderTarget::Rust)
+        name
     } else if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.len() as i64) > 0))
     {
