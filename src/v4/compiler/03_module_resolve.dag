@@ -19,7 +19,7 @@ import v4.compiler.resolve {
   resolve_with_namespace
 }
 import v4.extdeps.languages.dag { DagLanguageModel }
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import v4.std.algebra { FreeMonoid, fold_list }
 import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Accepted,
