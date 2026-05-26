@@ -1,8 +1,9 @@
 // src/v4/compiler/05_emit.dag
-// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
-// Owns: serialize_source_for_emitted, serialize_target, emit.
+// Scope: Stage 5b — T-10 emit surface over TargetModel: grammar-inverse serialize_target ∘ translate.
+// Owns: dag_surface_module_header, dag_surface_import_decl, dag_surface_data_decl,
+//       serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
-//           std/diagnostic.dag.
+//           extdeps/languages/dag.dag, std/diagnostic.dag, std/target_model.dag.
 // Status: T-10 — emit = serialize_target ∘ translate; serialize delegates to
 // target_serialize_source_from_model grammar-inverse lex walk (no string templates).
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
@@ -13,15 +14,180 @@ module v4.compiler.emit
 
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.compiler.infer { InferredTree }
+import v4.compiler.parse {
+  GrammarProduction,
+  grammar_production_to_node
+}
 import v4.compiler.translate {
   TargetNodeTree,
   target_serialize_source_from_model,
   translate
 }
+import v4.extdeps.languages.dag {
+  dag_grammar_data_decl_expr,
+  dag_grammar_import_decl_expr,
+  dag_grammar_module_header_expr,
+  dag_production_data_decl,
+  dag_production_import_decl,
+  dag_production_module_header,
+  dag_surface_data_decl,
+  dag_surface_import_decl,
+  dag_surface_module_header,
+  dag_token_colon,
+  dag_token_eq,
+  dag_token_ident,
+  dag_token_kw_data,
+  dag_token_kw_import,
+  dag_token_kw_module
+}
 import v4.std.diagnostic {
   Accepted,
   Outcome,
   bind_outcome
+}
+import v4.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens
+}
+data emit_relation_dag_module_header: Symbol = emit_relation_dag_module_header
+data emit_relation_dag_import_decl: Symbol = emit_relation_dag_import_decl
+data emit_relation_dag_data_decl: Symbol = emit_relation_dag_data_decl
+data emit_binding_dag_module_name: Symbol = emit_binding_dag_module_name
+data emit_binding_dag_import_path: Symbol = emit_binding_dag_import_path
+data emit_binding_dag_data_name: Symbol = emit_binding_dag_data_name
+data emit_binding_dag_data_type: Symbol = emit_binding_dag_data_type
+data emit_binding_dag_data_value: Symbol = emit_binding_dag_data_value
+fn emit_atom(id: Symbol) -> Node {
+  Node {
+    kind: Atom { identity: id },
+    children: []
+  }
+}
+fn emit_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+fn emit_positional_edge(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+fn emit_fixed_token(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      emit_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: emit_atom(id: token_class)
+      )
+    ]
+  }
+}
+fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      emit_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: emit_atom(id: token_class)
+      ),
+      emit_named_edge(
+        name: concrete_syntax_token_field_binding,
+        target: emit_atom(id: binding)
+      )
+    ]
+  }
+}
+fn emit_tokens_node(tokens: List<Node>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: tokens,
+      empty: Empty,
+      cons: fn(acc, token) {
+        list_snoc_item(xs: acc, item: emit_positional_edge(target: token))
+      }
+    )
+  }
+}
+fn emit_grammar_relation_row(
+  production: GrammarProduction,
+  emitted: Symbol,
+  tokens: List<Node>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      emit_named_edge(
+        name: grammar_relation_field_production,
+        target: grammar_production_to_node(production: production)
+      ),
+      emit_named_edge(
+        name: grammar_relation_field_emitted,
+        target: emit_atom(id: emitted)
+      ),
+      emit_named_edge(
+        name: grammar_relation_field_tokens,
+        target: emit_tokens_node(tokens: tokens)
+      )
+    ]
+  }
+}
+fn dag_surface_module_header() -> Node {
+  emit_grammar_relation_row(
+    production: GrammarProduction {
+      name: dag_production_module_header,
+      expression: dag_grammar_module_header_expr(),
+      emitted: emit_atom(id: dag_surface_module_header)
+    },
+    emitted: dag_surface_module_header,
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_module),
+      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_module_name)
+    ]
+  )
+}
+fn dag_surface_import_decl() -> Node {
+  emit_grammar_relation_row(
+    production: GrammarProduction {
+      name: dag_production_import_decl,
+      expression: dag_grammar_import_decl_expr(),
+      emitted: emit_atom(id: dag_surface_import_decl)
+    },
+    emitted: dag_surface_import_decl,
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_import),
+      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_import_path)
+    ]
+  )
+}
+fn dag_surface_data_decl() -> Node {
+  emit_grammar_relation_row(
+    production: GrammarProduction {
+      name: dag_production_data_decl,
+      expression: dag_grammar_data_decl_expr(),
+      emitted: emit_atom(id: dag_surface_data_decl)
+    },
+    emitted: dag_surface_data_decl,
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_data),
+      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_name),
+      emit_fixed_token(token_class: dag_token_colon),
+      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_type),
+      emit_fixed_token(token_class: dag_token_eq),
+      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_data_value)
+    ]
+  )
 }
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
