@@ -21,8 +21,8 @@ import v4.compiler.resolve {
   try_edge_declared_binding
 }
 import v4.extdeps.languages.dag { DagLanguageModel }
-import v4.std.algebra { FreeMonoid, fold, fold_list }
-import v4.std.collection { Map, empty_map, map_get, map_insert }
+import v4.std.algebra { FreeMonoid, fold_list }
+import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
