@@ -61,6 +61,9 @@ fn surface_declares_type_sum(
     })
 }
 
+// P5 receipt: smoke-test expansion for Finding #2 (CompileLensIntrospect advisory semantics).
+// Verifies the .dag shape of lens/application.dag structural claims added in this PR.
+// Deferral: retired when .dag-native assertions replace Rust smoke tests.
 fn import_includes_name(
     module: &v3_compiler::parse_surface::SurfaceModule,
     path: &[&str],
