@@ -134,12 +134,24 @@ fn v4_translate_dag_declares_translate_node_and_translate() {
 fn v4_translate_dag_dispatches_token_sequence_items() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
     assert!(
-        surface_declares_fn(&module, "concrete_token_class_child"),
-        "{TRANSLATE_PATH}: must distinguish concrete tokens from nonterminal emitted nodes"
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_field_kind"
+        ),
+        "{TRANSLATE_PATH}: must inspect concrete-token kind before treating class absence as nonterminal"
+    );
+    assert!(
+        surface_declares_fn(&module, "token_sequence_item_kind"),
+        "{TRANSLATE_PATH}: must classify concrete tokens and nonterminal emitted nodes explicitly"
     );
     assert!(
         surface_declares_fn(&module, "token_item_to_source"),
         "{TRANSLATE_PATH}: token_sequence_to_source must dispatch nonterminals recursively"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_serialize_source_from_model_bounded"),
+        "{TRANSLATE_PATH}: recursive nonterminal serialization must be explicitly bounded"
     );
 }
 
