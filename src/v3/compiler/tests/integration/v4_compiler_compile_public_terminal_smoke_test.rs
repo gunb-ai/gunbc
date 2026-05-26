@@ -107,13 +107,16 @@ fn v4_compile_dag_imports_target_carriers_not_emit_cycle() {
 #[test]
 fn v4_compile_dag_does_not_import_specific_lens_modules() {
     let module = parse_module(COMPILE_DAG, COMPILE_PATH);
+    // v4.lens.fact_density is the always-required hollow-alias gate (T-30); it is exempted.
+    // All other domain lens modules remain blocked (P3 commitment 4).
     let lens_imports: Vec<_> = import_paths(&module)
         .into_iter()
         .filter(|path| path.first().copied() == Some("v4") && path.get(1).copied() == Some("lens"))
+        .filter(|path| path.get(2).copied() != Some("fact_density"))
         .collect();
     assert!(
         lens_imports.is_empty(),
-        "{COMPILE_PATH}: P3 commitment 4 — compile-core must not import v4.lens.* ({lens_imports:?})"
+        "{COMPILE_PATH}: P3 commitment 4 — compile-core must not import v4.lens.* except fact_density ({lens_imports:?})"
     );
 }
 

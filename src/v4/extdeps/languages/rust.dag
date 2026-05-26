@@ -79,7 +79,15 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  approximate_field_node,
+  boolean_algebra_node,
+  fold_list,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node
+}
 import v4.std.cardinality { Never }
 import v4.std.text { String }
 
@@ -381,21 +389,9 @@ data rust_mvp1_source_literal: Symbol = rust_mvp1_source_literal
 data rust_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data rust_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
-// 🟡 needs-more-work — feature:rust-model-core-bridge-symbols — scaffold:T-4-wave-2b
-// These are bare-Atom placeholders standing in for typed algebra Nodes that cannot exist
-// until std/algebra.dag (T-2) exports Node constructors (ordered_ring_node() -> Node, etc.).
-// Using these as AlgebraInhabitanceDecl.algebra fields will fail-closed at T-9 with
-// infer_algebra_ref_ungrounded — they are intentionally unverifiable until T-4 Wave 2b lands.
-// dissolve-on: T-2 exports Node constructors AND T-4 Wave 2b replaces these with
-// grounded algebra Nodes in rust_integer_algebra_inhabitance / rust_float_algebra_inhabitance /
-// rust_bool_algebra_inhabitance. Until then, rust_model_core_wave1() is Wave-1 scaffolding only.
-data rust_model_core_bridge_std_ordered_ring_representable_integer: Symbol = rust_model_core_bridge_std_ordered_ring_representable_integer
-data rust_model_core_bridge_std_approximate_field_ieee754_float: Symbol = rust_model_core_bridge_std_approximate_field_ieee754_float
-data rust_model_core_bridge_std_bool_boolean_algebra: Symbol = rust_model_core_bridge_std_bool_boolean_algebra
-
 // 🟡 needs-more-work — feature:rust-model-core-bridge-law-symbols — scaffold:T-4-wave-2b
 // Law obligations use opaque Symbol atoms in place of grounded law Nodes.
-// dissolve-on: same as bridge algebra symbols above (T-2 Node constructors + T-4 Wave 2b).
+// dissolve-on: replace these with grounded law Nodes once the law-obligation substrate lands.
 data rust_model_core_bridge_law_integer_add_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_associative_when_representable
 data rust_model_core_bridge_law_integer_add_commutative_when_representable: Symbol = rust_model_core_bridge_law_integer_add_commutative_when_representable
 data rust_model_core_bridge_law_integer_mul_associative_when_representable: Symbol = rust_model_core_bridge_law_integer_mul_associative_when_representable
@@ -1615,25 +1611,28 @@ fn rust_bool_algebra_witness_node() -> Node {
 }
 
 fn rust_integer_algebra_inhabitance(facts: RustIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = rust_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: rust_symbol_node(id: rust_model_core_bridge_std_ordered_ring_representable_integer),
-    inhabitant: rust_integer_facts_node(facts: facts),
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
     witness: rust_integer_algebra_witness_node(facts: facts)
   }
 }
 
 fn rust_float_algebra_inhabitance(facts: RustFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = rust_float_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: rust_symbol_node(id: rust_model_core_bridge_std_approximate_field_ieee754_float),
-    inhabitant: rust_float_facts_node(facts: facts),
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
     witness: rust_float_algebra_witness_node(facts: facts)
   }
 }
 
 fn rust_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = rust_noninteger_facts_node(facts: rust_facts_bool)
   AlgebraInhabitanceDecl {
-    algebra: rust_symbol_node(id: rust_model_core_bridge_std_bool_boolean_algebra),
-    inhabitant: rust_noninteger_facts_node(facts: rust_facts_bool),
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
     witness: rust_bool_algebra_witness_node()
   }
 }

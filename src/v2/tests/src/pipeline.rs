@@ -2116,6 +2116,40 @@ fn emit_field_access_with_types() {
 }
 
 #[test]
+fn rust_emit_mangles_self_field_and_param_without_raw_identifier() {
+    let source = "module reserved_self\n\
+type SelfRecord { self: Int  self_: Int }\n\
+type SelfEnum = SelfVariant { self: Int  self_: Int }\n\
+fn wrap(self: Int, self_: Int) -> SelfRecord { SelfRecord { self: self, self_: self_ } }\n\
+fn unwrap(record: SelfRecord) -> Int { record.self + record.self_ }\n";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/reserved_self.rs");
+    assert!(
+        !content.contains("r#self"),
+        "Rust emitter must not raw-escape reserved `self`: {content}"
+    );
+    assert!(
+        content.contains("#[serde(rename = \"self\")]")
+            && content.contains("#[serde(rename = \"self_\")]")
+            && content.contains("pub self_: i64")
+            && content.contains("pub self__: i64")
+            && content.contains("fn wrap(self_: i64, self__: i64) -> SelfRecord")
+            && content.contains("self_: self_")
+            && content.contains("self__: self__")
+            && content.contains("record.self_")
+            && content.contains("record.self__"),
+        "Rust emitter should consistently and injectively suffix-mangle `self`: {content}"
+    );
+    assert!(
+        content.contains("SelfVariant {")
+            && content.contains("        #[serde(rename = \"self\")]\n        self_: i64,")
+            && content.contains("        #[serde(rename = \"self_\")]\n        self__: i64,"),
+        "Rust enum variant fields should preserve authored serde wire names after suffix-mangling: {content}"
+    );
+}
+
+#[test]
 fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     let source = "module callable_sig\n\ntype Mapper = fn(Int) -> Int\n\nfn apply(f: fn(Int) -> Int, x: Int) -> Int {\n  f(x)\n}\n";
     let result = compile_dag(source);
@@ -4456,6 +4490,46 @@ fn indexed_names(names: List<String>) -> List<String> {
 // Given .dag source, we compile to Rust and assert on patterns in the
 // emitted output. This catches inconsistencies where type declarations,
 // function signatures, and construction sites disagree on Rc wrapping.
+
+#[test]
+fn rust_set_nominal_ord_decl_emits_carriers_before_btree_set_use() {
+    let source = "\
+module test_nominal_ord_set
+type Symbol
+type DiffId { id: Symbol }
+data root_fix_symbol: Symbol = root_fix_symbol
+type DiffBag { ids: Set<DiffId> }
+";
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert!(
+        has_file(&result, "src/test_nominal_ord_set.rs"),
+        "expected emitted file, got diagnostics: {:?}",
+        diagnostic_messages(&result)
+    );
+    let content = find_file(&result, "src/test_nominal_ord_set.rs");
+    assert!(
+        content.contains("#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub String);"),
+        "Symbol must emit an ordered identity carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains(
+            "pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"
+        ),
+        "Symbol data should preserve authored identity, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub struct DiffId {\n    pub id: Symbol,"),
+        "DiffId should carry the emitted Symbol type, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub ids: std::collections::BTreeSet<DiffId>,"),
+        "Set<DiffId> should lower to BTreeSet<DiffId>, got:\n{}",
+        content
+    );
+}
 
 #[test]
 fn rc_wrap_struct_field_and_construction() {

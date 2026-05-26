@@ -49,7 +49,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_import_from_keyword, rust_import_keyword, rust_keywords, rust_lambda_template,
     rust_list_literal_empty, rust_list_literal_template, rust_method_templates,
     rust_module_keyword, rust_null_coalesce_template, rust_param_separator, rust_param_type_sep,
-    rust_reserved, rust_reserved_escape_prefix, rust_return_arrow, rust_serde_rename_template,
+    rust_reserved, rust_reserved_escape_suffix, rust_return_arrow, rust_serde_rename_template,
     rust_serde_tag, rust_source_dir, rust_source_extension, rust_string_types, rust_struct_derives,
     rust_struct_derives_copy, rust_struct_keyword, rust_tuple_empty, rust_tuple_multi_template,
     rust_tuple_pair_template, rust_tuple_separator, rust_type_alias_keyword, rust_type_arg_close,
@@ -465,8 +465,8 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         target_name: "rust".to_string(),
         reserved_words: Rc::new(ReservedWords {
             keywords: rust_reserved(),
-            strategy: Rc::new(ReservedWordStrategy::PrefixEscape {
-                prefix: rust_reserved_escape_prefix(),
+            strategy: Rc::new(ReservedWordStrategy::SuffixEscape {
+                suffix: rust_reserved_escape_suffix(),
             }),
         }),
         scaffold: Rc::new(ProjectScaffold {
