@@ -2863,10 +2863,14 @@ pub fn needs_box_wrapping(
             let name = authored_name_at(source_indices, &n);
             if v2_rt::set_contains(&shared_types, name.clone()) {
                 break false;
-            } else if coerce_primitive_type(RenderTarget::Rust, name.clone()) != name.clone() {
-                break false;
             } else {
-                break v2_rt::set_contains(&recursive_types, name.clone());
+                if (coerce_primitive_type(RenderTarget::Rust, name.clone()).as_str()
+                    != name.clone().as_str())
+                {
+                    break false;
+                } else {
+                    break v2_rt::set_contains(&recursive_types, name.clone());
+                }
             }
         } else {
             let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -3215,7 +3219,7 @@ pub fn explicit_type_arg_strings(
 pub fn apply_missing_generic_args(
     ty: String,
     type_node: &Rc<Node>,
-    parent_generic_param_names: Rc<Vec<String>>,
+    parent_generic_param_names: &Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
@@ -3241,18 +3245,21 @@ pub fn apply_missing_generic_args(
                         let inferred_args =
                             if ((explicit_args.clone().len() as i64) == expected.clone()) {
                                 explicit_args.clone()
-                            } else if ((parent_generic_param_names.clone().len() as i64)
-                                >= expected.clone())
-                            {
-                                Rc::new(
-                                    parent_generic_param_names
-                                        .iter()
-                                        .cloned()
-                                        .take(expected as usize)
-                                        .collect::<Vec<_>>(),
-                                )
                             } else {
-                                Rc::new(vec![])
+                                if ((parent_generic_param_names.clone().len() as i64)
+                                    >= expected.clone())
+                                {
+                                    Rc::new(
+                                        parent_generic_param_names
+                                            .clone()
+                                            .iter()
+                                            .cloned()
+                                            .take(expected.clone() as usize)
+                                            .collect::<Vec<_>>(),
+                                    )
+                                } else {
+                                    Rc::new(vec![])
+                                }
                             };
                         if ((inferred_args.clone().len() as i64) == expected.clone()) {
                             {
@@ -3379,7 +3386,7 @@ pub fn emit_struct_field_from_child(
         let generic_ty = apply_missing_generic_args(
             ty,
             &rt_child,
-            parent_generic_param_names,
+            &parent_generic_param_names,
             emit_info,
             &env.source_indices.clone(),
         );
@@ -3700,7 +3707,7 @@ pub fn emit_enum_shared_accessors(
                                             &env.source_indices.clone(),
                                         ),
                                         &resolved_type(f.clone()),
-                                        generic_param_names.clone(),
+                                        &generic_param_names,
                                         emit_info.clone(),
                                         &env.source_indices.clone(),
                                     ),
@@ -3758,7 +3765,7 @@ pub fn emit_enum_shared_accessors(
                                 &env.source_indices.clone(),
                             ),
                             &resolved_type(f.clone()),
-                            generic_param_names.clone(),
+                            &generic_param_names,
                             emit_info.clone(),
                             &env.source_indices.clone(),
                         ),
@@ -4203,7 +4210,7 @@ pub fn emit_variant_from_child(
                                 let ty = apply_missing_generic_args(
                                     raw_ty,
                                     &type_node,
-                                    parent_generic_param_names.clone(),
+                                    &parent_generic_param_names,
                                     emit_info.clone(),
                                     &env.source_indices.clone(),
                                 );
@@ -4256,7 +4263,7 @@ pub fn emit_variant_from_child(
                                                 &env.source_indices.clone(),
                                             ),
                                             &rt_f,
-                                            parent_generic_param_names.clone(),
+                                            &parent_generic_param_names,
                                             emit_info.clone(),
                                             &env.source_indices.clone(),
                                         );
@@ -4324,7 +4331,7 @@ pub fn emit_variant_from_child(
                                         &env.source_indices.clone(),
                                     ),
                                     &rt_f,
-                                    parent_generic_param_names.clone(),
+                                    &parent_generic_param_names,
                                     emit_info.clone(),
                                     &env.source_indices.clone(),
                                 );
@@ -4401,7 +4408,7 @@ pub fn emit_fn_def(
         let type_params_str = emit_type_params(&type_params, si.clone());
         let generic_param_names = Rc::new({
             let mut __result = Vec::new();
-            for p in type_params.iter().cloned() {
+            for p in type_params.clone().iter().cloned() {
                 __result.push(generic_param_name_at(p.clone(), si.clone()));
             }
             __result
@@ -4411,7 +4418,7 @@ pub fn emit_fn_def(
             shared_types.clone(),
             si.clone(),
             emit_info.read_only_params.clone(),
-            generic_param_names.clone(),
+            generic_param_names,
         );
         let ret_str = emit_inferred(inferred, shared_types.clone(), si.clone());
         let body_scope = build_params_scope(&scope, value_params.clone());
@@ -4887,7 +4894,7 @@ pub fn emit_tco_param(
 ) -> String {
     {
         let n = param_node_type_expr(&param);
-        let ty = emit_rust_param_type(&n, &shared_types, &source_indices, Rc::new(vec![]));
+        let ty = emit_rust_param_type(&n, &shared_types, &source_indices, &Rc::new(vec![]));
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -5004,7 +5011,7 @@ pub fn emit_rust_param_type(
     n: &Rc<Node>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    generic_param_names: Rc<Vec<String>>,
+    generic_param_names: &Rc<Vec<String>>,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
@@ -5038,26 +5045,30 @@ pub fn emit_rust_param_type(
             )
         }
     } else {
-        let rendered = render_rust_type(&n, shared_types.clone(), &source_indices);
-        let type_name = authored_name_at(source_indices.clone(), n);
-        if (((rendered.clone() == "NodeFold".to_string())
-            || (rendered.clone() == "Rc<NodeFold>".to_string()))
-            && ((generic_param_names.clone().len() as i64) > 0))
         {
-            let args = generic_param_names.join(&", ".to_string());
-            if rendered == "Rc<NodeFold>".to_string() {
-                v2_rt::concat(
-                    v2_rt::concat("Rc<NodeFold<".to_string(), args),
-                    ">>".to_string(),
-                )
+            let rendered = render_rust_type(&n, shared_types.clone(), &source_indices);
+            let type_name = authored_name_at(source_indices.clone(), &n);
+            if (((rendered.clone().as_str() == "NodeFold".to_string().as_str())
+                || (rendered.clone().as_str() == "Rc<NodeFold>".to_string().as_str()))
+                && ((generic_param_names.clone().len() as i64) > 0))
+            {
+                {
+                    let args = generic_param_names.clone().join(&", ".to_string());
+                    if (rendered.clone().as_str() == "Rc<NodeFold>".to_string().as_str()) {
+                        v2_rt::concat(
+                            v2_rt::concat("Rc<NodeFold<".to_string(), args),
+                            ">>".to_string(),
+                        )
+                    } else {
+                        v2_rt::concat(
+                            v2_rt::concat("NodeFold<".to_string(), args),
+                            ">".to_string(),
+                        )
+                    }
+                }
             } else {
-                v2_rt::concat(
-                    v2_rt::concat("NodeFold<".to_string(), args),
-                    ">".to_string(),
-                )
+                rendered.clone()
             }
-        } else {
-            rendered
         }
     }
 }
@@ -5071,7 +5082,7 @@ pub fn emit_param(
 ) -> String {
     {
         let n = param_node_type_expr(&param);
-        let ty = emit_rust_param_type(&n, &shared_types, &source_indices, generic_param_names);
+        let ty = emit_rust_param_type(&n, &shared_types, &source_indices, &generic_param_names);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
         let is_borrowable = false;
@@ -5087,7 +5098,7 @@ pub fn emit_param(
         };
         v2_rt::concat(
             v2_rt::concat(
-                emit_ident(pname.clone(), RenderTarget::Rust),
+                emit_ident(pname, RenderTarget::Rust),
                 rust_items().param_type_sep.clone(),
             ),
             final_ty,
@@ -10360,98 +10371,112 @@ pub fn emit_rust_generic_method_call(
 ) -> String {
     {
         let function_name = method_name;
-        if (function_name.as_str() == "init") || (function_name.as_str() == "step") {
-            let recv_str = emit_typed_expr_base(
-                &receiver,
-                registry.clone(),
-                &scope,
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            );
-            let arg_strs = Rc::new({
-                let mut __result = Vec::new();
-                for a in args.iter().cloned() {
-                    __result.push(emit_cloned_arg(
-                        arg_value(&a),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                    ));
-                }
-                __result
-            });
-            return v2_rt::concat(
-                v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat("(".to_string(), recv_str),
-                        v2_rt::concat(".".to_string(), function_name),
-                    ),
-                    ")(".to_string(),
-                ),
-                v2_rt::concat(arg_strs.join(&", ".to_string()), ")".to_string()),
-            );
-        }
-        let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone()) {
-            v2_rt::concat(
-                "&".to_string(),
-                emit_typed_expr_base(
+        if ((function_name.clone().as_str() == "init".to_string().as_str())
+            || (function_name.clone().as_str() == "step".to_string().as_str()))
+        {
+            {
+                let recv_str = emit_typed_expr_base(
                     &receiver,
                     registry.clone(),
                     &scope,
                     depth.clone(),
                     shared_types.clone(),
                     emit_info.clone(),
-                ),
-            )
-        } else {
-            emit_cloned_arg(
-                receiver,
-                registry.clone(),
-                scope.clone(),
-                depth.clone(),
-                shared_types.clone(),
-                emit_info.clone(),
-            )
-        };
-        let arg_strs = Rc::new({
-            let mut __result = Vec::new();
-            for a in args.iter().cloned() {
-                __result.push(emit_cloned_arg(
-                    arg_value(&a),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                ));
-            }
-            __result
-        });
-        let all_strs = v2_rt::concat(Rc::new(vec![recv_str]), arg_strs);
-        let bridge_name = rust_runtime_bridge_name(function_name.clone());
-        let lowered = v2_rt::concat(
-            v2_rt::concat(
+                );
+                let arg_strs = Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.iter().cloned() {
+                        __result.push(emit_cloned_arg(
+                            arg_value(&a),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ));
+                    }
+                    __result
+                });
                 v2_rt::concat(
                     v2_rt::concat(
-                        "v2_rt::".to_string(),
-                        emit_ident(bridge_name, RenderTarget::Rust),
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat("(".to_string(), recv_str),
+                                    ".".to_string(),
+                                ),
+                                function_name.clone(),
+                            ),
+                            ")(".to_string(),
+                        ),
+                        arg_strs.join(&", ".to_string()),
                     ),
-                    "(".to_string(),
-                ),
-                all_strs.join(&", ".to_string()),
-            ),
-            ")".to_string(),
-        );
-        if rust_runtime_bridge_wraps_collection_result_in_rc(&function_name) {
-            v2_rt::concat(
-                v2_rt::concat("Rc::new(".to_string(), lowered),
-                ")".to_string(),
-            )
+                    ")".to_string(),
+                )
+            }
         } else {
-            lowered
+            {
+                let recv_str = if rust_runtime_bridge_passes_receiver_by_ref(function_name.clone())
+                {
+                    v2_rt::concat(
+                        "&".to_string(),
+                        emit_typed_expr_base(
+                            &receiver,
+                            registry.clone(),
+                            &scope,
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ),
+                    )
+                } else {
+                    emit_cloned_arg(
+                        receiver,
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    )
+                };
+                let arg_strs = Rc::new({
+                    let mut __result = Vec::new();
+                    for a in args.iter().cloned() {
+                        __result.push(emit_cloned_arg(
+                            arg_value(&a),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let all_strs = v2_rt::concat(Rc::new(vec![recv_str]), arg_strs);
+                let bridge_name = rust_runtime_bridge_name(function_name.clone());
+                let lowered = v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                "v2_rt::".to_string(),
+                                emit_ident(bridge_name, RenderTarget::Rust),
+                            ),
+                            "(".to_string(),
+                        ),
+                        all_strs.join(&", ".to_string()),
+                    ),
+                    ")".to_string(),
+                );
+                if rust_runtime_bridge_wraps_collection_result_in_rc(&function_name) {
+                    v2_rt::concat(
+                        v2_rt::concat("Rc::new(".to_string(), lowered),
+                        ")".to_string(),
+                    )
+                } else {
+                    lowered
+                }
+            }
         }
     }
 }
@@ -13919,7 +13944,6 @@ pub fn emit_operation_method(
                         &param_node_type_expr(&p),
                         &shared_types,
                         &env.source_indices.clone(),
-                        Rc::new(vec![]),
                     ),
                 ));
             }
@@ -15917,7 +15941,6 @@ pub fn emit_capability_method(
                         &param_node_type_expr(&p),
                         &shared_types,
                         &env.source_indices.clone(),
-                        Rc::new(vec![]),
                     ),
                 ));
             }
@@ -16412,7 +16435,6 @@ pub fn rust_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                         &param_node_type_expr(&p),
                         &v2_rt::rc_empty_set::<String>(),
                         &projection.source_indices.clone(),
-                        Rc::new(vec![]),
                     ),
                 ));
             }
@@ -17055,7 +17077,7 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
-        if (((workflow_funcs.clone().len() as i64) == 0) && !has_pipeline.clone()) {
+        if (((workflow_funcs.clone().len() as i64) == 0) && (has_pipeline.clone() == false)) {
             return Rc::new(TextFile {
                 path: v2_rt::concat(
                     v2_rt::concat(rust_source_root(), "main".to_string()),
