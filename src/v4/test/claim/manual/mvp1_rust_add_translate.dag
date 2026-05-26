@@ -1,14 +1,20 @@
 // src/v4/test/claim/manual/mvp1_rust_add_translate.dag
-// Scope: MVP-1 T-10 receipt — translate/emit substrate + rust_mvp1 add-fn Accepted emit.
-// Owns: mvp1 anchors, inferred tree, emit TestClaimRun, translate/emit module compiles claims.
-// Consumes: compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag, extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag, test/claim/manual/infer_ground_add_mvp.dag, std/*.
-// Status: T-10 — grammar-inverse emit accepts for rust_mvp1_target_model + emitted add-fn tree.
+// Scope: MVP-1 T-10/T-11 receipt — translate/emit/compile-inferred substrate + rust_mvp1 add-fn Accepted emit.
+// Owns: mvp1 anchors, inferred tree, emit and compile-inferred TestClaimRun receipts, translate/emit module compiles claims.
+// Consumes: compiler/00_compile.dag, compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag, extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag, test/claim/manual/infer_ground_add_mvp.dag, std/*.
+// Status: T-11 Rust slice — grammar-inverse compile-inferred accepts for rust_mvp1_target_model + emitted add-fn tree; full source-ingest compile remains blocked on ingest staging.
 
 
 module v4.test.claim.manual.mvp1_rust_add_translate
 
 
 import v4.compiler.emit { emit }
+import v4.compiler.compile {
+  CompileOutput,
+  TranslateResult,
+  TranslateTo,
+  compile_inferred
+}
 import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
@@ -28,8 +34,11 @@ import v4.extdeps.languages.rust {
   rust_mvp1_fixture_i32_inhabitant,
   rust_mvp1_i32_overflow_disposition_node,
   rust_mvp1_i32_scalar_node,
+  rust_mvp1_binding_spellings,
   rust_mvp1_source_text,
   rust_mvp1_target_model,
+  rust_mvp1_target_model_node,
+  rust_wave1_lex,
   rust_facts_i32,
   Signed,
   Bits32,
@@ -95,6 +104,8 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data mvp_add_int_atom: Symbol = mvp_add_int_atom
 data mvp1_rust_grounding_miss: Symbol = mvp1_rust_grounding_miss
 data mvp1_emit_source_mismatch: Symbol = mvp1_emit_source_mismatch
+data mvp1_compile_source_mismatch: Symbol = mvp1_compile_source_mismatch
+data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 
 fn mvp_int_node() -> Node {
@@ -119,6 +130,14 @@ data mvp1_rust_emitted_root: Node = rust_mvp1_fixture_emitted_add_fn
 
 
 data mvp1_rust_target_model: TargetModel = rust_mvp1_target_model()
+
+
+data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
+  bundle: rust_mvp1_target_model_node(),
+  lex: rust_wave1_lex(),
+  binding_spellings: rust_mvp1_binding_spellings(),
+  authority_source_text: mvp1_forbidden_authority_source_text
+}
 
 
 fn mvp1_rust_i32_facts_node() -> Node {
@@ -321,8 +340,21 @@ fn anchor_mvp1_emit_accepts() -> Outcome<TargetSource> {
 }
 
 
+fn anchor_mvp1_compile_inferred_accepts() -> Outcome<CompileOutput> {
+  compile_inferred(
+    inferred: mvp1_rust_inferred_tree,
+    mode: TranslateTo { target: mvp1_rust_poisoned_authority_target_model }
+  )
+}
+
+
 // Typed emit receipt — preserves Outcome<TargetSource> without Node fabrication.
 data mvp1_emit_receipt: Outcome<TargetSource> = anchor_mvp1_emit_accepts()
+
+
+// Typed compile receipt — compile_inferred exercises compile → emit → translate → grammar inverse.
+// The target model intentionally poisons authority_source_text so a fallback read cannot pass.
+data mvp1_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_compile_inferred_accepts()
 
 
 // Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
@@ -347,8 +379,52 @@ fn mvp1_emit_claim_outcome() -> Outcome<Node> {
 }
 
 
+// Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
+fn mvp1_compile_inferred_claim_outcome() -> Outcome<Node> {
+  match mvp1_compile_inferred_receipt {
+    Accepted { value: compile_result, diagnostics: d } =>
+      match compile_result {
+        TranslateResult { source } =>
+          if (source == rust_mvp1_source_text) && (d == None) {
+            Accepted { value: mvp1_rust_emitted_root, diagnostics: None }
+          } else {
+            Rejected {
+              diagnostics: diagnostics_singleton(
+                d: Diagnostic {
+                  reason: mvp1_compile_source_mismatch,
+                  at: node_locus(node: mvp1_rust_emitted_root),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                }
+              )
+            }
+          }
+        _ =>
+          Rejected {
+            diagnostics: diagnostics_singleton(
+              d: Diagnostic {
+                reason: mvp1_compile_source_mismatch,
+                at: node_locus(node: mvp1_rust_emitted_root),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              }
+            )
+          }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+
 data claim_mvp1_emit_add_fn_accepts: TestClaim = CompilesClaim {
   label: "manual/mvp1: anchor_mvp1_emit_accepts Accepted with canonical rust_mvp1 add-fn source",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: mvp1_rust_emitted_root,
+  expected_value: mvp1_rust_emitted_root,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_mvp1_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
+  label: "manual/mvp1: compile_inferred emits canonical rust_mvp1 add-fn source through grammar inverse",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: mvp1_rust_emitted_root,
   expected_value: mvp1_rust_emitted_root,
@@ -375,6 +451,30 @@ data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
   verdict: run_test_claim_assert(
     claim: claim_mvp1_emit_add_fn_accepts,
     actual: mvp1_emit_claim_outcome(),
+    at: mvp1_rust_emitted_root
+  )
+}
+
+
+// T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
+// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
+data subject_mvp1_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_mvp1_compile_inferred_add_fn_accepts,
+  context: infer_receipt_context(),
+  tree: mvp1_rust_inferred_tree,
+  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+}
+
+
+data run_mvp1_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(
+    subject: subject_mvp1_compile_inferred_add_fn_accepts,
+    claim_hash: claim_hash_placeholder,
+    interpretation_hash: interpretation_hash_placeholder
+  ),
+  verdict: run_test_claim_assert(
+    claim: claim_mvp1_compile_inferred_add_fn_accepts,
+    actual: mvp1_compile_inferred_claim_outcome(),
     at: mvp1_rust_emitted_root
   )
 }
