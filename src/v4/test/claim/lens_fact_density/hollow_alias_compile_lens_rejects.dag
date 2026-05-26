@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_fact_density/hollow_alias_compile_lens_rejects.dag
-// Scope: T-30 enforcement gate claim — fact_density_hollow_alias_lens rejects a hollow alias (NoFact) root via apply_compile_lens.
+// Scope: T-30 enforcement gate claim — fact_density_lens rejects a hollow alias (NoFact) root via apply_compile_lens.
 // Owns: claim_hollow_alias_compile_lens_rejects.
 // Consumes: compiler compile, lens fact_density (locus only), lens_common infer_fixture, std diagnostic, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
@@ -78,7 +78,7 @@ fn hollow_alias_compile_lens_rejects_rhs() -> Node {
 }
 
 data claim_hollow_alias_compile_lens_rejects: TestClaim = EqualsClaim {
-  label: "lens_fact_density/hollow_alias_compile_lens_rejects: NoFact root rejected by fact_density_hollow_alias_lens",
+  label: "lens_fact_density/hollow_alias_compile_lens_rejects: NoFact root rejected by fact_density_lens",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: hollow_alias_cl_authority,
   rhs: hollow_alias_compile_lens_rejects_rhs(),
