@@ -1547,13 +1547,20 @@ to define a new agent output surface.
   **Signature:** `compile_with_store(root: ModulePath, store: AgentStore, target: TargetModel) -> Outcome<TargetSource>`.
   The `root` parameter is the sole root-selection authority: the caller names
   which store entry is the compilation entry point. `compile_with_store`
-  performs `store_lookup(root)` → `CoreNode` (fail-closed: `Rejected` if the
-  root path is absent from the store, using the same module-admission
-  diagnostic carrier as the missing-module case). The full store feeds
-  `module_graph_from_entries` via `store_entries` for dependency resolution.
-  T-35 workers must not introduce a secondary root-selection mechanism
-  (e.g., first-entry convention, implicit main path); the `root: ModulePath`
-  parameter is the only declared authority.
+  performs `store_lookup(path: root, store: store)` → `CoreNode` (fail-closed:
+  `Rejected` if the root path is absent, using the same module-admission
+  diagnostic carrier as the missing-module case). Root lookup operates on the
+  raw store before `module_graph_from_entries` runs; this sequencing is safe
+  because the returned `CoreNode` is consumed only inside `resolve_with_graph`,
+  which executes after admission. If `module_graph_from_entries` returns
+  `Violates` (e.g., duplicate paths in the store), `compile_with_store` returns
+  `Rejected` and the root `CoreNode` is discarded without reaching the compile
+  path — the unadmitted store never produces output. Workers must not add any
+  consume path for the root `CoreNode` that precedes or bypasses the admission
+  gate. The full store feeds `module_graph_from_entries` via `store.entries` for
+  dependency resolution. T-35 workers must not introduce a secondary
+  root-selection mechanism (e.g., first-entry convention, implicit main path);
+  the `root: ModulePath` parameter is the only declared authority.
 
   **Scope of T-35's change:** Two operations replace the filesystem path in the
   ingest flow. (1) **Root retrieval:** `store_lookup(path: root, store: store)`
