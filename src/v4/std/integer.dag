@@ -110,6 +110,7 @@ type DecimalMagnitude
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerIntervalBound
+  // 🟡 needs-more-work — feature:integer-concrete-bound-sign-zero-coherence — dissolve-on: IntegerConcreteZero coproduct variant separate from IntegerConcreteBound when negative-zero must be structurally unreachable
   = IntegerConcreteBound { sign: IntegerBoundSign, magnitude: DecimalMagnitude }
   | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
 

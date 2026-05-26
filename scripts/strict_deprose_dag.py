@@ -53,6 +53,11 @@ FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
+INTEGER_CONCRETE_BOUND_SIGN_ZERO_COMMENT = (
+    "// 🟡 needs-more-work — feature:integer-concrete-bound-sign-zero-coherence — "
+    "dissolve-on: IntegerConcreteZero coproduct variant separate from IntegerConcreteBound "
+    "when negative-zero must be structurally unreachable"
+)
 
 # Any `…lexeme`-shaped field typed `String` (partial lexical authority / D3200-style).
 # Uses a name suffix rule so new `foo_lexeme: String` sites classify as 🟢→🟡 without
@@ -524,7 +529,11 @@ def strip_body_comments(after_module: str) -> str:
         # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
         # always re-materialized by inject_grounded_tags (keeps one code path and
         # spacing normalization — e.g. float.dag after coproduct variants).
-        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
+        if (
+            sl.lstrip().startswith("//")
+            and not COPRODUCT_TAG_RE.match(sl)
+            and sl.strip() != INTEGER_CONCRETE_BOUND_SIGN_ZERO_COMMENT
+        ):
             continue
         out_lines.append(line)
     return "".join(out_lines)
