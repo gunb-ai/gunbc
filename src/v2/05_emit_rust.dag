@@ -1686,7 +1686,9 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Set<String>, share
   // type definition (Conj with many children), render Name<Params> from the
   // TypeEnv's binding params instead of letting the Conj renderer emit bare name.
   let authored_child_type = field_node_type_expr(n: child)
-  let ty = if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+  let ty = if find_property(props: child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
+    render_rust_type_with_applied_binding(n: child, shared_types: shared_types, source_indices: env.source_indices)
+  } else if find_property(props: authored_child_type.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
     render_rust_type_with_applied_binding(n: authored_child_type, shared_types: shared_types, source_indices: env.source_indices)
   } else if find_property(props: rt_child.properties, prop_name: "__applied_type_args", source_indices: env.source_indices) != none {
     render_rust_type_with_applied_binding(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)

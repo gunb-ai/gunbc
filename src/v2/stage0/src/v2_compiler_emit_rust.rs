@@ -3248,12 +3248,21 @@ pub fn emit_struct_field_from_child(
     {
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(&child);
+        let child_rendered = render_rust_type_with_applied_binding(
+            child.clone(),
+            shared_types.clone(),
+            env.source_indices.clone(),
+        );
         let authored_child_rendered = render_rust_type_with_applied_binding(
             authored_child_type.clone(),
             shared_types.clone(),
             env.source_indices.clone(),
         );
-        let ty = if authored_child_rendered.clone().as_str()
+        let ty = if child_rendered.clone().as_str()
+            != render_rust_type(&child, shared_types.clone(), &env.source_indices.clone()).as_str()
+        {
+            child_rendered
+        } else if authored_child_rendered.clone().as_str()
             != render_rust_type(
                 &authored_child_type,
                 shared_types.clone(),
