@@ -1502,23 +1502,27 @@ T-23 round-trip workflow.
    `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
    from 03_resolve.dag before the virtual loader can replace it.`
 
-2. **AgentStore carrier.** A mutable, path-keyed carrier in
+2. **AgentStore carrier.** A mutable, ordered-entry carrier in
    `src/v4/std/agent.dag`:
-   `AgentStore { entries: Map<ModulePath, Node> }` with operations
-   `store_insert`, `store_lookup`, `store_delete`, `store_entries`. The
-   store is the agent's write surface; the virtual module-loader is the
-   compiler's read surface. Agents populate the store and invoke
-   `compile_with_store` — the filesystem-free entry point alongside
-   existing `compile_ingest_staging` in `00_compile.dag`.
+   `AgentStore { entries: FreeMonoid<ModuleEntry> }` with operations
+   `store_insert`, `store_lookup`, `store_delete`. The store is the
+   agent's write surface; the virtual module-loader is the compiler's read
+   surface. Agents populate the store and invoke `compile_with_store` —
+   the filesystem-free entry point alongside existing
+   `compile_ingest_staging` in `00_compile.dag`.
 
-   **`store_entries` (enumeration surface):** returns the store's contents as
-   an ordered collection of `(ModulePath, Node)` pairs — the form passable
-   to `module_graph_from_entries`. This is the bridge between the agent's
-   path-keyed write surface and the compiler's canonical admission path.
-   `store_entries` is read-only and deterministic — a pure view of the
-   current store state, not a mutation. Workers must use `store_entries` as
-   the sole enumeration surface; they must not read `entries` directly or
-   construct a parallel collection from the Map.
+   **Why `FreeMonoid<ModuleEntry>`, not `Map<ModulePath, Node>`:**
+   `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
+   Witness<V> }` — unenumerable by construction. `module_graph_from_entries`
+   (in `std/module_graph.dag`) takes `FreeMonoid<ModuleEntry>` directly.
+   Using `FreeMonoid<ModuleEntry>` as AgentStore's internal representation
+   means `store.entries` is passable straight to `module_graph_from_entries`
+   with no bridge. `store_lookup` is a fold over the monoid to find a
+   matching path; `store_insert` appends a `ModuleEntry`; `store_delete`
+   filters. Path-uniqueness is not the store's responsibility — it is
+   enforced by `module_graph_from_entries` at admission time (returning
+   `Violates` on duplicate paths, per the existing gate in
+   `std/module_graph.dag`).
 
    **Path-keyed invariants (ratified 2026-05-26):**
    - **`ModulePath` is a lookup key, not a Node identity authority.** Node identity within the compiler remains B1 `content_hash` (INVARIANTS §P2, `std/node.dag`). The path is an external boundary handle — the same role a filesystem path plays — not an alternative to the B1 merkle identity.
