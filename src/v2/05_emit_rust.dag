@@ -1668,26 +1668,39 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
   match map_get(emit_info.type_summaries, type_name) {
     Some { value: summary } =>
       let expected = summary.generic_param_names |> count
-      if expected == 0 || contains(ty, concat(type_name, "<")) {
+      if expected == 0 {
         ty
       } else {
         let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
         let declaration_formals = summary.generic_param_names
-        let inferred_args = if explicit_args |> count == expected && explicit_args != declaration_formals { explicit_args }
-          else { [] }
-        if inferred_args |> count == expected {
-          let with_args = concat(type_name, "<", inferred_args |> join(separator: ", "), ">")
-          if ty == type_name {
-            with_args
-          } else if ty == concat("Rc<", type_name, ">") {
-            concat("Rc<", with_args, ">")
-          } else if ty == concat("Box<", type_name, ">") {
-            concat("Box<", with_args, ">")
+        let formal_ty = concat(type_name, "<", declaration_formals |> join(separator: ", "), ">")
+        if explicit_args == declaration_formals {
+          if ty == formal_ty {
+            type_name
+          } else if ty == concat("Rc<", formal_ty, ">") {
+            concat("Rc<", type_name, ">")
+          } else if ty == concat("Box<", formal_ty, ">") {
+            concat("Box<", type_name, ">")
+          } else { ty }
+        } else if contains(ty, concat(type_name, "<")) {
+          ty
+        } else {
+          let inferred_args = if explicit_args |> count == expected { explicit_args }
+            else { [] }
+          if inferred_args |> count == expected {
+            let with_args = concat(type_name, "<", inferred_args |> join(separator: ", "), ">")
+            if ty == type_name {
+              with_args
+            } else if ty == concat("Rc<", type_name, ">") {
+              concat("Rc<", with_args, ">")
+            } else if ty == concat("Box<", type_name, ">") {
+              concat("Box<", with_args, ">")
+            } else {
+              ty
+            }
           } else {
             ty
           }
-        } else {
-          ty
         }
       }
     None => ty

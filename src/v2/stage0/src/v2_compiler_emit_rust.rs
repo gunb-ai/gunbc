@@ -3228,12 +3228,7 @@ pub fn apply_missing_generic_args(
         match v2_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone()) {
             Some(summary) => {
                 let expected = (summary.generic_param_names.clone().len() as i64);
-                if ((expected.clone() == 0)
-                    || v2_rt::contains(
-                        ty.clone(),
-                        v2_rt::concat(type_name.clone(), "<".to_string()),
-                    ))
-                {
+                if (expected.clone() == 0) {
                     ty.clone()
                 } else {
                     {
@@ -3243,43 +3238,70 @@ pub fn apply_missing_generic_args(
                             source_indices.clone(),
                         );
                         let declaration_formals = summary.generic_param_names.clone();
-                        let inferred_args = if (((explicit_args.clone().len() as i64)
-                            == expected.clone())
-                            && (explicit_args.clone().as_ref()
-                                != declaration_formals.clone().as_ref()))
+                        let formal_ty = v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(type_name.clone(), "<".to_string()),
+                                declaration_formals.clone().join(&", ".to_string()),
+                            ),
+                            ">".to_string(),
+                        );
+                        if (explicit_args.clone().as_ref() == declaration_formals.clone().as_ref())
                         {
-                            explicit_args.clone()
-                        } else {
-                            Rc::new(vec![])
-                        };
-                        if ((inferred_args.clone().len() as i64) == expected.clone()) {
-                            {
-                                let with_args = v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(type_name.clone(), "<".to_string()),
-                                        inferred_args.clone().join(&", ".to_string()),
-                                    ),
+                            if (ty.clone().as_str() == formal_ty.clone().as_str()) {
+                                type_name.clone()
+                            } else if (ty.clone().as_str()
+                                == v2_rt::concat(
+                                    v2_rt::concat("Rc<".to_string(), formal_ty.clone()),
                                     ">".to_string(),
-                                );
-                                if (ty.clone().as_str() == type_name.clone().as_str()) {
-                                    with_args
+                                )
+                                .as_str())
+                            {
+                                v2_rt::concat(
+                                    v2_rt::concat("Rc<".to_string(), type_name.clone()),
+                                    ">".to_string(),
+                                )
+                            } else if (ty.clone().as_str()
+                                == v2_rt::concat(
+                                    v2_rt::concat("Box<".to_string(), formal_ty.clone()),
+                                    ">".to_string(),
+                                )
+                                .as_str())
+                            {
+                                v2_rt::concat(
+                                    v2_rt::concat("Box<".to_string(), type_name.clone()),
+                                    ">".to_string(),
+                                )
+                            } else {
+                                ty.clone()
+                            }
+                        } else if v2_rt::contains(
+                            ty.clone(),
+                            v2_rt::concat(type_name.clone(), "<".to_string()),
+                        ) {
+                            ty.clone()
+                        } else {
+                            let inferred_args =
+                                if ((explicit_args.clone().len() as i64) == expected.clone()) {
+                                    explicit_args.clone()
                                 } else {
-                                    if (ty.clone().as_str()
-                                        == v2_rt::concat(
-                                            v2_rt::concat("Rc<".to_string(), type_name.clone()),
-                                            ">".to_string(),
-                                        )
-                                        .as_str())
-                                    {
+                                    Rc::new(vec![])
+                                };
+                            if ((inferred_args.clone().len() as i64) == expected.clone()) {
+                                {
+                                    let with_args = v2_rt::concat(
                                         v2_rt::concat(
-                                            v2_rt::concat("Rc<".to_string(), with_args),
-                                            ">".to_string(),
-                                        )
+                                            v2_rt::concat(type_name.clone(), "<".to_string()),
+                                            inferred_args.clone().join(&", ".to_string()),
+                                        ),
+                                        ">".to_string(),
+                                    );
+                                    if (ty.clone().as_str() == type_name.clone().as_str()) {
+                                        with_args
                                     } else {
                                         if (ty.clone().as_str()
                                             == v2_rt::concat(
                                                 v2_rt::concat(
-                                                    "Box<".to_string(),
+                                                    "Rc<".to_string(),
                                                     type_name.clone(),
                                                 ),
                                                 ">".to_string(),
@@ -3287,17 +3309,33 @@ pub fn apply_missing_generic_args(
                                             .as_str())
                                         {
                                             v2_rt::concat(
-                                                v2_rt::concat("Box<".to_string(), with_args),
+                                                v2_rt::concat("Rc<".to_string(), with_args),
                                                 ">".to_string(),
                                             )
                                         } else {
-                                            ty.clone()
+                                            if (ty.clone().as_str()
+                                                == v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        "Box<".to_string(),
+                                                        type_name.clone(),
+                                                    ),
+                                                    ">".to_string(),
+                                                )
+                                                .as_str())
+                                            {
+                                                v2_rt::concat(
+                                                    v2_rt::concat("Box<".to_string(), with_args),
+                                                    ">".to_string(),
+                                                )
+                                            } else {
+                                                ty.clone()
+                                            }
                                         }
                                     }
                                 }
+                            } else {
+                                ty.clone()
                             }
-                        } else {
-                            ty.clone()
                         }
                     }
                 }
