@@ -239,7 +239,7 @@ def check_generated_eval(eval_rs: Path) -> None:
         branch_body,
         [
             "eval_first_runtime_argument",
-            "branch.choose_branch",
+            "(branch.choose_branch)",
             "eval_runtime_node(chosen.clone(), tree.clone(), interpretation.clone(), environment.clone(), runtime.clone())",
         ],
         eval_rs,
@@ -252,7 +252,7 @@ def check_generated_eval(eval_rs: Path) -> None:
         [
             "eval_bind_key",
             "eval_bind_value_argument",
-            "bind.bind_value",
+            "(bind.bind_value)",
             "eval_bind_body",
             "eval_runtime_node(body.clone(), tree.clone(), interpretation.clone(), bound_environment.clone(), runtime.clone())",
         ],
