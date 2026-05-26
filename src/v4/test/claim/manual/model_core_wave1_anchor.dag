@@ -96,6 +96,7 @@ fn wave1_model_core_inhabitance_contract() -> Bool {
 fn wave1_model_core_laws_contract() -> Bool {
   wave1_model_core().laws == [
     model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolBoundedLatticeIdentities),
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolDistributivity),
     model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
     model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
   ]
@@ -106,7 +107,7 @@ fn wave1_model_core_payload_contract_holds() -> Bool {
   (wave1_void() == core) &&
   (length(xs: core.primitives) == 1) &&
   (length(xs: core.inhabitance) == 1) &&
-  (length(xs: core.laws) == 3) &&
+  (length(xs: core.laws) == 4) &&
   wave1_model_core_primitives_contract() &&
   wave1_model_core_inhabitance_contract() &&
   wave1_model_core_laws_contract()
