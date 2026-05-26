@@ -1200,26 +1200,31 @@ pub fn make_field_node(
             None => Rc::new(vec![type_expr]),
         };
         let props = match from_key {
-            Some(fk) => Rc::new(vec![Rc::new(Node {
-                name: fk.clone(),
-                span: make_span(0, 0),
-                ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
-                children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: None,
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: Rc::new(vec![]),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
-            })]),
+            Some(fk) => Rc::new(vec![make_field_init_node(
+                &"from_key".to_string(),
+                Rc::new(Node {
+                    name: fk.clone(),
+                    span: make_span(0, 0),
+                    ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
+                    children: Rc::new(vec![]),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: None,
+                    transport: None,
+                    properties: Rc::new(vec![]),
+                    type_annotation: None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: None,
+                    expr_data: Rc::new(ExprData::NoExprData),
+                    ident: None,
+                }),
+                make_span(0, 0),
+                make_span(0, 0),
+            )]),
             None => Rc::new(vec![]),
         };
         Rc::new(Node {
@@ -1279,7 +1284,11 @@ pub fn field_node_from_key(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
-    match n.properties.clone().first().cloned() {
+    match find_property(
+        n.properties.clone(),
+        "from_key".to_string(),
+        source_indices.clone(),
+    ) {
         Some(p) => Some(authored_name_at(source_indices, &p)),
         None => None,
     }
