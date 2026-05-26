@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SpanMapping {
     pub generated_line: i64,
     pub source_span: Rc<SourceSpan>,
@@ -60,7 +60,7 @@ pub struct TraceFrame {
     pub bindings: Rc<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Trace {
     pub events: Rc<Vec<Rc<TraceEvent>>>,
     pub stack: Rc<Vec<Rc<TraceFrame>>>,
@@ -278,7 +278,7 @@ pub fn capture_repro(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
     pub generated_file: String,
     pub mappings: Rc<Vec<Rc<SpanMapping>>>,

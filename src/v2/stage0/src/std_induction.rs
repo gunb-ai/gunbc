@@ -42,7 +42,7 @@ pub enum RecursionShape {
     MapValueRecursion,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct InductiveField {
     pub type_name: String,
     pub variant_name: String,
@@ -688,7 +688,7 @@ pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct RecurrenceForm {
     pub param: String,
     pub branches: i64,

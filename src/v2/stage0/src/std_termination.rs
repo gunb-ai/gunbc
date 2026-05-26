@@ -241,12 +241,12 @@ pub enum DescentSource {
     FoldIteration,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TerminationProof {
     pub dimensions: Rc<Vec<Rc<RankingDimension>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ProofEdge {
     pub caller: String,
     pub callee: String,
