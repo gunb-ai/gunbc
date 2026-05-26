@@ -908,14 +908,17 @@ mod compiler_tests {
         );
     }
 
-    fn named_type_node(name: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
+    fn shaped_type_node(
+        name: &str,
+        children: Vec<std::rc::Rc<crate::v2_std_core::Node>>,
+    ) -> std::rc::Rc<crate::v2_std_core::Node> {
         let span = crate::v2_std_core::make_span(0, name.len() as i64);
         std::rc::Rc::new(crate::v2_std_core::Node {
             name: name.to_string(),
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
-            children: std::rc::Rc::new(Vec::new()),
+            children: std::rc::Rc::new(children),
             connective: crate::v2_std_core::Connective::NoConnective,
             params: std::rc::Rc::new(Vec::new()),
             inferred: None,
@@ -932,18 +935,36 @@ mod compiler_tests {
         })
     }
 
+    fn named_type_node(name: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
+        shaped_type_node(name, Vec::new())
+    }
+
     #[test]
-    fn rust_btree_set_ord_eligibility_includes_symbol_and_diff_id_only() {
+    fn rust_btree_set_ord_eligibility_requires_nominal_carrier_shape() {
         let source_indices = std::rc::Rc::new(HashMap::new());
+        let symbol = named_type_node("Symbol");
+        let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
         assert!(
             crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                named_type_node("Symbol"),
+                symbol,
                 source_indices.clone()
             )
         );
         assert!(
             crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                named_type_node("DiffId"),
+                diff_id,
+                source_indices.clone()
+            )
+        );
+        assert!(
+            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                shaped_type_node("Symbol", vec![named_type_node("Float")]),
+                source_indices.clone()
+            )
+        );
+        assert!(
+            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                shaped_type_node("DiffId", vec![named_type_node("Float")]),
                 source_indices.clone()
             )
         );
