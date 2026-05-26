@@ -501,9 +501,9 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
           resolved: make_expr_error_node(kind: SemanticExprError, message: msg, span: sp),
           diagnostics: [make_error_node(diagnostic: InternalError { message: msg, span: sp }, module_name: module_name)]
         }
-      TypeVariable { id: _ } =>
+      TypeVariable { id: tv } =>
         // TypeVariable: unresolved type variable, preserve structurally.
-        NodeResolveResult { resolved: unit_type, diagnostics: [] }
+        NodeResolveResult { resolved: Node { name: tv, span: kernel_span(name: tv), ident_span: Some { value: kernel_span(name: tv) }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: tv } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, diagnostics: [] }
     }
   }
 }
