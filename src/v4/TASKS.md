@@ -1798,14 +1798,13 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
    `LocusTree` is a co-structural parallel of the `Node` tree: same recursive shape, `children` list length and order structurally mirror `Node.children`. To prevent consumers from manually zipping two shapes via a prose convention (INVARIANTS.md Boundary Discipline — typed query surface required), T-37 must declare a canonical combinator:
    ```
    fn fold_parse_tree<R>(
-     node: Node,
-     loci: LocusTree,
+     tree: ParseTree,
      f: fn(Option<Locus>, NodeKind, List<(EdgeLabel, R)>) -> R
    ) -> R
    ```
    All pipeline consumers (normalize/resolve/infer) use `fold_parse_tree` — they do not manually zip `Node.children` and `LocusTree.children`. The fold is the single declared association surface; child-count mismatch is a programming error and must be caught fail-closed (panic or `Rejected` with a diagnostic) rather than silently ignored. **Locus assignment:** source-backed leaf nodes carry `locus: Some(Textual { file: tok.file, extent: ByteRange { start: tok.start, end: tok.end } })`; composite nodes (e.g. `Sequence`) carry `locus: Some(Textual { file, extent: ByteRange { start: first_child_start, end: last_child_end } })` derived from child spans; synthesized nodes with no parse origin carry `locus: None`. The `Node` pivot is untouched; the co-tree is the boundary's fact-carry artifact. **Scope note:** `parse_expr`/`parse_rule` return `(Node, LocusTree)` pairs; callers compose the co-tree structurally as they assemble child results.
 
-3. **Pipeline threading.** `03_normalize.dag` / `03_resolve.dag` / `04_infer.dag` must carry `(Node, LocusTree)` pairs through each stage using `fold_parse_tree` (step 2).
+3. **Pipeline threading.** `03_normalize.dag` / `03_resolve.dag` / `04_infer.dag` must carry `ParseTree` (not bare `(Node, LocusTree)` pairs) through each stage and use `fold_parse_tree` (step 2) as the single access surface.
 
    **Critical — T-9 wave:** `InferredTree.facts: Map<Node, InferredFacts>` (current substrate, `04_infer.dag:94`) is keyed by structural `Node` value. Adding `InferredFacts.locus: Option<Locus>` while this map remains `Node`-keyed is **P2-invalid**: structurally equal nodes at distinct parse positions share one map entry, silently overwriting the locus of every duplicate — the same collapse as `Map<Node, Locus>`. The T-9 wave of T-37 **must** change `InferredTree.facts` from `Map<Node, InferredFacts>` to a co-structural carrier that preserves occurrence identity (e.g. parallel to `LocusTree`, or an `InferredTree` that mirrors the node-tree shape). This is a load-bearing signature change (`04_infer.dag` is an INVARIANTS.md-named stage); worker must escalate under explicit T-9/T-37 scope authorization before touching it.
 
@@ -1815,7 +1814,7 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 
 **Dependencies.** `[needs T-6, T-7]` — `Token` shape and parse walk must exist. `[needs T-3 std/diagnostic.dag]` — `Locus::Textual` is already declared there; no new substrate required. The full pipeline threading (`ParseTree → InferredTree`) gates on T-8 and T-9 being in scope. T-37 may ship in waves: (a) `ParseTree` shape change in the T-7 close-out train, (b) the normalize/resolve threading in T-8, (c) the infer stamping in T-9.
 
-**Load-bearing files touched.** `01_tokenize.dag` (unchanged — source of truth), `02_parse.dag` (primary change; `ParseTree` shape), `03_normalize.dag` / `03_resolve.dag` / `04_infer.dag` (threading), `lens/application.dag` (retire opaque `type SourceSpan`, import `Locus`). All four pipeline stages are INVARIANTS.md-named load-bearing files — worker must escalate before changing any stage signature without T-37 scope authorization.
+**Load-bearing files touched.** `01_tokenize.dag` (unchanged — source of truth), `02_parse.dag` (primary change; `ParseTree` shape), `03_normalize.dag` / `03_resolve.dag` / `04_infer.dag` (threading), `lens/application.dag` (retire opaque `type SourceSpan`, import `Locus`), **`00_compile.dag`** (boundary contract change: `compile_ingest_staging` holds `type Source = String` at line 59; step 4 requires threading `Source` alongside `ParseTree` for lexeme reconstruction — `00_compile.dag` must be updated to pass `Source` as a typed carrier through the `tokenize → parse` call and include it in the `ParseTree` output boundary). All pipeline stages including `00_compile.dag` are INVARIANTS.md-named load-bearing files — worker must escalate before changing any stage signature without T-37 scope authorization.
 
 **Relation to T-36 (round-trip fidelity).** T-36 compares the original source string to the re-emitted string; that comparison does not require token span facts to flow through the pipeline, so T-37 does **not** block T-36 and is **not** in T-36's `[needs]`. T-37 is complementary: once both land, the T-36 claim can reference declared locus facts rather than treating the source buffer as an ambient string. The relationship is "T-37 improves grounding quality of T-36" — not a blocking dependency.
 
