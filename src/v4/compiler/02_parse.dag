@@ -71,10 +71,7 @@ type Grammar
 
 type ParseTree = Node
 
-// 🟡 coproduct dissolution — feature:grammar-production-index; T-7 arrived; dissolve when Map<Symbol, GrammarProduction> substrate lands and replaces the linear fold with O(1) lookup.
-type GrammarProductionLookup
-  = GrammarProductionFound { production: GrammarProduction }
-  | GrammarProductionMissing
+type GrammarProductionIndex = Map<Symbol, GrammarProduction>
 
 // 🟡 coproduct dissolution — feature:T-8-parse-result-projection; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult
@@ -415,30 +412,26 @@ fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
 
 
 fn grammar_lookup_production_step(
-  acc: GrammarProductionLookup,
-  production: GrammarProduction,
-  name: Symbol
-) -> GrammarProductionLookup {
-  match acc {
-    GrammarProductionFound { production: _ } => acc
-    GrammarProductionMissing =>
-      if production.name == name {
-        GrammarProductionFound { production: production }
-      } else {
-        acc
-      }
-  }
+  acc: GrammarProductionIndex,
+  production: GrammarProduction
+) -> GrammarProductionIndex {
+  map_insert(m: acc, key: production.name, value: production)
 }
 
 
-fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> GrammarProductionLookup {
-  fold_list(
+fn grammar_production_index(root: GrammarRoot) -> GrammarProductionIndex {
+  fold_list_right(
     xs: root.productions,
-    empty: GrammarProductionMissing,
-    cons: fn(acc, production) {
-      grammar_lookup_production_step(acc: acc, production: production, name: name)
+    empty: empty_map(),
+    snoc: fn(acc, production) {
+      grammar_lookup_production_step(acc: acc, production: production)
     }
   )
+}
+
+
+fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
+  grammar_production_index(root: root).lookup(name)
 }
 
 
@@ -514,9 +507,9 @@ fn parse_nonterminal_from_table(
   prod_name: Symbol
 ) -> ParseExprResult {
   match grammar_lookup_production(root: root, name: prod_name) {
-    GrammarProductionMissing =>
+    Violates { diagnostic: _ } =>
       ParseExprRejected { diagnostics: [] }
-    GrammarProductionFound { production: production } =>
+    Holds { value: production } =>
       let key = ParsePositionKey {
         position: parse_current_position(all_tokens: all_tokens, tokens: tokens),
         production: prod_name
@@ -654,8 +647,8 @@ fn compute_left_corner_closure(
         empty: reachable,
         cons: fn(acc, sym) {
           match grammar_lookup_production(root: root, name: sym) {
-            GrammarProductionMissing => acc
-            GrammarProductionFound { production: prod } =>
+            Violates { diagnostic: _ } => acc
+            Holds { value: prod } =>
               fold_list(
                 xs: expr_direct_left_corner_list(expr: prod.expression, nullable_set: nullable_set),
                 empty: acc,
@@ -708,8 +701,8 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
     Terminal { token_class: _ } => false
     Nonterminal { production: p } =>
       match grammar_lookup_production(root: root, name: p) {
-        GrammarProductionMissing => true
-        GrammarProductionFound { production: _ } => false
+        Violates { diagnostic: _ } => true
+        Holds { value: _ } => false
       }
     Sequence { left: left, right: right } =>
       expr_has_undefined_nonterminal(expr: left, root: root) ||
@@ -733,8 +726,8 @@ fn grammar_has_undefined_nonterminals_step(acc: Bool, p: GrammarProduction, root
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {
-    GrammarProductionMissing => true
-    GrammarProductionFound { production: _ } =>
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } =>
       fold_list(
         xs: root.productions,
         empty: false,
@@ -1091,7 +1084,7 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
   let root = validated.root
   let at = port_locus(port: parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
-    GrammarProductionFound { production: production } =>
+    Holds { value: production } =>
       let table = build_parse_table(all_tokens: tokens, root: root)
       let key = ParsePositionKey { position: 0, production: production_name }
       match parse_table_lookup(table: table, key: key) {
@@ -1117,7 +1110,7 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    GrammarProductionMissing =>
+    Violates { diagnostic: _ } =>
       Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
   }
 }
