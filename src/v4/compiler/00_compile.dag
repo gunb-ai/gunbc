@@ -6,7 +6,7 @@
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
-//       compile_inferred, compile, validate_then_compile,
+//       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
 //       fact_density_lens, always_required_lenses.
 // Consumes: compiler/01_tokenize.dag, compiler/02_parse.dag, compiler/03_normalize.dag,
 //           compiler/03_resolve.dag, compiler/04_infer.dag, compiler/05_emit.dag,
@@ -47,7 +47,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Edge, Node, Symbol }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -201,6 +201,40 @@ fn run_required_lens_gates(
 }
 
 
+fn run_required_lens_gates_on_subtree(
+  node: Node,
+  inferred: InferredTree,
+  lenses: List<CompileLens>
+) -> Outcome<List<LensGateWitness>> {
+  bind_outcome(
+    o: run_required_lens_gates(
+      inferred: InferredTree { root: node, facts: inferred.facts },
+      lenses: lenses
+    ),
+    f: fn(witnesses) {
+      fold(
+        node.children,
+        init: outcome_accepted(value: witnesses),
+        f: fn(acc, edge) {
+          bind_outcome(o: acc, f: fn(ws) {
+            bind_outcome(
+              o: run_required_lens_gates_on_subtree(
+                node: edge.target,
+                inferred: inferred,
+                lenses: lenses
+              ),
+              f: fn(child_ws) {
+                outcome_accepted(value: list_append(left: ws, right: child_ws))
+              }
+            )
+          })
+        }
+      )
+    }
+  )
+}
+
+
 fn compile_inferred_translate(
   inferred: InferredTree,
   target: TargetModel
@@ -267,7 +301,7 @@ fn validate_then_compile(
     o: infer(tree: source),
     f: fn(inferred) {
       bind_outcome(
-        o: run_required_lens_gates(inferred: inferred, lenses: list_append(left: always_required_lenses(), right: lenses)),
+        o: run_required_lens_gates_on_subtree(node: inferred.root, inferred: inferred, lenses: list_append(left: always_required_lenses(), right: lenses)),
         f: fn(lens_witnesses) {
           bind_outcome(
             o: compile_inferred(
