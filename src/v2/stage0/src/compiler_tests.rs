@@ -908,6 +908,74 @@ mod compiler_tests {
         );
     }
 
+    fn shaped_type_node(
+        name: &str,
+        children: Vec<std::rc::Rc<crate::v2_std_core::Node>>,
+    ) -> std::rc::Rc<crate::v2_std_core::Node> {
+        let span = crate::v2_std_core::make_span(0, name.len() as i64);
+        std::rc::Rc::new(crate::v2_std_core::Node {
+            name: name.to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: std::rc::Rc::new(children),
+            connective: crate::v2_std_core::Connective::NoConnective,
+            params: std::rc::Rc::new(Vec::new()),
+            inferred: None,
+            return_cardinality: crate::v2_std_core::Cardinality::Required,
+            uses: std::rc::Rc::new(Vec::new()),
+            body: None,
+            transport: None,
+            properties: std::rc::Rc::new(Vec::new()),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: std::rc::Rc::new(crate::v2_std_core::ExprData::NoExprData),
+        })
+    }
+
+    fn named_type_node(name: &str) -> std::rc::Rc<crate::v2_std_core::Node> {
+        shaped_type_node(name, Vec::new())
+    }
+
+    #[test]
+    fn rust_btree_set_ord_eligibility_requires_nominal_carrier_shape() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let symbol = named_type_node("Symbol");
+        let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
+        assert!(
+            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                &symbol,
+                &source_indices
+            )
+        );
+        assert!(
+            crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                &diff_id,
+                &source_indices
+            )
+        );
+        assert!(
+            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                &shaped_type_node("Symbol", vec![named_type_node("Float")]),
+                &source_indices
+            )
+        );
+        assert!(
+            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                &shaped_type_node("DiffId", vec![named_type_node("Float")]),
+                &source_indices
+            )
+        );
+        assert!(
+            !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                &named_type_node("TestClaimId"),
+                &source_indices
+            )
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
