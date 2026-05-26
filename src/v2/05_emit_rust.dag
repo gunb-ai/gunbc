@@ -249,6 +249,22 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
   concat(rust_ord_derives_copy_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub &'static str);")
 }
 
+fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
+  type_name == "Symbol"
+}
+
+fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
+  if type_name == "DiffId" {
+    rust_ord_derives_copy_text()
+  } else {
+    ""
+  }
+}
+
+fn rust_nominal_ord_type_eligible(type_name: String) -> Bool {
+  rust_nominal_identity_carrier_type_eligible(type_name: type_name) || rust_nominal_ord_derives_for_type(type_name: type_name) != ""
+}
+
 fn rust_serde_tag_attr() -> String {
   match serialization_for_target(target: Rust).tag_attribute {
     Some { value: attr } => attr
@@ -1429,7 +1445,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
     concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 {
+    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else {
       ""
@@ -1654,12 +1670,8 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
   let derives = if has_fn_fields {
     "#[derive(Clone)]"
-  } else if rust_type_ord_eligible(n: Node { name: name, span: make_span(start: 0, end: 0), ident_span: none, children: children, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, source_indices: env.source_indices) {
-    if rust_type_copy_eligible(n: Node { name: name, span: make_span(start: 0, end: 0), ident_span: none, children: children, connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, source_indices: env.source_indices) {
-      rust_ord_derives_copy_text()
-    } else {
-      rust_ord_derives_text()
-    }
+  } else if rust_nominal_ord_type_eligible(type_name: name) {
+    rust_nominal_ord_derives_for_type(type_name: name)
   } else if set_contains(shared_types, name) {
     rust_struct_derives_text()
   } else {
@@ -3247,7 +3259,9 @@ fn rust_type_copy_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -
 // plus nominal carriers whose emitted Rust shape can derive Ord.
 // Float (no total Ord), Json (serde_json::Value), and keyed maps fail-closed.
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  rust_type_ord_eligible(n: elem_node, source_indices: source_indices)
+  let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
+  elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
+    || elem_name == "Secret" || elem_name == "Bytes" || rust_nominal_ord_type_eligible(type_name: elem_name)
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
@@ -6324,7 +6338,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
   } else { raw_ty_str }
   let fn_name = to_snake(name: name)
   let needs_rc = set_contains(shared_types, authored_name_at(source_indices: scope.type_env.source_indices, node: type_node))
-  if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_type_copy_eligible(n: type_node, source_indices: scope.type_env.source_indices) {
+  if is_simple_type_node(n: type_node, source_indices: scope.type_env.source_indices) || rust_nominal_identity_carrier_type_eligible(type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: type_node)) {
     // Copy types (Int, Bool, Float) — inline, no caching
     let val_str = match rust_nominal_identity_data_expr(type_node: type_node, value: value, source_indices: scope.type_env.source_indices) {
       Some { value: identity_expr } => identity_expr
@@ -6350,7 +6364,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
 
 fn rust_nominal_identity_data_expr(type_node: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   let type_name = authored_name_at(source_indices: source_indices, node: type_node)
-  let is_identity_type = type_node.connective == NoConnective && (type_node.children |> count) == 0 && (type_node.params |> count) == 0
+  let is_identity_type = rust_nominal_identity_carrier_type_eligible(type_name: type_name) && type_node.connective == NoConnective && (type_node.children |> count) == 0 && (type_node.params |> count) == 0
   if is_identity_type {
     match value.expr_data {
       ExprVar { binding_kind: _ } =>
