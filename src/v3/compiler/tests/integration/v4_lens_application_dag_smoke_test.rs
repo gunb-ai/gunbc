@@ -73,16 +73,18 @@ fn expr_contains_match(expr: &SurfaceExpr) -> bool {
             fields.iter().any(|field| expr_contains_match(&field.value))
         }
         SurfaceExpr::List { elements, .. } => elements.iter().any(expr_contains_match),
-        SurfaceExpr::Map { entries, .. } => {
-            entries.iter().any(|entry| expr_contains_match(&entry.value))
-        }
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| expr_contains_match(&entry.value)),
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
     }
 }
 
 fn expr_has_match_arm_body_match(expr: &SurfaceExpr) -> bool {
     match expr {
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             expr_contains_match(scrutinee)
                 || arms.iter().any(|arm| expr_contains_match(&arm.body))
                 || arms
