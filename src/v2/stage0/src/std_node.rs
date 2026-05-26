@@ -96,7 +96,7 @@ pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<InductiveField>>>| c.clone())
 }
 
 pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
@@ -110,7 +110,7 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_compiler_recursive_type(name: String) -> bool {

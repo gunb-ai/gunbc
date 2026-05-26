@@ -93,15 +93,18 @@ pub fn inferred_to_outputs(
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
-                                            let child_type = child_type_node(&child);
+                                            let child_type = child_type_node(child.clone());
                                             make_field_node(
-                                                &authored_name_at(source_indices.clone(), &child),
+                                                authored_name_at(
+                                                    source_indices.clone(),
+                                                    child.clone(),
+                                                ),
                                                 child_type.clone(),
                                                 Cardinality::Required,
                                                 None,
                                                 None,
                                                 span.clone(),
-                                                node_name_span(&child),
+                                                node_name_span(child.clone()),
                                             )
                                         });
                                     }
@@ -109,7 +112,7 @@ pub fn inferred_to_outputs(
                                 })
                             } else {
                                 Rc::new(vec![make_field_node(
-                                    &"value".to_string(),
+                                    "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
                                     None,
@@ -120,7 +123,7 @@ pub fn inferred_to_outputs(
                             }
                         } else {
                             Rc::new(vec![make_field_node(
-                                &"value".to_string(),
+                                "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
                                 None,
@@ -137,7 +140,7 @@ pub fn inferred_to_outputs(
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![make_field_node(
-                            &"value".to_string(),
+                            "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
                             None,
@@ -198,7 +201,7 @@ pub fn variant_locals_from_items(
                 item.children.clone().iter().cloned().fold(
                     acc.clone(),
                     |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), &child);
+                        let child_name = authored_name_at(source_indices.clone(), child.clone());
                         v2_rt::rc_map_insert(
                             vacc,
                             child_name.clone(),

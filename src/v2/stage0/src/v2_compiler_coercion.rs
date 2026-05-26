@@ -413,16 +413,16 @@ pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
-                                checkpoint_tests(&RenderTarget::Rust),
-                                checkpoint_tests(&RenderTarget::Python),
+                                checkpoint_tests(RenderTarget::Rust),
+                                checkpoint_tests(RenderTarget::Python),
                             ),
-                            checkpoint_tests(&RenderTarget::Go),
+                            checkpoint_tests(RenderTarget::Go),
                         ),
-                        inhabitant_tests(&RenderTarget::Rust),
+                        inhabitant_tests(RenderTarget::Rust),
                     ),
-                    inhabitant_tests(&RenderTarget::Python),
+                    inhabitant_tests(RenderTarget::Python),
                 ),
-                inhabitant_tests(&RenderTarget::Go),
+                inhabitant_tests(RenderTarget::Go),
             ),
             copy_tests(),
         ),

@@ -67,7 +67,7 @@ pub fn go_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
 }
 
 pub fn go_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
@@ -154,5 +154,5 @@ pub fn go_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
 }

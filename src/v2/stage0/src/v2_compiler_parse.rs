@@ -481,7 +481,7 @@ pub struct BindingsResult {
 }
 
 pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
-    make_expr_error_node(ExprErrorKind::ParseRecoveryError, &message, &span)
+    make_expr_error_node(ExprErrorKind::ParseRecoveryError, message, span)
 }
 
 pub fn parse_recovery_placeholder() -> Rc<Node> {
@@ -1191,7 +1191,7 @@ pub fn drop_leading_type_modifier(
 }
 
 pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
-    drop_leading_type_modifier(&tokens, "nominal_opaque".to_string())
+    drop_leading_type_modifier(tokens, "nominal_opaque".to_string())
 }
 
 pub fn tok_is_newline(tok: Option<Rc<Token>>) -> bool {
@@ -1351,7 +1351,7 @@ pub fn tok_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
 pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Option<String> {
     match tok {
         Some(t) => {
-            if is_name_keyword(&t) {
+            if is_name_keyword(t.clone()) {
                 Some(t.text.clone())
             } else {
                 None
@@ -1480,7 +1480,7 @@ pub fn expect(tokens: &Rc<Vec<Rc<Token>>>, expected: &Rc<ExpectedToken>) -> Rc<T
     {
         let tok = tokens.clone().first().cloned();
         let matches = match tok.clone() {
-            Some(t) => token_matches_expected(&t, expected.clone()),
+            Some(t) => token_matches_expected(t.clone(), expected.clone()),
             None => false,
         };
         if matches {
@@ -1499,7 +1499,7 @@ pub fn expect(tokens: &Rc<Vec<Rc<Token>>>, expected: &Rc<ExpectedToken>) -> Rc<T
         } else {
             {
                 let found = match tok.clone() {
-                    Some(t) => token_display_name(&t),
+                    Some(t) => token_display_name(t.clone()),
                     None => "EOF".to_string(),
                 };
                 let wanted = expected_token_name(expected.clone());
@@ -1610,7 +1610,7 @@ pub fn expect_name(tokens: &Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
                     }
                     None => {
                         let found = match tok.clone() {
-                            Some(t) => token_display_name(&t),
+                            Some(t) => token_display_name(t.clone()),
                             None => "EOF".to_string(),
                         };
                         Rc::new(NameResult {
@@ -1675,7 +1675,7 @@ pub fn skip_continuation_newlines(tokens: &Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Toke
             {
                 let after = skip_newlines(tokens.clone());
                 match after.first().cloned() {
-                    Some(next) => is_continuation_shape(&next.shape.clone()),
+                    Some(next) => is_continuation_shape(next.shape.clone()),
                     None => false,
                 }
             }
@@ -1693,7 +1693,7 @@ pub fn skip_continuation_newlines(tokens: &Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Toke
 pub fn eat(tokens: &Rc<Vec<Rc<Token>>>, expected: Rc<ExpectedToken>) -> Rc<EatResult> {
     match tokens.clone().first().cloned() {
         Some(t) => {
-            if token_matches_expected(&t, expected) {
+            if token_matches_expected(t.clone(), expected) {
                 Rc::new(EatResult::EatConsumed {
                     token: t.clone(),
                     tokens: Rc::new(
@@ -1766,7 +1766,7 @@ pub fn parser_helper_state_arg_expr(
                     None => (idx.clone() == 0),
                 };
                 if matches_state.clone() {
-                    Some(arg_value(&arg_node))
+                    Some(arg_value(arg_node.clone()))
                 } else {
                     None
                 }
@@ -1785,7 +1785,7 @@ pub fn parser_progress_flag_var(
             if ((field.clone().as_str() == "consumed".to_string().as_str())
                 || (field.clone().as_str() == "changed".to_string().as_str()))
             {
-                parser_result_base_var(&expr, source_indices.clone())
+                parser_result_base_var(expr.clone(), source_indices.clone())
             } else {
                 None
             }
@@ -1816,7 +1816,7 @@ pub fn parser_passthrough_state_expr(
 ) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
-            match parser_helper_identity(&expr_call_func_at(expr.clone(), source_indices.clone())) {
+            match parser_helper_identity(expr_call_func_at(expr.clone(), source_indices.clone())) {
                 Some(ParserHelperIdentity::ParserHelperSkipNewlines) => {
                     parser_helper_state_arg_expr(expr.clone(), source_indices.clone())
                 }
@@ -1825,7 +1825,7 @@ pub fn parser_passthrough_state_expr(
                 }
                 Some(ParserHelperIdentity::ParserHelperWith) => {
                     match expr.children.clone().first().cloned() {
-                        Some(base_arg) => Some(arg_value(&base_arg)),
+                        Some(base_arg) => Some(arg_value(base_arg.clone())),
                         None => None,
                     }
                 }
@@ -1845,7 +1845,7 @@ pub fn parser_result_witness(
             ref __s if __s == "advance" => Rc::new(ParserResultWitness::ParserWitnessAdvance),
             ref __s if __s == "expect" => Rc::new(ParserResultWitness::ParserWitnessExpect),
             ref __s if __s == "eat" => Rc::new(ParserResultWitness::ParserWitnessEat),
-            callee => match parser_helper_identity(&callee) {
+            callee => match parser_helper_identity(callee.clone()) {
                 Some(helper) => Rc::new(ParserResultWitness::ParserWitnessCall {
                     callee: Rc::new(ParserCallIdentity::ParserCallHelper {
                         helper: helper.clone(),
@@ -1904,7 +1904,7 @@ pub fn node_inferred_to_outputs(
     rt: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
-    if is_conj_with_children(&rt) {
+    if is_conj_with_children(rt.clone()) {
         {
             let all_children_typed = {
                 let mut __all = true;
@@ -1924,13 +1924,13 @@ pub fn node_inferred_to_outputs(
                     let mut __result = Vec::new();
                     for ch in rt.children.clone().iter().cloned() {
                         __result.push(make_field_node(
-                            &authored_name_at(source_indices.clone(), &ch),
+                            authored_name_at(source_indices.clone(), ch.clone()),
                             child_inferred_or_empty(ch.clone()),
                             Cardinality::Required,
                             ch.body.clone(),
                             None,
                             ch.span.clone(),
-                            node_name_span(&ch),
+                            node_name_span(ch.clone()),
                         ));
                     }
                     __result
@@ -1941,7 +1941,7 @@ pub fn node_inferred_to_outputs(
         }
     } else {
         Rc::new(vec![make_field_node(
-            &"value".to_string(),
+            "value".to_string(),
             rt.clone(),
             Cardinality::Required,
             None,
@@ -1954,7 +1954,7 @@ pub fn node_inferred_to_outputs(
 
 pub fn parse_dotted_ident(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
     {
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens);
         if has_err(r.err.clone()) {
             return r.clone();
         }
@@ -1968,9 +1968,9 @@ pub fn parse_dotted_ident_rest(
     mut span: Rc<SourceSpan>,
 ) -> Rc<NameResult> {
     loop {
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectDot))).clone() {
+        match (*eat(tokens, Rc::new(ExpectedToken::ExpectDot))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = expect_name(&__ec);
+                let r = expect_name(__ec.clone());
                 if has_err(r.err.clone()) {
                     return r.clone();
                 }
@@ -2013,7 +2013,7 @@ pub fn parse_with_table(
             source_indices: source_indices,
             intern_table: pre_interned,
         });
-        let r = parse_module(&tokens, &ctx);
+        let r = parse_module(tokens.clone(), ctx);
         if has_err(r.err.clone()) {
             Rc::new(ParseWithTableResult {
                 result: Rc::new(ParseResult {
@@ -2038,7 +2038,7 @@ pub fn parse(
     tokens: Rc<Vec<Rc<Token>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParseResult> {
-    parse_with_table(&tokens, source_indices, empty_intern_table())
+    parse_with_table(tokens, source_indices, empty_intern_table())
         .result
         .clone()
 }
@@ -2048,18 +2048,18 @@ pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<M
         let tokens = skip_newlines(tokens.clone());
         let start_span = token_span(tokens.clone().first().cloned());
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "module".to_string(),
             }),
         );
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
                 module: module_node(
-                    &"".to_string(),
+                    "".to_string(),
                     Rc::new(vec![]),
                     Rc::new(vec![]),
-                    &start_span,
+                    start_span.clone(),
                 ),
                 tokens: r.tokens.clone(),
                 ctx: ctx.clone(),
@@ -2071,10 +2071,10 @@ pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<M
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
                 module: module_node(
-                    &"".to_string(),
+                    "".to_string(),
                     Rc::new(vec![]),
                     Rc::new(vec![]),
-                    &start_span,
+                    start_span.clone(),
                 ),
                 tokens: r.tokens.clone(),
                 ctx: ctx.clone(),
@@ -2088,10 +2088,10 @@ pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<M
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
                 module: module_node(
-                    &"".to_string(),
+                    "".to_string(),
                     Rc::new(vec![]),
                     Rc::new(vec![]),
-                    &start_span,
+                    start_span.clone(),
                 ),
                 tokens: r.tokens.clone(),
                 ctx: r.ctx.clone(),
@@ -2105,10 +2105,10 @@ pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<M
         if has_err(r.err.clone()) {
             return Rc::new(ModuleResult {
                 module: module_node(
-                    &"".to_string(),
+                    "".to_string(),
                     Rc::new(vec![]),
                     Rc::new(vec![]),
-                    &start_span,
+                    start_span.clone(),
                 ),
                 tokens: r.tokens.clone(),
                 ctx: r.ctx.clone(),
@@ -2118,7 +2118,7 @@ pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<M
         let items = r.items.clone();
         let tokens = r.tokens.clone();
         let ctx = r.ctx.clone();
-        let mod_ir = intern(&ctx.intern_table.clone(), &mod_name);
+        let mod_ir = intern(ctx.intern_table.clone(), mod_name.clone());
         let ctx = Rc::new(ParseContext {
             intern_table: mod_ir.table.clone(),
             ..(*ctx.clone()).clone()
@@ -2143,12 +2143,12 @@ pub fn parse_module(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<M
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let mod_ = Rc::new(Node {
+        let r#mod = Rc::new(Node {
             ident: Some(mod_ir.id.clone()),
             ..(*base_mod).clone()
         });
         Rc::new(ModuleResult {
-            module: mod_,
+            module: r#mod,
             tokens: tokens.clone(),
             ctx: ctx.clone(),
             err: None,
@@ -2168,7 +2168,7 @@ pub fn parse_imports_acc(
     loop {
         tokens = skip_newlines(tokens.clone());
         if tok_is_keyword(tokens.clone().first().cloned(), "import".to_string()) {
-            let r = parse_import(&tokens, &ctx);
+            let r = parse_import(tokens.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(ImportsResult {
                     imports: Rc::new(vec![]),
@@ -2216,7 +2216,7 @@ pub fn parse_items_acc(
                 err: None,
             });
         } else {
-            let r = parse_item(&tokens, ctx);
+            let r = parse_item(tokens.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(ItemsResult {
                     items: acc.clone(),
@@ -2245,12 +2245,12 @@ pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
             "".to_string(),
             false,
             Rc::new(vec![]),
-            &start_span,
+            start_span.clone(),
             start_span.clone(),
         );
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "import".to_string(),
             }),
         );
@@ -2275,7 +2275,7 @@ pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
         let mod_path = r.name.clone();
         let mod_path_span = r.span.clone();
         let tokens = r.tokens.clone();
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_import_names(__ec.clone(), ctx.clone());
                 if has_err(r.err.clone()) {
@@ -2289,7 +2289,7 @@ pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
                 let names = r.names.clone();
                 let tokens = r.tokens.clone();
                 let ctx = r.ctx.clone();
-                let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r.err.clone()) {
                     return Rc::new(ImportResult {
                         import: err_import.clone(),
@@ -2299,9 +2299,14 @@ pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
                     });
                 }
                 let tokens = skip_newlines(r.tokens.clone());
-                let base_imp =
-                    import_node(mod_path.clone(), false, names, &start_span, mod_path_span);
-                let imp_ir = intern(&ctx.intern_table.clone(), &mod_path);
+                let base_imp = import_node(
+                    mod_path.clone(),
+                    false,
+                    names,
+                    start_span.clone(),
+                    mod_path_span,
+                );
+                let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
                 let ctx = Rc::new(ParseContext {
                     intern_table: imp_ir.table.clone(),
                     ..(*ctx.clone()).clone()
@@ -2323,10 +2328,10 @@ pub fn parse_import(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
                     mod_path.clone(),
                     true,
                     Rc::new(vec![]),
-                    &start_span,
+                    start_span.clone(),
                     mod_path_span,
                 );
-                let imp_ir = intern(&ctx.intern_table.clone(), &mod_path);
+                let imp_ir = intern(ctx.intern_table.clone(), mod_path.clone());
                 let ctx = Rc::new(ParseContext {
                     intern_table: imp_ir.table.clone(),
                     ..(*ctx.clone()).clone()
@@ -2351,7 +2356,7 @@ pub fn parse_import_names(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> 
 }
 
 pub fn parsed_name_leaf(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
-    leaf_node_with_span(&name, &span)
+    leaf_node_with_span(name, span)
 }
 
 pub fn parse_import_names_acc(
@@ -2380,7 +2385,7 @@ pub fn parse_import_names_acc(
             }
             let name_node = parsed_name_leaf(r.name.clone(), r.span.clone());
             tokens = skip_newlines(r.tokens.clone());
-            let e = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
@@ -2420,7 +2425,7 @@ pub fn parse_item(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Item
         let span = token_span(tok.clone());
         let form = find_item_form(dag_syntax_spec().item_forms.clone(), kw);
         match form {
-    Some(f) => parse_item_by_form(&tokens, &ctx, &f),
+    Some(f) => parse_item_by_form(tokens.clone(), ctx, f.clone()),
     None => Rc::new(ItemResult {
     item: Rc::new(Node {
     name: "<unknown>".to_string(),
@@ -2456,7 +2461,7 @@ pub fn parse_item_prefix(
     form: &Rc<ItemForm>,
 ) -> Rc<ItemPrefixResult> {
     {
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemPrefixResult {
                 name: "".to_string(),
@@ -2474,7 +2479,7 @@ pub fn parse_item_prefix(
         let name_span = r.span.clone();
         let tokens = r.tokens.clone();
         let tp_result = if form.has_type_params.clone() {
-            parse_optional_type_params(&tokens, ctx.clone())
+            parse_optional_type_params(tokens.clone(), ctx.clone())
         } else {
             Rc::new(TypeParamsResult {
                 params: Rc::new(vec![]),
@@ -2485,7 +2490,7 @@ pub fn parse_item_prefix(
         let tokens = tp_result.tokens.clone();
         let ctx = tp_result.ctx.clone();
         let params_result = if form.has_params.clone() {
-            parse_params(&tokens, &ctx)
+            parse_params(tokens.clone(), ctx.clone())
         } else {
             Rc::new(ParamsResult {
                 params: Rc::new(vec![]),
@@ -2510,7 +2515,7 @@ pub fn parse_item_prefix(
         let tokens = params_result.tokens.clone();
         let ctx = params_result.ctx.clone();
         let ret_result = if form.has_return_type.clone() {
-            parse_optional_inferred(&tokens, ctx.clone())
+            parse_optional_inferred(tokens.clone(), ctx.clone())
         } else {
             Rc::new(OptRetResult {
                 inferred: None,
@@ -2562,7 +2567,7 @@ pub fn parse_item_prefix(
             });
         }
         let uses_result = if form.has_uses.clone() {
-            parse_uses_clause(&skip_newlines(tokens.clone()), ctx.clone())
+            parse_uses_clause(skip_newlines(tokens.clone()), ctx.clone())
         } else {
             Rc::new(UsesResult {
                 uses: Rc::new(vec![]),
@@ -2626,8 +2631,8 @@ pub fn parse_item_by_form(
             ident: None,
         });
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: form.keyword.clone(),
             }),
         );
@@ -2642,7 +2647,7 @@ pub fn parse_item_by_form(
         let tokens = r.tokens.clone();
         match form.body_kind.clone() {
             BodyKind::TypeBody => {
-                let prefix = parse_item_prefix(&tokens, &ctx, &form);
+                let prefix = parse_item_prefix(tokens.clone(), ctx.clone(), form.clone());
                 if has_err(prefix.err.clone()) {
                     return Rc::new(ItemResult {
                         item: dummy.clone(),
@@ -2651,10 +2656,10 @@ pub fn parse_item_by_form(
                         err: prefix.err.clone(),
                     });
                 }
-                parse_type_body_from_prefix(&prefix, &start_span)
+                parse_type_body_from_prefix(prefix.clone(), start_span.clone())
             }
             BodyKind::ExprBody => {
-                let prefix = parse_item_prefix(&tokens, &ctx, &form);
+                let prefix = parse_item_prefix(tokens.clone(), ctx.clone(), form.clone());
                 if has_err(prefix.err.clone()) {
                     return Rc::new(ItemResult {
                         item: dummy.clone(),
@@ -2663,10 +2668,10 @@ pub fn parse_item_by_form(
                         err: prefix.err.clone(),
                     });
                 }
-                parse_fn_body_from_prefix(&prefix, &start_span)
+                parse_fn_body_from_prefix(prefix.clone(), start_span.clone())
             }
             BodyKind::BlockBody => {
-                let prefix = parse_item_prefix(&tokens, &ctx, &form);
+                let prefix = parse_item_prefix(tokens.clone(), ctx.clone(), form.clone());
                 if has_err(prefix.err.clone()) {
                     return Rc::new(ItemResult {
                         item: dummy.clone(),
@@ -2675,13 +2680,19 @@ pub fn parse_item_by_form(
                         err: prefix.err.clone(),
                     });
                 }
-                parse_block_body_from_prefix(&prefix, &start_span)
+                parse_block_body_from_prefix(prefix.clone(), start_span.clone())
             }
-            BodyKind::ServiceBody => parse_service_after_kw(&tokens, &ctx, &start_span),
-            BodyKind::ResourceBody => parse_resource_after_kw(tokens.clone(), &ctx, &start_span),
-            BodyKind::ValueBody => parse_data_after_kw(tokens.clone(), &ctx, &start_span),
+            BodyKind::ServiceBody => {
+                parse_service_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
+            }
+            BodyKind::ResourceBody => {
+                parse_resource_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
+            }
+            BodyKind::ValueBody => {
+                parse_data_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
+            }
             BodyKind::NoBody => {
-                let prefix = parse_item_prefix(&tokens, &ctx, &form);
+                let prefix = parse_item_prefix(tokens.clone(), ctx.clone(), form.clone());
                 if has_err(prefix.err.clone()) {
                     return Rc::new(ItemResult {
                         item: dummy.clone(),
@@ -2690,7 +2701,7 @@ pub fn parse_item_by_form(
                         err: prefix.err.clone(),
                     });
                 }
-                parse_no_body_from_prefix(&prefix, start_span.clone())
+                parse_no_body_from_prefix(prefix.clone(), start_span.clone())
             }
         }
     }
@@ -2701,10 +2712,10 @@ pub fn field_to_child_node(
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
-        let ret_type = field_node_type_expr(&field);
+        let ret_type = field_node_type_expr(field.clone());
         let props = match field_node_from_key(field.clone(), source_indices.clone()) {
             Some(key) => Rc::new(vec![make_field_init_node(
-                &"from_key".to_string(),
+                "from_key".to_string(),
                 make_expr_node(
                     Rc::new(ExprData::ExprLiteral {
                         value: Rc::new(LiteralValue::LitStr { value: key.clone() }),
@@ -2728,7 +2739,7 @@ pub fn field_to_child_node(
             inferred: Some(Rc::new(InferredNode::Resolved { node: ret_type })),
             return_cardinality: field_node_cardinality(field.clone()),
             uses: Rc::new(vec![]),
-            body: field_node_default_value(&field),
+            body: field_node_default_value(field.clone()),
             transport: None,
             properties: props,
             type_annotation: None,
@@ -2750,7 +2761,7 @@ pub fn variant_to_child_node(
         let children = Rc::new({
             let mut __result = Vec::new();
             for f in fields.clone().iter().cloned() {
-                __result.push(field_to_child_node(&f, &source_indices));
+                __result.push(field_to_child_node(f.clone(), source_indices.clone()));
             }
             __result
         });
@@ -2795,7 +2806,7 @@ pub fn outputs_to_inferred(
                 children: Rc::new({
                     let mut __result = Vec::new();
                     for f in outputs.clone().iter().cloned() {
-                        __result.push(field_to_child_node(&f, &source_indices));
+                        __result.push(field_to_child_node(f.clone(), source_indices.clone()));
                     }
                     __result
                 }),
@@ -2847,16 +2858,16 @@ pub fn make_operation_node(
                 let mut __result = Vec::new();
                 for f in inputs.iter().cloned() {
                     __result.push(make_param_node(
-                        &field_node_name_at(f.clone(), source_indices.clone()),
-                        field_node_type_expr(&f),
-                        field_node_default_value(&f),
+                        field_node_name_at(f.clone(), source_indices.clone()),
+                        field_node_type_expr(f.clone()),
+                        field_node_default_value(f.clone()),
                         f.span.clone(),
-                        node_name_span(&f),
+                        node_name_span(f.clone()),
                     ));
                 }
                 __result
             }),
-            inferred: outputs_to_inferred(&outputs, span.clone(), source_indices.clone()),
+            inferred: outputs_to_inferred(outputs, span.clone(), source_indices.clone()),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
@@ -2890,16 +2901,16 @@ pub fn make_capability_node(
             let mut __result = Vec::new();
             for f in inputs.iter().cloned() {
                 __result.push(make_param_node(
-                    &field_node_name_at(f.clone(), source_indices.clone()),
-                    field_node_type_expr(&f),
-                    field_node_default_value(&f),
+                    field_node_name_at(f.clone(), source_indices.clone()),
+                    field_node_type_expr(f.clone()),
+                    field_node_default_value(f.clone()),
                     f.span.clone(),
-                    node_name_span(&f),
+                    node_name_span(f.clone()),
                 ));
             }
             __result
         }),
-        inferred: outputs_to_inferred(&outputs, span.clone(), source_indices.clone()),
+        inferred: outputs_to_inferred(outputs, span.clone(), source_indices.clone()),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
         body: None,
@@ -2939,8 +2950,8 @@ pub fn parse_type_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
             ident: None,
         });
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "type".to_string(),
             }),
         );
@@ -2952,7 +2963,7 @@ pub fn parse_type_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
                 err: r.err.clone(),
             });
         }
-        parse_type_after_kw(&r.tokens.clone(), &ctx, &start_span)
+        parse_type_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
     }
 }
 
@@ -2982,7 +2993,7 @@ pub fn parse_type_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy,
@@ -2994,12 +3005,12 @@ pub fn parse_type_after_kw(
         let name = r.name.clone();
         let name_span = r.span.clone();
         let tokens = r.tokens.clone();
-        let type_params_result = parse_optional_type_params(&tokens, ctx.clone());
+        let type_params_result = parse_optional_type_params(tokens.clone(), ctx.clone());
         let type_params = type_params_result.params.clone();
         let tokens = skip_newlines(type_params_result.tokens.clone());
         let ctx = type_params_result.ctx.clone();
         let tokens = type_body_tokens_after_modifiers(tokens.clone());
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
                 let named_dummy = Rc::new(Node {
@@ -3032,7 +3043,7 @@ pub fn parse_type_after_kw(
                 }
                 let tokens = skip_newlines(r.tokens.clone());
                 let ctx = r.ctx.clone();
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(ItemResult {
                         item: named_dummy.clone(),
@@ -3044,7 +3055,7 @@ pub fn parse_type_after_kw(
                 let type_children = Rc::new({
                     let mut __result = Vec::new();
                     for f in r.fields.clone().iter().cloned() {
-                        __result.push(field_to_child_node(&f, &ctx.source_indices.clone()));
+                        __result.push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
                     }
                     __result
                 });
@@ -3076,16 +3087,16 @@ pub fn parse_type_after_kw(
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                match (*eat(&tokens, Rc::new(ExpectedToken::ExpectEq))).clone() {
+                match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => {
                         let tokens = skip_newlines(__ec.clone());
                         parse_type_body_after_eq(
-                            &tokens,
-                            &ctx,
-                            &name,
-                            &name_span,
-                            &start_span,
-                            &type_params,
+                            tokens.clone(),
+                            ctx.clone(),
+                            name.clone(),
+                            name_span.clone(),
+                            start_span.clone(),
+                            type_params.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -3097,7 +3108,7 @@ pub fn parse_type_after_kw(
                             connective: Connective::NoConnective,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(&name, &name_span),
+                                node: leaf_type_node(name.clone(), name_span.clone()),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
@@ -3154,7 +3165,7 @@ pub fn parse_type_body_from_prefix(
             ident: None,
         });
         let tokens = type_body_tokens_after_modifiers(skip_newlines(prefix.tokens.clone()));
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx.clone());
                 if has_err(r.err.clone()) {
@@ -3167,7 +3178,7 @@ pub fn parse_type_body_from_prefix(
                 }
                 let tokens = skip_newlines(r.tokens.clone());
                 let ctx = r.ctx.clone();
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(ItemResult {
                         item: named_dummy.clone(),
@@ -3179,7 +3190,7 @@ pub fn parse_type_body_from_prefix(
                 let type_children = Rc::new({
                     let mut __result = Vec::new();
                     for f in r.fields.clone().iter().cloned() {
-                        __result.push(field_to_child_node(&f, &ctx.source_indices.clone()));
+                        __result.push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
                     }
                     __result
                 });
@@ -3211,16 +3222,16 @@ pub fn parse_type_body_from_prefix(
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                match (*eat(&tokens, Rc::new(ExpectedToken::ExpectEq))).clone() {
+                match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => {
                         let tokens = skip_newlines(__ec.clone());
                         parse_type_body_after_eq(
-                            &tokens,
-                            &ctx,
-                            &name,
-                            &name_span,
-                            &start_span,
-                            &type_params,
+                            tokens.clone(),
+                            ctx.clone(),
+                            name.clone(),
+                            name_span.clone(),
+                            start_span.clone(),
+                            type_params.clone(),
                         )
                     }
                     EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -3232,7 +3243,7 @@ pub fn parse_type_body_from_prefix(
                             connective: Connective::NoConnective,
                             params: type_params.clone(),
                             inferred: Some(Rc::new(InferredNode::Resolved {
-                                node: leaf_type_node(&name, &name_span),
+                                node: leaf_type_node(name.clone(), name_span.clone()),
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
@@ -3290,7 +3301,7 @@ pub fn parse_type_body_after_eq(
         });
         if tok_is_ident(tokens.clone().first().cloned()) {
             {
-                let r = expect_ident(&tokens);
+                let r = expect_ident(tokens.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ItemResult {
                         item: dummy.clone(),
@@ -3308,10 +3319,10 @@ pub fn parse_type_body_after_eq(
                 {
                     {
                         let r = parse_variant_fields(
-                            &tokens,
+                            tokens.clone(),
                             ctx.clone(),
-                            &first_name,
-                            &first_name_span,
+                            first_name,
+                            first_name_span,
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(ItemResult {
@@ -3339,8 +3350,10 @@ pub fn parse_type_body_after_eq(
                         let type_children = Rc::new({
                             let mut __result = Vec::new();
                             for v in variants.iter().cloned() {
-                                __result
-                                    .push(variant_to_child_node(&v, &ctx.source_indices.clone()));
+                                __result.push(variant_to_child_node(
+                                    v.clone(),
+                                    ctx.source_indices.clone(),
+                                ));
                             }
                             __result
                         });
@@ -3374,10 +3387,10 @@ pub fn parse_type_body_after_eq(
                 } else {
                     {
                         let r = finish_type_expr_from_name(
-                            &tokens,
+                            tokens.clone(),
                             ctx.clone(),
-                            &first_name,
-                            &first_name_span,
+                            first_name,
+                            first_name_span,
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(ItemResult {
@@ -3388,10 +3401,10 @@ pub fn parse_type_body_after_eq(
                             });
                         }
                         let wr = try_where_clause(
-                            &r.tokens.clone(),
+                            r.tokens.clone(),
                             r.ctx.clone(),
-                            &r.type_expr.clone(),
-                            &start_span,
+                            r.type_expr.clone(),
+                            start_span.clone(),
                         );
                         if has_err(wr.err.clone()) {
                             return Rc::new(ItemResult {
@@ -3434,7 +3447,7 @@ pub fn parse_type_body_after_eq(
             }
         } else {
             {
-                let r = parse_type_expr(&tokens, &ctx);
+                let r = parse_type_expr(tokens.clone(), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ItemResult {
                         item: dummy.clone(),
@@ -3444,10 +3457,10 @@ pub fn parse_type_body_after_eq(
                     });
                 }
                 let wr = try_where_clause(
-                    &r.tokens.clone(),
+                    r.tokens.clone(),
                     r.ctx.clone(),
-                    &r.type_expr.clone(),
-                    &start_span,
+                    r.type_expr.clone(),
+                    start_span.clone(),
                 );
                 if has_err(wr.err.clone()) {
                     return Rc::new(ItemResult {
@@ -3497,7 +3510,7 @@ pub fn try_where_clause(
     start_span: &Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     if tok_is_keyword(tokens.clone().first().cloned(), "where".to_string()) {
-        match (*advance(&tokens)).clone() {
+        match (*advance(tokens.clone())).clone() {
             AdvanceResult::AdvanceOk { tokens: rest, .. } => {
                 let r = parse_predicates(rest.clone(), ctx);
                 if has_err(r.err.clone()) {
@@ -3582,7 +3595,7 @@ pub fn parse_predicates_acc(
     mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<PredsResult> {
     loop {
-        let r = parse_single_predicate(&tokens, &ctx);
+        let r = parse_single_predicate(tokens, ctx);
         if has_err(r.err.clone()) {
             return Rc::new(PredsResult {
                 predicates: Rc::new(vec![]),
@@ -3592,7 +3605,7 @@ pub fn parse_predicates_acc(
             });
         }
         acc = v2_rt::rc_list_push(acc.clone(), r.predicate.clone());
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
                 let __tco_1 = r.ctx.clone();
@@ -3619,7 +3632,7 @@ pub fn parse_single_predicate(
     {
         let zero_span = make_span(0, 0);
         let dummy_pred = make_field_init_node(
-            &"".to_string(),
+            "".to_string(),
             make_expr_node(
                 Rc::new(ExprData::ExprLiteral {
                     value: Rc::new(LiteralValue::LitBool { value: false }),
@@ -3631,7 +3644,7 @@ pub fn parse_single_predicate(
             zero_span.clone(),
             zero_span.clone(),
         );
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(PredResult {
                 predicate: dummy_pred.clone(),
@@ -3642,12 +3655,12 @@ pub fn parse_single_predicate(
         }
         let pred_name = r.name.clone();
         let tokens = r.tokens.clone();
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLParen))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let tokens = __ec.clone();
                 match pred_name.clone().as_str() {
                     "pattern" => {
-                        let r2 = parse_string_literal_value(&tokens);
+                        let r2 = parse_string_literal_value(tokens.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3656,7 +3669,7 @@ pub fn parse_single_predicate(
                                 err: r2.err.clone(),
                             });
                         }
-                        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r3.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3667,7 +3680,7 @@ pub fn parse_single_predicate(
                         }
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                &"Pattern".to_string(),
+                                "Pattern".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitStr {
@@ -3687,7 +3700,7 @@ pub fn parse_single_predicate(
                         })
                     }
                     "format" => {
-                        let r2 = expect_ident(&tokens);
+                        let r2 = expect_ident(tokens.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3696,7 +3709,7 @@ pub fn parse_single_predicate(
                                 err: r2.err.clone(),
                             });
                         }
-                        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r3.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3707,7 +3720,7 @@ pub fn parse_single_predicate(
                         }
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                &"Format".to_string(),
+                                "Format".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitStr {
@@ -3727,7 +3740,7 @@ pub fn parse_single_predicate(
                         })
                     }
                     "brand" => {
-                        let r2 = parse_string_literal_value(&tokens);
+                        let r2 = parse_string_literal_value(tokens.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3736,7 +3749,7 @@ pub fn parse_single_predicate(
                                 err: r2.err.clone(),
                             });
                         }
-                        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r3.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3747,7 +3760,7 @@ pub fn parse_single_predicate(
                         }
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                &"Brand".to_string(),
+                                "Brand".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitStr {
@@ -3767,7 +3780,7 @@ pub fn parse_single_predicate(
                         })
                     }
                     "content" => {
-                        let r2 = expect_ident(&tokens);
+                        let r2 = expect_ident(tokens.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3776,7 +3789,7 @@ pub fn parse_single_predicate(
                                 err: r2.err.clone(),
                             });
                         }
-                        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r3.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3787,7 +3800,7 @@ pub fn parse_single_predicate(
                         }
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                &"ContentEncoding".to_string(),
+                                "ContentEncoding".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitStr {
@@ -3807,7 +3820,7 @@ pub fn parse_single_predicate(
                         })
                     }
                     "domain" => {
-                        let r2 = expect_ident(&tokens);
+                        let r2 = expect_ident(tokens.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3816,7 +3829,7 @@ pub fn parse_single_predicate(
                                 err: r2.err.clone(),
                             });
                         }
-                        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r3.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3827,7 +3840,7 @@ pub fn parse_single_predicate(
                         }
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                &"Domain".to_string(),
+                                "Domain".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitStr {
@@ -3856,7 +3869,7 @@ pub fn parse_single_predicate(
                                 err: r2.err.clone(),
                             });
                         }
-                        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r3.err.clone()) {
                             return Rc::new(PredResult {
                                 predicate: dummy_pred.clone(),
@@ -3867,7 +3880,7 @@ pub fn parse_single_predicate(
                         }
                         let min_fields = if (r2.min_val.clone() != None) {
                             Rc::new(vec![make_field_init_node(
-                                &"min".to_string(),
+                                "min".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitInt {
@@ -3886,7 +3899,7 @@ pub fn parse_single_predicate(
                         };
                         let max_fields = if (r2.max_val.clone() != None) {
                             Rc::new(vec![make_field_init_node(
-                                &"max".to_string(),
+                                "max".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprLiteral {
                                         value: Rc::new(LiteralValue::LitInt {
@@ -3905,7 +3918,7 @@ pub fn parse_single_predicate(
                         };
                         Rc::new(PredResult {
                             predicate: make_field_init_node(
-                                &"Range".to_string(),
+                                "Range".to_string(),
                                 make_expr_node(
                                     Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                                     v2_rt::concat(min_fields, max_fields),
@@ -3940,7 +3953,7 @@ pub fn parse_single_predicate(
             EatResult::EatUnchanged { tokens: __eu, .. } => match pred_name.clone().as_str() {
                 "non_empty" => Rc::new(PredResult {
                     predicate: make_field_init_node(
-                        &"NonEmpty".to_string(),
+                        "NonEmpty".to_string(),
                         make_expr_node(
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -3958,7 +3971,7 @@ pub fn parse_single_predicate(
                 }),
                 _ => Rc::new(PredResult {
                     predicate: make_field_init_node(
-                        &pred_name,
+                        pred_name.clone(),
                         make_expr_node(
                             Rc::new(ExprData::ExprLiteral {
                                 value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -3984,7 +3997,7 @@ pub fn parse_named_int_args(
     ctx: Rc<ParseContext>,
 ) -> Rc<RangeArgsResult> {
     {
-        let r = parse_single_named_int(tokens, &ctx);
+        let r = parse_single_named_int(tokens, ctx);
         if has_err(r.err.clone()) {
             return Rc::new(RangeArgsResult {
                 min_val: None,
@@ -3994,9 +4007,9 @@ pub fn parse_named_int_args(
                 err: r.err.clone(),
             });
         }
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r2 = parse_single_named_int(skip_newlines(__ec.clone()), &r.ctx.clone());
+                let r2 = parse_single_named_int(skip_newlines(__ec.clone()), r.ctx.clone());
                 if has_err(r2.err.clone()) {
                     return Rc::new(RangeArgsResult {
                         min_val: None,
@@ -4060,7 +4073,7 @@ pub fn parse_single_named_int(
     ctx: &Rc<ParseContext>,
 ) -> Rc<NamedIntResult> {
     {
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens);
         if has_err(r.err.clone()) {
             return Rc::new(NamedIntResult {
                 arg_name: "".to_string(),
@@ -4071,7 +4084,7 @@ pub fn parse_single_named_int(
             });
         }
         let name = r.name.clone();
-        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r2.err.clone()) {
             return Rc::new(NamedIntResult {
                 arg_name: name.clone(),
@@ -4081,7 +4094,7 @@ pub fn parse_single_named_int(
                 err: r2.err.clone(),
             });
         }
-        let r3 = parse_int_literal_value(&r2.tokens.clone());
+        let r3 = parse_int_literal_value(r2.tokens.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(NamedIntResult {
                 arg_name: name.clone(),
@@ -4107,7 +4120,7 @@ pub fn parse_positional_variant_type_fields(
 ) -> Rc<FieldsResult> {
     {
         let tokens = skip_newlines(tokens.clone());
-        let r = parse_type_expr(&tokens, &ctx);
+        let r = parse_type_expr(tokens.clone(), ctx);
         if has_err(r.err.clone()) {
             return Rc::new(FieldsResult {
                 fields: Rc::new(vec![]),
@@ -4117,15 +4130,15 @@ pub fn parse_positional_variant_type_fields(
             });
         }
         let field = make_field_node(
-            &"0".to_string(),
+            "0".to_string(),
             r.type_expr.clone(),
             Cardinality::Required,
             None,
             None,
             r.type_expr.clone().span.clone(),
-            kernel_span(&"0".to_string()),
+            kernel_span("0".to_string()),
         );
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
     EatResult::EatConsumed { token: comma_tok, tokens: __ec, .. } => Rc::new(FieldsResult {
     fields: Rc::new(vec![]),
     tokens: __ec.clone(),
@@ -4150,13 +4163,13 @@ pub fn parse_variant_fields(
 ) -> Rc<VariantResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBrace))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r = parse_field_list(skip_newlines(__ec.clone()), ctx);
                 if has_err(r.err.clone()) {
                     return Rc::new(VariantResult {
                         variant: make_variant_node(
-                            &vname,
+                            vname.clone(),
                             Rc::new(vec![]),
                             start_span.clone(),
                             vname_span.clone(),
@@ -4167,11 +4180,11 @@ pub fn parse_variant_fields(
                     });
                 }
                 let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(VariantResult {
                         variant: make_variant_node(
-                            &vname,
+                            vname.clone(),
                             Rc::new(vec![]),
                             start_span.clone(),
                             vname_span.clone(),
@@ -4182,7 +4195,7 @@ pub fn parse_variant_fields(
                     });
                 }
                 let v = make_variant_node(
-                    &vname,
+                    vname.clone(),
                     r.fields.clone(),
                     start_span.clone(),
                     vname_span.clone(),
@@ -4195,13 +4208,13 @@ pub fn parse_variant_fields(
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLParen))).clone() {
+                match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen))).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => {
-                        let r = parse_positional_variant_type_fields(&__ec, ctx);
+                        let r = parse_positional_variant_type_fields(__ec.clone(), ctx);
                         if has_err(r.err.clone()) {
                             return Rc::new(VariantResult {
                                 variant: make_variant_node(
-                                    &vname,
+                                    vname.clone(),
                                     Rc::new(vec![]),
                                     start_span.clone(),
                                     vname_span.clone(),
@@ -4211,11 +4224,11 @@ pub fn parse_variant_fields(
                                 err: r.err.clone(),
                             });
                         }
-                        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r2.err.clone()) {
                             return Rc::new(VariantResult {
                                 variant: make_variant_node(
-                                    &vname,
+                                    vname.clone(),
                                     Rc::new(vec![]),
                                     start_span.clone(),
                                     vname_span.clone(),
@@ -4226,7 +4239,7 @@ pub fn parse_variant_fields(
                             });
                         }
                         let v = make_variant_node(
-                            &vname,
+                            vname.clone(),
                             r.fields.clone(),
                             start_span.clone(),
                             vname_span.clone(),
@@ -4240,7 +4253,7 @@ pub fn parse_variant_fields(
                     }
                     EatResult::EatUnchanged { tokens: __eu2, .. } => {
                         let v = make_variant_node(
-                            &vname,
+                            vname.clone(),
                             Rc::new(vec![]),
                             vname_span.clone(),
                             vname_span.clone(),
@@ -4272,10 +4285,10 @@ pub fn parse_more_variants_acc(
 ) -> Rc<VariantsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectPipe))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectPipe))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
-                let r = expect_ident(&tokens);
+                let r = expect_ident(tokens.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(VariantsResult {
                         variants: Rc::new(vec![]),
@@ -4285,10 +4298,10 @@ pub fn parse_more_variants_acc(
                     });
                 }
                 let r2 = parse_variant_fields(
-                    &r.tokens.clone(),
+                    r.tokens.clone(),
                     ctx.clone(),
-                    &r.name.clone(),
-                    &r.span.clone(),
+                    r.name.clone(),
+                    r.span.clone(),
                 );
                 if has_err(r2.err.clone()) {
                     return Rc::new(VariantsResult {
@@ -4344,17 +4357,17 @@ pub fn parse_type_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                 );
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), &span),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: r.tokens.clone(),
                         ctx: r.ctx.clone(),
                         err: r.err.clone(),
                     });
                 }
                 let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), &span),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: r2.tokens.clone(),
                         ctx: r.ctx.clone(),
                         err: r2.err.clone(),
@@ -4367,7 +4380,8 @@ pub fn parse_type_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                     children: Rc::new({
                         let mut __result = Vec::new();
                         for f in r.fields.clone().iter().cloned() {
-                            __result.push(field_to_child_node(&f, &ctx.source_indices.clone()));
+                            __result
+                                .push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
                         }
                         __result
                     }),
@@ -4396,7 +4410,7 @@ pub fn parse_type_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
             Some(TokenShape::ShKeyword) => {
                 if (tok.clone().unwrap().text.clone().as_str() == "fn".to_string().as_str()) {
                     parse_callable_type_expr(
-                        &Rc::new(
+                        Rc::new(
                             tokens
                                 .clone()
                                 .iter()
@@ -4404,12 +4418,12 @@ pub fn parse_type_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         ),
-                        &ctx,
-                        &span,
+                        ctx.clone(),
+                        span.clone(),
                     )
                 } else {
                     Rc::new(TypeResult {
-                        type_expr: leaf_type_node(&"".to_string(), &span),
+                        type_expr: leaf_type_node("".to_string(), span.clone()),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
                         err: Some(parse_error(
@@ -4422,7 +4436,7 @@ pub fn parse_type_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
                 finish_type_expr_from_name(
-                    &Rc::new(
+                    Rc::new(
                         tokens
                             .clone()
                             .iter()
@@ -4431,12 +4445,12 @@ pub fn parse_type_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                             .collect::<Vec<_>>(),
                     ),
                     ctx.clone(),
-                    &n,
-                    &span,
+                    n,
+                    span.clone(),
                 )
             }
             _ => Rc::new(TypeResult {
-                type_expr: leaf_type_node(&"".to_string(), &span),
+                type_expr: leaf_type_node("".to_string(), span.clone()),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
                 err: Some(parse_error(
@@ -4454,8 +4468,8 @@ pub fn parse_callable_type_expr(
     start_span: &Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     {
-        let dummy_te = leaf_type_node(&"".to_string(), &start_span);
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLParen));
+        let dummy_te = leaf_type_node("".to_string(), start_span.clone());
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
             return Rc::new(TypeResult {
                 type_expr: dummy_te.clone(),
@@ -4484,7 +4498,7 @@ pub fn parse_callable_type_expr(
             });
         }
         let tokens = skip_newlines(params_result.tokens.clone());
-        let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRParen));
+        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
         if has_err(r2.err.clone()) {
             return Rc::new(TypeResult {
                 type_expr: dummy_te.clone(),
@@ -4493,7 +4507,7 @@ pub fn parse_callable_type_expr(
                 err: r2.err.clone(),
             });
         }
-        let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectArrow));
+        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectArrow));
         if has_err(r3.err.clone()) {
             return Rc::new(TypeResult {
                 type_expr: dummy_te.clone(),
@@ -4502,7 +4516,7 @@ pub fn parse_callable_type_expr(
                 err: r3.err.clone(),
             });
         }
-        let ret = parse_type_expr(&r3.tokens.clone(), &params_result.ctx.clone());
+        let ret = parse_type_expr(r3.tokens.clone(), params_result.ctx.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(TypeResult {
                 type_expr: dummy_te.clone(),
@@ -4533,12 +4547,7 @@ pub fn parse_callable_type_expr(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        maybe_optional(
-            &ret.tokens.clone(),
-            ret.ctx.clone(),
-            &te,
-            start_span.clone(),
-        )
+        maybe_optional(ret.tokens.clone(), ret.ctx.clone(), te, start_span.clone())
     }
 }
 
@@ -4548,7 +4557,7 @@ pub fn parse_callable_param_types(
     mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
-        let r = parse_type_expr(&tokens, &ctx);
+        let r = parse_type_expr(tokens.clone(), ctx);
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
                 params: Rc::new(vec![]),
@@ -4558,14 +4567,14 @@ pub fn parse_callable_param_types(
             });
         }
         let param = make_param_node(
-            &"".to_string(),
+            "".to_string(),
             r.type_expr.clone(),
             None,
             r.type_expr.clone().span.clone(),
             r.type_expr.clone().span.clone(),
         );
         acc = v2_rt::rc_list_push(acc.clone(), param);
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
                 if tok_is_rparen(tokens.clone().first().cloned()) {
@@ -4602,10 +4611,10 @@ pub fn finish_type_expr_from_name(
     start_span: &Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
     {
-        let dummy_te = leaf_type_node(&type_name, &start_span);
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLt))).clone() {
+        let dummy_te = leaf_type_node(type_name.clone(), start_span.clone());
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = parse_type_expr(&__ec, &ctx);
+                let r = parse_type_expr(__ec.clone(), ctx);
                 if has_err(r.err.clone()) {
                     return r.clone();
                 }
@@ -4620,7 +4629,7 @@ pub fn finish_type_expr_from_name(
                         err: type_args.err.clone(),
                     });
                 }
-                let r3 = expect(&type_args.tokens.clone(), &Rc::new(ExpectedToken::ExpectGt));
+                let r3 = expect(type_args.tokens.clone(), Rc::new(ExpectedToken::ExpectGt));
                 if has_err(r3.err.clone()) {
                     return Rc::new(TypeResult {
                         type_expr: dummy_te.clone(),
@@ -4650,15 +4659,15 @@ pub fn finish_type_expr_from_name(
                     ident: None,
                 });
                 maybe_optional(
-                    &r3.tokens.clone(),
+                    r3.tokens.clone(),
                     type_args.ctx.clone(),
-                    &te,
+                    te,
                     start_span.clone(),
                 )
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let te = leaf_type_node(&type_name, &start_span);
-                maybe_optional(&tokens, ctx, &te, start_span.clone())
+                let te = leaf_type_node(type_name.clone(), start_span.clone());
+                maybe_optional(tokens.clone(), ctx, te, start_span.clone())
             }
         }
     }
@@ -4675,12 +4684,12 @@ pub fn parse_optional_type_params(
     tokens: &Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<TypeParamsResult> {
-    match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLt))).clone() {
+    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
             let params_result = collect_type_param_names(__ec.clone(), ctx, Rc::new(vec![]));
             let r = expect(
-                &params_result.tokens.clone(),
-                &Rc::new(ExpectedToken::ExpectGt),
+                params_result.tokens.clone(),
+                Rc::new(ExpectedToken::ExpectGt),
             );
             Rc::new(TypeParamsResult {
                 params: params_result.params.clone(),
@@ -4703,17 +4712,17 @@ pub fn collect_type_param_names(
 ) -> Rc<TypeParamsResult> {
     loop {
         if tok_is_ident(tokens.clone().first().cloned()) {
-            let r = expect_ident(&tokens);
+            let r = expect_ident(tokens.clone());
             let span = r.span.clone();
             let param = make_param_node(
-                &r.name.clone(),
-                leaf_type_node(&r.name.clone(), &span),
+                r.name.clone(),
+                leaf_type_node(r.name.clone(), span.clone()),
                 None,
                 span.clone(),
                 span.clone(),
             );
             let next_params = v2_rt::rc_list_push(params, param);
-            match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+            match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => {
                     let __tco_0 = __ec.clone();
                     let __tco_1 = next_params;
@@ -4753,9 +4762,9 @@ pub fn collect_type_args(
     mut args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeArgsResult> {
     loop {
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = parse_type_expr(&__ec, &ctx);
+                let r = parse_type_expr(__ec.clone(), ctx);
                 if has_err(r.err.clone()) {
                     return Rc::new(TypeArgsResult {
                         args: args.clone(),
@@ -4792,7 +4801,7 @@ pub fn maybe_optional(
     te: &Rc<Node>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
-    match (*eat(&tokens, Rc::new(ExpectedToken::ExpectQuestion))).clone() {
+    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectQuestion))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
             let ote = Rc::new(Node {
                 name: te.name.clone(),
@@ -4851,7 +4860,7 @@ pub fn parse_field_list_acc(
             });
         } else {
             if (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone())) {
-                let r = parse_field(&tokens, &ctx);
+                let r = parse_field(tokens.clone(), ctx);
                 if has_err(r.err.clone()) {
                     return Rc::new(FieldsResult {
                         fields: Rc::new(vec![]),
@@ -4861,7 +4870,7 @@ pub fn parse_field_list_acc(
                     });
                 }
                 tokens = r.tokens.clone();
-                let e = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
+                let e = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                 tokens = skip_newlines(match (*e).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                     EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
@@ -4889,15 +4898,15 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy_field = make_field_node(
-            &"".to_string(),
-            leaf_type_node(&"".to_string(), &start_span),
+            "".to_string(),
+            leaf_type_node("".to_string(), start_span.clone()),
             Cardinality::Required,
             None,
             None,
             start_span.clone(),
             start_span.clone(),
         );
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(FieldResult {
                 field: dummy_field.clone(),
@@ -4909,7 +4918,7 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
         let name = r.name.clone();
         let name_span = r.span.clone();
         let tokens = r.tokens.clone();
-        let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectColon));
+        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r2.err.clone()) {
             return Rc::new(FieldResult {
                 field: dummy_field.clone(),
@@ -4918,7 +4927,7 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
                 err: r2.err.clone(),
             });
         }
-        let r3 = parse_type_expr(&r2.tokens.clone(), &ctx);
+        let r3 = parse_type_expr(r2.tokens.clone(), ctx.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(FieldResult {
                 field: dummy_field.clone(),
@@ -4928,10 +4937,10 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
             });
         }
         let wr = try_where_clause(
-            &r3.tokens.clone(),
+            r3.tokens.clone(),
             r3.ctx.clone(),
-            &r3.type_expr.clone(),
-            &start_span,
+            r3.type_expr.clone(),
+            start_span.clone(),
         );
         if has_err(wr.err.clone()) {
             return Rc::new(FieldResult {
@@ -4944,11 +4953,11 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
         let te = wr.type_expr.clone();
         let tokens = wr.tokens.clone();
         let ctx = wr.ctx.clone();
-        let from_r = parse_optional_from_key(&tokens, ctx.clone());
+        let from_r = parse_optional_from_key(tokens.clone(), ctx.clone());
         let from_key = from_r.from_key.clone();
         let tokens = from_r.tokens.clone();
         let ctx = from_r.ctx.clone();
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectEq))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r4 = parse_expr(__ec.clone(), ctx.clone());
                 if has_err(r4.err.clone()) {
@@ -4960,7 +4969,7 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
                     });
                 }
                 let f = make_field_node(
-                    &name,
+                    name,
                     te.clone(),
                     te.return_cardinality.clone(),
                     Some(r4.expr.clone()),
@@ -4977,7 +4986,7 @@ pub fn parse_field(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Fi
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let f = make_field_node(
-                    &name,
+                    name,
                     te.clone(),
                     te.return_cardinality.clone(),
                     None,
@@ -5083,8 +5092,8 @@ pub fn parse_fn_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
             ident: None,
         });
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "fn".to_string(),
             }),
         );
@@ -5096,7 +5105,7 @@ pub fn parse_fn_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<I
                 err: r.err.clone(),
             });
         }
-        parse_fn_after_kw(&r.tokens.clone(), &ctx, &start_span)
+        parse_fn_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
     }
 }
 
@@ -5126,7 +5135,7 @@ pub fn parse_fn_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy,
@@ -5158,7 +5167,7 @@ pub fn parse_fn_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_params(&tokens, &ctx);
+        let r = parse_params(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -5170,7 +5179,7 @@ pub fn parse_fn_after_kw(
         let params = r.params.clone();
         let tokens = r.tokens.clone();
         let ctx = r.ctx.clone();
-        let ret = parse_optional_inferred(&tokens, ctx.clone());
+        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -5182,7 +5191,7 @@ pub fn parse_fn_after_kw(
         let inferred = ret.inferred.clone();
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
-        let r = parse_block(&skip_newlines(tokens.clone()), &ctx);
+        let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -5253,7 +5262,7 @@ pub fn parse_fn_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_block(&skip_newlines(prefix.tokens.clone()), &ctx);
+        let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx);
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy,
@@ -5318,31 +5327,31 @@ pub fn parse_func_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
         let kw = tok_keyword_text(tokens.clone().first().cloned());
         let r = if (kw.clone().as_str() == "func".to_string().as_str()) {
             expect(
-                &tokens,
-                &Rc::new(ExpectedToken::ExpectKeyword {
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
                     text: "func".to_string(),
                 }),
             )
         } else {
             if (kw.clone().as_str() == "pattern".to_string().as_str()) {
                 expect(
-                    &tokens,
-                    &Rc::new(ExpectedToken::ExpectKeyword {
+                    tokens.clone(),
+                    Rc::new(ExpectedToken::ExpectKeyword {
                         text: "pattern".to_string(),
                     }),
                 )
             } else {
                 if (kw.clone().as_str() == "interface".to_string().as_str()) {
                     expect(
-                        &tokens,
-                        &Rc::new(ExpectedToken::ExpectKeyword {
+                        tokens.clone(),
+                        Rc::new(ExpectedToken::ExpectKeyword {
                             text: "interface".to_string(),
                         }),
                     )
                 } else {
                     expect(
-                        &tokens,
-                        &Rc::new(ExpectedToken::ExpectKeyword {
+                        tokens.clone(),
+                        Rc::new(ExpectedToken::ExpectKeyword {
                             text: "func".to_string(),
                         }),
                     )
@@ -5368,7 +5377,7 @@ pub fn parse_func_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
             has_uses: has_uses,
             body_kind: BodyKind::BlockBody,
         });
-        let prefix = parse_item_prefix(&r.tokens.clone(), &ctx, &form);
+        let prefix = parse_item_prefix(r.tokens.clone(), ctx.clone(), form);
         if has_err(prefix.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy.clone(),
@@ -5377,7 +5386,7 @@ pub fn parse_func_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
                 err: prefix.err.clone(),
             });
         }
-        parse_block_body_from_prefix(&prefix, &start_span)
+        parse_block_body_from_prefix(prefix.clone(), start_span.clone())
     }
 }
 
@@ -5408,7 +5417,7 @@ pub fn parse_block_item_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy,
@@ -5440,7 +5449,7 @@ pub fn parse_block_item_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_params(&tokens, &ctx);
+        let r = parse_params(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -5452,7 +5461,7 @@ pub fn parse_block_item_after_kw(
         let params = r.params.clone();
         let tokens = r.tokens.clone();
         let ctx = r.ctx.clone();
-        let ret = parse_optional_inferred(&tokens, ctx.clone());
+        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -5465,7 +5474,7 @@ pub fn parse_block_item_after_kw(
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
         let uses_r = if form.has_uses.clone() {
-            parse_uses_clause(&skip_newlines(tokens.clone()), ctx.clone())
+            parse_uses_clause(skip_newlines(tokens.clone()), ctx.clone())
         } else {
             Rc::new(UsesResult {
                 uses: Rc::new(vec![]),
@@ -5485,7 +5494,7 @@ pub fn parse_block_item_after_kw(
         let uses = uses_r.uses.clone();
         let tokens = uses_r.tokens.clone();
         let ctx = uses_r.ctx.clone();
-        let r = parse_block(&skip_newlines(tokens.clone()), &ctx);
+        let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -5555,7 +5564,7 @@ pub fn parse_block_body_from_prefix(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = parse_block(&skip_newlines(prefix.tokens.clone()), &ctx);
+        let r = parse_block(skip_newlines(prefix.tokens.clone()), ctx);
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy,
@@ -5683,7 +5692,7 @@ pub fn parse_uses_list_acc(
     mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<UsesResult> {
     loop {
-        let r = parse_uses_entry(&tokens, &ctx);
+        let r = parse_uses_entry(tokens, ctx);
         if has_err(r.err.clone()) {
             return Rc::new(UsesResult {
                 uses: Rc::new(vec![]),
@@ -5693,7 +5702,7 @@ pub fn parse_uses_list_acc(
             });
         }
         acc = v2_rt::rc_list_push(acc.clone(), r.resource_use.clone());
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
                 let __tco_1 = r.ctx.clone();
@@ -5717,12 +5726,12 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = make_resource_use_node(
-            &"".to_string(),
-            leaf_type_node(&"".to_string(), &start_span),
+            "".to_string(),
+            leaf_type_node("".to_string(), start_span.clone()),
             start_span.clone(),
             start_span.clone(),
         );
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ResUseResult {
                 resource_use: dummy.clone(),
@@ -5733,7 +5742,7 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
         }
         let name = r.name.clone();
         let tokens = r.tokens.clone();
-        let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectColon));
+        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r2.err.clone()) {
             return Rc::new(ResUseResult {
                 resource_use: dummy.clone(),
@@ -5742,7 +5751,7 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                 err: r2.err.clone(),
             });
         }
-        let r3 = parse_type_expr(&r2.tokens.clone(), &ctx);
+        let r3 = parse_type_expr(r2.tokens.clone(), ctx.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(ResUseResult {
                 resource_use: dummy.clone(),
@@ -5751,7 +5760,7 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                 err: r3.err.clone(),
             });
         }
-        match (*eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectLParen))).clone() {
+        match (*eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectLParen))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let ar = parse_resource_config_args(__ec.clone(), r3.ctx.clone());
                 if has_err(ar.err.clone()) {
@@ -5762,7 +5771,7 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                         err: ar.err.clone(),
                     });
                 }
-                let r4 = expect(&ar.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                let r4 = expect(ar.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                 if has_err(r4.err.clone()) {
                     return Rc::new(ResUseResult {
                         resource_use: dummy.clone(),
@@ -5791,8 +5800,7 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                     expr_data: r3.type_expr.clone().expr_data.clone(),
                     ident: None,
                 });
-                let ru =
-                    make_resource_use_node(&name, res_node, start_span.clone(), r.span.clone());
+                let ru = make_resource_use_node(name, res_node, start_span.clone(), r.span.clone());
                 Rc::new(ResUseResult {
                     resource_use: ru,
                     tokens: r4.tokens.clone(),
@@ -5802,7 +5810,7 @@ pub fn parse_uses_entry(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let ru = make_resource_use_node(
-                    &name,
+                    name,
                     r3.type_expr.clone(),
                     start_span.clone(),
                     r.span.clone(),
@@ -5848,7 +5856,7 @@ pub fn parse_resource_config_acc(
             });
         }
         let zero_span = make_span(0, 0);
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ResConfigResult {
                 fields: Rc::new(vec![]),
@@ -5858,7 +5866,7 @@ pub fn parse_resource_config_acc(
             });
         }
         let field_name = r.name.clone();
-        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r2.err.clone()) {
             return Rc::new(ResConfigResult {
                 fields: Rc::new(vec![]),
@@ -5876,9 +5884,9 @@ pub fn parse_resource_config_acc(
                 err: r3.err.clone(),
             });
         }
-        let fi = make_field_init_node(&field_name, r3.expr.clone(), zero_span, r.span.clone());
+        let fi = make_field_init_node(field_name, r3.expr.clone(), zero_span, r.span.clone());
         acc = v2_rt::rc_list_push(acc.clone(), fi);
-        match (*eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = skip_newlines(__ec.clone());
                 let __tco_1 = r3.ctx.clone();
@@ -5902,9 +5910,9 @@ pub fn parse_optional_inferred(
     tokens: &Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<OptRetResult> {
-    match (*eat(&tokens, Rc::new(ExpectedToken::ExpectArrow))).clone() {
+    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectArrow))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
-            let r = parse_type_expr(&__ec, &ctx);
+            let r = parse_type_expr(__ec.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(OptRetResult {
                     inferred: None,
@@ -5955,8 +5963,8 @@ pub fn parse_service_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) ->
             ident: None,
         });
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "service".to_string(),
             }),
         );
@@ -5968,7 +5976,7 @@ pub fn parse_service_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) ->
                 err: r.err.clone(),
             });
         }
-        parse_service_after_kw(&r.tokens.clone(), &ctx, &start_span)
+        parse_service_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
     }
 }
 
@@ -5998,7 +6006,7 @@ pub fn parse_service_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r_ns = expect_name(&tokens);
+        let r_ns = expect_name(tokens.clone());
         if has_err(r_ns.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy,
@@ -6035,7 +6043,7 @@ pub fn parse_service_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectLBrace));
+        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6045,7 +6053,7 @@ pub fn parse_service_after_kw(
             });
         }
         let tokens = skip_newlines(r.tokens.clone());
-        let r = parse_service_body(&tokens, ctx.clone());
+        let r = parse_service_body(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6055,7 +6063,7 @@ pub fn parse_service_after_kw(
             });
         }
         let tokens = skip_newlines(r.tokens.clone());
-        let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
         if has_err(r2.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -6065,7 +6073,7 @@ pub fn parse_service_after_kw(
             });
         }
         let ns_prop = make_field_init_node(
-            &"namespace_root".to_string(),
+            "namespace_root".to_string(),
             make_expr_node(
                 Rc::new(ExprData::ExprLiteral {
                     value: Rc::new(LiteralValue::LitStr {
@@ -6162,7 +6170,7 @@ pub fn parse_service_entries(
                     let id = tok.clone().unwrap().text.clone();
                     if (id.clone().as_str() == "config".to_string().as_str()) {
                         let r = expect(
-                            &Rc::new(
+                            Rc::new(
                                 tokens
                                     .clone()
                                     .iter()
@@ -6170,7 +6178,7 @@ pub fn parse_service_entries(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            &Rc::new(ExpectedToken::ExpectLBrace),
+                            Rc::new(ExpectedToken::ExpectLBrace),
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(ServiceBodyResult {
@@ -6197,7 +6205,7 @@ pub fn parse_service_entries(
                             });
                         }
                         tokens = skip_newlines(r2.tokens.clone());
-                        let r3 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                        let r3 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                         if has_err(r3.err.clone()) {
                             return Rc::new(ServiceBodyResult {
                                 config: config.clone(),
@@ -6220,7 +6228,7 @@ pub fn parse_service_entries(
                     } else {
                         if (id.clone().as_str() == "transport".to_string().as_str()) {
                             let r = parse_transport_binding(
-                                &Rc::new(
+                                Rc::new(
                                     tokens
                                         .clone()
                                         .iter()
@@ -6228,7 +6236,7 @@ pub fn parse_service_entries(
                                         .skip(1 as usize)
                                         .collect::<Vec<_>>(),
                                 ),
-                                &ctx,
+                                ctx.clone(),
                             );
                             if has_err(r.err.clone()) {
                                 return Rc::new(ServiceBodyResult {
@@ -6268,7 +6276,7 @@ pub fn parse_service_entries(
                 Some(TokenShape::ShKeyword) => {
                     let kw_text = tok.clone().unwrap().text.clone();
                     if (kw_text.as_str() == "operation".to_string().as_str()) {
-                        let r = parse_operation_def(&tokens, &ctx);
+                        let r = parse_operation_def(tokens.clone(), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ServiceBodyResult {
                                 config: config.clone(),
@@ -6387,7 +6395,7 @@ pub fn parse_config_fields(
                 rate_limit: None,
                 retry: None,
             });
-            let r = expect_ident(&tokens);
+            let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(ConfigResult {
                     config: dummy_cfg.clone(),
@@ -6397,7 +6405,7 @@ pub fn parse_config_fields(
                 });
             }
             let fname = r.name.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
             if has_err(r2.err.clone()) {
                 return Rc::new(ConfigResult {
                     config: dummy_cfg.clone(),
@@ -6417,7 +6425,7 @@ pub fn parse_config_fields(
             }
             tokens = r3.tokens.clone();
             ctx = r3.ctx.clone();
-            let e = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
@@ -6482,7 +6490,7 @@ pub fn parse_transport_binding(
                 if (tok_text.clone().as_str() == "rest".to_string().as_str()) {
                     {
                         let r = expect(
-                            &Rc::new(
+                            Rc::new(
                                 tokens
                                     .clone()
                                     .iter()
@@ -6490,7 +6498,7 @@ pub fn parse_transport_binding(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            &Rc::new(ExpectedToken::ExpectLBrace),
+                            Rc::new(ExpectedToken::ExpectLBrace),
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(TransportResult {
@@ -6511,8 +6519,8 @@ pub fn parse_transport_binding(
                             });
                         }
                         let r3 = expect(
-                            &skip_newlines(r2.tokens.clone()),
-                            &Rc::new(ExpectedToken::ExpectRBrace),
+                            skip_newlines(r2.tokens.clone()),
+                            Rc::new(ExpectedToken::ExpectRBrace),
                         );
                         if has_err(r3.err.clone()) {
                             return Rc::new(TransportResult {
@@ -6533,7 +6541,7 @@ pub fn parse_transport_binding(
                     if (tok_text.clone().as_str() == "shell".to_string().as_str()) {
                         {
                             let r = expect(
-                                &Rc::new(
+                                Rc::new(
                                     tokens
                                         .clone()
                                         .iter()
@@ -6541,7 +6549,7 @@ pub fn parse_transport_binding(
                                         .skip(1 as usize)
                                         .collect::<Vec<_>>(),
                                 ),
-                                &Rc::new(ExpectedToken::ExpectLBrace),
+                                Rc::new(ExpectedToken::ExpectLBrace),
                             );
                             if has_err(r.err.clone()) {
                                 return Rc::new(TransportResult {
@@ -6564,8 +6572,8 @@ pub fn parse_transport_binding(
                                 });
                             }
                             let r3 = expect(
-                                &skip_newlines(r2.tokens.clone()),
-                                &Rc::new(ExpectedToken::ExpectRBrace),
+                                skip_newlines(r2.tokens.clone()),
+                                Rc::new(ExpectedToken::ExpectRBrace),
                             );
                             if has_err(r3.err.clone()) {
                                 return Rc::new(TransportResult {
@@ -6586,7 +6594,7 @@ pub fn parse_transport_binding(
                         if (tok_text.clone().as_str() == "file".to_string().as_str()) {
                             {
                                 let r = expect(
-                                    &Rc::new(
+                                    Rc::new(
                                         tokens
                                             .clone()
                                             .iter()
@@ -6594,7 +6602,7 @@ pub fn parse_transport_binding(
                                             .skip(1 as usize)
                                             .collect::<Vec<_>>(),
                                     ),
-                                    &Rc::new(ExpectedToken::ExpectLBrace),
+                                    Rc::new(ExpectedToken::ExpectLBrace),
                                 );
                                 if has_err(r.err.clone()) {
                                     return Rc::new(TransportResult {
@@ -6617,8 +6625,8 @@ pub fn parse_transport_binding(
                                     });
                                 }
                                 let r3 = expect(
-                                    &skip_newlines(r2.tokens.clone()),
-                                    &Rc::new(ExpectedToken::ExpectRBrace),
+                                    skip_newlines(r2.tokens.clone()),
+                                    Rc::new(ExpectedToken::ExpectRBrace),
                                 );
                                 if has_err(r3.err.clone()) {
                                     return Rc::new(TransportResult {
@@ -6721,7 +6729,7 @@ pub fn parse_rest_fields(
                 err: None,
             });
         } else {
-            let r = expect_ident(&tokens);
+            let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(TransportResult {
                     transport: dummy.clone(),
@@ -6731,7 +6739,7 @@ pub fn parse_rest_fields(
                 });
             }
             let fname = r.name.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
             if has_err(r2.err.clone()) {
                 return Rc::new(TransportResult {
                     transport: dummy.clone(),
@@ -6749,7 +6757,7 @@ pub fn parse_rest_fields(
                     err: r3.err.clone(),
                 });
             }
-            let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
@@ -6854,13 +6862,13 @@ pub fn parse_shell_fields(
             || tok_is_eof(tokens.clone().first().cloned()))
         {
             break Rc::new(TransportResult {
-                transport: shell_transport_node(argv, Rc::new(vec![]), stdin, &span),
+                transport: shell_transport_node(argv, Rc::new(vec![]), stdin, span.clone()),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
                 err: None,
             });
         } else {
-            let r = expect_ident(&tokens);
+            let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(TransportResult {
                     transport: dummy.clone(),
@@ -6870,7 +6878,7 @@ pub fn parse_shell_fields(
                 });
             }
             let fname = r.name.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
             if has_err(r2.err.clone()) {
                 return Rc::new(TransportResult {
                     transport: dummy.clone(),
@@ -6880,7 +6888,7 @@ pub fn parse_shell_fields(
                 });
             }
             if (fname.clone().as_str() == "argv".to_string().as_str()) {
-                let r3 = expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectLBracket));
+                let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
                 if has_err(r3.err.clone()) {
                     return Rc::new(TransportResult {
                         transport: dummy.clone(),
@@ -6902,7 +6910,7 @@ pub fn parse_shell_fields(
                         err: r4.err.clone(),
                     });
                 }
-                let r5 = expect(&r4.tokens.clone(), &Rc::new(ExpectedToken::ExpectRBracket));
+                let r5 = expect(r4.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
                 if has_err(r5.err.clone()) {
                     return Rc::new(TransportResult {
                         transport: dummy.clone(),
@@ -6911,7 +6919,7 @@ pub fn parse_shell_fields(
                         err: r5.err.clone(),
                     });
                 }
-                let e = eat(&r5.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+                let e = eat(r5.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                 tokens = match (*e).clone() {
                     EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                     EatResult::EatUnchanged { tokens: _, .. } => r5.tokens.clone(),
@@ -6934,7 +6942,7 @@ pub fn parse_shell_fields(
                             err: r3.err.clone(),
                         });
                     }
-                    let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+                    let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = match (*e).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                         EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
@@ -6956,7 +6964,7 @@ pub fn parse_shell_fields(
                             err: r3.err.clone(),
                         });
                     }
-                    let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+                    let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = match (*e).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                         EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
@@ -7011,7 +7019,7 @@ pub fn parse_file_fields(
                 err: None,
             });
         } else {
-            let r = expect_ident(&tokens);
+            let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(TransportResult {
                     transport: dummy.clone(),
@@ -7021,7 +7029,7 @@ pub fn parse_file_fields(
                 });
             }
             let fname = r.name.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
             if has_err(r2.err.clone()) {
                 return Rc::new(TransportResult {
                     transport: dummy.clone(),
@@ -7039,7 +7047,7 @@ pub fn parse_file_fields(
                     err: r3.err.clone(),
                 });
             }
-            let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = match (*e.clone()).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
@@ -7078,12 +7086,12 @@ pub fn parse_operation_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) 
             Rc::new(vec![]),
             Rc::new(vec![]),
             None,
-            &start_span,
-            &ctx.source_indices.clone(),
+            start_span.clone(),
+            ctx.source_indices.clone(),
         );
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "operation".to_string(),
             }),
         );
@@ -7095,7 +7103,7 @@ pub fn parse_operation_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) 
                 err: r.err.clone(),
             });
         }
-        let r = expect_ident(&r.tokens.clone());
+        let r = expect_ident(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -7108,9 +7116,21 @@ pub fn parse_operation_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) 
         let name_span = r.span.clone();
         let tokens = skip_newlines(r.tokens.clone());
         if tok_is_lbrace(tokens.clone().first().cloned()) {
-            parse_operation_v1_body(&tokens, &ctx, name, name_span, &start_span)
+            parse_operation_v1_body(
+                tokens.clone(),
+                ctx.clone(),
+                name,
+                name_span,
+                start_span.clone(),
+            )
         } else {
-            parse_operation_v2_inline(&tokens, &ctx, name, name_span, &start_span)
+            parse_operation_v2_inline(
+                tokens.clone(),
+                ctx.clone(),
+                name,
+                name_span,
+                start_span.clone(),
+            )
         }
     }
 }
@@ -7133,15 +7153,15 @@ pub fn parse_operation_v2_inline(
             Rc::new(vec![]),
             Rc::new(vec![]),
             None,
-            &start_span,
-            &ctx.source_indices.clone(),
+            start_span.clone(),
+            ctx.source_indices.clone(),
         );
         let mods_r = parse_operation_modifiers(tokens.clone(), ctx.clone());
         let modifiers = mods_r.modifiers.clone();
         let mod_props = modifiers_to_props(modifiers, start_span.clone());
         let tokens = mods_r.tokens.clone();
         let ctx = mods_r.ctx.clone();
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLParen));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -7161,8 +7181,8 @@ pub fn parse_operation_v2_inline(
         }
         let inputs = r.fields.clone();
         let r = expect(
-            &skip_newlines(r.tokens.clone()),
-            &Rc::new(ExpectedToken::ExpectRParen),
+            skip_newlines(r.tokens.clone()),
+            Rc::new(ExpectedToken::ExpectRParen),
         );
         if has_err(r.err.clone()) {
             return Rc::new(OpResult {
@@ -7173,7 +7193,7 @@ pub fn parse_operation_v2_inline(
             });
         }
         let tokens = r.tokens.clone();
-        let ret = parse_optional_inferred(&tokens, ctx.clone());
+        let ret = parse_optional_inferred(tokens.clone(), ctx.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -7186,12 +7206,12 @@ pub fn parse_operation_v2_inline(
         let ctx = ret.ctx.clone();
         let outputs = match ret.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
-                node_inferred_to_outputs(&rt, ctx.source_indices.clone())
+                node_inferred_to_outputs(rt.clone(), ctx.source_indices.clone())
             }
             _ => Rc::new(vec![]),
         };
         let tokens = skip_newlines(tokens.clone());
-        let resp_r = parse_optional_response_block(&tokens, &ctx);
+        let resp_r = parse_optional_response_block(tokens.clone(), ctx.clone());
         if has_err(resp_r.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -7202,7 +7222,7 @@ pub fn parse_operation_v2_inline(
         }
         let tokens = skip_newlines(resp_r.tokens.clone());
         let ctx = resp_r.ctx.clone();
-        let mock_r = parse_optional_mock_response_block(&tokens, &ctx);
+        let mock_r = parse_optional_mock_response_block(tokens.clone(), ctx.clone());
         if has_err(mock_r.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -7223,8 +7243,8 @@ pub fn parse_operation_v2_inline(
             Rc::new(vec![]),
             mod_props,
             None,
-            &start_span,
-            &ctx.source_indices.clone(),
+            start_span.clone(),
+            ctx.source_indices.clone(),
         );
         Rc::new(OpResult {
             operation: op,
@@ -7253,10 +7273,10 @@ pub fn parse_operation_v1_body(
             Rc::new(vec![]),
             Rc::new(vec![]),
             None,
-            &start_span,
-            &ctx.source_indices.clone(),
+            start_span.clone(),
+            ctx.source_indices.clone(),
         );
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLBrace));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
             return Rc::new(OpResult {
                 operation: dummy_op.clone(),
@@ -7286,8 +7306,8 @@ pub fn parse_operation_v1_body(
             });
         }
         let r3 = expect(
-            &skip_newlines(r2.tokens.clone()),
-            &Rc::new(ExpectedToken::ExpectRBrace),
+            skip_newlines(r2.tokens.clone()),
+            Rc::new(ExpectedToken::ExpectRBrace),
         );
         if has_err(r3.err.clone()) {
             return Rc::new(OpResult {
@@ -7307,8 +7327,8 @@ pub fn parse_operation_v1_body(
             r2.exit_props.clone(),
             r2.modifier_props.clone(),
             r2.transport.clone(),
-            &start_span,
-            &ctx.source_indices.clone(),
+            start_span.clone(),
+            ctx.source_indices.clone(),
         );
         Rc::new(OpResult {
             operation: op,
@@ -7358,7 +7378,7 @@ pub fn parse_op_body_entries(
                     let kw_text = tok.clone().unwrap().text.clone();
                     if (kw_text.clone().as_str() == "input".to_string().as_str()) {
                         let r = expect(
-                            &Rc::new(
+                            Rc::new(
                                 tokens
                                     .clone()
                                     .iter()
@@ -7366,7 +7386,7 @@ pub fn parse_op_body_entries(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            &Rc::new(ExpectedToken::ExpectLBrace),
+                            Rc::new(ExpectedToken::ExpectLBrace),
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(OpBodyResult {
@@ -7398,8 +7418,8 @@ pub fn parse_op_body_entries(
                             });
                         }
                         let r3 = expect(
-                            &skip_newlines(r2.tokens.clone()),
-                            &Rc::new(ExpectedToken::ExpectRBrace),
+                            skip_newlines(r2.tokens.clone()),
+                            Rc::new(ExpectedToken::ExpectRBrace),
                         );
                         if has_err(r3.err.clone()) {
                             return Rc::new(OpBodyResult {
@@ -7427,7 +7447,7 @@ pub fn parse_op_body_entries(
                     } else {
                         if (kw_text.clone().as_str() == "output".to_string().as_str()) {
                             let r = expect(
-                                &Rc::new(
+                                Rc::new(
                                     tokens
                                         .clone()
                                         .iter()
@@ -7435,7 +7455,7 @@ pub fn parse_op_body_entries(
                                         .skip(1 as usize)
                                         .collect::<Vec<_>>(),
                                 ),
-                                &Rc::new(ExpectedToken::ExpectLBrace),
+                                Rc::new(ExpectedToken::ExpectLBrace),
                             );
                             if has_err(r.err.clone()) {
                                 return Rc::new(OpBodyResult {
@@ -7467,8 +7487,8 @@ pub fn parse_op_body_entries(
                                 });
                             }
                             let r3 = expect(
-                                &skip_newlines(r2.tokens.clone()),
-                                &Rc::new(ExpectedToken::ExpectRBrace),
+                                skip_newlines(r2.tokens.clone()),
+                                Rc::new(ExpectedToken::ExpectRBrace),
                             );
                             if has_err(r3.err.clone()) {
                                 return Rc::new(OpBodyResult {
@@ -7495,7 +7515,7 @@ pub fn parse_op_body_entries(
                             }
                         } else {
                             if (kw_text.clone().as_str() == "idempotent".to_string().as_str()) {
-                                let prop = modifier_to_prop("idempotent".to_string(), &span);
+                                let prop = modifier_to_prop("idempotent".to_string(), span);
                                 {
                                     let __tco_0 = Rc::new(
                                         tokens.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
@@ -7507,7 +7527,7 @@ pub fn parse_op_body_entries(
                                 }
                             } else {
                                 if (kw_text.clone().as_str() == "readonly".to_string().as_str()) {
-                                    let prop = modifier_to_prop("readonly".to_string(), &span);
+                                    let prop = modifier_to_prop("readonly".to_string(), span);
                                     {
                                         let __tco_0 = Rc::new(
                                             tokens
@@ -7524,7 +7544,7 @@ pub fn parse_op_body_entries(
                                 } else {
                                     if (kw_text.clone().as_str() == "hermetic".to_string().as_str())
                                     {
-                                        let prop = modifier_to_prop("hermetic".to_string(), &span);
+                                        let prop = modifier_to_prop("hermetic".to_string(), span);
                                         {
                                             let __tco_0 = Rc::new(
                                                 tokens
@@ -7550,7 +7570,7 @@ pub fn parse_op_body_entries(
                     let id = tok.clone().unwrap().text.clone();
                     if (id.clone().as_str() == "transport".to_string().as_str()) {
                         let r = parse_transport_binding(
-                            &Rc::new(
+                            Rc::new(
                                 tokens
                                     .clone()
                                     .iter()
@@ -7558,7 +7578,7 @@ pub fn parse_op_body_entries(
                                     .skip(1 as usize)
                                     .collect::<Vec<_>>(),
                             ),
-                            &ctx,
+                            ctx.clone(),
                         );
                         if has_err(r.err.clone()) {
                             return Rc::new(OpBodyResult {
@@ -7586,7 +7606,7 @@ pub fn parse_op_body_entries(
                     } else {
                         if (id.clone().as_str() == "exit".to_string().as_str()) {
                             let r = expect(
-                                &Rc::new(
+                                Rc::new(
                                     tokens
                                         .clone()
                                         .iter()
@@ -7594,7 +7614,7 @@ pub fn parse_op_body_entries(
                                         .skip(1 as usize)
                                         .collect::<Vec<_>>(),
                                 ),
-                                &Rc::new(ExpectedToken::ExpectLBrace),
+                                Rc::new(ExpectedToken::ExpectLBrace),
                             );
                             if has_err(r.err.clone()) {
                                 return Rc::new(OpBodyResult {
@@ -7627,8 +7647,8 @@ pub fn parse_op_body_entries(
                                 });
                             }
                             let r3 = expect(
-                                &skip_newlines(r2.tokens.clone()),
-                                &Rc::new(ExpectedToken::ExpectRBrace),
+                                skip_newlines(r2.tokens.clone()),
+                                Rc::new(ExpectedToken::ExpectRBrace),
                             );
                             if has_err(r3.err.clone()) {
                                 return Rc::new(OpBodyResult {
@@ -7655,7 +7675,7 @@ pub fn parse_op_body_entries(
                             }
                         } else {
                             if (id.clone().as_str() == "response".to_string().as_str()) {
-                                let r = parse_optional_response_block(&tokens, &ctx);
+                                let r = parse_optional_response_block(tokens.clone(), ctx.clone());
                                 if has_err(r.err.clone()) {
                                     return Rc::new(OpBodyResult {
                                         inputs: inputs.clone(),
@@ -7681,7 +7701,10 @@ pub fn parse_op_body_entries(
                                 }
                             } else {
                                 if (id.clone().as_str() == "mock_response".to_string().as_str()) {
-                                    let r = parse_optional_mock_response_block(&tokens, &ctx);
+                                    let r = parse_optional_mock_response_block(
+                                        tokens.clone(),
+                                        ctx.clone(),
+                                    );
                                     if has_err(r.err.clone()) {
                                         return Rc::new(OpBodyResult {
                                             inputs: inputs.clone(),
@@ -7707,7 +7730,7 @@ pub fn parse_op_body_entries(
                                     }
                                 } else {
                                     if peek_is_colon_after_ident(tokens.clone()) {
-                                        let r = expect_ident(&tokens);
+                                        let r = expect_ident(tokens.clone());
                                         if has_err(r.err.clone()) {
                                             return Rc::new(OpBodyResult {
                                                 inputs: inputs.clone(),
@@ -7723,8 +7746,8 @@ pub fn parse_op_body_entries(
                                             });
                                         }
                                         let r2 = expect(
-                                            &r.tokens.clone(),
-                                            &Rc::new(ExpectedToken::ExpectColon),
+                                            r.tokens.clone(),
+                                            Rc::new(ExpectedToken::ExpectColon),
                                         );
                                         if has_err(r2.err.clone()) {
                                             return Rc::new(OpBodyResult {
@@ -7811,7 +7834,7 @@ pub fn parse_op_body_entries(
 
 pub fn modifier_to_prop(name: String, span: &Rc<SourceSpan>) -> Rc<Node> {
     make_field_init_node(
-        &name,
+        name,
         make_expr_node(
             Rc::new(ExprData::ExprLiteral {
                 value: Rc::new(LiteralValue::LitBool { value: true }),
@@ -7833,9 +7856,15 @@ pub fn modifiers_to_props(
         let mut __result = Vec::new();
         for m in modifiers.iter().cloned() {
             __result.push(match m.clone() {
-                OperationModifier::Idempotent => modifier_to_prop("idempotent".to_string(), &span),
-                OperationModifier::Readonly => modifier_to_prop("readonly".to_string(), &span),
-                OperationModifier::Hermetic => modifier_to_prop("hermetic".to_string(), &span),
+                OperationModifier::Idempotent => {
+                    modifier_to_prop("idempotent".to_string(), span.clone())
+                }
+                OperationModifier::Readonly => {
+                    modifier_to_prop("readonly".to_string(), span.clone())
+                }
+                OperationModifier::Hermetic => {
+                    modifier_to_prop("hermetic".to_string(), span.clone())
+                }
             });
         }
         __result
@@ -7946,7 +7975,7 @@ pub fn node_to_name_str(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
-            with_required_cardinality(&n)
+            with_required_cardinality(n.clone())
         } else {
             n.clone()
         };
@@ -7955,7 +7984,7 @@ pub fn node_to_name_str(
         } else {
             "".to_string()
         };
-        let effective_name = authored_name_at(source_indices.clone(), &effective_n);
+        let effective_name = authored_name_at(source_indices.clone(), effective_n.clone());
         let is_keyed_container = (is_container_type(effective_name.clone())
             && ((effective_n.children.clone().len() as i64) == 2));
         if is_keyed_container {
@@ -7965,14 +7994,17 @@ pub fn node_to_name_str(
                         v2_rt::concat(opt_prefix, effective_name.clone()),
                         "_".to_string(),
                     ),
-                    node_to_name_str(&ch, &source_indices),
+                    node_to_name_str(ch.clone(), source_indices.clone()),
                 ),
                 None => v2_rt::concat(opt_prefix, effective_name.clone()),
             }
         } else {
             if (effective_n.type_annotation.clone() != None) {
                 match effective_n.children.clone().first().cloned() {
-                    Some(ch) => v2_rt::concat(opt_prefix, node_to_name_str(&ch, &source_indices)),
+                    Some(ch) => v2_rt::concat(
+                        opt_prefix,
+                        node_to_name_str(ch.clone(), source_indices.clone()),
+                    ),
                     None => v2_rt::concat(opt_prefix, effective_name.clone()),
                 }
             } else {
@@ -7980,7 +8012,7 @@ pub fn node_to_name_str(
                     match effective_n.children.clone().first().cloned() {
                         Some(ch) => v2_rt::concat(
                             v2_rt::concat(opt_prefix, "List_".to_string()),
-                            node_to_name_str(&ch, &source_indices),
+                            node_to_name_str(ch.clone(), source_indices.clone()),
                         ),
                         None => v2_rt::concat(opt_prefix, effective_name.clone()),
                     }
@@ -8032,7 +8064,7 @@ pub fn parse_exit_entries_acc(
                 err: None,
             });
         } else {
-            let r = parse_status_pattern(&tokens, &ctx);
+            let r = parse_status_pattern(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(ExitEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8042,7 +8074,7 @@ pub fn parse_exit_entries_acc(
                 });
             }
             let code = r.expr.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectFatArrow));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));
             if has_err(r2.err.clone()) {
                 return Rc::new(ExitEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8051,7 +8083,7 @@ pub fn parse_exit_entries_acc(
                     err: r2.err.clone(),
                 });
             }
-            let r3 = parse_type_expr(&r2.tokens.clone(), &r.ctx.clone());
+            let r3 = parse_type_expr(r2.tokens.clone(), r.ctx.clone());
             if has_err(r3.err.clone()) {
                 return Rc::new(ExitEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8076,13 +8108,13 @@ pub fn parse_exit_entries_acc(
                 ),
                 _ => r3.tokens.clone(),
             };
-            let code_str = status_expr_to_str(&code, ctx.source_indices.clone());
-            let type_name = node_to_name_str(&r3.type_expr.clone(), &ctx.source_indices.clone());
+            let code_str = status_expr_to_str(code, ctx.source_indices.clone());
+            let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
             let prop_name = v2_rt::concat("exit_".to_string(), code_str);
             let entry = make_field_init_node(
-                &prop_name,
+                prop_name,
                 make_named_expr_node(
-                    &type_name,
+                    type_name,
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
                     Rc::new(vec![]),
                     None,
@@ -8092,7 +8124,7 @@ pub fn parse_exit_entries_acc(
                 r3.type_expr.clone().span.clone(),
                 no_span(),
             );
-            let e = eat(&desc_tokens, Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
@@ -8180,7 +8212,7 @@ pub fn parse_status_pattern(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>)
                         return Rc::new(ExprResult {
                             expr: make_expr_error_node(
                                 ExprErrorKind::InternalExprError,
-                                &v2_rt::concat(
+                                v2_rt::concat(
                                     v2_rt::concat(
                                         "internal: ShLitInt token text not parseable as int: '"
                                             .to_string(),
@@ -8188,7 +8220,7 @@ pub fn parse_status_pattern(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>)
                                     ),
                                     "'".to_string(),
                                 ),
-                                &span,
+                                span.clone(),
                             ),
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
@@ -8334,7 +8366,7 @@ pub fn parse_optional_response_block(
         if is_response {
             {
                 let r = expect(
-                    &Rc::new(
+                    Rc::new(
                         tokens
                             .clone()
                             .iter()
@@ -8342,7 +8374,7 @@ pub fn parse_optional_response_block(
                             .skip(1 as usize)
                             .collect::<Vec<_>>(),
                     ),
-                    &Rc::new(ExpectedToken::ExpectLBrace),
+                    Rc::new(ExpectedToken::ExpectLBrace),
                 );
                 if has_err(r.err.clone()) {
                     return Rc::new(ResponsesResult {
@@ -8362,8 +8394,8 @@ pub fn parse_optional_response_block(
                     });
                 }
                 let r3 = expect(
-                    &skip_newlines(r2.tokens.clone()),
-                    &Rc::new(ExpectedToken::ExpectRBrace),
+                    skip_newlines(r2.tokens.clone()),
+                    Rc::new(ExpectedToken::ExpectRBrace),
                 );
                 if has_err(r3.err.clone()) {
                     return Rc::new(ResponsesResult {
@@ -8415,7 +8447,7 @@ pub fn parse_response_entries_acc(
                 err: None,
             });
         } else {
-            let r = parse_status_pattern(&tokens, &ctx);
+            let r = parse_status_pattern(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(RespEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8425,7 +8457,7 @@ pub fn parse_response_entries_acc(
                 });
             }
             let status = r.expr.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectFatArrow));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));
             if has_err(r2.err.clone()) {
                 return Rc::new(RespEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8434,7 +8466,7 @@ pub fn parse_response_entries_acc(
                     err: r2.err.clone(),
                 });
             }
-            let r3 = parse_type_expr(&r2.tokens.clone(), &r.ctx.clone());
+            let r3 = parse_type_expr(r2.tokens.clone(), r.ctx.clone());
             if has_err(r3.err.clone()) {
                 return Rc::new(RespEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8443,13 +8475,13 @@ pub fn parse_response_entries_acc(
                     err: r3.err.clone(),
                 });
             }
-            let status_str = status_expr_to_str(&status, ctx.source_indices.clone());
-            let type_name = node_to_name_str(&r3.type_expr.clone(), &ctx.source_indices.clone());
+            let status_str = status_expr_to_str(status, ctx.source_indices.clone());
+            let type_name = node_to_name_str(r3.type_expr.clone(), ctx.source_indices.clone());
             let prop_name = v2_rt::concat("response_".to_string(), status_str);
             let entry = make_field_init_node(
-                &prop_name,
+                prop_name,
                 make_named_expr_node(
-                    &type_name,
+                    type_name,
                     Rc::new(ExprData::ExprVar { binding_kind: None }),
                     Rc::new(vec![]),
                     None,
@@ -8459,7 +8491,7 @@ pub fn parse_response_entries_acc(
                 r3.type_expr.clone().span.clone(),
                 no_span(),
             );
-            let e = eat(&r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(r3.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r3.tokens.clone(),
@@ -8491,7 +8523,7 @@ pub fn parse_optional_mock_response_block(
         if is_mock {
             {
                 let r = expect(
-                    &Rc::new(
+                    Rc::new(
                         tokens
                             .clone()
                             .iter()
@@ -8499,7 +8531,7 @@ pub fn parse_optional_mock_response_block(
                             .skip(1 as usize)
                             .collect::<Vec<_>>(),
                     ),
-                    &Rc::new(ExpectedToken::ExpectLBrace),
+                    Rc::new(ExpectedToken::ExpectLBrace),
                 );
                 if has_err(r.err.clone()) {
                     return Rc::new(MocksResult {
@@ -8519,8 +8551,8 @@ pub fn parse_optional_mock_response_block(
                     });
                 }
                 let r3 = expect(
-                    &skip_newlines(r2.tokens.clone()),
-                    &Rc::new(ExpectedToken::ExpectRBrace),
+                    skip_newlines(r2.tokens.clone()),
+                    Rc::new(ExpectedToken::ExpectRBrace),
                 );
                 if has_err(r3.err.clone()) {
                     return Rc::new(MocksResult {
@@ -8572,7 +8604,7 @@ pub fn parse_mock_response_entries_acc(
                 err: None,
             });
         } else {
-            let r = parse_status_pattern(&tokens, &ctx);
+            let r = parse_status_pattern(tokens.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(MockEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8582,7 +8614,7 @@ pub fn parse_mock_response_entries_acc(
                 });
             }
             let status = r.expr.clone();
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectFatArrow));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));
             if has_err(r2.err.clone()) {
                 return Rc::new(MockEntriesResult {
                     entries: Rc::new(vec![]),
@@ -8617,10 +8649,10 @@ pub fn parse_mock_response_entries_acc(
                 ),
                 _ => r3.tokens.clone(),
             };
-            let status_str = status_expr_to_str(&status, ctx.source_indices.clone());
+            let status_str = status_expr_to_str(status, ctx.source_indices.clone());
             let prop_name = v2_rt::concat("mock_".to_string(), status_str);
-            let entry = make_field_init_node(&prop_name, body, make_span(0, 0), make_span(0, 0));
-            let e = eat(&desc_tokens, Rc::new(ExpectedToken::ExpectComma));
+            let entry = make_field_init_node(prop_name, body, make_span(0, 0), make_span(0, 0));
+            let e = eat(desc_tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => desc_tokens.clone(),
@@ -8660,8 +8692,8 @@ pub fn parse_resource_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -
             ident: None,
         });
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "resource".to_string(),
             }),
         );
@@ -8673,7 +8705,7 @@ pub fn parse_resource_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -
                 err: r.err.clone(),
             });
         }
-        parse_resource_after_kw(r.tokens.clone(), &ctx, &start_span)
+        parse_resource_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
     }
 }
 
@@ -8703,7 +8735,7 @@ pub fn parse_resource_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens);
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy,
@@ -8734,7 +8766,7 @@ pub fn parse_resource_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectLBrace));
+        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -8758,8 +8790,8 @@ pub fn parse_resource_after_kw(
             });
         }
         let r2 = expect(
-            &skip_newlines(r.tokens.clone()),
-            &Rc::new(ExpectedToken::ExpectRBrace),
+            skip_newlines(r.tokens.clone()),
+            Rc::new(ExpectedToken::ExpectRBrace),
         );
         if has_err(r2.err.clone()) {
             return Rc::new(ItemResult {
@@ -8825,7 +8857,7 @@ pub fn parse_resource_entries(
                 Some(TokenShape::ShKeyword) => {
                     let kw_text = tok_keyword_text(tok.clone());
                     if (kw_text.clone().as_str() == "capability".to_string().as_str()) {
-                        let r = parse_capability(&tokens, &ctx);
+                        let r = parse_capability(tokens.clone(), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ResPropResult {
                                 properties: properties.clone(),
@@ -8847,7 +8879,7 @@ pub fn parse_resource_entries(
                     } else {
                         if (kw_text.clone().as_str() == "acquire".to_string().as_str()) {
                             let r = expect(
-                                &Rc::new(
+                                Rc::new(
                                     tokens
                                         .clone()
                                         .iter()
@@ -8855,7 +8887,7 @@ pub fn parse_resource_entries(
                                         .skip(1 as usize)
                                         .collect::<Vec<_>>(),
                                 ),
-                                &Rc::new(ExpectedToken::ExpectLBrace),
+                                Rc::new(ExpectedToken::ExpectLBrace),
                             );
                             if has_err(r.err.clone()) {
                                 return Rc::new(ResPropResult {
@@ -8866,9 +8898,9 @@ pub fn parse_resource_entries(
                                     err: r.err.clone(),
                                 });
                             }
-                            let r2 = skip_until_rbrace(&skip_newlines(r.tokens.clone()));
+                            let r2 = skip_until_rbrace(skip_newlines(r.tokens.clone()));
                             let r3 =
-                                expect(&r2.tokens.clone(), &Rc::new(ExpectedToken::ExpectRBrace));
+                                expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                             if has_err(r3.err.clone()) {
                                 return Rc::new(ResPropResult {
                                     properties: properties.clone(),
@@ -8886,7 +8918,7 @@ pub fn parse_resource_entries(
                         } else {
                             if (kw_text.clone().as_str() == "release".to_string().as_str()) {
                                 let r = expect(
-                                    &Rc::new(
+                                    Rc::new(
                                         tokens
                                             .clone()
                                             .iter()
@@ -8894,7 +8926,7 @@ pub fn parse_resource_entries(
                                             .skip(1 as usize)
                                             .collect::<Vec<_>>(),
                                     ),
-                                    &Rc::new(ExpectedToken::ExpectLBrace),
+                                    Rc::new(ExpectedToken::ExpectLBrace),
                                 );
                                 if has_err(r.err.clone()) {
                                     return Rc::new(ResPropResult {
@@ -8905,11 +8937,9 @@ pub fn parse_resource_entries(
                                         err: r.err.clone(),
                                     });
                                 }
-                                let r2 = skip_until_rbrace(&skip_newlines(r.tokens.clone()));
-                                let r3 = expect(
-                                    &r2.tokens.clone(),
-                                    &Rc::new(ExpectedToken::ExpectRBrace),
-                                );
+                                let r2 = skip_until_rbrace(skip_newlines(r.tokens.clone()));
+                                let r3 =
+                                    expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                                 if has_err(r3.err.clone()) {
                                     return Rc::new(ResPropResult {
                                         properties: properties.clone(),
@@ -8941,7 +8971,7 @@ pub fn parse_resource_entries(
                 }
                 Some(TokenShape::ShIdent) => {
                     if peek_is_colon_after_ident(tokens.clone()) {
-                        let r = expect_ident(&tokens);
+                        let r = expect_ident(tokens.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ResPropResult {
                                 properties: properties.clone(),
@@ -8952,7 +8982,7 @@ pub fn parse_resource_entries(
                             });
                         }
                         let fname = r.name.clone();
-                        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+                        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
                         if has_err(r2.err.clone()) {
                             return Rc::new(ResPropResult {
                                 properties: properties.clone(),
@@ -8973,7 +9003,7 @@ pub fn parse_resource_entries(
                             });
                         }
                         let fi = make_field_init_node(
-                            &fname,
+                            fname,
                             r3.expr.clone(),
                             make_span(0, 0),
                             r.span.clone(),
@@ -9035,7 +9065,7 @@ pub fn skip_until_rbrace(tokens: &Rc<Vec<Rc<Token>>>) -> Rc<UnitResult> {
                 };
                 match sh {
                     Some(TokenShape::ShLBrace) => {
-                        let inner = skip_until_rbrace(&Rc::new(
+                        let inner = skip_until_rbrace(Rc::new(
                             tokens
                                 .clone()
                                 .iter()
@@ -9043,17 +9073,16 @@ pub fn skip_until_rbrace(tokens: &Rc<Vec<Rc<Token>>>) -> Rc<UnitResult> {
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         ));
-                        let r =
-                            expect(&inner.tokens.clone(), &Rc::new(ExpectedToken::ExpectRBrace));
+                        let r = expect(inner.tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                         if has_err(r.err.clone()) {
                             return Rc::new(UnitResult {
                                 tokens: r.tokens.clone(),
                                 err: r.err.clone(),
                             });
                         }
-                        skip_until_rbrace(&r.tokens.clone())
+                        skip_until_rbrace(r.tokens.clone())
                     }
-                    _ => skip_until_rbrace(&Rc::new(
+                    _ => skip_until_rbrace(Rc::new(
                         tokens
                             .clone()
                             .iter()
@@ -9075,12 +9104,12 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
             None,
             Rc::new(vec![]),
             Rc::new(vec![]),
-            &start_span,
-            &ctx.source_indices.clone(),
+            start_span.clone(),
+            ctx.source_indices.clone(),
         );
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "capability".to_string(),
             }),
         );
@@ -9092,7 +9121,7 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                 err: r.err.clone(),
             });
         }
-        let r = expect_ident(&r.tokens.clone());
+        let r = expect_ident(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(CapResult {
                 capability: dummy_cap.clone(),
@@ -9106,7 +9135,7 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
         let tokens = r.tokens.clone();
         if tok_is_lbrace(tokens.clone().first().cloned()) {
             {
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectLBrace));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
                 if has_err(r2.err.clone()) {
                     return Rc::new(CapResult {
                         capability: dummy_cap.clone(),
@@ -9125,8 +9154,8 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                     });
                 }
                 let r3 = expect(
-                    &skip_newlines(io.tokens.clone()),
-                    &Rc::new(ExpectedToken::ExpectRBrace),
+                    skip_newlines(io.tokens.clone()),
+                    Rc::new(ExpectedToken::ExpectRBrace),
                 );
                 if has_err(r3.err.clone()) {
                     return Rc::new(CapResult {
@@ -9141,8 +9170,8 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                     Some(name_span),
                     io.inputs.clone(),
                     io.outputs.clone(),
-                    &start_span,
-                    &ctx.source_indices.clone(),
+                    start_span.clone(),
+                    ctx.source_indices.clone(),
                 );
                 Rc::new(CapResult {
                     capability: cap,
@@ -9154,7 +9183,7 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
         } else {
             if tok_is_lparen(tokens.clone().first().cloned()) {
                 {
-                    let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectLParen));
+                    let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
                     if has_err(r2.err.clone()) {
                         return Rc::new(CapResult {
                             capability: dummy_cap.clone(),
@@ -9174,8 +9203,8 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                     }
                     let inputs = r3.fields.clone();
                     let r4 = expect(
-                        &skip_newlines(r3.tokens.clone()),
-                        &Rc::new(ExpectedToken::ExpectRParen),
+                        skip_newlines(r3.tokens.clone()),
+                        Rc::new(ExpectedToken::ExpectRParen),
                     );
                     if has_err(r4.err.clone()) {
                         return Rc::new(CapResult {
@@ -9185,7 +9214,7 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                             err: r4.err.clone(),
                         });
                     }
-                    let ret = parse_optional_inferred(&r4.tokens.clone(), r3.ctx.clone());
+                    let ret = parse_optional_inferred(r4.tokens.clone(), r3.ctx.clone());
                     if has_err(ret.err.clone()) {
                         return Rc::new(CapResult {
                             capability: dummy_cap.clone(),
@@ -9195,9 +9224,10 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                         });
                     }
                     let outputs = match ret.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => {
-                            node_inferred_to_outputs(&rt, ret.ctx.clone().source_indices.clone())
-                        }
+                        Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(
+                            rt.clone(),
+                            ret.ctx.clone().source_indices.clone(),
+                        ),
                         _ => Rc::new(vec![]),
                     };
                     let cap = make_capability_node(
@@ -9205,8 +9235,8 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                         Some(name_span),
                         inputs,
                         outputs,
-                        &start_span,
-                        &ctx.source_indices.clone(),
+                        start_span.clone(),
+                        ctx.source_indices.clone(),
                     );
                     Rc::new(CapResult {
                         capability: cap,
@@ -9222,8 +9252,8 @@ pub fn parse_capability(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                         Some(name_span),
                         Rc::new(vec![]),
                         Rc::new(vec![]),
-                        &start_span,
-                        &ctx.source_indices.clone(),
+                        start_span.clone(),
+                        ctx.source_indices.clone(),
                     );
                     Rc::new(CapResult {
                         capability: cap,
@@ -9266,7 +9296,7 @@ pub fn parse_io_blocks_acc(
             let kw = tok_keyword_text(tokens.clone().first().cloned());
             if (kw.clone().as_str() == "input".to_string().as_str()) {
                 let r = expect(
-                    &Rc::new(
+                    Rc::new(
                         tokens
                             .clone()
                             .iter()
@@ -9274,7 +9304,7 @@ pub fn parse_io_blocks_acc(
                             .skip(1 as usize)
                             .collect::<Vec<_>>(),
                     ),
-                    &Rc::new(ExpectedToken::ExpectLBrace),
+                    Rc::new(ExpectedToken::ExpectLBrace),
                 );
                 if has_err(r.err.clone()) {
                     return Rc::new(IOResult {
@@ -9296,8 +9326,8 @@ pub fn parse_io_blocks_acc(
                     });
                 }
                 let r3 = expect(
-                    &skip_newlines(r2.tokens.clone()),
-                    &Rc::new(ExpectedToken::ExpectRBrace),
+                    skip_newlines(r2.tokens.clone()),
+                    Rc::new(ExpectedToken::ExpectRBrace),
                 );
                 if has_err(r3.err.clone()) {
                     return Rc::new(IOResult {
@@ -9320,7 +9350,7 @@ pub fn parse_io_blocks_acc(
             } else {
                 if (kw.clone().as_str() == "output".to_string().as_str()) {
                     let r = expect(
-                        &Rc::new(
+                        Rc::new(
                             tokens
                                 .clone()
                                 .iter()
@@ -9328,7 +9358,7 @@ pub fn parse_io_blocks_acc(
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         ),
-                        &Rc::new(ExpectedToken::ExpectLBrace),
+                        Rc::new(ExpectedToken::ExpectLBrace),
                     );
                     if has_err(r.err.clone()) {
                         return Rc::new(IOResult {
@@ -9350,8 +9380,8 @@ pub fn parse_io_blocks_acc(
                         });
                     }
                     let r3 = expect(
-                        &skip_newlines(r2.tokens.clone()),
-                        &Rc::new(ExpectedToken::ExpectRBrace),
+                        skip_newlines(r2.tokens.clone()),
+                        Rc::new(ExpectedToken::ExpectRBrace),
                     );
                     if has_err(r3.err.clone()) {
                         return Rc::new(IOResult {
@@ -9409,8 +9439,8 @@ pub fn parse_data_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
             ident: None,
         });
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "data".to_string(),
             }),
         );
@@ -9422,7 +9452,7 @@ pub fn parse_data_def(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc
                 err: r.err.clone(),
             });
         }
-        parse_data_after_kw(r.tokens.clone(), &ctx, &start_span)
+        parse_data_after_kw(r.tokens.clone(), ctx.clone(), start_span.clone())
     }
 }
 
@@ -9452,7 +9482,7 @@ pub fn parse_data_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect_ident(&tokens);
+        let r = expect_ident(tokens);
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: dummy,
@@ -9483,7 +9513,7 @@ pub fn parse_data_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        let r = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -9492,7 +9522,7 @@ pub fn parse_data_after_kw(
                 err: r.err.clone(),
             });
         }
-        let r = parse_type_expr(&r.tokens.clone(), &ctx);
+        let r = parse_type_expr(r.tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -9502,7 +9532,7 @@ pub fn parse_data_after_kw(
             });
         }
         let te = r.type_expr.clone();
-        let r = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectEq));
+        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
         if has_err(r.err.clone()) {
             return Rc::new(ItemResult {
                 item: named_dummy.clone(),
@@ -9551,7 +9581,7 @@ pub fn parse_data_after_kw(
 
 pub fn parse_params(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ParamsResult> {
     {
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLParen));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
                 params: Rc::new(vec![]),
@@ -9582,7 +9612,7 @@ pub fn parse_params(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<P
                     return r.clone();
                 }
                 let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRParen));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                 if has_err(r2.err.clone()) {
                     return Rc::new(ParamsResult {
                         params: Rc::new(vec![]),
@@ -9612,7 +9642,7 @@ pub fn parse_param_list_acc(
     mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
-        let r = parse_param(&tokens, &ctx);
+        let r = parse_param(tokens.clone(), ctx);
         if has_err(r.err.clone()) {
             return Rc::new(ParamsResult {
                 params: Rc::new(vec![]),
@@ -9622,7 +9652,7 @@ pub fn parse_param_list_acc(
             });
         }
         acc = v2_rt::rc_list_push(acc.clone(), r.param.clone());
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
                 if tok_is_rparen(tokens.clone().first().cloned()) {
@@ -9656,13 +9686,13 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy_param = make_param_node(
-            &"".to_string(),
-            leaf_type_node(&"".to_string(), &start_span),
+            "".to_string(),
+            leaf_type_node("".to_string(), start_span.clone()),
             None,
             start_span.clone(),
             start_span.clone(),
         );
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ParamResult {
                 param: dummy_param.clone(),
@@ -9673,7 +9703,7 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
-        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectColon));
+        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         if has_err(r2.err.clone()) {
             return Rc::new(ParamResult {
                 param: dummy_param.clone(),
@@ -9682,7 +9712,7 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
                 err: r2.err.clone(),
             });
         }
-        let r3 = parse_type_expr(&r2.tokens.clone(), &ctx);
+        let r3 = parse_type_expr(r2.tokens.clone(), ctx.clone());
         if has_err(r3.err.clone()) {
             return Rc::new(ParamResult {
                 param: dummy_param.clone(),
@@ -9692,10 +9722,10 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
             });
         }
         let wr = try_where_clause(
-            &r3.tokens.clone(),
+            r3.tokens.clone(),
             r3.ctx.clone(),
-            &r3.type_expr.clone(),
-            &start_span,
+            r3.type_expr.clone(),
+            start_span.clone(),
         );
         if has_err(wr.err.clone()) {
             return Rc::new(ParamResult {
@@ -9708,7 +9738,7 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
         let type_expr = wr.type_expr.clone();
         let tokens = wr.tokens.clone();
         let ctx = wr.ctx.clone();
-        match (*eat(&tokens, Rc::new(ExpectedToken::ExpectEq))).clone() {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let r4 = parse_expr(__ec.clone(), ctx.clone());
                 if has_err(r4.err.clone()) {
@@ -9720,7 +9750,7 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
                     });
                 }
                 let p = make_param_node(
-                    &name,
+                    name,
                     type_expr,
                     Some(r4.expr.clone()),
                     start_span.clone(),
@@ -9734,7 +9764,7 @@ pub fn parse_param(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Pa
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let p = make_param_node(&name, type_expr, None, start_span.clone(), name_span);
+                let p = make_param_node(name, type_expr, None, start_span.clone(), name_span);
                 Rc::new(ParamResult {
                     param: p,
                     tokens: tokens.clone(),
@@ -9750,7 +9780,7 @@ pub fn parse_block(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Ex
     {
         let dummy_expr = parse_recovery_placeholder();
         let block_span = token_span(tokens.clone().first().cloned());
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLBrace));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -9771,7 +9801,7 @@ pub fn parse_block(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Ex
         }
         let stmts = r.stmts.clone();
         let tokens = skip_newlines(r.tokens.clone());
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -9824,7 +9854,7 @@ pub fn parse_stmts_acc(
                 err: None,
             });
         } else {
-            let r = parse_stmt(&tokens, ctx);
+            let r = parse_stmt(tokens.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(StmtsResult {
                     stmts: acc.clone(),
@@ -9857,13 +9887,13 @@ pub fn parse_stmt(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Expr
             Some(TokenShape::ShKeyword) => {
                 let kw_text = tok_keyword_text(tok.clone());
                 if (kw_text.clone().as_str() == "let".to_string().as_str()) {
-                    parse_let(&tokens, &ctx)
+                    parse_let(tokens.clone(), ctx)
                 } else {
                     if (kw_text.clone().as_str() == "return".to_string().as_str()) {
-                        parse_return(&tokens, &ctx)
+                        parse_return(tokens.clone(), ctx)
                     } else {
                         if peek_is_eq_after_ident(tokens.clone()) {
-                            parse_bare_assignment(&tokens, &ctx)
+                            parse_bare_assignment(tokens.clone(), ctx)
                         } else {
                             parse_expr(tokens.clone(), ctx)
                         }
@@ -9871,15 +9901,16 @@ pub fn parse_stmt(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Expr
                 }
             }
             Some(TokenShape::ShIdent) => {
-                if (peek_text_is(tokens.clone(), "node".to_string()) && peek_is_node_decl(&tokens))
+                if (peek_text_is(tokens.clone(), "node".to_string())
+                    && peek_is_node_decl(tokens.clone()))
                 {
-                    parse_node_decl(&tokens, &ctx)
+                    parse_node_decl(tokens.clone(), ctx)
                 } else {
                     if peek_is_eq_after_ident(tokens.clone()) {
-                        parse_bare_assignment(&tokens, &ctx)
+                        parse_bare_assignment(tokens.clone(), ctx)
                     } else {
-                        if is_constraint_bracket_after_ident(&tokens) {
-                            parse_constrained_assignment(&tokens, &ctx)
+                        if is_constraint_bracket_after_ident(tokens.clone()) {
+                            parse_constrained_assignment(tokens.clone(), ctx)
                         } else {
                             parse_expr(tokens.clone(), ctx)
                         }
@@ -9903,7 +9934,7 @@ pub fn peek_is_node_decl(tokens: &Rc<Vec<Rc<Token>>>) -> bool {
         let t1 = tokens.clone().get(1 as usize).cloned();
         let t2 = tokens.clone().get(2 as usize).cloned();
         let name_ok = match t1 {
-            Some(t) => (is_ident_shape(t.shape.clone()) || is_name_keyword(&t)),
+            Some(t) => (is_ident_shape(t.shape.clone()) || is_name_keyword(t.clone())),
             None => false,
         };
         let decl_ok = match t2 {
@@ -9941,7 +9972,7 @@ pub fn parse_constrained_assignment(
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -9952,7 +9983,7 @@ pub fn parse_constrained_assignment(
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
-        let cr = try_constraint_annotations(&r.tokens.clone(), ctx.clone());
+        let cr = try_constraint_annotations(r.tokens.clone(), ctx.clone());
         if has_err(cr.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -9961,7 +9992,7 @@ pub fn parse_constrained_assignment(
                 err: cr.err.clone(),
             });
         }
-        let r2 = expect(&cr.tokens.clone(), &Rc::new(ExpectedToken::ExpectEq));
+        let r2 = expect(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
         if has_err(r2.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -9975,7 +10006,7 @@ pub fn parse_constrained_assignment(
             return r3.clone();
         }
         let node = make_named_expr_node(
-            &name,
+            name,
             Rc::new(ExprData::ExprLet),
             Rc::new(vec![r3.expr.clone()]),
             None,
@@ -10032,7 +10063,7 @@ pub fn parse_node_decl(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                 .skip(1 as usize)
                 .collect::<Vec<_>>(),
         );
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10043,7 +10074,7 @@ pub fn parse_node_decl(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
-        let cr = try_constraint_annotations(&r.tokens.clone(), ctx.clone());
+        let cr = try_constraint_annotations(r.tokens.clone(), ctx.clone());
         if has_err(cr.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10052,11 +10083,11 @@ pub fn parse_node_decl(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                 err: cr.err.clone(),
             });
         }
-        let e_colon = eat(&cr.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
+        let e_colon = eat(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
         let tokens = match (*e_colon.clone()).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
             EatResult::EatUnchanged { tokens: _, .. } => {
-                let r2 = expect(&cr.tokens.clone(), &Rc::new(ExpectedToken::ExpectEq));
+                let r2 = expect(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
                 if has_err(r2.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: dummy_expr.clone(),
@@ -10072,7 +10103,7 @@ pub fn parse_node_decl(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         if has_err(r3.err.clone()) {
             return r3.clone();
         }
-        let ret = parse_optional_inferred(&r3.tokens.clone(), r3.ctx.clone());
+        let ret = parse_optional_inferred(r3.tokens.clone(), r3.ctx.clone());
         if has_err(ret.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10121,7 +10152,7 @@ pub fn parse_bare_assignment(
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10132,7 +10163,7 @@ pub fn parse_bare_assignment(
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
-        let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectEq));
+        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
         if has_err(r2.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10145,7 +10176,7 @@ pub fn parse_bare_assignment(
         if has_err(r3.err.clone()) {
             return r3.clone();
         }
-        let cr = try_constraint_annotations(&r3.tokens.clone(), r3.ctx.clone());
+        let cr = try_constraint_annotations(r3.tokens.clone(), r3.ctx.clone());
         if has_err(cr.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10155,7 +10186,7 @@ pub fn parse_bare_assignment(
             });
         }
         let node = make_named_expr_node(
-            &name,
+            name,
             Rc::new(ExprData::ExprLet),
             Rc::new(vec![r3.expr.clone()]),
             None,
@@ -10212,7 +10243,7 @@ pub fn parse_expr_bp(
     min_bp: i64,
 ) -> Rc<ExprResult> {
     {
-        let r = parse_prefix(&tokens, ctx);
+        let r = parse_prefix(tokens, ctx);
         if has_err(r.err.clone()) {
             return r.clone();
         }
@@ -10237,8 +10268,8 @@ pub fn parse_expr_loop(
             });
         } else {
             let loop_span = token_span(tokens.clone().first().cloned());
-            tokens = skip_continuation_newlines(&tokens);
-            let post = try_postfix(&tokens, &ctx, &lhs, min_bp.clone());
+            tokens = skip_continuation_newlines(tokens.clone());
+            let post = try_postfix(tokens.clone(), ctx.clone(), lhs.clone(), min_bp.clone());
             if has_err(post.err.clone()) {
                 break Rc::new(ExprResult {
                     expr: lhs.clone(),
@@ -10269,7 +10300,7 @@ pub fn parse_expr_loop(
                                     err: None,
                                 });
                             } else {
-                                match (*advance(&tokens)).clone() {
+                                match (*advance(tokens.clone())).clone() {
                                     AdvanceResult::AdvanceOk {
                                         token: op_tok,
                                         tokens: rest,
@@ -10277,7 +10308,7 @@ pub fn parse_expr_loop(
                                     } => {
                                         let op_shape = op_tok.shape.clone();
                                         if is_dot_shape(op_shape.clone()) {
-                                            let r = expect_name(&rest);
+                                            let r = expect_name(rest.clone());
                                             if has_err(r.err.clone()) {
                                                 return Rc::new(ExprResult {
                                                     expr: lhs.clone(),
@@ -10287,7 +10318,7 @@ pub fn parse_expr_loop(
                                                 });
                                             }
                                             let new_lhs = make_named_expr_node(
-                                                &r.name.clone(),
+                                                r.name.clone(),
                                                 Rc::new(ExprData::ExprFieldAccess {
                                                     summary: None,
                                                 }),
@@ -10306,8 +10337,8 @@ pub fn parse_expr_loop(
                                         } else {
                                             if is_pipe_arrow_shape(op_shape.clone()) {
                                                 let r = parse_pipe_rhs(
-                                                    &rest,
-                                                    &ctx,
+                                                    rest.clone(),
+                                                    ctx.clone(),
                                                     lhs.clone(),
                                                     loop_span,
                                                 );
@@ -10482,7 +10513,7 @@ pub fn parse_pipe_rhs(
 ) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect_name(&tokens);
+        let r = expect_name(tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -10495,7 +10526,7 @@ pub fn parse_pipe_rhs(
         let tokens = skip_newlines(r.tokens.clone());
         if tok_is_lparen(tokens.clone().first().cloned()) {
             {
-                let r2 = parse_call_args(&tokens, &ctx);
+                let r2 = parse_call_args(tokens.clone(), ctx.clone());
                 if has_err(r2.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: dummy_expr.clone(),
@@ -10506,7 +10537,7 @@ pub fn parse_pipe_rhs(
                 }
                 Rc::new(ExprResult {
                     expr: make_named_expr_node(
-                        &method,
+                        method,
                         Rc::new(ExprData::ExprMethodCall {
                             method_semantics: None,
                         }),
@@ -10517,9 +10548,9 @@ pub fn parse_pipe_rhs(
                                 for na in r2.args.clone().iter().cloned() {
                                     __result.push(make_arg_node(
                                         arg_name_at(na.clone(), ctx.source_indices.clone()),
-                                        arg_value(&na),
+                                        arg_value(na.clone()),
                                         na.span.clone(),
-                                        node_name_span(&na),
+                                        node_name_span(na.clone()),
                                     ));
                                 }
                                 __result
@@ -10537,7 +10568,7 @@ pub fn parse_pipe_rhs(
         } else {
             Rc::new(ExprResult {
                 expr: make_named_expr_node(
-                    &method,
+                    method,
                     Rc::new(ExprData::ExprMethodCall {
                         method_semantics: None,
                     }),
@@ -10633,7 +10664,7 @@ pub fn parse_prefix(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<Ex
                     err: None,
                 })
             }
-            _ => parse_primary(&tokens, &ctx),
+            _ => parse_primary(tokens.clone(), ctx),
         }
     }
 }
@@ -10672,31 +10703,31 @@ pub fn parse_primary(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<
                     }),
                     None => {
                         if (kw_text.clone().as_str() == "match".to_string().as_str()) {
-                            parse_match(&tokens, &ctx)
+                            parse_match(tokens.clone(), ctx.clone())
                         } else {
                             if (kw_text.clone().as_str() == "if".to_string().as_str()) {
-                                parse_if(&tokens, &ctx)
+                                parse_if(tokens.clone(), ctx.clone())
                             } else {
                                 if (kw_text.clone().as_str() == "for".to_string().as_str()) {
-                                    parse_for(&tokens, &ctx)
+                                    parse_for(tokens.clone(), ctx.clone())
                                 } else {
                                     if (kw_text.clone().as_str() == "let".to_string().as_str()) {
-                                        parse_let(&tokens, &ctx)
+                                        parse_let(tokens.clone(), ctx.clone())
                                     } else {
                                         if (kw_text.clone().as_str()
                                             == "return".to_string().as_str())
                                         {
-                                            parse_return(&tokens, &ctx)
+                                            parse_return(tokens.clone(), ctx.clone())
                                         } else {
                                             if (kw_text.clone().as_str()
                                                 == "fn".to_string().as_str())
                                             {
-                                                parse_fn_lambda(&tokens, &ctx)
+                                                parse_fn_lambda(tokens.clone(), ctx.clone())
                                             } else {
                                                 {
                                                     let kw_name = tok_keyword_to_name(tok.clone());
                                                     match kw_name {
-    Some(n) => parse_ident_expr(&tokens, ctx.clone(), &n),
+    Some(n) => parse_ident_expr(tokens.clone(), ctx.clone(), n.clone()),
     None => Rc::new(ExprResult {
     expr: parse_recovery_expr(span.clone(), format!("expected expression, found keyword '{}'", kw_text.clone())),
     tokens: tokens.clone(),
@@ -10722,7 +10753,7 @@ pub fn parse_primary(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<
                         return Rc::new(ExprResult {
                             expr: make_expr_error_node(
                                 ExprErrorKind::InternalExprError,
-                                &v2_rt::concat(
+                                v2_rt::concat(
                                     v2_rt::concat(
                                         "internal: ShLitInt token text not parseable as int: '"
                                             .to_string(),
@@ -10730,7 +10761,7 @@ pub fn parse_primary(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<
                                     ),
                                     "'".to_string(),
                                 ),
-                                &span,
+                                span.clone(),
                             ),
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
@@ -10805,14 +10836,14 @@ pub fn parse_primary(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<
                     err: None,
                 })
             }
-            Some(TokenShape::ShStrBegin) => parse_string_interp(&tokens, ctx.clone()),
+            Some(TokenShape::ShStrBegin) => parse_string_interp(tokens.clone(), ctx.clone()),
             Some(TokenShape::ShIdent) => {
                 let n = tok.clone().unwrap().text.clone();
-                parse_ident_expr(&tokens, ctx.clone(), &n)
+                parse_ident_expr(tokens.clone(), ctx.clone(), n.clone())
             }
-            Some(TokenShape::ShLParen) => parse_paren_expr(&tokens, &ctx),
-            Some(TokenShape::ShLBracket) => parse_list_literal(&tokens, &ctx),
-            Some(TokenShape::ShLBrace) => parse_brace_expr(&tokens, ctx.clone()),
+            Some(TokenShape::ShLParen) => parse_paren_expr(tokens.clone(), ctx.clone()),
+            Some(TokenShape::ShLBracket) => parse_list_literal(tokens.clone(), ctx.clone()),
+            Some(TokenShape::ShLBrace) => parse_brace_expr(tokens.clone(), ctx.clone()),
             _ => {
                 let tag = match sh.clone() {
                     Some(shape) => shape_display_name(shape.clone()),
@@ -10896,7 +10927,7 @@ pub fn parse_lambda_stmts(
                 err: None,
             });
         } else {
-            let r = parse_stmt(&tokens, ctx);
+            let r = parse_stmt(tokens.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(StmtsResult {
                     stmts: acc.clone(),
@@ -10936,7 +10967,7 @@ pub fn parse_ident_expr(
         if tok_is_fat_arrow(tokens.clone().first().cloned()) {
             {
                 let r = parse_lambda_body(
-                    &Rc::new(
+                    Rc::new(
                         tokens
                             .clone()
                             .iter()
@@ -10967,11 +10998,11 @@ pub fn parse_ident_expr(
         } else {
             if (is_uppercase_start(name.clone()) && tok_is_lbrace(tokens.clone().first().cloned()))
             {
-                parse_record_literal(&tokens, &ctx, name.clone(), &span)
+                parse_record_literal(tokens.clone(), ctx, name.clone(), span.clone())
             } else {
                 Rc::new(ExprResult {
                     expr: make_named_expr_node(
-                        &name,
+                        name.clone(),
                         Rc::new(ExprData::ExprVar { binding_kind: None }),
                         Rc::new(vec![]),
                         None,
@@ -11019,7 +11050,7 @@ pub fn try_postfix(
                     })
                 } else {
                     {
-                        let r = parse_call_args(&tokens, &ctx);
+                        let r = parse_call_args(tokens.clone(), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(PostfixResult {
                                 expr: lhs.clone(),
@@ -11029,8 +11060,12 @@ pub fn try_postfix(
                                 err: r.err.clone(),
                             });
                         }
-                        let call_expr =
-                            make_call_expr(&lhs, r.args.clone(), span, ctx.source_indices.clone());
+                        let call_expr = make_call_expr(
+                            lhs.clone(),
+                            r.args.clone(),
+                            span,
+                            ctx.source_indices.clone(),
+                        );
                         Rc::new(PostfixResult {
                             expr: call_expr,
                             changed: true,
@@ -11054,7 +11089,7 @@ pub fn try_postfix(
                     } else {
                         {
                             let r = parse_type_expr(
-                                &Rc::new(
+                                Rc::new(
                                     tokens
                                         .clone()
                                         .iter()
@@ -11062,7 +11097,7 @@ pub fn try_postfix(
                                         .skip(1 as usize)
                                         .collect::<Vec<_>>(),
                                 ),
-                                &ctx,
+                                ctx.clone(),
                             );
                             if has_err(r.err.clone()) {
                                 return Rc::new(PostfixResult {
@@ -11117,7 +11152,12 @@ pub fn try_postfix(
                         })
                     } else {
                         {
-                            let r = parse_index_or_slice(&tokens, &ctx, lhs.clone(), span);
+                            let r = parse_index_or_slice(
+                                tokens.clone(),
+                                ctx.clone(),
+                                lhs.clone(),
+                                span,
+                            );
                             if has_err(r.err.clone()) {
                                 return Rc::new(PostfixResult {
                                     expr: lhs.clone(),
@@ -11155,10 +11195,10 @@ pub fn try_postfix(
                         if is_uppercase_start(n.clone()) {
                             {
                                 let r = parse_record_literal(
-                                    &tokens,
-                                    &ctx,
+                                    tokens.clone(),
+                                    ctx.clone(),
                                     n.clone(),
-                                    &lhs.span.clone(),
+                                    lhs.span.clone(),
                                 );
                                 if has_err(r.err.clone()) {
                                     return Rc::new(PostfixResult {
@@ -11233,13 +11273,13 @@ pub fn parse_constraint_annotations(
     tokens: &Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConstraintsResult> {
-    match (*eat(&tokens, Rc::new(ExpectedToken::ExpectLBracket))).clone() {
+    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
             let r = parse_constraint_list(__ec.clone(), ctx, Rc::new(vec![]));
             if has_err(r.err.clone()) {
                 return r.clone();
             }
-            let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectRBracket));
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
             if has_err(r2.err.clone()) {
                 return Rc::new(ConstraintsResult {
                     constraints: Rc::new(vec![]),
@@ -11308,9 +11348,9 @@ pub fn parse_constraint_list(
                 err: r.err.clone(),
             });
         }
-        let fi = make_field_init_node(&kw_name, r.expr.clone(), make_span(0, 0), make_span(0, 0));
+        let fi = make_field_init_node(kw_name, r.expr.clone(), make_span(0, 0), make_span(0, 0));
         acc = v2_rt::rc_list_push(acc.clone(), fi);
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 let __tco_0 = __ec.clone();
                 let __tco_1 = r.ctx.clone();
@@ -11335,7 +11375,7 @@ pub fn try_constraint_annotations(
     ctx: Rc<ParseContext>,
 ) -> Rc<ConstraintsResult> {
     if is_constraint_bracket(tokens.clone()) {
-        parse_constraint_annotations(&tokens, ctx)
+        parse_constraint_annotations(tokens.clone(), ctx)
     } else {
         Rc::new(ConstraintsResult {
             constraints: Rc::new(vec![]),
@@ -11356,7 +11396,7 @@ pub fn make_call_expr(
         ExprData::ExprVar {
             binding_kind: _, ..
         } => make_named_expr_node(
-            &expr_var_name_at(lhs.clone(), source_indices),
+            expr_var_name_at(lhs.clone(), source_indices),
             Rc::new(ExprData::ExprCall {
                 call_semantics: None,
                 descent_evidence: None,
@@ -11364,10 +11404,10 @@ pub fn make_call_expr(
             args,
             None,
             lhs.span.clone(),
-            node_name_span(&lhs),
+            node_name_span(lhs.clone()),
         ),
         ExprData::ExprFieldAccess { summary: _, .. } => make_named_expr_node(
-            &field_access_field_at(lhs.clone(), source_indices),
+            field_access_field_at(lhs.clone(), source_indices),
             Rc::new(ExprData::ExprMethodCall {
                 method_semantics: None,
             }),
@@ -11377,10 +11417,10 @@ pub fn make_call_expr(
             ),
             None,
             lhs.span.clone(),
-            node_name_span(&lhs),
+            node_name_span(lhs.clone()),
         ),
         _ => make_named_expr_node(
-            &"<expr>".to_string(),
+            "<expr>".to_string(),
             Rc::new(ExprData::ExprCall {
                 call_semantics: None,
                 descent_evidence: None,
@@ -11401,7 +11441,7 @@ pub fn parse_index_or_slice(
 ) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLBracket));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -11444,7 +11484,7 @@ pub fn parse_index_or_slice(
                     });
                 }
                 let end_expr = r.expr.clone();
-                let r = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectRBracket));
+                let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: dummy_expr.clone(),
@@ -11467,7 +11507,7 @@ pub fn parse_index_or_slice(
             }
         } else {
             {
-                let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBracket));
+                let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: dummy_expr.clone(),
@@ -11494,7 +11534,7 @@ pub fn parse_index_or_slice(
 
 pub fn parse_call_args(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ArgsResult> {
     {
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLParen));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
             return Rc::new(ArgsResult {
                 args: Rc::new(vec![]),
@@ -11525,7 +11565,7 @@ pub fn parse_call_args(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                     return r.clone();
                 }
                 let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRParen));
+                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                 if has_err(r2.err.clone()) {
                     return Rc::new(ArgsResult {
                         args: Rc::new(vec![]),
@@ -11556,7 +11596,7 @@ pub fn parse_arg_list_acc(
 ) -> Rc<ArgsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
-        let r = parse_single_arg(&tokens, ctx);
+        let r = parse_single_arg(tokens.clone(), ctx);
         if has_err(r.err.clone()) {
             return Rc::new(ArgsResult {
                 args: Rc::new(vec![]),
@@ -11566,7 +11606,7 @@ pub fn parse_arg_list_acc(
             });
         }
         acc = v2_rt::rc_list_push(acc.clone(), r.arg.clone());
-        match (*eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
+        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
             EatResult::EatConsumed { tokens: __ec, .. } => {
                 tokens = skip_newlines(__ec.clone());
                 if tok_is_rparen(tokens.clone().first().cloned()) {
@@ -11609,7 +11649,7 @@ pub fn parse_single_arg(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
         let is_name_token = (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone()));
         if is_name_token {
             {
-                let name_r = expect_name(&tokens);
+                let name_r = expect_name(tokens.clone());
                 if has_err(name_r.err.clone()) {
                     {
                         let r = parse_expr(tokens.clone(), ctx);
@@ -11716,8 +11756,8 @@ pub fn parse_match(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Ex
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "match".to_string(),
             }),
         );
@@ -11735,8 +11775,8 @@ pub fn parse_match(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Ex
         }
         let scrutinee = r.expr.clone();
         let r = expect(
-            &skip_newlines(r.tokens.clone()),
-            &Rc::new(ExpectedToken::ExpectLBrace),
+            skip_newlines(r.tokens.clone()),
+            Rc::new(ExpectedToken::ExpectLBrace),
         );
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -11757,8 +11797,8 @@ pub fn parse_match(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Ex
         }
         let arms = r.arms.clone();
         let r = expect(
-            &skip_newlines(r.tokens.clone()),
-            &Rc::new(ExpectedToken::ExpectRBrace),
+            skip_newlines(r.tokens.clone()),
+            Rc::new(ExpectedToken::ExpectRBrace),
         );
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
@@ -11792,7 +11832,7 @@ pub fn parse_expr_bp_no_brace(
     min_bp: i64,
 ) -> Rc<ExprResult> {
     {
-        let r = parse_prefix(&tokens, ctx);
+        let r = parse_prefix(tokens, ctx);
         if has_err(r.err.clone()) {
             return r.clone();
         }
@@ -11818,9 +11858,9 @@ pub fn parse_expr_loop_no_brace(
             });
         } else {
             let loop_span = token_span(tok.clone());
-            tokens = skip_continuation_newlines(&tokens);
+            tokens = skip_continuation_newlines(tokens.clone());
             if (tok_is_lparen(tokens.clone().first().cloned()) && (14 >= min_bp.clone())) {
-                let r = parse_call_args(&tokens, &ctx);
+                let r = parse_call_args(tokens.clone(), ctx.clone());
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
                         expr: lhs.clone(),
@@ -11830,8 +11870,12 @@ pub fn parse_expr_loop_no_brace(
                     });
                 }
                 let span = token_span(tokens.clone().first().cloned());
-                let new_lhs =
-                    make_call_expr(&lhs, r.args.clone(), span, ctx.source_indices.clone());
+                let new_lhs = make_call_expr(
+                    lhs.clone(),
+                    r.args.clone(),
+                    span,
+                    ctx.source_indices.clone(),
+                );
                 {
                     let __tco_0 = r.tokens.clone();
                     let __tco_1 = r.ctx.clone();
@@ -11844,7 +11888,7 @@ pub fn parse_expr_loop_no_brace(
             } else {
                 if (tok_is_lbracket(tokens.clone().first().cloned()) && (14 >= min_bp.clone())) {
                     let span = token_span(tokens.clone().first().cloned());
-                    let r = parse_index_or_slice(&tokens, &ctx, lhs.clone(), span);
+                    let r = parse_index_or_slice(tokens.clone(), ctx.clone(), lhs.clone(), span);
                     if has_err(r.err.clone()) {
                         return Rc::new(ExprResult {
                             expr: r.expr.clone(),
@@ -11874,7 +11918,7 @@ pub fn parse_expr_loop_no_brace(
                                     err: None,
                                 });
                             } else {
-                                match (*advance(&tokens)).clone() {
+                                match (*advance(tokens.clone())).clone() {
                                     AdvanceResult::AdvanceOk {
                                         token: op_tok,
                                         tokens: rest,
@@ -11882,7 +11926,7 @@ pub fn parse_expr_loop_no_brace(
                                     } => {
                                         let op_shape = op_tok.shape.clone();
                                         if is_dot_shape(op_shape.clone()) {
-                                            let r = expect_name(&rest);
+                                            let r = expect_name(rest.clone());
                                             if has_err(r.err.clone()) {
                                                 return Rc::new(ExprResult {
                                                     expr: lhs.clone(),
@@ -11892,7 +11936,7 @@ pub fn parse_expr_loop_no_brace(
                                                 });
                                             }
                                             let new_lhs = make_named_expr_node(
-                                                &r.name.clone(),
+                                                r.name.clone(),
                                                 Rc::new(ExprData::ExprFieldAccess {
                                                     summary: None,
                                                 }),
@@ -11911,8 +11955,8 @@ pub fn parse_expr_loop_no_brace(
                                         } else {
                                             if is_pipe_arrow_shape(op_shape.clone()) {
                                                 let r = parse_pipe_rhs(
-                                                    &rest,
-                                                    &ctx,
+                                                    rest.clone(),
+                                                    ctx.clone(),
                                                     lhs.clone(),
                                                     loop_span,
                                                 );
@@ -12042,7 +12086,7 @@ pub fn parse_match_arms_acc(
                 err: None,
             });
         } else {
-            let r = parse_match_arm(&tokens, &ctx);
+            let r = parse_match_arm(tokens.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(ArmsResult {
                     arms: acc.clone(),
@@ -12051,7 +12095,7 @@ pub fn parse_match_arms_acc(
                     err: r.err.clone(),
                 });
             }
-            let e = eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
@@ -12076,7 +12120,7 @@ pub fn parse_match_arm(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
             parse_recovery_placeholder(),
             make_span(0, 0),
         );
-        let r = parse_pattern(&tokens, &ctx);
+        let r = parse_pattern(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ArmResult {
                 arm: dummy_arm.clone(),
@@ -12088,7 +12132,7 @@ pub fn parse_match_arm(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         let pat = r.pattern.clone();
         let tokens = r.tokens.clone();
         let ctx = r.ctx.clone();
-        let guard_r = parse_optional_guard(&tokens, ctx.clone());
+        let guard_r = parse_optional_guard(tokens.clone(), ctx.clone());
         if has_err(guard_r.err.clone()) {
             return Rc::new(ArmResult {
                 arm: dummy_arm.clone(),
@@ -12100,7 +12144,7 @@ pub fn parse_match_arm(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         let guard = guard_r.guard.clone();
         let tokens = guard_r.tokens.clone();
         let ctx = guard_r.ctx.clone();
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectFatArrow));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));
         if has_err(r.err.clone()) {
             return Rc::new(ArmResult {
                 arm: dummy_arm.clone(),
@@ -12111,9 +12155,9 @@ pub fn parse_match_arm(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         }
         let tokens = skip_newlines(r.tokens.clone());
         let r = if tok_is_lbrace(tokens.clone().first().cloned()) {
-            parse_block(&tokens, &ctx)
+            parse_block(tokens.clone(), ctx.clone())
         } else {
-            parse_match_arm_body(&tokens, ctx.clone())
+            parse_match_arm_body(tokens.clone(), ctx.clone())
         };
         if has_err(r.err.clone()) {
             return Rc::new(ArmResult {
@@ -12194,7 +12238,7 @@ pub fn parse_match_arm_stmts(
                 err: None,
             });
         } else {
-            if looks_like_arm_start(&tokens) {
+            if looks_like_arm_start(tokens.clone()) {
                 break Rc::new(StmtsResult {
                     stmts: acc.clone(),
                     tokens: tokens.clone(),
@@ -12202,7 +12246,7 @@ pub fn parse_match_arm_stmts(
                     err: None,
                 });
             } else {
-                let r = parse_stmt(&tokens, ctx);
+                let r = parse_stmt(tokens.clone(), ctx);
                 if has_err(r.err.clone()) {
                     return Rc::new(StmtsResult {
                         stmts: acc.clone(),
@@ -12285,7 +12329,7 @@ pub fn peek_is_expected_at(
     expected: Rc<ExpectedToken>,
 ) -> bool {
     match tokens.get(offset as usize).cloned() {
-        Some(t) => token_matches_expected(&t, expected),
+        Some(t) => token_matches_expected(t.clone(), expected),
         None => false,
     }
 }
@@ -12423,7 +12467,7 @@ pub fn parse_pattern(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<
                 } else {
                     if is_uppercase_start(n.clone()) {
                         parse_variant_pattern(
-                            &Rc::new(
+                            Rc::new(
                                 tokens
                                     .clone()
                                     .iter()
@@ -12572,8 +12616,8 @@ pub fn parse_variant_pattern(
                     });
                 }
                 let r2 = expect(
-                    &skip_newlines(r.tokens.clone()),
-                    &Rc::new(ExpectedToken::ExpectRBrace),
+                    skip_newlines(r.tokens.clone()),
+                    Rc::new(ExpectedToken::ExpectRBrace),
                 );
                 if has_err(r2.err.clone()) {
                     return Rc::new(PatternResult {
@@ -12598,7 +12642,7 @@ pub fn parse_variant_pattern(
             if tok_is_lparen(tokens.clone().first().cloned()) {
                 {
                     let r = parse_pattern(
-                        &Rc::new(
+                        Rc::new(
                             tokens
                                 .clone()
                                 .iter()
@@ -12606,7 +12650,7 @@ pub fn parse_variant_pattern(
                                 .skip(1 as usize)
                                 .collect::<Vec<_>>(),
                         ),
-                        &ctx,
+                        ctx,
                     );
                     if has_err(r.err.clone()) {
                         return Rc::new(PatternResult {
@@ -12616,7 +12660,7 @@ pub fn parse_variant_pattern(
                             err: r.err.clone(),
                         });
                     }
-                    let r2 = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectRParen));
+                    let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                     if has_err(r2.err.clone()) {
                         return Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Wildcard),
@@ -12626,10 +12670,10 @@ pub fn parse_variant_pattern(
                         });
                     }
                     let fb = make_field_binding_node(
-                        &"0".to_string(),
+                        "0".to_string(),
                         r.pattern.clone(),
                         span,
-                        kernel_span(&"0".to_string()),
+                        kernel_span("0".to_string()),
                     );
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::VariantPattern {
@@ -12683,7 +12727,7 @@ pub fn parse_variant_bindings_brace_acc(
             });
         } else {
             let bind_span = token_span(tokens.clone().first().cloned());
-            let r = expect_name(&tokens);
+            let r = expect_name(tokens.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(BindingsResult {
                     field_bindings: Rc::new(vec![]),
@@ -12695,9 +12739,9 @@ pub fn parse_variant_bindings_brace_acc(
             let field_name = r.name.clone();
             let field_name_span = r.span.clone();
             tokens = r.tokens.clone();
-            match (*eat(&tokens, Rc::new(ExpectedToken::ExpectColon))).clone() {
+            match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectColon))).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => {
-                    let r2 = parse_pattern(&__ec, &ctx);
+                    let r2 = parse_pattern(__ec.clone(), ctx.clone());
                     if has_err(r2.err.clone()) {
                         return Rc::new(BindingsResult {
                             field_bindings: Rc::new(vec![]),
@@ -12706,13 +12750,13 @@ pub fn parse_variant_bindings_brace_acc(
                             err: r2.err.clone(),
                         });
                     }
-                    let e2 = eat(&r2.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+                    let e2 = eat(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = skip_newlines(match (*e2).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                         EatResult::EatUnchanged { tokens: _, .. } => r2.tokens.clone(),
                     });
                     let fb = make_field_binding_node(
-                        &field_name,
+                        field_name.clone(),
                         r2.pattern.clone(),
                         bind_span,
                         field_name_span,
@@ -12726,13 +12770,13 @@ pub fn parse_variant_bindings_brace_acc(
                     }
                 }
                 EatResult::EatUnchanged { tokens: __eu, .. } => {
-                    let e2 = eat(&tokens, Rc::new(ExpectedToken::ExpectComma));
+                    let e2 = eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
                     tokens = skip_newlines(match (*e2).clone() {
                         EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                         EatResult::EatUnchanged { tokens: _, .. } => tokens.clone(),
                     });
                     let fb = make_field_binding_node(
-                        &field_name,
+                        field_name.clone(),
                         Rc::new(MatchPattern::Bind {
                             name: field_name.clone(),
                         }),
@@ -12755,8 +12799,8 @@ pub fn parse_if(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ExprR
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "if".to_string(),
             }),
         );
@@ -12778,7 +12822,7 @@ pub fn parse_if(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ExprR
             });
         }
         let condition = r.expr.clone();
-        let r = parse_block(&skip_newlines(r.tokens.clone()), &r.ctx.clone());
+        let r = parse_block(skip_newlines(r.tokens.clone()), r.ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -12791,7 +12835,7 @@ pub fn parse_if(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ExprR
         let tokens = skip_newlines(r.tokens.clone());
         let ctx = r.ctx.clone();
         match (*eat(
-            &tokens,
+            tokens.clone(),
             Rc::new(ExpectedToken::ExpectKeyword {
                 text: "else".to_string(),
             }),
@@ -12802,7 +12846,7 @@ pub fn parse_if(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ExprR
                 let tokens = skip_newlines(__ec.clone());
                 if tok_is_keyword(tokens.clone().first().cloned(), "if".to_string()) {
                     {
-                        let r2 = parse_if(&tokens, &ctx);
+                        let r2 = parse_if(tokens.clone(), ctx.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(ExprResult {
                                 expr: r2.expr.clone(),
@@ -12825,7 +12869,7 @@ pub fn parse_if(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<ExprR
                     }
                 } else {
                     {
-                        let r2 = parse_block(&tokens, &ctx);
+                        let r2 = parse_block(tokens.clone(), ctx.clone());
                         if has_err(r2.err.clone()) {
                             return Rc::new(ExprResult {
                                 expr: r2.expr.clone(),
@@ -12868,8 +12912,8 @@ pub fn parse_let(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "let".to_string(),
             }),
         );
@@ -12881,7 +12925,7 @@ pub fn parse_let(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
                 err: r.err.clone(),
             });
         }
-        let r = expect_name(&r.tokens.clone());
+        let r = expect_name(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -12892,7 +12936,7 @@ pub fn parse_let(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
         }
         let name = r.name.clone();
         let name_span = r.span.clone();
-        let r = expect(&r.tokens.clone(), &Rc::new(ExpectedToken::ExpectEq));
+        let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -12907,7 +12951,7 @@ pub fn parse_let(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
         }
         Rc::new(ExprResult {
             expr: make_named_expr_node(
-                &name,
+                name,
                 Rc::new(ExprData::ExprLet),
                 Rc::new(vec![r.expr.clone()]),
                 None,
@@ -12926,8 +12970,8 @@ pub fn parse_return(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<E
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "return".to_string(),
             }),
         );
@@ -12962,8 +13006,8 @@ pub fn parse_for(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
         let r = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "for".to_string(),
             }),
         );
@@ -12975,7 +13019,7 @@ pub fn parse_for(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
                 err: r.err.clone(),
             });
         }
-        let r = expect_name(&r.tokens.clone());
+        let r = expect_name(r.tokens.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -12987,8 +13031,8 @@ pub fn parse_for(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
         let var_name = r.name.clone();
         let var_name_span = r.span.clone();
         let r = expect(
-            &r.tokens.clone(),
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            r.tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "in".to_string(),
             }),
         );
@@ -13010,7 +13054,7 @@ pub fn parse_for(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
             });
         }
         let collection = r.expr.clone();
-        let r = parse_block(&skip_newlines(r.tokens.clone()), &r.ctx.clone());
+        let r = parse_block(skip_newlines(r.tokens.clone()), r.ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: r.expr.clone(),
@@ -13021,7 +13065,7 @@ pub fn parse_for(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> Rc<Expr
         }
         let body = r.expr.clone();
         let for_expr = make_named_expr_node(
-            &var_name,
+            var_name,
             Rc::new(ExprData::ExprForEach),
             Rc::new(vec![collection, body]),
             None,
@@ -13045,7 +13089,7 @@ pub fn parse_record_literal(
 ) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLBrace));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -13065,7 +13109,7 @@ pub fn parse_record_literal(
             });
         }
         let tokens = skip_newlines(r.tokens.clone());
-        let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
         if has_err(r2.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -13076,7 +13120,7 @@ pub fn parse_record_literal(
         }
         Rc::new(ExprResult {
             expr: make_named_expr_node(
-                &name,
+                name,
                 Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
                 r.fields.clone(),
                 None,
@@ -13114,7 +13158,7 @@ pub fn parse_field_init_list_acc(
                 err: None,
             });
         } else {
-            let r = parse_field_init(&tokens, &ctx);
+            let r = parse_field_init(tokens.clone(), ctx);
             if has_err(r.err.clone()) {
                 return Rc::new(FieldInitsResult {
                     fields: Rc::new(vec![]),
@@ -13123,7 +13167,7 @@ pub fn parse_field_init_list_acc(
                     err: r.err.clone(),
                 });
             }
-            let e = eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
@@ -13147,7 +13191,7 @@ pub fn parse_field_init(
         let zero_span = make_span(0, 0);
         let span = token_span(tokens.clone().first().cloned());
         let dummy_fi = make_field_init_node(
-            &"".to_string(),
+            "".to_string(),
             parse_recovery_placeholder(),
             zero_span.clone(),
             zero_span.clone(),
@@ -13155,7 +13199,7 @@ pub fn parse_field_init(
         let tok = tokens.clone().first().cloned();
         if (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone())) {
             {
-                let name_r = expect_name(&tokens);
+                let name_r = expect_name(tokens.clone());
                 if has_err(name_r.err.clone()) {
                     return Rc::new(FieldInitResult {
                         field: dummy_fi.clone(),
@@ -13188,7 +13232,7 @@ pub fn parse_field_init(
                             });
                         }
                         let fi = make_field_init_node(
-                            &n,
+                            n.clone(),
                             r.expr.clone(),
                             span.clone(),
                             name_r.span.clone(),
@@ -13203,9 +13247,9 @@ pub fn parse_field_init(
                 } else {
                     {
                         let fi = make_field_init_node(
-                            &n,
+                            n.clone(),
                             make_named_expr_node(
-                                &n,
+                                n.clone(),
                                 Rc::new(ExprData::ExprVar { binding_kind: None }),
                                 Rc::new(vec![]),
                                 None,
@@ -13251,7 +13295,7 @@ pub fn parse_field_init(
                         });
                     }
                     let fi =
-                        make_field_init_node(&str_name, r.expr.clone(), span.clone(), no_span());
+                        make_field_init_node(str_name, r.expr.clone(), span.clone(), no_span());
                     Rc::new(FieldInitResult {
                         field: fi,
                         tokens: r.tokens.clone(),
@@ -13271,7 +13315,7 @@ pub fn parse_field_init(
                         });
                     }
                     let fi = make_field_init_node(
-                        &"_".to_string(),
+                        "_".to_string(),
                         r.expr.clone(),
                         span.clone(),
                         no_span(),
@@ -13292,7 +13336,7 @@ pub fn parse_list_literal(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLBracket));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -13315,8 +13359,8 @@ pub fn parse_list_literal(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -
             });
         }
         let r2 = expect(
-            &skip_newlines(r.tokens.clone()),
-            &Rc::new(ExpectedToken::ExpectRBracket),
+            skip_newlines(r.tokens.clone()),
+            Rc::new(ExpectedToken::ExpectRBracket),
         );
         if has_err(r2.err.clone()) {
             return Rc::new(ExprResult {
@@ -13352,7 +13396,7 @@ pub fn parse_expr_list_until_acc(
     loop {
         tokens = skip_newlines(tokens.clone());
         let at_end_tag = match tokens.clone().first().cloned() {
-            Some(t) => token_matches_expected(&t, end_expected.clone()),
+            Some(t) => token_matches_expected(t.clone(), end_expected.clone()),
             None => false,
         };
         if (at_end_tag || tok_is_eof(tokens.clone().first().cloned())) {
@@ -13372,7 +13416,7 @@ pub fn parse_expr_list_until_acc(
                     err: r.err.clone(),
                 });
             }
-            let e = eat(&r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
+            let e = eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma));
             tokens = skip_newlines(match (*e).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
                 EatResult::EatUnchanged { tokens: _, .. } => r.tokens.clone(),
@@ -13392,7 +13436,7 @@ pub fn parse_paren_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
-        let r = expect(&tokens, &Rc::new(ExpectedToken::ExpectLParen));
+        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -13423,10 +13467,10 @@ pub fn parse_paren_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
             })
         } else {
             {
-                let lambda_r = try_lambda_params(&tokens, &ctx);
+                let lambda_r = try_lambda_params(tokens.clone(), ctx.clone());
                 if lambda_r.is_lambda.clone() {
                     {
-                        let r = parse_lambda_body(&lambda_r.tokens.clone(), lambda_r.ctx.clone());
+                        let r = parse_lambda_body(lambda_r.tokens.clone(), lambda_r.ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(ExprResult {
                                 expr: r.expr.clone(),
@@ -13471,7 +13515,7 @@ pub fn parse_paren_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> 
                             });
                         }
                         let tokens = skip_newlines(r.tokens.clone());
-                        let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRParen));
+                        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
                         if has_err(r2.err.clone()) {
                             return Rc::new(ExprResult {
                                 expr: dummy_expr.clone(),
@@ -13498,8 +13542,8 @@ pub fn parse_fn_lambda(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         let span = token_span(tokens.clone().first().cloned());
         let dummy = parse_recovery_placeholder();
         let r1 = expect(
-            &tokens,
-            &Rc::new(ExpectedToken::ExpectKeyword {
+            tokens.clone(),
+            Rc::new(ExpectedToken::ExpectKeyword {
                 text: "fn".to_string(),
             }),
         );
@@ -13511,7 +13555,7 @@ pub fn parse_fn_lambda(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
                 err: r1.err.clone(),
             });
         }
-        let r2 = expect(&r1.tokens.clone(), &Rc::new(ExpectedToken::ExpectLParen));
+        let r2 = expect(r1.tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r2.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy.clone(),
@@ -13522,8 +13566,8 @@ pub fn parse_fn_lambda(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
         }
         let params_r = collect_fn_lambda_params(r2.tokens.clone(), ctx.clone(), Rc::new(vec![]));
         let r3 = expect(
-            &params_r.tokens.clone(),
-            &Rc::new(ExpectedToken::ExpectRParen),
+            params_r.tokens.clone(),
+            Rc::new(ExpectedToken::ExpectRParen),
         );
         if has_err(r3.err.clone()) {
             return Rc::new(ExprResult {
@@ -13534,7 +13578,7 @@ pub fn parse_fn_lambda(tokens: &Rc<Vec<Rc<Token>>>, ctx: &Rc<ParseContext>) -> R
             });
         }
         let tokens = skip_newlines(r3.tokens.clone());
-        let body_r = parse_brace_expr(&tokens, params_r.ctx.clone());
+        let body_r = parse_brace_expr(tokens.clone(), params_r.ctx.clone());
         if has_err(body_r.err.clone()) {
             return body_r.clone();
         }
@@ -13577,7 +13621,7 @@ pub fn collect_fn_lambda_params(
                 err: None,
             });
         } else {
-            let name_r = expect_ident(&tokens);
+            let name_r = expect_ident(tokens.clone());
             if has_err(name_r.err.clone()) {
                 break Rc::new(IdentCollectResult {
                     success: false,
@@ -13700,7 +13744,7 @@ pub fn collect_lambda_idents(
             });
             let new_acc = v2_rt::rc_list_push(acc, param);
             match (*eat(
-                &Rc::new(
+                Rc::new(
                     tokens
                         .clone()
                         .iter()
@@ -13966,7 +14010,8 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
                                     });
                                 }
                                 let tokens = skip_newlines(r.tokens.clone());
-                                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                                let r2 =
+                                    expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                                 if has_err(r2.err.clone()) {
                                     return Rc::new(ExprResult {
                                         expr: dummy_expr.clone(),
@@ -14011,7 +14056,10 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
                                         });
                                     }
                                     let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                                    let r2 = expect(
+                                        tokens.clone(),
+                                        Rc::new(ExpectedToken::ExpectRBrace),
+                                    );
                                     if has_err(r2.err.clone()) {
                                         return Rc::new(ExprResult {
                                             expr: dummy_expr.clone(),
@@ -14044,7 +14092,10 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
                                         });
                                     }
                                     let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                                    let r2 = expect(
+                                        tokens.clone(),
+                                        Rc::new(ExpectedToken::ExpectRBrace),
+                                    );
                                     if has_err(r2.err.clone()) {
                                         return Rc::new(ExprResult {
                                             expr: dummy_expr.clone(),
@@ -14078,7 +14129,8 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
                                     });
                                 }
                                 let tokens = skip_newlines(r.tokens.clone());
-                                let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                                let r2 =
+                                    expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
                                 if has_err(r2.err.clone()) {
                                     return Rc::new(ExprResult {
                                         expr: dummy_expr.clone(),
@@ -14114,7 +14166,10 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
                                         });
                                     }
                                     let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                                    let r2 = expect(
+                                        tokens.clone(),
+                                        Rc::new(ExpectedToken::ExpectRBrace),
+                                    );
                                     if has_err(r2.err.clone()) {
                                         return Rc::new(ExprResult {
                                             expr: dummy_expr.clone(),
@@ -14147,7 +14202,10 @@ pub fn parse_brace_expr(tokens: &Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> R
                                         });
                                     }
                                     let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(&tokens, &Rc::new(ExpectedToken::ExpectRBrace));
+                                    let r2 = expect(
+                                        tokens.clone(),
+                                        Rc::new(ExpectedToken::ExpectRBrace),
+                                    );
                                     if has_err(r2.err.clone()) {
                                         return Rc::new(ExprResult {
                                             expr: dummy_expr.clone(),

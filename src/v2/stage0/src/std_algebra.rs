@@ -275,7 +275,7 @@ pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
 }
 
 pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
