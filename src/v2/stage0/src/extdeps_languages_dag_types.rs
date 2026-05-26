@@ -16,5 +16,5 @@ pub fn dag_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
+    CACHED.with(|c| c.clone())
 }

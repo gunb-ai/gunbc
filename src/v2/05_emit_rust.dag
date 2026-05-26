@@ -2263,7 +2263,7 @@ fn emit_param(param: Node, shared_types: Set<String>, source_indices: Map<String
   // Borrow read-only params of non-Copy types. Callable functions are already
   // excluded at the read_only_params_index level (callable_set filter).
   let is_callable_param = n.params |> count > 0
-  let is_borrowable = false
+  let is_borrowable = set_contains(read_only_params, pname) && is_callable_param == false && needs_reference_node(n: n, source_indices: source_indices)
   let final_ty = if is_borrowable {
     apply_type_template1(template: sharing_for_target(target: Rust).borrow_param_template, arg0: ty)
   } else { ty }
@@ -3595,7 +3595,7 @@ fn emit_typed_call(func: String, args: List<Node>, registry: Map<String, ItemInf
     Some { value: info } => info.is_self_recursive && info.has_non_tail_self_call == false
     None => false
   }
-  let callee_borrow_positions = if true { empty_map() } else {
+  let callee_borrow_positions = if callee_is_tco { empty_map() } else {
     match callee {
       Some { value: info } =>
         info.params |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>

@@ -73,21 +73,21 @@ pub fn empty_trace() -> Rc<Trace> {
     })
 }
 
-pub fn trace_push_event(trace: Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
+pub fn trace_push_event(trace: &Rc<Trace>, event: Rc<TraceEvent>) -> Rc<Trace> {
     Rc::new(Trace {
         events: v2_rt::rc_list_push(trace.events.clone(), event),
         stack: trace.stack.clone(),
     })
 }
 
-pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
+pub fn trace_push_frame(trace: &Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
     Rc::new(Trace {
         events: trace.events.clone(),
         stack: v2_rt::rc_list_push(trace.stack.clone(), frame),
     })
 }
 
-pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
+pub fn trace_pop_frame(trace: &Rc<Trace>) -> Rc<Trace> {
     {
         let n = (trace.stack.clone().len() as i64);
         if (n.clone() <= 1) {
@@ -182,7 +182,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
     }
 }
 
-pub fn format_span(sp: Rc<SourceSpan>) -> String {
+pub fn format_span(sp: &Rc<SourceSpan>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -206,7 +206,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
                 v2_rt::concat("> ".to_string(), id.clone()),
                 " at ".to_string(),
             ),
-            format_span(sp.clone()),
+            format_span(&sp),
         ),
         TraceEvent::TraceExit {
             node_id: id,
@@ -220,7 +220,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
                         v2_rt::concat("< ".to_string(), id.clone()),
                         " at ".to_string(),
                     ),
-                    format_span(sp.clone()),
+                    format_span(&sp),
                 ),
                 ": ".to_string(),
             ),
@@ -238,7 +238,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
                         v2_rt::concat("! ".to_string(), id.clone()),
                         " at ".to_string(),
                     ),
-                    format_span(sp.clone()),
+                    format_span(&sp),
                 ),
                 ": ".to_string(),
             ),

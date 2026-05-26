@@ -88,8 +88,8 @@ pub fn build_in_degree(
 }
 
 pub fn kahn_remove_loop(
-    remaining: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
+    remaining: &Rc<Vec<String>>,
+    local_deps: &Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> Rc<Vec<String>> {
     {
         let reverse_adj = build_reverse_adj(remaining.clone(), local_deps.clone());
@@ -222,7 +222,7 @@ pub fn kahn_cycle_drain(
 }
 
 pub fn detect_type_cycles_kahn(
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    deps_map: &Rc<HashMap<String, Rc<Vec<String>>>>,
     bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<Vec<String>> {
     {
@@ -262,7 +262,7 @@ pub fn detect_type_cycles_kahn(
             }
             __result
         });
-        let cycle_members = kahn_remove_loop(all_names.clone(), local_deps);
+        let cycle_members = kahn_remove_loop(&all_names, &local_deps);
         let sr_set = self_refs
             .iter()
             .cloned()
