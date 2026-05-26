@@ -301,18 +301,26 @@ fn validate_then_compile(
     o: infer(tree: source),
     f: fn(inferred) {
       bind_outcome(
-        o: run_required_lens_gates_on_subtree(node: inferred.root, inferred: inferred, lenses: list_append(left: always_required_lenses(), right: lenses)),
-        f: fn(lens_witnesses) {
+        o: run_required_lens_gates_on_subtree(node: inferred.root, inferred: inferred, lenses: always_required_lenses()),
+        f: fn(required_lens_witnesses) {
           bind_outcome(
-            o: compile_inferred(
-              inferred: inferred,
-              mode: mode
-            ),
-            f: fn(compile_out) {
-              outcome_accepted(
-                value: validated_from_compile_output(
-                  output: compile_out,
-                  lens_witnesses: lens_witnesses
+            o: run_required_lens_gates(inferred: inferred, lenses: lenses),
+            f: fn(caller_lens_witnesses) {
+              bind_outcome(
+                o: compile_inferred(
+                  inferred: inferred,
+                  mode: mode
+                ),
+                f: fn(compile_out) {
+                  outcome_accepted(
+                    value: validated_from_compile_output(
+                      output: compile_out,
+                      lens_witnesses: list_append(
+                        left: required_lens_witnesses,
+                        right: caller_lens_witnesses
+                      )
+                    )
+                  )
                 )
               )
             }
