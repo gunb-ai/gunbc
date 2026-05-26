@@ -13944,6 +13944,7 @@ pub fn emit_operation_method(
                         &param_node_type_expr(&p),
                         &shared_types,
                         &env.source_indices.clone(),
+                        &v2_rt::rc_empty_vec::<String>(),
                     ),
                 ));
             }
@@ -15941,6 +15942,7 @@ pub fn emit_capability_method(
                         &param_node_type_expr(&p),
                         &shared_types,
                         &env.source_indices.clone(),
+                        &v2_rt::rc_empty_vec::<String>(),
                     ),
                 ));
             }
@@ -16435,6 +16437,7 @@ pub fn rust_test_signature_comment(projection: &Rc<TestProjection>) -> String {
                         &param_node_type_expr(&p),
                         &v2_rt::rc_empty_set::<String>(),
                         &projection.source_indices.clone(),
+                        &v2_rt::rc_empty_vec::<String>(),
                     ),
                 ));
             }
