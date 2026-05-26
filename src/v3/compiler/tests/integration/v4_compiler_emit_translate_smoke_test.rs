@@ -14,11 +14,13 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
 //! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
+//! `v4_translate_dag_dispatches_token_sequence_items`,
 //! `v4_rust_language_model_declares_t11_translation_rules`,
 //! `v4_java_language_model_declares_t11_translation_rules`,
 //! `v4_typescript_language_model_declares_t11_translation_rules`,
-//! `v4_swift_language_model_declares_t11_translation_rules`, and
-//! `v4_wasm_language_model_declares_t11_translation_rules` in INVARIANTS.md.
+//! `v4_swift_language_model_declares_t11_translation_rules`,
+//! `v4_wasm_language_model_declares_t11_translation_rules`, and
+//! `v4_dag_language_model_declares_surface_emit_rows` in INVARIANTS.md.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -47,6 +49,8 @@ const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/w
 const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const DAG_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/dag.dag");
+const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
@@ -123,6 +127,19 @@ fn v4_translate_dag_declares_translate_node_and_translate() {
     assert!(
         surface_declares_fn(&module, "translate"),
         "{TRANSLATE_PATH}: must declare translate stage entry"
+    );
+}
+
+#[test]
+fn v4_translate_dag_dispatches_token_sequence_items() {
+    let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
+    assert!(
+        surface_declares_fn(&module, "concrete_token_class_child"),
+        "{TRANSLATE_PATH}: must distinguish concrete tokens from nonterminal emitted nodes"
+    );
+    assert!(
+        surface_declares_fn(&module, "token_item_to_source"),
+        "{TRANSLATE_PATH}: token_sequence_to_source must dispatch nonterminals recursively"
     );
 }
 
@@ -352,6 +369,23 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
     assert!(
         surface_declares_fn(&module, "wasm_mvp1_translation_rules_node"),
         "{WASM_LANGUAGE_PATH}: must project MVP-1 Wasm translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_dag_language_model_declares_surface_emit_rows() {
+    let module = parse_module(DAG_LANGUAGE_DAG, DAG_LANGUAGE_PATH);
+    assert!(
+        surface_declares_fn(&module, "emit_row_module_header"),
+        "{DAG_LANGUAGE_PATH}: must declare module-header grammar row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_row_import_decl"),
+        "{DAG_LANGUAGE_PATH}: must declare import-decl grammar row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_row_data_decl"),
+        "{DAG_LANGUAGE_PATH}: must declare data-decl grammar row emission"
     );
 }
 
