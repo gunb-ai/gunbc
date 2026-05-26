@@ -142,40 +142,7 @@ type RustIntegerCarrier {
   width: RustIntWidth
 }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type RustIntegerBoundSign
-  = Negative
-  | NonNegative
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type RustDecimalDigit
-  = Digit0
-  | Digit1
-  | Digit2
-  | Digit3
-  | Digit4
-  | Digit5
-  | Digit6
-  | Digit7
-  | Digit8
-  | Digit9
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type RustRangeEndpoint
-  = InclusiveMin
-  | InclusiveMax
-
-// Fixed-width Rust integer ranges carry concrete decimal structure. Pointer-sized
-// integer ranges are target-dependent, so they carry the Rust Reference relation
-// to pointer width rather than an opaque bound label.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type RustIntegerBound
-  = ConcreteIntegerBound { sign: RustIntegerBoundSign, digits: List<RustDecimalDigit> }
-  | PointerWidthIntegerBound { kind: RustIntKind, endpoint: RustRangeEndpoint }
-
 type RustIntegerRangeFacts {
-  inclusive_min: RustIntegerBound
-  inclusive_max: RustIntegerBound
   interval: IntegerIntervalSpec
 }
 
