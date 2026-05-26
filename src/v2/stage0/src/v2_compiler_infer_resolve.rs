@@ -672,6 +672,28 @@ pub fn resolve_node_bounded(
                     }
                 }
             }
+        } else if (((n.children.clone().len() as i64) == 0)
+            && is_user_generic_use_site(&n, &env))
+        {
+            {
+                let type_name = authored_name(env.clone(), n.clone());
+                let decl = match lookup_type_for(&env, &n) {
+                    Some(d) => d.clone(),
+                    None => n.clone(),
+                };
+                Rc::new(NodeResolveResult {
+                    resolved: n.clone(),
+                    diagnostics: Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::ArityMismatch {
+                            name: type_name,
+                            expected: decl.params.clone().len() as i64,
+                            got: 0,
+                            span: n.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )]),
+                })
+            }
         } else {
             if (((n.children.clone().len() as i64) > 0) && is_user_generic_use_site(&n, &env)) {
                 {

@@ -334,6 +334,13 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         }
       }
     }
+  } else if n.children |> count == 0 && is_user_generic_use_site(n: n, env: env) {
+    let type_name = authored_name(env: env, node: n)
+    let decl = match lookup_type_for(env: env, node: n) { Some { value: d } => d  None => n }
+    NodeResolveResult {
+      resolved: n,
+      diagnostics: [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: decl.params |> count, got: 0, span: n.span }, module_name: module_name)]
+    }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
     // Look up declaration, validate arity, substitute slot references with concrete arguments.

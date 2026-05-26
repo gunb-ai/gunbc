@@ -297,11 +297,15 @@ fn use_fold<T>(fold: NodeFold) -> NodeFold {
 }
 ";
     let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/gen_param_no_fabrication.rs");
+    let arity_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
+        .collect();
     assert!(
-        !content.contains("fold: NodeFold<T>") && !content.contains("fold: Rc<NodeFold<T>>"),
-        "bare generic parameter must not borrow enclosing fn type params, got:\n{content}"
+        !arity_diags.is_empty(),
+        "bare generic parameter must fail closed with ArityMismatch, got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 
@@ -4878,22 +4882,15 @@ type Outer<A, B> {
 }
 ";
     let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test_generic_field_no_fabrication.rs");
+    let arity_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
+        .collect();
     assert!(
-        !content.contains("missing: NodeFold<A>"),
-        "bare generic field must not borrow the first parent type arg, got:\n{}",
-        content
-    );
-    assert!(
-        !content.contains("missing: NodeFold<S>"),
-        "bare generic field must not borrow declaration formals from NodeFold<S>, got:\n{}",
-        content
-    );
-    assert!(
-        content.contains("missing: Rc<NodeFold>,"),
-        "bare generic field should remain uninstantiated so downstream Rust fails closed, got:\n{}",
-        content
+        !arity_diags.is_empty(),
+        "bare generic field must fail closed with ArityMismatch instead of emitting invalid Rust, got: {:?}",
+        diagnostic_messages(&result)
     );
 }
 
