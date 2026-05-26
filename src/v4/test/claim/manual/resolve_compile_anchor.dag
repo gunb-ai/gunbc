@@ -13,6 +13,7 @@ import v4.compiler.module_resolve {
   ModuleAdmission,
   ModuleImport,
   ModuleImportVisible,
+  ModuleSubject,
   resolve_module_with_admission
 }
 import v4.compiler.resolve { resolve, ResolvedTree }
@@ -235,11 +236,13 @@ fn resolve_graph_imported_use_tree() -> Node {
 
 fn resolve_module_with_graph_imported_binding_accepts() -> Bool {
   match resolve_module_with_admission(
-    tree: resolve_graph_imported_use_tree(),
     lm: dag_language_model_surface_empty_prelude(),
     graph: resolve_graph_single_import(),
     admission: ModuleAdmission {
-      subject: ModulePath { segments: Empty },
+      subject: ModuleSubject {
+        path: ModulePath { segments: Empty },
+        tree: resolve_graph_imported_use_tree()
+      },
       imports: Cons {
         head: ModuleImport {
           source: ModulePath { segments: Empty },

@@ -1,7 +1,7 @@
 // src/v4/compiler/03_module_resolve.dag
 //
 // Scope: Stage 3c — ModuleGraph admission for cross-file resolution.
-// Owns: ModuleAdmission; module_namespace_for_subject; resolve_module_with_graph.
+// Owns: ModuleSubject; ModuleAdmission; module_namespace_for_subject; resolve_module_with_graph.
 // Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
 //           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
 //           std/diagnostic.dag, std/module_graph.dag, std/node.dag, std/witness.dag.
@@ -62,8 +62,14 @@ type ModuleImport {
 }
 
 
+type ModuleSubject {
+  path: ModulePath
+  tree: NormalizedTree
+}
+
+
 type ModuleAdmission {
-  subject: ModulePath
+  subject: ModuleSubject
   imports: FreeMonoid<ModuleImport>
 }
 
@@ -160,7 +166,7 @@ fn admit_import_entry(
     ModuleAdmissionRejected { diagnostic: d } =>
       ModuleAdmissionRejected { diagnostic: d }
     ModuleAdmissionAccepted { bindings: _, origins: _ } =>
-      if module_path_eq(a: import_edge.source, b: admission.subject) {
+      if module_path_eq(a: import_edge.source, b: admission.subject.path) {
         match import_edge.visibility {
           ModuleImportHidden =>
             ModuleAdmissionRejected {
@@ -212,19 +218,18 @@ fn admit_imports(
 
 
 fn module_namespace_for_subject(
-  tree: NormalizedTree,
   lm: DagLanguageModel,
   graph: ModuleGraph,
   admission: ModuleAdmission
 ) -> Outcome<Namespace> {
-  let base = build_program_namespace(tree: tree, lm: lm)
+  let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
   match admit_imports(
     graph: graph,
     admission: admission,
     imports: admission.imports,
     state: admit_module_named_exports(
-      root: tree,
-      origin: admission.subject,
+      root: admission.subject.tree,
+      origin: admission.subject.path,
       state: module_admission_initial(base: base)
     )
   ) {
@@ -242,7 +247,7 @@ fn module_namespace_for_subject(
 }
 
 
-fn module_admission_for_subject(subject: ModulePath) -> ModuleAdmission {
+fn module_admission_for_subject(subject: ModuleSubject) -> ModuleAdmission {
   ModuleAdmission {
     subject: subject,
     imports: Empty
@@ -251,34 +256,30 @@ fn module_admission_for_subject(subject: ModulePath) -> ModuleAdmission {
 
 
 fn resolve_module_with_admission(
-  tree: NormalizedTree,
   lm: DagLanguageModel,
   graph: ModuleGraph,
   admission: ModuleAdmission
 ) -> Outcome<ResolvedTree> {
   match module_namespace_for_subject(
-    tree: tree,
     lm: lm,
     graph: graph,
     admission: admission
   ) {
     Accepted { value: namespace, diagnostics: _ } =>
-      resolve_with_namespace(tree: tree, namespace: namespace)
+      resolve_with_namespace(tree: admission.subject.tree, namespace: namespace)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
 
 fn resolve_module_with_graph(
-  tree: NormalizedTree,
   lm: DagLanguageModel,
   graph: ModuleGraph,
-  subject: ModulePath
+  subject: ModuleSubject
 ) -> Outcome<ResolvedTree> {
-  match module_graph_entry_for_path(graph: graph, path: subject) {
+  match module_graph_entry_for_path(graph: graph, path: subject.path) {
     Holds { value: _ } =>
       resolve_module_with_admission(
-        tree: tree,
         lm: lm,
         graph: graph,
         admission: module_admission_for_subject(subject: subject)
