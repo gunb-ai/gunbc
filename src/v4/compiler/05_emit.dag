@@ -55,6 +55,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
+import v4.std.collection { List }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -73,7 +74,7 @@ data emit_binding_dag_data_type: Symbol = emit_binding_dag_data_type
 data emit_binding_dag_data_value: Symbol = emit_binding_dag_data_value
 fn emit_atom(id: Symbol) -> Node {
   Node {
-    kind: Atom { identity: id },
+    kind: TypeNode { connective: Atom { identity: id } },
     children: []
   }
 }
