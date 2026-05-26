@@ -46,7 +46,8 @@ import v4.std.diagnostic {
   bind_outcome_accepted,
   diagnostics_singleton,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  outcome_with_diagnostics
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
@@ -144,6 +145,26 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 
 // 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
 // T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
+// Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
+// so introspect mode never blocks compilation. Full NonEmptyDiagnostics from Rejected flows
+// forward as advisory Accepted.diagnostics; Violates.diagnostic carries the head.
+// Extracted to avoid nested match directly in arm (v2-compiler constraint).
+fn apply_compile_lens_introspect(
+  lens: CompileLens,
+  inferred: InferredTree
+) -> Outcome<Witness<Node>> {
+  match lens.gate(tree: inferred) {
+    Accepted { value: w, diagnostics: od } =>
+      outcome_with_diagnostics(value: w, diagnostics: od)
+    Rejected { diagnostics: d } =>
+      outcome_with_diagnostics(
+        value: Violates { diagnostic: d.head },
+        diagnostics: Some { diagnostics: d }
+      )
+  }
+}
+
+
 fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
@@ -151,16 +172,7 @@ fn apply_compile_lens(
 ) -> Outcome<Witness<Node>> {
   match mode {
     CompileLensEnforce => lens.gate(tree: inferred)
-    CompileLensIntrospect =>
-      match lens.gate(tree: inferred) {
-        Accepted { value: witness, diagnostics: d } =>
-          Accepted { value: witness, diagnostics: d }
-        Rejected { diagnostics: r } =>
-          Accepted {
-            value: Violates { diagnostic: r.head },
-            diagnostics: Some { diagnostics: r }
-          }
-      }
+    CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
   }
 }
 
