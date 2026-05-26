@@ -1495,8 +1495,8 @@ T-23 round-trip workflow.
 **Scope — two pieces (ingest side only):**
 
 1. **Virtual module-loader.** The module-admission stage (T-28-B) is
-   replaced with an agent-supplied path-keyed store: `Map<ModulePath, Node>`
-   (pre-parsed `.dag` AST). The stage reads from the store rather than the
+   replaced with an agent-supplied `AgentStore` (pre-parsed `.dag` AST,
+   keyed by `ModulePath`). The stage reads from the store rather than the
    filesystem. Agents write to the store; the compiler reads from it. No
    filesystem I/O anywhere in the compile path.
    `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
