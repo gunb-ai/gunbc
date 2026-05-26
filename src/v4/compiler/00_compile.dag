@@ -142,8 +142,9 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 
 
 // 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
-// T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
-// CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion lands with application.dag.
+// T-23 migration stub: mirrors v4.lens.application apply_lens / apply_lens_enforce split.
+// CompileLensEnforce: fail-closed — gate rejection propagates as Rejected.
+// CompileLensIntrospect: advisory — gate runs but rejection is wrapped as Accepted(Violates) so compilation is never blocked.
 fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
@@ -151,7 +152,11 @@ fn apply_compile_lens(
 ) -> Outcome<Witness<Node>> {
   match mode {
     CompileLensEnforce => lens.gate(tree: inferred)
-    CompileLensIntrospect => lens.gate(tree: inferred)
+    CompileLensIntrospect =>
+      match lens.gate(tree: inferred) {
+        Accepted { value: w, diagnostics: od } => Accepted { value: w, diagnostics: od }
+        Rejected { diagnostics: d } => outcome_accepted(value: Violates { diagnostic: d.head })
+      }
   }
 }
 
