@@ -47,18 +47,9 @@ type SecondOfMinute {
 }
 
 
-// 🟢 coproduct dissolution — RFC 3339 secfrac digits are decimal digits.
-type SecfracDigit
-  = SecfracDigit0
-  | SecfracDigit1
-  | SecfracDigit2
-  | SecfracDigit3
-  | SecfracDigit4
-  | SecfracDigit5
-  | SecfracDigit6
-  | SecfracDigit7
-  | SecfracDigit8
-  | SecfracDigit9
+type SecfracDigit {
+  value: Refined<Nat>
+}
 
 
 type SecfracDigits {
@@ -162,37 +153,45 @@ type LeapSecondAnnouncement {
 }
 
 
-// 🟢 coproduct dissolution — RFC 3339 §5.7 distinguishes inserted and deleted leap seconds.
-type LeapSecondAdjustment
-  = LeapSecondInsertion
-  | LeapSecondDeletion
-
-
-type LeapSecondOccurrenceFields {
+type LeapSecondInsertionOccurrenceFields {
   announcement: LeapSecondAnnouncement
-  adjustment: LeapSecondAdjustment
 }
 
 
-type LeapSecondOccurrenceValidity {
-  refined: Refined<LeapSecondOccurrenceFields>
+type LeapSecondDeletionOccurrenceFields {
+  announcement: LeapSecondAnnouncement
 }
 
 
-type LeapSecondOccurrence {
-  validity: LeapSecondOccurrenceValidity
+type LeapSecondInsertionOccurrenceValidity {
+  refined: Refined<LeapSecondInsertionOccurrenceFields>
+}
+
+
+type LeapSecondDeletionOccurrenceValidity {
+  refined: Refined<LeapSecondDeletionOccurrenceFields>
+}
+
+
+type LeapSecondInsertionOccurrence {
+  validity: LeapSecondInsertionOccurrenceValidity
+}
+
+
+type LeapSecondDeletionOccurrence {
+  validity: LeapSecondDeletionOccurrenceValidity
 }
 
 
 type LeapSecondInstantFields {
-  occurrence: LeapSecondOccurrence
+  occurrence: LeapSecondInsertionOccurrence
   second: SecondOfMinute
   subsecond: Subsecond
 }
 
 
 type LeapSecondOffsetDateTimeFields {
-  occurrence: LeapSecondOccurrence
+  occurrence: LeapSecondInsertionOccurrence
   local_date: CalendarDate
   local_hour: HourOfDay
   local_minute: MinuteOfHour
@@ -243,11 +242,13 @@ data day_out_of_range: Symbol = day_out_of_range
 data hour_out_of_range: Symbol = hour_out_of_range
 data minute_out_of_range: Symbol = minute_out_of_range
 data second_out_of_range: Symbol = second_out_of_range
+data secfrac_digit_out_of_range: Symbol = secfrac_digit_out_of_range
 data tz_offset_hour_out_of_range: Symbol = tz_offset_hour_out_of_range
 data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
 data clock_time_fields_invalid: Symbol = clock_time_fields_invalid
-data leap_second_occurrence_invalid: Symbol = leap_second_occurrence_invalid
+data leap_second_insertion_occurrence_invalid: Symbol = leap_second_insertion_occurrence_invalid
+data leap_second_deletion_occurrence_invalid: Symbol = leap_second_deletion_occurrence_invalid
 data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
 data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
 data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
@@ -293,6 +294,11 @@ fn tz_offset_minute_value(minute: TzOffsetMinute) -> Nat {
 }
 
 
+fn secfrac_digit_value(digit: SecfracDigit) -> Nat {
+  refined_base(r: digit.value)
+}
+
+
 fn year_admits(value: Nat) -> Bool {
   value <= 9999
 }
@@ -320,6 +326,11 @@ fn minute_admits(value: Nat) -> Bool {
 
 fn second_admits(value: Nat) -> Bool {
   value <= 60
+}
+
+
+fn secfrac_digit_admits(value: Nat) -> Bool {
+  value <= 9
 }
 
 
@@ -428,28 +439,24 @@ fn leap_second_announcement_admits(announcement: LeapSecondAnnouncement) -> Bool
 }
 
 
-fn leap_second_occurrence_admits(fields: LeapSecondOccurrenceFields) -> Bool {
+fn leap_second_insertion_occurrence_admits(fields: LeapSecondInsertionOccurrenceFields) -> Bool {
   leap_second_announcement_admits(announcement: fields.announcement)
 }
 
 
-fn leap_second_occurrence_fields(occurrence: LeapSecondOccurrence) -> LeapSecondOccurrenceFields {
+fn leap_second_deletion_occurrence_admits(fields: LeapSecondDeletionOccurrenceFields) -> Bool {
+  leap_second_announcement_admits(announcement: fields.announcement)
+}
+
+
+fn leap_second_insertion_occurrence_fields(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondInsertionOccurrenceFields {
   refined_base(r: occurrence.validity.refined)
 }
 
 
-fn leap_second_occurrence_announcement(occurrence: LeapSecondOccurrence) -> LeapSecondAnnouncement {
-  let fields = leap_second_occurrence_fields(occurrence: occurrence)
+fn leap_second_insertion_occurrence_announcement(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondAnnouncement {
+  let fields = leap_second_insertion_occurrence_fields(occurrence: occurrence)
   fields.announcement
-}
-
-
-fn leap_second_occurrence_is_insertion(occurrence: LeapSecondOccurrence) -> Bool {
-  let fields = leap_second_occurrence_fields(occurrence: occurrence)
-  match fields.adjustment {
-    LeapSecondInsertion => true
-    LeapSecondDeletion => false
-  }
 }
 
 
@@ -508,16 +515,14 @@ fn clock_time_fields_admits(fields: ClockTimeFields) -> Bool {
 
 fn leap_second_instant_admits(fields: LeapSecondInstantFields) -> Bool {
   let second = second_value(second: fields.second)
-  (second == 60)
-    && leap_second_occurrence_is_insertion(occurrence: fields.occurrence)
+  second == 60
 }
 
 
 fn leap_second_offset_datetime_admits(fields: LeapSecondOffsetDateTimeFields) -> Bool {
   let second = second_value(second: fields.second)
-  let announcement = leap_second_occurrence_announcement(occurrence: fields.occurrence)
+  let announcement = leap_second_insertion_occurrence_announcement(occurrence: fields.occurrence)
   (second == 60)
-    && leap_second_occurrence_is_insertion(occurrence: fields.occurrence)
     && leap_second_local_matches_utc(announcement: announcement, fields: fields)
 }
 
@@ -558,6 +563,12 @@ data second_validation: Validation<Nat> = Validation {
 }
 
 
+data secfrac_digit_validation: Validation<Nat> = Validation {
+  reason: secfrac_digit_out_of_range,
+  admits: secfrac_digit_admits
+}
+
+
 data tz_offset_hour_validation: Validation<Nat> = Validation {
   reason: tz_offset_hour_out_of_range,
   admits: tz_offset_hour_admits
@@ -582,9 +593,15 @@ data clock_time_validation: Validation<ClockTimeFields> = Validation {
 }
 
 
-data leap_second_occurrence_validation: Validation<LeapSecondOccurrenceFields> = Validation {
-  reason: leap_second_occurrence_invalid,
-  admits: leap_second_occurrence_admits
+data leap_second_insertion_occurrence_validation: Validation<LeapSecondInsertionOccurrenceFields> = Validation {
+  reason: leap_second_insertion_occurrence_invalid,
+  admits: leap_second_insertion_occurrence_admits
+}
+
+
+data leap_second_deletion_occurrence_validation: Validation<LeapSecondDeletionOccurrenceFields> = Validation {
+  reason: leap_second_deletion_occurrence_invalid,
+  admits: leap_second_deletion_occurrence_admits
 }
 
 
@@ -648,6 +665,13 @@ fn make_second_of_minute(value: Nat, at: Locus) -> Outcome<SecondOfMinute> {
 }
 
 
+fn make_secfrac_digit(value: Nat, at: Locus) -> Outcome<SecfracDigit> {
+  bind_outcome(o: refine(base: value, by: secfrac_digit_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: SecfracDigit { value: refined })
+  })
+}
+
+
 fn make_subsecond(digits: SecfracDigits) -> Subsecond {
   FractionalSecond { digits: digits }
 }
@@ -681,9 +705,22 @@ fn make_clock_time(fields: ClockTimeFields, at: Locus) -> Outcome<ClockTime> {
 }
 
 
-fn make_leap_second_occurrence(fields: LeapSecondOccurrenceFields, at: Locus) -> Outcome<LeapSecondOccurrence> {
-  bind_outcome(o: refine(base: fields, by: leap_second_occurrence_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: LeapSecondOccurrence { validity: LeapSecondOccurrenceValidity { refined: refined } })
+fn make_leap_second_insertion_occurrence(
+  fields: LeapSecondInsertionOccurrenceFields,
+  at: Locus
+) -> Outcome<LeapSecondInsertionOccurrence> {
+  bind_outcome(o: refine(base: fields, by: leap_second_insertion_occurrence_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: LeapSecondInsertionOccurrence { validity: LeapSecondInsertionOccurrenceValidity { refined: refined } })
+  })
+}
+
+
+fn make_leap_second_deletion_occurrence(
+  fields: LeapSecondDeletionOccurrenceFields,
+  at: Locus
+) -> Outcome<LeapSecondDeletionOccurrence> {
+  bind_outcome(o: refine(base: fields, by: leap_second_deletion_occurrence_validation, at: at), f: fn(refined) {
+    outcome_accepted(value: LeapSecondDeletionOccurrence { validity: LeapSecondDeletionOccurrenceValidity { refined: refined } })
   })
 }
 
