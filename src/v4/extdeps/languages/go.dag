@@ -127,7 +127,7 @@ type GoCost {
   allocation_cost: Int
 }
 
-// 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
+// GoConcreteSyntaxToken: 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
 type GoConcreteSyntaxToken
   = GoFixedToken { token_class: Symbol }
   | GoBoundToken { token_class: Symbol, binding: Symbol }
@@ -1204,8 +1204,8 @@ fn go_wave1_lex_rules() -> List<LexRule> {
     go_lex_rule(token_class: go_token_lparen, text: "("),
     go_lex_rule(token_class: go_token_ty_int, text: " int"),
     go_lex_rule(token_class: go_token_comma, text: ", "),
-    go_lex_rule(token_class: go_token_rparen, text: ") "),
-    go_lex_rule(token_class: go_token_lbrace, text: "{ "),
+    go_lex_rule(token_class: go_token_rparen, text: ")"),
+    go_lex_rule(token_class: go_token_lbrace, text: " { "),
     go_lex_rule(token_class: go_token_kw_return, text: "return "),
     go_lex_rule(token_class: go_token_plus, text: " + "),
     go_lex_rule(token_class: go_token_rbrace, text: " }")
