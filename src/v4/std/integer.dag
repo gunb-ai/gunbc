@@ -78,8 +78,21 @@ type IntegerRangeEndpoint
   | IntegerRangeInclusiveMax
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type DecimalDigit
+  = D0
+  | D1
+  | D2
+  | D3
+  | D4
+  | D5
+  | D6
+  | D7
+  | D8
+  | D9
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerIntervalBound
-  = IntegerConcreteBound { sign: IntegerBoundSign, decimal_digits: List<Nat> }
+  = IntegerConcreteBound { sign: IntegerBoundSign, decimal_digits: List<DecimalDigit> }
   | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
 
 // 🟢 grounded.
@@ -126,7 +139,7 @@ fn integer_interval(
 
 fn integer_concrete_bound(
   sign: IntegerBoundSign,
-  decimal_digits: List<Nat>
+  decimal_digits: List<DecimalDigit>
 ) -> IntegerIntervalBound {
   IntegerConcreteBound { sign: sign, decimal_digits: decimal_digits }
 }
