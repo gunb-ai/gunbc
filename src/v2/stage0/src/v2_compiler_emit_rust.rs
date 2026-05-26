@@ -197,7 +197,10 @@ pub fn render_rust_applied_type(
             __result
         });
         v2_rt::concat(
-            v2_rt::concat(v2_rt::concat(base, "<".to_string()), args.join(&", ".to_string())),
+            v2_rt::concat(
+                v2_rt::concat(base, "<".to_string()),
+                args.join(&", ".to_string()),
+            ),
             ">".to_string(),
         )
     }
