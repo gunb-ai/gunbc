@@ -4841,6 +4841,40 @@ type Bar<K, V> {
     );
 }
 
+#[test]
+fn bare_generic_field_does_not_fabricate_parent_type_args() {
+    let source = "
+module test_generic_field_no_fabrication
+
+type NodeFold<S> {
+  seed: S
+}
+
+type Outer<A, B> {
+  good: NodeFold<B>
+  missing: NodeFold
+}
+";
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/test_generic_field_no_fabrication.rs");
+    assert!(
+        content.contains("good: NodeFold<B>"),
+        "explicit generic field args should be preserved, got:\n{}",
+        content
+    );
+    assert!(
+        !content.contains("missing: NodeFold<A>"),
+        "bare generic field must not borrow the first parent type arg, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("missing: NodeFold,"),
+        "bare generic field should remain uninstantiated so downstream Rust fails closed, got:\n{}",
+        content
+    );
+}
+
 // ── Targeted type rendering correctness tests ─────────────────────────
 
 fn test_leaf_node(name: &str) -> Rc<v2_compiler::v2_std_core::Node> {

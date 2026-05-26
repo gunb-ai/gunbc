@@ -1673,7 +1673,6 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
       } else {
         let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
         let inferred_args = if explicit_args |> count == expected { explicit_args }
-          else if parent_generic_param_names |> count >= expected { parent_generic_param_names |> take(n: expected) }
           else { [] }
         if inferred_args |> count == expected {
           let with_args = concat(type_name, "<", inferred_args |> join(separator: ", "), ">")

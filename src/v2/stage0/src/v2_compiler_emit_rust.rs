@@ -3246,20 +3246,7 @@ pub fn apply_missing_generic_args(
                             if ((explicit_args.clone().len() as i64) == expected.clone()) {
                                 explicit_args.clone()
                             } else {
-                                if ((parent_generic_param_names.clone().len() as i64)
-                                    >= expected.clone())
-                                {
-                                    Rc::new(
-                                        parent_generic_param_names
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .take(expected.clone() as usize)
-                                            .collect::<Vec<_>>(),
-                                    )
-                                } else {
-                                    Rc::new(vec![])
-                                }
+                                Rc::new(vec![])
                             };
                         if ((inferred_args.clone().len() as i64) == expected.clone()) {
                             {
