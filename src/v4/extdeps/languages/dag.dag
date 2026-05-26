@@ -71,6 +71,7 @@ data dag_token_kw_fn: Symbol = dag_token_kw_fn
 data dag_token_kw_let: Symbol = dag_token_kw_let
 data dag_token_kw_match: Symbol = dag_token_kw_match
 data dag_token_kw_if: Symbol = dag_token_kw_if
+data dag_token_kw_then: Symbol = dag_token_kw_then
 data dag_token_kw_else: Symbol = dag_token_kw_else
 data dag_token_kw_true: Symbol = dag_token_kw_true
 data dag_token_kw_false: Symbol = dag_token_kw_false
@@ -282,6 +283,7 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_keyword_lex_rule(token_class: dag_token_kw_let, text: "let"),
       dag_keyword_lex_rule(token_class: dag_token_kw_match, text: "match"),
       dag_keyword_lex_rule(token_class: dag_token_kw_if, text: "if"),
+      dag_keyword_lex_rule(token_class: dag_token_kw_then, text: "then"),
       dag_keyword_lex_rule(token_class: dag_token_kw_else, text: "else"),
       dag_keyword_lex_rule(token_class: dag_token_kw_true, text: "true"),
       dag_keyword_lex_rule(token_class: dag_token_kw_false, text: "false"),
@@ -1032,7 +1034,7 @@ fn dag_grammar_field_pattern_expr() -> GrammarExpr {
 }
 
 
-fn dag_grammar_if_expr_expr() -> GrammarExpr {
+fn dag_grammar_if_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: dag_token_kw_if),
     right: dag_grammar_sequence(
@@ -1048,6 +1050,34 @@ fn dag_grammar_if_expr_expr() -> GrammarExpr {
         )
       )
     )
+  )
+}
+
+
+fn dag_grammar_if_then_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: dag_token_kw_if),
+    right: dag_grammar_sequence(
+      left: dag_grammar_nonterminal(production: dag_production_expr),
+      right: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_kw_then),
+        right: dag_grammar_sequence(
+          left: dag_grammar_nonterminal(production: dag_production_expr),
+          right: dag_grammar_sequence(
+            left: dag_grammar_terminal(token_class: dag_token_kw_else),
+            right: dag_grammar_nonterminal(production: dag_production_expr)
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_if_expr_expr() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_if_then_expr(),
+    right: dag_grammar_if_block_expr()
   )
 }
 
