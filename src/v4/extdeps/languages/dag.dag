@@ -85,6 +85,11 @@ data dag_token_gte: Symbol = dag_token_gte
 data dag_token_lte: Symbol = dag_token_lte
 data dag_token_or_or: Symbol = dag_token_or_or
 data dag_token_and_and: Symbol = dag_token_and_and
+data dag_token_pipe_gt: Symbol = dag_token_pipe_gt
+data dag_token_plus: Symbol = dag_token_plus
+data dag_token_minus: Symbol = dag_token_minus
+data dag_token_star: Symbol = dag_token_star
+data dag_token_slash: Symbol = dag_token_slash
 data dag_token_bang: Symbol = dag_token_bang
 data dag_token_eq: Symbol = dag_token_eq
 data dag_token_colon: Symbol = dag_token_colon
@@ -288,6 +293,11 @@ fn dag_wave1_lex_rules() -> LexRuleSet {
       dag_literal_lex_rule(token_class: dag_token_lte, text: "<="),
       dag_literal_lex_rule(token_class: dag_token_or_or, text: "||"),
       dag_literal_lex_rule(token_class: dag_token_and_and, text: "&&"),
+      dag_literal_lex_rule(token_class: dag_token_pipe_gt, text: "|>"),
+      dag_literal_lex_rule(token_class: dag_token_plus, text: "+"),
+      dag_literal_lex_rule(token_class: dag_token_minus, text: "-"),
+      dag_literal_lex_rule(token_class: dag_token_star, text: "*"),
+      dag_literal_lex_rule(token_class: dag_token_slash, text: "/"),
       dag_literal_lex_rule(token_class: dag_token_bang, text: "!"),
       dag_literal_lex_rule(token_class: dag_token_eq, text: "="),
       dag_literal_lex_rule(token_class: dag_token_colon, text: ":"),
@@ -594,29 +604,129 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
 }
 
 
-fn dag_grammar_binary_op_choice() -> GrammarExpr {
-  // Mirrors the concrete binary operators currently admitted by v4 `.dag`
-  // source. Grammar-as-data projection from a canonical operator table is
-  // gated until the modeled language spec owns operator precedence directly.
+fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: dag_token_star),
+    right: dag_grammar_terminal(token_class: dag_token_slash)
+  )
+}
+
+
+fn dag_grammar_additive_op_choice() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: dag_token_plus),
+    right: dag_grammar_terminal(token_class: dag_token_minus)
+  )
+}
+
+
+fn dag_grammar_comparison_op_choice() -> GrammarExpr {
+  dag_grammar_choice(
+    left: dag_grammar_terminal(token_class: dag_token_gte),
+    right: dag_grammar_choice(
+      left: dag_grammar_terminal(token_class: dag_token_lte),
+      right: dag_grammar_choice(
+        left: dag_grammar_terminal(token_class: dag_token_lt),
+        right: dag_grammar_terminal(token_class: dag_token_gt)
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_equality_op_choice() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: dag_token_eq_eq),
-    right: dag_grammar_choice(
-      left: dag_grammar_terminal(token_class: dag_token_neq),
-      right: dag_grammar_choice(
-        left: dag_grammar_terminal(token_class: dag_token_gte),
-        right: dag_grammar_choice(
-          left: dag_grammar_terminal(token_class: dag_token_lte),
-          right: dag_grammar_choice(
-            left: dag_grammar_terminal(token_class: dag_token_lt),
-            right: dag_grammar_choice(
-              left: dag_grammar_terminal(token_class: dag_token_gt),
-              right: dag_grammar_choice(
-                left: dag_grammar_terminal(token_class: dag_token_or_or),
-                right: dag_grammar_terminal(token_class: dag_token_and_and)
-              )
-            )
-          )
-        )
+    right: dag_grammar_terminal(token_class: dag_token_neq)
+  )
+}
+
+
+fn dag_grammar_multiplicative_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_nonterminal(production: dag_production_unary_expr),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_multiplicative_op_choice(),
+        right: dag_grammar_nonterminal(production: dag_production_unary_expr)
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_additive_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_multiplicative_expr_helper(),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_additive_op_choice(),
+        right: dag_grammar_multiplicative_expr_helper()
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_comparison_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_additive_expr_helper(),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
+        left: dag_grammar_comparison_op_choice(),
+        right: dag_grammar_additive_expr_helper()
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_equality_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_comparison_expr_helper(),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
+        left: dag_grammar_equality_op_choice(),
+        right: dag_grammar_comparison_expr_helper()
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_and_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_equality_expr_helper(),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_and_and),
+        right: dag_grammar_equality_expr_helper()
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_or_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_and_expr_helper(),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_or_or),
+        right: dag_grammar_and_expr_helper()
+      )
+    )
+  )
+}
+
+
+fn dag_grammar_pipe_expr_helper() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_or_expr_helper(),
+    right: dag_grammar_repeat(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: dag_token_pipe_gt),
+        right: dag_grammar_or_expr_helper()
       )
     )
   )
@@ -624,15 +734,7 @@ fn dag_grammar_binary_op_choice() -> GrammarExpr {
 
 
 fn dag_grammar_binary_expr_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_nonterminal(production: dag_production_unary_expr),
-    right: dag_grammar_repeat(
-      element: dag_grammar_sequence(
-        left: dag_grammar_binary_op_choice(),
-        right: dag_grammar_nonterminal(production: dag_production_unary_expr)
-      )
-    )
-  )
+  dag_grammar_pipe_expr_helper()
 }
 
 
