@@ -75,12 +75,21 @@ fn v4_compiler_parse_table_dag_tokenizes_and_parses() {
 #[test]
 fn v4_compiler_parse_table_entrypoints_and_claim_wiring() {
     let parse = parse_module(PARSE_DAG, PARSE_DAG_PATH);
-    for name in ["build_parse_table", "parse_production", "parse_table_empty"] {
+    for name in [
+        "build_parse_table",
+        "parse_production",
+        "parse_table_empty",
+        "token_position_indices",
+    ] {
         assert!(
             surface_declares_fn(&parse, name),
             "{PARSE_DAG_PATH}: must declare {name}"
         );
     }
+    assert!(
+        !PARSE_DAG.contains("item: length(xs: tokens)"),
+        "{PARSE_DAG_PATH}: token_position_indices fold must produce 0..N without an extra final append"
+    );
 
     let algebra = parse_module(ALGEBRA_DAG, ALGEBRA_PATH);
     assert!(
