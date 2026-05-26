@@ -1,9 +1,10 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface over TargetModel: grammar-inverse serialize_target ∘ translate.
-// Owns: emit_row_module_header,
+// Owns: emit_atom, emit_named_edge, emit_positional_edge, emit_fixed_token,
+//       emit_bound_token, emit_tokens_node, emit_grammar_relation_row,
 //       serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
-//           extdeps/languages/dag.dag, std/diagnostic.dag, std/target_model.dag.
+//           std/diagnostic.dag, std/target_model.dag.
 // Status: T-10 — emit = serialize_target ∘ translate; serialize delegates to
 // target_serialize_source_from_model grammar-inverse lex walk (no string templates).
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
@@ -22,13 +23,6 @@ import v4.compiler.translate {
   TargetNodeTree,
   target_serialize_source_from_model,
   translate
-}
-import v4.extdeps.languages.dag {
-  dag_grammar_module_header_expr,
-  dag_production_module_header,
-  dag_surface_module_header,
-  dag_token_ident,
-  dag_token_kw_module
 }
 import v4.std.diagnostic {
   Accepted,
@@ -54,8 +48,6 @@ import v4.std.target_model {
   grammar_relation_field_production,
   grammar_relation_field_tokens
 }
-data emit_relation_dag_module_header: Symbol = emit_relation_dag_module_header
-data emit_binding_dag_module_name: Symbol = emit_binding_dag_module_name
 fn emit_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
@@ -129,22 +121,9 @@ fn emit_grammar_relation_row(
     ]
   }
 }
-fn emit_row_module_header() -> Node {
-  emit_grammar_relation_row(
-    production: GrammarProduction {
-      name: dag_production_module_header,
-      expression: dag_grammar_module_header_expr(),
-      emitted: emit_atom(id: dag_surface_module_header)
-    },
-    emitted: dag_surface_module_header,
-    tokens: [
-      emit_fixed_token(token_class: dag_token_kw_module),
-      emit_bound_token(token_class: dag_token_ident, binding: emit_binding_dag_module_name)
-    ]
-  )
-}
-// Scope gate: emit_row_import_decl and emit_row_data_decl are blocked pending
-// nonterminal dispatch infrastructure in 06_translate.dag (follow-on task tracked by PM).
+// Scope gate: dag_surface_module_header, dag_surface_import_decl, and
+// dag_surface_data_decl rows are blocked pending nonterminal dispatch
+// infrastructure in 06_translate.dag (follow-on task tracked by PM).
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel
