@@ -130,7 +130,11 @@ pub fn render_rust_type(
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => emit_ident(tv, RenderTarget::Rust),
         _ => {
-            if node_is_set_collection(&n, &source_indices) {
+            if ((n.connective.clone() == Connective::NoConnective)
+                && ((n.children.len() as i64) > 0))
+            {
+                render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
+            } else if node_is_set_collection(&n, &source_indices) {
                 match n.children.clone().first().cloned() {
                     Some(elem_child) => {
                         let elem_node = child_type_node(&elem_child);
@@ -214,6 +218,43 @@ pub fn render_rust_applied_type(
             ),
             ">".to_string(),
         )
+    }
+}
+
+pub fn render_rust_decl_type(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let name = authored_name_at(source_indices.clone(), &n);
+    if ((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.len() as i64) == 0)
+        && generic_param_names.iter().any(|g| g.as_str() == name.as_str()))
+    {
+        emit_ident(name, RenderTarget::Rust)
+    } else if ((n.connective.clone() == Connective::NoConnective)
+        && ((n.children.len() as i64) > 0))
+    {
+        let base = coerce_primitive_type(RenderTarget::Rust, name.clone());
+        let args = Rc::new({
+            let mut __result = Vec::new();
+            for arg in n.children.clone().iter().cloned() {
+                __result.push(render_rust_decl_type(
+                    arg.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        v2_rt::concat(
+            v2_rt::concat(v2_rt::concat(base, "<".to_string()), args.join(&", ".to_string())),
+            ">".to_string(),
+        )
+    } else {
+        render_rust_type(&n, shared_types, &source_indices)
     }
 }
 
@@ -3395,10 +3436,11 @@ pub fn emit_struct_field_from_child(
                 }
             }
         } else {
-            render_rust_type(
-                &authored_child_type,
+            render_rust_decl_type(
+                authored_child_type.clone(),
+                parent_generic_param_names.clone(),
                 shared_types.clone(),
-                &env.source_indices.clone(),
+                env.source_indices.clone(),
             )
         };
         let generic_ty = ty.clone();

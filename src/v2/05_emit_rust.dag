@@ -189,6 +189,19 @@ fn render_rust_applied_type(n: Node, shared_types: Set<String>, source_indices: 
   }
 }
 
+fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
+    emit_ident(name: name, target: Rust)
+  } else if n.connective == NoConnective && n.children |> count > 0 {
+    let base = coerce_primitive_type(target: Rust, dag_name: name)
+    let args = n.children |> map(arg => render_rust_decl_type(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices)) |> join(separator: ", ")
+    concat(base, "<", args, ">")
+  } else {
+    render_rust_type(n: n, shared_types: shared_types, source_indices: source_indices)
+  }
+}
+
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
@@ -1670,7 +1683,7 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   if children |> count == 0 {
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, ";")
   } else {
-    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
+    let field_lines = children |> map(child => emit_struct_field_from_child(child: child, generic_param_names: generic_param_names, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info))
     let fields_str = field_lines |> join(separator: "\n")
     concat(derives, "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, type_params, " {\n", fields_str, "\n}")
   }
@@ -1701,7 +1714,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, shared_types: Set<St
   }
 }
 
-fn emit_struct_field_from_child(child: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   // Struct fields use Rc-wrapped types for consistency with function signatures.
   let rt_child = resolved_type(n: child)
   // Fix self-referential Conj types: when a field's resolved type is a full
@@ -1730,7 +1743,7 @@ fn emit_struct_field_from_child(child: Node, recursive_types: Set<String>, share
       None => render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
     }
   } else {
-    render_rust_type(n: authored_child_type, shared_types: shared_types, source_indices: env.source_indices)
+    render_rust_decl_type(n: authored_child_type, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices)
   }
   let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
