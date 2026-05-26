@@ -270,6 +270,15 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
         out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["TsGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/rust.dag":
+        out["RustGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/python.dag":
+        out["PythonGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/go.dag":
+        out["GoGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/cpp.dag":
+        out["CppGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/swift.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (
