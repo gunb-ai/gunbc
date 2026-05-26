@@ -4898,6 +4898,24 @@ type NodeFold<S> {
   seed: S
 }
 
+type Outer<A, B> {
+  good: NodeFold<B>
+  missing: NodeFold
+}
+";
+    let result = compile_dag(source);
+    let arity_diags: Vec<_> = result
+        .diagnostics
+        .iter()
+        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
+        .collect();
+    assert!(
+        !arity_diags.is_empty(),
+        "bare generic field must fail closed with ArityMismatch instead of emitting invalid Rust, got: {:?}",
+        diagnostic_messages(&result)
+    );
+}
+
 #[test]
 fn explicit_same_name_generic_args_are_preserved() {
     let source = "
@@ -4918,24 +4936,6 @@ type Outer<S> {
         content.contains("pub same: Rc<NodeFold<S>>,"),
         "explicit same-name type arg should remain applied, got:\n{}",
         content
-    );
-}
-
-type Outer<A, B> {
-  good: NodeFold<B>
-  missing: NodeFold
-}
-";
-    let result = compile_dag(source);
-    let arity_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
-        .collect();
-    assert!(
-        !arity_diags.is_empty(),
-        "bare generic field must fail closed with ArityMismatch instead of emitting invalid Rust, got: {:?}",
-        diagnostic_messages(&result)
     );
 }
 
