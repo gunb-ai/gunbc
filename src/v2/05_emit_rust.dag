@@ -7261,16 +7261,13 @@ fn emit_main_match_arm(wf: WorkflowFunc, has_services: Bool) -> String {
 
 // Emit the argument list for calling a workflow function from main.
 // Includes the function's params, then service instance args.
-// CLI args from clap are owned values. Params that the function takes
-// by reference (read-only non-Copy types) need & at the call site.
+  // CLI args from clap are owned values. Keep this aligned with emit_param.
 fn emit_main_call_args(wf: WorkflowFunc, has_services: Bool) -> String {
   let param_args = wf.params |> map(p =>
     let pname = param_node_name_at(n: p, source_indices: wf.source_indices)
     let ident = emit_ident(name: pname, target: Rust)
     let n = param_node_type_expr(n: p)
-    let is_borrowable = set_contains(wf.read_only_params, pname)
-      && n.params |> count == 0
-      && needs_reference_node(n: n, source_indices: wf.source_indices)
+    let is_borrowable = false
     if is_borrowable { concat("&", ident) } else { ident }
   )
   let service_args = emit_main_service_arg_list(wf: wf, has_services: has_services)
