@@ -3,9 +3,11 @@
 // Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid.
 // Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
 // Status: T-4.16 follow-on — formatter ConfigPatch monoid substrate.
-// External authority: two-element lattice per field (Override = top, Inherit = bottom);
-//   standard layered-config pattern (NixOS module system, Home Manager override/inherit).
-//   Monoid: right-biased composition (later layer wins); identity = Inherit.
+// External authority: right-biased optional-value patch monoid — FieldPatch<T> is 1 + T
+//   (Inherit = absent/identity, Override { value } = present/payload). Not a two-element
+//   lattice: for non-singleton T, distinct Override values are distinct patches, not a
+//   shared top. Monoid op is right-biased (later layer wins); identity is Inherit.
+//   Standard layered-config pattern: NixOS module system, Home Manager mkOverride.
 
 module v4.std.patch
 
