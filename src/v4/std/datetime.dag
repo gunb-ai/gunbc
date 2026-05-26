@@ -381,16 +381,6 @@ fn clock_time_fields(time: ClockTime) -> ClockTimeFields {
 }
 
 
-fn leap_second_month_end(fields: CalendarDateFields) -> Bool {
-  let month = month_value(month: fields.month)
-  let day = day_value(day: fields.day)
-  ((month == 3) && (day == 31))
-    || ((month == 6) && (day == 30))
-    || ((month == 9) && (day == 30))
-    || ((month == 12) && (day == 31))
-}
-
-
 fn leap_second_announced_insertion_date(fields: CalendarDateFields) -> Bool {
   let year = year_value(year: fields.year)
   let month = month_value(month: fields.month)
