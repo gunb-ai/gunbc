@@ -334,13 +334,6 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
         }
       }
     }
-  } else if n.children |> count == 0 && n.params |> count == 0 && is_user_generic_use_site(n: n, env: env) {
-    let type_name = authored_name(env: env, node: n)
-    let decl = match lookup_type_for(env: env, node: n) { Some { value: d } => d  None => n }
-    NodeResolveResult {
-      resolved: n,
-      diagnostics: [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: decl.params |> count, got: 0, span: n.span }, module_name: module_name)]
-    }
   } else if n.children |> count > 0 && is_user_generic_use_site(n: n, env: env) {
     // Generic type use site (e.g., Pair<Int, String>, Box<Int>, MyList<Int>).
     // Look up declaration, validate arity, substitute slot references with concrete arguments.
@@ -485,6 +478,16 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int) 
   }
 }
 
+fn missing_generic_args_diagnostics(n: Node, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  if n.children |> count == 0 && n.params |> count == 0 && is_user_generic_use_site(n: n, env: env) {
+    let type_name = authored_name(env: env, node: n)
+    let decl = match lookup_type_for(env: env, node: n) { Some { value: d } => d  None => n }
+    [make_error_node(diagnostic: ArityMismatch { name: type_name, expected: decl.params |> count, got: 0, span: n.span }, module_name: module_name)]
+  } else {
+    []
+  }
+}
+
 fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) -> NodeResolveResult {
   if n == none { NodeResolveResult { resolved: unit_type, diagnostics: [] } }
   else {
@@ -509,9 +512,10 @@ fn resolve_optional_node(n: InferredNode?, env: TypeEnv, module_name: String) ->
 // =========================================================================
 
 fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult {
-  let type_result = resolve_node(n: field_node_type_expr(n: field), env: env, module_name: module_name)
+  let authored_type = field_node_type_expr(n: field)
+  let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
-  let type_diags = type_result.diagnostics
+  let type_diags = concat(type_result.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
   let default_resolved = match field_node_default_value(n: field) {
     Some { value: default_value } => Some { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
     None => none
@@ -541,9 +545,10 @@ fn resolve_field(field: Node, env: TypeEnv, module_name: String) -> FieldResult 
 // =========================================================================
 
 fn resolve_param(param: Node, env: TypeEnv, module_name: String) -> ParamResult {
-  let type_result = resolve_node(n: param_node_type_expr(n: param), env: env, module_name: module_name)
+  let authored_type = param_node_type_expr(n: param)
+  let type_result = resolve_node(n: authored_type, env: env, module_name: module_name)
   let type_resolved = type_result.resolved
-  let type_diags = type_result.diagnostics
+  let type_diags = concat(type_result.diagnostics, missing_generic_args_diagnostics(n: authored_type, env: env, module_name: module_name))
   let default_resolved = match param_node_default_value(n: param) {
     Some { value: default_value } => Some { value: resolve_expr_types(texpr: default_value, env: env, module_name: module_name) }
     None => none
