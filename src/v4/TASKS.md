@@ -1530,14 +1530,26 @@ to define a new agent output surface.
 
 **Files:**
 - `src/v4/std/agent.dag` — new file; `AgentStore` carrier only.
-- `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point
-  (filesystem-free compile path; output type is the existing `Outcome<TargetSource>`).
+- `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point.
+  **Scope of T-35's change:** replace the module-admission step (currently
+  `module_graph_from_entries(entries: Empty)` in `compile_ingest_staging`) with
+  a store-based lookup. `compile_with_store` delegates to the same existing
+  `compile` orchestrator chain as `compile_ingest_staging` — T-35 does NOT
+  implement or modify the infer/emit pipeline. Output type inherits from the
+  existing orchestrator contract (`Outcome<TargetSource>`); T-35 workers must
+  not redefine it.
 
-**Dependencies — `[needs T-28-B]`.**
-T-28-B is the only hard prerequisite: the module-admission stage must be
-extracted before the virtual loader can replace it. T-9 and T-10 are
-prerequisites of T-23/AGENT-1's round-trip workflow, not of T-35's
-ingest-side scope.
+**Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
+- **T-28-B** is the hard implementation prerequisite: the module-admission
+  stage must be extracted from `03_resolve.dag` before the virtual loader can
+  replace it. T-35 workers cannot proceed without T-28-B.
+- **T-9 and T-10** are execution prerequisites, not implementation
+  prerequisites: `compile_with_store` delegates to the same pipeline as
+  `compile_ingest_staging`, so its output is stub/Diagnostic-only until T-9
+  (infer) and T-10 (emit) are complete. T-35 workers do NOT implement
+  infer/emit — they wire the store into the existing orchestrator. Workers
+  must not expand scope into T-9/T-10 territory even if the pipeline is
+  incomplete at dispatch time.
 
 **What this is NOT:**
 - Not a new language feature — no new `.dag` syntax.
