@@ -47,7 +47,7 @@ import v4.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v4.std.node { Edge, Node, Symbol }
+import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -206,30 +206,25 @@ fn run_required_lens_gates_on_subtree(
   inferred: InferredTree,
   lenses: List<CompileLens>
 ) -> Outcome<List<LensGateWitness>> {
-  bind_outcome(
-    o: run_required_lens_gates(
-      inferred: InferredTree { root: node, facts: inferred.facts },
-      lenses: lenses
-    ),
-    f: fn(witnesses) {
-      fold(
-        node.children,
-        init: outcome_accepted(value: witnesses),
-        f: fn(acc, edge) {
-          bind_outcome(o: acc, f: fn(ws) {
-            bind_outcome(
-              o: run_required_lens_gates_on_subtree(
-                node: edge.target,
-                inferred: inferred,
-                lenses: lenses
-              ),
-              f: fn(child_ws) {
-                outcome_accepted(value: list_append(left: ws, right: child_ws))
-              }
-            )
-          })
-        }
-      )
+  fold_node(
+    n: node,
+    algebra: NodeFold {
+      init: fn(n0) {
+        run_required_lens_gates(
+          inferred: InferredTree { root: n0, facts: inferred.facts },
+          lenses: lenses
+        )
+      },
+      step: fn(acc, _, child) {
+        bind_outcome(o: acc, f: fn(ws) {
+          bind_outcome(
+            o: child,
+            f: fn(child_ws) {
+              outcome_accepted(value: list_append(left: ws, right: child_ws))
+            }
+          )
+        })
+      }
     }
   )
 }
