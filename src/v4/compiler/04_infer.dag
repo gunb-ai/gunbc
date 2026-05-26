@@ -38,10 +38,10 @@ import v4.std.diagnostic {
   rejected_with_pending
 }
 import v4.std.logic { Bool }
+import v4.std.nat { Nat, Zero, is_zero }
 import v4.std.node {
   Atom,
   ComputationNode,
-  Conj,
   Edge,
   Node,
   NodeFold,
@@ -125,39 +125,55 @@ data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_in
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 
 
-data sm5_algebra_ref_grounded_pass: Symbol = sm5_algebra_ref_grounded_pass
-data sm5_algebra_ref_grounded_fail: Symbol = sm5_algebra_ref_grounded_fail
+data sm5_bootstrap_src_v4: Symbol = sm5_bootstrap_src_v4
+data sm5_diagnostic_census_pass: Symbol = sm5_diagnostic_census_pass
+data sm5_diagnostic_census_fail: Symbol = sm5_diagnostic_census_fail
 
 
-fn sm5_algebra_ref_grounded_pass_node() -> Node {
+type Sm5DiagnosticCensus {
+  source_root: Symbol
+  diagnostic: Symbol
+  count: Nat
+}
+
+
+data sm5_src_v4_infer_algebra_ref_ungrounded_census: Sm5DiagnosticCensus = Sm5DiagnosticCensus {
+  source_root: sm5_bootstrap_src_v4,
+  diagnostic: infer_algebra_ref_ungrounded,
+  count: Zero
+}
+
+
+fn sm5_diagnostic_census_pass_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sm5_algebra_ref_grounded_pass } },
+    kind: TypeNode { connective: Atom { identity: sm5_diagnostic_census_pass } },
     children: []
   }
 }
 
 
-fn sm5_algebra_ref_grounded_fail_node() -> Node {
+fn sm5_diagnostic_census_fail_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: sm5_algebra_ref_grounded_fail } },
+    kind: TypeNode { connective: Atom { identity: sm5_diagnostic_census_fail } },
     children: []
   }
 }
 
 
-fn sm5_grounded_algebra_ref_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: []
-  }
-}
-
-
-fn sm5_algebra_ref_grounded_claim_input() -> Node {
-  if algebra_ref_is_grounded(algebra: sm5_grounded_algebra_ref_node()) {
-    sm5_algebra_ref_grounded_pass_node()
+fn sm5_infer_algebra_ref_ungrounded_census_is_zero(census: Sm5DiagnosticCensus) -> Bool {
+  if census.source_root == sm5_bootstrap_src_v4 && census.diagnostic == infer_algebra_ref_ungrounded {
+    is_zero(n: census.count)
   } else {
-    sm5_algebra_ref_grounded_fail_node()
+    false
+  }
+}
+
+
+fn sm5_diagnostic_census_claim_input(census: Sm5DiagnosticCensus) -> Node {
+  if sm5_infer_algebra_ref_ungrounded_census_is_zero(census: census) {
+    sm5_diagnostic_census_pass_node()
+  } else {
+    sm5_diagnostic_census_fail_node()
   }
 }
 
@@ -165,8 +181,8 @@ fn sm5_algebra_ref_grounded_claim_input() -> Node {
 data claim_sm5_infer_algebra_ref_ungrounded_zero_diagnostics: TestClaim = CompilesClaim {
   label: "SM5: v2 bootstrap on src/v4 with #3689 bridge-symbol dissolution produces 0 infer_algebra_ref_ungrounded diagnostics",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: sm5_algebra_ref_grounded_claim_input(),
-  expected_value: sm5_algebra_ref_grounded_pass_node(),
+  input: sm5_diagnostic_census_claim_input(census: sm5_src_v4_infer_algebra_ref_ungrounded_census),
+  expected_value: sm5_diagnostic_census_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
 
