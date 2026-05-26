@@ -32,7 +32,7 @@ pub enum ArtifactKind {
     GeneratedSupport,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
@@ -51,7 +51,7 @@ pub enum BoundaryKind {
     FileProtocol,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Boundary {
     pub from_artifact: String,
     pub to_artifact: String,
@@ -59,7 +59,7 @@ pub struct Boundary {
     pub contract: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactPlan {
     pub artifacts: Rc<Vec<Rc<Artifact>>>,
     pub boundaries: Rc<Vec<Rc<Boundary>>>,
@@ -91,7 +91,7 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactOutput {
     pub artifact: Rc<Artifact>,
     pub files: Rc<Vec<Rc<TextFile>>>,
@@ -129,14 +129,14 @@ pub enum DagInferredRecord {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
     pub module: String,
     pub items: Rc<Vec<String>>,
     pub item_registry_keys: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
     pub severity: String,
     pub message: String,

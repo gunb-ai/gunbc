@@ -18,7 +18,7 @@ pub enum UrlPathToken {
     ParamToken { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct PathTemplate {
     pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }

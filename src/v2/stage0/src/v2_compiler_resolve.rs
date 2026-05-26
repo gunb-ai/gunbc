@@ -18,20 +18,20 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ModuleGraph {
     pub modules: Rc<Vec<Rc<ResolvedModule>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedModule {
     pub module: Rc<Node>,
     pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub dep_order: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedImport {
     pub module_path: String,
     pub is_all: bool,
@@ -39,7 +39,7 @@ pub struct ResolvedImport {
     pub target_module: Option<Rc<Node>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct DepEdge {
     pub from_module: String,
     pub to_module: String,
@@ -183,7 +183,7 @@ pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) ->
     v2_rt::map_get(&module_index, path)
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ModuleResolveResult {
     pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -243,7 +243,7 @@ pub fn resolve_module_imports(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolveResult {
     pub resolved: Rc<ResolvedImport>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -459,7 +459,7 @@ pub fn check_duplicate_modules(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
     pub sorted: Rc<Vec<String>>,
     pub cycle_error: Option<Rc<ErrorNode>>,

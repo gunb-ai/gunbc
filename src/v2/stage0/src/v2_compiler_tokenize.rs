@@ -47,27 +47,27 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     CACHED.with(|c| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerState {
     pub pos: i64,
     pub tokens: Rc<Vec<Rc<Token>>>,
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TokPos {
     pub pos: i64,
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ScanResult {
     pub pos: i64,
     pub token: Rc<Token>,
     pub interp_depth: Rc<Vec<i64>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
     pub file: String,
     pub text: String,

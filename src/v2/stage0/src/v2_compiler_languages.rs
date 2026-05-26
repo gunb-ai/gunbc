@@ -88,13 +88,13 @@ pub enum ReservedWordStrategy {
     NoEscape,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ReservedWords {
     pub keywords: Rc<Vec<String>>,
     pub strategy: Rc<ReservedWordStrategy>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ProjectScaffold {
     pub manifest_file: Option<String>,
     pub module_init_file: Option<String>,
@@ -102,7 +102,7 @@ pub struct ProjectScaffold {
     pub source_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SerializationSpec {
     pub struct_derives: Option<String>,
     pub struct_derives_copy: Option<String>,
@@ -121,7 +121,7 @@ pub enum TestNameStyle {
     PascalCaseTestNames,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TestConventions {
     pub file_prefix: String,
     pub file_suffix: String,
@@ -141,13 +141,13 @@ pub enum ImportTrigger {
     AsyncUsageTrigger,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ImportRule {
     pub trigger: Rc<ImportTrigger>,
     pub import_path: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub needs_sharing: bool,
     pub wrap_template: String,
@@ -160,7 +160,7 @@ pub struct SharingStrategy {
     pub borrow_arg_template: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct IndexingSemantics {
     pub list_index: String,
     pub map_index: String,
@@ -169,7 +169,7 @@ pub struct IndexingSemantics {
     pub string_slice: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationRequirements {
     pub let_binding_inferred: String,
     pub let_binding_annotated: String,
@@ -177,7 +177,7 @@ pub struct AnnotationRequirements {
     pub lambda_param_untyped: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ServiceFieldTemplates {
     pub rest_decl: String,
     pub auth_decl: String,
@@ -189,7 +189,7 @@ pub struct ServiceFieldTemplates {
     pub file_ctor: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct BlockSyntax {
     pub block_open: String,
     pub block_close: String,
@@ -201,7 +201,7 @@ pub struct BlockSyntax {
     pub significant_whitespace: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ForEachSyntax {
     pub prefix: String,
     pub separator: String,
@@ -215,7 +215,7 @@ pub enum IfValueForm {
     IfStatement,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub wildcard_case: Option<String>,
@@ -226,7 +226,7 @@ pub struct ExpressionSemantics {
     pub suppress_unit_return: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct VariantPatternSyntax {
     pub open: String,
     pub close: String,
@@ -250,7 +250,7 @@ pub enum VisibilitySpec {
     CaseVisibility { export_case: NamingCase },
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
     pub loop_keyword: String,
     pub break_return: String,
@@ -333,7 +333,7 @@ pub fn service_return_str(spec: &Rc<LanguageSpec>, ret_type: String) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ItemKeywords {
     pub func_keyword: String,
     pub async_prefix: String,
@@ -406,7 +406,7 @@ pub struct LanguageSpec {
     pub service_return: Rc<ServiceReturnStrategy>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct TupleSyntax {
     pub empty: String,
     pub pair_template: String,
@@ -416,7 +416,7 @@ pub struct TupleSyntax {
     pub second_accessor: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct RecordLitSyntax {
     pub named_open: String,
     pub named_close: String,
@@ -446,13 +446,13 @@ impl InterpStyle {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct EscapePair {
     pub from: String,
     pub to: String,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
     pub style: Rc<InterpStyle>,
     pub format_template: String,

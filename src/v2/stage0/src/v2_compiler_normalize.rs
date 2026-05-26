@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct NormalizeResult {
     pub graph: Rc<ModuleGraph>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
