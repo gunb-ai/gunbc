@@ -1762,3 +1762,39 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
 
 **Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
+
+---
+
+### T-37 — parse-boundary token-fact carry-through: SourceSpan / lexeme preservation across `02_parse.dag`  [SCHEDULED]
+
+**Finding (gpt-5-5-pro reflective analysis, main@6083247 — Finding #4).**
+`Token { lexeme: String, file: Symbol, start: Int, end: Int }` in `01_tokenize.dag` carries source-location facts produced by the lex walk. The parse stage (`02_parse.dag`) consumes the `TokenStream` and produces `ParseTree = Node` — a plain `Node` with no field for any of those facts. After parse, `tok.lexeme`, `tok.file`, `tok.start`, and `tok.end` are silently discarded. Every downstream stage (normalize → resolve → infer → emit, plus every diagnostic path) lacks source position, source file identity, and original lexeme text.
+
+**P1 violation — lost structure.** `Token` is the single authoritative carrier of source-location facts. Parse drops them without a declaration and without a dissolution receipt. Per INVARIANTS.md §P1 "Problem shape: Ungrounded heuristic" — the receipt says literally: "Variant-constructor information had been silently discarded during parse. Dissolution: carry variant-provenance as a typed fact from parse forward; the heuristic pass evaporated." Token provenance is the same pattern at the lex/parse seam.
+
+**P2 violation — boundary drops a declared fact.** The `Locus` / `ByteRange` carriers in `std/diagnostic.dag` are the downstream consumers of source-position facts. `ByteRange { start: Int, end: Int }` already exists, but there is no carrier that pairs it with `file: Symbol` (a `SourceSpan`), and there is no path by which `Token.start` / `Token.end` / `Token.file` reach `Locus` on any diagnostic. Every stage diagnostic after parse defaults to `Locus::Unavailable` even for errors whose source position is structurally known — a P2 fabrication-by-omission.
+
+**What must happen:**
+
+1. **Source-span carrier in `std/`.** Introduce `SourceSpan { file: Symbol, range: ByteRange }` — a typed pairing of file identity and byte range. DFS per M9: the concept-DAG home is `std/diagnostic.dag` (it already owns `ByteRange`, `Locus`, and the locus constructors) or a sibling `std/span.dag` if the DFS finds `SourceSpan` general enough to stand alone. A variant `SourceLocus { span: SourceSpan }` on `Locus` gives downstream diagnostics a concrete file+range arm. This modeling decision is T-37's first deliverable; resolve before changing any pipeline file.
+
+2. **ParseTree carries a source map.** `ParseTree = Node` must be replaced by a type that carries the span association alongside the node tree. Preferred form (P2 single authority, universal `Node` pivot A1 preserved):
+   ```
+   type ParseTree {
+     root: Node
+     source_map: Map<NodeId, SourceSpan>
+   }
+   ```
+   Each `Node` constructed during the parse walk is mapped to the `SourceSpan` of the token or token range that produced it. The `Node` pivot is untouched; the source map is the boundary's fact-carry artifact. Alternative (Option B: embed span edges directly inside each `Node` as a named child) is heavier and changes the universal pivot — reject unless the DFS forces it. Confirm or reject in T-37 scope before touching `02_parse.dag`.
+
+3. **Pipeline threading.** `03_normalize.dag` / `03_resolve.dag` / `04_infer.dag` must accept and forward the `SourceMap` alongside their `Node` tree parameters. This is a seam-level change across T-8 and T-9 scope — it requires each stage's `Owns` I/O signature to carry the map through until `InferredFacts` stamps the span as a declared fact on each inferred node (`InferredFacts.locus: Locus` populates from `SourceLocus { span }` rather than defaulting to `Unavailable`).
+
+4. **`lexeme` preservation.** `tok.lexeme` is the original source text of the matched token — needed for round-trip fidelity (T-36: `ingest = emit⁻¹`) and for diagnostic message bodies that quote source. The source map's `SourceSpan` carries enough information to slice `lexeme` from the original source buffer IF the source buffer is available. Decide in T-37 scope whether `lexeme` is threaded separately (as a `Map<NodeId, String>` companion to `source_map`) or reconstructed from the span + the original `Source` string (no separate map, source buffer threaded instead). Single-authority: one of these paths, not both.
+
+**Dependencies.** `[needs T-6, T-7]` — `Token` shape and parse walk must exist. `[needs T-3 std/diagnostic.dag]` for `SourceSpan` / `SourceLocus`. The full pipeline threading (`ParseTree → InferredTree`) gates on T-8 and T-9 being in scope. T-37 may ship in waves: (a) the `std/` span carrier + `ParseTree` shape change in the T-7 close-out train, (b) the normalize/resolve threading in T-8, (c) the infer stamping in T-9.
+
+**Load-bearing files touched.** `01_tokenize.dag` (unchanged — source of truth), `02_parse.dag` (primary change; `ParseTree` shape), `03_normalize.dag` / `03_resolve.dag` / `04_infer.dag` (threading), `std/diagnostic.dag` (new `SourceSpan` + `SourceLocus` variant). All four pipeline stages are INVARIANTS.md-named load-bearing files — worker must escalate before changing any stage signature without T-37 scope authorization.
+
+**Relation to T-36 (round-trip fidelity).** T-36 requires an executable `ingest = emit⁻¹` claim over a `.dag` source. A correct round-trip needs original lexeme text to reconstruct the source, which means either `tok.lexeme` survives or the span + source buffer is carried. T-37 is a prerequisite for T-36's fidelity claim to be grounded in declared facts rather than a string-match heuristic.
+
+**Scope:** L — new `std/` span carrier, `ParseTree` shape change, cross-cutting threading obligation across four pipeline stages. Dispatch in waves keyed to T-7, T-8, T-9 close-out trains.
