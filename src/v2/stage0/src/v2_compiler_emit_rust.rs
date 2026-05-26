@@ -5085,7 +5085,9 @@ pub fn emit_param(
         let ty = emit_rust_param_type(&n, &shared_types, &source_indices, &generic_param_names);
         let pname = param_node_name_at(param.clone(), source_indices.clone());
         let is_callable_param = ((n.params.clone().len() as i64) > 0);
-        let is_borrowable = false;
+        let is_borrowable = ((v2_rt::set_contains(&read_only_params, pname.clone())
+            && (is_callable_param.clone() == false))
+            && needs_reference_node(&n, source_indices.clone()));
         let final_ty = if is_borrowable {
             apply_type_template1(
                 sharing_for_target(RenderTarget::Rust)

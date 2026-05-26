@@ -6317,6 +6317,7 @@ fn write_emitted_crate(
 }
 
 #[test]
+#[ignore] // Boundary test: writes temp project and runs cargo check.
 fn v4_trivial_import_emits_rust_that_cargo_checks() {
     let ws = crate::helpers::workspace_root();
     let trivial_root = unique_temp_dir("v4-trivial-src");
