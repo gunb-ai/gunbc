@@ -1,0 +1,25 @@
+// src/v4/std/patch.dag
+// Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
+// Owns: FieldPatch, apply_field_patch.
+// Consumes: none (language primitives only).
+// Status: T-4.16 follow-on — formatter ConfigPatch monoid substrate.
+// External authority: two-element lattice per field (Override = top, Inherit = bottom);
+//   standard layered-config pattern (NixOS module system, Home Manager override/inherit).
+
+module v4.std.patch
+
+
+// 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
+// Per-field patch coproduct for hierarchical config layering.
+// Override carries the replacement value for this field; Inherit defers to the base.
+type FieldPatch<T>
+  = Override { value: T }
+  | Inherit
+
+
+fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
+  match patch {
+    Override { value: v } => v
+    Inherit => base
+  }
+}
