@@ -139,10 +139,7 @@ pub fn render_rust_type(
                 if elem_is_type_var {
                     emit_rust_compile_error_expr("Set element type unresolved".to_string())
                 } else {
-                    if !rust_btree_set_element_ord_eligible(
-                        elem_node.clone(),
-                        source_indices.clone(),
-                    ) {
+                    if !rust_btree_set_element_ord_eligible(&elem_node, &source_indices) {
                         {
                             let elem_name = authored_name_at(source_indices.clone(), &elem_node);
                             emit_rust_compile_error_expr(v2_rt::concat(
@@ -293,6 +290,35 @@ pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
     (type_name.as_str() == "Symbol".to_string().as_str())
 }
 
+pub fn rust_nominal_identity_carrier_shape_eligible(
+    n: &Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((((authored_name_at(source_indices, &n).as_str() == "Symbol".to_string().as_str())
+        && ((n.children.clone().len() as i64) == 0))
+        && ((n.params.clone().len() as i64) == 0))
+        && (n.connective.clone() == Connective::NoConnective))
+}
+
+pub fn rust_diff_id_ord_carrier_shape_eligible(
+    name: String,
+    children: &Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((name.as_str() != "DiffId".to_string().as_str()) || ((children.clone().len() as i64) != 1))
+    {
+        false
+    } else {
+        match children.clone().first().cloned() {
+            Some(child) => rust_nominal_identity_carrier_shape_eligible(
+                &child_type_node(&child),
+                source_indices,
+            ),
+            None => false,
+        }
+    }
+}
+
 pub fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
     if (type_name.as_str() == "DiffId".to_string().as_str()) {
         rust_ord_derives_copy_text()
@@ -301,10 +327,28 @@ pub fn rust_nominal_ord_derives_for_type(type_name: String) -> String {
     }
 }
 
-pub fn rust_nominal_ord_type_eligible(type_name: &String) -> bool {
-    (rust_nominal_identity_carrier_type_eligible(type_name.clone())
-        || (rust_nominal_ord_derives_for_type(type_name.clone()).as_str()
-            != "".to_string().as_str()))
+pub fn rust_nominal_ord_derives_for_shape(
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if rust_diff_id_ord_carrier_shape_eligible(name, &children, source_indices) {
+        rust_ord_derives_copy_text()
+    } else {
+        "".to_string()
+    }
+}
+
+pub fn rust_nominal_ord_type_eligible(
+    elem_node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (rust_nominal_identity_carrier_shape_eligible(&elem_node, source_indices.clone())
+        || rust_diff_id_ord_carrier_shape_eligible(
+            authored_name_at(source_indices.clone(), &elem_node),
+            &elem_node.children.clone(),
+            source_indices.clone(),
+        ))
 }
 
 pub fn rust_serde_tag_attr() -> String {
@@ -3041,7 +3085,7 @@ pub fn emit_type_def_from_connective(
                     &item.children.clone(),
                     recursive_types,
                     &shared_types,
-                    env.clone(),
+                    &env,
                     &emit_info,
                 )
             }
@@ -3140,7 +3184,7 @@ pub fn emit_struct_from_children(
     children: &Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<std::collections::BTreeSet<String>>,
     shared_types: &Rc<std::collections::BTreeSet<String>>,
-    env: Rc<TypeEnv>,
+    env: &Rc<TypeEnv>,
     emit_info: &Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -3151,9 +3195,19 @@ pub fn emit_struct_from_children(
         let derives = if has_fn_fields {
             "#[derive(Clone)]".to_string()
         } else {
-            if (rust_nominal_ord_derives_for_type(name.clone()).as_str() != "".to_string().as_str())
+            if (rust_nominal_ord_derives_for_shape(
+                name.clone(),
+                children.clone(),
+                env.source_indices.clone(),
+            )
+            .as_str()
+                != "".to_string().as_str())
             {
-                rust_nominal_ord_derives_for_type(name.clone())
+                rust_nominal_ord_derives_for_shape(
+                    name.clone(),
+                    children.clone(),
+                    env.source_indices.clone(),
+                )
             } else {
                 if v2_rt::set_contains(&shared_types, name.clone()) {
                     rust_struct_derives_text()
@@ -7311,18 +7365,18 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
 }
 
 pub fn rust_btree_set_element_ord_eligible(
-    elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    elem_node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let elem_name = authored_name_at(source_indices, &elem_node);
+        let elem_name = authored_name_at(source_indices.clone(), &elem_node);
         (((((((elem_name.clone().as_str() == "String".to_string().as_str())
             || (elem_name.clone().as_str() == "Int".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bool".to_string().as_str()))
             || (elem_name.clone().as_str() == "Unit".to_string().as_str()))
             || (elem_name.clone().as_str() == "Secret".to_string().as_str()))
             || (elem_name.clone().as_str() == "Bytes".to_string().as_str()))
-            || rust_nominal_ord_type_eligible(&elem_name))
+            || rust_nominal_ord_type_eligible(&elem_node, &source_indices))
     }
 }
 
@@ -7347,7 +7401,7 @@ pub fn rust_empty_set_element_type_str(
             if (elem_is_type_var || elem_is_error) {
                 "".to_string()
             } else {
-                if !rust_btree_set_element_ord_eligible(elem_node.clone(), source_indices.clone()) {
+                if !rust_btree_set_element_ord_eligible(&elem_node, &source_indices) {
                     "".to_string()
                 } else {
                     render_node_type(
@@ -7379,7 +7433,7 @@ pub fn emit_rust_empty_set_expr(
             if elem_is_type_var {
                 "v2_rt::rc_empty_set::<_>()".to_string()
             } else {
-                if !rust_btree_set_element_ord_eligible(elem_node.clone(), source_indices.clone()) {
+                if !rust_btree_set_element_ord_eligible(&elem_node, &source_indices) {
                     {
                         let elem_name = authored_name_at(source_indices.clone(), &elem_node);
                         emit_rust_compile_error_expr(v2_rt::concat(
