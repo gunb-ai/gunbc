@@ -58,10 +58,16 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
 fn source_declares_target_fn(source: &str) -> bool {
     source.lines().any(|line| {
         let line = line.trim_start();
-        line.starts_with("fn ")
-            && line["fn ".len()..]
-                .trim_start()
-                .starts_with(&format!("{TARGET_FN_NAME}("))
+        let Some(after_fn) = line.strip_prefix("fn") else {
+            return false;
+        };
+        if !after_fn.chars().next().is_some_and(char::is_whitespace) {
+            return false;
+        }
+        let Some(after_name) = after_fn.trim_start().strip_prefix(TARGET_FN_NAME) else {
+            return false;
+        };
+        after_name.trim_start().starts_with('(')
     })
 }
 
@@ -83,6 +89,19 @@ fn rel_path(root: &Path, path: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
+}
+
+#[test]
+fn p9_source_declares_target_fn_accepts_decl_whitespace() {
+    assert!(source_declares_target_fn(
+        "fn llvm_instruction_cost (i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(source_declares_target_fn(
+        "\tfn\tllvm_instruction_cost\t(i: LlvmInstruction) -> Int { 1 }"
+    ));
+    assert!(!source_declares_target_fn(
+        "fn llvm_instruction_cost_extra(i: LlvmInstruction) -> Int { 1 }"
+    ));
 }
 
 #[test]
