@@ -7,7 +7,7 @@
 //! deferred until cross-module v4 load lands (peer v4 smoke posture).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::SurfaceItem;
+use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
 use v3_compiler::tokenize_for_test;
 
 const APPLICATION_DAG: &str = include_str!("../../../../v4/lens/application.dag");
@@ -47,6 +47,80 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
         | SurfaceItem::FnExternalBody {
             name: item_name, ..
         } => item_name == name,
+        _ => false,
+    })
+}
+
+fn expr_contains_match(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Match { .. } => true,
+        SurfaceExpr::Call { args, .. } | SurfaceExpr::PathCall { args, .. } => {
+            args.iter().any(expr_contains_match)
+        }
+        SurfaceExpr::Operator { args, .. } => args.iter().any(expr_contains_match),
+        SurfaceExpr::Lambda { body, .. } => expr_contains_match(body),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_contains_match(cond)
+                || expr_contains_match(then_branch)
+                || expr_contains_match(else_branch)
+        }
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => {
+            fields.iter().any(|field| expr_contains_match(&field.value))
+        }
+        SurfaceExpr::List { elements, .. } => elements.iter().any(expr_contains_match),
+        SurfaceExpr::Map { entries, .. } => {
+            entries.iter().any(|entry| expr_contains_match(&entry.value))
+        }
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
+    }
+}
+
+fn expr_has_match_arm_body_match(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Match { scrutinee, arms, .. } => {
+            expr_contains_match(scrutinee)
+                || arms.iter().any(|arm| expr_contains_match(&arm.body))
+                || arms
+                    .iter()
+                    .any(|arm| expr_has_match_arm_body_match(&arm.body))
+        }
+        SurfaceExpr::Call { args, .. } | SurfaceExpr::PathCall { args, .. } => {
+            args.iter().any(expr_has_match_arm_body_match)
+        }
+        SurfaceExpr::Operator { args, .. } => args.iter().any(expr_has_match_arm_body_match),
+        SurfaceExpr::Lambda { body, .. } => expr_has_match_arm_body_match(body),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_has_match_arm_body_match(cond)
+                || expr_has_match_arm_body_match(then_branch)
+                || expr_has_match_arm_body_match(else_branch)
+        }
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| expr_has_match_arm_body_match(&field.value)),
+        SurfaceExpr::List { elements, .. } => elements.iter().any(expr_has_match_arm_body_match),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| expr_has_match_arm_body_match(&entry.value)),
+        SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => false,
+    }
+}
+
+fn module_has_match_arm_body_match(module: &v3_compiler::parse_surface::SurfaceModule) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Fn { body, .. } => expr_has_match_arm_body_match(body),
+        SurfaceItem::Data { body, .. } => body
+            .as_ref()
+            .is_some_and(|expr| expr_has_match_arm_body_match(expr)),
         _ => false,
     })
 }
@@ -110,6 +184,18 @@ fn v4_lens_application_introspect_advisory_claim_tokenizes_and_parses() {
     assert!(
         import_includes_name(&module, &["v4", "std", "witness"], "Violates"),
         "{INTROSPECT_ADVISORY_CLAIM_PATH}: claim must assert advisory Violates witness"
+    );
+}
+
+#[test]
+fn v4_lens_application_introspect_advisory_claim_has_no_match_arm_body_match() {
+    let module = parse_module(
+        INTROSPECT_ADVISORY_CLAIM_DAG,
+        INTROSPECT_ADVISORY_CLAIM_PATH,
+    );
+    assert!(
+        !module_has_match_arm_body_match(&module),
+        "{INTROSPECT_ADVISORY_CLAIM_PATH}: claim must keep match-arm bodies helper-shaped for the v2 compile surface"
     );
 }
 
