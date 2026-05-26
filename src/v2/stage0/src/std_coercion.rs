@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeCheckpoint {
     pub dag_name: String,
     pub target_type: String,
@@ -17,7 +17,7 @@ pub struct TypeCheckpoint {
     pub literal_suffix: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InhabitantDecl {
     pub algebra: String,
     pub template: String,
@@ -27,7 +27,7 @@ pub struct InhabitantDecl {
     pub is_copy: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallableRepr {
     pub template: String,
     pub param_separator: String,
@@ -35,13 +35,13 @@ pub struct CallableRepr {
     pub import_path: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastRule {
     pub from_type: String,
     pub to_type: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
     pub template: String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,

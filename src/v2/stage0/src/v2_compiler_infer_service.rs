@@ -29,14 +29,14 @@ pub struct UniqueAccum {
     pub result: Rc<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpEntry {
     pub name: String,
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceMethodResult {
     pub result_type: Rc<Node>,
     pub op_params: Rc<Vec<Rc<Node>>>,

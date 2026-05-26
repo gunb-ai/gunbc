@@ -249,6 +249,9 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
   concat(rust_ord_derives_copy_text(), "\n", rust_visibility_prefix(), rust_items().struct_keyword, " ", name, "(pub &'static str);")
 }
 
+// 🟡 gated — nominal Ord carrier whitelist for M3 Symbol/DiffId only.
+// Next nominal carrier must move this to a declared type property instead of
+// extending the string predicates below.
 fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
   type_name == "Symbol"
 }

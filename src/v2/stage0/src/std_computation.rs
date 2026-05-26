@@ -82,7 +82,7 @@ pub enum ShrinkFactor {
     ProportionalShrink { divisor: Rc<ProportionalDivisor> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoweringTarget {
     pub primitive: IterationPrimitive,
     pub bound: Rc<SizeBound>,

@@ -34,14 +34,14 @@ pub enum EdgeKind {
     Projected,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EdgeClassification {
     pub kind: EdgeKind,
     pub site: String,
     pub span_start: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
     pub name: String,
     pub binding_kind: Option<Rc<VarBindingKind>>,
@@ -107,7 +107,7 @@ impl OwnershipDecision {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUnwrapProof {
     pub site_key: String,
     pub acc_param_name: String,
@@ -118,7 +118,7 @@ pub struct FoldAccUnwrapProof {
     pub eligible: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUseSummary {
     pub whole_acc_uses: i64,
     pub field_moves: Rc<Vec<String>>,

@@ -85,7 +85,7 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
     pub operation_name: String,
     pub shape: Rc<EffectShape>,
@@ -133,7 +133,7 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
     pub operation_name: String,
     pub method: HttpMethod,
@@ -218,7 +218,7 @@ impl ModifierAgreement {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModifierCheck {
     pub operation_name: String,
     pub declared_idempotent: bool,
@@ -272,7 +272,7 @@ pub fn check_modifier_vs_derivation(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
     pub operation_name: String,
     pub effect_shape: Rc<EffectShape>,
@@ -308,7 +308,7 @@ pub fn generate_idempotency_obligations(
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEffectConcern {
     pub workflow_name: String,
     pub create_op: String,
