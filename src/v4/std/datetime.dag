@@ -158,28 +158,13 @@ type LeapSecondInsertionOccurrenceFields {
 }
 
 
-type LeapSecondDeletionOccurrenceFields {
-  announcement: LeapSecondAnnouncement
-}
-
-
 type LeapSecondInsertionOccurrenceValidity {
   refined: Refined<LeapSecondInsertionOccurrenceFields>
 }
 
 
-type LeapSecondDeletionOccurrenceValidity {
-  refined: Refined<LeapSecondDeletionOccurrenceFields>
-}
-
-
 type LeapSecondInsertionOccurrence {
   validity: LeapSecondInsertionOccurrenceValidity
-}
-
-
-type LeapSecondDeletionOccurrence {
-  validity: LeapSecondDeletionOccurrenceValidity
 }
 
 
@@ -248,7 +233,6 @@ data tz_offset_minute_out_of_range: Symbol = tz_offset_minute_out_of_range
 data calendar_date_invalid: Symbol = calendar_date_invalid
 data clock_time_fields_invalid: Symbol = clock_time_fields_invalid
 data leap_second_insertion_occurrence_invalid: Symbol = leap_second_insertion_occurrence_invalid
-data leap_second_deletion_occurrence_invalid: Symbol = leap_second_deletion_occurrence_invalid
 data ordinary_instant_invalid: Symbol = ordinary_instant_invalid
 data leap_second_instant_invalid: Symbol = leap_second_instant_invalid
 data leap_second_offset_datetime_invalid: Symbol = leap_second_offset_datetime_invalid
@@ -444,11 +428,6 @@ fn leap_second_insertion_occurrence_admits(fields: LeapSecondInsertionOccurrence
 }
 
 
-fn leap_second_deletion_occurrence_admits(fields: LeapSecondDeletionOccurrenceFields) -> Bool {
-  leap_second_announcement_admits(announcement: fields.announcement)
-}
-
-
 fn leap_second_insertion_occurrence_fields(occurrence: LeapSecondInsertionOccurrence) -> LeapSecondInsertionOccurrenceFields {
   refined_base(r: occurrence.validity.refined)
 }
@@ -599,12 +578,6 @@ data leap_second_insertion_occurrence_validation: Validation<LeapSecondInsertion
 }
 
 
-data leap_second_deletion_occurrence_validation: Validation<LeapSecondDeletionOccurrenceFields> = Validation {
-  reason: leap_second_deletion_occurrence_invalid,
-  admits: leap_second_deletion_occurrence_admits
-}
-
-
 data ordinary_instant_validation: Validation<OrdinaryInstantFields> = Validation {
   reason: ordinary_instant_invalid,
   admits: ordinary_instant_admits
@@ -711,16 +684,6 @@ fn make_leap_second_insertion_occurrence(
 ) -> Outcome<LeapSecondInsertionOccurrence> {
   bind_outcome(o: refine(base: fields, by: leap_second_insertion_occurrence_validation, at: at), f: fn(refined) {
     outcome_accepted(value: LeapSecondInsertionOccurrence { validity: LeapSecondInsertionOccurrenceValidity { refined: refined } })
-  })
-}
-
-
-fn make_leap_second_deletion_occurrence(
-  fields: LeapSecondDeletionOccurrenceFields,
-  at: Locus
-) -> Outcome<LeapSecondDeletionOccurrence> {
-  bind_outcome(o: refine(base: fields, by: leap_second_deletion_occurrence_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: LeapSecondDeletionOccurrence { validity: LeapSecondDeletionOccurrenceValidity { refined: refined } })
   })
 }
 
