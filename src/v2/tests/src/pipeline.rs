@@ -4479,7 +4479,9 @@ type DiffBag { ids: Set<DiffId> }
         content
     );
     assert!(
-        content.contains("pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"),
+        content.contains(
+            "pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"
+        ),
         "Symbol data should preserve authored identity, got:\n{}",
         content
     );
