@@ -1,6 +1,6 @@
 // src/v4/compiler/05_emit.dag
 // Scope: Stage 5b — T-10 emit surface over TargetModel: grammar-inverse serialize_target ∘ translate.
-// Owns: dag_surface_module_header, dag_surface_import_decl, dag_surface_data_decl,
+// Owns: emit_row_module_header, emit_row_import_decl, emit_row_data_decl,
 //       serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
 //           extdeps/languages/dag.dag, std/diagnostic.dag, std/target_model.dag.
@@ -55,6 +55,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
@@ -143,7 +144,7 @@ fn emit_grammar_relation_row(
     ]
   }
 }
-fn dag_surface_module_header() -> Node {
+fn emit_row_module_header() -> Node {
   emit_grammar_relation_row(
     production: GrammarProduction {
       name: dag_production_module_header,
@@ -157,7 +158,7 @@ fn dag_surface_module_header() -> Node {
     ]
   )
 }
-fn dag_surface_import_decl() -> Node {
+fn emit_row_import_decl() -> Node {
   emit_grammar_relation_row(
     production: GrammarProduction {
       name: dag_production_import_decl,
@@ -171,7 +172,7 @@ fn dag_surface_import_decl() -> Node {
     ]
   )
 }
-fn dag_surface_data_decl() -> Node {
+fn emit_row_data_decl() -> Node {
   emit_grammar_relation_row(
     production: GrammarProduction {
       name: dag_production_data_decl,
