@@ -162,6 +162,47 @@ pub fn render_rust_type(
     }
 }
 
+pub fn render_rust_applied_type_arg(
+    n: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: tv, .. }) => emit_ident(tv, RenderTarget::Rust),
+        _ => render_rust_type(&n, shared_types, &source_indices),
+    }
+}
+
+pub fn render_rust_applied_type(
+    n: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let base = coerce_primitive_type(
+        RenderTarget::Rust,
+        authored_name_at(source_indices.clone(), &n),
+    );
+    if (n.children.len() as i64) == 0 {
+        base
+    } else {
+        let args = Rc::new({
+            let mut __result = Vec::new();
+            for arg in n.children.clone().iter().cloned() {
+                __result.push(render_rust_applied_type_arg(
+                    arg.clone(),
+                    shared_types.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        v2_rt::concat(
+            v2_rt::concat(v2_rt::concat(base, "<".to_string()), args.join(&", ".to_string())),
+            ">".to_string(),
+        )
+    }
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         name: "".to_string(),
@@ -3202,7 +3243,7 @@ pub fn render_rust_type_with_applied_binding(
     };
     match applied_opt {
         Some(applied) if (applied.children.len() as i64) > 0 => {
-            render_rust_type(&applied, shared_types, &source_indices)
+            render_rust_applied_type(applied, shared_types, source_indices)
         }
         _ => render_rust_type(&n, shared_types, &source_indices),
     }
