@@ -946,32 +946,32 @@ mod compiler_tests {
         let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
         assert!(
             crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                symbol,
-                source_indices.clone()
+                &symbol,
+                &source_indices
             )
         );
         assert!(
             crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                diff_id,
-                source_indices.clone()
+                &diff_id,
+                &source_indices
             )
         );
         assert!(
             !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                shaped_type_node("Symbol", vec![named_type_node("Float")]),
-                source_indices.clone()
+                &shaped_type_node("Symbol", vec![named_type_node("Float")]),
+                &source_indices
             )
         );
         assert!(
             !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                shaped_type_node("DiffId", vec![named_type_node("Float")]),
-                source_indices.clone()
+                &shaped_type_node("DiffId", vec![named_type_node("Float")]),
+                &source_indices
             )
         );
         assert!(
             !crate::v2_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                named_type_node("TestClaimId"),
-                source_indices
+                &named_type_node("TestClaimId"),
+                &source_indices
             )
         );
     }
