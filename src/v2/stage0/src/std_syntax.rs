@@ -65,7 +65,7 @@ pub enum ItemFormKind {
     OtherForm,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemForm {
     pub kind: ItemFormKind,
     pub keyword: String,
@@ -90,7 +90,7 @@ pub enum AlgebraFieldKind {
     AlgJoin,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldEntry {
     pub kind: AlgebraFieldKind,
     pub field_name: String,
@@ -129,7 +129,7 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
     CACHED.with(|c| c.clone())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
     pub symbol: String,
     pub left_bp: i64,

@@ -74,13 +74,13 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
     pub path: String,
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipelineResult {
     pub files: Rc<Vec<Rc<TextFile>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -90,7 +90,7 @@ pub struct PipelineResult {
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
     pub graph: Option<Rc<ModuleGraph>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -98,7 +98,7 @@ pub struct FrontendResult {
     pub intern_table: Rc<InternTable>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendAccum {
     pub parse_results: Rc<Vec<Rc<ParseResult>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,

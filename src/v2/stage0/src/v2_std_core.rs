@@ -43,7 +43,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
     pub text: String,
     pub span: Rc<SourceSpan>,
@@ -130,9 +130,7 @@ pub enum FieldValueShape {
     OptionalValue,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldSummary {
     pub access_style: FieldAccessStyle,
     pub value_shape: FieldValueShape,
@@ -313,13 +311,13 @@ pub enum OperationModifier {
     Hermetic,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompileResult {
     pub files: Rc<Vec<Rc<TextFile>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
     pub path: String,
     pub content: String,
@@ -430,13 +428,13 @@ impl CompilerDiagnostic {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorNode {
     pub diagnostic: Rc<CompilerDiagnostic>,
     pub module_name: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorDAG {
     pub errors: Rc<Vec<Rc<ErrorNode>>>,
 }
@@ -681,7 +679,7 @@ pub struct DeclaredFuncEnv {
     pub signatures: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
@@ -1332,7 +1330,7 @@ pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
     n.span.clone()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChildRole {
     pub name: String,
     pub accessor: String,
@@ -3221,15 +3219,13 @@ pub fn no_span() -> Rc<SourceSpan> {
     make_span(0, 0)
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LineCol {
     pub line: i64,
     pub col: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NewlineIndex {
     pub file: String,
     pub offsets: Rc<Vec<i64>>,
@@ -3343,9 +3339,7 @@ pub struct InternTable {
     pub next_id: i64,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InternResult {
     pub table: Rc<InternTable>,
     pub id: i64,

@@ -143,7 +143,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
     pub resolved_item: Rc<Node>,
     pub resolve_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -181,13 +181,13 @@ pub struct InferScope {
     pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferResult {
     pub typed: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockInferState {
     pub scope: Rc<InferScope>,
     pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
@@ -248,57 +248,57 @@ pub fn infer_block_stmts(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedItemResult {
     pub item: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArmInferResult {
     pub typed_arm: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub body_type: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternScopeResult {
     pub scope: Rc<InferScope>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringPartInferResult {
     pub typed_part: Rc<StringPart>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgInferResult {
     pub typed_arg: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInferResult {
     pub typed_field: Rc<Node>,
     pub infer_result: Rc<InferResult>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentModulesResult {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantResult {
     pub variant: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -498,7 +498,7 @@ pub fn nominal_type_binding(name: &String) -> Rc<TypeBinding> {
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldRecursionResult {
     pub shape: RecursionShape,
     pub element_type: String,
@@ -896,7 +896,7 @@ pub fn record_lit_expected_fields(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
     pub ty: Rc<Node>,
     pub miss_diags: Rc<Vec<Rc<ErrorNode>>>,
@@ -979,7 +979,7 @@ pub fn set_element_types_mismatch(
         && !node_type_compatible(recv_elem.clone(), operand_elem.clone(), source_indices))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
     pub bt: Rc<Node>,
     pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
@@ -1303,7 +1303,7 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodPipeFallback {
     pub result_ty: Rc<Node>,
     pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
@@ -5215,7 +5215,7 @@ Rc::new(SubValueRelation::StrictSubValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockAnnotateAcc {
     pub ctx: Rc<DescentContext>,
     pub children: Rc<Vec<Rc<Node>>>,
@@ -9494,13 +9494,13 @@ pub fn annotate_descent_evidence(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferPropertiesResult {
     pub props: Rc<Vec<Rc<Node>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferTransportResult {
     pub transport: Option<Rc<Node>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -11544,7 +11544,7 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypecheckModuleResult {
     pub typed: Rc<TypedModule>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
@@ -11720,13 +11720,13 @@ pub fn typecheck_module(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnvResolveResult {
     pub env: Rc<TypeEnv>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingResult {
     pub binding: Rc<TypeBinding>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,

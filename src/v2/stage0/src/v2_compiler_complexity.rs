@@ -203,13 +203,13 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
     pub caller: String,
     pub callee: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
     pub member_set: Rc<std::collections::BTreeSet<String>>,
@@ -230,7 +230,7 @@ pub struct SccResult {
     pub call_graph: Rc<CallGraph>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserStateParam {
     pub name: String,
     pub index: i64,
@@ -270,7 +270,7 @@ impl ParserResultSource {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEdge {
     pub caller: String,
     pub callee: String,
@@ -7517,14 +7517,14 @@ pub fn cost_of_method_by_shape(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
     pub span: Rc<SourceSpan>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
@@ -8250,7 +8250,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEntry {
     pub name: String,
     pub body: Rc<Node>,
@@ -8259,9 +8259,7 @@ pub struct FuncEntry {
     pub is_tail_recursive: bool,
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecursionContext;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -8279,7 +8277,7 @@ pub struct TopoBuildAcc {
     pub processed: Rc<HashMap<String, bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchCostAccum {
     pub result: Rc<SummaryResult>,
     pub branch_costs: Rc<Vec<Rc<CostExpr>>>,

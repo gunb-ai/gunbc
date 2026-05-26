@@ -209,7 +209,7 @@ pub enum CoercionAssertion {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
     pub test_name: String,
     pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
