@@ -8,9 +8,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn dag_keywords() -> Map<String, String> {
+pub fn dag_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -22,12 +22,12 @@ pub fn dag_keywords() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn dag_container_templates() -> Map<String, String> {
+pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "List<{0}>".to_string());
             __m.insert("set".to_string(), "Set<{0}>".to_string());
@@ -41,25 +41,25 @@ pub fn dag_container_templates() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn dag_reserved() -> List<String> {
+pub fn dag_reserved() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: List<String> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec![])
         };
     }
-    CACHED.with(|c: &List<String>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn dag_string_types() -> List<String> {
+pub fn dag_string_types() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: List<String> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &List<String>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn dag_func_keyword() -> String {

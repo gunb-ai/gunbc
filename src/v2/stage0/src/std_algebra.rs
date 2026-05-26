@@ -226,7 +226,7 @@ pub enum AlgebraTypeTemplate {
         second: Rc<AlgebraTypeTemplate>,
     },
     CallableOf {
-        params: List<AlgebraTypeTemplate>,
+        params: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
         return_type: Rc<AlgebraTypeTemplate>,
     },
     AlgebraTypeVariable {
@@ -253,17 +253,17 @@ pub enum CostShape {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldTemplate {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub param_types: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub return_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub size_effect: compile_error!("UNRESOLVED_CompilerError"),
-    pub cost_shape: compile_error!("UNRESOLVED_CompilerError"),
-    pub callback_element_position: compile_error!("UNRESOLVED_CompilerError"),
+    pub name: String,
+    pub param_types: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
+    pub return_type: Rc<AlgebraTypeTemplate>,
+    pub size_effect: Option<CollectionSizeEffect>,
+    pub cost_shape: Option<CostShape>,
+    pub callback_element_position: Option<i64>,
 }
 
-pub fn kernel_algebra_profile() -> Map<String, AlgebraProfile> {
+pub fn kernel_algebra_profile() -> Rc<HashMap<String, AlgebraProfile>> {
     thread_local! {
-        static CACHED: Map<String, AlgebraProfile> = {
+        static CACHED: Rc<HashMap<String, AlgebraProfile>> = {
             let mut __m = HashMap::new();
             __m.insert("Int".to_string(), AlgebraProfile::OrderedRingProfile);
             __m.insert("Float".to_string(), AlgebraProfile::ApproximateFieldProfile);
@@ -275,10 +275,10 @@ pub fn kernel_algebra_profile() -> Map<String, AlgebraProfile> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, AlgebraProfile>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, AlgebraProfile>>| c.clone())
 }
 
-pub fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
+pub fn ordered_ring_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "add".to_string(),
@@ -354,7 +354,7 @@ pub fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn approximate_field_templates() -> List<AlgebraFieldTemplate> {
+pub fn approximate_field_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "add".to_string(),
@@ -426,7 +426,7 @@ pub fn approximate_field_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
+pub fn boolean_algebra_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "meet".to_string(),
@@ -477,7 +477,7 @@ pub fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
+pub fn boolean_algebra_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "union".to_string(),
@@ -683,7 +683,7 @@ pub fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
+pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "concat".to_string(),
@@ -891,7 +891,7 @@ pub fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
+pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "map".to_string(),
@@ -1187,7 +1187,7 @@ pub fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn partial_function_templates() -> List<AlgebraFieldTemplate> {
+pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     Rc::new(vec![
         Rc::new(AlgebraFieldTemplate {
             name: "get".to_string(),
@@ -1380,7 +1380,7 @@ pub fn partial_function_templates() -> List<AlgebraFieldTemplate> {
     ])
 }
 
-pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
+pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     match profile {
         AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
         AlgebraProfile::ApproximateFieldProfile => approximate_field_templates(),
@@ -1392,7 +1392,7 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFie
     }
 }
 
-pub fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
+pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     match profile {
         AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),
         AlgebraProfile::ApproximateFieldProfile => Rc::new(vec![]),

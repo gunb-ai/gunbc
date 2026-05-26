@@ -96,21 +96,33 @@ pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
     }
 }
 
-pub fn node_is_collection(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn node_is_collection(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
         && is_container_type(authored_name_at(source_indices, n.clone())))
 }
 
-pub fn node_is_keyed_collection(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn node_is_keyed_collection(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     (node_is_collection(n.clone(), source_indices) && ((n.children.clone().len() as i64) == 2))
 }
 
-pub fn node_is_element_collection(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn node_is_element_collection(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     (node_is_collection(n.clone(), source_indices) && ((n.children.clone().len() as i64) == 1))
 }
 
-pub fn node_is_set_collection(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn node_is_set_collection(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
         && (authored_name_at(source_indices.clone(), n.clone()).as_str()
             == "Set".to_string().as_str()))
@@ -132,7 +144,10 @@ pub fn is_unit_like(n: Rc<Node>) -> bool {
     ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
 }
 
-pub fn is_fully_resolved(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn is_fully_resolved(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_is_type_var = match n.inferred.clone() {
             Some(inf) => is_type_variable(inf.clone()),
@@ -339,8 +354,8 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelTypeBuild {
-    pub ty: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub ty: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
@@ -479,7 +494,7 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
     }
 }
 
-pub fn make_callable_type(func_params: List<Node>, ret: Rc<Node>) -> Rc<Node> {
+pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         name: "Callable".to_string(),
         span: kernel_span("Callable".to_string()),
@@ -591,7 +606,7 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
 
 pub fn algebra_method_field(
     name: String,
-    param_types: List<Node>,
+    param_types: Rc<Vec<Rc<Node>>>,
     return_type: Rc<Node>,
 ) -> Rc<Node> {
     {
@@ -632,7 +647,11 @@ pub fn algebra_method_field(
     }
 }
 
-pub fn enrich_base_with_fields(name: String, base: Rc<Node>, fields: List<Node>) -> Rc<Node> {
+pub fn enrich_base_with_fields(
+    name: String,
+    base: Rc<Node>,
+    fields: Rc<Vec<Rc<Node>>>,
+) -> Rc<Node> {
     Rc::new(Node {
         name: name,
         span: base.span.clone(),
@@ -708,7 +727,7 @@ pub fn algebra_child_or_placeholder(
 pub fn instantiate_algebra_type(
     template: Rc<AlgebraTypeTemplate>,
     base: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
@@ -824,7 +843,7 @@ pub fn instantiate_algebra_type(
 pub fn instantiate_algebra_field(
     template: Rc<AlgebraFieldTemplate>,
     base: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
         let param_bs = Rc::new({
@@ -876,7 +895,7 @@ pub fn instantiate_algebra_field(
 pub fn enrich_kernel_type(
     name: String,
     base: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
         let profile = v2_rt::map_get(&kernel_algebra_profile(), name.clone());
@@ -924,9 +943,9 @@ pub fn unify_template(
     template: Rc<AlgebraTypeTemplate>,
     concrete: Rc<Node>,
     receiver: Rc<Node>,
-    subst: Map<String, Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, Node> {
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*template).clone() {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
             if (v2_rt::map_get(&subst, var_id.clone()) != None) {
@@ -1075,12 +1094,12 @@ pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
 }
 
 pub fn build_type_substitution(
-    param_templates: List<AlgebraTypeTemplate>,
-    arg_types: List<Node>,
+    param_templates: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
+    arg_types: Rc<Vec<Rc<Node>>>,
     receiver: Rc<Node>,
-    base_subst: Map<String, Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, Node> {
+    base_subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let first_is_self = match param_templates.clone().first().cloned() {
             Some(t) => is_receiver_self(t.clone()),
@@ -1119,7 +1138,7 @@ pub fn build_type_substitution(
         });
         pairs.iter().cloned().fold(
             base_subst.clone(),
-            |subst: Map<String, Node>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
+            |subst: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
                 let arg_type = match Rc::new({
                     let mut __result = Vec::new();
                     for ap in Rc::new({
@@ -1169,9 +1188,9 @@ pub fn build_type_substitution(
 
 pub fn apply_type_substitution(
     template: Rc<AlgebraTypeTemplate>,
-    subst: Map<String, Node>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
     receiver: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*template).clone() {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
@@ -1484,10 +1503,10 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
 
 pub fn resolve_type_variables_from_template(
     template: Rc<AlgebraFieldTemplate>,
-    arg_types: List<Node>,
+    arg_types: Rc<Vec<Rc<Node>>>,
     receiver_type: Rc<Node>,
-    overrides: Map<String, Node>,
-    source_indices: Map<String, NewlineIndex>,
+    overrides: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
         let subst = build_type_substitution(
@@ -1542,7 +1561,10 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn node_type_shape(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn node_type_shape(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let __is_leaf = (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
@@ -1658,7 +1680,7 @@ pub fn node_type_shape(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -
 pub fn node_type_compatible(
     mut left: Rc<Node>,
     mut right: Rc<Node>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let left_err = if (left.inferred.clone() != None) {
@@ -1779,7 +1801,7 @@ pub fn node_type_compatible(
 pub fn prefer_specific_type(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
@@ -1834,7 +1856,7 @@ pub fn prefer_specific_type(
 pub fn node_type_equals(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let left_err = if (left.inferred.clone() != None) {
@@ -1896,7 +1918,7 @@ pub fn node_type_equals(
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let left_leaf = (((left.connective.clone() == Connective::NoConnective)
@@ -2151,7 +2173,10 @@ pub fn node_type_equals_core(
     }
 }
 
-pub fn node_type_deps(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+pub fn node_type_deps(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != None) {
             is_type_variable(n.inferred.clone().clone().unwrap())
@@ -2268,7 +2293,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 
 pub fn method_receiver_element_node(
     receiver_type: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
@@ -2320,7 +2345,7 @@ pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
     }
 }
 
-pub fn binop_algebra_fields(op: BinOp) -> List<AlgebraFieldKind> {
+pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<AlgebraFieldKind>> {
     match op {
         BinOp::Add => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
         BinOp::Sub => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
@@ -2344,14 +2369,14 @@ pub fn binop_algebra_fields(op: BinOp) -> List<AlgebraFieldKind> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldMatch {
-    pub field_kind: compile_error!("UNRESOLVED_CompilerError"),
-    pub field_node: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field_kind: AlgebraFieldKind,
+    pub field_node: Rc<Node>,
 }
 
 pub fn first_matching_algebra_field(
     mut n: Rc<Node>,
-    mut candidates: List<AlgebraFieldKind>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut candidates: Rc<Vec<AlgebraFieldKind>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
@@ -2389,14 +2414,14 @@ pub fn first_matching_algebra_field(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BinOpInferred {
-    pub result_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub algebra_field: compile_error!("UNRESOLVED_CompilerError"),
+    pub result_type: Rc<Node>,
+    pub algebra_field: Option<AlgebraFieldKind>,
 }
 
 pub fn infer_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BinOpInferred> {
     match op.clone() {
         BinOp::Eq => Rc::new(BinOpInferred {
@@ -2484,7 +2509,7 @@ pub fn infer_binop_type_node(
 
 pub fn for_each_element_type_node(
     n: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(n);
@@ -2516,7 +2541,7 @@ pub fn for_each_element_type_node(
     }
 }
 
-pub fn emit_map_has(m: Map<String, Bool>, key: String) -> bool {
+pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v2_rt::map_get(&m, key) {
         Some(_) => true,
         None => false,

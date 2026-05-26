@@ -76,36 +76,36 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
-    pub path: compile_error!("UNRESOLVED_CompilerError"),
-    pub content: compile_error!("UNRESOLVED_CompilerError"),
+    pub path: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipelineResult {
-    pub files: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub complexity: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ownership: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub artifact_plan: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub newline_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub files: Rc<Vec<Rc<TextFile>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub artifact_plan: Rc<ArtifactPlan>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
-    pub graph: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub newline_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub intern_table: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub graph: Option<Rc<ModuleGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendAccum {
-    pub parse_results: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub newline_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub intern_table: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub parse_results: Rc<Vec<Rc<ParseResult>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
-pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> List<FuncEntry> {
+pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
     Rc::new({
         let mut __result = Vec::new();
         for m in Rc::new({
@@ -170,7 +170,7 @@ pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
     RecursionContext {}
 }
 
-pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> List<OwnershipProof> {
+pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
     Rc::new({
         let mut __result = Vec::new();
         for m in Rc::new({
@@ -229,7 +229,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> List<OwnershipProof
     })
 }
 
-pub fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
+pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for proof in proofs.iter().cloned() {
@@ -269,7 +269,7 @@ pub fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
     })
 }
 
-pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> List<ErrorNode> {
+pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for v in complexity.violations.clone().iter().cloned() {
@@ -319,7 +319,7 @@ pub fn json_quote(s: String) -> String {
     )
 }
 
-pub fn json_list(items: List<String>) -> String {
+pub fn json_list(items: Rc<Vec<String>>) -> String {
     v2_rt::concat(
         v2_rt::concat("[".to_string(), items.join(&", ".to_string())),
         "]".to_string(),
@@ -335,9 +335,9 @@ pub fn json_optional_string(value: Option<String>) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
-    pub seen: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub order: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub collision_errors: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub seen: Rc<HashMap<String, String>>,
+    pub order: Rc<Vec<Rc<Node>>>,
+    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
@@ -511,8 +511,8 @@ pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
 
 pub fn dag_emit_check_ref_target(
     node: Rc<Node>,
-    key_to_id: Map<String, String>,
-) -> List<ErrorNode> {
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     match v2_rt::map_get(&key_to_id, dag_node_key(node.clone())) {
         Some(_) => Rc::new(vec![]),
         None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
@@ -521,8 +521,8 @@ pub fn dag_emit_check_ref_target(
 
 pub fn dag_emit_check_optional_ref_target(
     value: Option<Rc<Node>>,
-    key_to_id: Map<String, String>,
-) -> List<ErrorNode> {
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     match value {
         Some(inner) => dag_emit_check_ref_target(inner.clone(), key_to_id),
         None => Rc::new(vec![]),
@@ -531,8 +531,8 @@ pub fn dag_emit_check_optional_ref_target(
 
 pub fn dag_emit_check_inferred_ref_target(
     value: Option<Rc<InferredNode>>,
-    key_to_id: Map<String, String>,
-) -> List<ErrorNode> {
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     match value.as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_emit_check_ref_target(n.clone(), key_to_id)
@@ -541,7 +541,10 @@ pub fn dag_emit_check_inferred_ref_target(
     }
 }
 
-pub fn dag_emit_check_node_refs(node: Rc<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
+pub fn dag_emit_check_node_refs(
+    node: Rc<Node>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -612,7 +615,10 @@ pub fn dag_emit_check_node_refs(node: Rc<Node>, key_to_id: Map<String, String>) 
     )
 }
 
-pub fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
+pub fn dag_emit_ref_errors(
+    order: Rc<Vec<Rc<Node>>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in order.iter().cloned() {
@@ -626,7 +632,10 @@ pub fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) ->
     })
 }
 
-pub fn dag_collect_nodes_list(nodes: List<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
+pub fn dag_collect_nodes_list(
+    nodes: Rc<Vec<Rc<Node>>>,
+    acc: Rc<DagCollectAcc>,
+) -> Rc<DagCollectAcc> {
     nodes
         .iter()
         .cloned()
@@ -756,7 +765,7 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
     )
 }
 
-pub fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
+pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, String>> {
     Rc::new(
         order
             .iter()
@@ -769,7 +778,7 @@ pub fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
     .cloned()
     .fold(
         v2_rt::rc_empty_map::<String, String>(),
-        |acc: Map<String, String>, pair: (i64, Rc<Node>)| {
+        |acc: Rc<HashMap<String, String>>, pair: (i64, Rc<Node>)| {
             v2_rt::rc_map_insert(
                 acc,
                 dag_node_key(pair.1.clone()),
@@ -779,16 +788,16 @@ pub fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
     )
 }
 
-pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Map<String, NewlineIndex> {
+pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     typed.modules.clone().iter().cloned().fold(
         v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Map<String, NewlineIndex>, m: Rc<TypedModule>| {
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
             v2_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
 }
 
-pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Map<String, String>) -> String {
+pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
     match v2_rt::map_get(&key_to_id, dag_node_key(node)) {
         Some(id) => v2_rt::concat(
             v2_rt::concat("{\"$ref\": ".to_string(), json_quote(id.clone())),
@@ -798,7 +807,10 @@ pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Map<String, String>) -> Str
     }
 }
 
-pub fn json_optional_node_ref(value: Option<Rc<Node>>, key_to_id: Map<String, String>) -> String {
+pub fn json_optional_node_ref(
+    value: Option<Rc<Node>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
     match value {
         Some(inner) => serialize_node_ref(inner.clone(), key_to_id),
         None => "null".to_string(),
@@ -807,7 +819,7 @@ pub fn json_optional_node_ref(value: Option<Rc<Node>>, key_to_id: Map<String, St
 
 pub fn json_optional_inferred_node_ref(
     value: Option<Rc<InferredNode>>,
-    key_to_id: Map<String, String>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match value {
         Some(inner) => serialize_inferred_node_ref(inner.clone(), key_to_id),
@@ -928,7 +940,10 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
     )
 }
 
-pub fn serialize_import_node(imp: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn serialize_import_node(
+    imp: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
             "{\"kind\": \"ImportAll\"}".to_string()
@@ -1024,7 +1039,7 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 
 pub fn serialize_field_binding(
     binding: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1049,7 +1064,7 @@ pub fn serialize_field_binding(
 
 pub fn serialize_match_pattern(
     pattern: Rc<MatchPattern>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*pattern).clone() {
         MatchPattern::Bind { name: inner, .. } => v2_rt::concat(
@@ -1102,8 +1117,8 @@ pub fn serialize_match_pattern(
 
 pub fn serialize_named_arg(
     arg: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1122,8 +1137,8 @@ pub fn serialize_named_arg(
 
 pub fn serialize_match_arm(
     arm: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1148,8 +1163,8 @@ pub fn serialize_match_arm(
 
 pub fn serialize_field_init(
     field_init: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1168,8 +1183,8 @@ pub fn serialize_field_init(
 
 pub fn serialize_string_part(
     part: Rc<StringPart>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match (*part).clone() {
         StringPart::Text { value: inner, .. } => v2_rt::concat(
@@ -1204,8 +1219,8 @@ pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
 
 pub fn serialize_method_semantics(
     value: Option<Rc<MethodSemantics>>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match value.as_deref().cloned() {
         Some(MethodSemantics::PlainMethodSemantics) => {
@@ -1399,7 +1414,7 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
     }
 }
 
-pub fn serialize_descent_evidence(de: List<SubValueRelation>) -> String {
+pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> String {
     match de {
         Some(evidence) => json_list(Rc::new({
             let mut __result = Vec::new();
@@ -1414,8 +1429,8 @@ pub fn serialize_descent_evidence(de: List<SubValueRelation>) -> String {
 
 pub fn serialize_expr_data(
     expr_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     {
         let ch = expr_node.children.clone();
@@ -1886,7 +1901,7 @@ pub fn serialize_expr_data(
 
 pub fn serialize_inferred_node_ref(
     inferred: Rc<InferredNode>,
-    key_to_id: Map<String, String>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match (*inferred).clone() {
         InferredNode::Resolved { node: node, .. } => v2_rt::concat(
@@ -1921,8 +1936,8 @@ pub fn serialize_inferred_node_ref(
 
 pub fn serialize_resource_use(
     resource_use: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1947,8 +1962,8 @@ pub fn serialize_resource_use(
 
 pub fn serialize_field(
     field: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -2005,8 +2020,8 @@ pub fn serialize_field(
 
 pub fn serialize_param(
     param: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -2069,8 +2084,8 @@ pub fn is_import_slot_node(n: Rc<Node>) -> bool {
 
 pub fn serialize_node_params_json(
     node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     if is_module_shell_node(node.clone()) {
         "[]".to_string()
@@ -2091,7 +2106,7 @@ pub fn serialize_node_params_json(
 
 pub fn serialize_module_imports_json(
     node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let imports = module_imports(node);
@@ -2124,8 +2139,8 @@ pub fn serialize_module_imports_json(
 
 pub fn serialize_node_record(
     node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
@@ -2135,7 +2150,10 @@ pub fn serialize_node_record(
 }), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
 }
 
-pub fn serialize_typed_module(module: Rc<TypedModule>, key_to_id: Map<String, String>) -> String {
+pub fn serialize_typed_module(
+    module: Rc<TypedModule>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -2173,9 +2191,9 @@ pub fn serialize_typed_module(module: Rc<TypedModule>, key_to_id: Map<String, St
 }
 
 pub fn serialize_dag_nodes_table(
-    order: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    key_to_id: Map<String, String>,
+    order: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     Rc::new({
         let mut __result = Vec::new();
@@ -2325,7 +2343,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
-pub fn boundary_ref_error(names: List<String>, ref_name: String) -> List<ErrorNode> {
+pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
     if {
         let mut __found = false;
         for n in names.iter().cloned() {
@@ -2348,7 +2366,7 @@ pub fn boundary_ref_error(names: List<String>, ref_name: String) -> List<ErrorNo
     }
 }
 
-pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> List<ErrorNode> {
+pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let names = Rc::new({
             let mut __result = Vec::new();
@@ -2422,17 +2440,17 @@ pub fn emit_from_artifact_plan(
     }
 }
 
-pub fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
+pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
     parse_results.iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: List<T>, pr: Rc<ParseResult>| match pr.error.clone() {
+        |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
             Some(diag) => v2_rt::rc_list_push(acc.clone(), diag.clone()),
             None => acc.clone(),
         },
     )
 }
 
-pub fn front_end_sources(sources: List<SourceFile>) -> Rc<FrontendResult> {
+pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
     {
         let acc = sources.iter().cloned().fold(
             Rc::new(FrontendAccum {
@@ -2495,7 +2513,7 @@ pub fn front_end_sources(sources: List<SourceFile>) -> Rc<FrontendResult> {
                 });
                 let source_indices = newline_indices.clone().iter().cloned().fold(
                     v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Map<K, V>, si: Rc<NewlineIndex>| {
+                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
                         v2_rt::rc_map_insert(acc, si.file.clone(), si.clone())
                     },
                 );
@@ -2511,7 +2529,7 @@ pub fn front_end_sources(sources: List<SourceFile>) -> Rc<FrontendResult> {
     }
 }
 
-pub fn resolve_sources(sources: List<SourceFile>) -> Rc<CompileResult> {
+pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
     {
         let frontend = front_end_sources(sources);
         Rc::new(CompileResult {
@@ -2521,7 +2539,10 @@ pub fn resolve_sources(sources: List<SourceFile>) -> Rc<CompileResult> {
     }
 }
 
-pub fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> Rc<PipelineResult> {
+pub fn compile_sources(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    target: RenderTarget,
+) -> Rc<PipelineResult> {
     {
         let frontend = front_end_sources(sources);
         let newline_indices = frontend.newline_indices.clone();
@@ -2557,7 +2578,7 @@ pub fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> Rc<Pi
                 }
                 let source_indices = newline_indices.clone().iter().cloned().fold(
                     v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Map<K, V>, index: Rc<NewlineIndex>| {
+                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
@@ -2698,15 +2719,15 @@ pub fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> Rc<Pi
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedPipelineResult {
-    pub graph: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub source_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub complexity: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ownership: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub newline_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub graph: Option<Rc<ResolvedGraph>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub complexity: Rc<ComplexityReport>,
+    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
 }
 
-pub fn compile_to_resolved(sources: List<SourceFile>) -> Rc<ResolvedPipelineResult> {
+pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
     {
         let frontend = front_end_sources(sources);
         let newline_indices = frontend.newline_indices.clone();
@@ -2742,7 +2763,7 @@ pub fn compile_to_resolved(sources: List<SourceFile>) -> Rc<ResolvedPipelineResu
                 }
                 let source_indices = newline_indices.clone().iter().cloned().fold(
                     v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Map<K, V>, index: Rc<NewlineIndex>| {
+                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
                         v2_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );

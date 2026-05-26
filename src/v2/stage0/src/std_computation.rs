@@ -84,10 +84,10 @@ pub enum ShrinkFactor {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoweringTarget {
-    pub primitive: compile_error!("UNRESOLVED_CompilerError"),
-    pub bound: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub evidence: compile_error!("UNRESOLVED_CompilerError"),
-    pub factor: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub primitive: IterationPrimitive,
+    pub bound: Rc<SizeBound>,
+    pub evidence: DescentEvidence,
+    pub factor: Option<Rc<ShrinkFactor>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

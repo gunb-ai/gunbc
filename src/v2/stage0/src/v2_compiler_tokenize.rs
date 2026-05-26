@@ -26,9 +26,9 @@ pub fn is_keyword_text(text: String) -> bool {
     }
 }
 
-pub fn single_punct() -> Map<String, TokenShape> {
+pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     thread_local! {
-        static CACHED: Map<String, TokenShape> = {
+        static CACHED: Rc<HashMap<String, TokenShape>> = {
             let mut __m = HashMap::new();
             __m.insert("(".to_string(), TokenShape::ShLParen);
             __m.insert(")".to_string(), TokenShape::ShRParen);
@@ -44,34 +44,34 @@ pub fn single_punct() -> Map<String, TokenShape> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, TokenShape>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, TokenShape>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerState {
-    pub pos: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub interp_depth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub pos: i64,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub interp_depth: Rc<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokPos {
-    pub pos: compile_error!("UNRESOLVED_CompilerError"),
-    pub interp_depth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub pos: i64,
+    pub interp_depth: Rc<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScanResult {
-    pub pos: compile_error!("UNRESOLVED_CompilerError"),
-    pub token: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub interp_depth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub pos: i64,
+    pub token: Rc<Token>,
+    pub interp_depth: Rc<Vec<i64>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
-    pub file: compile_error!("UNRESOLVED_CompilerError"),
-    pub text: compile_error!("UNRESOLVED_CompilerError"),
-    pub source_chars: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub file: String,
+    pub text: String,
+    pub source_chars: Rc<Vec<i64>>,
 }
 
 pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
@@ -159,7 +159,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize(source: String, file: String) -> List<Token> {
+pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -240,7 +240,7 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult>
 
 pub fn tokenize_loop(
     mut source: Rc<SourceRef>,
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut pos: Rc<TokPos>,
     mut fuel: i64,
 ) -> Rc<TokenizerState> {
@@ -737,7 +737,7 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
 pub fn scan_string_body(
     mut source: Rc<SourceRef>,
     mut pos: i64,
-    mut acc: List<String>,
+    mut acc: Rc<Vec<String>>,
 ) -> Rc<StringScanResult> {
     loop {
         if (pos.clone() >= source_len(source.clone())) {
@@ -822,7 +822,7 @@ pub fn process_escapes(raw: String) -> String {
     process_escapes_loop(raw, 0, Rc::new(vec![]))
 }
 
-pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: List<String>) -> String {
+pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
     loop {
         if (pos.clone() >= v2_rt::string_length(&source)) {
             break acc.join(&"".to_string());
@@ -877,7 +877,7 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: List<Stri
     }
 }
 
-pub fn drop_last(stack: List<Int>) -> List<Int> {
+pub fn drop_last(stack: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
     {
         let len = (stack.clone().len() as i64);
         Rc::new(
@@ -891,7 +891,7 @@ pub fn drop_last(stack: List<Int>) -> List<Int> {
         )
         .iter()
         .cloned()
-        .fold(Rc::new(vec![]), |result: List<T>, pair: (i64, i64)| {
+        .fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| {
             if (pair.0.clone() < (len.clone() - 1)) {
                 Rc::new(v2_rt::append(result.clone(), pair.1.clone()))
             } else {
@@ -901,7 +901,7 @@ pub fn drop_last(stack: List<Int>) -> List<Int> {
     }
 }
 
-pub fn replace_last(stack: List<Int>, value: i64) -> List<Int> {
+pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
     {
         let prefix = drop_last(stack);
         Rc::new(v2_rt::append(prefix, value))

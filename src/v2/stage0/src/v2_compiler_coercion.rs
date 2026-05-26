@@ -25,7 +25,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
+pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     match target {
         RenderTarget::Rust => rust_type_checkpoints(),
         RenderTarget::Python => python_type_checkpoints(),
@@ -34,7 +34,7 @@ pub fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
     }
 }
 
-pub fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
+pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
     match target {
         RenderTarget::Rust => rust_algebra_inhabitants(),
         RenderTarget::Python => python_algebra_inhabitants(),
@@ -204,15 +204,15 @@ pub enum CoercionAssertion {
     },
     TemplateAssertion {
         template: String,
-        args: List<String>,
+        args: Rc<Vec<String>>,
         expected: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
-    pub test_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub assertions: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub test_name: String,
+    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
 }
 
 pub fn target_label(target: RenderTarget) -> String {
@@ -224,7 +224,7 @@ pub fn target_label(target: RenderTarget) -> String {
     }
 }
 
-pub fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let label = target_label(target.clone());
         let cps = target_checkpoints(target.clone());
@@ -252,11 +252,11 @@ pub fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
     }
 }
 
-pub fn inhabitant_test_names() -> List<String> {
+pub fn inhabitant_test_names() -> Rc<Vec<String>> {
     canonical_container_names()
 }
 
-pub fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let label = target_label(target.clone());
         let assertions = Rc::new({
@@ -293,7 +293,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
     }
 }
 
-pub fn copy_tests() -> List<CoercionTestEntry> {
+pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
         let copy_assertions = Rc::new({
@@ -325,7 +325,7 @@ pub fn copy_tests() -> List<CoercionTestEntry> {
     }
 }
 
-pub fn template_application_tests() -> List<CoercionTestEntry> {
+pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     {
         let targets = Rc::new(vec![
             RenderTarget::Rust,
@@ -405,7 +405,7 @@ pub fn template_application_tests() -> List<CoercionTestEntry> {
     }
 }
 
-pub fn extract_coercion_tests() -> List<CoercionTestEntry> {
+pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(

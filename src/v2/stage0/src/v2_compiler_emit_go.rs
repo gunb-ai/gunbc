@@ -169,7 +169,10 @@ pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
     }
 }
 
-pub fn go_mock_expr_uses_fmt(expr: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn go_mock_expr_uses_fmt(
+    expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     {
         let rendered = emit_simple_expr(expr, RenderTarget::Go, source_indices);
         ((Rc::new(
@@ -183,7 +186,7 @@ pub fn go_mock_expr_uses_fmt(expr: Rc<Node>, source_indices: Map<String, Newline
     }
 }
 
-pub fn go_test_import_block(projections: List<TestProjection>) -> String {
+pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String {
     {
         let needs_fmt = {
             let mut __found = false;
@@ -264,7 +267,10 @@ pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
     }
 }
 
-pub fn emit_go_test_file(module_name: String, projections: List<TestProjection>) -> Rc<TextFile> {
+pub fn emit_go_test_file(
+    module_name: String,
+    projections: Rc<Vec<Rc<TestProjection>>>,
+) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
         Rc::new(TextFile {
             path: "".to_string(),
@@ -406,7 +412,7 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
 pub fn emit_go_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -426,7 +432,7 @@ pub fn emit_go_mock_prop_setup(
 
 pub fn emit_go_module(
     typed_module: Rc<TypedModule>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -537,9 +543,9 @@ pub fn go_package_name(module_name: String) -> String {
 }
 
 pub fn emit_go_imports(
-    items: List<Node>,
-    imports: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let has_services = {
@@ -606,7 +612,7 @@ pub fn collect_go_std_imports(
     has_services: bool,
     has_types: bool,
     has_functions: bool,
-) -> List<String> {
+) -> Rc<Vec<String>> {
     {
         let fmt_import = if ((has_types || has_functions) || has_services.clone()) {
             Rc::new(vec!["\t\"fmt\"".to_string()])
@@ -629,7 +635,7 @@ pub fn collect_go_std_imports(
 
 pub fn emit_go_typed_item(
     item: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
 ) -> String {
     {
@@ -725,7 +731,7 @@ pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Str
 
 pub fn emit_go_struct_from_children(
     name: String,
-    children: List<Node>,
+    children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
 ) -> String {
     if ((children.clone().len() as i64) == 0) {
@@ -822,7 +828,11 @@ pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> Str
     }
 }
 
-pub fn emit_go_sum_from_children(name: String, children: List<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_go_sum_from_children(
+    name: String,
+    children: Rc<Vec<Rc<Node>>>,
+    env: Rc<TypeEnv>,
+) -> String {
     {
         let has_data = {
             let mut __found = false;
@@ -1045,7 +1055,7 @@ pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<Type
 pub fn emit_go_type_alias(
     name: String,
     base: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -1068,10 +1078,10 @@ pub fn emit_go_type_alias(
 
 pub fn emit_go_fn_def(
     name: String,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
 ) -> String {
     {
@@ -1174,11 +1184,11 @@ pub fn emit_go_fn_def(
 
 pub fn emit_go_func_def(
     name: String,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
-    uses: List<Node>,
+    uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
 ) -> String {
     {
@@ -1253,10 +1263,10 @@ pub fn emit_go_func_def(
 }
 
 pub fn emit_go_func_params(
-    params: List<Node>,
-    uses: List<Node>,
-    service_names: List<String>,
-    source_indices: Map<String, NewlineIndex>,
+    params: Rc<Vec<Rc<Node>>>,
+    uses: Rc<Vec<Rc<Node>>>,
+    service_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let param_strs = Rc::new({
@@ -1307,7 +1317,7 @@ pub fn emit_go_func_params(
 
 pub fn emit_go_typed_expr(
     texpr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
@@ -1332,7 +1342,7 @@ pub fn emit_go_typed_expr(
 pub fn emit_go_transport_body(
     transport: Rc<Node>,
     op_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
 ) -> String {
     emit_unified_transport_dispatch(
@@ -1350,7 +1360,7 @@ pub fn emit_go_transport_body(
 
 pub fn emit_go_service_def(
     item: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
 ) -> String {
     emit_unified_service_def(
@@ -1375,8 +1385,8 @@ pub fn emit_go_service_def(
 pub fn emit_go_service_struct(
     name: String,
     fallback_transport: Rc<Node>,
-    op_children: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    op_children: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children, source_indices);
@@ -1445,7 +1455,7 @@ pub fn emit_go_rest_call(
     op_name: String,
     transport: Rc<Node>,
     depth: i64,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let prefix = make_indent(depth);
@@ -1533,7 +1543,7 @@ pub fn emit_go_shell_call(
     op_name: String,
     transport: Rc<Node>,
     depth: i64,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let prefix = make_indent(depth);
@@ -1727,7 +1737,7 @@ pub fn emit_go_data_def(
     name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
 ) -> String {

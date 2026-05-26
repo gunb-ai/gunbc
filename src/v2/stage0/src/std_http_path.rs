@@ -20,13 +20,13 @@ pub enum UrlPathToken {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathTemplate {
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathSegmentTokensResult {
-    ParsedSegmentTokens { tokens: List<UrlPathToken> },
+    ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
     MalformedPathSegment { segment: String, reason: String },
 }
 

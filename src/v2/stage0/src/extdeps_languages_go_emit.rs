@@ -8,9 +8,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn go_keywords() -> Map<String, String> {
+pub fn go_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -22,12 +22,12 @@ pub fn go_keywords() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn go_container_templates() -> Map<String, String> {
+pub fn go_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "[]{0}".to_string());
             __m.insert("set".to_string(), "map[{0}]struct{}".to_string());
@@ -39,16 +39,16 @@ pub fn go_container_templates() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn go_reserved() -> List<String> {
+pub fn go_reserved() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: List<String> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["break".to_string(), "case".to_string(), "chan".to_string(), "const".to_string(), "continue".to_string(), "default".to_string(), "defer".to_string(), "else".to_string(), "fallthrough".to_string(), "for".to_string(), "func".to_string(), "go".to_string(), "goto".to_string(), "if".to_string(), "import".to_string(), "interface".to_string(), "map".to_string(), "package".to_string(), "range".to_string(), "return".to_string(), "select".to_string(), "struct".to_string(), "switch".to_string(), "type".to_string(), "var".to_string(), "bool".to_string(), "byte".to_string(), "complex64".to_string(), "complex128".to_string(), "error".to_string(), "float32".to_string(), "float64".to_string(), "int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "rune".to_string(), "string".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string(), "true".to_string(), "false".to_string(), "iota".to_string(), "nil".to_string(), "append".to_string(), "cap".to_string(), "close".to_string(), "complex".to_string(), "copy".to_string(), "delete".to_string(), "imag".to_string(), "len".to_string(), "make".to_string(), "new".to_string(), "panic".to_string(), "print".to_string(), "println".to_string(), "real".to_string(), "recover".to_string()])
         };
     }
-    CACHED.with(|c: &List<String>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn go_reserved_escape_suffix() -> String {
@@ -177,18 +177,18 @@ pub fn go_source_extension() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn go_string_types() -> List<String> {
+pub fn go_string_types() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: List<String> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &List<String>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn go_method_templates() -> Map<String, String> {
+pub fn go_method_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("count".to_string(), "len({recv})".to_string());
             __m.insert("join".to_string(), "strings.Join({recv}, {arg})".to_string());
@@ -208,7 +208,7 @@ pub fn go_method_templates() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn go_lambda_template() -> String {

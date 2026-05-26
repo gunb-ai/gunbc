@@ -21,14 +21,14 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessCheckResultNode {
-    pub inferred: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub inferred: Option<Rc<InferredNode>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedCollectionParts {
-    pub key_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub value_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub key_type: Rc<Node>,
+    pub value_type: Rc<Node>,
 }
 
 pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) -> Rc<ErrorNode> {
@@ -43,7 +43,7 @@ pub fn access_error(message: String, span: Rc<SourceSpan>, module_name: String) 
 
 pub fn access_result(
     inferred: Rc<Node>,
-    diagnostics: List<ErrorNode>,
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     span: Rc<SourceSpan>,
     fallback_message: String,
 ) -> Rc<AccessCheckResultNode> {
@@ -71,7 +71,7 @@ pub fn access_result(
 
 pub fn keyed_collection_parts(
     n: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<KeyedCollectionParts>> {
     if (node_is_keyed_collection(n.clone(), source_indices)
         && ((n.children.clone().len() as i64) >= 2))
@@ -96,7 +96,7 @@ pub fn check_index_access_node(
     index_type: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
         let normed = normalize_access_type_node(base_type);
@@ -202,7 +202,7 @@ pub fn check_slice_access_node(
     end_type: Rc<Node>,
     span: Rc<SourceSpan>,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
     {
         let normed_base = normalize_access_type_node(base_type);

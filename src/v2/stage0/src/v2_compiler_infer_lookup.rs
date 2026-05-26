@@ -53,12 +53,15 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KnownMethodResolution {
-    pub semantics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub result_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub semantics: Option<Rc<MethodSemantics>>,
+    pub result_type: Option<Rc<Node>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Option<Rc<Node>> {
+pub fn lookup_in_scope(
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    name: String,
+) -> Option<Rc<Node>> {
     match v2_rt::map_get(&locals, name) {
         Some(binding) => Some(binding.resolved.clone()),
         None => None,
@@ -72,7 +75,7 @@ pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc
 pub fn lookup_field_type_node(
     n: Rc<Node>,
     field_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -116,9 +119,9 @@ pub fn lookup_field_type_node(
 }
 
 pub fn lookup_coproduct_common_field_node(
-    variants: List<Node>,
+    variants: Rc<Vec<Rc<Node>>>,
     field_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     {
         let found_in_all = {
@@ -157,7 +160,7 @@ pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
 pub fn resolve_scrutinee_type_node_seen(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
-    seen: Map<String, Bool>,
+    seen: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != None) {
@@ -368,23 +371,23 @@ pub fn field_summary_for_type(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodFieldResult {
-    pub field_node: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub result_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub size_effect: compile_error!("UNRESOLVED_CompilerError"),
-    pub cost_shape: compile_error!("UNRESOLVED_CompilerError"),
-    pub algebra_template: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field_node: Rc<Node>,
+    pub result_type: Rc<Node>,
+    pub size_effect: Option<CollectionSizeEffect>,
+    pub cost_shape: Option<CostShape>,
+    pub algebra_template: Option<Rc<AlgebraFieldTemplate>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralMethodLookup {
-    pub resolution: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub kernel_diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolution: Option<Rc<MethodFieldResult>>,
+    pub kernel_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn lookup_field_in_product(
     product: Rc<Node>,
     method_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<MethodFieldResult>> {
     {
         let matching = Rc::new({
@@ -440,7 +443,7 @@ pub fn lookup_field_in_product(
 pub fn lookup_structural_method(
     receiver_type: Rc<Node>,
     method_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<StructuralMethodLookup> {
     {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
@@ -534,8 +537,8 @@ pub fn resolve_known_method_node(
     receiver_type: Rc<Node>,
     method_name: String,
     fold_accumulator_type: Option<Rc<Node>>,
-    service_registry: Map<String, List>,
-    source_indices: Map<String, NewlineIndex>,
+    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KnownMethodResolution> {
     {
         let tier0 = lookup_structural_method(

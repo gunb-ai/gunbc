@@ -67,20 +67,20 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseContext {
-    pub source_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub intern_table: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseResult {
-    pub module: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub error: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub module: Option<Rc<Node>>,
+    pub error: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParseWithTableResult {
-    pub result: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub intern_table: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub result: Rc<ParseResult>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -88,7 +88,7 @@ pub struct ParseWithTableResult {
 pub enum AdvanceResult {
     AdvanceOk {
         token: Rc<Token>,
-        tokens: List<Token>,
+        tokens: Rc<Vec<Rc<Token>>>,
     },
     AdvanceEof,
 }
@@ -99,7 +99,7 @@ impl AdvanceResult {
             AdvanceResult::AdvanceEof => panic!("no token on unit variant"),
         }
     }
-    pub fn tokens(&self) -> List<Token> {
+    pub fn tokens(&self) -> Rc<Vec<Rc<Token>>> {
         match self {
             AdvanceResult::AdvanceOk { tokens: __val, .. } => __val.clone(),
             AdvanceResult::AdvanceEof => panic!("no tokens on unit variant"),
@@ -112,14 +112,14 @@ impl AdvanceResult {
 pub enum EatResult {
     EatConsumed {
         token: Rc<Token>,
-        tokens: List<Token>,
+        tokens: Rc<Vec<Rc<Token>>>,
     },
     EatUnchanged {
-        tokens: List<Token>,
+        tokens: Rc<Vec<Rc<Token>>>,
     },
 }
 impl EatResult {
-    pub fn tokens(&self) -> List<Token> {
+    pub fn tokens(&self) -> Rc<Vec<Rc<Token>>> {
         match self {
             EatResult::EatConsumed { tokens: __val, .. } => __val.clone(),
             EatResult::EatUnchanged { tokens: __val, .. } => __val.clone(),
@@ -129,190 +129,190 @@ impl EatResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenResult {
-    pub token: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub token: Rc<Token>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NameResult {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub span: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub span: Rc<SourceSpan>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExprResult {
-    pub expr: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub expr: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemResult {
-    pub item: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeResult {
-    pub type_expr: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub type_expr: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleResult {
-    pub module: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub module: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportResult {
-    pub import: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub import: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantResult {
-    pub variant: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub variant: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PredResult {
-    pub predicate: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub predicate: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParamResult {
-    pub param: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub param: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportResult {
-    pub transport: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub transport: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpResult {
-    pub operation: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub operation: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CapResult {
-    pub capability: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub capability: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternResult {
-    pub pattern: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub pattern: Rc<MatchPattern>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArmResult {
-    pub arm: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub arm: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgResult {
-    pub arg: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub arg: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldResult {
-    pub field: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInitResult {
-    pub field: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResUseResult {
-    pub resource_use: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resource_use: Rc<Node>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemPrefixResult {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub name_span: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub type_params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub inferred: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub uses: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub name_span: Rc<SourceSpan>,
+    pub type_params: Rc<Vec<Rc<Node>>>,
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub inferred: Option<Rc<InferredNode>>,
+    pub uses: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceConfig {
-    pub endpoint: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub auth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub auth_input: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub auth_source: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub rate_limit: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub retry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub endpoint: Rc<Node>,
+    pub auth: Option<Rc<Node>>,
+    pub auth_input: Option<Rc<Node>>,
+    pub auth_source: Option<Rc<Node>>,
+    pub rate_limit: Option<Rc<Node>>,
+    pub retry: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConfigResult {
-    pub config: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub config: Rc<ServiceConfig>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingPower {
-    pub left: compile_error!("UNRESOLVED_CompilerError"),
-    pub right: compile_error!("UNRESOLVED_CompilerError"),
+    pub left: i64,
+    pub right: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -362,122 +362,122 @@ impl ExpectedToken {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportsResult {
-    pub imports: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub imports: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemsResult {
-    pub items: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub items: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NamesResult {
-    pub names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub names: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldsResult {
-    pub fields: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub fields: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInitsResult {
-    pub fields: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub fields: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantsResult {
-    pub variants: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub variants: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PredsResult {
-    pub predicates: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub predicates: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParamsResult {
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsesResult {
-    pub uses: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub uses: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgsResult {
-    pub args: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub args: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StmtsResult {
-    pub stmts: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub stmts: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExprsResult {
-    pub exprs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub exprs: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArmsResult {
-    pub arms: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub arms: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModsResult {
-    pub modifiers: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub modifiers: Rc<Vec<OperationModifier>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingsResult {
-    pub field_bindings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field_bindings: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 pub fn parse_recovery_expr(span: Rc<SourceSpan>, message: String) -> Rc<Node> {
@@ -490,179 +490,179 @@ pub fn parse_recovery_placeholder() -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OptRetResult {
-    pub inferred: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub inferred: Option<Rc<InferredNode>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GuardResult {
-    pub guard: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub guard: Option<Rc<Node>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FromKeyResult {
-    pub from_key: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub from_key: Option<String>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PostfixResult {
-    pub expr: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub changed: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub expr: Rc<Node>,
+    pub changed: bool,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserParam {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub span: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LambdaCheckResult {
-    pub is_lambda: compile_error!("UNRESOLVED_CompilerError"),
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub is_lambda: bool,
+    pub params: Rc<Vec<Rc<ParserParam>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdentCollectResult {
-    pub success: compile_error!("UNRESOLVED_CompilerError"),
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub success: bool,
+    pub params: Rc<Vec<Rc<ParserParam>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RangeArgsResult {
-    pub min_val: compile_error!("UNRESOLVED_CompilerError"),
-    pub max_val: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub min_val: Option<i64>,
+    pub max_val: Option<i64>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NamedIntResult {
-    pub arg_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub arg_value: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub arg_name: String,
+    pub arg_value: i64,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceBodyResult {
-    pub config: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub transport: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub operations: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub config: Option<Rc<ServiceConfig>>,
+    pub transport: Rc<Node>,
+    pub operations: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IOResult {
-    pub inputs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub outputs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub inputs: Rc<Vec<Rc<Node>>>,
+    pub outputs: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResPropResult {
-    pub properties: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub capabilities: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub properties: Rc<Vec<Rc<Node>>>,
+    pub capabilities: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResponsesResult {
-    pub responses: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub responses: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MocksResult {
-    pub mocks: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub mocks: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExitEntriesResult {
-    pub entries: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub entries: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RespEntriesResult {
-    pub entries: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub entries: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MockEntriesResult {
-    pub entries: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub entries: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpBodyResult {
-    pub inputs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub outputs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub modifier_props: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub transport: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub exit_props: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub response_props: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub mock_props: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub inputs: Rc<Vec<Rc<Node>>>,
+    pub outputs: Rc<Vec<Rc<Node>>>,
+    pub modifier_props: Rc<Vec<Rc<Node>>>,
+    pub transport: Option<Rc<Node>>,
+    pub exit_props: Rc<Vec<Rc<Node>>>,
+    pub response_props: Rc<Vec<Rc<Node>>>,
+    pub mock_props: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnitResult {
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringLitResult {
-    pub value: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub value: String,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IntLitResult {
-    pub value: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub value: i64,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -703,8 +703,8 @@ impl ParserResultWitness {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescResult {
-    pub desc: compile_error!("UNRESOLVED_CompilerError"),
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub desc: Option<String>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
 }
 
 pub fn token_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
@@ -714,7 +714,7 @@ pub fn token_span(tok: Option<Rc<Token>>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn advance(tokens: List<Token>) -> Rc<AdvanceResult> {
+pub fn advance(tokens: Rc<Vec<Rc<Token>>>) -> Rc<AdvanceResult> {
     match tokens.clone().first().cloned() {
         Some(t) => Rc::new(AdvanceResult::AdvanceOk {
             token: t.clone(),
@@ -748,7 +748,7 @@ pub fn has_err(err: Option<Rc<ErrorNode>>) -> bool {
     }
 }
 
-pub fn parse_string_literal_value(tokens: List<Token>) -> Rc<StringLitResult> {
+pub fn parse_string_literal_value(tokens: Rc<Vec<Rc<Token>>>) -> Rc<StringLitResult> {
     {
         let tok = tokens.clone().first().cloned();
         match tok.clone() {
@@ -786,7 +786,7 @@ pub fn parse_string_literal_value(tokens: List<Token>) -> Rc<StringLitResult> {
     }
 }
 
-pub fn parse_int_literal_value(tokens: List<Token>) -> Rc<IntLitResult> {
+pub fn parse_int_literal_value(tokens: Rc<Vec<Rc<Token>>>) -> Rc<IntLitResult> {
     {
         let tok = tokens.clone().first().cloned();
         match tok.clone() {
@@ -1172,7 +1172,10 @@ pub fn tok_is_ident_text(tok: Option<Rc<Token>>, text: String) -> bool {
     }
 }
 
-pub fn drop_leading_type_modifier(tokens: List<Token>, modifier: String) -> List<Token> {
+pub fn drop_leading_type_modifier(
+    tokens: Rc<Vec<Rc<Token>>>,
+    modifier: String,
+) -> Rc<Vec<Rc<Token>>> {
     if tok_is_ident_text(tokens.clone().first().cloned(), modifier) {
         skip_newlines(Rc::new(
             tokens
@@ -1187,7 +1190,7 @@ pub fn drop_leading_type_modifier(tokens: List<Token>, modifier: String) -> List
     }
 }
 
-pub fn type_body_tokens_after_modifiers(tokens: List<Token>) -> List<Token> {
+pub fn type_body_tokens_after_modifiers(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
     drop_leading_type_modifier(tokens, "nominal_opaque".to_string())
 }
 
@@ -1473,7 +1476,7 @@ pub fn token_matches_expected(token: Rc<Token>, expected: Rc<ExpectedToken>) -> 
     }
 }
 
-pub fn expect(tokens: List<Token>, expected: Rc<ExpectedToken>) -> Rc<TokenResult> {
+pub fn expect(tokens: Rc<Vec<Rc<Token>>>, expected: Rc<ExpectedToken>) -> Rc<TokenResult> {
     {
         let tok = tokens.clone().first().cloned();
         let matches = match tok.clone() {
@@ -1517,7 +1520,7 @@ pub fn expect(tokens: List<Token>, expected: Rc<ExpectedToken>) -> Rc<TokenResul
     }
 }
 
-pub fn expect_ident(tokens: List<Token>) -> Rc<NameResult> {
+pub fn expect_ident(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -1561,7 +1564,7 @@ pub fn expect_ident(tokens: List<Token>) -> Rc<NameResult> {
     }
 }
 
-pub fn expect_name(tokens: List<Token>) -> Rc<NameResult> {
+pub fn expect_name(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -1637,7 +1640,7 @@ pub fn is_name_keyword(token: Rc<Token>) -> bool {
     }
 }
 
-pub fn skip_newlines(mut tokens: List<Token>) -> List<Token> {
+pub fn skip_newlines(mut tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
     loop {
         match tokens.clone().first().cloned() {
             Some(t) => {
@@ -1665,7 +1668,7 @@ pub fn is_continuation_shape(shape: TokenShape) -> bool {
         || is_and_shape(shape.clone()))
 }
 
-pub fn skip_continuation_newlines(tokens: List<Token>) -> List<Token> {
+pub fn skip_continuation_newlines(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<Rc<Token>>> {
     {
         let tok = tokens.clone().first().cloned();
         let is_continuation = if tok_is_newline(tok) {
@@ -1687,7 +1690,7 @@ pub fn skip_continuation_newlines(tokens: List<Token>) -> List<Token> {
     }
 }
 
-pub fn eat(tokens: List<Token>, expected: Rc<ExpectedToken>) -> Rc<EatResult> {
+pub fn eat(tokens: Rc<Vec<Rc<Token>>>, expected: Rc<ExpectedToken>) -> Rc<EatResult> {
     match tokens.clone().first().cloned() {
         Some(t) => {
             if token_matches_expected(t.clone(), expected) {
@@ -1716,7 +1719,7 @@ pub fn eat(tokens: List<Token>, expected: Rc<ExpectedToken>) -> Rc<EatResult> {
 
 pub fn parser_result_base_var(
     expr: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
@@ -1734,7 +1737,7 @@ pub fn parser_result_base_var(
 
 pub fn parser_helper_state_arg_expr(
     call_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     Rc::new(
         call_node
@@ -1774,7 +1777,7 @@ pub fn parser_helper_state_arg_expr(
 
 pub fn parser_progress_flag_var(
     expr: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => {
@@ -1809,7 +1812,7 @@ pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
 
 pub fn parser_passthrough_state_expr(
     expr: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -1835,7 +1838,7 @@ pub fn parser_passthrough_state_expr(
 
 pub fn parser_result_witness(
     expr: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParserResultWitness> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => match expr_call_func_at(expr.clone(), source_indices) {
@@ -1899,8 +1902,8 @@ pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
 
 pub fn node_inferred_to_outputs(
     rt: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<Node> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<Node>>> {
     if is_conj_with_children(rt.clone()) {
         {
             let all_children_typed = {
@@ -1949,7 +1952,7 @@ pub fn node_inferred_to_outputs(
     }
 }
 
-pub fn parse_dotted_ident(tokens: List<Token>) -> Rc<NameResult> {
+pub fn parse_dotted_ident(tokens: Rc<Vec<Rc<Token>>>) -> Rc<NameResult> {
     {
         let r = expect_name(tokens);
         if has_err(r.err.clone()) {
@@ -1960,7 +1963,7 @@ pub fn parse_dotted_ident(tokens: List<Token>) -> Rc<NameResult> {
 }
 
 pub fn parse_dotted_ident_rest(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut acc: String,
     mut span: Rc<SourceSpan>,
 ) -> Rc<NameResult> {
@@ -2000,8 +2003,8 @@ pub fn parse_dotted_ident_rest(
 }
 
 pub fn parse_with_table(
-    tokens: List<Token>,
-    source_indices: Map<String, NewlineIndex>,
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ParseWithTableResult> {
     {
@@ -2031,13 +2034,16 @@ pub fn parse_with_table(
     }
 }
 
-pub fn parse(tokens: List<Token>, source_indices: Map<String, NewlineIndex>) -> Rc<ParseResult> {
+pub fn parse(
+    tokens: Rc<Vec<Rc<Token>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ParseResult> {
     parse_with_table(tokens, source_indices, empty_intern_table())
         .result
         .clone()
 }
 
-pub fn parse_module(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ModuleResult> {
+pub fn parse_module(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ModuleResult> {
     {
         let tokens = skip_newlines(tokens.clone());
         let start_span = token_span(tokens.clone().first().cloned());
@@ -2150,14 +2156,14 @@ pub fn parse_module(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ModuleResu
     }
 }
 
-pub fn parse_imports(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ImportsResult> {
+pub fn parse_imports(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ImportsResult> {
     parse_imports_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_imports_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ImportsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -2191,14 +2197,14 @@ pub fn parse_imports_acc(
     }
 }
 
-pub fn parse_items(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemsResult> {
+pub fn parse_items(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemsResult> {
     parse_items_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_items_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ItemsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -2232,7 +2238,7 @@ pub fn parse_items_acc(
     }
 }
 
-pub fn parse_import(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ImportResult> {
+pub fn parse_import(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ImportResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let err_import = import_node(
@@ -2345,7 +2351,7 @@ pub fn parse_import(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ImportResu
     }
 }
 
-pub fn parse_import_names(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<NamesResult> {
+pub fn parse_import_names(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<NamesResult> {
     parse_import_names_acc(tokens, ctx, Rc::new(vec![]))
 }
 
@@ -2354,9 +2360,9 @@ pub fn parsed_name_leaf(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
 }
 
 pub fn parse_import_names_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<NamesResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -2393,7 +2399,7 @@ pub fn parse_import_names_acc(
     }
 }
 
-pub fn find_item_form(forms: List<ItemForm>, keyword: String) -> Option<Rc<ItemForm>> {
+pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<Rc<ItemForm>> {
     {
         let matches = Rc::new({
             let mut __result = Vec::new();
@@ -2411,7 +2417,7 @@ pub fn find_item_form(forms: List<ItemForm>, keyword: String) -> Option<Rc<ItemF
     }
 }
 
-pub fn parse_item(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_item(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let tokens = skip_newlines(tokens.clone());
         let tok = tokens.clone().first().cloned();
@@ -2450,7 +2456,7 @@ pub fn parse_item(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> 
 }
 
 pub fn parse_item_prefix(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     form: Rc<ItemForm>,
 ) -> Rc<ItemPrefixResult> {
@@ -2598,7 +2604,7 @@ pub fn parse_item_prefix(
 }
 
 pub fn parse_item_by_form(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     form: Rc<ItemForm>,
 ) -> Rc<ItemResult> {
@@ -2701,7 +2707,10 @@ pub fn parse_item_by_form(
     }
 }
 
-pub fn field_to_child_node(field: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> Rc<Node> {
+pub fn field_to_child_node(
+    field: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
     {
         let ret_type = field_node_type_expr(field.clone());
         let props = match field_node_from_key(field.clone(), source_indices.clone()) {
@@ -2745,7 +2754,7 @@ pub fn field_to_child_node(field: Rc<Node>, source_indices: Map<String, NewlineI
 
 pub fn variant_to_child_node(
     variant: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let fields = variant_node_fields(variant.clone());
@@ -2784,9 +2793,9 @@ pub fn variant_to_child_node(
 }
 
 pub fn outputs_to_inferred(
-    outputs: List<Node>,
+    outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<InferredNode>> {
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
@@ -2825,15 +2834,15 @@ pub fn outputs_to_inferred(
 pub fn make_operation_node(
     name: String,
     ident_span: Option<Rc<SourceSpan>>,
-    inputs: List<Node>,
-    outputs: List<Node>,
-    response_props: List<Node>,
-    mock_props: List<Node>,
-    exit_props: List<Node>,
-    modifier_props: List<Node>,
+    inputs: Rc<Vec<Rc<Node>>>,
+    outputs: Rc<Vec<Rc<Node>>>,
+    response_props: Rc<Vec<Rc<Node>>>,
+    mock_props: Rc<Vec<Rc<Node>>>,
+    exit_props: Rc<Vec<Rc<Node>>>,
+    modifier_props: Rc<Vec<Rc<Node>>>,
     transport: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let all_props = v2_rt::concat(
@@ -2878,10 +2887,10 @@ pub fn make_operation_node(
 pub fn make_capability_node(
     name: String,
     ident_span: Option<Rc<SourceSpan>>,
-    inputs: List<Node>,
-    outputs: List<Node>,
+    inputs: Rc<Vec<Rc<Node>>>,
+    outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     Rc::new(Node {
         name: name,
@@ -2917,7 +2926,7 @@ pub fn make_capability_node(
     })
 }
 
-pub fn parse_type_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_type_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = Rc::new(Node {
@@ -2959,7 +2968,7 @@ pub fn parse_type_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResu
 }
 
 pub fn parse_type_after_kw(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<ItemResult> {
@@ -3262,12 +3271,12 @@ pub fn parse_type_body_from_prefix(
 }
 
 pub fn parse_type_body_after_eq(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     name: String,
     name_span: Rc<SourceSpan>,
     start_span: Rc<SourceSpan>,
-    type_params: List<Node>,
+    type_params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ItemResult> {
     {
         let dummy = Rc::new(Node {
@@ -3495,7 +3504,7 @@ pub fn parse_type_body_after_eq(
 }
 
 pub fn try_where_clause(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     base_te: Rc<Node>,
     start_span: Rc<SourceSpan>,
@@ -3576,14 +3585,14 @@ pub fn try_where_clause(
     }
 }
 
-pub fn parse_predicates(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<PredsResult> {
+pub fn parse_predicates(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<PredsResult> {
     parse_predicates_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_predicates_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<PredsResult> {
     loop {
         let r = parse_single_predicate(tokens, ctx);
@@ -3616,7 +3625,7 @@ pub fn parse_predicates_acc(
     }
 }
 
-pub fn parse_single_predicate(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<PredResult> {
+pub fn parse_single_predicate(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<PredResult> {
     {
         let zero_span = make_span(0, 0);
         let dummy_pred = make_field_init_node(
@@ -3980,7 +3989,10 @@ pub fn parse_single_predicate(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<
     }
 }
 
-pub fn parse_named_int_args(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<RangeArgsResult> {
+pub fn parse_named_int_args(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<RangeArgsResult> {
     {
         let r = parse_single_named_int(tokens, ctx);
         if has_err(r.err.clone()) {
@@ -4053,7 +4065,10 @@ pub fn parse_named_int_args(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Ra
     }
 }
 
-pub fn parse_single_named_int(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<NamedIntResult> {
+pub fn parse_single_named_int(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<NamedIntResult> {
     {
         let r = expect_ident(tokens);
         if has_err(r.err.clone()) {
@@ -4097,7 +4112,7 @@ pub fn parse_single_named_int(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<
 }
 
 pub fn parse_positional_variant_type_fields(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<FieldsResult> {
     {
@@ -4138,7 +4153,7 @@ pub fn parse_positional_variant_type_fields(
 }
 
 pub fn parse_variant_fields(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     vname: String,
     vname_span: Rc<SourceSpan>,
@@ -4253,14 +4268,17 @@ pub fn parse_variant_fields(
     }
 }
 
-pub fn parse_more_variants(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<VariantsResult> {
+pub fn parse_more_variants(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<VariantsResult> {
     parse_more_variants_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_more_variants_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<VariantsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -4312,7 +4330,7 @@ pub fn parse_more_variants_acc(
     }
 }
 
-pub fn parse_type_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<TypeResult> {
+pub fn parse_type_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<TypeResult> {
     {
         let tokens = skip_newlines(tokens.clone());
         let tok = tokens.clone().first().cloned();
@@ -4442,7 +4460,7 @@ pub fn parse_type_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<TypeRes
 }
 
 pub fn parse_callable_type_expr(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
@@ -4531,9 +4549,9 @@ pub fn parse_callable_type_expr(
 }
 
 pub fn parse_callable_param_types(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
         let r = parse_type_expr(tokens.clone(), ctx);
@@ -4584,7 +4602,7 @@ pub fn parse_callable_param_types(
 }
 
 pub fn finish_type_expr_from_name(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     type_name: String,
     start_span: Rc<SourceSpan>,
@@ -4654,13 +4672,13 @@ pub fn finish_type_expr_from_name(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeParamsResult {
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
 }
 
 pub fn parse_optional_type_params(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<TypeParamsResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
@@ -4685,9 +4703,9 @@ pub fn parse_optional_type_params(
 }
 
 pub fn collect_type_param_names(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut params: List<Node>,
+    mut params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeParamsResult> {
     loop {
         if tok_is_ident(tokens.clone().first().cloned()) {
@@ -4729,16 +4747,16 @@ pub fn collect_type_param_names(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeArgsResult {
-    pub args: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub args: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 pub fn collect_type_args(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut args: List<Node>,
+    mut args: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TypeArgsResult> {
     loop {
         match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
@@ -4775,7 +4793,7 @@ pub fn collect_type_args(
 }
 
 pub fn maybe_optional(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     te: Rc<Node>,
     start_span: Rc<SourceSpan>,
@@ -4818,14 +4836,14 @@ pub fn maybe_optional(
     }
 }
 
-pub fn parse_field_list(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FieldsResult> {
+pub fn parse_field_list(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<FieldsResult> {
     parse_field_list_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_field_list_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<FieldsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -4873,7 +4891,7 @@ pub fn parse_field_list_acc(
     }
 }
 
-pub fn parse_field(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FieldResult> {
+pub fn parse_field(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<FieldResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy_field = make_field_node(
@@ -4984,7 +5002,10 @@ pub fn parse_field(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FieldResult
     }
 }
 
-pub fn parse_optional_from_key(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FromKeyResult> {
+pub fn parse_optional_from_key(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<FromKeyResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -5044,7 +5065,7 @@ pub fn parse_optional_from_key(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc
     }
 }
 
-pub fn parse_fn_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_fn_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = Rc::new(Node {
@@ -5086,7 +5107,7 @@ pub fn parse_fn_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult
 }
 
 pub fn parse_fn_after_kw(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<ItemResult> {
@@ -5277,7 +5298,7 @@ pub fn parse_fn_body_from_prefix(
     }
 }
 
-pub fn parse_func_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_func_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = Rc::new(Node {
@@ -5367,7 +5388,7 @@ pub fn parse_func_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResu
 }
 
 pub fn parse_block_item_after_kw(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
     form: Rc<ItemForm>,
@@ -5613,7 +5634,7 @@ pub fn parse_no_body_from_prefix(
     }
 }
 
-pub fn parse_uses_clause(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<UsesResult> {
+pub fn parse_uses_clause(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<UsesResult> {
     {
         let tokens = skip_newlines(tokens.clone());
         let tok = tokens.clone().first().cloned();
@@ -5658,14 +5679,14 @@ pub fn parse_uses_clause(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<UsesR
     }
 }
 
-pub fn parse_uses_list(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<UsesResult> {
+pub fn parse_uses_list(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<UsesResult> {
     parse_uses_list_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_uses_list_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<UsesResult> {
     loop {
         let r = parse_uses_entry(tokens, ctx);
@@ -5698,7 +5719,7 @@ pub fn parse_uses_list_acc(
     }
 }
 
-pub fn parse_uses_entry(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ResUseResult> {
+pub fn parse_uses_entry(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ResUseResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = make_resource_use_node(
@@ -5804,23 +5825,23 @@ pub fn parse_uses_entry(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ResUse
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResConfigResult {
-    pub fields: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub fields: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 pub fn parse_resource_config_args(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ResConfigResult> {
     parse_resource_config_acc(skip_newlines(tokens), ctx, Rc::new(vec![]))
 }
 
 pub fn parse_resource_config_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResConfigResult> {
     loop {
         if tok_is_rparen(tokens.clone().first().cloned()) {
@@ -5882,7 +5903,10 @@ pub fn parse_resource_config_acc(
     }
 }
 
-pub fn parse_optional_inferred(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<OptRetResult> {
+pub fn parse_optional_inferred(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<OptRetResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectArrow))).clone() {
         EatResult::EatConsumed { tokens: __ec, .. } => {
             let r = parse_type_expr(__ec.clone(), ctx);
@@ -5912,7 +5936,7 @@ pub fn parse_optional_inferred(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc
     }
 }
 
-pub fn parse_service_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_service_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = Rc::new(Node {
@@ -5954,7 +5978,7 @@ pub fn parse_service_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemR
 }
 
 pub fn parse_service_after_kw(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<ItemResult> {
@@ -6100,7 +6124,10 @@ pub fn parse_service_after_kw(
     }
 }
 
-pub fn parse_service_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ServiceBodyResult> {
+pub fn parse_service_body(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ServiceBodyResult> {
     parse_service_entries(
         tokens.clone(),
         ctx,
@@ -6111,11 +6138,11 @@ pub fn parse_service_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Serv
 }
 
 pub fn parse_service_entries(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut config: Option<Rc<ServiceConfig>>,
     mut transport: Rc<Node>,
-    mut operations: List<Node>,
+    mut operations: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ServiceBodyResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -6299,12 +6326,15 @@ pub fn parse_service_entries(
     }
 }
 
-pub fn parse_service_config_block(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ConfigResult> {
+pub fn parse_service_config_block(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ConfigResult> {
     parse_config_fields(tokens, ctx, None, None, None, None, None, None)
 }
 
 pub fn parse_config_fields(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut endpoint: Option<Rc<Node>>,
     mut auth: Option<Rc<Node>>,
@@ -6436,7 +6466,10 @@ pub fn parse_config_fields(
     }
 }
 
-pub fn parse_transport_binding(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
+pub fn parse_transport_binding(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<TransportResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy = local_transport_node(span);
@@ -6628,7 +6661,10 @@ pub fn parse_transport_binding(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc
     }
 }
 
-pub fn parse_rest_binding_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
+pub fn parse_rest_binding_body(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<TransportResult> {
     parse_rest_fields(
         tokens,
         ctx,
@@ -6643,7 +6679,7 @@ pub fn parse_rest_binding_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc
 }
 
 pub fn parse_rest_fields(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut base_url: Option<Rc<Node>>,
     mut method: Option<Rc<Node>>,
@@ -6651,7 +6687,7 @@ pub fn parse_rest_fields(
     mut query: Option<Rc<Node>>,
     mut request_body: Option<Rc<Node>>,
     mut response_format: Option<Rc<Node>>,
-    mut headers: List<Node>,
+    mut headers: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TransportResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -6802,14 +6838,17 @@ pub fn parse_rest_fields(
     }
 }
 
-pub fn parse_shell_binding_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
+pub fn parse_shell_binding_body(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<TransportResult> {
     parse_shell_fields(tokens, ctx, Rc::new(vec![]), None)
 }
 
 pub fn parse_shell_fields(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut argv: List<Node>,
+    mut argv: Rc<Vec<Rc<Node>>>,
     mut stdin: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
@@ -6938,12 +6977,15 @@ pub fn parse_shell_fields(
     }
 }
 
-pub fn parse_file_binding_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<TransportResult> {
+pub fn parse_file_binding_body(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<TransportResult> {
     parse_file_fields(tokens, ctx, None)
 }
 
 pub fn parse_file_fields(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut base_path: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
@@ -7028,7 +7070,7 @@ pub fn parse_file_fields(
     }
 }
 
-pub fn parse_operation_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<OpResult> {
+pub fn parse_operation_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<OpResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy_op = make_operation_node(
@@ -7091,7 +7133,7 @@ pub fn parse_operation_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<OpR
 }
 
 pub fn parse_operation_v2_inline(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     name: String,
     name_span: Rc<SourceSpan>,
@@ -7211,7 +7253,7 @@ pub fn parse_operation_v2_inline(
 }
 
 pub fn parse_operation_v1_body(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     name: String,
     name_span: Rc<SourceSpan>,
@@ -7295,15 +7337,15 @@ pub fn parse_operation_v1_body(
 }
 
 pub fn parse_op_body_entries(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut inputs: List<Node>,
-    mut outputs: List<Node>,
-    mut modifier_props: List<Node>,
+    mut inputs: Rc<Vec<Rc<Node>>>,
+    mut outputs: Rc<Vec<Rc<Node>>>,
+    mut modifier_props: Rc<Vec<Rc<Node>>>,
     mut transport: Option<Rc<Node>>,
-    mut exit_props: List<Node>,
-    mut response_props: List<Node>,
-    mut mock_props: List<Node>,
+    mut exit_props: Rc<Vec<Rc<Node>>>,
+    mut response_props: Rc<Vec<Rc<Node>>>,
+    mut mock_props: Rc<Vec<Rc<Node>>>,
 ) -> Rc<OpBodyResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7803,7 +7845,10 @@ pub fn modifier_to_prop(name: String, span: Rc<SourceSpan>) -> Rc<Node> {
     )
 }
 
-pub fn modifiers_to_props(modifiers: List<OperationModifier>, span: Rc<SourceSpan>) -> List<Node> {
+pub fn modifiers_to_props(
+    modifiers: Rc<Vec<OperationModifier>>,
+    span: Rc<SourceSpan>,
+) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
         for m in modifiers.iter().cloned() {
@@ -7823,7 +7868,10 @@ pub fn modifiers_to_props(modifiers: List<OperationModifier>, span: Rc<SourceSpa
     })
 }
 
-pub fn status_expr_to_str(expr: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn status_expr_to_str(
+    expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitInt { value: n, .. } => int_to_string(n.clone()),
@@ -7848,7 +7896,7 @@ pub fn int_to_string(value: i64) -> String {
     }
 }
 
-pub fn int_to_string_acc(mut value: i64, mut acc: List<String>) -> List<String> {
+pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
     loop {
         if (value.clone() == 0) {
             break acc;
@@ -7917,7 +7965,10 @@ pub fn last_child_or_self(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn node_to_name_str(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn node_to_name_str(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let effective_n = if is_optional.clone() {
@@ -7986,14 +8037,17 @@ pub fn node_to_name_str(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) 
     })
 }
 
-pub fn parse_exit_entries(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExitEntriesResult> {
+pub fn parse_exit_entries(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExitEntriesResult> {
     parse_exit_entries_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_exit_entries_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ExitEntriesResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -8083,14 +8137,17 @@ pub fn parse_exit_entries_acc(
     }
 }
 
-pub fn parse_operation_modifiers(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ModsResult> {
+pub fn parse_operation_modifiers(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ModsResult> {
     parse_operation_modifiers_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_operation_modifiers_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<OperationModifier>,
+    mut acc: Rc<Vec<OperationModifier>>,
 ) -> Rc<ModsResult> {
     loop {
         let kw = tok_keyword_text(tokens.clone().first().cloned());
@@ -8135,7 +8192,7 @@ pub fn parse_operation_modifiers_acc(
     }
 }
 
-pub fn parse_status_pattern(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_status_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -8291,7 +8348,7 @@ pub fn parse_status_pattern(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Ex
 }
 
 pub fn parse_optional_response_block(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ResponsesResult> {
     {
@@ -8363,14 +8420,17 @@ pub fn parse_optional_response_block(
     }
 }
 
-pub fn parse_response_entries(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<RespEntriesResult> {
+pub fn parse_response_entries(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<RespEntriesResult> {
     parse_response_entries_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_response_entries_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<RespEntriesResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -8445,7 +8505,7 @@ pub fn parse_response_entries_acc(
 }
 
 pub fn parse_optional_mock_response_block(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<MocksResult> {
     {
@@ -8518,16 +8578,16 @@ pub fn parse_optional_mock_response_block(
 }
 
 pub fn parse_mock_response_entries(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<MockEntriesResult> {
     parse_mock_response_entries_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_mock_response_entries_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<MockEntriesResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -8605,7 +8665,7 @@ pub fn parse_mock_response_entries_acc(
     }
 }
 
-pub fn parse_resource_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_resource_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = Rc::new(Node {
@@ -8647,7 +8707,7 @@ pub fn parse_resource_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Item
 }
 
 pub fn parse_resource_after_kw(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<ItemResult> {
@@ -8768,10 +8828,10 @@ pub fn parse_resource_after_kw(
 }
 
 pub fn parse_resource_entries(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut properties: List<Node>,
-    mut capabilities: List<Node>,
+    mut properties: Rc<Vec<Rc<Node>>>,
+    mut capabilities: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ResPropResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -8985,7 +9045,7 @@ pub fn parse_resource_entries(
     }
 }
 
-pub fn skip_until_rbrace(tokens: List<Token>) -> Rc<UnitResult> {
+pub fn skip_until_rbrace(tokens: Rc<Vec<Rc<Token>>>) -> Rc<UnitResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tokens = skip_newlines(tokens.clone());
         let tok = tokens.clone().first().cloned();
@@ -9033,7 +9093,7 @@ pub fn skip_until_rbrace(tokens: List<Token>) -> Rc<UnitResult> {
     })
 }
 
-pub fn parse_capability(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<CapResult> {
+pub fn parse_capability(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<CapResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy_cap = make_capability_node(
@@ -9204,15 +9264,18 @@ pub fn parse_capability(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<CapRes
     }
 }
 
-pub fn parse_input_output_blocks(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<IOResult> {
+pub fn parse_input_output_blocks(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<IOResult> {
     parse_io_blocks_acc(tokens, ctx, Rc::new(vec![]), Rc::new(vec![]))
 }
 
 pub fn parse_io_blocks_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut inputs: List<Node>,
-    mut outputs: List<Node>,
+    mut inputs: Rc<Vec<Rc<Node>>>,
+    mut outputs: Rc<Vec<Rc<Node>>>,
 ) -> Rc<IOResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -9349,7 +9412,7 @@ pub fn parse_io_blocks_acc(
     }
 }
 
-pub fn parse_data_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
+pub fn parse_data_def(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy = Rc::new(Node {
@@ -9391,7 +9454,7 @@ pub fn parse_data_def(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ItemResu
 }
 
 pub fn parse_data_after_kw(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<ItemResult> {
@@ -9513,7 +9576,7 @@ pub fn parse_data_after_kw(
     }
 }
 
-pub fn parse_params(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ParamsResult> {
+pub fn parse_params(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ParamsResult> {
     {
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
@@ -9566,14 +9629,14 @@ pub fn parse_params(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ParamsResu
     }
 }
 
-pub fn parse_param_list(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ParamsResult> {
+pub fn parse_param_list(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ParamsResult> {
     parse_param_list_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_param_list_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ParamsResult> {
     loop {
         let r = parse_param(tokens.clone(), ctx);
@@ -9616,7 +9679,7 @@ pub fn parse_param_list_acc(
     }
 }
 
-pub fn parse_param(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ParamResult> {
+pub fn parse_param(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ParamResult> {
     {
         let start_span = token_span(tokens.clone().first().cloned());
         let dummy_param = make_param_node(
@@ -9710,7 +9773,7 @@ pub fn parse_param(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ParamResult
     }
 }
 
-pub fn parse_block(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_block(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
         let block_span = token_span(tokens.clone().first().cloned());
@@ -9767,14 +9830,14 @@ pub fn parse_block(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult>
     }
 }
 
-pub fn parse_stmts(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<StmtsResult> {
+pub fn parse_stmts(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<StmtsResult> {
     parse_stmts_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_stmts_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -9810,7 +9873,7 @@ pub fn parse_stmts_acc(
     }
 }
 
-pub fn parse_stmt(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_stmt(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -9856,14 +9919,14 @@ pub fn parse_stmt(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> 
     }
 }
 
-pub fn peek_is_eq_after_ident(tokens: List<Token>) -> bool {
+pub fn peek_is_eq_after_ident(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     match tokens.get(1 as usize).cloned() {
         Some(t) => is_eq_shape(t.shape.clone()),
         None => false,
     }
 }
 
-pub fn peek_is_node_decl(tokens: List<Token>) -> bool {
+pub fn peek_is_node_decl(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     {
         let t1 = tokens.clone().get(1 as usize).cloned();
         let t2 = tokens.clone().get(2 as usize).cloned();
@@ -9882,7 +9945,7 @@ pub fn peek_is_node_decl(tokens: List<Token>) -> bool {
     }
 }
 
-pub fn is_constraint_bracket_after_ident(tokens: List<Token>) -> bool {
+pub fn is_constraint_bracket_after_ident(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     match tokens.clone().get(1 as usize).cloned() {
         Some(t) => {
             (is_lbracket_shape(t.shape.clone())
@@ -9899,7 +9962,10 @@ pub fn is_constraint_bracket_after_ident(tokens: List<Token>) -> bool {
     }
 }
 
-pub fn parse_constrained_assignment(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_constrained_assignment(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -9973,7 +10039,7 @@ pub fn parse_constrained_assignment(tokens: List<Token>, ctx: Rc<ParseContext>) 
     }
 }
 
-pub fn peek_text_is(tokens: List<Token>, expected: String) -> bool {
+pub fn peek_text_is(tokens: Rc<Vec<Rc<Token>>>, expected: String) -> bool {
     match tokens.first().cloned() {
         Some(t) => {
             (is_ident_shape(t.shape.clone()) && (t.text.clone().as_str() == expected.as_str()))
@@ -9982,7 +10048,7 @@ pub fn peek_text_is(tokens: List<Token>, expected: String) -> bool {
     }
 }
 
-pub fn parse_node_decl(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_node_decl(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -10076,7 +10142,7 @@ pub fn parse_node_decl(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprRes
     }
 }
 
-pub fn parse_bare_assignment(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_bare_assignment(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -10161,11 +10227,15 @@ pub fn parse_bare_assignment(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<E
     }
 }
 
-pub fn parse_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     parse_expr_bp(tokens, ctx, 0)
 }
 
-pub fn parse_expr_bp(tokens: List<Token>, ctx: Rc<ParseContext>, min_bp: i64) -> Rc<ExprResult> {
+pub fn parse_expr_bp(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+    min_bp: i64,
+) -> Rc<ExprResult> {
     {
         let r = parse_prefix(tokens, ctx);
         if has_err(r.err.clone()) {
@@ -10177,7 +10247,7 @@ pub fn parse_expr_bp(tokens: List<Token>, ctx: Rc<ParseContext>, min_bp: i64) ->
 }
 
 pub fn parse_expr_loop(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut lhs: Rc<Node>,
     mut min_bp: i64,
@@ -10371,7 +10441,7 @@ pub fn parse_expr_loop(
     }
 }
 
-pub fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> Option<BindingPower> {
+pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BindingPower> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -10396,14 +10466,14 @@ pub fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> Option<Bindi
     }
 }
 
-pub fn infix_bp(tokens: List<Token>) -> Option<BindingPower> {
+pub fn infix_bp(tokens: Rc<Vec<Rc<Token>>>) -> Option<BindingPower> {
     match tokens.first().cloned() {
         Some(t) => find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()),
         None => None,
     }
 }
 
-pub fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> Option<BinOp> {
+pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Option<BinOp> {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -10430,7 +10500,7 @@ pub fn find_operator_binop(ops: List<OperatorSpec>, symbol: String) -> Option<Bi
 }
 
 pub fn parse_pipe_rhs(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     receiver: Rc<Node>,
     span: Rc<SourceSpan>,
@@ -10509,7 +10579,7 @@ pub fn parse_pipe_rhs(
     }
 }
 
-pub fn parse_prefix(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_prefix(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -10593,7 +10663,7 @@ pub fn parse_prefix(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult
     }
 }
 
-pub fn parse_primary(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_primary(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -10790,7 +10860,7 @@ pub fn parse_primary(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResul
     }
 }
 
-pub fn parse_lambda_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_lambda_body(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tokens = skip_newlines(tokens.clone());
         let tok = tokens.clone().first().cloned();
@@ -10836,9 +10906,9 @@ pub fn parse_lambda_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprR
 }
 
 pub fn parse_lambda_stmts(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -10874,7 +10944,7 @@ pub fn parse_lambda_stmts(
 }
 
 pub fn parse_ident_expr(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     name: String,
 ) -> Rc<ExprResult> {
@@ -10950,7 +11020,7 @@ pub fn is_uppercase_start(name: String) -> bool {
 }
 
 pub fn try_postfix(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     lhs: Rc<Node>,
     min_bp: i64,
@@ -11171,7 +11241,7 @@ pub fn try_postfix(
     }
 }
 
-pub fn is_constraint_bracket(tokens: List<Token>) -> bool {
+pub fn is_constraint_bracket(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     match tokens.get(1 as usize).cloned() {
         Some(t) => {
             if is_ident_shape(t.shape.clone()) {
@@ -11187,14 +11257,14 @@ pub fn is_constraint_bracket(tokens: List<Token>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConstraintsResult {
-    pub constraints: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub err: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub constraints: Rc<Vec<Rc<Node>>>,
+    pub tokens: Rc<Vec<Rc<Token>>>,
+    pub ctx: Rc<ParseContext>,
+    pub err: Option<Rc<ErrorNode>>,
 }
 
 pub fn parse_constraint_annotations(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConstraintsResult> {
     match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket))).clone() {
@@ -11229,9 +11299,9 @@ pub fn parse_constraint_annotations(
 }
 
 pub fn parse_constraint_list(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ConstraintsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -11295,7 +11365,7 @@ pub fn parse_constraint_list(
 }
 
 pub fn try_constraint_annotations(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConstraintsResult> {
     if is_constraint_bracket(tokens.clone()) {
@@ -11312,9 +11382,9 @@ pub fn try_constraint_annotations(
 
 pub fn make_call_expr(
     lhs: Rc<Node>,
-    args: List<Node>,
+    args: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match (*lhs.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -11358,7 +11428,7 @@ pub fn make_call_expr(
 }
 
 pub fn parse_index_or_slice(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     base: Rc<Node>,
     span: Rc<SourceSpan>,
@@ -11456,7 +11526,7 @@ pub fn parse_index_or_slice(
     }
 }
 
-pub fn parse_call_args(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArgsResult> {
+pub fn parse_call_args(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ArgsResult> {
     {
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
         if has_err(r.err.clone()) {
@@ -11509,14 +11579,14 @@ pub fn parse_call_args(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArgsRes
     }
 }
 
-pub fn parse_arg_list(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArgsResult> {
+pub fn parse_arg_list(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ArgsResult> {
     parse_arg_list_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_arg_list_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ArgsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -11560,7 +11630,7 @@ pub fn parse_arg_list_acc(
     }
 }
 
-pub fn parse_single_arg(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArgResult> {
+pub fn parse_single_arg(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ArgResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_arg = make_arg_node(
@@ -11675,7 +11745,7 @@ pub fn parse_single_arg(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArgRes
     }
 }
 
-pub fn parse_match(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_match(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -11746,12 +11816,12 @@ pub fn parse_match(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult>
     }
 }
 
-pub fn parse_expr_no_brace(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_expr_no_brace(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     parse_expr_bp_no_brace(tokens, ctx, 0)
 }
 
 pub fn parse_expr_bp_no_brace(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     min_bp: i64,
 ) -> Rc<ExprResult> {
@@ -11766,7 +11836,7 @@ pub fn parse_expr_bp_no_brace(
 }
 
 pub fn parse_expr_loop_no_brace(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut lhs: Rc<Node>,
     mut min_bp: i64,
@@ -11989,14 +12059,14 @@ pub fn parse_expr_loop_no_brace(
     }
 }
 
-pub fn parse_match_arms(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArmsResult> {
+pub fn parse_match_arms(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ArmsResult> {
     parse_match_arms_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_match_arms_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ArmsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -12035,7 +12105,7 @@ pub fn parse_match_arms_acc(
     }
 }
 
-pub fn parse_match_arm(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArmResult> {
+pub fn parse_match_arm(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ArmResult> {
     {
         let arm_span = token_span(tokens.clone().first().cloned());
         let dummy_arm = make_arm_node(
@@ -12101,7 +12171,7 @@ pub fn parse_match_arm(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ArmResu
     }
 }
 
-pub fn parse_match_arm_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_match_arm_body(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
         let is_block = (tok_is_keyword(tok.clone(), "let".to_string())
@@ -12146,9 +12216,9 @@ pub fn parse_match_arm_body(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Ex
 }
 
 pub fn parse_match_arm_stmts(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<StmtsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -12193,7 +12263,7 @@ pub fn parse_match_arm_stmts(
     }
 }
 
-pub fn looks_like_arm_start(tokens: List<Token>) -> bool {
+pub fn looks_like_arm_start(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -12240,21 +12310,25 @@ pub fn looks_like_arm_start(tokens: List<Token>) -> bool {
     }
 }
 
-pub fn peek_is_fat_arrow_at(tokens: List<Token>, offset: i64) -> bool {
+pub fn peek_is_fat_arrow_at(tokens: Rc<Vec<Rc<Token>>>, offset: i64) -> bool {
     match tokens.get(offset as usize).cloned() {
         Some(t) => is_fat_arrow_shape(t.shape.clone()),
         None => false,
     }
 }
 
-pub fn peek_is_expected_at(tokens: List<Token>, offset: i64, expected: Rc<ExpectedToken>) -> bool {
+pub fn peek_is_expected_at(
+    tokens: Rc<Vec<Rc<Token>>>,
+    offset: i64,
+    expected: Rc<ExpectedToken>,
+) -> bool {
     match tokens.get(offset as usize).cloned() {
         Some(t) => token_matches_expected(t.clone(), expected),
         None => false,
     }
 }
 
-pub fn scan_for_fat_arrow_after_braces(mut remaining: List<Token>, mut depth: i64) -> bool {
+pub fn scan_for_fat_arrow_after_braces(mut remaining: Rc<Vec<Rc<Token>>>, mut depth: i64) -> bool {
     loop {
         if (depth.clone() <= 0) {
             match remaining.clone().first().cloned() {
@@ -12320,7 +12394,7 @@ pub fn scan_for_fat_arrow_after_braces(mut remaining: List<Token>, mut depth: i6
     }
 }
 
-pub fn parse_optional_guard(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<GuardResult> {
+pub fn parse_optional_guard(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<GuardResult> {
     if tok_is_keyword(tokens.clone().first().cloned(), "if".to_string()) {
         {
             let r = parse_expr(
@@ -12359,7 +12433,7 @@ pub fn parse_optional_guard(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Gu
     }
 }
 
-pub fn parse_pattern(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<PatternResult> {
+pub fn parse_pattern(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<PatternResult> {
     {
         let tok = tokens.clone().first().cloned();
         let sh = match tok.clone() {
@@ -12508,7 +12582,7 @@ pub fn parse_pattern(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<PatternRe
 }
 
 pub fn parse_variant_pattern(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     name: String,
 ) -> Rc<PatternResult> {
@@ -12623,16 +12697,16 @@ pub fn parse_variant_pattern(
 }
 
 pub fn parse_variant_bindings_brace(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<BindingsResult> {
     parse_variant_bindings_brace_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_variant_bindings_brace_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BindingsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -12714,7 +12788,7 @@ pub fn parse_variant_bindings_brace_acc(
     }
 }
 
-pub fn parse_if(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_if(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -12827,7 +12901,7 @@ pub fn parse_if(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     })
 }
 
-pub fn parse_let(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_let(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -12885,7 +12959,7 @@ pub fn parse_let(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     }
 }
 
-pub fn parse_return(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_return(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -12921,7 +12995,7 @@ pub fn parse_return(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult
     }
 }
 
-pub fn parse_for(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_for(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -13002,7 +13076,7 @@ pub fn parse_for(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
 }
 
 pub fn parse_record_literal(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     name: String,
     span: Rc<SourceSpan>,
@@ -13054,14 +13128,17 @@ pub fn parse_record_literal(
     }
 }
 
-pub fn parse_field_init_list(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FieldInitsResult> {
+pub fn parse_field_init_list(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<FieldInitsResult> {
     parse_field_init_list_acc(tokens, ctx, Rc::new(vec![]))
 }
 
 pub fn parse_field_init_list_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<FieldInitsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -13100,7 +13177,7 @@ pub fn parse_field_init_list_acc(
     }
 }
 
-pub fn parse_field_init(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FieldInitResult> {
+pub fn parse_field_init(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<FieldInitResult> {
     {
         let zero_span = make_span(0, 0);
         let span = token_span(tokens.clone().first().cloned());
@@ -13246,7 +13323,7 @@ pub fn parse_field_init(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<FieldI
     }
 }
 
-pub fn parse_list_literal(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_list_literal(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -13294,7 +13371,7 @@ pub fn parse_list_literal(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Expr
 }
 
 pub fn parse_expr_list_until(
-    tokens: List<Token>,
+    tokens: Rc<Vec<Rc<Token>>>,
     ctx: Rc<ParseContext>,
     end_expected: Rc<ExpectedToken>,
 ) -> Rc<ExprsResult> {
@@ -13302,10 +13379,10 @@ pub fn parse_expr_list_until(
 }
 
 pub fn parse_expr_list_until_acc(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
     mut end_expected: Rc<ExpectedToken>,
-    mut acc: List<Node>,
+    mut acc: Rc<Vec<Rc<Node>>>,
 ) -> Rc<ExprsResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -13346,7 +13423,7 @@ pub fn parse_expr_list_until_acc(
     }
 }
 
-pub fn parse_paren_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_paren_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -13451,7 +13528,7 @@ pub fn parse_paren_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprRe
     }
 }
 
-pub fn parse_fn_lambda(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_fn_lambda(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy = parse_recovery_placeholder();
@@ -13520,9 +13597,9 @@ pub fn parse_fn_lambda(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprRes
 }
 
 pub fn collect_fn_lambda_params(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<ParserParam>,
+    mut acc: Rc<Vec<Rc<ParserParam>>>,
 ) -> Rc<IdentCollectResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -13581,7 +13658,10 @@ pub fn collect_fn_lambda_params(
     }
 }
 
-pub fn try_lambda_params(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<LambdaCheckResult> {
+pub fn try_lambda_params(
+    tokens: Rc<Vec<Rc<Token>>>,
+    ctx: Rc<ParseContext>,
+) -> Rc<LambdaCheckResult> {
     {
         let r = collect_lambda_idents(tokens.clone(), ctx.clone(), Rc::new(vec![]));
         if (r.success.clone() && ((r.params.clone().len() as i64) >= 2)) {
@@ -13642,9 +13722,9 @@ pub fn try_lambda_params(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Lambd
 }
 
 pub fn collect_lambda_idents(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut acc: List<ParserParam>,
+    mut acc: Rc<Vec<Rc<ParserParam>>>,
 ) -> Rc<IdentCollectResult> {
     loop {
         if tok_is_ident(tokens.clone().first().cloned()) {
@@ -13703,7 +13783,7 @@ pub fn collect_lambda_idents(
     }
 }
 
-pub fn parse_string_interp(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_string_interp(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let tok = tokens.clone().first().cloned();
         let span = token_span(tok.clone());
@@ -13752,9 +13832,9 @@ pub fn parse_string_interp(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<Exp
 }
 
 pub fn parse_interp_parts(
-    mut tokens: List<Token>,
+    mut tokens: Rc<Vec<Rc<Token>>>,
     mut ctx: Rc<ParseContext>,
-    mut parts: List<StringPart>,
+    mut parts: Rc<Vec<Rc<StringPart>>>,
     mut span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     loop {
@@ -13866,7 +13946,7 @@ pub fn parse_interp_parts(
     }
 }
 
-pub fn parse_brace_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+pub fn parse_brace_expr(tokens: Rc<Vec<Rc<Token>>>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
     {
         let span = token_span(tokens.clone().first().cloned());
         let dummy_expr = parse_recovery_placeholder();
@@ -14155,7 +14235,7 @@ pub fn parse_brace_expr(tokens: List<Token>, ctx: Rc<ParseContext>) -> Rc<ExprRe
     }
 }
 
-pub fn peek_is_colon_after_ident(tokens: List<Token>) -> bool {
+pub fn peek_is_colon_after_ident(tokens: Rc<Vec<Rc<Token>>>) -> bool {
     match tokens.get(1 as usize).cloned() {
         Some(t) => is_colon_shape(t.shape.clone()),
         None => false,

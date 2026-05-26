@@ -8,9 +8,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn python_keywords() -> Map<String, String> {
+pub fn python_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "True".to_string());
             __m.insert("false".to_string(), "False".to_string());
@@ -22,12 +22,12 @@ pub fn python_keywords() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn python_container_templates() -> Map<String, String> {
+pub fn python_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "list[{0}]".to_string());
             __m.insert("set".to_string(), "set[{0}]".to_string());
@@ -39,16 +39,16 @@ pub fn python_container_templates() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn python_reserved() -> List<String> {
+pub fn python_reserved() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: List<String> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["False".to_string(), "None".to_string(), "True".to_string(), "and".to_string(), "as".to_string(), "assert".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "class".to_string(), "continue".to_string(), "def".to_string(), "del".to_string(), "elif".to_string(), "else".to_string(), "except".to_string(), "finally".to_string(), "for".to_string(), "from".to_string(), "global".to_string(), "if".to_string(), "import".to_string(), "in".to_string(), "is".to_string(), "lambda".to_string(), "nonlocal".to_string(), "not".to_string(), "or".to_string(), "pass".to_string(), "raise".to_string(), "return".to_string(), "try".to_string(), "while".to_string(), "with".to_string(), "yield".to_string(), "type".to_string(), "match".to_string(), "case".to_string()])
         };
     }
-    CACHED.with(|c: &List<String>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 pub fn python_reserved_escape_suffix() -> String {
@@ -195,18 +195,18 @@ pub fn python_module_init() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn python_string_types() -> List<String> {
+pub fn python_string_types() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: List<String> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &List<String>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn python_method_templates() -> Map<String, String> {
+pub fn python_method_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("count".to_string(), "len({recv})".to_string());
             __m.insert("join".to_string(), "{arg}.join({recv})".to_string());
@@ -230,7 +230,7 @@ pub fn python_method_templates() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
 pub fn python_lambda_template() -> String {

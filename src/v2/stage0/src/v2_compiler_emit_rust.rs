@@ -125,14 +125,15 @@ use std::rc::Rc;
 
 pub fn render_rust_type(
     n: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
         _ => {
-            if ((n.connective.clone() == Connective::NoConnective)
+            if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
+                && !is_container_type(authored_name_at(source_indices.clone(), n.clone())))
             {
                 render_rust_applied_type(n.clone(), shared_types, source_indices.clone())
             } else {
@@ -196,8 +197,8 @@ pub fn render_rust_type(
 
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: tv, .. }) => tv.clone(),
@@ -215,8 +216,8 @@ pub fn render_rust_applied_type_arg(
 
 pub fn render_rust_applied_type(
     n: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let base = coerce_primitive_type(
@@ -250,9 +251,9 @@ pub fn render_rust_applied_type(
 
 pub fn render_rust_decl_type(
     n: Rc<Node>,
-    generic_param_names: List<String>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    generic_param_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -331,7 +332,10 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn is_rust_value_type(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn is_rust_value_type(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     {
         let normed = normalize_access_type_node(n);
         match is_copy(RenderTarget::Rust, authored_name_at(source_indices, normed)) {
@@ -341,7 +345,10 @@ pub fn is_rust_value_type(n: Rc<Node>, source_indices: Map<String, NewlineIndex>
     }
 }
 
-pub fn is_rust_string_like(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn is_rust_string_like(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     {
         let normed = normalize_access_type_node(n);
         is_string_like(RenderTarget::Rust, authored_name_at(source_indices, normed))
@@ -403,11 +410,11 @@ pub fn rust_serde_tag_attr() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustEnumWireSerde {
-    pub enum_attr: compile_error!("UNRESOLVED_CompilerError"),
-    pub rename_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub rename_suffix: compile_error!("UNRESOLVED_CompilerError"),
-    pub rename_style: compile_error!("UNRESOLVED_CompilerError"),
-    pub error_message: compile_error!("UNRESOLVED_CompilerError"),
+    pub enum_attr: String,
+    pub rename_prefix: Option<String>,
+    pub rename_suffix: Option<String>,
+    pub rename_style: Option<String>,
+    pub error_message: Option<String>,
 }
 
 pub fn rust_serde_policy(
@@ -463,7 +470,7 @@ pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
 pub fn field_value_by_name(
     record: Rc<Node>,
     field_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -497,7 +504,7 @@ pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
 pub fn record_string_field(
     record: Rc<Node>,
     field_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(record, field_name, source_indices) {
         Some(value_node) => literal_string_value(value_node.clone()),
@@ -507,7 +514,7 @@ pub fn record_string_field(
 
 pub fn naming_policy_node(
     encoding: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     field_value_by_name(encoding, "naming".to_string(), source_indices)
 }
@@ -515,7 +522,7 @@ pub fn naming_policy_node(
 pub fn optional_string_record_field(
     record: Rc<Node>,
     field_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(record, field_name, source_indices) {
         Some(n) => literal_string_value(n.clone()),
@@ -526,7 +533,7 @@ pub fn optional_string_record_field(
 pub fn required_literal_string_policy_field(
     record: Rc<Node>,
     field_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(record, field_name, source_indices) {
         Some(n) => literal_string_value(n.clone()),
@@ -536,7 +543,7 @@ pub fn required_literal_string_policy_field(
 
 pub fn rust_string_policy_for_naming(
     naming: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     {
         let naming_name = authored_name_at(source_indices.clone(), naming.clone());
@@ -628,7 +635,7 @@ pub fn rust_string_policy_for_naming(
 pub fn rust_internal_policy_for_naming(
     tag_field: String,
     naming: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     {
         let naming_name = authored_name_at(source_indices.clone(), naming.clone());
@@ -747,7 +754,7 @@ pub fn rust_internal_policy_for_naming(
 
 pub fn rust_internal_policy_for_encoding(
     encoding: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     match record_string_field(
         encoding.clone(),
@@ -772,7 +779,7 @@ pub fn rust_internal_policy_for_encoding(
 
 pub fn resolve_wire_serde_policy_from_encoding_node(
     ve: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     {
         let encoding_name = authored_name_at(source_indices.clone(), ve.clone());
@@ -806,7 +813,7 @@ pub fn resolve_wire_serde_policy_from_encoding_node(
 
 pub fn resolve_wire_serde_policy(
     wire_item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     match wire_item.body.clone() {
         Some(ve) => resolve_wire_serde_policy_from_encoding_node(ve.clone(), source_indices),
@@ -826,8 +833,8 @@ pub fn item_binding_is_named(env: Rc<TypeEnv>, node: Rc<Node>, name: String) -> 
 
 pub fn resolve_wire_serde_policy_for_coproduct(
     wire_contract_item: Option<Rc<Node>>,
-    source_indices: Map<String, NewlineIndex>,
-    data_items: Map<String, List>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 ) -> Rc<RustEnumWireSerde> {
     resolve_wire_serde_policy_for_coproduct_seen(
         wire_contract_item,
@@ -840,9 +847,9 @@ pub fn resolve_wire_serde_policy_for_coproduct(
 
 pub fn resolve_wire_serde_policy_for_coproduct_seen(
     mut wire_contract_item: Option<Rc<Node>>,
-    mut source_indices: Map<String, NewlineIndex>,
-    mut data_items: Map<String, List>,
-    mut seen_aliases: Map<String, Bool>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    mut seen_aliases: Rc<HashMap<String, bool>>,
     mut fuel: i64,
 ) -> Rc<RustEnumWireSerde> {
     loop {
@@ -1002,7 +1009,7 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
 
 pub fn coproduct_wire_contract_encoding(
     contract_item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match contract_item.body.clone() {
         Some(body) => field_value_by_name(body.clone(), "encoding".to_string(), source_indices),
@@ -1012,7 +1019,7 @@ pub fn coproduct_wire_contract_encoding(
 
 pub fn variant_encoding_is_string_variant(
     encoding: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (authored_name_at(source_indices, encoding).as_str() == "StringVariant".to_string().as_str())
 }
@@ -1020,7 +1027,7 @@ pub fn variant_encoding_is_string_variant(
 pub fn coproduct_wire_contract_targets(
     contract_item: Rc<Node>,
     coproduct_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match contract_item.body.clone() {
         Some(body) => {
@@ -1048,8 +1055,8 @@ pub fn emit_rust_compile_error_expr(message: String) -> String {
 }
 
 pub fn module_imports_std_serialization_coproduct_wire_contract(
-    imports: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -1080,8 +1087,8 @@ pub fn module_imports_std_serialization_coproduct_wire_contract(
 
 pub fn data_item_type_is_coproduct_wire_contract(
     item: Rc<Node>,
-    imports: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match item.type_annotation.clone() {
         Some(type_node) => {
@@ -1097,8 +1104,8 @@ pub fn data_item_type_is_coproduct_wire_contract(
 }
 
 pub fn module_defines_local_coproduct_wire_contract_type(
-    module_items: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -1119,9 +1126,9 @@ pub fn module_defines_local_coproduct_wire_contract_type(
 
 pub fn is_coproduct_wire_contract_row(
     item: Rc<Node>,
-    module_items: List<Node>,
-    imports: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if !is_data_def_item(item.clone()) {
         false
@@ -1158,8 +1165,8 @@ pub fn is_coproduct_wire_contract_row(
 
 pub fn emit_coproduct_wire_contract_target_validation(
     contract_item: Rc<Node>,
-    local_coproduct_names: List<String>,
-    source_indices: Map<String, NewlineIndex>,
+    local_coproduct_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match contract_item.body.clone() {
         Some(body) => {
@@ -1196,10 +1203,10 @@ pub fn emit_coproduct_wire_contract_target_validation(
 }
 
 pub fn emit_coproduct_wire_contract_validations(
-    module_items: List<Node>,
-    imports: List<Node>,
-    local_coproduct_names: List<String>,
-    source_indices: Map<String, NewlineIndex>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    local_coproduct_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     Rc::new({
         let mut __result = Vec::new();
@@ -1245,9 +1252,9 @@ pub fn emit_coproduct_wire_contract_validations(
 pub fn resolve_local_coproduct_wire_policy(
     coproduct_name: String,
     all_unit_variants: bool,
-    module_items: List<Node>,
-    imports: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<RustEnumWireSerde>> {
     {
         let contracts = Rc::new({
@@ -1308,10 +1315,10 @@ pub fn resolve_local_coproduct_wire_policy(
     }
 }
 
-pub fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
+pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.iter().cloned().fold(
         v2_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Map<String, Node>, tm: Rc<TypedModule>| {
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             let module_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -1327,24 +1334,27 @@ pub fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
             })
             .iter()
             .cloned()
-            .fold(acc, |item_acc: Map<String, Node>, item: Rc<Node>| {
-                let item_name =
-                    authored_name_at(tm.type_env.clone().source_indices.clone(), item.clone());
-                let qualified_name = v2_rt::concat(
-                    v2_rt::concat(module_name.clone(), ".".to_string()),
-                    item_name.clone(),
-                );
-                v2_rt::rc_map_insert(item_acc, qualified_name.clone(), item.clone())
-            })
+            .fold(
+                acc,
+                |item_acc: Rc<HashMap<String, Rc<Node>>>, item: Rc<Node>| {
+                    let item_name =
+                        authored_name_at(tm.type_env.clone().source_indices.clone(), item.clone());
+                    let qualified_name = v2_rt::concat(
+                        v2_rt::concat(module_name.clone(), ".".to_string()),
+                        item_name.clone(),
+                    );
+                    v2_rt::rc_map_insert(item_acc, qualified_name.clone(), item.clone())
+                },
+            )
         },
     )
 }
 
 pub fn insert_scoped_data_item(
-    scoped: Map<String, List>,
+    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     name: String,
     item: Rc<Node>,
-) -> Map<String, List> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     {
         let existing = match v2_rt::map_get(&scoped, name.clone()) {
             Some(entries) => entries.clone(),
@@ -1360,8 +1370,8 @@ pub fn insert_scoped_data_item(
 
 pub fn build_scoped_data_item_index(
     typed_module: Rc<TypedModule>,
-    data_items: Map<String, Node>,
-) -> Map<String, List> {
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     {
         let module_name = authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
@@ -1379,8 +1389,8 @@ pub fn build_scoped_data_item_index(
         .iter()
         .cloned()
         .fold(
-            v2_rt::rc_empty_map::<String, List<Node>>(),
-            |acc: Map<String, List>, item: Rc<Node>| {
+            v2_rt::rc_empty_map::<String, Rc<Vec<Rc<Node>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, item: Rc<Node>| {
                 insert_scoped_data_item(
                     acc,
                     authored_name_at(
@@ -1394,39 +1404,43 @@ pub fn build_scoped_data_item_index(
         module_imports(typed_module.module.clone())
             .iter()
             .cloned()
-            .fold(local.clone(), |acc: Map<String, List>, imp: Rc<Node>| {
-                let import_path = authored_name_at(
-                    typed_module.type_env.clone().source_indices.clone(),
-                    imp.clone(),
-                );
-                if import_is_all(imp.clone()) {
-                    acc.clone()
-                } else {
-                    import_specific_names_at(
-                        imp.clone(),
+            .fold(
+                local.clone(),
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+                    let import_path = authored_name_at(
                         typed_module.type_env.clone().source_indices.clone(),
-                    )
-                    .iter()
-                    .cloned()
-                    .fold(
-                        acc.clone(),
-                        |inner: Map<String, List>, imported_name: String| {
-                            let qualified = v2_rt::concat(
-                                v2_rt::concat(import_path.clone(), ".".to_string()),
-                                imported_name.clone(),
-                            );
-                            match v2_rt::map_get(&data_items, qualified.clone()) {
-                                Some(imported_item) => insert_scoped_data_item(
-                                    inner.clone(),
+                        imp.clone(),
+                    );
+                    if import_is_all(imp.clone()) {
+                        acc.clone()
+                    } else {
+                        import_specific_names_at(
+                            imp.clone(),
+                            typed_module.type_env.clone().source_indices.clone(),
+                        )
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+                             imported_name: String| {
+                                let qualified = v2_rt::concat(
+                                    v2_rt::concat(import_path.clone(), ".".to_string()),
                                     imported_name.clone(),
-                                    imported_item.clone(),
-                                ),
-                                None => inner.clone(),
-                            }
-                        },
-                    )
-                }
-            })
+                                );
+                                match v2_rt::map_get(&data_items, qualified.clone()) {
+                                    Some(imported_item) => insert_scoped_data_item(
+                                        inner.clone(),
+                                        imported_name.clone(),
+                                        imported_item.clone(),
+                                    ),
+                                    None => inner.clone(),
+                                }
+                            },
+                        )
+                    }
+                },
+            )
     }
 }
 
@@ -1482,12 +1496,12 @@ pub fn rust_async_test_decorator() -> String {
 }
 
 pub fn emit_rust_block_stmts(
-    mut remaining: List<Node>,
-    mut text: List<String>,
+    mut remaining: Rc<Vec<Rc<Node>>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
-    mut registry: Map<String, ItemInfo>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Set<String>,
+    mut shared_types: Rc<std::collections::BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
@@ -1530,12 +1544,12 @@ pub fn emit_rust_block_stmts(
 }
 
 pub fn emit_rust_init_block_stmts(
-    mut remaining: List<Node>,
-    mut text: List<String>,
+    mut remaining: Rc<Vec<Rc<Node>>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
-    mut registry: Map<String, ItemInfo>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Set<String>,
+    mut shared_types: Rc<std::collections::BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
     loop {
@@ -1637,7 +1651,10 @@ pub fn is_dag_value_type_name(name: String) -> bool {
     }
 }
 
-pub fn is_type_constant(summary: Rc<TypeSummary>, recursive_type_set: Set<String>) -> bool {
+pub fn is_type_constant(
+    summary: Rc<TypeSummary>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+) -> bool {
     {
         let is_recursive = v2_rt::set_contains(&recursive_type_set, summary.name.clone());
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
@@ -1685,11 +1702,11 @@ pub fn is_type_constant(summary: Rc<TypeSummary>, recursive_type_set: Set<String
 }
 
 pub fn maybe_mark_shared_type(
-    acc: Set<String>,
+    acc: Rc<std::collections::BTreeSet<String>>,
     summary: Rc<TypeSummary>,
-    recursive_type_set: Set<String>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     target_needs_sharing: bool,
-) -> Set<String> {
+) -> Rc<std::collections::BTreeSet<String>> {
     {
         let needs_sharing = (target_needs_sharing
             && match (*summary.repr.clone()).clone() {
@@ -1708,10 +1725,10 @@ pub fn maybe_mark_shared_type(
 }
 
 pub fn build_shared_types(
-    type_summaries: Map<String, TypeSummary>,
-    recursive_type_set: Set<String>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
     target: RenderTarget,
-) -> Set<String> {
+) -> Rc<std::collections::BTreeSet<String>> {
     {
         let sharing = sharing_for_target(target);
         let user_shared = Rc::new(v2_rt::map_values(&type_summaries))
@@ -1719,7 +1736,7 @@ pub fn build_shared_types(
             .cloned()
             .fold(
                 v2_rt::rc_empty_set::<String>(),
-                |acc: Set<String>, summary: Rc<TypeSummary>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, summary: Rc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         summary.clone(),
@@ -1745,7 +1762,7 @@ pub fn build_shared_types(
         });
         collection_keys.iter().cloned().fold(
             user_shared.clone(),
-            |acc: Set<String>, key: String| {
+            |acc: Rc<std::collections::BTreeSet<String>>, key: String| {
                 let pascal = to_pascal(key.clone());
                 v2_rt::rc_set_insert(acc, pascal.clone())
             },
@@ -1755,18 +1772,18 @@ pub fn build_shared_types(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProofEntry {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub proof: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub param_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub proof: Rc<OwnershipProof>,
+    pub param_names: Rc<std::collections::BTreeSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipBuildResult {
-    pub ownership_index: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub read_only_params_index: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
 }
 
-pub fn build_ownership_results(modules: List<TypedModule>) -> Rc<OwnershipBuildResult> {
+pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
             v2_rt::rc_empty_set::<_>(),
@@ -1854,8 +1871,14 @@ pub fn build_ownership_results(modules: List<TypedModule>) -> Rc<OwnershipBuildR
         });
         proofs.iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
-                ownership_index: v2_rt::rc_empty_map::<String, Set<String>>(),
-                read_only_params_index: v2_rt::rc_empty_map::<String, Set<String>>(),
+                ownership_index: v2_rt::rc_empty_map::<
+                    String,
+                    Rc<std::collections::BTreeSet<String>>,
+                >(),
+                read_only_params_index: v2_rt::rc_empty_map::<
+                    String,
+                    Rc<std::collections::BTreeSet<String>>,
+                >(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
@@ -1926,7 +1949,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, String>(),
-            |acc: Map<K, V>, tm: Rc<TypedModule>| {
+            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
                 let svc_items = Rc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
@@ -1940,11 +1963,9 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
                 ));
-                svc_items
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .fold(acc, |a: Map<K, V>, svc: Rc<Node>| {
+                svc_items.clone().iter().cloned().fold(
+                    acc,
+                    |a: Rc<HashMap<String, String>>, svc: Rc<Node>| {
                         v2_rt::rc_map_insert(
                             a,
                             authored_name_at(
@@ -1953,7 +1974,8 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                             ),
                             mod_filename.clone(),
                         )
-                    })
+                    },
+                )
             },
         );
         let test_projections = extract_test_projections(typed.clone());
@@ -2090,7 +2112,7 @@ pub fn emit_compiler_tests_module() -> Rc<TextFile> {
 }
 
 pub fn emit_lib_rs_from_files(
-    all_module_files: List<TextFile>,
+    all_module_files: Rc<Vec<Rc<TextFile>>>,
     has_compiler_tests: bool,
 ) -> Rc<TextFile> {
     {
@@ -2145,7 +2167,10 @@ pub fn emit_lib_rs_from_files(
     }
 }
 
-pub fn emit_module(typed_module: Rc<TypedModule>, registry: Map<String, ItemInfo>) -> Rc<TextFile> {
+pub fn emit_module(
+    typed_module: Rc<TypedModule>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<TextFile> {
     {
         let base_info = build_emit_graph_info(Rc::new(vec![typed_module.clone()]));
         let shared = build_shared_types(
@@ -2180,11 +2205,11 @@ pub fn emit_module(typed_module: Rc<TypedModule>, registry: Map<String, ItemInfo
 
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-    shared_types: Set<String>,
-    svc_module_map: Map<String, String>,
-    data_items: Map<String, Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    svc_module_map: Rc<HashMap<String, String>>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -2422,7 +2447,7 @@ pub fn emit_module_full(
     }
 }
 
-pub fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
+pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
     {
         let is_data = match v2_rt::map_get(&registry, n.clone()) {
             Some(info) => (info.kind.clone() == ItemKind::DataItem),
@@ -2437,11 +2462,11 @@ pub fn emit_import_name(n: String, registry: Map<String, ItemInfo>) -> String {
 }
 
 pub fn emit_imports(
-    imports: List<Node>,
+    imports: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
-    registry: Map<String, ItemInfo>,
-    local_names: List<String>,
-    source_indices: Map<String, NewlineIndex>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    local_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
@@ -2815,14 +2840,14 @@ pub fn emit_non_empty_wrappers() -> String {
 pub fn emit_typed_item(
     item: Rc<Node>,
     module_name: String,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Map<String, List>,
-    module_items: List<Node>,
-    imports: List<Node>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let env = scope.type_env.clone();
@@ -2991,9 +3016,9 @@ pub fn emit_typed_item(
 
 pub fn needs_box_wrapping(
     mut n: Rc<Node>,
-    mut recursive_types: Set<String>,
-    mut shared_types: Set<String>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut recursive_types: Rc<std::collections::BTreeSet<String>>,
+    mut shared_types: Rc<std::collections::BTreeSet<String>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         if ((n.children.clone().len() as i64) == 0) {
@@ -3024,7 +3049,10 @@ pub fn needs_box_wrapping(
     }
 }
 
-pub fn emit_type_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn emit_type_params(
+    params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -3061,7 +3089,7 @@ pub fn is_function_type_param(param: Rc<Node>) -> bool {
     }
 }
 
-pub fn function_type_params(params: List<Node>) -> List<Node> {
+pub fn function_type_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in params.iter().cloned() {
@@ -3073,7 +3101,7 @@ pub fn function_type_params(params: List<Node>) -> List<Node> {
     })
 }
 
-pub fn function_value_params(params: List<Node>) -> List<Node> {
+pub fn function_value_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in params.iter().cloned() {
@@ -3085,7 +3113,7 @@ pub fn function_value_params(params: List<Node>) -> List<Node> {
     })
 }
 
-pub fn function_type_params_have_collision(type_params: List<Node>) -> bool {
+pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let names = Rc::new({
             let mut __result = Vec::new();
@@ -3100,14 +3128,14 @@ pub fn function_type_params_have_collision(type_params: List<Node>) -> bool {
 
 pub fn emit_type_def_from_connective(
     item: Rc<Node>,
-    recursive_types: Set<String>,
-    shared_types: Set<String>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Map<String, List>,
-    module_items: List<Node>,
-    imports: List<Node>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let type_params = emit_type_params(item.params.clone(), env.source_indices.clone());
@@ -3224,10 +3252,10 @@ pub fn emit_type_def_from_connective(
 pub fn emit_struct_from_children(
     name: String,
     type_params: String,
-    generic_param_names: List<String>,
-    children: List<Node>,
-    recursive_types: Set<String>,
-    shared_types: Set<String>,
+    generic_param_names: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -3314,8 +3342,8 @@ pub fn emit_struct_from_children(
 
 pub fn render_rust_type_with_applied_binding(
     n: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match find_property(
         n.properties.clone(),
@@ -3335,8 +3363,8 @@ pub fn render_rust_type_with_applied_binding(
 
 pub fn render_rust_field_type_with_applied_binding(
     field: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let authored_type = field_node_type_expr(field.clone());
@@ -3382,9 +3410,9 @@ pub fn render_rust_field_type_with_applied_binding(
 
 pub fn emit_struct_field_from_child(
     child: Rc<Node>,
-    generic_param_names: List<String>,
-    recursive_types: Set<String>,
-    shared_types: Set<String>,
+    generic_param_names: Rc<Vec<String>>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -3612,7 +3640,7 @@ pub fn emit_struct_field_from_child(
     }
 }
 
-pub fn enum_derives(children: List<Node>) -> String {
+pub fn enum_derives(children: Rc<Vec<Rc<Node>>>) -> String {
     {
         let complex = Rc::new({
             let mut __result = Vec::new();
@@ -3633,10 +3661,10 @@ pub fn enum_derives(children: List<Node>) -> String {
 pub fn emit_enum_from_children(
     name: String,
     type_params: String,
-    generic_param_names: List<String>,
-    children: List<Node>,
-    recursive_types: Set<String>,
-    shared_types: Set<String>,
+    generic_param_names: Rc<Vec<String>>,
+    children: Rc<Vec<Rc<Node>>>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
     emit_info: Rc<EmitGraphInfo>,
@@ -3712,7 +3740,7 @@ pub fn emit_enum_from_children(
     }
 }
 
-pub fn find_shared_enum_fields(children: List<Node>, env: Rc<TypeEnv>) -> List<String> {
+pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
     {
         let fielded = Rc::new({
             let mut __result = Vec::new();
@@ -3776,9 +3804,9 @@ pub fn find_shared_enum_fields(children: List<Node>, env: Rc<TypeEnv>) -> List<S
 pub fn emit_enum_shared_accessors(
     name: String,
     type_params: String,
-    children: List<Node>,
-    recursive_types: Set<String>,
-    shared_types: Set<String>,
+    children: Rc<Vec<Rc<Node>>>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
@@ -4154,7 +4182,7 @@ pub fn variant_rename_validation_for_policy(
 }
 
 pub fn variant_rename_validations_for_policy(
-    children: List<Node>,
+    children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
 ) -> String {
@@ -4188,7 +4216,7 @@ pub fn enum_variant_field_type_node(
     variant_name: String,
     field_name: String,
     fallback: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match lookup_type_by_name(env, enum_name) {
         Some(enum_node) => {
@@ -4214,8 +4242,8 @@ pub fn enum_variant_field_type_node(
 
 pub fn render_variant_payload_type(
     n: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
@@ -4251,8 +4279,8 @@ pub fn render_variant_payload_type(
 }
 
 pub fn variant_is_synthetic_positional_payload(
-    fields: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    fields: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if ((fields.clone().len() as i64) != 1) {
         false
@@ -4269,8 +4297,8 @@ pub fn variant_is_synthetic_positional_payload(
 pub fn emit_variant_from_child(
     child: Rc<Node>,
     enum_name: String,
-    recursive_types: Set<String>,
-    shared_types: Set<String>,
+    recursive_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
     emit_info: Rc<EmitGraphInfo>,
@@ -4504,12 +4532,12 @@ pub fn emit_variant_from_child(
 
 pub fn emit_fn_def(
     name: String,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -4613,10 +4641,10 @@ pub fn emit_fn_def_non_tco(
     params_str: String,
     ret_str: String,
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_stacker: bool,
 ) -> String {
@@ -4739,13 +4767,13 @@ pub fn emit_fn_def_non_tco(
 
 pub fn emit_func_def(
     name: String,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
-    uses: List<Node>,
+    uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -4834,10 +4862,10 @@ pub fn emit_func_def(
 
 pub fn emit_func_body(
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -4978,9 +5006,9 @@ pub fn emit_func_body(
 }
 
 pub fn emit_tco_params(
-    params: List<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    params: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -5000,8 +5028,8 @@ pub fn emit_tco_params(
 
 pub fn emit_tco_param(
     param: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let n = param_node_type_expr(param.clone());
@@ -5023,12 +5051,12 @@ pub fn emit_tco_param(
 }
 
 pub fn emit_func_params(
-    params: List<Node>,
-    uses: List<Node>,
-    service_names: List<String>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
-    read_only_params: Set<String>,
+    params: Rc<Vec<Rc<Node>>>,
+    uses: Rc<Vec<Rc<Node>>>,
+    service_names: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    read_only_params: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
         let param_strs = Rc::new({
@@ -5080,8 +5108,8 @@ pub fn emit_func_params(
 
 pub fn emit_func_inferred(
     inferred: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         v2_rt::concat(
@@ -5093,10 +5121,10 @@ pub fn emit_func_inferred(
 }
 
 pub fn emit_params(
-    params: List<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
-    read_only_params: Set<String>,
+    params: Rc<Vec<Rc<Node>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    read_only_params: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
         let strs = Rc::new({
@@ -5117,8 +5145,8 @@ pub fn emit_params(
 
 pub fn emit_rust_param_type(
     n: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
@@ -5162,9 +5190,9 @@ pub fn emit_rust_param_type(
 
 pub fn emit_param(
     param: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
-    read_only_params: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    read_only_params: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
         let n = param_node_type_expr(param.clone());
@@ -5182,8 +5210,8 @@ pub fn emit_param(
 
 pub fn emit_inferred(
     inferred: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     v2_rt::concat(
         rust_items().return_arrow.clone(),
@@ -5191,7 +5219,10 @@ pub fn emit_inferred(
     )
 }
 
-pub fn needs_reference_node(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn needs_reference_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     if ((n.connective.clone() != Connective::NoConnective)
         || ((n.children.clone().len() as i64) > 0))
     {
@@ -5215,7 +5246,7 @@ pub fn is_string_lit_pattern(p: Rc<MatchPattern>) -> bool {
     }
 }
 
-pub fn pattern_string_binding_name(path: List<String>) -> String {
+pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
     if ((path.clone().len() as i64) == 0) {
         "__pos0_val".to_string()
     } else {
@@ -5251,9 +5282,9 @@ pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: Stri
 }
 
 pub fn collect_field_binding_string_guards(
-    field_bindings: List<Node>,
-    path_prefix: List<String>,
-    source_indices: Map<String, NewlineIndex>,
+    field_bindings: Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let parts = Rc::new({
@@ -5309,8 +5340,8 @@ pub fn collect_field_binding_string_guards(
 
 pub fn collect_pattern_string_guards(
     mut pattern: Rc<MatchPattern>,
-    mut path_prefix: List<String>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut path_prefix: Rc<Vec<String>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     loop {
         match (*pattern).clone() {
@@ -5410,7 +5441,7 @@ pub fn collect_pattern_string_guards(
     }
 }
 
-pub fn all_arms_are_string_lit(arms: List<Node>) -> bool {
+pub fn all_arms_are_string_lit(arms: Rc<Vec<Rc<Node>>>) -> bool {
     ({
         let mut __all = true;
         for arm in arms.clone().iter().cloned() {
@@ -5430,7 +5461,7 @@ pub fn all_arms_are_string_lit(arms: List<Node>) -> bool {
     } && ((arms.clone().len() as i64) > 0))
 }
 
-pub fn has_string_lit_with_bind(arms: List<Node>) -> bool {
+pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
     {
         let has_lit = {
             let mut __found = false;
@@ -5467,10 +5498,10 @@ pub fn has_string_lit_with_bind(arms: List<Node>) -> bool {
 
 pub fn emit_pattern(
     pattern: Rc<MatchPattern>,
-    path_prefix: List<String>,
-    shared_types: Set<String>,
+    path_prefix: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*pattern).clone() {
@@ -5499,7 +5530,7 @@ pub fn pattern_parent_enum(
     name: String,
     parent_enum: Option<String>,
     scrut_type: String,
-    type_summaries: Map<String, TypeSummary>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
         let scrut_is_known_enum = ((scrut_type.clone().as_str() != "".to_string().as_str())
@@ -5523,7 +5554,7 @@ pub fn positional_payload_scrut_type(
     variant_name: String,
     field_binding: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let type_key = match parent_enum {
@@ -5554,11 +5585,11 @@ pub fn positional_payload_scrut_type(
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    field_bindings: List<Node>,
-    path_prefix: List<String>,
-    shared_types: Set<String>,
+    field_bindings: Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -5926,16 +5957,16 @@ pub fn emit_variant_pattern(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcPatternAnalysis {
-    pub matches_rc_variant: compile_error!("UNRESOLVED_CompilerError"),
-    pub matches_option_rc_variant: compile_error!("UNRESOLVED_CompilerError"),
-    pub needs_rc_pattern: compile_error!("UNRESOLVED_CompilerError"),
-    pub ref_bound_fields: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub matches_rc_variant: bool,
+    pub matches_option_rc_variant: bool,
+    pub needs_rc_pattern: bool,
+    pub ref_bound_fields: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcMatchAnalysis {
-    pub needs_option_deref: compile_error!("UNRESOLVED_CompilerError"),
-    pub needs_deref: compile_error!("UNRESOLVED_CompilerError"),
+    pub needs_option_deref: bool,
+    pub needs_deref: bool,
 }
 
 pub fn empty_rc_pattern_analysis() -> Rc<RcPatternAnalysis> {
@@ -5963,9 +5994,9 @@ pub fn field_needs_rc_ref(field_name: String, rc_analysis: Rc<RcPatternAnalysis>
 pub fn analyze_rc_pattern(
     pattern: Rc<MatchPattern>,
     scrut_type: String,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RcPatternAnalysis> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*pattern).clone() {
         MatchPattern::VariantPattern {
@@ -6068,11 +6099,11 @@ pub fn analyze_rc_pattern(
 
 pub fn analyze_rc_match(
     scrutinee: Rc<Node>,
-    arms: List<Node>,
+    arms: Rc<Vec<Rc<Node>>>,
     scrut_type: String,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> RcMatchAnalysis {
     {
         let arm_analyses = Rc::new({
@@ -6140,11 +6171,11 @@ pub fn analyze_rc_match(
 
 pub fn emit_pattern_rc_aware(
     pattern: Rc<MatchPattern>,
-    path_prefix: List<String>,
+    path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*pattern).clone() {
@@ -6173,12 +6204,12 @@ pub fn emit_pattern_rc_aware(
 pub fn emit_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
-    field_bindings: List<Node>,
-    path_prefix: List<String>,
+    field_bindings: Rc<Vec<Rc<Node>>>,
+    path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -6611,8 +6642,8 @@ pub fn emit_variant_pattern_rc_aware(
 pub fn rc_pattern_preludes(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*pattern).clone() {
@@ -6746,8 +6777,8 @@ pub fn rc_pattern_preludes(
 pub fn explicit_record_struct_name(
     type_name: Option<String>,
     inferred_node: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let is_optional = (inferred_node.return_cardinality.clone() == Cardinality::CardOptional);
@@ -6804,7 +6835,10 @@ pub fn explicit_record_struct_name(
     }
 }
 
-pub fn is_simple_type_node(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn is_simple_type_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     is_rust_value_type(n, source_indices)
 }
 
@@ -6851,7 +6885,7 @@ pub fn effective_variant_parent(
     binding_kind: Option<Rc<VarBindingKind>>,
     resolved_type: Option<Rc<InferredNode>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let cached = match v2_rt::map_get(&emit_info.variant_to_enum.clone(), name.clone()) {
@@ -6892,10 +6926,10 @@ pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
     resolved_type: Option<Rc<InferredNode>>,
-    shared_types: Set<String>,
-    registry: Map<String, ItemInfo>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     if ((name.clone().as_str() == "none".to_string().as_str())
         || (name.clone().as_str() == "None".to_string().as_str()))
@@ -6988,10 +7022,10 @@ pub fn emit_var_ref(
 
 pub fn emit_typed_expr_base(
     texpr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7068,10 +7102,10 @@ pub fn emit_typed_field_access(
     base: Rc<Node>,
     field: String,
     summary: Option<Rc<FieldSummary>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7228,7 +7262,10 @@ pub fn emit_typed_field_access(
     }
 }
 
-pub fn type_needs_rc(type_node: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn type_needs_rc(
+    type_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     type_needs_rc_seen(
         type_node,
         v2_rt::rc_empty_map::<String, bool>(),
@@ -7238,8 +7275,8 @@ pub fn type_needs_rc(type_node: Rc<Node>, source_indices: Map<String, NewlineInd
 
 pub fn type_needs_rc_seen(
     mut type_node: Rc<Node>,
-    mut seen: Map<String, Bool>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut seen: Rc<HashMap<String, bool>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let normed = normalize_access_type_node(type_node);
@@ -7317,8 +7354,8 @@ pub fn rust_runtime_bridge_name(function_name: String) -> String {
 
 pub fn rust_empty_map_value_type_str(
     map_type: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match map_type.children.clone().get(1 as usize).cloned() {
         Some(value_child) => {
@@ -7339,8 +7376,8 @@ pub fn rust_empty_map_value_type_str(
 
 pub fn rust_empty_map_kv_type_str(
     map_type: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let key_str = match map_type.children.clone().first().cloned() {
@@ -7382,7 +7419,7 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
 
 pub fn rust_btree_set_element_ord_eligible(
     elem_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices, elem_node);
@@ -7397,8 +7434,8 @@ pub fn rust_btree_set_element_ord_eligible(
 
 pub fn rust_empty_set_element_type_str(
     set_type: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
@@ -7434,8 +7471,8 @@ pub fn rust_empty_set_element_type_str(
 
 pub fn emit_rust_empty_set_expr(
     set_type: Rc<Node>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
@@ -7521,10 +7558,10 @@ pub fn rust_wrap_runtime_collection_result(
 
 pub fn emit_rust_expr_var(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -7551,10 +7588,10 @@ pub fn emit_rust_expr_var(
 
 pub fn emit_rust_expr_field_access(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -7608,10 +7645,10 @@ pub fn emit_rust_expr_field_access(
 
 pub fn emit_rust_expr_call(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7637,10 +7674,10 @@ pub fn emit_rust_expr_call(
 
 pub fn emit_rust_expr_method_call(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7675,10 +7712,10 @@ pub fn emit_rust_expr_method_call(
 
 pub fn emit_rust_expr_match(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7696,10 +7733,10 @@ pub fn emit_rust_expr_match(
 
 pub fn emit_rust_expr_if(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7718,10 +7755,10 @@ pub fn emit_rust_expr_if(
 
 pub fn emit_rust_expr_let(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7750,10 +7787,10 @@ pub fn emit_rust_expr_let(
 
 pub fn emit_rust_expr_record_lit(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7801,10 +7838,10 @@ pub fn emit_rust_expr_record_lit(
 
 pub fn emit_rust_expr_string_interp(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7839,10 +7876,10 @@ pub fn emit_rust_expr_string_interp(
 
 pub fn emit_rust_expr_block(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7863,10 +7900,10 @@ pub fn emit_rust_expr_block(
 
 pub fn emit_rust_expr_cast(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7896,10 +7933,10 @@ pub fn emit_rust_expr_cast(
 
 pub fn emit_rust_expr_for_each(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7928,10 +7965,10 @@ pub fn emit_rust_expr_for_each(
 
 pub fn emit_rust_expr_index(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7949,10 +7986,10 @@ pub fn emit_rust_expr_index(
 
 pub fn emit_rust_expr_slice(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -7971,10 +8008,10 @@ pub fn emit_rust_expr_slice(
 
 pub fn emit_rust_expr_bin_op(
     expr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
@@ -8002,10 +8039,10 @@ pub fn emit_rust_expr_bin_op(
 
 pub fn emit_typed_expr(
     texpr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     fuel: i64,
 ) -> String {
@@ -8181,16 +8218,19 @@ pub fn emit_typed_expr(
 
 pub fn emit_cloned_arg(
     texpr: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     emit_typed_expr(texpr, registry, scope, depth, shared_types, emit_info, 1024)
 }
 
-pub fn is_enum_type_name(type_name: String, type_summaries: Map<String, TypeSummary>) -> bool {
+pub fn is_enum_type_name(
+    type_name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> bool {
     is_enum_in_summaries(type_summaries, type_name)
 }
 
@@ -8199,7 +8239,7 @@ pub fn contextual_variant_parent(
     parent_enum: Option<String>,
     resolved_type: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match parent_enum {
         Some(explicit_parent) => {
@@ -8231,7 +8271,10 @@ pub fn contextual_variant_parent(
     }
 }
 
-pub fn is_map_typed_expr(texpr: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn is_map_typed_expr(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
             node_is_keyed_collection(n.clone(), source_indices)
@@ -8242,12 +8285,12 @@ pub fn is_map_typed_expr(texpr: Rc<Node>, source_indices: Map<String, NewlineInd
 
 pub fn emit_typed_call_expr(
     func: String,
-    args: List<Node>,
+    args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8312,11 +8355,11 @@ pub fn emit_typed_call_expr(
 
 pub fn emit_typed_call(
     func: String,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8537,7 +8580,10 @@ pub fn emit_typed_call(
         );
         let is_rt = v2_rt::map_contains_key(&rt_functions(), func.clone());
         let is_rt_ref_map = v2_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
-        let callee_borrow_positions = v2_rt::rc_empty_map::<K, V>();
+        let callee_borrow_positions = v2_rt::rc_empty_map::<
+            compile_error!("UNRESOLVED_TypeVariable"),
+            compile_error!("UNRESOLVED_TypeVariable"),
+        >();
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -8671,14 +8717,14 @@ pub fn emit_typed_call(
 }
 
 pub fn fill_default_args(
-    ordered: List<Node>,
+    ordered: Rc<Vec<Rc<Node>>>,
     callee: Option<Rc<ItemInfo>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> List<Node> {
+) -> Rc<Vec<Rc<Node>>> {
     match callee {
         Some(info) => {
             let provided_names = Rc::new({
@@ -8747,19 +8793,22 @@ pub fn fill_default_args(
 }
 
 pub fn fill_op_default_args(
-    ordered: List<Node>,
-    op_params: List<Node>,
-    registry: Map<String, ItemInfo>,
+    ordered: Rc<Vec<Rc<Node>>>,
+    op_params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> List<Node> {
+) -> Rc<Vec<Rc<Node>>> {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let arg_map = ordered.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Map<K, V>, a: Rc<Node>| match arg_name_at(a.clone(), si.clone()) {
+            |acc: Rc<HashMap<String, Rc<Node>>>, a: Rc<Node>| match arg_name_at(
+                a.clone(),
+                si.clone(),
+            ) {
                 Some(n) => v2_rt::rc_map_insert(acc.clone(), n.clone(), a.clone()),
                 None => acc.clone(),
             },
@@ -8806,9 +8855,9 @@ pub fn fill_op_default_args(
 }
 
 pub fn emit_nested_rt_concat(
-    mut remaining: List<String>,
+    mut remaining: Rc<Vec<String>>,
     mut acc: String,
-    mut shared_types: Set<String>,
+    mut shared_types: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     loop {
         match remaining.clone().first().cloned() {
@@ -8852,10 +8901,10 @@ pub fn emit_typed_for_each(
     variable: String,
     collection: Rc<Node>,
     body: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8899,10 +8948,10 @@ pub fn emit_typed_for_each(
 pub fn emit_typed_index(
     base: Rc<Node>,
     index: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -8957,10 +9006,10 @@ pub fn emit_typed_slice(
     base: Rc<Node>,
     start: Rc<Node>,
     end: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9015,8 +9064,8 @@ pub fn emit_typed_slice(
 
 pub fn collection_element_type(
     receiver_type: Option<Rc<InferredNode>>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match receiver_type.as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -9057,8 +9106,8 @@ pub fn collection_element_type(
 
 pub fn lambda_scope_from_children(
     scope: Rc<InferScope>,
-    params: List<String>,
-    param_nodes: List<Node>,
+    params: Rc<Vec<String>>,
+    param_nodes: Rc<Vec<Rc<Node>>>,
 ) -> Rc<InferScope> {
     Rc::new(
         params
@@ -9093,12 +9142,12 @@ pub fn lambda_scope_from_children(
 }
 
 pub fn lambda_param_type_strs(
-    params: List<String>,
-    param_nodes: List<Node>,
-    fallback_types: List<String>,
-    shared_types: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<String> {
+    params: Rc<Vec<String>>,
+    param_nodes: Rc<Vec<Rc<Node>>>,
+    fallback_types: Rc<Vec<String>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for pair in Rc::new(
@@ -9172,10 +9221,10 @@ pub fn lambda_param_type_strs(
 pub fn emit_typed_collection_lambda(
     lambda_expr: Rc<Node>,
     elem_type_str: String,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
@@ -9233,10 +9282,10 @@ pub fn emit_typed_fold_lambda(
     lambda_expr: Rc<Node>,
     acc_type_str: String,
     elem_type_str: String,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
@@ -9359,11 +9408,11 @@ pub fn emit_rust_fold_method_call(
     fold_accumulator_type: Option<Rc<Node>>,
     result_type: Option<Rc<InferredNode>>,
     receiver: Rc<Node>,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9739,11 +9788,11 @@ pub fn emit_rust_fold_method_call(
 
 pub fn emit_rust_sort_by_method_call(
     receiver: Rc<Node>,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9806,11 +9855,11 @@ pub fn emit_rust_sort_by_method_call(
 
 pub fn emit_rust_map_method_call(
     receiver: Rc<Node>,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -9974,11 +10023,11 @@ pub fn emit_rust_map_method_call(
 pub fn emit_rust_higher_order_method(
     ho_spec: Rc<HigherOrderMethodSpec>,
     receiver: Rc<Node>,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10099,11 +10148,11 @@ pub fn emit_rust_higher_order_method(
 
 pub fn emit_rust_get_method_call(
     receiver: Rc<Node>,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10164,11 +10213,11 @@ pub fn emit_rust_get_method_call(
 
 pub fn emit_rust_with_method_call(
     receiver: Rc<Node>,
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10269,10 +10318,10 @@ pub fn emit_rust_with_method_call(
 
 pub fn emit_rust_first_method_call(
     receiver: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*receiver.expr_data.clone()).clone() {
@@ -10345,12 +10394,12 @@ pub fn emit_rust_first_method_call(
 pub fn emit_rust_generic_method_call(
     method_name: String,
     receiver: Rc<Node>,
-    args: List<Node>,
+    args: Rc<Vec<Rc<Node>>>,
     result_type: Option<Rc<InferredNode>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -10471,13 +10520,13 @@ pub fn emit_typed_method_call(
     method_call_node: Rc<Node>,
     receiver: Rc<Node>,
     method: String,
-    args: List<Node>,
+    args: Rc<Vec<Rc<Node>>>,
     result_type: Option<Rc<InferredNode>>,
     method_semantics: Option<Rc<MethodSemantics>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     if (method_semantics.clone() != None) {
@@ -10513,7 +10562,7 @@ pub fn emit_typed_method_call(
                 .cloned()
                 .fold(
                     v2_rt::rc_empty_map::<String, bool>(),
-                    |acc: Map<K, V>, p: Rc<Node>| {
+                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                         v2_rt::rc_map_insert(acc, param_node_name_at(p.clone(), si.clone()), true)
                     },
                 );
@@ -10536,7 +10585,7 @@ pub fn emit_typed_method_call(
                 .cloned()
                 .fold(
                     v2_rt::rc_empty_map::<String, bool>(),
-                    |acc: Map<K, V>, p: Rc<Node>| {
+                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                         v2_rt::rc_map_insert(acc, param_node_name_at(p.clone(), si.clone()), true)
                     },
                 );
@@ -10890,11 +10939,11 @@ pub fn emit_typed_method_call(
 }
 
 pub fn emit_typed_first_arg(
-    args: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match args.first().cloned() {
@@ -10913,11 +10962,11 @@ pub fn emit_typed_first_arg(
 
 pub fn emit_typed_match(
     scrutinee: Rc<Node>,
-    arms: List<Node>,
-    registry: Map<String, ItemInfo>,
+    arms: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11076,10 +11125,10 @@ pub fn emit_typed_match(
 
 pub fn emit_typed_match_arm(
     arm: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
     match_result_type: Rc<Node>,
@@ -11263,10 +11312,10 @@ pub fn emit_typed_if(
     condition: Rc<Node>,
     then_branch: Rc<Node>,
     else_branch: Option<Rc<Node>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11306,10 +11355,10 @@ pub fn emit_typed_let(
     name: String,
     value: Rc<Node>,
     body: Option<Rc<Node>>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -11406,7 +11455,7 @@ pub fn rust_receiver_has_callable_method_field(
 pub fn rust_record_field_needs_box(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     struct_name: String,
     field_name: String,
 ) -> bool {
@@ -11425,7 +11474,7 @@ pub fn wrap_rust_record_field_value(
     raw: String,
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     struct_name: String,
     field_name: String,
 ) -> String {
@@ -11569,7 +11618,7 @@ pub fn lookup_struct_field_type_name(
     struct_node: Rc<Node>,
     field_name: String,
     variant_name: Option<String>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let direct = match find_child_named(
@@ -11652,10 +11701,10 @@ pub fn emit_field_value_with_context(
     struct_node: Rc<Node>,
     outer_type_name: Option<String>,
     field_name: String,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*field_value.expr_data.clone()).clone() {
@@ -11758,8 +11807,8 @@ pub fn emit_field_value_with_context(
 }
 
 pub fn find_struct_name_by_fields(
-    field_names: List<String>,
-    type_summaries: Map<String, TypeSummary>,
+    field_names: Rc<Vec<String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Option<String> {
     {
         let n_fields = (field_names.clone().len() as i64);
@@ -11806,13 +11855,13 @@ pub fn find_struct_name_by_fields(
 
 pub fn emit_typed_record_lit(
     type_name: Option<String>,
-    fields: List<Node>,
+    fields: Rc<Vec<Rc<Node>>>,
     parent_enum: Option<String>,
     resolved_type: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -12171,7 +12220,7 @@ pub fn emit_typed_record_lit(
                                     });
                                     let provided_set = provided_names.iter().cloned().fold(
                                         v2_rt::rc_empty_map::<String, bool>(),
-                                        |acc: Map<K, V>, n: String| {
+                                        |acc: Rc<HashMap<String, bool>>, n: String| {
                                             v2_rt::rc_map_insert(acc, n.clone(), true)
                                         },
                                     );
@@ -12294,10 +12343,10 @@ pub fn emit_typed_bin_op(
     algebra_field: Option<AlgebraFieldKind>,
     left: Rc<Node>,
     right: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -12423,7 +12472,7 @@ pub fn is_string_comparison(
     op: BinOp,
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match op {
         BinOp::Eq => {
@@ -12438,7 +12487,10 @@ pub fn is_string_comparison(
     }
 }
 
-pub fn is_string_typed_expr(e: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn is_string_typed_expr(
+    e: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
@@ -12454,11 +12506,11 @@ pub fn is_string_typed_expr(e: Rc<Node>, source_indices: Map<String, NewlineInde
 }
 
 pub fn emit_typed_string_interp(
-    parts: List<StringPart>,
-    registry: Map<String, ItemInfo>,
+    parts: Rc<Vec<Rc<StringPart>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -12541,10 +12593,10 @@ pub fn emit_typed_string_interp(
 
 pub fn typed_interp_format_part(
     part: Rc<StringPart>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     has_interpolations: bool,
 ) -> Rc<InterpPart> {
@@ -12576,11 +12628,11 @@ pub fn typed_interp_format_part(
 }
 
 pub fn emit_typed_block(
-    stmts: List<Node>,
-    registry: Map<String, ItemInfo>,
+    stmts: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -12604,14 +12656,14 @@ pub fn emit_typed_block(
 }
 
 pub fn emit_tco_init_block_stmts(
-    mut remaining: List<Node>,
-    mut text: List<String>,
+    mut remaining: Rc<Vec<Rc<Node>>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
-    mut registry: Map<String, ItemInfo>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Set<String>,
+    mut shared_types: Rc<std::collections::BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
-    mut params: List<Node>,
+    mut params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
@@ -12666,11 +12718,11 @@ pub fn emit_tco_init_block_stmts(
 
 pub fn emit_tco_init_stmt(
     stmt: Rc<Node>,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*stmt.expr_data.clone()).clone() {
@@ -12730,11 +12782,11 @@ pub fn emit_tco_init_stmt(
 pub fn emit_typed_tco_body(
     texpr: Rc<Node>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -12760,8 +12812,8 @@ pub fn emit_typed_tco_body(
 
 pub fn emit_rust_tco_non_self_call(
     frame: Rc<TcoFrame>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -12794,9 +12846,9 @@ pub fn emit_rust_tco_non_self_call(
 pub fn emit_rust_tco_if(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -12883,9 +12935,9 @@ pub fn emit_rust_tco_if(
 pub fn emit_rust_tco_match(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -13021,9 +13073,9 @@ pub fn emit_rust_tco_match(
 pub fn emit_rust_tco_let(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -13115,9 +13167,9 @@ pub fn emit_rust_tco_let(
 pub fn emit_rust_tco_block(
     frame: Rc<TcoFrame>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
@@ -13173,8 +13225,8 @@ pub fn emit_rust_tco_block(
 
 pub fn emit_rust_tco_default_return(
     frame: Rc<TcoFrame>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -13197,11 +13249,11 @@ pub fn emit_rust_tco_default_return(
 pub fn emit_typed_tco_expr(
     texpr: Rc<Node>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     emit_shared_tco_expr(
@@ -13284,11 +13336,11 @@ pub fn emit_typed_tco_expr(
 pub fn emit_typed_tco_match_arm(
     arm: Rc<Node>,
     fn_name: String,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scrut_type: String,
 ) -> String {
@@ -13416,7 +13468,7 @@ pub fn emit_typed_tco_match_arm(
 pub fn expr_references_var(
     node: Rc<Node>,
     var_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*node.expr_data.clone()).clone() {
@@ -13441,12 +13493,12 @@ pub fn expr_references_var(
 }
 
 pub fn emit_typed_tco_reassign(
-    args: List<Node>,
-    params: List<Node>,
-    registry: Map<String, ItemInfo>,
+    args: Rc<Vec<Rc<Node>>>,
+    params: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -13471,7 +13523,7 @@ pub fn emit_typed_tco_reassign(
         .cloned()
         .fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |m: Map<K, V>, pair: (i64, Rc<Node>)| {
+            |m: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
                 let pname = param_node_name_at(pair.1.clone(), si.clone());
                 let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
                     Some(v) => v.clone(),
@@ -13540,7 +13592,7 @@ pub fn emit_typed_tco_reassign(
         let tco_movable =
             filtered_params.clone().iter().cloned().fold(
                 emit_info.movable.clone(),
-                |m: Set<String>, p: Rc<Node>| {
+                |m: Rc<std::collections::BTreeSet<String>>, p: Rc<Node>| {
                     let pname = param_node_name_at(p.clone(), si.clone());
                     let ref_count = filtered_arg_values.clone().iter().cloned().fold(
                         0,
@@ -13610,8 +13662,8 @@ pub fn emit_typed_tco_reassign(
 
 pub fn emit_service_def(
     item: Rc<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -13641,9 +13693,9 @@ pub fn emit_service_def(
 pub fn emit_service_struct(
     name: String,
     fallback_transport: Rc<Node>,
-    op_children: List<Node>,
+    op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let derives = "#[derive(Debug, Clone)]".to_string();
@@ -13672,9 +13724,9 @@ pub fn emit_service_struct(
 
 pub fn emit_service_config_fields(
     fallback_transport: Rc<Node>,
-    op_children: List<Node>,
+    op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = compute_service_fields(fallback_transport, op_children, source_indices.clone());
@@ -13707,9 +13759,9 @@ pub fn emit_service_config_fields(
 pub fn emit_service_impl(
     name: String,
     transport: Rc<Node>,
-    op_children: List<Node>,
-    registry: Map<String, ItemInfo>,
-    shared_types: Set<String>,
+    op_children: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
 ) -> String {
@@ -13759,9 +13811,9 @@ pub fn emit_service_impl(
 pub fn emit_service_new_method(
     name: String,
     fallback_transport: Rc<Node>,
-    op_children: List<Node>,
+    op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = compute_service_fields(
@@ -13886,7 +13938,7 @@ pub fn emit_service_new_method(
 
 pub fn emit_auth_source_ctor(
     source_expr: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*source_expr.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => match record_lit_type_name_at(source_expr.clone(), source_indices) {
@@ -13908,8 +13960,8 @@ pub fn emit_auth_source_ctor(
 }
 
 pub fn emit_modifier_doc_from_props(
-    properties: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    properties: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let names = extract_modifier_names(properties, source_indices);
@@ -13931,9 +13983,9 @@ pub fn emit_operation_method(
     service_name: String,
     transport: Rc<Node>,
     op_node: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
 ) -> String {
@@ -14080,12 +14132,12 @@ pub fn emit_operation_method(
 pub fn emit_dry_run_branch_from_props(
     op_name: String,
     inferred: Rc<Node>,
-    mock_props: List<Node>,
-    registry: Map<String, ItemInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    mock_props: Rc<Vec<Rc<Node>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     op_node: Rc<Node>,
     env: Rc<TypeEnv>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
 ) -> String {
     {
         let log_line = v2_rt::concat(
@@ -14183,13 +14235,13 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 pub fn emit_transport_call(
     transport: Rc<Node>,
     op_name: String,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     inferred: Rc<Node>,
     service_item: Rc<Node>,
     op_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    shared_types: Set<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
@@ -14228,12 +14280,12 @@ pub fn emit_transport_call(
 pub fn emit_rest_call(
     op_name: String,
     transport: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     service_item: Rc<Node>,
     op_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    shared_types: Set<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -14307,7 +14359,7 @@ pub fn emit_rest_call(
 
 pub fn emit_rest_http_method(
     transport: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match transport_method(transport, source_indices.clone()) {
         Some(m) => match m.inferred.clone().as_deref().cloned() {
@@ -14334,7 +14386,7 @@ pub fn emit_rest_http_method(
 pub fn emit_rest_url_line(
     transport: Rc<Node>,
     op_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match transport_path_template(transport, source_indices.clone()) {
         Some(path_node) => match (*path_node.expr_data.clone()).clone() {
@@ -14451,7 +14503,7 @@ pub fn emit_rest_auth_line(
     transport: Rc<Node>,
     service_item: Rc<Node>,
     http_method: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let auth_scheme = service_config_auth(service_item.clone(), source_indices.clone());
@@ -14540,7 +14592,7 @@ v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::con
 
 pub fn emit_rest_query_line(
     transport: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match transport_query(transport, source_indices.clone()) {
         Some(q) => {
@@ -14585,7 +14637,7 @@ pub fn emit_rest_query_line(
 
 pub fn emit_rest_body_line(
     transport: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match transport_request_body(transport, source_indices.clone()) {
     Some(b) => match (*b.expr_data.clone()).clone() {
@@ -14626,7 +14678,10 @@ pub fn has_response_prefix(name: String) -> bool {
     }
 }
 
-pub fn child_from_key(ch: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> Option<String> {
+pub fn child_from_key(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match Rc::new({
         let mut __result = Vec::new();
         for p in ch.properties.clone().iter().cloned() {
@@ -14654,7 +14709,10 @@ pub fn child_from_key(ch: Rc<Node>, source_indices: Map<String, NewlineIndex>) -
     }
 }
 
-pub fn has_from_key_fields(op_node: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> bool {
+pub fn has_from_key_fields(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
     {
         let rt = resolved_type(op_node);
         let is_conj = (rt.connective.clone() == Connective::Conj);
@@ -14677,7 +14735,7 @@ pub fn has_from_key_fields(op_node: Rc<Node>, source_indices: Map<String, Newlin
 
 pub fn has_response_200_property(
     op_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -14695,7 +14753,7 @@ pub fn has_response_200_property(
 
 pub fn operation_response_200_resolved_type(
     op_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
@@ -14735,7 +14793,7 @@ pub fn operation_response_200_resolved_type(
 
 pub fn is_json_wire_declaration_type(
     t: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let n = authored_name_at(source_indices, normalize_access_type_node(t));
@@ -14780,15 +14838,15 @@ pub fn path_segment_is_list_index(seg: String) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePathProjection {
-    pub expr: compile_error!("UNRESOLVED_CompilerError"),
-    pub node: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub ok: compile_error!("UNRESOLVED_CompilerError"),
+    pub expr: String,
+    pub node: Option<Rc<Node>>,
+    pub ok: bool,
 }
 
 pub fn wire_child_for_segment(
     wire_node: Rc<Node>,
     seg: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     {
         let normed = normalize_access_type_node(wire_node);
@@ -14821,7 +14879,7 @@ pub fn advance_wire_path_projection(
     state: Rc<WirePathProjection>,
     seg: String,
     full_path: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<WirePathProjection> {
     if !state.ok.clone() {
         state.clone()
@@ -14902,7 +14960,7 @@ pub fn emit_wire_struct_path_chain(
     base: String,
     wire_node: Rc<Node>,
     from_path: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<WirePathProjection> {
     {
         let segs = Rc::new({
@@ -14945,7 +15003,7 @@ pub fn emit_typed_wire_field_assign(
     field_name: String,
     from_path: String,
     wire_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let projection = emit_wire_struct_path_chain(
@@ -15067,8 +15125,8 @@ pub fn emit_json_value_extract(
 
 pub fn emit_from_key_extraction(
     op_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    shared_types: Set<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -15185,7 +15243,7 @@ match ch.inferred.clone().as_deref().cloned() {
 pub fn emit_plain_response_body(
     op_node: Rc<Node>,
     transport: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let is_text = match transport_response_format(transport, source_indices.clone()) {
@@ -15206,8 +15264,8 @@ pub fn emit_plain_response_body(
 pub fn emit_response_code_handling(
     op_node: Rc<Node>,
     transport: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    shared_types: Set<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -15273,8 +15331,8 @@ pub fn emit_response_arm(
     op_node: Rc<Node>,
     use_from_key: bool,
     transport: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    shared_types: Set<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -15351,7 +15409,7 @@ pub fn has_exit_prefix(name: String) -> bool {
 pub fn emit_exit_code_handling(
     op_node: Rc<Node>,
     inferred: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let exit_props = Rc::new({
@@ -15416,7 +15474,7 @@ pub fn emit_exit_code_handling(
 pub fn emit_exit_arm(
     prop: Rc<Node>,
     inferred: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let name = field_init_node_name_at(prop, source_indices.clone());
@@ -15447,11 +15505,11 @@ pub fn emit_exit_arm(
 pub fn emit_shell_call(
     op_name: String,
     transport: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     inferred: Rc<Node>,
     op_node: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let argv = transport.children.clone();
@@ -15470,7 +15528,7 @@ pub fn emit_shell_call(
         .cloned()
         .fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Map<K, V>, p: Rc<Node>| {
+            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                 v2_rt::rc_map_insert(
                     acc,
                     param_node_name_at(p.clone(), source_indices.clone()),
@@ -15631,8 +15689,8 @@ pub fn emit_shell_call(
 
 pub fn emit_shell_argv_element(
     arg: Rc<Node>,
-    optional_params: Map<String, Bool>,
-    source_indices: Map<String, NewlineIndex>,
+    optional_params: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. } => {
@@ -15743,7 +15801,10 @@ pub fn emit_shell_argv_element(
     }
 }
 
-pub fn emit_shell_return(inferred: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn emit_shell_return(
+    inferred: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let effective = unwrap_single_field_product(inferred);
         let is_product = is_product_type(effective.clone());
@@ -15902,7 +15963,11 @@ pub fn emit_local_call(op_name: String) -> String {
     )
 }
 
-pub fn emit_resource_def(item: Rc<Node>, shared_types: Set<String>, env: Rc<TypeEnv>) -> String {
+pub fn emit_resource_def(
+    item: Rc<Node>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+    env: Rc<TypeEnv>,
+) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let cap_children = item.children.clone();
@@ -15952,7 +16017,7 @@ pub fn emit_resource_def(item: Rc<Node>, shared_types: Set<String>, env: Rc<Type
 
 pub fn emit_capability_method(
     cap_node: Rc<Node>,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     env: Rc<TypeEnv>,
 ) -> String {
     {
@@ -16054,10 +16119,10 @@ pub fn emit_data_def(
     name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
@@ -16173,10 +16238,10 @@ pub fn emit_data_def(
 pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Map<String, ItemInfo>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-    shared_types: Set<String>,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_rc: bool,
 ) -> String {
@@ -16399,7 +16464,10 @@ pub fn emit_data_def_body(
     }
 }
 
-pub fn emit_test_file(module_name: String, projections: List<TestProjection>) -> Rc<TextFile> {
+pub fn emit_test_file(
+    module_name: String,
+    projections: Rc<Vec<Rc<TestProjection>>>,
+) -> Rc<TextFile> {
     {
         let depth = 0;
         let test_fns = Rc::new({
@@ -16533,7 +16601,7 @@ pub fn emit_operation_test(projection: Rc<TestProjection>, depth: i64) -> String
 
 pub fn emit_rust_default_value(
     param: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let type_name = authored_name_at(source_indices, param_node_type_expr(param));
@@ -16562,7 +16630,7 @@ pub fn emit_rust_default_value(
 pub fn emit_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     {
         let body_str = emit_simple_expr(
@@ -16586,7 +16654,7 @@ pub fn emit_mock_prop_setup(
     }
 }
 
-pub fn emit_cargo_dep(name: String, version: String, features: List<String>) -> String {
+pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) -> String {
     if ((features.clone().len() as i64) > 0) {
         {
             let feat_strs = Rc::new({
@@ -16680,15 +16748,15 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowFunc {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub module_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub inferred: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub uses: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub service_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub resolved_defaults: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub read_only_params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub source_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub module_name: String,
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub inferred: Rc<Node>,
+    pub uses: Rc<Vec<Rc<Node>>>,
+    pub service_names: Rc<Vec<String>>,
+    pub resolved_defaults: Rc<HashMap<String, String>>,
+    pub read_only_params: Rc<std::collections::BTreeSet<String>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
 pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
@@ -16708,9 +16776,9 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
 
 pub fn resolve_param_default(
     param: Rc<Node>,
-    registry: Map<String, ItemInfo>,
-    module_items: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match param_node_default_value(param) {
         Some(dv) => match (*dv.expr_data.clone()).clone() {
@@ -16755,10 +16823,10 @@ pub fn resolve_param_default(
 pub fn to_workflow_func(
     item: Rc<Node>,
     module_name: String,
-    registry: Map<String, ItemInfo>,
-    module_items: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    read_only_params_index: Map<String, Set>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = authored_name_at(source_indices.clone(), item.clone());
@@ -16768,7 +16836,7 @@ pub fn to_workflow_func(
         };
         let defaults = item.params.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, String>(),
-            |acc: Map<K, V>, p: Rc<Node>| match resolve_param_default(
+            |acc: Rc<HashMap<String, String>>, p: Rc<Node>| match resolve_param_default(
                 p.clone(),
                 registry.clone(),
                 module_items.clone(),
@@ -16806,8 +16874,8 @@ pub fn to_workflow_func(
 
 pub fn is_workflow_item(
     item: Rc<Node>,
-    registry: Map<String, ItemInfo>,
-    source_indices: Map<String, NewlineIndex>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if (item.body.clone() == None) {
         false
@@ -16827,10 +16895,10 @@ pub fn is_workflow_item(
 }
 
 pub fn collect_workflow_funcs(
-    modules: List<TypedModule>,
-    registry: Map<String, ItemInfo>,
-    read_only_params_index: Map<String, Set>,
-) -> List<WorkflowFunc> {
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
+) -> Rc<Vec<Rc<WorkflowFunc>>> {
     Rc::new({
         let mut __result = Vec::new();
         for tm in modules.iter().cloned() {
@@ -16892,7 +16960,9 @@ pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
     }
 }
 
-pub fn validate_workflow_param_defaults(workflow_funcs: List<WorkflowFunc>) -> List<ErrorNode> {
+pub fn validate_workflow_param_defaults(
+    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     Rc::new({
         let mut __result = Vec::new();
         for wf in workflow_funcs.iter().cloned() {
@@ -16922,7 +16992,7 @@ if resolved.clone() {
     })
 }
 
-pub fn find_resource_module(resource_name: String, modules: List<TypedModule>) -> String {
+pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -16960,11 +17030,11 @@ pub fn find_resource_module(resource_name: String, modules: List<TypedModule>) -
 }
 
 pub fn emit_main_rs(
-    workflow_funcs: List<WorkflowFunc>,
-    modules: List<TypedModule>,
+    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    modules: Rc<Vec<Rc<TypedModule>>>,
     has_services: bool,
     crate_name: String,
-    svc_module_map: Map<String, String>,
+    svc_module_map: Rc<HashMap<String, String>>,
 ) -> Rc<TextFile> {
     {
         let has_pipeline = {
@@ -17203,7 +17273,7 @@ pub fn emit_main_rs(
 }
 
 pub fn emit_main_mod_uses(
-    workflow_funcs: List<WorkflowFunc>,
+    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     has_pipeline: bool,
     crate_name: String,
 ) -> String {
@@ -17246,11 +17316,14 @@ pub fn emit_main_mod_uses(
     }
 }
 
-pub fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>) -> String {
+pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> String {
     v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
 }
 
-pub fn emit_subcommand_enum(workflow_funcs: List<WorkflowFunc>, has_pipeline: bool) -> String {
+pub fn emit_subcommand_enum(
+    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    has_pipeline: bool,
+) -> String {
     {
         let depth = 0;
         let variants = Rc::new({
@@ -17347,8 +17420,8 @@ pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
 
 pub fn emit_subcommand_field(
     param: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-    resolved_defaults: Map<String, String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    resolved_defaults: Rc<HashMap<String, String>>,
 ) -> String {
     {
         let field_name = emit_ident(
@@ -17390,7 +17463,10 @@ pub fn emit_subcommand_field(
     }
 }
 
-pub fn emit_cli_param_type_node(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn emit_cli_param_type_node(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let has_structure = (n.connective.clone() != Connective::NoConnective);
@@ -17425,7 +17501,7 @@ pub fn emit_cli_param_type_node(n: Rc<Node>, source_indices: Map<String, Newline
 }
 
 pub fn emit_main_fn(
-    workflow_funcs: List<WorkflowFunc>,
+    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     has_services: bool,
     has_pipeline: bool,
     crate_name: String,
@@ -17680,7 +17756,7 @@ pub fn emit_main_service_args(wf: Rc<WorkflowFunc>, has_services: bool) -> Strin
     }
 }
 
-pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> List<String> {
+pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> Rc<Vec<String>> {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
         let resource_args = Rc::new({

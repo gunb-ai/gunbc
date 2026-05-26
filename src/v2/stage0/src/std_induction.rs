@@ -44,11 +44,11 @@ pub enum RecursionShape {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InductiveField {
-    pub type_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub variant_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub field_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub shape: compile_error!("UNRESOLVED_CompilerError"),
-    pub element_type: compile_error!("UNRESOLVED_CompilerError"),
+    pub type_name: String,
+    pub variant_name: String,
+    pub field_name: String,
+    pub shape: RecursionShape,
+    pub element_type: String,
 }
 
 pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
@@ -554,15 +554,23 @@ impl AtomicCost {
 #[serde(tag = "_variant")]
 pub enum CostBound {
     ConstantBound,
-    AtomicBound { cost: Rc<AtomicCost> },
-    ProductBound { factors: List<AtomicCost> },
-    SumOfProductsBound { terms: List<List<AtomicCost>> },
-    SumBound { terms: List<CostBound> },
+    AtomicBound {
+        cost: Rc<AtomicCost>,
+    },
+    ProductBound {
+        factors: Rc<Vec<Rc<AtomicCost>>>,
+    },
+    SumOfProductsBound {
+        terms: Rc<Vec<Rc<Vec<Rc<AtomicCost>>>>>,
+    },
+    SumBound {
+        terms: Rc<Vec<Rc<CostBound>>>,
+    },
     ForeverBound,
     ErrorBound,
 }
 
-pub fn sum_bound(terms: List<CostBound>) -> Rc<CostBound> {
+pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
     match terms.clone().first().cloned() {
         None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
@@ -687,10 +695,10 @@ pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecurrenceForm {
-    pub param: compile_error!("UNRESOLVED_CompilerError"),
-    pub branches: compile_error!("UNRESOLVED_CompilerError"),
-    pub divisor: compile_error!("UNRESOLVED_CompilerError"),
-    pub work_exponent: compile_error!("UNRESOLVED_CompilerError"),
+    pub param: String,
+    pub branches: i64,
+    pub divisor: i64,
+    pub work_exponent: i64,
 }
 
 pub fn int_add_checked(a: i64, b: i64) -> Option<i64> {

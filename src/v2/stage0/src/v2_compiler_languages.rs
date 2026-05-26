@@ -90,28 +90,28 @@ pub enum ReservedWordStrategy {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReservedWords {
-    pub keywords: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub strategy: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub keywords: Rc<Vec<String>>,
+    pub strategy: Rc<ReservedWordStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectScaffold {
-    pub manifest_file: compile_error!("UNRESOLVED_CompilerError"),
-    pub module_init_file: compile_error!("UNRESOLVED_CompilerError"),
-    pub source_file_extension: compile_error!("UNRESOLVED_CompilerError"),
-    pub source_dir: compile_error!("UNRESOLVED_CompilerError"),
+    pub manifest_file: Option<String>,
+    pub module_init_file: Option<String>,
+    pub source_file_extension: String,
+    pub source_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SerializationSpec {
-    pub struct_derives: compile_error!("UNRESOLVED_CompilerError"),
-    pub struct_derives_copy: compile_error!("UNRESOLVED_CompilerError"),
-    pub enum_derives: compile_error!("UNRESOLVED_CompilerError"),
-    pub enum_derives_copy: compile_error!("UNRESOLVED_CompilerError"),
-    pub tag_attribute: compile_error!("UNRESOLVED_CompilerError"),
-    pub rename_attribute_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub derive_attribute: compile_error!("UNRESOLVED_CompilerError"),
-    pub default_value: compile_error!("UNRESOLVED_CompilerError"),
+    pub struct_derives: Option<String>,
+    pub struct_derives_copy: Option<String>,
+    pub enum_derives: Option<String>,
+    pub enum_derives_copy: Option<String>,
+    pub tag_attribute: Option<String>,
+    pub rename_attribute_template: Option<String>,
+    pub derive_attribute: Option<String>,
+    pub default_value: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -123,12 +123,12 @@ pub enum TestNameStyle {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestConventions {
-    pub file_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub file_suffix: compile_error!("UNRESOLVED_CompilerError"),
-    pub file_dir: compile_error!("UNRESOLVED_CompilerError"),
-    pub function_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub name_style: compile_error!("UNRESOLVED_CompilerError"),
-    pub async_decorator: compile_error!("UNRESOLVED_CompilerError"),
+    pub file_prefix: String,
+    pub file_suffix: String,
+    pub file_dir: Option<String>,
+    pub function_prefix: String,
+    pub name_style: TestNameStyle,
+    pub async_decorator: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -143,68 +143,68 @@ pub enum ImportTrigger {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportRule {
-    pub trigger: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub import_path: compile_error!("UNRESOLVED_CompilerError"),
+    pub trigger: Rc<ImportTrigger>,
+    pub import_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
-    pub needs_sharing: compile_error!("UNRESOLVED_CompilerError"),
-    pub wrap_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub clone_value: compile_error!("UNRESOLVED_CompilerError"),
-    pub deref_clone: compile_error!("UNRESOLVED_CompilerError"),
-    pub field_clone: compile_error!("UNRESOLVED_CompilerError"),
-    pub iter_owned: compile_error!("UNRESOLVED_CompilerError"),
-    pub clone_suffix: compile_error!("UNRESOLVED_CompilerError"),
-    pub borrow_param_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub borrow_arg_template: compile_error!("UNRESOLVED_CompilerError"),
+    pub needs_sharing: bool,
+    pub wrap_template: String,
+    pub clone_value: String,
+    pub deref_clone: String,
+    pub field_clone: String,
+    pub iter_owned: String,
+    pub clone_suffix: String,
+    pub borrow_param_template: String,
+    pub borrow_arg_template: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IndexingSemantics {
-    pub list_index: compile_error!("UNRESOLVED_CompilerError"),
-    pub map_index: compile_error!("UNRESOLVED_CompilerError"),
-    pub string_index: compile_error!("UNRESOLVED_CompilerError"),
-    pub list_slice: compile_error!("UNRESOLVED_CompilerError"),
-    pub string_slice: compile_error!("UNRESOLVED_CompilerError"),
+    pub list_index: String,
+    pub map_index: String,
+    pub string_index: String,
+    pub list_slice: Option<String>,
+    pub string_slice: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationRequirements {
-    pub let_binding_inferred: compile_error!("UNRESOLVED_CompilerError"),
-    pub let_binding_annotated: compile_error!("UNRESOLVED_CompilerError"),
-    pub lambda_param_typed: compile_error!("UNRESOLVED_CompilerError"),
-    pub lambda_param_untyped: compile_error!("UNRESOLVED_CompilerError"),
+    pub let_binding_inferred: String,
+    pub let_binding_annotated: String,
+    pub lambda_param_typed: String,
+    pub lambda_param_untyped: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceFieldTemplates {
-    pub rest_decl: compile_error!("UNRESOLVED_CompilerError"),
-    pub auth_decl: compile_error!("UNRESOLVED_CompilerError"),
-    pub shell_decl: compile_error!("UNRESOLVED_CompilerError"),
-    pub file_decl: compile_error!("UNRESOLVED_CompilerError"),
-    pub rest_ctor: compile_error!("UNRESOLVED_CompilerError"),
-    pub auth_ctor: compile_error!("UNRESOLVED_CompilerError"),
-    pub shell_ctor: compile_error!("UNRESOLVED_CompilerError"),
-    pub file_ctor: compile_error!("UNRESOLVED_CompilerError"),
+    pub rest_decl: String,
+    pub auth_decl: String,
+    pub shell_decl: String,
+    pub file_decl: String,
+    pub rest_ctor: String,
+    pub auth_ctor: String,
+    pub shell_ctor: String,
+    pub file_ctor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockSyntax {
-    pub block_open: compile_error!("UNRESOLVED_CompilerError"),
-    pub block_close: compile_error!("UNRESOLVED_CompilerError"),
-    pub else_clause: compile_error!("UNRESOLVED_CompilerError"),
-    pub match_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub case_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub arm_separator: compile_error!("UNRESOLVED_CompilerError"),
-    pub stmt_terminator: compile_error!("UNRESOLVED_CompilerError"),
-    pub significant_whitespace: compile_error!("UNRESOLVED_CompilerError"),
+    pub block_open: String,
+    pub block_close: String,
+    pub else_clause: String,
+    pub match_keyword: String,
+    pub case_keyword: String,
+    pub arm_separator: String,
+    pub stmt_terminator: String,
+    pub significant_whitespace: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ForEachSyntax {
-    pub prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub separator: compile_error!("UNRESOLVED_CompilerError"),
+    pub prefix: String,
+    pub separator: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -217,21 +217,21 @@ pub enum IfValueForm {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpressionSemantics {
-    pub if_value_form: compile_error!("UNRESOLVED_CompilerError"),
-    pub wildcard_case: compile_error!("UNRESOLVED_CompilerError"),
-    pub variant_pattern: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub guard_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub empty_return_value: compile_error!("UNRESOLVED_CompilerError"),
-    pub return_suffix: compile_error!("UNRESOLVED_CompilerError"),
-    pub suppress_unit_return: compile_error!("UNRESOLVED_CompilerError"),
+    pub if_value_form: IfValueForm,
+    pub wildcard_case: Option<String>,
+    pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
+    pub guard_prefix: Option<String>,
+    pub empty_return_value: String,
+    pub return_suffix: String,
+    pub suppress_unit_return: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantPatternSyntax {
-    pub open: compile_error!("UNRESOLVED_CompilerError"),
-    pub close: compile_error!("UNRESOLVED_CompilerError"),
-    pub binding_sep: compile_error!("UNRESOLVED_CompilerError"),
-    pub empty_suffix: compile_error!("UNRESOLVED_CompilerError"),
+    pub open: String,
+    pub close: String,
+    pub binding_sep: String,
+    pub empty_suffix: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -252,12 +252,12 @@ pub enum VisibilitySpec {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
-    pub loop_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub break_return: compile_error!("UNRESOLVED_CompilerError"),
-    pub continue_str: compile_error!("UNRESOLVED_CompilerError"),
-    pub temp_var_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub temp_decl_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub temp_assign_op: compile_error!("UNRESOLVED_CompilerError"),
+    pub loop_keyword: String,
+    pub break_return: String,
+    pub continue_str: String,
+    pub temp_var_prefix: String,
+    pub temp_decl_prefix: String,
+    pub temp_assign_op: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -335,20 +335,20 @@ pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemKeywords {
-    pub func_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub async_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub struct_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub enum_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub type_alias_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub param_separator: compile_error!("UNRESOLVED_CompilerError"),
-    pub return_arrow: compile_error!("UNRESOLVED_CompilerError"),
-    pub param_type_sep: compile_error!("UNRESOLVED_CompilerError"),
-    pub module_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub import_keyword: compile_error!("UNRESOLVED_CompilerError"),
-    pub import_from_keyword: compile_error!("UNRESOLVED_CompilerError"),
+    pub func_keyword: String,
+    pub async_prefix: String,
+    pub struct_keyword: String,
+    pub enum_keyword: String,
+    pub type_alias_keyword: String,
+    pub param_separator: String,
+    pub return_arrow: String,
+    pub param_type_sep: String,
+    pub module_keyword: String,
+    pub import_keyword: String,
+    pub import_from_keyword: String,
 }
 
-pub fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
+pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -368,65 +368,65 @@ pub fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> Strin
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
-    pub target_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub reserved_words: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub scaffold: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub serialization: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub test_conventions: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub visibility: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub sharing: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub indexing: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub annotations: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub method_templates: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub service_fields: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub block_syntax: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub for_each_syntax: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub tco: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub items: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub expression_semantics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub lambda_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub error_expr_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub list_literal_empty: compile_error!("UNRESOLVED_CompilerError"),
-    pub list_literal_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub null_coalesce_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub error_type_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub type_arg_open: compile_error!("UNRESOLVED_CompilerError"),
-    pub type_arg_close: compile_error!("UNRESOLVED_CompilerError"),
-    pub void_type: compile_error!("UNRESOLVED_CompilerError"),
-    pub tuple_syntax: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub string_interp: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub callable_type_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub naming_case: compile_error!("UNRESOLVED_CompilerError"),
-    pub async_call_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub bridge_method_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub bridge_method_case: compile_error!("UNRESOLVED_CompilerError"),
-    pub bridge_method_overrides: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub record_lit: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub service_method: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub service_return: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub target_name: String,
+    pub reserved_words: Rc<ReservedWords>,
+    pub scaffold: Rc<ProjectScaffold>,
+    pub serialization: Rc<SerializationSpec>,
+    pub test_conventions: Rc<TestConventions>,
+    pub visibility: Rc<VisibilitySpec>,
+    pub sharing: Rc<SharingStrategy>,
+    pub indexing: Rc<IndexingSemantics>,
+    pub annotations: Rc<AnnotationRequirements>,
+    pub method_templates: Option<Rc<HashMap<String, String>>>,
+    pub service_fields: Rc<ServiceFieldTemplates>,
+    pub block_syntax: Rc<BlockSyntax>,
+    pub for_each_syntax: Rc<ForEachSyntax>,
+    pub tco: Rc<TcoSyntax>,
+    pub items: Rc<ItemKeywords>,
+    pub expression_semantics: Rc<ExpressionSemantics>,
+    pub lambda_template: String,
+    pub error_expr_template: String,
+    pub list_literal_empty: String,
+    pub list_literal_template: String,
+    pub null_coalesce_template: String,
+    pub error_type_template: String,
+    pub type_arg_open: String,
+    pub type_arg_close: String,
+    pub void_type: String,
+    pub tuple_syntax: Rc<TupleSyntax>,
+    pub string_interp: Rc<StringInterpSyntax>,
+    pub callable_type_template: Option<String>,
+    pub naming_case: NamingCase,
+    pub async_call_prefix: String,
+    pub bridge_method_prefix: String,
+    pub bridge_method_case: NamingCase,
+    pub bridge_method_overrides: Rc<HashMap<String, String>>,
+    pub record_lit: Rc<RecordLitSyntax>,
+    pub service_method: Rc<ServiceMethodStrategy>,
+    pub service_return: Rc<ServiceReturnStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TupleSyntax {
-    pub empty: compile_error!("UNRESOLVED_CompilerError"),
-    pub pair_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub multi_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub separator: compile_error!("UNRESOLVED_CompilerError"),
-    pub first_accessor: compile_error!("UNRESOLVED_CompilerError"),
-    pub second_accessor: compile_error!("UNRESOLVED_CompilerError"),
+    pub empty: String,
+    pub pair_template: String,
+    pub multi_template: String,
+    pub separator: String,
+    pub first_accessor: String,
+    pub second_accessor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecordLitSyntax {
-    pub named_open: compile_error!("UNRESOLVED_CompilerError"),
-    pub named_close: compile_error!("UNRESOLVED_CompilerError"),
-    pub named_empty: compile_error!("UNRESOLVED_CompilerError"),
-    pub named_field_sep: compile_error!("UNRESOLVED_CompilerError"),
-    pub named_field_join: compile_error!("UNRESOLVED_CompilerError"),
-    pub anon_empty: compile_error!("UNRESOLVED_CompilerError"),
-    pub anon_prefix: compile_error!("UNRESOLVED_CompilerError"),
-    pub anon_suffix: compile_error!("UNRESOLVED_CompilerError"),
-    pub anon_field_indent: compile_error!("UNRESOLVED_CompilerError"),
+    pub named_open: String,
+    pub named_close: String,
+    pub named_empty: String,
+    pub named_field_sep: String,
+    pub named_field_join: String,
+    pub anon_empty: String,
+    pub anon_prefix: String,
+    pub anon_suffix: String,
+    pub anon_field_indent: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -448,16 +448,16 @@ impl InterpStyle {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EscapePair {
-    pub from: compile_error!("UNRESOLVED_CompilerError"),
-    pub to: compile_error!("UNRESOLVED_CompilerError"),
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
-    pub style: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub format_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub plain_template: compile_error!("UNRESOLVED_CompilerError"),
-    pub escape_pairs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub style: Rc<InterpStyle>,
+    pub format_template: String,
+    pub plain_template: String,
+    pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
 
 pub fn rust_spec() -> Rc<LanguageSpec> {
@@ -1194,7 +1194,7 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     }
 }
 
-pub fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
+pub fn target_operators(target: RenderTarget) -> Rc<Vec<Rc<OperatorSpec>>> {
     match target {
         RenderTarget::Rust => rust_operators(),
         RenderTarget::Python => python_operators(),

@@ -20,15 +20,15 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizeResult {
-    pub graph: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub graph: Rc<ModuleGraph>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn check_bare_containers(
     n: Rc<Node>,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<ErrorNode> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let has_structure = ((match n.body.clone() {
             Some(_) => true,
@@ -177,7 +177,7 @@ pub fn check_bare_containers(
 
 pub fn normalize_graph(
     graph: Rc<ModuleGraph>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NormalizeResult> {
     {
         let diags = Rc::new({

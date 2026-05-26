@@ -145,62 +145,62 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemContribution {
-    pub resolved_item: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub resolve_diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub func_sig: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_entries: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_local: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub item_info: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolved_item: Rc<Node>,
+    pub resolve_diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub func_sig: Option<Rc<DeclaredFuncSig>>,
+    pub svc_entries: Rc<Vec<Rc<OpEntry>>>,
+    pub svc_local: Option<Rc<TypeBinding>>,
+    pub item_info: Rc<ItemInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleContext {
-    pub resolved_items: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub func_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub locals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub item_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolved_items: Rc<Vec<Rc<Node>>>,
+    pub func_env: Rc<ResolvedFuncEnv>,
+    pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantFoldState {
-    pub locals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub collision_errors: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScope {
-    pub type_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub func_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub locals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub match_bound_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub module_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub service_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub item_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub lambda_param_provenance: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub type_env: Rc<TypeEnv>,
+    pub func_env: Rc<ResolvedFuncEnv>,
+    pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub match_bound_names: Rc<HashMap<String, bool>>,
+    pub module_name: String,
+    pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub lambda_param_provenance: Rc<HashMap<String, Rc<SubValueRelation>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferResult {
-    pub typed: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub typed: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockInferState {
-    pub scope: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diag_chunks: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub last_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub typed_stmts: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub scope: Rc<InferScope>,
+    pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    pub last_type: Rc<Node>,
+    pub typed_stmts: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn infer_block_stmts(
-    mut remaining: List<Node>,
+    mut remaining: Rc<Vec<Rc<Node>>>,
     mut remaining_count: i64,
     mut scope: Rc<InferScope>,
-    mut typed_stmts: List<Node>,
-    mut diag_chunks: List<List>,
+    mut typed_stmts: Rc<Vec<Rc<Node>>>,
+    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
     mut last_type: Rc<Node>,
     mut expected: Option<Rc<Node>>,
 ) -> Rc<BlockInferState> {
@@ -251,90 +251,90 @@ pub fn infer_block_stmts(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedItemResult {
-    pub item: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArmInferResult {
-    pub typed_arm: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub body_type: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub typed_arm: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub body_type: Rc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PatternScopeResult {
-    pub scope: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub scope: Rc<InferScope>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringPartInferResult {
-    pub typed_part: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub typed_part: Rc<StringPart>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArgInferResult {
-    pub typed_arg: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub typed_arg: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInferResult {
-    pub typed_field: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub infer_result: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub typed_field: Rc<Node>,
+    pub infer_result: Rc<InferResult>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuildTypeEnvResult {
-    pub env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub env: Rc<TypeEnv>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParentModulesResult {
-    pub modules: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantResult {
-    pub variant: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub variant: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CycleDetectState {
-    pub recursive_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub global_visited: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub recursive_names: Rc<HashMap<String, bool>>,
+    pub global_visited: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScopeComponents {
-    pub func_sigs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_locals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LocalContributionState {
-    pub resolved_items: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub func_sigs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub svc_locals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub item_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diag_chunks: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolved_items: Rc<Vec<Rc<Node>>>,
+    pub func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    pub svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
 }
 
 pub fn merge_scope_from_imports(
-    mut remaining: List<ResolvedImport>,
-    mut parent_index: Map<String, TypedModule>,
+    mut remaining: Rc<Vec<Rc<ResolvedImport>>>,
+    mut parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     mut env: Rc<TypeEnv>,
-    mut func_sigs: Map<String, DeclaredFuncSig>,
-    mut svc_registry: Map<String, List>,
-    mut svc_locals: Map<String, TypeBinding>,
+    mut func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<InferScopeComponents> {
     loop {
         match remaining.clone().first().cloned() {
@@ -354,7 +354,8 @@ pub fn merge_scope_from_imports(
                     .cloned()
                     .fold(
                         func_sigs,
-                        |acc: Map<String, DeclaredFuncSig>, rsig: Rc<ResolvedFuncSig>| {
+                        |acc: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+                         rsig: Rc<ResolvedFuncSig>| {
                             let sig_key = rsig.name.clone();
                             let sig_params = rsig.params.clone();
                             let sig_rt = rsig.inferred.clone();
@@ -506,15 +507,15 @@ pub fn nominal_type_binding(name: String) -> Rc<TypeBinding> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldRecursionResult {
-    pub shape: compile_error!("UNRESOLVED_CompilerError"),
-    pub element_type: compile_error!("UNRESOLVED_CompilerError"),
+    pub shape: RecursionShape,
+    pub element_type: String,
 }
 
 pub fn classify_field_recursion(
     field_node: Rc<Node>,
     parent_name: String,
-    recursive_type_set: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldRecursionResult>> {
     {
         let type_expr = match field_node.inferred.clone().as_deref().cloned() {
@@ -602,45 +603,48 @@ pub fn classify_field_recursion(
 }
 
 pub fn collect_fields_inductive(
-    fields: List<Node>,
+    fields: Rc<Vec<Rc<Node>>>,
     parent_name: String,
     variant_name: String,
-    recursive_type_set: Set<String>,
-    acc: Map<String, List>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, List> {
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.iter().cloned().fold(
         acc.clone(),
-        |field_acc: Map<String, List>, field_node: Rc<Node>| match classify_field_recursion(
-            field_node.clone(),
-            parent_name.clone(),
-            recursive_type_set.clone(),
-            source_indices.clone(),
-        ) {
-            Some(result) => put_inductive_field_cross(
-                field_acc.clone(),
+        |field_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field_node: Rc<Node>| {
+            match classify_field_recursion(
+                field_node.clone(),
                 parent_name.clone(),
-                variant_name.clone(),
-                authored_name_at(source_indices.clone(), field_node.clone()),
-                result.shape.clone(),
-                result.element_type.clone(),
-            ),
-            None => field_acc.clone(),
+                recursive_type_set.clone(),
+                source_indices.clone(),
+            ) {
+                Some(result) => put_inductive_field_cross(
+                    field_acc.clone(),
+                    parent_name.clone(),
+                    variant_name.clone(),
+                    authored_name_at(source_indices.clone(), field_node.clone()),
+                    result.shape.clone(),
+                    result.element_type.clone(),
+                ),
+                None => field_acc.clone(),
+            }
         },
     )
 }
 
 pub fn collect_item_inductive_fields(
     item: Rc<Node>,
-    recursive_type_set: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, List> {
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let item_name = authored_name_at(source_indices.clone(), item.clone());
         match item.connective.clone() {
             Connective::Disj => item.children.clone().iter().cloned().fold(
-                v2_rt::rc_empty_map::<String, List<InductiveField>>(),
-                |variant_acc: Map<String, List>, variant_node: Rc<Node>| {
+                v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+                |variant_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+                 variant_node: Rc<Node>| {
                     collect_fields_inductive(
                         variant_node.children.clone(),
                         item_name.clone(),
@@ -656,22 +660,22 @@ pub fn collect_item_inductive_fields(
                 item_name.clone(),
                 "".to_string(),
                 recursive_type_set.clone(),
-                v2_rt::rc_empty_map::<String, List<InductiveField>>(),
+                v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
                 source_indices.clone(),
             ),
-            _ => v2_rt::rc_empty_map::<String, List<InductiveField>>(),
+            _ => v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         }
     }
 }
 
 pub fn build_item_inductive_fields(
-    items: List<Node>,
-    recursive_type_set: Set<String>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, List> {
+    items: Rc<Vec<Rc<Node>>>,
+    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     items.iter().cloned().fold(
-        v2_rt::rc_empty_map::<String, List<InductiveField>>(),
-        |acc: Map<String, List>, item: Rc<Node>| {
+        v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| {
             merge_inductive_fields(
                 acc,
                 collect_item_inductive_fields(
@@ -713,14 +717,14 @@ pub fn nominal_ref_node(
     })
 }
 
-pub fn resolved_callable_type(func_params: List<Node>, ret: Rc<Node>) -> Rc<Node> {
+pub fn resolved_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
     make_callable_type(func_params, ret)
 }
 
 pub fn namespace_root_from_properties(
-    properties: List<Node>,
+    properties: Rc<Vec<Rc<Node>>>,
     name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match Rc::new({
         let mut __result = Vec::new();
@@ -849,7 +853,7 @@ pub fn type_mismatch_error(
 pub fn rejects_string_for_optional_coproduct_field(
     expected: Rc<Node>,
     got: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let expected_inner = with_required_cardinality(expected.clone());
@@ -862,7 +866,10 @@ pub fn rejects_string_for_optional_coproduct_field(
     }
 }
 
-pub fn record_lit_expected_fields(type_name: Option<String>, scope: Rc<InferScope>) -> List<Node> {
+pub fn record_lit_expected_fields(
+    type_name: Option<String>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<Node>>> {
     match type_name {
         Some(tn) => match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
             Some(direct) => direct.children.clone(),
@@ -902,8 +909,8 @@ pub fn record_lit_expected_fields(type_name: Option<String>, scope: Rc<InferScop
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelListTyDiag {
-    pub ty: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub miss_diags: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub ty: Rc<Node>,
+    pub miss_diags: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn list_kernel_ty_from_element(element: Rc<Node>) -> Rc<KernelListTyDiag> {
@@ -974,7 +981,7 @@ pub fn set_element_type_is_concrete(elem: Rc<Node>) -> bool {
 pub fn set_element_types_mismatch(
     recv_elem: Rc<Node>,
     operand_elem: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((set_element_type_is_concrete(recv_elem.clone())
         && set_element_type_is_concrete(operand_elem.clone()))
@@ -983,13 +990,13 @@ pub fn set_element_types_mismatch(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Tier2bBt {
-    pub bt: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub kernel_diags: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub bt: Rc<Node>,
+    pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn infer_tier2b_builtin_with_kernel_diags(
     func_name: String,
-    typed_args: List<Node>,
+    typed_args: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     span: Rc<SourceSpan>,
 ) -> Rc<Tier2bBt> {
@@ -1309,8 +1316,8 @@ pub fn infer_tier2b_builtin_with_kernel_diags(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodPipeFallback {
-    pub result_ty: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub kernel_diags: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub result_ty: Rc<Node>,
+    pub kernel_diags: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn method_pipe_map_keys_values_fallback(
@@ -1376,7 +1383,7 @@ pub fn validate_cast(
     source_inferred: Option<Rc<InferredNode>>,
     target_name: String,
     span: Rc<SourceSpan>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
 ) -> Option<Rc<ErrorNode>> {
     match source_inferred.as_deref().cloned() {
@@ -1584,11 +1591,11 @@ pub fn annotate_pattern_parent_enums(
     })
 }
 
-pub fn build_params_scope(scope: Rc<InferScope>, params: List<Node>) -> Rc<InferScope> {
+pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> Rc<InferScope> {
     {
         let new_locals = params.iter().cloned().fold(
             scope.locals.clone(),
-            |acc: Map<String, TypeBinding>, p: Rc<Node>| {
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: Rc<Node>| {
                 v2_rt::rc_map_insert(
                     acc,
                     param_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone()),
@@ -1672,11 +1679,11 @@ pub fn extend_scope_match_bound(
     })
 }
 
-pub fn extend_scope_with_params(scope: Rc<InferScope>, params: List<String>) -> Rc<InferScope> {
+pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) -> Rc<InferScope> {
     {
         let new_locals = params.iter().cloned().fold(
             scope.locals.clone(),
-            |acc: Map<String, TypeBinding>, p: String| {
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, p: String| {
                 v2_rt::rc_map_insert(
                     acc,
                     p.clone(),
@@ -1894,7 +1901,7 @@ pub fn method_name_is(opt: Option<String>, expected: String) -> bool {
 pub fn arg_has_name(
     arg: Rc<Node>,
     name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let n = arg_name_at(arg, source_indices);
@@ -1908,7 +1915,7 @@ pub fn arg_has_name(
 
 pub fn extract_fold_init_info(
     method_name: Option<String>,
-    method_args: List<Node>,
+    method_args: Rc<Vec<Rc<Node>>>,
     min_args: i64,
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
@@ -2018,13 +2025,13 @@ pub fn derive_element_provenance(
 
 pub fn infer_method_args_with_fold(
     method_name: Option<String>,
-    method_args: List<Node>,
+    method_args: Rc<Vec<Rc<Node>>>,
     fold_info: Option<Rc<ArgInferResult>>,
     fold_acc_type: Rc<Node>,
     element_type: Rc<Node>,
     elem_provenance: Rc<SubValueRelation>,
     scope: Rc<InferScope>,
-) -> List<ArgInferResult> {
+) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
         let is_fold = method_name_is(method_name, "fold".to_string());
         Rc::new({
@@ -2188,18 +2195,20 @@ pub fn is_lambda_expr(e: Rc<Node>) -> bool {
     }
 }
 
-pub fn seed_override_map() -> Map<String, Node> {
+pub fn seed_override_map() -> Rc<HashMap<String, Rc<Node>>> {
     Rc::new(vec!["".to_string()]).iter().cloned().fold(
         v2_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Map<String, Node>, k: String| v2_rt::rc_map_insert(acc, k.clone(), unit_type()),
+        |acc: Rc<HashMap<String, Rc<Node>>>, k: String| {
+            v2_rt::rc_map_insert(acc, k.clone(), unit_type())
+        },
     )
 }
 
-pub fn fold_override_map(key: String, value: Rc<Node>) -> Map<String, Node> {
+pub fn fold_override_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
     v2_rt::rc_map_insert(seed_override_map(), key, value)
 }
 
-pub fn empty_override_map() -> Map<String, Node> {
+pub fn empty_override_map() -> Rc<HashMap<String, Rc<Node>>> {
     seed_override_map()
 }
 
@@ -4566,7 +4575,7 @@ match bare_s {
 
 pub fn infer_variant_constructor_call(
     func_name: String,
-    call_args: List<Node>,
+    call_args: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
@@ -4656,7 +4665,7 @@ pub fn infer_variant_constructor_call(
 
 pub fn infer_record_lit(
     type_name: Option<String>,
-    field_inits: List<Node>,
+    field_inits: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
@@ -4934,15 +4943,15 @@ impl SizeExpr {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentContext {
-    pub fn_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub param_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub param_order: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub type_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub sub_value_vars: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub size_aliases: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub scope_locals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub func_sigs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub per_field_vars: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub fn_name: String,
+    pub param_names: Rc<HashMap<String, String>>,
+    pub param_order: Rc<Vec<String>>,
+    pub type_env: Rc<TypeEnv>,
+    pub sub_value_vars: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    pub size_aliases: Rc<HashMap<String, Rc<SizeExpr>>>,
+    pub scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    pub per_field_vars: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 }
 
 pub fn classify_size_expr(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<SizeExpr>> {
@@ -5262,8 +5271,8 @@ Rc::new(SubValueRelation::StrictSubValue {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockAnnotateAcc {
-    pub ctx: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub children: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub ctx: Rc<DescentContext>,
+    pub children: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn method_callback_element_position(semantics: Option<Rc<MethodSemantics>>) -> Option<i64> {
@@ -5280,10 +5289,10 @@ pub fn method_callback_element_position(semantics: Option<Rc<MethodSemantics>>) 
 }
 
 pub fn maybe_insert_composed_field_relation(
-    acc: Map<String, SubValueRelation>,
+    acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
     fname: String,
     composed: Option<Rc<SubValueRelation>>,
-) -> Map<String, SubValueRelation> {
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match composed {
         Some(rel) => match (*rel.clone()).clone() {
             SubValueRelation::SubValueUnknown => acc,
@@ -5294,13 +5303,13 @@ pub fn maybe_insert_composed_field_relation(
 }
 
 pub fn maybe_insert_output_field_relation(
-    acc: Map<String, SubValueRelation>,
+    acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
     idx: i64,
     fname: String,
     sig: Rc<ResolvedFuncSig>,
     val: Rc<Node>,
     ctx: Rc<DescentContext>,
-) -> Map<String, SubValueRelation> {
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     {
         let composed = match sig.output_provenance.clone().get(idx as usize).cloned() {
             Some(param_map) => classify_call_via_provenance(val, param_map.clone(), ctx),
@@ -5311,14 +5320,14 @@ pub fn maybe_insert_output_field_relation(
 }
 
 pub fn maybe_insert_match_field_relation(
-    fp_acc: Map<String, SubValueRelation>,
+    fp_acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
     pname: String,
     field_label: String,
     vname: String,
     scrut_rel: Option<Rc<SubValueRelation>>,
-    param_types: Map<String, String>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-) -> Map<String, SubValueRelation> {
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match scrut_rel {
         Some(rel) => {
             let lookup_type = match (*rel.clone()).clone() {
@@ -5371,7 +5380,7 @@ pub fn build_per_field_for_let(
     val: Rc<Node>,
     binding_name: String,
     ctx: Rc<DescentContext>,
-) -> Map<String, Map> {
+) -> Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     match (*val.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let callee =
@@ -5395,7 +5404,8 @@ pub fn build_per_field_for_let(
                             .cloned()
                             .fold(
                                 v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                                |acc: Map<String, SubValueRelation>, pair: (i64, Rc<Node>)| {
+                                |acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                 pair: (i64, Rc<Node>)| {
                                     let idx = pair.0.clone();
                                     let field_node = pair.1.clone();
                                     let fname = authored_name_at(
@@ -5454,7 +5464,8 @@ pub fn build_per_field_for_let(
                             .cloned()
                             .fold(
                                 v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                                |acc: Map<String, SubValueRelation>, pair: (i64, Rc<Node>)| {
+                                |acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                 pair: (i64, Rc<Node>)| {
                                     let idx = pair.0.clone();
                                     let field_node = pair.1.clone();
                                     let fname = authored_name_at(
@@ -6205,14 +6216,14 @@ Some(Rc::new(SubValueRelation::StrictSubValue {
 
 pub fn classify_call_via_provenance(
     call: Rc<Node>,
-    param_map: Map<String, SubValueRelation>,
+    param_map: Rc<HashMap<String, Rc<SubValueRelation>>>,
     ctx: Rc<DescentContext>,
 ) -> Option<Rc<SubValueRelation>> {
     {
         let call_args = call.children.clone();
         let arg_by_name = call_args.iter().cloned().fold(
             v2_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Map<K, V>, arg_node: Rc<Node>| match arg_name_at(
+            |acc: Rc<HashMap<String, Rc<Node>>>, arg_node: Rc<Node>| match arg_name_at(
                 arg_node.clone(),
                 ctx.type_env.clone().source_indices.clone(),
             ) {
@@ -6273,7 +6284,7 @@ pub fn classify_call_arg_provenance(
     }
 }
 
-pub fn merge_argument_relations(rels: List<SubValueRelation>) -> Rc<SubValueRelation> {
+pub fn merge_argument_relations(rels: Rc<Vec<Rc<SubValueRelation>>>) -> Rc<SubValueRelation> {
     match rels.clone().first().cloned() {
         None => Rc::new(SubValueRelation::SubValueUnknown),
         Some(first_rel) => Rc::new(
@@ -6748,7 +6759,10 @@ pub fn read_arg_provenance(
     }
 }
 
-pub fn build_call_evidence(call_node: Rc<Node>, ctx: Rc<DescentContext>) -> List<SubValueRelation> {
+pub fn build_call_evidence(
+    call_node: Rc<Node>,
+    ctx: Rc<DescentContext>,
+) -> Rc<Vec<Rc<SubValueRelation>>> {
     {
         let arg_map = Rc::new(
             call_node
@@ -6764,7 +6778,7 @@ pub fn build_call_evidence(call_node: Rc<Node>, ctx: Rc<DescentContext>) -> List
         .cloned()
         .fold(
             v2_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Map<K, V>, pair: (i64, Rc<Node>)| {
+            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                 let idx = pair.0.clone();
                 let arg_node = pair.1.clone();
                 let aname = arg_name_at(
@@ -7922,7 +7936,10 @@ make_arm_node(arm_pattern(arm_node.clone()), arm_guard(arm_node.clone()), annota
     })
 }
 
-pub fn resolved_type_name(n: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn resolved_type_name(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             authored_name_at(source_indices, rt.clone())
@@ -7936,11 +7953,11 @@ pub fn resolved_type_name(n: Rc<Node>, source_indices: Map<String, NewlineIndex>
 
 pub fn infer_output_provenance(
     body: Rc<Node>,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     type_env: Rc<TypeEnv>,
-    scope_locals: Map<String, TypeBinding>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-) -> List<Map> {
+    scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     {
         let param_names = Rc::new({
             let mut __result = Vec::new();
@@ -7954,7 +7971,7 @@ pub fn infer_output_provenance(
         });
         let param_types = params.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, String>(),
-            |acc: Map<K, V>, p: Rc<Node>| {
+            |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), type_env.source_indices.clone());
                 let ptype = resolved_type_name(p.clone(), type_env.source_indices.clone());
                 if ((pname.clone().as_str() != "".to_string().as_str())
@@ -7972,7 +7989,7 @@ pub fn infer_output_provenance(
             param_types.clone(),
             type_env.clone(),
             func_sigs.clone(),
-            v2_rt::rc_empty_map::<String, Map<String, SubValueRelation>>(),
+            v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(),
         );
         if ((Rc::new(v2_rt::map_keys(&scalar)).len() as i64) > 0) {
             Rc::new(vec![scalar.clone()])
@@ -7984,7 +8001,7 @@ pub fn infer_output_provenance(
                     param_types.clone(),
                     type_env.clone(),
                     func_sigs.clone(),
-                    v2_rt::rc_empty_map::<String, Map<String, SubValueRelation>>(),
+                    v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(),
                 );
                 if (((per_field.clone().len() as i64) > 0) && {
                     let mut __found = false;
@@ -8007,12 +8024,12 @@ pub fn infer_output_provenance(
 
 pub fn classify_body_provenance(
     expr: Rc<Node>,
-    param_names: List<String>,
-    param_types: Map<String, String>,
+    param_names: Rc<Vec<String>>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    let_prov: Map<String, Map>,
-) -> Map<String, SubValueRelation> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -8056,59 +8073,61 @@ pub fn classify_body_provenance(
                 );
                 Rc::new(v2_rt::map_keys(&base_prov)).iter().cloned().fold(
                     v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                    |acc: Map<String, SubValueRelation>, pname: String| match v2_rt::map_get(
-                        &base_prov,
-                        pname.clone(),
-                    ) {
-                        Some(base_rel) => {
-                            let type_for_lookup = match (*base_rel.clone()).clone() {
-                                SubValueRelation::PreservedValue => {
-                                    match v2_rt::map_get(&param_types, pname.clone()) {
-                                        Some(t) => t.clone(),
-                                        None => "".to_string(),
-                                    }
-                                }
-                                SubValueRelation::StrictSubValue { field: f, .. } => {
-                                    f.element_type.clone()
-                                }
-                                SubValueRelation::IteratedSubValue { field: f, .. } => {
-                                    f.element_type.clone()
-                                }
-                                _ => "".to_string(),
-                            };
-                            if (type_for_lookup.clone().as_str() != "".to_string().as_str()) {
-                                {
-                                    let fields = inductive_fields_for(
-                                        type_env.clone(),
-                                        type_for_lookup.clone(),
-                                    );
-                                    let matching = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for f in fields.clone().iter().cloned() {
-                                            if (f.field_name.clone().as_str()
-                                                == field.clone().as_str())
-                                            {
-                                                __result.push(f);
-                                            }
+                    |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, pname: String| {
+                        match v2_rt::map_get(&base_prov, pname.clone()) {
+                            Some(base_rel) => {
+                                let type_for_lookup = match (*base_rel.clone()).clone() {
+                                    SubValueRelation::PreservedValue => {
+                                        match v2_rt::map_get(&param_types, pname.clone()) {
+                                            Some(t) => t.clone(),
+                                            None => "".to_string(),
                                         }
-                                        __result
-                                    })
-                                    .first()
-                                    .cloned();
-                                    match matching.clone() {
-                                        Some(ind_field) => v2_rt::rc_map_insert(
-                                            acc.clone(),
-                                            pname.clone(),
-                                            compose_sub_value(base_rel.clone(), ind_field.clone()),
-                                        ),
-                                        None => acc.clone(),
                                     }
+                                    SubValueRelation::StrictSubValue { field: f, .. } => {
+                                        f.element_type.clone()
+                                    }
+                                    SubValueRelation::IteratedSubValue { field: f, .. } => {
+                                        f.element_type.clone()
+                                    }
+                                    _ => "".to_string(),
+                                };
+                                if (type_for_lookup.clone().as_str() != "".to_string().as_str()) {
+                                    {
+                                        let fields = inductive_fields_for(
+                                            type_env.clone(),
+                                            type_for_lookup.clone(),
+                                        );
+                                        let matching = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for f in fields.clone().iter().cloned() {
+                                                if (f.field_name.clone().as_str()
+                                                    == field.clone().as_str())
+                                                {
+                                                    __result.push(f);
+                                                }
+                                            }
+                                            __result
+                                        })
+                                        .first()
+                                        .cloned();
+                                        match matching.clone() {
+                                            Some(ind_field) => v2_rt::rc_map_insert(
+                                                acc.clone(),
+                                                pname.clone(),
+                                                compose_sub_value(
+                                                    base_rel.clone(),
+                                                    ind_field.clone(),
+                                                ),
+                                            ),
+                                            None => acc.clone(),
+                                        }
+                                    }
+                                } else {
+                                    acc.clone()
                                 }
-                            } else {
-                                acc.clone()
                             }
+                            None => acc.clone(),
                         }
-                        None => acc.clone(),
                     },
                 )
             }
@@ -8186,7 +8205,8 @@ pub fn classify_body_provenance(
                                 );
                                 Rc::new(v2_rt::map_keys(&recv_prov)).iter().cloned().fold(
                                     v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                                    |acc: Map<String, SubValueRelation>, pname: String| {
+                                    |acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                     pname: String| {
                                         match v2_rt::map_get(&recv_prov, pname.clone()) {
                                             Some(recv_rel) => {
                                                 let synth_field = Rc::new(InductiveField {
@@ -8232,7 +8252,7 @@ pub fn classify_body_provenance(
                     for arm in arms.iter().cloned() {
                         __result.push({
                 let arm_let_prov = match (*arm_pattern(arm.clone())).clone() {
-    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(let_prov.clone(), |acc: Map<String, Map>, binding: Rc<Node>| {
+    MatchPattern::VariantPattern { name: vname, field_bindings: bindings, .. } => bindings.clone().iter().cloned().fold(let_prov.clone(), |acc: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>, binding: Rc<Node>| {
                     let field_label = field_binding_name_at(binding.clone(), type_env.source_indices.clone());
 let bind_name = match (*field_binding_pattern(binding.clone())).clone() {
     MatchPattern::Bind { name: bn, .. } => bn.clone(),
@@ -8240,7 +8260,7 @@ let bind_name = match (*field_binding_pattern(binding.clone())).clone() {
 };
 if ((bind_name.clone().as_str() != "".to_string().as_str()) && (field_label.clone().as_str() != "".to_string().as_str())) {
                         {
-                            let field_prov = Rc::new(v2_rt::map_keys(&scrut_prov)).iter().cloned().fold(empty_prov_map(), |fp_acc: Map<String, SubValueRelation>, pname: String| maybe_insert_match_field_relation(fp_acc, pname.clone(), field_label.clone(), vname.clone(), v2_rt::map_get(&scrut_prov, pname.clone()), param_types.clone(), type_env.clone()));
+                            let field_prov = Rc::new(v2_rt::map_keys(&scrut_prov)).iter().cloned().fold(empty_prov_map(), |fp_acc: Rc<HashMap<String, Rc<SubValueRelation>>>, pname: String| maybe_insert_match_field_relation(fp_acc, pname.clone(), field_label.clone(), vname.clone(), v2_rt::map_get(&scrut_prov, pname.clone()), param_types.clone(), type_env.clone()));
 v2_rt::rc_map_insert(acc.clone(), bind_name.clone(), field_prov.clone())
 }
                     } else {
@@ -8391,17 +8411,17 @@ classify_body_provenance(arm_body(arm.clone()), param_names.clone(), param_types
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockProvFoldState {
-    pub prov: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub last: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub last: Rc<HashMap<String, Rc<SubValueRelation>>>,
 }
 
 pub fn call_args_by_name(
     call: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, Node> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
     call.children.clone().iter().cloned().fold(
         v2_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Map<String, Node>, arg_node: Rc<Node>| match arg_name_at(
+        |acc: Rc<HashMap<String, Rc<Node>>>, arg_node: Rc<Node>| match arg_name_at(
             arg_node.clone(),
             source_indices.clone(),
         ) {
@@ -8415,9 +8435,9 @@ pub fn call_args_by_name(
 
 pub fn method_call_args_by_name(
     call: Rc<Node>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    source_indices: Map<String, NewlineIndex>,
-) -> Map<String, Node> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let mname = expr_method_name_at(call.clone(), source_indices.clone());
         let recv = method_receiver(call.clone());
@@ -8442,7 +8462,7 @@ pub fn method_call_args_by_name(
         };
         mc_args.iter().cloned().fold(
             base,
-            |acc: Map<K, V>, arg_node: Rc<Node>| match arg_name_at(
+            |acc: Rc<HashMap<String, Rc<Node>>>, arg_node: Rc<Node>| match arg_name_at(
                 arg_node.clone(),
                 source_indices.clone(),
             ) {
@@ -8457,67 +8477,74 @@ pub fn method_call_args_by_name(
 
 pub fn compose_callee_provenance(
     callee: String,
-    arg_by_name: Map<String, Node>,
-    param_names: List<String>,
-    param_types: Map<String, String>,
+    arg_by_name: Rc<HashMap<String, Rc<Node>>>,
+    param_names: Rc<Vec<String>>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    let_prov: Map<String, Map>,
-) -> Map<String, SubValueRelation> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match v2_rt::map_get(&func_sigs, callee) {
         Some(sig) => match sig.output_provenance.clone().first().cloned() {
             Some(callee_prov) => Rc::new(v2_rt::map_keys(&callee_prov)).iter().cloned().fold(
                 v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-                |acc: Map<String, SubValueRelation>, callee_pname: String| match v2_rt::map_get(
-                    &callee_prov,
-                    callee_pname.clone(),
-                ) {
-                    Some(callee_rel) => match v2_rt::map_get(&arg_by_name, callee_pname.clone()) {
-                        Some(arg) => {
-                            let arg_prov = classify_body_provenance(
-                                arg.clone(),
-                                param_names.clone(),
-                                param_types.clone(),
-                                type_env.clone(),
-                                func_sigs.clone(),
-                                let_prov.clone(),
-                            );
-                            Rc::new(v2_rt::map_keys(&arg_prov)).iter().cloned().fold(
-                                acc.clone(),
-                                |inner: Map<String, SubValueRelation>, pname: String| {
-                                    match v2_rt::map_get(&arg_prov, pname.clone()) {
-                                        Some(arg_rel) => {
-                                            let composed = compose_sub_value_relations(
-                                                arg_rel.clone(),
-                                                callee_rel.clone(),
-                                            );
-                                            match (*composed.clone()).clone() {
-                                                SubValueRelation::SubValueUnknown => inner.clone(),
-                                                _ => match v2_rt::map_get(&inner, pname.clone()) {
-                                                    Some(existing) => v2_rt::rc_map_insert(
-                                                        inner.clone(),
-                                                        pname.clone(),
-                                                        meet_sub_value(
-                                                            existing.clone(),
-                                                            composed.clone(),
-                                                        ),
-                                                    ),
-                                                    None => v2_rt::rc_map_insert(
-                                                        inner.clone(),
-                                                        pname.clone(),
-                                                        composed.clone(),
-                                                    ),
-                                                },
+                |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, callee_pname: String| {
+                    match v2_rt::map_get(&callee_prov, callee_pname.clone()) {
+                        Some(callee_rel) => {
+                            match v2_rt::map_get(&arg_by_name, callee_pname.clone()) {
+                                Some(arg) => {
+                                    let arg_prov = classify_body_provenance(
+                                        arg.clone(),
+                                        param_names.clone(),
+                                        param_types.clone(),
+                                        type_env.clone(),
+                                        func_sigs.clone(),
+                                        let_prov.clone(),
+                                    );
+                                    Rc::new(v2_rt::map_keys(&arg_prov)).iter().cloned().fold(
+                                        acc.clone(),
+                                        |inner: Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                         pname: String| {
+                                            match v2_rt::map_get(&arg_prov, pname.clone()) {
+                                                Some(arg_rel) => {
+                                                    let composed = compose_sub_value_relations(
+                                                        arg_rel.clone(),
+                                                        callee_rel.clone(),
+                                                    );
+                                                    match (*composed.clone()).clone() {
+                                                        SubValueRelation::SubValueUnknown => {
+                                                            inner.clone()
+                                                        }
+                                                        _ => match v2_rt::map_get(
+                                                            &inner,
+                                                            pname.clone(),
+                                                        ) {
+                                                            Some(existing) => v2_rt::rc_map_insert(
+                                                                inner.clone(),
+                                                                pname.clone(),
+                                                                meet_sub_value(
+                                                                    existing.clone(),
+                                                                    composed.clone(),
+                                                                ),
+                                                            ),
+                                                            None => v2_rt::rc_map_insert(
+                                                                inner.clone(),
+                                                                pname.clone(),
+                                                                composed.clone(),
+                                                            ),
+                                                        },
+                                                    }
+                                                }
+                                                None => inner.clone(),
                                             }
-                                        }
-                                        None => inner.clone(),
-                                    }
-                                },
-                            )
+                                        },
+                                    )
+                                }
+                                None => acc.clone(),
+                            }
                         }
                         None => acc.clone(),
-                    },
-                    None => acc.clone(),
+                    }
                 },
             ),
             None => v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
@@ -8528,12 +8555,12 @@ pub fn compose_callee_provenance(
 
 pub fn classify_body_per_field(
     expr: Rc<Node>,
-    param_names: List<String>,
-    param_types: Map<String, String>,
+    param_names: Rc<Vec<String>>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    let_prov: Map<String, Map>,
-) -> List<Map> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     {
         let unwrapped = unwrap_body_terminal(expr, let_prov, type_env.clone());
         let terminal = unwrapped.expr.clone();
@@ -8551,12 +8578,12 @@ pub fn classify_body_per_field(
 
 pub fn classify_terminal_per_field(
     expr: Rc<Node>,
-    param_names: List<String>,
-    param_types: Map<String, String>,
+    param_names: Rc<Vec<String>>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    let_prov: Map<String, Map>,
-) -> List<Map> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
             let mut __result = Vec::new();
@@ -8663,13 +8690,13 @@ pub fn classify_terminal_per_field(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BodyTerminal {
-    pub expr: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub let_prov: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub expr: Rc<Node>,
+    pub let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
 }
 
 pub fn unwrap_body_terminal(
     expr: Rc<Node>,
-    let_prov: Map<String, Map>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
     type_env: Rc<TypeEnv>,
 ) -> Rc<BodyTerminal> {
     match (*expr.expr_data.clone()).clone() {
@@ -8690,7 +8717,9 @@ pub fn unwrap_body_terminal(
     }
 }
 
-pub fn meet_per_field_results(results: List<List>) -> List<Map> {
+pub fn meet_per_field_results(
+    results: Rc<Vec<Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     match results.clone().first().cloned() {
         None => Rc::new(vec![]),
         Some(first_result) => {
@@ -8751,11 +8780,13 @@ pub fn meet_per_field_results(results: List<List>) -> List<Map> {
     }
 }
 
-pub fn empty_prov_map() -> Map<String, SubValueRelation> {
+pub fn empty_prov_map() -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>()
 }
 
-pub fn meet_body_provenance_maps(provs: List<Map>) -> Map<String, SubValueRelation> {
+pub fn meet_body_provenance_maps(
+    provs: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match provs.clone().first().cloned() {
         None => empty_prov_map(),
         Some(first_prov) => Rc::new(
@@ -8770,7 +8801,8 @@ pub fn meet_body_provenance_maps(provs: List<Map>) -> Map<String, SubValueRelati
         .cloned()
         .fold(
             first_prov.clone(),
-            |acc: Map<String, SubValueRelation>, prov: Map<String, SubValueRelation>| {
+            |acc: Rc<HashMap<String, Rc<SubValueRelation>>>,
+             prov: Rc<HashMap<String, Rc<SubValueRelation>>>| {
                 intersect_prov_maps(acc, prov.clone())
             },
         ),
@@ -8778,12 +8810,15 @@ pub fn meet_body_provenance_maps(provs: List<Map>) -> Map<String, SubValueRelati
 }
 
 pub fn intersect_prov_maps(
-    a: Map<String, SubValueRelation>,
-    b: Map<String, SubValueRelation>,
-) -> Map<String, SubValueRelation> {
+    a: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    b: Rc<HashMap<String, Rc<SubValueRelation>>>,
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     Rc::new(v2_rt::map_keys(&a)).iter().cloned().fold(
         empty_prov_map(),
-        |result: Map<String, SubValueRelation>, key: String| match v2_rt::map_get(&b, key.clone()) {
+        |result: Rc<HashMap<String, Rc<SubValueRelation>>>, key: String| match v2_rt::map_get(
+            &b,
+            key.clone(),
+        ) {
             Some(b_rel) => match v2_rt::map_get(&a, key.clone()) {
                 Some(a_rel) => v2_rt::rc_map_insert(
                     result.clone(),
@@ -8812,78 +8847,76 @@ pub fn arm_ctx_from_variant_provenance(
             Some(variant_field_map) => {
                 let call_args =
                     call_args_by_name(scrut, ctx.type_env.clone().source_indices.clone());
-                let extended =
-                    bindings.clone().iter().cloned().fold(
-                        ctx.clone(),
-                        |c: Rc<DescentContext>, fb: Rc<Node>| {
-                            let field_label = field_binding_name_at(
-                                fb.clone(),
-                                ctx.type_env.clone().source_indices.clone(),
-                            );
-                            let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
-                                MatchPattern::Bind { name: bn, .. } => bn.clone(),
-                                _ => "".to_string(),
-                            };
-                            if ((bind_name.clone().as_str() == "".to_string().as_str())
-                                || (field_label.clone().as_str() == "".to_string().as_str()))
-                            {
-                                c.clone()
-                            } else {
-                                match v2_rt::map_get(&variant_field_map, field_label.clone()) {
-                                    Some(param_map) => {
-                                        let composed = compose_callee_param_map(
-                                            param_map.clone(),
-                                            call_args.clone(),
-                                            c.param_order.clone(),
-                                            c.param_names.clone(),
-                                            c.type_env.clone(),
-                                            c.func_sigs.clone(),
-                                            v2_rt::rc_empty_map::<
-                                                String,
-                                                Map<String, SubValueRelation>,
-                                            >(),
-                                        );
-                                        let all_rels = Rc::new({
-                                            let mut __result = Vec::new();
-                                            for k in
-                                                Rc::new(v2_rt::map_keys(&composed)).iter().cloned()
-                                            {
-                                                __result.push(
-                                                    match v2_rt::map_get(&composed, k.clone()) {
-                                                        Some(r) => r.clone(),
-                                                        None => Rc::new(
-                                                            SubValueRelation::SubValueUnknown,
-                                                        ),
-                                                    },
-                                                );
-                                            }
-                                            __result
-                                        });
-                                        let best = merge_argument_relations(all_rels.clone());
-                                        match (*best.clone()).clone() {
-                                            SubValueRelation::SubValueUnknown => c.clone(),
-                                            _ => Rc::new(DescentContext {
-                                                fn_name: c.fn_name.clone(),
-                                                param_names: c.param_names.clone(),
-                                                param_order: c.param_order.clone(),
-                                                type_env: c.type_env.clone(),
-                                                sub_value_vars: v2_rt::rc_map_insert(
-                                                    c.sub_value_vars.clone(),
-                                                    bind_name.clone(),
-                                                    best.clone(),
-                                                ),
-                                                size_aliases: c.size_aliases.clone(),
-                                                scope_locals: c.scope_locals.clone(),
-                                                func_sigs: c.func_sigs.clone(),
-                                                per_field_vars: c.per_field_vars.clone(),
-                                            }),
+                let extended = bindings.clone().iter().cloned().fold(
+                    ctx.clone(),
+                    |c: Rc<DescentContext>, fb: Rc<Node>| {
+                        let field_label = field_binding_name_at(
+                            fb.clone(),
+                            ctx.type_env.clone().source_indices.clone(),
+                        );
+                        let bind_name = match (*field_binding_pattern(fb.clone())).clone() {
+                            MatchPattern::Bind { name: bn, .. } => bn.clone(),
+                            _ => "".to_string(),
+                        };
+                        if ((bind_name.clone().as_str() == "".to_string().as_str())
+                            || (field_label.clone().as_str() == "".to_string().as_str()))
+                        {
+                            c.clone()
+                        } else {
+                            match v2_rt::map_get(&variant_field_map, field_label.clone()) {
+                                Some(param_map) => {
+                                    let composed = compose_callee_param_map(
+                                        param_map.clone(),
+                                        call_args.clone(),
+                                        c.param_order.clone(),
+                                        c.param_names.clone(),
+                                        c.type_env.clone(),
+                                        c.func_sigs.clone(),
+                                        v2_rt::rc_empty_map::<
+                                            String,
+                                            Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                        >(),
+                                    );
+                                    let all_rels = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for k in Rc::new(v2_rt::map_keys(&composed)).iter().cloned()
+                                        {
+                                            __result.push(
+                                                match v2_rt::map_get(&composed, k.clone()) {
+                                                    Some(r) => r.clone(),
+                                                    None => {
+                                                        Rc::new(SubValueRelation::SubValueUnknown)
+                                                    }
+                                                },
+                                            );
                                         }
+                                        __result
+                                    });
+                                    let best = merge_argument_relations(all_rels.clone());
+                                    match (*best.clone()).clone() {
+                                        SubValueRelation::SubValueUnknown => c.clone(),
+                                        _ => Rc::new(DescentContext {
+                                            fn_name: c.fn_name.clone(),
+                                            param_names: c.param_names.clone(),
+                                            param_order: c.param_order.clone(),
+                                            type_env: c.type_env.clone(),
+                                            sub_value_vars: v2_rt::rc_map_insert(
+                                                c.sub_value_vars.clone(),
+                                                bind_name.clone(),
+                                                best.clone(),
+                                            ),
+                                            size_aliases: c.size_aliases.clone(),
+                                            scope_locals: c.scope_locals.clone(),
+                                            func_sigs: c.func_sigs.clone(),
+                                            per_field_vars: c.per_field_vars.clone(),
+                                        }),
                                     }
-                                    None => c.clone(),
                                 }
+                                None => c.clone(),
                             }
-                        },
-                    );
+                        }
+                    },
+                );
                 Some(extended)
             }
             None => None,
@@ -8893,17 +8926,17 @@ pub fn arm_ctx_from_variant_provenance(
 }
 
 pub fn compose_callee_param_map(
-    callee_prov: Map<String, SubValueRelation>,
-    arg_by_name: Map<String, Node>,
-    param_names: List<String>,
-    param_types: Map<String, String>,
+    callee_prov: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    arg_by_name: Rc<HashMap<String, Rc<Node>>>,
+    param_names: Rc<Vec<String>>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    let_prov: Map<String, Map>,
-) -> Map<String, SubValueRelation> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     Rc::new(v2_rt::map_keys(&callee_prov)).iter().cloned().fold(
         v2_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
-        |acc: Map<String, SubValueRelation>, callee_pname: String| match v2_rt::map_get(
+        |acc: Rc<HashMap<String, Rc<SubValueRelation>>>, callee_pname: String| match v2_rt::map_get(
             &callee_prov,
             callee_pname.clone(),
         ) {
@@ -8919,25 +8952,24 @@ pub fn compose_callee_param_map(
                     );
                     Rc::new(v2_rt::map_keys(&arg_prov)).iter().cloned().fold(
                         acc.clone(),
-                        |inner: Map<String, SubValueRelation>, pname: String| match v2_rt::map_get(
-                            &arg_prov,
-                            pname.clone(),
-                        ) {
-                            Some(arg_rel) => {
-                                let composed = compose_sub_value_relations(
-                                    arg_rel.clone(),
-                                    callee_rel.clone(),
-                                );
-                                match (*composed.clone()).clone() {
-                                    SubValueRelation::SubValueUnknown => inner.clone(),
-                                    _ => v2_rt::rc_map_insert(
-                                        inner.clone(),
-                                        pname.clone(),
-                                        composed.clone(),
-                                    ),
+                        |inner: Rc<HashMap<String, Rc<SubValueRelation>>>, pname: String| {
+                            match v2_rt::map_get(&arg_prov, pname.clone()) {
+                                Some(arg_rel) => {
+                                    let composed = compose_sub_value_relations(
+                                        arg_rel.clone(),
+                                        callee_rel.clone(),
+                                    );
+                                    match (*composed.clone()).clone() {
+                                        SubValueRelation::SubValueUnknown => inner.clone(),
+                                        _ => v2_rt::rc_map_insert(
+                                            inner.clone(),
+                                            pname.clone(),
+                                            composed.clone(),
+                                        ),
+                                    }
                                 }
+                                None => inner.clone(),
                             }
-                            None => inner.clone(),
                         },
                     )
                 }
@@ -8958,10 +8990,10 @@ pub fn compose_output_relations(
 pub fn compute_variant_provenance(
     body: Rc<Node>,
     return_type: Rc<Node>,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-) -> Map<String, Map> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+) -> Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>> {
     {
         let rt_name = authored_name_at(type_env.source_indices.clone(), return_type);
         let rt_def = lookup_type_by_name(type_env.clone(), rt_name.clone());
@@ -8980,7 +9012,7 @@ pub fn compute_variant_provenance(
                     });
                     let param_types = params.clone().iter().cloned().fold(
                         v2_rt::rc_empty_map::<String, String>(),
-                        |acc: Map<K, V>, p: Rc<Node>| {
+                        |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
                             let pname =
                                 param_node_name_at(p.clone(), type_env.source_indices.clone());
                             let ptype =
@@ -9001,13 +9033,22 @@ pub fn compute_variant_provenance(
                         param_types,
                         type_env.clone(),
                         func_sigs,
-                        v2_rt::rc_empty_map::<String, Map<String, SubValueRelation>>(),
-                        v2_rt::rc_empty_map::<String, Map<String, Map>>(),
+                        v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(),
+                        v2_rt::rc_empty_map::<
+                            String,
+                            Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                        >(),
                     )
                 }
-                _ => v2_rt::rc_empty_map::<String, Map<String, Map>>(),
+                _ => v2_rt::rc_empty_map::<
+                    String,
+                    Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                >(),
             },
-            None => v2_rt::rc_empty_map::<String, Map<String, Map>>(),
+            None => v2_rt::rc_empty_map::<
+                String,
+                Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+            >(),
         }
     }
 }
@@ -9015,13 +9056,13 @@ pub fn compute_variant_provenance(
 pub fn collect_variant_constructors(
     body: Rc<Node>,
     parent_enum: String,
-    param_names: List<String>,
-    param_types: Map<String, String>,
+    param_names: Rc<Vec<String>>,
+    param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
-    func_sigs: Map<String, ResolvedFuncSig>,
-    let_prov: Map<String, Map>,
-    acc: Map<String, Map>,
-) -> Map<String, Map> {
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    acc: Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+) -> Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprRecordLit {
@@ -9032,8 +9073,14 @@ pub fn collect_variant_constructors(
                         {
                             let variant_name = body.name.clone();
                             let field_prov_map = body.children.clone().iter().cloned().fold(
-                                v2_rt::rc_empty_map::<String, Map<String, SubValueRelation>>(),
-                                |m: Map<K, V>, fi: Rc<Node>| {
+                                v2_rt::rc_empty_map::<
+                                    String,
+                                    Rc<HashMap<String, Rc<SubValueRelation>>>,
+                                >(),
+                                |m: Rc<
+                                    HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>,
+                                >,
+                                 fi: Rc<Node>| {
                                     let fname = field_init_node_name_at(
                                         fi.clone(),
                                         type_env.source_indices.clone(),
@@ -9078,7 +9125,10 @@ pub fn collect_variant_constructors(
             },
             ExprData::ExprMatch => match_arm_nodes(body.clone()).iter().cloned().fold(
                 acc.clone(),
-                |a: Map<String, Map>, arm: Rc<Node>| {
+                |a: Rc<
+                    HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>,
+                >,
+                 arm: Rc<Node>| {
                     collect_variant_constructors(
                         arm_body(arm.clone()),
                         parent_enum.clone(),
@@ -9160,8 +9210,11 @@ pub fn collect_variant_constructors(
                         .cloned()
                         .fold(
                             let_prov.clone(),
-                            |lp: Map<String, Map>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
-                                .clone()
+                            |lp: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                             stmt: Rc<Node>| match (*stmt
+                                .expr_data
+                                .clone())
+                            .clone()
                             {
                                 ExprData::ExprLet => {
                                     let bname = let_binding_name_at(
@@ -9206,11 +9259,15 @@ pub fn collect_variant_constructors(
     })
 }
 
-pub fn merge_field_prov_maps(a: Map<String, Map>, b: Map<String, Map>) -> Map<String, Map> {
+pub fn merge_field_prov_maps(
+    a: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    b: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+) -> Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>> {
     {
         let from_a = Rc::new(v2_rt::map_keys(&a)).iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, Map<String, SubValueRelation>>(),
-            |result: Map<K, V>, fname: String| match v2_rt::map_get(&a, fname.clone()) {
+            v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(),
+            |result: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+             fname: String| match v2_rt::map_get(&a, fname.clone()) {
                 Some(a_prov) => match v2_rt::map_get(&b, fname.clone()) {
                     Some(b_prov) => v2_rt::rc_map_insert(
                         result.clone(),
@@ -9224,7 +9281,8 @@ pub fn merge_field_prov_maps(a: Map<String, Map>, b: Map<String, Map>) -> Map<St
         );
         Rc::new(v2_rt::map_keys(&b)).iter().cloned().fold(
             from_a,
-            |result: Map<K, V>, fname: String| {
+            |result: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+             fname: String| {
                 if (v2_rt::map_get(&result, fname.clone()) != None) {
                     result.clone()
                 } else {
@@ -9241,13 +9299,13 @@ pub fn merge_field_prov_maps(a: Map<String, Map>, b: Map<String, Map>) -> Map<St
 }
 
 pub fn union_prov_maps(
-    a: Map<String, SubValueRelation>,
-    b: Map<String, SubValueRelation>,
-) -> Map<String, SubValueRelation> {
+    a: Rc<HashMap<String, Rc<SubValueRelation>>>,
+    b: Rc<HashMap<String, Rc<SubValueRelation>>>,
+) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     {
         let from_a = Rc::new(v2_rt::map_keys(&a)).iter().cloned().fold(
             empty_prov_map(),
-            |result: Map<String, SubValueRelation>, key: String| match v2_rt::map_get(
+            |result: Rc<HashMap<String, Rc<SubValueRelation>>>, key: String| match v2_rt::map_get(
                 &a,
                 key.clone(),
             ) {
@@ -9264,7 +9322,7 @@ pub fn union_prov_maps(
         );
         Rc::new(v2_rt::map_keys(&b)).iter().cloned().fold(
             from_a,
-            |result: Map<String, SubValueRelation>, key: String| {
+            |result: Rc<HashMap<String, Rc<SubValueRelation>>>, key: String| {
                 if (v2_rt::map_get(&result, key.clone()) != None) {
                     result.clone()
                 } else {
@@ -9281,15 +9339,15 @@ pub fn union_prov_maps(
 }
 
 pub fn populate_output_provenance(
-    typed_items: List<Node>,
+    typed_items: Rc<Vec<Rc<Node>>>,
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,
-    locals: Map<String, TypeBinding>,
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ResolvedFuncEnv> {
     {
         let updated_sigs = typed_items.iter().cloned().fold(
             func_env.signatures.clone(),
-            |acc: Map<String, ResolvedFuncSig>, item: Rc<Node>| {
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, item: Rc<Node>| {
                 if ((item.params.clone().len() as i64) > 0) {
                     {
                         let fn_name =
@@ -9406,7 +9464,17 @@ pub fn populate_output_provenance(
                                                     ),
                                                     _ => v2_rt::rc_empty_map::<
                                                         String,
-                                                        Map<String, Map>,
+                                                        Rc<
+                                                            HashMap<
+                                                                String,
+                                                                Rc<
+                                                                    HashMap<
+                                                                        String,
+                                                                        Rc<SubValueRelation>,
+                                                                    >,
+                                                                >,
+                                                            >,
+                                                        >,
                                                     >(
                                                     ),
                                                 };
@@ -9469,15 +9537,15 @@ pub fn populate_output_provenance(
 pub fn annotate_descent_evidence(
     body: Rc<Node>,
     fn_name: String,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     type_env: Rc<TypeEnv>,
-    scope_locals: Map<String, TypeBinding>,
-    func_sigs: Map<String, ResolvedFuncSig>,
+    scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    func_sigs: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 ) -> Rc<Node> {
     {
         let param_name_map = params.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, String>(),
-            |acc: Map<K, V>, p: Rc<Node>| {
+            |acc: Rc<HashMap<String, String>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), type_env.source_indices.clone());
                 let ptype = resolved_type_name(p.clone(), type_env.source_indices.clone());
                 v2_rt::rc_map_insert(acc, pname.clone(), ptype.clone())
@@ -9502,7 +9570,8 @@ pub fn annotate_descent_evidence(
             size_aliases: v2_rt::rc_empty_map::<String, Rc<SizeExpr>>(),
             scope_locals: scope_locals,
             func_sigs: func_sigs,
-            per_field_vars: v2_rt::rc_empty_map::<String, Map<String, SubValueRelation>>(),
+            per_field_vars: v2_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(
+            ),
         });
         annotate_descent(body, ctx)
     }
@@ -9510,18 +9579,18 @@ pub fn annotate_descent_evidence(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferPropertiesResult {
-    pub props: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub props: Rc<Vec<Rc<Node>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferTransportResult {
-    pub transport: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub transport: Option<Rc<Node>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn infer_property_values(
-    props: List<Node>,
+    props: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<InferPropertiesResult> {
     {
@@ -9578,7 +9647,7 @@ pub fn infer_property_values(
 }
 
 pub fn infer_auth_source_properties(
-    props: List<Node>,
+    props: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
 ) -> Rc<InferPropertiesResult> {
     {
@@ -10001,7 +10070,10 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
     })
 }
 
-pub fn infer_items(items: List<Node>, scope: Rc<InferScope>) -> List<TypedItemResult> {
+pub fn infer_items(
+    items: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Vec<Rc<TypedItemResult>>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
@@ -10019,26 +10091,33 @@ pub fn is_type_variable_name(name: String) -> bool {
         || (name.clone().as_str() == "FoldAccumulator".to_string().as_str()))
 }
 
-pub fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<Int, TypeBinding> {
+pub fn collect_parent_bindings_filtered(
+    envs: Rc<Vec<Rc<TypeEnv>>>,
+) -> Rc<HashMap<i64, Rc<TypeBinding>>> {
     envs.iter().cloned().fold(
         v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-        |acc: Map<Int, TypeBinding>, env: Rc<TypeEnv>| {
+        |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
             Rc::new(v2_rt::map_keys(&env.bindings.clone()))
                 .iter()
                 .cloned()
-                .fold(acc, |bacc: Map<Int, TypeBinding>, ident: i64| {
-                    let name = intern_str(env.intern_table.clone(), ident.clone());
-                    if is_type_variable_name(name.clone()) {
-                        bacc.clone()
-                    } else {
-                        match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
-                            Some(binding) => {
-                                v2_rt::rc_map_insert(bacc.clone(), ident.clone(), binding.clone())
+                .fold(
+                    acc,
+                    |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
+                        let name = intern_str(env.intern_table.clone(), ident.clone());
+                        if is_type_variable_name(name.clone()) {
+                            bacc.clone()
+                        } else {
+                            match v2_rt::map_get(&env.bindings.clone(), ident.clone()) {
+                                Some(binding) => v2_rt::rc_map_insert(
+                                    bacc.clone(),
+                                    ident.clone(),
+                                    binding.clone(),
+                                ),
+                                None => bacc.clone(),
                             }
-                            None => bacc.clone(),
                         }
-                    }
-                })
+                    },
+                )
         },
     )
 }
@@ -10056,8 +10135,8 @@ pub fn kernel_span(name: String) -> Rc<SourceSpan> {
 
 pub fn build_type_env(
     module: Rc<ResolvedModule>,
-    parent_index: Map<String, TypedModule>,
-    source_indices: Map<String, NewlineIndex>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
     {
@@ -10066,7 +10145,7 @@ pub fn build_type_env(
             .cloned()
             .fold(
                 source_indices.clone(),
-                |acc: Map<String, NewlineIndex>, name: String| {
+                |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| {
                     v2_rt::rc_map_insert(
                         acc,
                         v2_rt::concat(
@@ -10094,7 +10173,7 @@ pub fn build_type_env(
         .cloned()
         .fold(
             source_indices.clone(),
-            |acc: Map<String, NewlineIndex>, name: String| {
+            |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, name: String| {
                 v2_rt::rc_map_insert(
                     acc,
                     v2_rt::concat(
@@ -10140,7 +10219,7 @@ pub fn build_type_env(
             .cloned()
             .fold(
                 v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                |acc: Map<K, V>, name: String| {
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| {
                     v2_rt::rc_map_insert(
                         acc,
                         intern(intern_table.clone(), name.clone()).id.clone(),
@@ -10289,7 +10368,7 @@ pub fn build_type_env(
             .cloned()
             .fold(
                 v2_rt::rc_empty_map::<i64, bool>(),
-                |acc: Map<K, V>, name: String| {
+                |acc: Rc<HashMap<i64, bool>>, name: String| {
                     v2_rt::rc_map_insert(
                         acc,
                         intern(intern_table.clone(), name.clone()).id.clone(),
@@ -10345,7 +10424,7 @@ pub fn build_type_env(
         let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
-            |acc: Map<Int, TypeBinding>, imp: Rc<ResolvedImport>| match v2_rt::map_get(
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
@@ -10358,7 +10437,7 @@ pub fn build_type_env(
                         .cloned()
                         .fold(
                             acc.clone(),
-                            |bacc: Map<Int, TypeBinding>, ident: i64| {
+                            |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
                                 let name = intern_str(
                                     typed_parent.type_env.clone().intern_table.clone(),
                                     ident.clone(),
@@ -10394,18 +10473,18 @@ pub fn build_type_env(
             .clone()
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: List<T>, env: Rc<TypeEnv>| {
+            .fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| {
                 v2_rt::concat(acc, env.recursive_types.clone())
             });
         let import_recursive_set = parent_envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Map<K, V>, env: Rc<TypeEnv>| {
+            |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| {
                 v2_rt::rc_map_merge(acc, env.recursive_type_set.clone())
             },
         );
         let import_inductive_fields = parent_envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, List<InductiveField>>(),
-            |acc: Map<String, List>, env: Rc<TypeEnv>| {
+            v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| {
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
@@ -10452,7 +10531,7 @@ pub fn build_type_env(
         });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Map<K, V>, item: Rc<Node>| {
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
                 let item_ident = intern(
                     intern_table.clone(),
                     authored_name_at(source_indices.clone(), item.clone()),
@@ -10617,7 +10696,7 @@ pub fn build_type_env(
         );
         let param_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Map<K, V>, item: Rc<Node>| {
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
                 let is_type_decl = match v2_rt::map_get(
                     &local_bindings,
                     intern(
@@ -10634,7 +10713,7 @@ pub fn build_type_env(
                     {
                         let result = item.params.clone().iter().cloned().fold(
                             acc.clone(),
-                            |pacc: Map<K, V>, p: Rc<Node>| {
+                            |pacc: Rc<HashMap<i64, Rc<TypeBinding>>>, p: Rc<Node>| {
                                 v2_rt::rc_map_insert(
                                     pacc,
                                     intern(
@@ -10662,14 +10741,16 @@ pub fn build_type_env(
             .cloned()
             .fold(
                 v2_rt::rc_empty_map::<i64, bool>(),
-                |acc: Map<K, V>, ident: i64| v2_rt::rc_map_insert(acc, ident.clone(), true),
+                |acc: Rc<HashMap<i64, bool>>, ident: i64| {
+                    v2_rt::rc_map_insert(acc, ident.clone(), true)
+                },
             );
         let all_local_bindings = v2_rt::rc_map_merge(local_bindings.clone(), param_bindings);
         let pre_local_env = Rc::new(TypeEnv {
             bindings: all_local_bindings,
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v2_rt::rc_empty_map::<String, List<InductiveField>>(),
+            inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
@@ -10678,8 +10759,8 @@ pub fn build_type_env(
             .iter()
             .cloned()
             .fold(
-                v2_rt::rc_empty_map::<String, List<String>>(),
-                |acc: Map<K, V>, b: Rc<TypeBinding>| {
+                v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
                     v2_rt::rc_map_insert(
                         acc,
                         b.name.clone(),
@@ -10692,7 +10773,7 @@ pub fn build_type_env(
             .cloned()
             .fold(
                 v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                |acc: Map<K, V>, b: Rc<TypeBinding>| {
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
                     v2_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
@@ -10717,7 +10798,7 @@ pub fn build_type_env(
             });
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Map<K, V>, name: String| {
+            |acc: Rc<HashMap<i64, bool>>, name: String| {
                 v2_rt::rc_map_insert(
                     acc,
                     intern(intern_table.clone(), name.clone()).id.clone(),
@@ -10765,8 +10846,8 @@ pub fn build_type_env(
 
 pub fn build_type_env_unresolved(
     module: Rc<ResolvedModule>,
-    parent_index: Map<String, TypedModule>,
-    source_indices: Map<String, NewlineIndex>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<BuildTypeEnvResult> {
     {
@@ -10788,7 +10869,7 @@ pub fn build_type_env_unresolved(
             .cloned()
             .fold(
                 v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                |acc: Map<K, V>, name: String| {
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| {
                     v2_rt::rc_map_insert(
                         acc,
                         intern(intern_table.clone(), name.clone()).id.clone(),
@@ -10896,7 +10977,7 @@ pub fn build_type_env_unresolved(
             bindings: kernel_bindings.clone(),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v2_rt::rc_empty_map::<String, List<InductiveField>>(),
+            inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
@@ -10940,7 +11021,7 @@ pub fn build_type_env_unresolved(
         let std_import_bindings = collect_parent_bindings_filtered(std_types_parent_env.clone());
         let import_bindings = module.resolved_imports.clone().iter().cloned().fold(
             std_import_bindings,
-            |acc: Map<Int, TypeBinding>, imp: Rc<ResolvedImport>| match v2_rt::map_get(
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v2_rt::map_get(
                 &parent_index,
                 imp.module_path.clone(),
             ) {
@@ -10953,7 +11034,7 @@ pub fn build_type_env_unresolved(
                         .cloned()
                         .fold(
                             acc.clone(),
-                            |bacc: Map<Int, TypeBinding>, ident: i64| {
+                            |bacc: Rc<HashMap<i64, Rc<TypeBinding>>>, ident: i64| {
                                 let name = intern_str(
                                     typed_parent.type_env.clone().intern_table.clone(),
                                     ident.clone(),
@@ -10989,18 +11070,18 @@ pub fn build_type_env_unresolved(
             .clone()
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: List<T>, env: Rc<TypeEnv>| {
+            .fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| {
                 v2_rt::concat(acc, env.recursive_types.clone())
             });
         let import_recursive_set = parent_envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Map<K, V>, env: Rc<TypeEnv>| {
+            |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| {
                 v2_rt::rc_map_merge(acc, env.recursive_type_set.clone())
             },
         );
         let import_inductive_fields = parent_envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, List<InductiveField>>(),
-            |acc: Map<String, List>, env: Rc<TypeEnv>| {
+            v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| {
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
@@ -11014,7 +11095,7 @@ pub fn build_type_env_unresolved(
         });
         let local_bindings = module_items(module.module.clone()).iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Map<K, V>, item: Rc<Node>| {
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, item: Rc<Node>| {
                 let item_ident = intern(
                     intern_table.clone(),
                     authored_name_at(source_indices.clone(), item.clone()),
@@ -11140,7 +11221,7 @@ pub fn build_type_env_unresolved(
             bindings: local_bindings,
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v2_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v2_rt::rc_empty_map::<String, List<InductiveField>>(),
+            inductive_fields: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
@@ -11149,8 +11230,8 @@ pub fn build_type_env_unresolved(
             .iter()
             .cloned()
             .fold(
-                v2_rt::rc_empty_map::<String, List<String>>(),
-                |acc: Map<K, V>, b: Rc<TypeBinding>| {
+                v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
                     v2_rt::rc_map_insert(
                         acc,
                         b.name.clone(),
@@ -11163,7 +11244,7 @@ pub fn build_type_env_unresolved(
             .cloned()
             .fold(
                 v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                |acc: Map<K, V>, b: Rc<TypeBinding>| {
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
                     v2_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
@@ -11188,7 +11269,7 @@ pub fn build_type_env_unresolved(
             });
         let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Map<K, V>, name: String| {
+            |acc: Rc<HashMap<i64, bool>>, name: String| {
                 v2_rt::rc_map_insert(
                     acc,
                     intern(intern_table.clone(), name.clone()).id.clone(),
@@ -11220,7 +11301,7 @@ pub fn build_type_env_unresolved(
 
 pub fn build_item_info(
     item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
 ) -> Rc<ItemInfo> {
     {
@@ -11320,7 +11401,10 @@ pub fn analyze_item(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc
                     inferred: declared_rt,
                     is_async: ((ritem.uses.clone().len() as i64) > 0),
                     output_provenance: Rc::new(vec![]),
-                    variant_provenance: v2_rt::rc_empty_map::<String, Map<String, Map>>(),
+                    variant_provenance: v2_rt::rc_empty_map::<
+                        String,
+                        Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+                    >(),
                 }))
             }
         } else {
@@ -11367,14 +11451,14 @@ pub fn analyze_item(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc
 }
 
 pub fn fold_module_contributions(
-    mut remaining: List<ItemContribution>,
-    mut resolved_items: List<Node>,
-    mut func_sigs: Map<String, DeclaredFuncSig>,
-    mut svc_registry: Map<String, List>,
-    mut svc_locals: Map<String, TypeBinding>,
-    mut item_registry: Map<String, ItemInfo>,
-    mut diag_chunks: List<List>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut remaining: Rc<Vec<Rc<ItemContribution>>>,
+    mut resolved_items: Rc<Vec<Rc<Node>>>,
+    mut func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<LocalContributionState> {
     loop {
         match remaining.clone().first().cloned() {
@@ -11446,9 +11530,9 @@ pub fn fold_module_contributions(
 }
 
 pub fn build_module_context(
-    contributions: List<ItemContribution>,
-    parent_index: Map<String, TypedModule>,
-    resolved_imports: List<ResolvedImport>,
+    contributions: Rc<Vec<Rc<ItemContribution>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<ModuleContext> {
@@ -11457,7 +11541,7 @@ pub fn build_module_context(
             contributions,
             Rc::new(vec![]),
             v2_rt::rc_empty_map::<String, Rc<DeclaredFuncSig>>(),
-            v2_rt::rc_empty_map::<String, List<OpEntry>>(),
+            v2_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
             v2_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             v2_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
             Rc::new(vec![]),
@@ -11465,14 +11549,13 @@ pub fn build_module_context(
         );
         let imported_enum_names = resolved_imports.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Map<K, V>, imp: Rc<ResolvedImport>| {
-                imp.specific_names
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: Map<K, V>, n: String| {
+            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
+                imp.specific_names.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, bool>>, n: String| {
                         v2_rt::rc_map_insert(inner, n.clone(), true)
-                    })
+                    },
+                )
             },
         );
         let variant_fold = Rc::new(v2_rt::map_values(&env.bindings.clone())).iter().cloned().fold(Rc::new(VariantFoldState {
@@ -11553,7 +11636,7 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
             .cloned()
             .fold(
                 env_variant_locals,
-                |acc: Map<String, TypeBinding>, binding: Rc<TypeBinding>| {
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
                     v2_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
                 },
             );
@@ -11582,14 +11665,14 @@ if (curr_is_imported.clone() && prev_is_imported.clone()) {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypecheckModuleResult {
-    pub typed: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub typed: Rc<TypedModule>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
-    parent_index: Map<String, TypedModule>,
-    source_indices: Map<String, NewlineIndex>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckModuleResult> {
     {
@@ -11647,7 +11730,7 @@ pub fn typecheck_module(
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
-            |acc: Map<String, TypeBinding>, item: Rc<Node>| {
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
                 if ((((item.body.clone() != None) && ((item.params.clone().len() as i64) == 0))
                     && (item.inferred.clone() == None))
                     && (item.type_annotation.clone() != None))
@@ -11767,27 +11850,27 @@ pub fn typecheck_module(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnvResolveResult {
-    pub env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub env: Rc<TypeEnv>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingResult {
-    pub binding: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub binding: Rc<TypeBinding>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingsAccum {
-    pub bindings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn resolve_env_bindings(
     env: Rc<TypeEnv>,
     module_name: String,
-    local_names: Map<Int, Bool>,
-    deps_map: Map<String, List>,
+    local_names: Rc<HashMap<i64, bool>>,
+    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> Rc<EnvResolveResult> {
     {
         let remaining = Rc::new({
@@ -11827,12 +11910,12 @@ pub fn resolve_env_bindings(
 }
 
 pub fn topo_resolve_types(
-    mut remaining: List<String>,
+    mut remaining: Rc<Vec<String>>,
     mut env: Rc<TypeEnv>,
     mut module_name: String,
-    mut diagnostics: List<ErrorNode>,
-    mut local_names: Map<Int, Bool>,
-    mut deps_map: Map<String, List>,
+    mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    mut local_names: Rc<HashMap<i64, bool>>,
+    mut deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut fuel: i64,
 ) -> Rc<EnvResolveResult> {
     loop {
@@ -11963,7 +12046,9 @@ pub fn topo_resolve_types(
         );
         let ready_set = ready.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Map<K, V>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v2_rt::rc_map_insert(acc, name.clone(), true)
+            },
         );
         let next_remaining = Rc::new({
             let mut __result = Vec::new();
@@ -11997,8 +12082,8 @@ pub fn topo_resolve_types(
 
 pub fn collect_parent_envs(
     resolved: Rc<ResolvedModule>,
-    module_index: Map<String, TypedModule>,
-    source_indices: Map<String, NewlineIndex>,
+    module_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParentModulesResult> {
     {
         let modules = Rc::new({
@@ -12058,7 +12143,7 @@ pub fn collect_parent_envs(
 
 pub fn variant_has_positional_payload_shape(
     variant: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((variant.children.clone().len() as i64) == 1)
         && match variant.children.clone().first().cloned() {
@@ -12070,9 +12155,9 @@ pub fn variant_has_positional_payload_shape(
 }
 
 pub fn build_fielded_variants(
-    modules: List<TypedModule>,
-    type_summaries: Map<String, TypeSummary>,
-) -> Set<String> {
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<std::collections::BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
             v2_rt::rc_empty_set::<_>(),
@@ -12136,19 +12221,17 @@ pub fn build_fielded_variants(
 }
 
 pub fn build_positional_payload_variants(
-    modules: List<TypedModule>,
-    type_summaries: Map<String, TypeSummary>,
-) -> Set<String> {
+    modules: Rc<Vec<Rc<TypedModule>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<std::collections::BTreeSet<String>> {
     modules.iter().cloned().fold(
         v2_rt::rc_empty_set::<String>(),
-        |acc: Set<String>, m: Rc<TypedModule>| {
+        |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
             let items = m.items.clone();
             let si = m.type_env.clone().source_indices.clone();
-            items
-                .clone()
-                .iter()
-                .cloned()
-                .fold(acc, |inner: Set<String>, item: Rc<Node>| {
+            items.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<std::collections::BTreeSet<String>>, item: Rc<Node>| {
                     let is_enum = match v2_rt::map_get(
                         &type_summaries,
                         authored_name_at(si.clone(), item.clone()),
@@ -12165,7 +12248,8 @@ pub fn build_positional_payload_variants(
                             let variants = item.children.clone();
                             variants.clone().iter().cloned().fold(
                                 inner.clone(),
-                                |vacc: Set<String>, variant: Rc<Node>| {
+                                |vacc: Rc<std::collections::BTreeSet<String>>,
+                                 variant: Rc<Node>| {
                                     if variant_has_positional_payload_shape(
                                         variant.clone(),
                                         si.clone(),
@@ -12186,12 +12270,13 @@ pub fn build_positional_payload_variants(
                     } else {
                         inner.clone()
                     }
-                })
+                },
+            )
         },
     )
 }
 
-pub fn build_emit_graph_info(modules: List<TypedModule>) -> Rc<EmitGraphInfo> {
+pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v2_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
@@ -12237,11 +12322,15 @@ pub fn build_emit_graph_info(modules: List<TypedModule>) -> Rc<EmitGraphInfo> {
             fielded_variants: fielded,
             positional_payload_variants: positional,
             shared_types: v2_rt::rc_empty_set::<String>(),
-            ownership_index: v2_rt::rc_empty_map::<String, Set<String>>(),
+            ownership_index: v2_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
+            ),
             movable: v2_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
             owned_bindings: v2_rt::rc_empty_set::<String>(),
-            read_only_params_index: v2_rt::rc_empty_map::<String, Set<String>>(),
+            read_only_params_index: v2_rt::rc_empty_map::<
+                String,
+                Rc<std::collections::BTreeSet<String>>,
+            >(),
             read_only_params: v2_rt::rc_empty_set::<String>(),
         })
     }
@@ -12249,7 +12338,7 @@ pub fn build_emit_graph_info(modules: List<TypedModule>) -> Rc<EmitGraphInfo> {
 
 pub fn typecheck(
     graph: Rc<ModuleGraph>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
     typecheck_modules(
@@ -12264,12 +12353,12 @@ pub fn typecheck(
 }
 
 pub fn typecheck_modules(
-    mut remaining: List<ResolvedModule>,
-    mut modules: List<TypedModule>,
-    mut module_index: Map<String, TypedModule>,
-    mut item_registry: Map<String, ItemInfo>,
-    mut diag_chunks: List<List>,
-    mut source_indices: Map<String, NewlineIndex>,
+    mut remaining: Rc<Vec<Rc<ResolvedModule>>>,
+    mut modules: Rc<Vec<Rc<TypedModule>>>,
+    mut module_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
     loop {
@@ -12336,7 +12425,7 @@ pub fn typecheck_modules(
 
 pub fn reconcile(
     graph: Rc<ModuleGraph>,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
     {

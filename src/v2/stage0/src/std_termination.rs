@@ -94,10 +94,10 @@ pub fn optional_evidence_meet(
 }
 
 pub fn map_evidence_merge_at(
-    base: Map<String, DescentEvidence>,
+    base: Rc<HashMap<String, DescentEvidence>>,
     key: String,
     new_val: DescentEvidence,
-) -> Map<String, DescentEvidence> {
+) -> Rc<HashMap<String, DescentEvidence>> {
     match v2_rt::map_get(&base, key.clone()) {
         Some(existing) => v2_rt::rc_map_insert(
             base.clone(),
@@ -243,12 +243,12 @@ pub enum DescentSource {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TerminationProof {
-    pub dimensions: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub dimensions: Rc<Vec<Rc<RankingDimension>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProofEdge {
-    pub caller: compile_error!("UNRESOLVED_CompilerError"),
-    pub callee: compile_error!("UNRESOLVED_CompilerError"),
-    pub evidence: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub caller: String,
+    pub callee: String,
+    pub evidence: Rc<Vec<DescentEvidence>>,
 }

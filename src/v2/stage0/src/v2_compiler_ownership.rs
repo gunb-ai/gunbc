@@ -36,16 +36,16 @@ pub enum EdgeKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EdgeClassification {
-    pub kind: compile_error!("UNRESOLVED_CompilerError"),
-    pub site: compile_error!("UNRESOLVED_CompilerError"),
-    pub span_start: compile_error!("UNRESOLVED_CompilerError"),
+    pub kind: EdgeKind,
+    pub site: String,
+    pub span_start: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub binding_kind: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub consumers: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub binding_kind: Option<Rc<VarBindingKind>>,
+    pub consumers: Rc<Vec<Rc<EdgeClassification>>>,
 }
 
 pub fn semantic_consumer_count(usage: Rc<BindingUsage>) -> i64 {
@@ -90,7 +90,7 @@ pub enum OwnershipDecision {
     SharedError {
         binding: String,
         consumer_count: i64,
-        sites: List<String>,
+        sites: Rc<Vec<String>>,
     },
     Unclassified {
         binding: String,
@@ -109,34 +109,34 @@ impl OwnershipDecision {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUnwrapProof {
-    pub site_key: compile_error!("UNRESOLVED_CompilerError"),
-    pub acc_param_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub acc_type_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub body_constructs_acc: compile_error!("UNRESOLVED_CompilerError"),
-    pub whole_acc_single_use: compile_error!("UNRESOLVED_CompilerError"),
-    pub safe_field_moves: compile_error!("UNRESOLVED_CompilerError"),
-    pub eligible: compile_error!("UNRESOLVED_CompilerError"),
+    pub site_key: String,
+    pub acc_param_name: String,
+    pub acc_type_name: String,
+    pub body_constructs_acc: bool,
+    pub whole_acc_single_use: bool,
+    pub safe_field_moves: bool,
+    pub eligible: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUseSummary {
-    pub whole_acc_uses: compile_error!("UNRESOLVED_CompilerError"),
-    pub field_moves: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub nested_acc_refs: compile_error!("UNRESOLVED_CompilerError"),
+    pub whole_acc_uses: i64,
+    pub field_moves: Rc<Vec<String>>,
+    pub nested_acc_refs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProof {
-    pub func_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub bindings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub decisions: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub fold_acc_unwrap: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub func_name: String,
+    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
+    pub decisions: Rc<Vec<Rc<OwnershipDecision>>>,
+    pub fold_acc_unwrap: Rc<Vec<Rc<FoldAccUnwrapProof>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsageAccum {
-    pub bindings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub fold_call_nodes: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
+    pub fold_call_nodes: Rc<Vec<Rc<Node>>>,
 }
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
@@ -194,10 +194,10 @@ pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<Bind
 }
 
 pub fn map_usage_merge_at(
-    base: Map<String, BindingUsage>,
+    base: Rc<HashMap<String, Rc<BindingUsage>>>,
     key: String,
     new_val: Rc<BindingUsage>,
-) -> Map<String, BindingUsage> {
+) -> Rc<HashMap<String, Rc<BindingUsage>>> {
     match v2_rt::map_get(&base, key.clone()) {
         Some(existing) => v2_rt::rc_map_insert(
             base.clone(),
@@ -208,17 +208,20 @@ pub fn map_usage_merge_at(
     }
 }
 
-pub fn merge_branch_usages(base: Rc<UsageAccum>, branches: List<UsageAccum>) -> Rc<UsageAccum> {
+pub fn merge_branch_usages(
+    base: Rc<UsageAccum>,
+    branches: Rc<Vec<Rc<UsageAccum>>>,
+) -> Rc<UsageAccum> {
     {
         let binding_merged = branches.clone().iter().cloned().fold(
             base.bindings.clone(),
-            |merged: Map<String, BindingUsage>, branch: Rc<UsageAccum>| {
+            |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
                 Rc::new(v2_rt::map_values(&branch.bindings.clone()))
                     .iter()
                     .cloned()
                     .fold(
                         merged,
-                        |acc: Map<String, BindingUsage>, usage: Rc<BindingUsage>| {
+                        |acc: Rc<HashMap<String, Rc<BindingUsage>>>, usage: Rc<BindingUsage>| {
                             map_usage_merge_at(acc, usage.name.clone(), usage.clone())
                         },
                     )
@@ -254,7 +257,7 @@ pub fn walk_expr(
     accum: Rc<UsageAccum>,
     texpr: Rc<Node>,
     in_tail: bool,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UsageAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -689,7 +692,7 @@ pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
     }
 }
 
-pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Set<String> {
+pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone()))
@@ -707,11 +710,16 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Set<String> {
     .cloned()
     .fold(
         v2_rt::rc_empty_set::<String>(),
-        |acc: Set<String>, usage: Rc<BindingUsage>| v2_rt::rc_set_insert(acc, usage.name.clone()),
+        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            v2_rt::rc_set_insert(acc, usage.name.clone())
+        },
     )
 }
 
-pub fn build_read_only_params(proof: Rc<OwnershipProof>, param_names: Set<String>) -> Set<String> {
+pub fn build_read_only_params(
+    proof: Rc<OwnershipProof>,
+    param_names: Rc<std::collections::BTreeSet<String>>,
+) -> Rc<std::collections::BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v2_rt::map_values(&proof.bindings.clone()))
@@ -746,11 +754,16 @@ pub fn build_read_only_params(proof: Rc<OwnershipProof>, param_names: Set<String
     .cloned()
     .fold(
         v2_rt::rc_empty_set::<String>(),
-        |acc: Set<String>, usage: Rc<BindingUsage>| v2_rt::rc_set_insert(acc, usage.name.clone()),
+        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+            v2_rt::rc_set_insert(acc, usage.name.clone())
+        },
     )
 }
 
-pub fn collect_callable_refs(texpr: Rc<Node>, si: Map<String, NewlineIndex>) -> Set<String> {
+pub fn collect_callable_refs(
+    texpr: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<std::collections::BTreeSet<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -768,7 +781,7 @@ pub fn collect_callable_refs(texpr: Rc<Node>, si: Map<String, NewlineIndex>) -> 
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 v2_rt::rc_empty_set::<String>(),
-                |acc: Set<String>, a: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
                     v2_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -782,7 +795,7 @@ pub fn collect_callable_refs(texpr: Rc<Node>, si: Map<String, NewlineIndex>) -> 
                 let recv = collect_callable_refs(method_receiver(texpr.clone()), si.clone());
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
-                    |acc: Set<String>, a: Rc<Node>| {
+                    |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
                         v2_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -803,7 +816,7 @@ pub fn collect_callable_refs(texpr: Rc<Node>, si: Map<String, NewlineIndex>) -> 
                 let scrut = collect_callable_refs(match_scrutinee(texpr.clone()), si.clone());
                 match_arm_nodes(texpr.clone()).iter().cloned().fold(
                     scrut.clone(),
-                    |acc: Set<String>, arm: Rc<Node>| {
+                    |acc: Rc<std::collections::BTreeSet<String>>, arm: Rc<Node>| {
                         v2_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arm_body(arm.clone()), si.clone()),
@@ -822,7 +835,7 @@ pub fn collect_callable_refs(texpr: Rc<Node>, si: Map<String, NewlineIndex>) -> 
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 v2_rt::rc_empty_set::<String>(),
-                |acc: Set<String>, child: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
                     v2_rt::rc_set_union(acc, collect_callable_refs(child.clone(), si.clone()))
                 },
             ),
@@ -840,7 +853,7 @@ pub fn collect_callable_refs(texpr: Rc<Node>, si: Map<String, NewlineIndex>) -> 
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 v2_rt::rc_empty_set::<String>(),
-                |acc: Set<String>, field: Rc<Node>| {
+                |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
                     v2_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(field.clone()), si.clone()),
@@ -904,7 +917,7 @@ pub fn merge_fold_acc_use_summaries(
 pub fn summarize_fold_acc_uses(
     node: Rc<Node>,
     acc_name: String,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     inside_nested: bool,
 ) -> Rc<FoldAccUseSummary> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -1045,7 +1058,7 @@ pub fn summarize_fold_acc_uses(
 pub fn fold_lambda_acc_use_summary(
     lambda_node: Rc<Node>,
     acc_name: String,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -1058,7 +1071,7 @@ pub fn fold_lambda_acc_use_summary(
 pub fn fold_body_constructs_acc_struct(
     lambda_node: Rc<Node>,
     acc_type_name: String,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -1078,13 +1091,15 @@ pub fn fold_body_constructs_acc_struct(
 pub fn fold_body_safe_field_moves(
     lambda_node: Rc<Node>,
     acc_name: String,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary = fold_lambda_acc_use_summary(lambda_node, acc_name, si);
         let deduped = summary.field_moves.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |seen: Map<K, V>, field: String| v2_rt::rc_map_insert(seen, field.clone(), true),
+            |seen: Rc<HashMap<String, bool>>, field: String| {
+                v2_rt::rc_map_insert(seen, field.clone(), true)
+            },
         );
         ((!summary.nested_acc_refs.clone() && (summary.whole_acc_uses.clone() == 0))
             && ((Rc::new(v2_rt::map_keys(&deduped)).len() as i64)
@@ -1095,7 +1110,7 @@ pub fn fold_body_safe_field_moves(
 pub fn fold_body_consumes_acc_once(
     lambda_node: Rc<Node>,
     acc_name: String,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary = fold_lambda_acc_use_summary(lambda_node, acc_name, si);
@@ -1106,7 +1121,7 @@ pub fn fold_body_consumes_acc_once(
 
 pub fn analyze_single_fold(
     method_call: Rc<Node>,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUnwrapProof> {
     {
         let args = method_arg_nodes(method_call.clone());
@@ -1174,9 +1189,9 @@ pub fn analyze_single_fold(
 
 pub fn analyze_ownership(
     func_name: String,
-    params: List<Node>,
+    params: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    si: Map<String, NewlineIndex>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OwnershipProof> {
     {
         let initial =

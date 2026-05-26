@@ -12,9 +12,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn compiler_inductive_fields() -> List<InductiveField> {
+pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {
     thread_local! {
-            static CACHED: List<InductiveField> = {
+            static CACHED: Rc<Vec<Rc<InductiveField>>> = {
                 Rc::new(vec![Rc::new(InductiveField {
         type_name: "Node".to_string(),
         variant_name: "".to_string(),
@@ -96,12 +96,12 @@ pub fn compiler_inductive_fields() -> List<InductiveField> {
     })])
             };
         }
-    CACHED.with(|c: &List<InductiveField>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<InductiveField>>>| c.clone())
 }
 
-pub fn compiler_recursive_types() -> Map<String, Bool> {
+pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Map<String, Bool> = {
+        static CACHED: Rc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("Node".to_string(), true);
             __m.insert("InferredNode".to_string(), true);
@@ -110,7 +110,7 @@ pub fn compiler_recursive_types() -> Map<String, Bool> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, Bool>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
 }
 
 pub fn is_compiler_recursive_type(name: String) -> bool {

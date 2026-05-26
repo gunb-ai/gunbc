@@ -19,9 +19,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn python_item_forms() -> List<ItemForm> {
+pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     thread_local! {
-            static CACHED: List<ItemForm> = {
+            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
                 Rc::new(vec![Rc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "def".to_string(),
@@ -70,12 +70,12 @@ pub fn python_item_forms() -> List<ItemForm> {
     })])
             };
         }
-    CACHED.with(|c: &List<ItemForm>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
 }
 
-pub fn python_operators() -> List<OperatorSpec> {
+pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     thread_local! {
-            static CACHED: List<OperatorSpec> = {
+            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
                 Rc::new(vec![Rc::new(OperatorSpec {
         symbol: "or".to_string(),
         left_bp: 5,
@@ -163,5 +163,5 @@ pub fn python_operators() -> List<OperatorSpec> {
     })])
             };
         }
-    CACHED.with(|c: &List<OperatorSpec>| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
 }

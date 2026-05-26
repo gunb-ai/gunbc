@@ -19,42 +19,43 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncSig {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub inferred: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub is_async: compile_error!("UNRESOLVED_CompilerError"),
-    pub output_provenance: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub variant_provenance: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub params: Rc<Vec<Rc<Node>>>,
+    pub inferred: Rc<Node>,
+    pub is_async: bool,
+    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub variant_provenance:
+        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncEnv {
-    pub signatures: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveFuncSigsResult {
-    pub func_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub func_env: Rc<ResolvedFuncEnv>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SigsAccum {
-    pub signatures: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallEdge {
-    pub caller: compile_error!("UNRESOLVED_CompilerError"),
-    pub callee: compile_error!("UNRESOLVED_CompilerError"),
+    pub caller: String,
+    pub callee: String,
 }
 
 pub fn collect_func_call_edges(
-    items: List<Node>,
-    local_func_set: Map<String, Bool>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<CallEdge> {
+    items: Rc<Vec<Rc<Node>>>,
+    local_func_set: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CallEdge>>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
@@ -80,9 +81,9 @@ pub fn collect_func_call_edges(
 pub fn collect_calls_in_expr(
     caller: String,
     texpr: Rc<Node>,
-    local_func_set: Map<String, Bool>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<CallEdge> {
+    local_func_set: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
@@ -122,8 +123,8 @@ pub fn collect_calls_in_expr(
 pub fn func_reaches_self(
     root: String,
     current: String,
-    call_edges: List<CallEdge>,
-    visited: Map<String, Bool>,
+    call_edges: Rc<Vec<Rc<CallEdge>>>,
+    visited: Rc<HashMap<String, bool>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if emit_map_has(visited.clone(), current.clone()) {
@@ -173,23 +174,25 @@ pub fn func_reaches_self(
     })
 }
 
-pub fn build_name_set(names: List<String>) -> Map<String, Bool> {
+pub fn build_name_set(names: Rc<Vec<String>>) -> Rc<HashMap<String, bool>> {
     names.iter().cloned().fold(
         v2_rt::rc_empty_map::<String, bool>(),
-        |acc: Map<String, Bool>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true),
+        |acc: Rc<HashMap<String, bool>>, name: String| {
+            v2_rt::rc_map_insert(acc, name.clone(), true)
+        },
     )
 }
 
 pub fn collect_parent_resolved_sigs(
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    local_func_set: Map<String, Bool>,
-) -> Map<String, ResolvedFuncSig> {
+    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    local_func_set: Rc<HashMap<String, bool>>,
+) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
     Rc::new(v2_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
         .fold(
             v2_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            |acc: Map<String, ResolvedFuncSig>, dsig: Rc<DeclaredFuncSig>| {
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
                 if emit_map_has(local_func_set.clone(), dsig.name.clone()) {
                     acc.clone()
                 } else {
@@ -219,15 +222,15 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
 }
 
 pub fn merge_remaining_declared(
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    resolved: Map<String, ResolvedFuncSig>,
-) -> Map<String, ResolvedFuncSig> {
+    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+) -> Rc<HashMap<String, Rc<ResolvedFuncSig>>> {
     Rc::new(v2_rt::map_values(&declared_sigs))
         .iter()
         .cloned()
         .fold(
             resolved,
-            |acc: Map<String, ResolvedFuncSig>, dsig: Rc<DeclaredFuncSig>| {
+            |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
                 if (dsig.inferred.clone() != None) {
                     v2_rt::rc_map_insert(
                         acc.clone(),
@@ -242,13 +245,13 @@ pub fn merge_remaining_declared(
 }
 
 pub fn topo_resolve_loop(
-    mut remaining: List<String>,
-    mut resolved: Map<String, ResolvedFuncSig>,
-    mut declared_sigs: Map<String, DeclaredFuncSig>,
-    mut call_edges: List<CallEdge>,
-    mut local_func_set: Map<String, Bool>,
+    mut remaining: Rc<Vec<String>>,
+    mut resolved: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    mut declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    mut call_edges: Rc<Vec<Rc<CallEdge>>>,
+    mut local_func_set: Rc<HashMap<String, bool>>,
     mut module_name: String,
-    mut diagnostics: List<ErrorNode>,
+    mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     mut fuel: i64,
 ) -> Rc<ResolveFuncSigsResult> {
     loop {
@@ -259,7 +262,8 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         resolved.clone(),
-                        |acc: Map<String, ResolvedFuncSig>, dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                         dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
@@ -374,7 +378,8 @@ pub fn topo_resolve_loop(
                     .cloned()
                     .fold(
                         cycle_accum.signatures.clone(),
-                        |acc: Map<String, ResolvedFuncSig>, dsig: Rc<DeclaredFuncSig>| {
+                        |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+                         dsig: Rc<DeclaredFuncSig>| {
                             if (dsig.inferred.clone() != None) {
                                 v2_rt::rc_map_insert(
                                     acc.clone(),
@@ -438,7 +443,9 @@ pub fn topo_resolve_loop(
         );
         let ready_set = ready.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Map<K, V>, fn_name: String| v2_rt::rc_map_insert(acc, fn_name.clone(), true),
+            |acc: Rc<HashMap<String, bool>>, fn_name: String| {
+                v2_rt::rc_map_insert(acc, fn_name.clone(), true)
+            },
         );
         let next_remaining = Rc::new({
             let mut __result = Vec::new();
@@ -464,10 +471,10 @@ pub fn topo_resolve_loop(
 }
 
 pub fn resolve_func_sigs(
-    declared_sigs: Map<String, DeclaredFuncSig>,
-    items: List<Node>,
+    declared_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
+    items: Rc<Vec<Rc<Node>>>,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolveFuncSigsResult> {
     {
         let local_func_names = Rc::new({

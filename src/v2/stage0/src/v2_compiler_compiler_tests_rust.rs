@@ -136,14 +136,14 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
     }
 }
 
-pub fn first_or_empty(items: List<String>) -> String {
+pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
     match items.first().cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
-pub fn second_or_empty(items: List<String>) -> String {
+pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
     match items.get(1 as usize).cloned() {
         Some(v) => v.clone(),
         None => "".to_string(),

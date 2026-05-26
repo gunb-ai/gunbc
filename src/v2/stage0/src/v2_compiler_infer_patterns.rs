@@ -30,8 +30,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
-    pub status: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub status: Rc<NodeLookupStatus>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -142,7 +142,7 @@ pub fn node_lookup_resolved(node: Rc<Node>) -> Rc<NodeLookupResult> {
     })
 }
 
-pub fn node_lookup_failed(diagnostics: List<ErrorNode>) -> Rc<NodeLookupResult> {
+pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<NodeLookupResult> {
     Rc::new(NodeLookupResult {
         status: Rc::new(NodeLookupStatus::LookupFailed),
         diagnostics: diagnostics,
@@ -170,7 +170,7 @@ pub fn variant_not_found_result(
     scrut: Rc<Node>,
     variant_name: String,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     node_lookup_failed(Rc::new(vec![make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
@@ -186,7 +186,7 @@ pub fn lookup_variant_in_type(
     scrut: Rc<PatternSubject>,
     variant_name: String,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     field_binding_count: i64,
 ) -> Rc<NodeLookupResult> {
     match (*scrut).clone() {
@@ -257,7 +257,7 @@ pub fn lookup_field_in_variant(
     variant: Rc<PatternSubject>,
     field_name: String,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
     match (*variant).clone() {
         PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
@@ -296,11 +296,11 @@ pub fn lookup_field_in_variant(
 
 pub fn check_match_exhaustiveness(
     scrutinee_type: Rc<Node>,
-    arms: List<Node>,
+    arms: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
     span: Rc<SourceSpan>,
     module_name: String,
-) -> List<ErrorNode> {
+) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let scrut_is_optional =
             (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
@@ -357,8 +357,10 @@ pub fn check_match_exhaustiveness(
                     {
                         let covered_set = arms.clone().iter().cloned().fold(
                             v2_rt::rc_empty_map::<String, bool>(),
-                            |acc: Map<K, V>, arm: Rc<Node>| match (*arm_pattern(arm.clone()))
-                                .clone()
+                            |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(
+                                arm.clone(),
+                            ))
+                            .clone()
                             {
                                 MatchPattern::VariantPattern { name: n, .. } => {
                                     v2_rt::rc_map_insert(acc.clone(), n.clone(), true)

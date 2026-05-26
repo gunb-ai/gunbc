@@ -12,51 +12,51 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GraphEdge {
-    pub caller: compile_error!("UNRESOLVED_CompilerError"),
-    pub callee: compile_error!("UNRESOLVED_CompilerError"),
+    pub caller: String,
+    pub callee: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraph {
-    pub edges: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub edges: Rc<Vec<Rc<GraphEdge>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphAdjacencyViews {
-    pub forward: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub reverse: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
-    pub visited: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub order: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub order: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
-    pub visited: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub members: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub members: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccCycleAcc {
-    pub visited: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub has_cycle: compile_error!("UNRESOLVED_CompilerError"),
+    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub has_cycle: bool,
 }
 
-pub fn seed_adjacency_map(names: List<String>) -> Map<String, List> {
+pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.iter().cloned().fold(
-        v2_rt::rc_empty_map::<String, List<String>>(),
-        |acc: Map<String, List>, name: String| {
+        v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
             v2_rt::rc_map_insert(acc, name.clone(), Rc::new(vec![]))
         },
     )
 }
 
 pub fn build_call_graph_from_proof_edges(
-    names: List<String>,
-    edges: List<ProofEdge>,
+    names: Rc<Vec<String>>,
+    edges: Rc<Vec<Rc<ProofEdge>>>,
 ) -> Rc<CallGraph> {
     Rc::new(CallGraph {
         edges: Rc::new({
@@ -84,7 +84,7 @@ pub fn build_call_graph_from_proof_edges(
 }
 
 pub fn build_adjacency_views(
-    names: List<String>,
+    names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
 ) -> Rc<CallGraphAdjacencyViews> {
     {
@@ -123,17 +123,23 @@ pub fn build_adjacency_views(
     }
 }
 
-pub fn forward_adjacency(names: List<String>, graph: Rc<CallGraph>) -> Map<String, List> {
+pub fn forward_adjacency(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     build_adjacency_views(names, graph).forward.clone()
 }
 
-pub fn reverse_adjacency(names: List<String>, graph: Rc<CallGraph>) -> Map<String, List> {
+pub fn reverse_adjacency(
+    names: Rc<Vec<String>>,
+    graph: Rc<CallGraph>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     build_adjacency_views(names, graph).reverse.clone()
 }
 
 pub fn dfs_finish_order(
     node: String,
-    adjacency: Map<String, List>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -166,7 +172,7 @@ pub fn dfs_finish_order(
 
 pub fn dfs_collect_component(
     node: String,
-    adjacency: Map<String, List>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -194,7 +200,7 @@ pub fn dfs_collect_component(
     })
 }
 
-pub fn graph_has_multi_node_scc(names: List<String>, graph: Rc<CallGraph>) -> bool {
+pub fn graph_has_multi_node_scc(names: Rc<Vec<String>>, graph: Rc<CallGraph>) -> bool {
     {
         let adjacency = build_adjacency_views(names.clone(), graph);
         let finish = names.clone().iter().cloned().fold(
@@ -238,7 +244,7 @@ pub fn graph_has_multi_node_scc(names: List<String>, graph: Rc<CallGraph>) -> bo
     }
 }
 
-pub fn is_lexicographic_descent(mut evidence: List<DescentEvidence>) -> bool {
+pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool {
     loop {
         match evidence.clone().first().cloned() {
             None => {
@@ -267,7 +273,7 @@ pub fn is_lexicographic_descent(mut evidence: List<DescentEvidence>) -> bool {
     }
 }
 
-pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: List<ProofEdge>) -> bool {
+pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>) -> bool {
     {
         let expected_dims = (proof.dimensions.clone().len() as i64);
         let non_descending = Rc::new({

@@ -17,19 +17,19 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
-    pub bindings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub recursive_types: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub recursive_type_set: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub inductive_fields: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub source_indices: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub intern_table: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    pub recursive_types: Rc<Vec<i64>>,
+    pub recursive_type_set: Rc<HashMap<i64, bool>>,
+    pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub intern_table: Rc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeBinding {
-    pub name: compile_error!("UNRESOLVED_CompilerError"),
-    pub resolved: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub provenance: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub name: String,
+    pub resolved: Rc<Node>,
+    pub provenance: Rc<SubValueRelation>,
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
@@ -78,7 +78,7 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     }
 }
 
-pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> List<InductiveField> {
+pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
     match v2_rt::map_get(&env.inductive_fields.clone(), type_name) {
         Some(fields) => fields.clone(),
         None => Rc::new(vec![]),
@@ -106,12 +106,12 @@ pub fn is_inductive_field(
 }
 
 pub fn put_inductive_field(
-    fields: Map<String, List>,
+    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     type_name: String,
     variant_name: String,
     field_name: String,
     shape: RecursionShape,
-) -> Map<String, List> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v2_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
@@ -135,13 +135,13 @@ pub fn put_inductive_field(
 }
 
 pub fn put_inductive_field_cross(
-    fields: Map<String, List>,
+    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     type_name: String,
     variant_name: String,
     field_name: String,
     shape: RecursionShape,
     element_type: String,
-) -> Map<String, List> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v2_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
@@ -165,33 +165,36 @@ pub fn put_inductive_field_cross(
 }
 
 pub fn merge_inductive_fields(
-    left: Map<String, List>,
-    right: Map<String, List>,
-) -> Map<String, List> {
+    left: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v2_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
-        |acc: Map<String, List>, type_name: String| match v2_rt::map_get(&right, type_name.clone())
-        {
-            Some(incoming) => {
-                let existing = match v2_rt::map_get(&acc, type_name.clone()) {
-                    Some(fs) => fs.clone(),
-                    None => Rc::new(vec![]),
-                };
-                v2_rt::rc_map_insert(
-                    acc.clone(),
-                    type_name.clone(),
-                    v2_rt::concat(existing.clone(), incoming.clone()),
-                )
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
+            match v2_rt::map_get(&right, type_name.clone()) {
+                Some(incoming) => {
+                    let existing = match v2_rt::map_get(&acc, type_name.clone()) {
+                        Some(fs) => fs.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    v2_rt::rc_map_insert(
+                        acc.clone(),
+                        type_name.clone(),
+                        v2_rt::concat(existing.clone(), incoming.clone()),
+                    )
+                }
+                None => acc.clone(),
             }
-            None => acc.clone(),
         },
     )
 }
 
-pub fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List> {
+pub fn inductive_fields_list_to_map(
+    fields: Rc<Vec<Rc<InductiveField>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     fields.iter().cloned().fold(
-        v2_rt::rc_empty_map::<String, List<InductiveField>>(),
-        |acc: Map<String, List>, field: Rc<InductiveField>| {
+        v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
             let existing = match v2_rt::map_get(&acc, field.type_name.clone()) {
                 Some(fs) => fs.clone(),
                 None => Rc::new(vec![]),
@@ -205,34 +208,38 @@ pub fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String,
     )
 }
 
-pub fn merge_envs(envs: List<TypeEnv>) -> Rc<TypeEnv> {
+pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Map<K, V>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.bindings.clone()),
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
+                v2_rt::rc_map_merge(acc, env.bindings.clone())
+            },
         );
         let merged_recursive = envs
             .clone()
             .iter()
             .cloned()
-            .fold(Rc::new(vec![]), |acc: List<T>, env: Rc<TypeEnv>| {
+            .fold(Rc::new(vec![]), |acc: _, env: Rc<TypeEnv>| {
                 v2_rt::concat(acc, env.recursive_types.clone())
             });
         let merged_recursive_set = envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<i64, bool>(),
-            |acc: Map<K, V>, env: Rc<TypeEnv>| {
+            |acc: Rc<HashMap<i64, bool>>, env: Rc<TypeEnv>| {
                 v2_rt::rc_map_merge(acc, env.recursive_type_set.clone())
             },
         );
         let merged_inductive_fields = envs.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, List<InductiveField>>(),
-            |acc: Map<String, List>, env: Rc<TypeEnv>| {
+            v2_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, env: Rc<TypeEnv>| {
                 merge_inductive_fields(acc, env.inductive_fields.clone())
             },
         );
         let merged_source_indices = envs.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            |acc: Map<K, V>, env: Rc<TypeEnv>| v2_rt::rc_map_merge(acc, env.source_indices.clone()),
+            |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, env: Rc<TypeEnv>| {
+                v2_rt::rc_map_merge(acc, env.source_indices.clone())
+            },
         );
         let merged_intern_table = match envs.clone().first().cloned() {
             Some(first_env) => first_env.intern_table.clone(),

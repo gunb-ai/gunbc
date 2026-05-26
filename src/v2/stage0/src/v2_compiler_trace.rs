@@ -13,8 +13,8 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpanMapping {
-    pub generated_line: compile_error!("UNRESOLVED_CompilerError"),
-    pub source_span: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub generated_line: i64,
+    pub source_span: Rc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -23,7 +23,7 @@ pub enum TraceEvent {
     TraceEnter {
         node_id: String,
         span: Rc<SourceSpan>,
-        inputs: Map<String, String>,
+        inputs: Rc<HashMap<String, String>>,
     },
     TraceExit {
         node_id: String,
@@ -55,15 +55,15 @@ impl TraceEvent {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
-    pub func_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub span: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub bindings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub func_name: String,
+    pub span: Rc<SourceSpan>,
+    pub bindings: Rc<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Trace {
-    pub events: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub stack: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub events: Rc<Vec<Rc<TraceEvent>>>,
+    pub stack: Rc<Vec<Rc<TraceFrame>>>,
 }
 
 pub fn empty_trace() -> Rc<Trace> {
@@ -143,7 +143,7 @@ pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: 
     }
 }
 
-pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> List<TraceEvent> {
+pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<TraceEvent>>> {
     match (*filter).clone() {
         TraceFilter::FilterByFunc {
             func_name: name, ..
@@ -247,7 +247,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
     }
 }
 
-pub fn format_trace(trace: Rc<Trace>) -> List<String> {
+pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for e in trace.events.clone().iter().cloned() {
@@ -259,15 +259,15 @@ pub fn format_trace(trace: Rc<Trace>) -> List<String> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
-    pub func_name: compile_error!("UNRESOLVED_CompilerError"),
-    pub inputs: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub expected_output: compile_error!("UNRESOLVED_CompilerError"),
-    pub trace: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub func_name: String,
+    pub inputs: Rc<HashMap<String, String>>,
+    pub expected_output: Option<String>,
+    pub trace: Option<Rc<Trace>>,
 }
 
 pub fn capture_repro(
     func_name: String,
-    inputs: Map<String, String>,
+    inputs: Rc<HashMap<String, String>>,
     trace: Rc<Trace>,
 ) -> Rc<ReproCase> {
     Rc::new(ReproCase {
@@ -280,8 +280,8 @@ pub fn capture_repro(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
-    pub generated_file: compile_error!("UNRESOLVED_CompilerError"),
-    pub mappings: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub generated_file: String,
+    pub mappings: Rc<Vec<Rc<SpanMapping>>>,
 }
 
 pub fn remap_location(source_map: Rc<SourceMap>, generated_line: i64) -> Option<Rc<SourceSpan>> {

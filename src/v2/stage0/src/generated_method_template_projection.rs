@@ -8,9 +8,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn rust_method_template_emit() -> Map<String, String> {
+pub fn rust_method_template_emit() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("chars".to_string(), "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string());
             __m.insert("count".to_string(), "({recv}.len() as i64)".to_string());
@@ -24,12 +24,12 @@ pub fn rust_method_template_emit() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn python_method_template_emit() -> Map<String, String> {
+pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("all".to_string(), "all({arg}(x) for x in {recv})".to_string());
             __m.insert("any".to_string(), "any({arg}(x) for x in {recv})".to_string());
@@ -50,12 +50,12 @@ pub fn python_method_template_emit() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn go_method_template_emit() -> Map<String, String> {
+pub fn go_method_template_emit() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Map<String, String> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("all".to_string(), "v2rt.All({recv}, {arg})".to_string());
             __m.insert("any".to_string(), "v2rt.Any({recv}, {arg})".to_string());
@@ -72,5 +72,5 @@ pub fn go_method_template_emit() -> Map<String, String> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Map<String, String>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }

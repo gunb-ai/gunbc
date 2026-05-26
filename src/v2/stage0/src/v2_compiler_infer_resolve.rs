@@ -55,68 +55,68 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeResolveResult {
-    pub resolved: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolved: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemResult {
-    pub item: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldResult {
-    pub field: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExprResolveResult {
-    pub expr: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub expr: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NamedArgResolveResult {
-    pub arg: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub arg: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchArmResolveResult {
-    pub arm: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub arm: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldInitResolveResult {
-    pub field_init: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub field_init: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringPartResolveResult {
-    pub part: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub part: Rc<StringPart>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportResolveResult {
-    pub transport: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub transport: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParamResult {
-    pub param: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub param: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResourceUseResult {
-    pub resource_use: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resource_use: Rc<Node>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
@@ -153,9 +153,9 @@ pub fn is_user_generic_use_site(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
 
 pub fn substitute_type_slots(
     n: Rc<Node>,
-    slot_bindings: Map<String, Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
     decl_name: String,
-    source_indices: Map<String, NewlineIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_slot = (((((n.children.clone().len() as i64) == 0)
@@ -769,7 +769,7 @@ pub fn resolve_node_bounded(
                     .cloned()
                     .fold(
                         v2_rt::rc_empty_map::<String, Rc<Node>>(),
-                        |acc: Map<K, V>, pair: (i64, Rc<Node>)| {
+                        |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                             let idx = pair.0.clone();
                             let slot_name =
                                 authored_name_at(env.source_indices.clone(), pair.1.clone());
@@ -1215,7 +1215,7 @@ pub fn missing_generic_args_diagnostics(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
-) -> List<ErrorNode> {
+) -> Rc<Vec<Rc<ErrorNode>>> {
     if ((((n.children.clone().len() as i64) == 0) && ((n.params.clone().len() as i64) == 0))
         && is_user_generic_use_site(n.clone(), env.clone()))
     {
@@ -2546,8 +2546,8 @@ pub fn resolve_expr_types(
 
 pub fn fn_type_param_names(
     item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in Rc::new({
@@ -2571,7 +2571,7 @@ pub fn fn_type_param_names(
     })
 }
 
-pub fn has_duplicate_type_param_name(names: List<String>) -> bool {
+pub fn has_duplicate_type_param_name(names: Rc<Vec<String>>) -> bool {
     {
         let mut __found = false;
         for pair in Rc::new(

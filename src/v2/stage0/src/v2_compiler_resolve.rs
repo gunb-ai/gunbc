@@ -20,38 +20,38 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleGraph {
-    pub modules: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub modules: Rc<Vec<Rc<ResolvedModule>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedModule {
-    pub module: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub resolved_imports: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub dep_order: compile_error!("UNRESOLVED_CompilerError"),
+    pub module: Rc<Node>,
+    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    pub dep_order: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedImport {
-    pub module_path: compile_error!("UNRESOLVED_CompilerError"),
-    pub is_all: compile_error!("UNRESOLVED_CompilerError"),
-    pub specific_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub target_module: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub module_path: String,
+    pub is_all: bool,
+    pub specific_names: Rc<Vec<String>>,
+    pub target_module: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DepEdge {
-    pub from_module: compile_error!("UNRESOLVED_CompilerError"),
-    pub to_module: compile_error!("UNRESOLVED_CompilerError"),
+    pub from_module: String,
+    pub to_module: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveAccum {
-    pub imports_by_name: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn map_has(m: Map<String, Bool>, key: String) -> bool {
+pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v2_rt::map_get(&m, key) {
         Some(_) => true,
         None => false,
@@ -59,14 +59,14 @@ pub fn map_has(m: Map<String, Bool>, key: String) -> bool {
 }
 
 pub fn resolve_modules(
-    modules: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    modules: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleGraph> {
     {
         let dup_diags = check_duplicate_modules(modules.clone(), source_indices.clone());
         let module_index = modules.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Map<K, V>, m: Rc<Node>| {
+            |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| {
                 v2_rt::rc_map_insert(
                     acc,
                     authored_name_at(source_indices.clone(), m.clone()),
@@ -75,12 +75,12 @@ pub fn resolve_modules(
             },
         );
         let export_sets = modules.clone().iter().cloned().fold(
-            v2_rt::rc_empty_map::<String, Map<K, V>>(),
-            |acc: Map<K, V>, m: Rc<Node>| {
+            v2_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<Node>| {
                 let exported = get_exported_names(m.clone(), source_indices.clone());
                 let exported_set = exported.clone().iter().cloned().fold(
                     v2_rt::rc_empty_map::<String, bool>(),
-                    |inner_acc: Map<K, V>, name: String| {
+                    |inner_acc: Rc<HashMap<String, bool>>, name: String| {
                         v2_rt::rc_map_insert(inner_acc, name.clone(), true)
                     },
                 );
@@ -93,7 +93,7 @@ pub fn resolve_modules(
         );
         let resolve_accum = modules.clone().iter().cloned().fold(
             Rc::new(ResolveAccum {
-                imports_by_name: v2_rt::rc_empty_map::<String, List<ResolvedImport>>(),
+                imports_by_name: v2_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
@@ -136,7 +136,7 @@ pub fn resolve_modules(
         .cloned()
         .fold(
             v2_rt::rc_empty_map::<String, i64>(),
-            |acc: Map<K, V>, pair: (i64, String)| {
+            |acc: Rc<HashMap<String, i64>>, pair: (i64, String)| {
                 v2_rt::rc_map_insert(acc, pair.1.clone(), pair.0.clone())
             },
         );
@@ -183,21 +183,21 @@ pub fn resolve_modules(
     }
 }
 
-pub fn find_module(module_index: Map<String, Node>, path: String) -> Option<Rc<Node>> {
+pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
     v2_rt::map_get(&module_index, path)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleResolveResult {
-    pub resolved_imports: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn resolve_module_imports(
     module: Rc<Node>,
-    module_index: Map<String, Node>,
-    export_sets: Map<String, Map>,
-    source_indices: Map<String, NewlineIndex>,
+    module_index: Rc<HashMap<String, Rc<Node>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleResolveResult> {
     {
         let results = Rc::new({
@@ -249,16 +249,16 @@ pub fn resolve_module_imports(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolveResult {
-    pub resolved: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resolved: Rc<ResolvedImport>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn resolve_import(
     import: Rc<Node>,
-    module_index: Map<String, Node>,
+    module_index: Rc<HashMap<String, Rc<Node>>>,
     importing_module: String,
-    export_sets: Map<String, Map>,
-    source_indices: Map<String, NewlineIndex>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ImportResolveResult> {
     {
         let import_path = authored_name_at(source_indices.clone(), import.clone());
@@ -344,8 +344,8 @@ pub fn resolve_import(
 
 pub fn get_exported_names(
     module: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let item_names = Rc::new({
             let mut __result = Vec::new();
@@ -387,14 +387,17 @@ pub fn get_exported_names(
     }
 }
 
-pub fn get_item_name(item: Rc<Node>, source_indices: Map<String, NewlineIndex>) -> String {
+pub fn get_item_name(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices, item)
 }
 
 pub fn get_variant_names(
     item: Rc<Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
         if is_coproduct {
@@ -413,14 +416,14 @@ pub fn get_variant_names(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuplicateCheckState {
-    pub seen_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub seen_names: Rc<HashMap<String, bool>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn check_duplicate_modules(
-    modules: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
-) -> List<ErrorNode> {
+    modules: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let result = modules.iter().cloned().fold(
             Rc::new(DuplicateCheckState {
@@ -462,15 +465,15 @@ pub fn check_duplicate_modules(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
-    pub sorted: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub cycle_error: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub sorted: Rc<Vec<String>>,
+    pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
 pub fn adjacency_add_edge(
-    adjacency: Map<String, List>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     from_module: String,
     to_module: String,
-) -> Map<String, List> {
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let existing = match v2_rt::map_get(&adjacency, from_module.clone()) {
             Some(lst) => lst.clone(),
@@ -493,8 +496,8 @@ pub fn topo_sort_key(name: String) -> String {
 }
 
 pub fn topological_sort(
-    modules: List<Node>,
-    source_indices: Map<String, NewlineIndex>,
+    modules: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TopoResult> {
     {
         let module_names = Rc::new({
@@ -582,14 +585,14 @@ pub fn topological_sort(
             .iter()
             .cloned()
             .fold(
-                v2_rt::rc_empty_map::<String, List<String>>(),
-                |acc: Map<String, List>, edge: Rc<DepEdge>| {
+                v2_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
                     adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
                 },
             );
         let in_degree_map = modules.clone().iter().cloned().fold(
             v2_rt::rc_empty_map::<String, i64>(),
-            |acc: Map<K, V>, m: Rc<Node>| {
+            |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
                 let imports_std_types = {
                     let mut __found = false;
@@ -661,7 +664,9 @@ pub fn topological_sort(
             {
                 let sorted_set = result.sorted.clone().iter().cloned().fold(
                     v2_rt::rc_empty_map::<String, bool>(),
-                    |acc: Map<K, V>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true),
+                    |acc: Rc<HashMap<String, bool>>, name: String| {
+                        v2_rt::rc_map_insert(acc, name.clone(), true)
+                    },
                 );
                 let cycle_members = Rc::new({
                     let mut __result = Vec::new();
@@ -690,15 +695,15 @@ pub fn topological_sort(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnDrainState {
-    pub sorted: Rc<compile_error!("UNRESOLVED_CompilerError")>,
-    pub in_degree_map: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub sorted: Rc<Vec<String>>,
+    pub in_degree_map: Rc<HashMap<String, i64>>,
 }
 
 pub fn kahn_drain(
-    mut queue: List<String>,
-    mut sorted: List<String>,
-    mut in_degree_map: Map<String, Int>,
-    mut adjacency: Map<String, List>,
+    mut queue: Rc<Vec<String>>,
+    mut sorted: Rc<Vec<String>>,
+    mut in_degree_map: Rc<HashMap<String, i64>>,
+    mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut fuel: i64,
 ) -> Rc<KahnDrainState> {
     loop {
@@ -723,7 +728,7 @@ pub fn kahn_drain(
                     };
                     let new_degrees = neighbors.clone().iter().cloned().fold(
                         state.in_degree_map,
-                        |deg_map: Map<String, Int>, neighbor: String| {
+                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
                             let current = match v2_rt::map_get(&deg_map, neighbor.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -774,7 +779,9 @@ pub fn kahn_drain(
         .cloned()
         .fold(
             v2_rt::rc_empty_map::<String, bool>(),
-            |acc: Map<K, V>, name: String| v2_rt::rc_map_insert(acc, name.clone(), true),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v2_rt::rc_map_insert(acc, name.clone(), true)
+            },
         );
         let new_zero = Rc::new({
             let mut __sorted: Vec<_> = Rc::new(v2_rt::map_keys(&new_zero_set))
