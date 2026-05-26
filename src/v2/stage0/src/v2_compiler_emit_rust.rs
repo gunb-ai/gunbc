@@ -3178,166 +3178,16 @@ pub fn emit_struct_from_children(
     }
 }
 
-pub fn explicit_type_arg_strings(
-    type_node: &Rc<Node>,
+pub fn render_rust_type_with_applied_binding(
+    n: Rc<Node>,
     shared_types: Rc<std::collections::BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    if ((type_node.params.clone().len() as i64) > 0) {
-        Rc::new({
-            let mut __result = Vec::new();
-            for p in type_node.params.clone().iter().cloned() {
-                __result.push(render_rust_type(
-                    &param_node_type_expr(&p),
-                    shared_types.clone(),
-                    &source_indices,
-                ));
-            }
-            __result
-        })
-    } else {
-        if ((type_node.connective.clone() == Connective::NoConnective)
-            && ((type_node.children.clone().len() as i64) > 0))
-        {
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in type_node.children.clone().iter().cloned() {
-                    __result.push(render_rust_type(
-                        &child_type_node(&c),
-                        shared_types.clone(),
-                        &source_indices,
-                    ));
-                }
-                __result
-            })
-        } else {
-            Rc::new(vec![])
-        }
-    }
-}
-
-pub fn apply_missing_generic_args(
-    ty: String,
-    type_node: &Rc<Node>,
-    parent_generic_param_names: &Rc<Vec<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    {
-        let type_name = authored_name_at(source_indices.clone(), &type_node);
-        match v2_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone()) {
-            Some(summary) => {
-                let expected = (summary.generic_param_names.clone().len() as i64);
-                if (expected.clone() == 0) {
-                    ty.clone()
-                } else {
-                    {
-                        let explicit_args = explicit_type_arg_strings(
-                            &type_node,
-                            v2_rt::rc_empty_set::<String>(),
-                            source_indices.clone(),
-                        );
-                        let declaration_formals = summary.generic_param_names.clone();
-                        let formal_ty = v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(type_name.clone(), "<".to_string()),
-                                declaration_formals.clone().join(&", ".to_string()),
-                            ),
-                            ">".to_string(),
-                        );
-                        if (ty.clone().as_str() == formal_ty.clone().as_str()) {
-                            type_name.clone()
-                        } else if (ty.clone().as_str()
-                            == v2_rt::concat(
-                                v2_rt::concat("Rc<".to_string(), formal_ty.clone()),
-                                ">".to_string(),
-                            )
-                            .as_str())
-                        {
-                            v2_rt::concat(
-                                v2_rt::concat("Rc<".to_string(), type_name.clone()),
-                                ">".to_string(),
-                            )
-                        } else if (ty.clone().as_str()
-                            == v2_rt::concat(
-                                v2_rt::concat("Box<".to_string(), formal_ty.clone()),
-                                ">".to_string(),
-                            )
-                            .as_str())
-                        {
-                            v2_rt::concat(
-                                v2_rt::concat("Box<".to_string(), type_name.clone()),
-                                ">".to_string(),
-                            )
-                        } else if (explicit_args.clone().as_ref()
-                            == declaration_formals.clone().as_ref())
-                        {
-                            ty.clone()
-                        } else if v2_rt::contains(
-                            ty.clone(),
-                            v2_rt::concat(type_name.clone(), "<".to_string()),
-                        ) {
-                            ty.clone()
-                        } else {
-                            let inferred_args =
-                                if ((explicit_args.clone().len() as i64) == expected.clone()) {
-                                    explicit_args.clone()
-                                } else {
-                                    Rc::new(vec![])
-                                };
-                            if ((inferred_args.clone().len() as i64) == expected.clone()) {
-                                {
-                                    let with_args = v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(type_name.clone(), "<".to_string()),
-                                            inferred_args.clone().join(&", ".to_string()),
-                                        ),
-                                        ">".to_string(),
-                                    );
-                                    if (ty.clone().as_str() == type_name.clone().as_str()) {
-                                        with_args
-                                    } else {
-                                        if (ty.clone().as_str()
-                                            == v2_rt::concat(
-                                                v2_rt::concat("Rc<".to_string(), type_name.clone()),
-                                                ">".to_string(),
-                                            )
-                                            .as_str())
-                                        {
-                                            v2_rt::concat(
-                                                v2_rt::concat("Rc<".to_string(), with_args),
-                                                ">".to_string(),
-                                            )
-                                        } else {
-                                            if (ty.clone().as_str()
-                                                == v2_rt::concat(
-                                                    v2_rt::concat(
-                                                        "Box<".to_string(),
-                                                        type_name.clone(),
-                                                    ),
-                                                    ">".to_string(),
-                                                )
-                                                .as_str())
-                                            {
-                                                v2_rt::concat(
-                                                    v2_rt::concat("Box<".to_string(), with_args),
-                                                    ">".to_string(),
-                                                )
-                                            } else {
-                                                ty.clone()
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                ty.clone()
-                            }
-                        }
-                    }
-                }
-            }
-            None => ty.clone(),
+    match n.type_annotation.clone() {
+        Some(applied) if (applied.children.len() as i64) > 0 => {
+            render_rust_type(&applied, shared_types, &source_indices)
         }
+        _ => render_rust_type(&n, shared_types, &source_indices),
     }
 }
 
@@ -3351,7 +3201,13 @@ pub fn emit_struct_field_from_child(
 ) -> String {
     {
         let rt_child = resolved_type(child.clone());
-        let ty = if ((is_product_type(rt_child.clone()) && (rt_child.ident_span.clone() != None))
+        let ty = if rt_child.type_annotation.clone() != None {
+            render_rust_type_with_applied_binding(
+                rt_child.clone(),
+                shared_types.clone(),
+                env.source_indices.clone(),
+            )
+        } else if ((is_product_type(rt_child.clone()) && (rt_child.ident_span.clone() != None))
             && ((rt_child.children.clone().len() as i64) > 2))
         {
             {
@@ -3408,39 +3264,7 @@ pub fn emit_struct_field_from_child(
         } else {
             render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
         };
-        let authored_field_ty = field_node_type_expr(&child);
-        let rendered_ty = match v2_rt::map_get(
-            &emit_info.type_summaries.clone(),
-            authored_name_at(env.source_indices.clone(), &authored_field_ty),
-        ) {
-            Some(summary) => {
-                let authored_args = explicit_type_arg_strings(
-                    &authored_field_ty,
-                    shared_types.clone(),
-                    env.source_indices.clone(),
-                );
-                if (((summary.generic_param_names.clone().len() as i64) > 0)
-                    && (authored_args.clone().as_ref()
-                        != summary.generic_param_names.clone().as_ref()))
-                {
-                    render_rust_type(
-                        &authored_field_ty,
-                        shared_types.clone(),
-                        &env.source_indices.clone(),
-                    )
-                } else {
-                    ty.clone()
-                }
-            }
-            None => ty.clone(),
-        };
-        let generic_ty = apply_missing_generic_args(
-            rendered_ty,
-            &rt_child,
-            &parent_generic_param_names,
-            emit_info,
-            &env.source_indices.clone(),
-        );
+        let generic_ty = ty.clone();
         let final_ty = if needs_box_wrapping(
             rt_child.clone(),
             recursive_types,
