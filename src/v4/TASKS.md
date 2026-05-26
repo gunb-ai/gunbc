@@ -1546,35 +1546,31 @@ to define a new agent output surface.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point.
   **Signature:** `compile_with_store(root: ModulePath, store: AgentStore, target: TargetModel) -> Outcome<TargetSource>`.
   The `root` parameter is the sole root-selection authority: the caller names
-  which store entry is the compilation entry point. `compile_with_store`
-  performs `store_lookup(path: root, store: store)` → `CoreNode` (fail-closed:
-  `Rejected` if the root path is absent, using the same module-admission
-  diagnostic carrier as the missing-module case). Root lookup operates on the
-  raw store before `module_graph_from_entries` runs; this sequencing is safe
-  because the returned `CoreNode` is consumed only inside `resolve_with_graph`,
-  which executes after admission. If `module_graph_from_entries` returns
-  `Violates` (e.g., duplicate paths in the store), `compile_with_store` returns
-  `Rejected` and the root `CoreNode` is discarded without reaching the compile
-  path — the unadmitted store never produces output. Workers must not add any
-  consume path for the root `CoreNode` that precedes or bypasses the admission
-  gate. The full store feeds `module_graph_from_entries` via `store.entries` for
-  dependency resolution. T-35 workers must not introduce a secondary
-  root-selection mechanism (e.g., first-entry convention, implicit main path);
-  the `root: ModulePath` parameter is the only declared authority.
+  which store entry is the compilation entry point. `compile_with_store` runs
+  admission first: `module_graph_from_entries(entries: store.entries)` →
+  `Holds { value: graph }` (fail-closed: `Violates` on duplicate paths). On
+  `Holds`, the root `CoreNode` is retrieved from the admitted graph via
+  `module_graph_entry_for_path(graph: graph, path: root)` → `Holds { value:
+  entry }` (fail-closed: `Violates` if the root path is absent from the
+  admitted graph, using `module_graph_entry_not_found` as the diagnostic
+  reason). `entry.root` is the `CoreNode` that enters the compile pipeline.
+  `module_graph_entry_for_path` is defined in `std/module_graph.dag` and is the
+  only declared root-selection surface — workers must not substitute raw
+  `store_lookup` on the unadmitted store, a first-entry convention, or any
+  other secondary mechanism. This satisfies INVARIANTS P2 boundary discipline:
+  the root `CoreNode` is selected exclusively from an admission-witnessed
+  lookup; the raw `AgentStore` is the write log, `ModuleGraph` is the
+  unique-path map, and only `module_graph_from_entries` bridges the two.
 
-  **Scope of T-35's change:** Two operations replace the filesystem path in the
-  ingest flow. (1) **Root retrieval:** `store_lookup(path: root, store: store)`
-  → `CoreNode` replaces the filesystem `read_file` step, producing the root
-  compilation subject. This is declared above in the Signature block; it is
-  fail-closed (`Rejected` if the root path is absent). (2) **Dependency set:**
-  `store.entries` replaces the `entries: Empty` argument to
-  `module_graph_from_entries` (currently in `compile_ingest_staging`), providing
-  the full set of pre-parsed modules for graph construction. No other part of the
-  ingest pipeline changes. `module_graph_from_entries` in `std/module_graph.dag`
-  remains the canonical `ModuleGraph` construction path and admission authority —
-  T-35 does NOT bypass it or replace `ModuleGraph` with a parallel lookup. The
-  `AgentStore` is an entry source; `module_graph_from_entries` enforces path
-  uniqueness and builds the graph exactly as it does today. `compile_with_store`
+  **Scope of T-35's change:** `store.entries` replaces the `entries: Empty`
+  argument to `module_graph_from_entries` (currently in
+  `compile_ingest_staging`). The single call to `module_graph_from_entries`
+  serves both purposes: (1) it admits the store (enforcing path uniqueness)
+  and (2) it provides the root `CoreNode` via `module_graph_entry_for_path` on
+  the resulting `ModuleGraph`. No other part of the ingest pipeline changes.
+  `module_graph_from_entries` in `std/module_graph.dag` remains the canonical
+  `ModuleGraph` construction path and admission authority — T-35 does NOT
+  bypass it or replace `ModuleGraph` with a parallel lookup. `compile_with_store`
   then delegates to the same existing `compile` orchestrator chain as
   `compile_ingest_staging` — T-35 does NOT implement or modify the infer/emit
   pipeline. Output type inherits from the existing orchestrator contract
