@@ -3,8 +3,9 @@
 // Owns: emit_atom, emit_named_edge, emit_positional_edge, emit_fixed_token,
 //       emit_bound_token, emit_tokens_node, emit_grammar_relation_row,
 //       serialize_source_for_emitted, serialize_target, emit.
-// Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
-//           std/diagnostic.dag, std/target_model.dag.
+// Consumes: compiler/02_parse.dag, compiler/04_infer.dag, compiler/06_translate.dag,
+//           compiler/07_target_carriers.dag, std/algebra.dag, std/collection.dag,
+//           std/diagnostic.dag, std/node.dag, std/target_model.dag.
 // Status: T-10 — emit = serialize_target ∘ translate; serialize delegates to
 // target_serialize_source_from_model grammar-inverse lex walk (no string templates).
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
@@ -120,9 +121,6 @@ fn emit_grammar_relation_row(
     ]
   }
 }
-// Scope gate: dag_surface_module_header, dag_surface_import_decl, and
-// dag_surface_data_decl rows are blocked pending nonterminal dispatch
-// infrastructure in 06_translate.dag (follow-on task tracked by PM).
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
   target: TargetModel
