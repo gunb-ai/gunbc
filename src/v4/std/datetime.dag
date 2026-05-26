@@ -118,8 +118,13 @@ type ClockTimeFields {
 }
 
 
+type ClockTimeValidity {
+  refined: Refined<ClockTimeFields>
+}
+
+
 type ClockTime {
-  fields: ClockTimeFields
+  validity: ClockTimeValidity
 }
 
 
@@ -481,7 +486,7 @@ fn leap_second_local_matches_utc(announcement: LeapSecondAnnouncement, fields: L
 
 
 fn ordinary_instant_admits(fields: OrdinaryInstantFields) -> Bool {
-  let second = second_value(second: fields.time.fields.second)
+  let second = second_value(second: refined_base(r: fields.time.validity.refined).second)
   second <= 59
 }
 
@@ -673,7 +678,7 @@ fn make_calendar_date(fields: CalendarDateFields, at: Locus) -> Outcome<Calendar
 
 fn make_clock_time(fields: ClockTimeFields, at: Locus) -> Outcome<ClockTime> {
   bind_outcome(o: refine(base: fields, by: clock_time_validation, at: at), f: fn(refined) {
-    outcome_accepted(value: ClockTime { fields: refined_base(r: refined) })
+    outcome_accepted(value: ClockTime { validity: ClockTimeValidity { refined: refined } })
   })
 }
 
