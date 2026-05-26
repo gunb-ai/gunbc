@@ -2734,10 +2734,41 @@ pub fn resolve_item_types(
             Rc::new({
                 let mut __result = Vec::new();
                 for child in item.children.clone().iter().cloned() {
-                    let fr = resolve_field(&child, &env, &module_name);
+                    let authored_type = field_node_type_expr(&child);
+                    let tr = resolve_node(authored_type.clone(), env.clone(), module_name.clone());
+                    let type_diags = v2_rt::concat(
+                        tr.diagnostics.clone(),
+                        missing_generic_args_diagnostics(
+                            authored_type.clone(),
+                            env.clone(),
+                            module_name.clone(),
+                        ),
+                    );
                     __result.push(Rc::new(ItemResult {
-                        item: fr.field.clone(),
-                        diagnostics: fr.diagnostics.clone(),
+                        item: Rc::new(Node {
+                            name: child.name.clone(),
+                            span: child.span.clone(),
+                            ident_span: child.ident_span.clone(),
+                            children: child.children.clone(),
+                            connective: child.connective.clone(),
+                            params: child.params.clone(),
+                            inferred: child.inferred.clone(),
+                            return_cardinality: child.return_cardinality.clone(),
+                            uses: child.uses.clone(),
+                            body: child.body.clone(),
+                            transport: child.transport.clone(),
+                            properties: v2_rt::concat(
+                                child.properties.clone(),
+                                tr.resolved.properties.clone(),
+                            ),
+                            type_annotation: child.type_annotation.clone(),
+                            is_self_recursive: false,
+                            has_non_tail_self_call: false,
+                            match_pattern: None,
+                            expr_data: Rc::new(ExprData::NoExprData),
+                            ident: None,
+                        }),
+                        diagnostics: type_diags,
                     }));
                 }
                 __result
@@ -2751,10 +2782,42 @@ pub fn resolve_item_types(
                     let field_results = Rc::new({
                         let mut __field_results = Vec::new();
                         for field in variant.children.clone().iter().cloned() {
-                            let fr = resolve_field(&field, &env, &module_name);
+                            let authored_type = field_node_type_expr(&field);
+                            let tr =
+                                resolve_node(authored_type.clone(), env.clone(), module_name.clone());
+                            let type_diags = v2_rt::concat(
+                                tr.diagnostics.clone(),
+                                missing_generic_args_diagnostics(
+                                    authored_type.clone(),
+                                    env.clone(),
+                                    module_name.clone(),
+                                ),
+                            );
                             __field_results.push(Rc::new(ItemResult {
-                                item: fr.field.clone(),
-                                diagnostics: fr.diagnostics.clone(),
+                                item: Rc::new(Node {
+                                    name: field.name.clone(),
+                                    span: field.span.clone(),
+                                    ident_span: field.ident_span.clone(),
+                                    children: field.children.clone(),
+                                    connective: field.connective.clone(),
+                                    params: field.params.clone(),
+                                    inferred: field.inferred.clone(),
+                                    return_cardinality: field.return_cardinality.clone(),
+                                    uses: field.uses.clone(),
+                                    body: field.body.clone(),
+                                    transport: field.transport.clone(),
+                                    properties: v2_rt::concat(
+                                        field.properties.clone(),
+                                        tr.resolved.properties.clone(),
+                                    ),
+                                    type_annotation: field.type_annotation.clone(),
+                                    is_self_recursive: false,
+                                    has_non_tail_self_call: false,
+                                    match_pattern: None,
+                                    expr_data: Rc::new(ExprData::NoExprData),
+                                    ident: None,
+                                }),
+                                diagnostics: type_diags,
                             }));
                         }
                         __field_results
