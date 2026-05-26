@@ -1526,9 +1526,9 @@ T-23 round-trip workflow.
 
    **Path-keyed invariants (ratified 2026-05-26):**
    - **`ModulePath` is a lookup key, not a Node identity authority.** Node identity within the compiler remains B1 `content_hash` (INVARIANTS §P2, `std/node.dag`). The path is an external boundary handle — the same role a filesystem path plays — not an alternative to the B1 merkle identity.
-   - **Function (not bijection):** each `ModulePath` maps to exactly one `Node`; distinct paths may map to nodes with identical B1 content hash — content deduplication is the Node layer's concern, not the store's. The store enforces uniqueness per path, never per content hash.
+   - **Function (not bijection):** each `ModulePath` corresponds to at most one `Node` at admission time — enforced solely by `module_graph_from_entries`, not by the store. Distinct paths may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the store's.
    - **Fail-closed on missing:** `compile_with_store` returns `Rejected` with a module-admission diagnostic if a required `ModulePath` is absent from the store — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
-   - **Insert policy:** to be ratified at implementation time — candidates are last-write-wins or rejection on duplicate path; the worker must not choose silently. The rejection carrier type, if any, is T-28-B's authority.
+   - **Insert policy (ratified 2026-05-26):** `store_insert` always appends — inserts never fail. Duplicate-path detection is deferred to `compile_with_store`, which returns `Rejected` via the existing `module_graph_from_entries` gate. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting the same `ModulePath` twice adds a second entry that causes admission to fail, not a silent overwrite.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
