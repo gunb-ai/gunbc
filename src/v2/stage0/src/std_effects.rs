@@ -50,7 +50,7 @@ impl EffectShape {
 pub enum KeySource {
     PathParam { param: String },
     InputField { field: String },
-    CompositeKey { fields: Rc<Vec<String>> },
+    CompositeKey { fields: List<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -87,9 +87,9 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
-    pub operation_name: String,
-    pub shape: Rc<EffectShape>,
-    pub evidence: Rc<IdempotencyEvidence>,
+    pub operation_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub shape: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub evidence: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -110,7 +110,7 @@ impl CompositionVerdict {
     }
 }
 
-pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
+pub fn compose_effects(effects: List<OperationEffect>) -> Rc<CompositionVerdict> {
     {
         let non_idempotent = Rc::new({
             let mut __result = Vec::new();
@@ -135,10 +135,10 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
-    pub operation_name: String,
-    pub method: HttpMethod,
-    pub path_template: Rc<PathTemplate>,
-    pub shape: Rc<EffectShape>,
+    pub operation_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub method: compile_error!("UNRESOLVED_CompilerError"),
+    pub path_template: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub shape: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -185,8 +185,8 @@ pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<Eff
 
 pub fn derive_op_effect(
     operation_name: String,
-    method: &HttpMethod,
-    path: &Rc<PathTemplate>,
+    method: HttpMethod,
+    path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
     {
         let shape = derive_effect_shape(method.clone(), path.clone());
@@ -220,17 +220,17 @@ impl ModifierAgreement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModifierCheck {
-    pub operation_name: String,
-    pub declared_idempotent: bool,
-    pub declared_readonly: bool,
-    pub derived_shape: Rc<EffectShape>,
-    pub agreement: Rc<ModifierAgreement>,
+    pub operation_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub declared_idempotent: compile_error!("UNRESOLVED_CompilerError"),
+    pub declared_readonly: compile_error!("UNRESOLVED_CompilerError"),
+    pub derived_shape: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub agreement: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 pub fn check_modifier_vs_derivation(
-    op: &Rc<DerivedOpEffect>,
-    declared_idempotent: &bool,
-    declared_readonly: &bool,
+    op: Rc<DerivedOpEffect>,
+    declared_idempotent: bool,
+    declared_readonly: bool,
 ) -> Rc<ModifierCheck> {
     {
         let derived_idempotent = is_idempotent_effect(op.shape.clone());
@@ -274,15 +274,15 @@ pub fn check_modifier_vs_derivation(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
-    pub operation_name: String,
-    pub effect_shape: Rc<EffectShape>,
-    pub claim: String,
-    pub witness_required: bool,
+    pub operation_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub effect_shape: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub claim: compile_error!("UNRESOLVED_CompilerError"),
+    pub witness_required: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 pub fn generate_idempotency_obligations(
-    ops: Rc<Vec<Rc<DerivedOpEffect>>>,
-) -> Rc<Vec<Rc<IdempotencyTestObligation>>> {
+    ops: List<DerivedOpEffect>,
+) -> List<IdempotencyTestObligation> {
     Rc::new({
         let mut __result = Vec::new();
         for o in Rc::new({
@@ -310,7 +310,7 @@ pub fn generate_idempotency_obligations(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEffectConcern {
-    pub workflow_name: String,
-    pub create_op: String,
-    pub reason: String,
+    pub workflow_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub create_op: compile_error!("UNRESOLVED_CompilerError"),
+    pub reason: compile_error!("UNRESOLVED_CompilerError"),
 }

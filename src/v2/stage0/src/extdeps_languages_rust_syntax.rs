@@ -17,9 +17,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+pub fn rust_item_forms() -> List<ItemForm> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
+            static CACHED: List<ItemForm> = {
                 Rc::new(vec![Rc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "fn".to_string(),
@@ -104,12 +104,12 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<ItemForm>| c.clone())
 }
 
-pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
+pub fn rust_keyword_literals() -> Map<String, LiteralValue> {
     thread_local! {
-            static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
+            static CACHED: Map<String, LiteralValue> = {
                 let mut __m = HashMap::new();
                 __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
         value: true,
@@ -120,12 +120,12 @@ pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
                 Rc::new(__m)
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, LiteralValue>| c.clone())
 }
 
-pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
+pub fn rust_keyword_set() -> Map<String, Bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Map<String, Bool> = {
             let mut __m = HashMap::new();
             __m.insert("fn".to_string(), true);
             __m.insert("struct".to_string(), true);
@@ -167,12 +167,12 @@ pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Bool>| c.clone())
 }
 
-pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn rust_operators() -> List<OperatorSpec> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
+            static CACHED: List<OperatorSpec> = {
                 Rc::new(vec![Rc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
@@ -260,7 +260,7 @@ pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<OperatorSpec>| c.clone())
 }
 
 pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
@@ -274,5 +274,5 @@ pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
     })
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
 }

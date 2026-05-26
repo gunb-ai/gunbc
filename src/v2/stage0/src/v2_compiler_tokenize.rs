@@ -26,9 +26,9 @@ pub fn is_keyword_text(text: String) -> bool {
     }
 }
 
-pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
+pub fn single_punct() -> Map<String, TokenShape> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, TokenShape>> = {
+        static CACHED: Map<String, TokenShape> = {
             let mut __m = HashMap::new();
             __m.insert("(".to_string(), TokenShape::ShLParen);
             __m.insert(")".to_string(), TokenShape::ShRParen);
@@ -44,34 +44,34 @@ pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, TokenShape>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokenizerState {
-    pub pos: i64,
-    pub tokens: Rc<Vec<Rc<Token>>>,
-    pub interp_depth: Rc<Vec<i64>>,
+    pub pos: compile_error!("UNRESOLVED_CompilerError"),
+    pub tokens: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub interp_depth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TokPos {
-    pub pos: i64,
-    pub interp_depth: Rc<Vec<i64>>,
+    pub pos: compile_error!("UNRESOLVED_CompilerError"),
+    pub interp_depth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScanResult {
-    pub pos: i64,
-    pub token: Rc<Token>,
-    pub interp_depth: Rc<Vec<i64>>,
+    pub pos: compile_error!("UNRESOLVED_CompilerError"),
+    pub token: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub interp_depth: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
-    pub file: String,
-    pub text: String,
-    pub source_chars: Rc<Vec<i64>>,
+    pub file: compile_error!("UNRESOLVED_CompilerError"),
+    pub text: compile_error!("UNRESOLVED_CompilerError"),
+    pub source_chars: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
@@ -159,7 +159,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize(source: &String, file: String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: String, file: String) -> List<Token> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -189,7 +189,7 @@ pub fn tokenize(source: &String, file: String) -> Rc<Vec<Rc<Token>>> {
     }
 }
 
-pub fn scan_next_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let ch = source_char(source.clone(), pos.pos.clone());
         if (ch.clone().as_str() == "\n".to_string().as_str()) {
@@ -210,12 +210,12 @@ pub fn scan_next_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResul
                 let top = pos.interp_depth.clone().last().cloned().clone().unwrap();
                 if (top.clone() == 0) {
                     {
-                        let popped = drop_last(&pos.interp_depth.clone());
+                        let popped = drop_last(pos.interp_depth.clone());
                         let cont_pos = Rc::new(TokPos {
                             pos: (pos.pos.clone() + 1),
                             interp_depth: popped,
                         });
-                        return scan_str_cont(&source, &cont_pos, pos.pos.clone());
+                        return scan_str_cont(source.clone(), cont_pos, pos.pos.clone());
                     }
                 } else {
                     return Rc::new(ScanResult {
@@ -234,13 +234,13 @@ pub fn scan_next_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResul
                 }
             }
         }
-        scan_token(&source, &pos, &ch)
+        scan_token(source.clone(), pos.clone(), ch.clone())
     }
 }
 
 pub fn tokenize_loop(
     mut source: Rc<SourceRef>,
-    mut tokens: Rc<Vec<Rc<Token>>>,
+    mut tokens: List<Token>,
     mut pos: Rc<TokPos>,
     mut fuel: i64,
 ) -> Rc<TokenizerState> {
@@ -253,7 +253,7 @@ pub fn tokenize_loop(
                 interp_depth: s.interp_depth.clone(),
             });
         }
-        let result = scan_next_token(&source, &s);
+        let result = scan_next_token(source.clone(), s.clone());
         {
             let __tco_0 = v2_rt::rc_list_push(tokens, result.token.clone());
             let __tco_1 = Rc::new(TokPos {
@@ -269,16 +269,16 @@ pub fn tokenize_loop(
     }
 }
 
-pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<ScanResult> {
+pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: String) -> Rc<ScanResult> {
     {
         if (ch.clone().as_str() == "\"".to_string().as_str()) {
-            return scan_string(&source, &pos);
+            return scan_string(source.clone(), pos.clone());
         }
         if is_digit(ch.clone()) {
-            return scan_number(&source, &pos);
+            return scan_number(source.clone(), pos.clone());
         }
-        if is_ident_start(&ch) {
-            return scan_ident(&source, &pos);
+        if is_ident_start(ch.clone()) {
+            return scan_ident(source.clone(), pos.clone());
         }
         let next_ch = if ((pos.pos.clone() + 1) < source_len(source.clone())) {
             source_char(source.clone(), (pos.pos.clone() + 1))
@@ -289,7 +289,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == ">".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShFatArrow,
                 "=>".to_string(),
                 2,
@@ -300,7 +300,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == ">".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShArrow,
                 "->".to_string(),
                 2,
@@ -311,7 +311,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "=".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShEqEq,
                 "==".to_string(),
                 2,
@@ -322,7 +322,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "=".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShNe,
                 "!=".to_string(),
                 2,
@@ -333,7 +333,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "=".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShLe,
                 "<=".to_string(),
                 2,
@@ -344,7 +344,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "=".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShGe,
                 ">=".to_string(),
                 2,
@@ -355,7 +355,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "&".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShAnd,
                 "&&".to_string(),
                 2,
@@ -366,7 +366,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "|".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShOr,
                 "||".to_string(),
                 2,
@@ -377,7 +377,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == ">".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShPipeArrow,
                 "|>".to_string(),
                 2,
@@ -386,7 +386,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == "|".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShPipe,
                 "|".to_string(),
                 1,
@@ -397,7 +397,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == "?".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShNullCoalesce,
                 "??".to_string(),
                 2,
@@ -408,7 +408,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             && (next_ch.clone().as_str() == ".".to_string().as_str()))
         {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShDotDot,
                 "..".to_string(),
                 2,
@@ -417,7 +417,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == "=".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShEq,
                 "=".to_string(),
                 1,
@@ -426,7 +426,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == "<".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShLt,
                 "<".to_string(),
                 1,
@@ -435,7 +435,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == ">".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShGt,
                 ">".to_string(),
                 1,
@@ -444,7 +444,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == "-".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShMinus,
                 "-".to_string(),
                 1,
@@ -453,7 +453,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == "!".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShBang,
                 "!".to_string(),
                 1,
@@ -462,7 +462,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
         }
         if (ch.clone().as_str() == "?".to_string().as_str()) {
             return emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShQuestion,
                 "?".to_string(),
                 1,
@@ -506,9 +506,9 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
             }
         }
         match v2_rt::lookup(&single_punct(), ch.clone()) {
-            Some(sh) => emit(&pos, sh.clone(), ch.clone(), 1, source.file.clone()),
+            Some(sh) => emit(pos.clone(), sh.clone(), ch.clone(), 1, source.file.clone()),
             None => emit(
-                &pos,
+                pos.clone(),
                 TokenShape::ShUnknown,
                 ch.clone(),
                 1,
@@ -519,7 +519,7 @@ pub fn scan_token(source: &Rc<SourceRef>, pos: &Rc<TokPos>, ch: &String) -> Rc<S
 }
 
 pub fn emit(
-    pos: &Rc<TokPos>,
+    pos: Rc<TokPos>,
     shape: TokenShape,
     text: String,
     len: i64,
@@ -539,7 +539,7 @@ pub fn emit(
     }
 }
 
-pub fn scan_ident(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
@@ -561,7 +561,7 @@ pub fn scan_ident(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
     }
 }
 
-pub fn scan_number(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let int_end = source_scan_while(source.clone(), pos.pos.clone(), is_digit);
         if ((((int_end.clone() + 1) < source_len(source.clone()))
@@ -626,7 +626,7 @@ impl StringScanResult {
     }
 }
 
-pub fn scan_string(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
+pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let span_start = pos.pos.clone();
         let body_start = (pos.pos.clone() + 1);
@@ -681,7 +681,7 @@ pub fn scan_string(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
     }
 }
 
-pub fn scan_str_cont(source: &Rc<SourceRef>, pos: &Rc<TokPos>, span_start: i64) -> Rc<ScanResult> {
+pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) -> Rc<ScanResult> {
     {
         let result = scan_string_body(source.clone(), pos.pos.clone(), Rc::new(vec![]));
         match (*result).clone() {
@@ -737,7 +737,7 @@ pub fn scan_str_cont(source: &Rc<SourceRef>, pos: &Rc<TokPos>, span_start: i64) 
 pub fn scan_string_body(
     mut source: Rc<SourceRef>,
     mut pos: i64,
-    mut acc: Rc<Vec<String>>,
+    mut acc: List<String>,
 ) -> Rc<StringScanResult> {
     loop {
         if (pos.clone() >= source_len(source.clone())) {
@@ -775,7 +775,7 @@ pub fn scan_string_body(
                     }
                 } else {
                     if (ch.clone().as_str() == "{".to_string().as_str()) {
-                        if should_start_interpolation(&source, pos.clone()) {
+                        if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
                                 content: acc.join(&"".to_string()),
                                 end_pos: pos.clone(),
@@ -804,13 +804,14 @@ pub fn scan_string_body(
     }
 }
 
-pub fn should_start_interpolation(source: &Rc<SourceRef>, pos: i64) -> bool {
+pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
     if ((pos.clone() + 1) >= source_len(source.clone())) {
         false
     } else {
         {
             let next = source_char(source.clone(), (pos.clone() + 1));
-            (((is_ident_start(&next) || (next.clone().as_str() == "(".to_string().as_str()))
+            (((is_ident_start(next.clone())
+                || (next.clone().as_str() == "(".to_string().as_str()))
                 || (next.clone().as_str() == "!".to_string().as_str()))
                 || (next.clone().as_str() == "-".to_string().as_str()))
         }
@@ -821,7 +822,7 @@ pub fn process_escapes(raw: String) -> String {
     process_escapes_loop(raw, 0, Rc::new(vec![]))
 }
 
-pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
+pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: List<String>) -> String {
     loop {
         if (pos.clone() >= v2_rt::string_length(&source)) {
             break acc.join(&"".to_string());
@@ -876,7 +877,7 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
     }
 }
 
-pub fn drop_last(stack: &Rc<Vec<i64>>) -> Rc<Vec<i64>> {
+pub fn drop_last(stack: List<Int>) -> List<Int> {
     {
         let len = (stack.clone().len() as i64);
         Rc::new(
@@ -890,7 +891,7 @@ pub fn drop_last(stack: &Rc<Vec<i64>>) -> Rc<Vec<i64>> {
         )
         .iter()
         .cloned()
-        .fold(Rc::new(vec![]), |result: Rc<Vec<i64>>, pair: (i64, i64)| {
+        .fold(Rc::new(vec![]), |result: List<T>, pair: (i64, i64)| {
             if (pair.0.clone() < (len.clone() - 1)) {
                 Rc::new(v2_rt::append(result.clone(), pair.1.clone()))
             } else {
@@ -900,9 +901,9 @@ pub fn drop_last(stack: &Rc<Vec<i64>>) -> Rc<Vec<i64>> {
     }
 }
 
-pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
+pub fn replace_last(stack: List<Int>, value: i64) -> List<Int> {
     {
-        let prefix = drop_last(&stack);
+        let prefix = drop_last(stack);
         Rc::new(v2_rt::append(prefix, value))
     }
 }
@@ -941,12 +942,12 @@ pub fn is_digit(ch: String) -> bool {
     ((ch.clone() >= "0".to_string()) && (ch.clone() <= "9".to_string()))
 }
 
-pub fn is_ident_start(ch: &String) -> bool {
+pub fn is_ident_start(ch: String) -> bool {
     ((((ch.clone() >= "a".to_string()) && (ch.clone() <= "z".to_string()))
         || ((ch.clone() >= "A".to_string()) && (ch.clone() <= "Z".to_string())))
         || (ch.clone().as_str() == "_".to_string().as_str()))
 }
 
 pub fn is_ident_char(ch: String) -> bool {
-    (is_ident_start(&ch) || is_digit(ch.clone()))
+    (is_ident_start(ch.clone()) || is_digit(ch.clone()))
 }

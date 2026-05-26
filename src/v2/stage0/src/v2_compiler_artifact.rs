@@ -34,11 +34,11 @@ pub enum ArtifactKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
-    pub name: String,
-    pub kind: ArtifactKind,
-    pub target: RenderTarget,
-    pub entry_modules: Rc<Vec<String>>,
-    pub dependencies: Rc<Vec<String>>,
+    pub name: compile_error!("UNRESOLVED_CompilerError"),
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
+    pub target: compile_error!("UNRESOLVED_CompilerError"),
+    pub entry_modules: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub dependencies: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -53,25 +53,25 @@ pub enum BoundaryKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Boundary {
-    pub from_artifact: String,
-    pub to_artifact: String,
-    pub kind: BoundaryKind,
-    pub contract: String,
+    pub from_artifact: compile_error!("UNRESOLVED_CompilerError"),
+    pub to_artifact: compile_error!("UNRESOLVED_CompilerError"),
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
+    pub contract: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactPlan {
-    pub artifacts: Rc<Vec<Rc<Artifact>>>,
-    pub boundaries: Rc<Vec<Rc<Boundary>>>,
+    pub artifacts: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub boundaries: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionRule {
-    Explicit { artifacts: Rc<Vec<Rc<Artifact>>> },
+    Explicit { artifacts: List<Artifact> },
 }
 impl PartitionRule {
-    pub fn artifacts(&self) -> Rc<Vec<Rc<Artifact>>> {
+    pub fn artifacts(&self) -> List<Artifact> {
         match self {
             PartitionRule::Explicit {
                 artifacts: __val, ..
@@ -93,14 +93,11 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactOutput {
-    pub artifact: Rc<Artifact>,
-    pub files: Rc<Vec<Rc<TextFile>>>,
+    pub artifact: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub files: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
-pub fn default_artifact_plan(
-    root_modules: Rc<Vec<String>>,
-    target: RenderTarget,
-) -> Rc<ArtifactPlan> {
+pub fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Rc<ArtifactPlan> {
     plan_artifacts(Rc::new(PartitionRule::Explicit {
         artifacts: Rc::new(vec![Rc::new(Artifact {
             name: "default".to_string(),
@@ -118,7 +115,7 @@ pub type DagNodeId = String;
 #[serde(tag = "_variant")]
 pub enum DagInferredRecord {
     ResolvedRef {
-        node: String,
+        node: DagNodeId,
     },
     TypeVariableRef {
         id: String,
@@ -131,26 +128,26 @@ pub enum DagInferredRecord {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
-    pub module: String,
-    pub items: Rc<Vec<String>>,
-    pub item_registry_keys: Rc<Vec<String>>,
+    pub module: compile_error!("UNRESOLVED_CompilerError"),
+    pub items: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item_registry_keys: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
-    pub severity: String,
-    pub message: String,
-    pub span: Rc<SourceSpan>,
-    pub module_name: Option<String>,
-    pub category: Option<String>,
+    pub severity: compile_error!("UNRESOLVED_CompilerError"),
+    pub message: compile_error!("UNRESOLVED_CompilerError"),
+    pub span: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub module_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub category: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
-    pub version: String,
-    pub nodes: Rc<HashMap<String, String>>,
-    pub modules: Rc<Vec<String>>,
-    pub item_registry_keys: Rc<Vec<String>>,
-    pub diagnostics: Rc<Vec<String>>,
-    pub files: Rc<Vec<String>>,
+    pub version: compile_error!("UNRESOLVED_CompilerError"),
+    pub nodes: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub modules: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item_registry_keys: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub files: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }

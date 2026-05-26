@@ -8,9 +8,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn dag_keywords() -> Rc<HashMap<String, String>> {
+pub fn dag_keywords() -> Map<String, String> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Map<String, String> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -22,12 +22,12 @@ pub fn dag_keywords() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, String>| c.clone())
 }
 
-pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
+pub fn dag_container_templates() -> Map<String, String> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Map<String, String> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "List<{0}>".to_string());
             __m.insert("set".to_string(), "Set<{0}>".to_string());
@@ -41,25 +41,25 @@ pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, String>| c.clone())
 }
 
-pub fn dag_reserved() -> Rc<Vec<String>> {
+pub fn dag_reserved() -> List<String> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: List<String> = {
             Rc::new(vec![])
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<String>| c.clone())
 }
 
-pub fn dag_string_types() -> Rc<Vec<String>> {
+pub fn dag_string_types() -> List<String> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: List<String> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<String>| c.clone())
 }
 
 pub fn dag_func_keyword() -> String {
@@ -68,7 +68,7 @@ pub fn dag_func_keyword() -> String {
             "fn".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_async_prefix() -> String {
@@ -77,7 +77,7 @@ pub fn dag_async_prefix() -> String {
             "".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_struct_keyword() -> String {
@@ -86,7 +86,7 @@ pub fn dag_struct_keyword() -> String {
             "type".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_enum_keyword() -> String {
@@ -95,7 +95,7 @@ pub fn dag_enum_keyword() -> String {
             "type".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_type_alias_keyword() -> String {
@@ -104,7 +104,7 @@ pub fn dag_type_alias_keyword() -> String {
             "type".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_param_separator() -> String {
@@ -113,7 +113,7 @@ pub fn dag_param_separator() -> String {
             ", ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_return_arrow() -> String {
@@ -122,7 +122,7 @@ pub fn dag_return_arrow() -> String {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_param_type_sep() -> String {
@@ -131,7 +131,7 @@ pub fn dag_param_type_sep() -> String {
             ": ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_module_keyword() -> String {
@@ -140,7 +140,7 @@ pub fn dag_module_keyword() -> String {
             "module".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_import_keyword() -> String {
@@ -149,7 +149,7 @@ pub fn dag_import_keyword() -> String {
             "import".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_import_from_keyword() -> String {
@@ -158,7 +158,7 @@ pub fn dag_import_from_keyword() -> String {
             "".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_lambda_template() -> String {
@@ -167,7 +167,7 @@ pub fn dag_lambda_template() -> String {
             "({0}) => {1}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_error_expr_template() -> String {
@@ -176,7 +176,7 @@ pub fn dag_error_expr_template() -> String {
             "error({0})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_list_literal_empty() -> String {
@@ -185,7 +185,7 @@ pub fn dag_list_literal_empty() -> String {
             "[]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_list_literal_template() -> String {
@@ -194,7 +194,7 @@ pub fn dag_list_literal_template() -> String {
             "[{0}]".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_null_coalesce_template() -> String {
@@ -203,7 +203,7 @@ pub fn dag_null_coalesce_template() -> String {
             "{0} ?? {1}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_error_type_template() -> String {
@@ -212,7 +212,7 @@ pub fn dag_error_type_template() -> String {
             "__EMIT_BUG_{0}__".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_type_arg_open() -> String {
@@ -221,7 +221,7 @@ pub fn dag_type_arg_open() -> String {
             "<".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_type_arg_close() -> String {
@@ -230,7 +230,7 @@ pub fn dag_type_arg_close() -> String {
             ">".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_void_type() -> String {
@@ -239,7 +239,7 @@ pub fn dag_void_type() -> String {
             "()".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_tuple_empty() -> String {
@@ -248,7 +248,7 @@ pub fn dag_tuple_empty() -> String {
             "()".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_tuple_pair_template() -> String {
@@ -257,7 +257,7 @@ pub fn dag_tuple_pair_template() -> String {
             "({0}, {1})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_tuple_multi_template() -> String {
@@ -266,7 +266,7 @@ pub fn dag_tuple_multi_template() -> String {
             "({0})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_tuple_separator() -> String {
@@ -275,7 +275,7 @@ pub fn dag_tuple_separator() -> String {
             ", ".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn dag_source_extension() -> String {
@@ -284,5 +284,5 @@ pub fn dag_source_extension() -> String {
             ".dag".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }

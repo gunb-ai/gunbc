@@ -84,10 +84,10 @@ pub enum ShrinkFactor {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LoweringTarget {
-    pub primitive: IterationPrimitive,
-    pub bound: Rc<SizeBound>,
-    pub evidence: DescentEvidence,
-    pub factor: Option<Rc<ShrinkFactor>>,
+    pub primitive: compile_error!("UNRESOLVED_CompilerError"),
+    pub bound: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub evidence: compile_error!("UNRESOLVED_CompilerError"),
+    pub factor: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -225,7 +225,7 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
     }
 }
 
-pub fn type_iteration_dimension(type_name: &String) -> Option<IterationDimension> {
+pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
     if (type_name.clone().as_str() == "Node".to_string().as_str()) {
         Some(IterationDimension::TreeDescent)
     } else {

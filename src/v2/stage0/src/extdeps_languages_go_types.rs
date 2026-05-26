@@ -9,24 +9,24 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn go_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn go_type_checkpoints() -> List<TypeCheckpoint> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
+        static CACHED: List<TypeCheckpoint> = {
             serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int64", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float64", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "struct{}", "default_expr": "struct{}{}", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "[]byte", "default_expr": "nil", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "interface{}", "default_expr": "nil", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<TypeCheckpoint>| c.clone())
 }
 
-pub fn go_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn go_algebra_inhabitants() -> List<InhabitantDecl> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
+        static CACHED: List<InhabitantDecl> = {
             serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "[]{0}", "arity": 1, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "BooleanAlgebra", "template": "map[{0}]struct{}", "arity": 1, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "PartialFunction", "template": "map[{0}]{1}", "arity": 2, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "OrderedRing", "template": "int64", "arity": 0, "identity_expr": "0", "import_path": null, "is_copy": null}, {"algebra": "ApproximateField", "template": "float64", "arity": 0, "identity_expr": "0.0", "import_path": null, "is_copy": null}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<InhabitantDecl>| c.clone())
 }
 
 pub fn go_callable() -> Rc<CallableRepr> {
@@ -36,7 +36,7 @@ pub fn go_callable() -> Rc<CallableRepr> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<CallableRepr>| c.clone())
 }
 
 pub fn pointer_template() -> String {
@@ -45,7 +45,7 @@ pub fn pointer_template() -> String {
             "*{0}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn go_optional_template() -> String {
@@ -54,7 +54,7 @@ pub fn go_optional_template() -> String {
             "*{0}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn address_of_template() -> String {
@@ -63,7 +63,7 @@ pub fn address_of_template() -> String {
             "&{value}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn nil_literal() -> String {
@@ -72,7 +72,7 @@ pub fn nil_literal() -> String {
             "nil".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn visibility_by_case() -> bool {
@@ -85,7 +85,7 @@ pub fn embedded_field_syntax() -> String {
             "{type}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn empty_interface() -> String {
@@ -94,7 +94,7 @@ pub fn empty_interface() -> String {
             "interface{}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn any_type() -> String {
@@ -103,7 +103,7 @@ pub fn any_type() -> String {
             "any".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn interface_def_template() -> String {
@@ -112,25 +112,25 @@ pub fn interface_def_template() -> String {
             "type {name} interface {\n{methods}\n}".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn integer_types() -> Rc<Vec<String>> {
+pub fn integer_types() -> List<String> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: List<String> = {
             Rc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<String>| c.clone())
 }
 
-pub fn float_types() -> Rc<Vec<String>> {
+pub fn float_types() -> List<String> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
+        static CACHED: List<String> = {
             Rc::new(vec!["float32".to_string(), "float64".to_string()])
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<String>| c.clone())
 }
 
 pub fn type_conversion_template() -> String {
@@ -139,7 +139,7 @@ pub fn type_conversion_template() -> String {
             "{type}({expr})".to_string()
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn go_cast_syntax() -> Rc<CastSyntax> {
@@ -149,5 +149,5 @@ pub fn go_cast_syntax() -> Rc<CastSyntax> {
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<CastSyntax>| c.clone())
 }

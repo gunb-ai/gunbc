@@ -67,14 +67,14 @@ pub enum ItemFormKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemForm {
-    pub kind: ItemFormKind,
-    pub keyword: String,
-    pub has_type_params: bool,
-    pub has_params: bool,
-    pub has_return_type: bool,
-    pub return_required: bool,
-    pub has_uses: bool,
-    pub body_kind: BodyKind,
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
+    pub keyword: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_type_params: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_params: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_return_type: compile_error!("UNRESOLVED_CompilerError"),
+    pub return_required: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_uses: compile_error!("UNRESOLVED_CompilerError"),
+    pub body_kind: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -92,13 +92,13 @@ pub enum AlgebraFieldKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldEntry {
-    pub kind: AlgebraFieldKind,
-    pub field_name: String,
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
+    pub field_name: compile_error!("UNRESOLVED_CompilerError"),
 }
 
-pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
+pub fn algebra_field_entries() -> List<AlgebraFieldEntry> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<AlgebraFieldEntry>>> = {
+            static CACHED: List<AlgebraFieldEntry> = {
                 Rc::new(vec![Rc::new(AlgebraFieldEntry {
         kind: AlgebraFieldKind::AlgAdd,
         field_name: "add".to_string(),
@@ -126,22 +126,22 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<AlgebraFieldEntry>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
-    pub symbol: String,
-    pub left_bp: i64,
-    pub right_bp: i64,
-    pub binop: Option<BinOp>,
-    pub algebra_field: Option<AlgebraFieldKind>,
+    pub symbol: compile_error!("UNRESOLVED_CompilerError"),
+    pub left_bp: compile_error!("UNRESOLVED_CompilerError"),
+    pub right_bp: compile_error!("UNRESOLVED_CompilerError"),
+    pub binop: compile_error!("UNRESOLVED_CompilerError"),
+    pub algebra_field: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SyntaxSpec {
-    pub item_forms: Rc<Vec<Rc<ItemForm>>>,
-    pub operators: Rc<Vec<Rc<OperatorSpec>>>,
-    pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
-    pub keyword_set: Rc<HashMap<String, bool>>,
+    pub item_forms: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub operators: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub keyword_literals: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub keyword_set: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }

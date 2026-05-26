@@ -1749,7 +1749,7 @@ fn emit_struct_field_from_child(child: Node, generic_param_names: List<String>, 
       None => render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
     }
   } else {
-    render_rust_decl_type(n: authored_child_type, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices)
+    render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   }
   let generic_ty = ty
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {

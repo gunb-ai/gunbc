@@ -16,9 +16,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn go_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+pub fn go_item_forms() -> List<ItemForm> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
+            static CACHED: List<ItemForm> = {
                 Rc::new(vec![Rc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "func".to_string(),
@@ -67,12 +67,12 @@ pub fn go_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<ItemForm>| c.clone())
 }
 
-pub fn go_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn go_operators() -> List<OperatorSpec> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
+            static CACHED: List<OperatorSpec> = {
                 Rc::new(vec![Rc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
@@ -154,5 +154,5 @@ pub fn go_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<OperatorSpec>| c.clone())
 }

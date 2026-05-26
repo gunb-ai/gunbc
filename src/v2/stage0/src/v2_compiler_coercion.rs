@@ -25,7 +25,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
     match target {
         RenderTarget::Rust => rust_type_checkpoints(),
         RenderTarget::Python => python_type_checkpoints(),
@@ -34,7 +34,7 @@ pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     }
 }
 
-pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
     match target {
         RenderTarget::Rust => rust_algebra_inhabitants(),
         RenderTarget::Python => python_algebra_inhabitants(),
@@ -204,15 +204,15 @@ pub enum CoercionAssertion {
     },
     TemplateAssertion {
         template: String,
-        args: Rc<Vec<String>>,
+        args: List<String>,
         expected: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
-    pub test_name: String,
-    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
+    pub test_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub assertions: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 pub fn target_label(target: RenderTarget) -> String {
@@ -224,7 +224,7 @@ pub fn target_label(target: RenderTarget) -> String {
     }
 }
 
-pub fn checkpoint_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
     {
         let label = target_label(target.clone());
         let cps = target_checkpoints(target.clone());
@@ -252,11 +252,11 @@ pub fn checkpoint_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>>
     }
 }
 
-pub fn inhabitant_test_names() -> Rc<Vec<String>> {
+pub fn inhabitant_test_names() -> List<String> {
     canonical_container_names()
 }
 
-pub fn inhabitant_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
     {
         let label = target_label(target.clone());
         let assertions = Rc::new({
@@ -293,7 +293,7 @@ pub fn inhabitant_tests(target: &RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>>
     }
 }
 
-pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn copy_tests() -> List<CoercionTestEntry> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
         let copy_assertions = Rc::new({
@@ -325,7 +325,7 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
-pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn template_application_tests() -> List<CoercionTestEntry> {
     {
         let targets = Rc::new(vec![
             RenderTarget::Rust,
@@ -405,7 +405,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
-pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn extract_coercion_tests() -> List<CoercionTestEntry> {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
@@ -413,16 +413,16 @@ pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                     v2_rt::concat(
                         v2_rt::concat(
                             v2_rt::concat(
-                                checkpoint_tests(&RenderTarget::Rust),
-                                checkpoint_tests(&RenderTarget::Python),
+                                checkpoint_tests(RenderTarget::Rust),
+                                checkpoint_tests(RenderTarget::Python),
                             ),
-                            checkpoint_tests(&RenderTarget::Go),
+                            checkpoint_tests(RenderTarget::Go),
                         ),
-                        inhabitant_tests(&RenderTarget::Rust),
+                        inhabitant_tests(RenderTarget::Rust),
                     ),
-                    inhabitant_tests(&RenderTarget::Python),
+                    inhabitant_tests(RenderTarget::Python),
                 ),
-                inhabitant_tests(&RenderTarget::Go),
+                inhabitant_tests(RenderTarget::Go),
             ),
             copy_tests(),
         ),

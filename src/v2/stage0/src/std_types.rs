@@ -27,9 +27,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
+pub fn kernel_type_set() -> Map<String, Bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Map<String, Bool> = {
             let mut __m = HashMap::new();
             __m.insert("String".to_string(), true);
             __m.insert("Int".to_string(), true);
@@ -42,7 +42,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Bool>| c.clone())
 }
 
 pub fn is_kernel_type(name: String) -> bool {
@@ -52,9 +52,9 @@ pub fn is_kernel_type(name: String) -> bool {
     }
 }
 
-pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
+pub fn container_type_arity() -> Map<String, Int> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, i64>> = {
+        static CACHED: Map<String, Int> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), 1);
             __m.insert("Set".to_string(), 1);
@@ -62,7 +62,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Int>| c.clone())
 }
 
 pub fn is_container_type(name: String) -> bool {
@@ -76,7 +76,7 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
     v2_rt::map_get(&container_type_arity(), name)
 }
 
-pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
+pub fn container_param_names_for(kind_name: String) -> List<String> {
     match v2_rt::map_get(&kernel_algebra_profile(), kind_name) {
         Some(p) => algebra_type_param_names(p.clone()),
         None => Rc::new(vec![]),
@@ -123,24 +123,24 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
     }
 }
 
-pub fn ordered_element_collections() -> Rc<HashMap<String, bool>> {
+pub fn ordered_element_collections() -> Map<String, Bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Map<String, Bool> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), true);
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Bool>| c.clone())
 }
 
 pub fn is_ordered_element_collection(name: String) -> bool {
     v2_rt::map_contains_key(&ordered_element_collections(), name)
 }
 
-pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
+pub fn container_template_algebra_rows() -> Map<String, String> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Map<String, String> = {
             let mut __m = HashMap::new();
             __m.insert("List".to_string(), "FreeMonoid".to_string());
             __m.insert("list".to_string(), "FreeMonoid".to_string());
@@ -157,14 +157,14 @@ pub fn container_template_algebra_rows() -> Rc<HashMap<String, String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, String>| c.clone())
 }
 
 pub fn container_template_algebra(name: String) -> Option<String> {
     v2_rt::map_get(&container_template_algebra_rows(), name)
 }
 
-pub fn canonical_container_names() -> Rc<Vec<String>> {
+pub fn canonical_container_names() -> List<String> {
     Rc::new(vec![
         "BooleanAlgebra".to_string(),
         "FreeMonoid".to_string(),
@@ -222,21 +222,21 @@ pub type GlobSegment = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FilePathParts {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobPattern {
-    pub segments: Rc<Vec<NonEmptyStr>>,
+    pub segments: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 pub type FilePath = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceSpan {
-    pub file: String,
-    pub start: i64,
-    pub end: i64,
+    pub file: compile_error!("UNRESOLVED_CompilerError"),
+    pub start: compile_error!("UNRESOLVED_CompilerError"),
+    pub end: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 pub type Timestamp = String;
@@ -320,21 +320,21 @@ pub enum FermiDepth {
 #[serde(tag = "_variant")]
 pub enum CredentialFlow {
     Stored {
-        secret_name: String,
+        secret_name: NonEmptyStr,
     },
     PlatformInjected {
-        env_var: String,
+        env_var: NonEmptyStr,
     },
     WorkloadIdentity {
-        audience: String,
-        service_account: Option<String>,
-        scopes: Rc<Vec<String>>,
+        audience: NonEmptyStr,
+        service_account: Option<ServiceAccountEmail>,
+        scopes: List<String>,
     },
     InteractiveAuth {
-        scopes: Rc<Vec<String>>,
+        scopes: List<String>,
     },
     Chained {
-        steps: Rc<Vec<Rc<CredentialFlow>>>,
+        steps: List<CredentialFlow>,
     },
 }
 
@@ -401,16 +401,16 @@ pub enum ExecutionEnv {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetTriple {
-    pub arch: Arch,
-    pub vendor: Vendor,
-    pub os: Os,
-    pub env: Option<AbiEnv>,
+    pub arch: compile_error!("UNRESOLVED_CompilerError"),
+    pub vendor: compile_error!("UNRESOLVED_CompilerError"),
+    pub os: compile_error!("UNRESOLVED_CompilerError"),
+    pub env: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RuntimePlatform {
-    pub host: Rc<TargetTriple>,
-    pub env: ExecutionEnv,
+    pub host: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub env: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -460,19 +460,19 @@ pub enum AuthScheme {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AccessToken {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub expires_at: Option<String>,
+    pub token: compile_error!("UNRESOLVED_CompilerError"),
+    pub scheme: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub expires_at: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Credential {
-    pub token: String,
-    pub scheme: Rc<AuthScheme>,
-    pub header_name: Option<String>,
-    pub source_id: String,
-    pub required_scopes: Rc<Vec<String>>,
-    pub expires_in: Option<i64>,
+    pub token: compile_error!("UNRESOLVED_CompilerError"),
+    pub scheme: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub header_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub source_id: compile_error!("UNRESOLVED_CompilerError"),
+    pub required_scopes: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub expires_in: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 pub type FilesystemHandle = String;
@@ -483,148 +483,148 @@ pub type ToolHandle = String;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportRequest {
-    pub method: HttpMethod,
-    pub url: String,
-    pub headers: serde_json::Value,
-    pub body: String,
+    pub method: compile_error!("UNRESOLVED_CompilerError"),
+    pub url: compile_error!("UNRESOLVED_CompilerError"),
+    pub headers: compile_error!("UNRESOLVED_CompilerError"),
+    pub body: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TransportResponse {
-    pub status: i64,
-    pub headers: serde_json::Value,
-    pub body: String,
+    pub status: compile_error!("UNRESOLVED_CompilerError"),
+    pub headers: compile_error!("UNRESOLVED_CompilerError"),
+    pub body: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FileResponse {
-    pub path: String,
-    pub success: bool,
-    pub content: String,
+    pub path: compile_error!("UNRESOLVED_CompilerError"),
+    pub success: compile_error!("UNRESOLVED_CompilerError"),
+    pub content: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShellResponse {
-    pub exit_code: i64,
-    pub stdout: String,
-    pub stderr: String,
+    pub exit_code: compile_error!("UNRESOLVED_CompilerError"),
+    pub stdout: compile_error!("UNRESOLVED_CompilerError"),
+    pub stderr: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RestResponse {
-    pub status: i64,
-    pub headers: serde_json::Value,
-    pub body: serde_json::Value,
+    pub status: compile_error!("UNRESOLVED_CompilerError"),
+    pub headers: compile_error!("UNRESOLVED_CompilerError"),
+    pub body: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestResult {
-    pub name: String,
-    pub ok: bool,
-    pub stdout: String,
-    pub stderr: String,
-    pub duration_ms: i64,
+    pub name: compile_error!("UNRESOLVED_CompilerError"),
+    pub ok: compile_error!("UNRESOLVED_CompilerError"),
+    pub stdout: compile_error!("UNRESOLVED_CompilerError"),
+    pub stderr: compile_error!("UNRESOLVED_CompilerError"),
+    pub duration_ms: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Summary {
-    pub total: i64,
-    pub passed: i64,
-    pub failed: i64,
+    pub total: compile_error!("UNRESOLVED_CompilerError"),
+    pub passed: compile_error!("UNRESOLVED_CompilerError"),
+    pub failed: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StageResult {
-    pub name: String,
-    pub success: bool,
-    pub stdout: String,
-    pub stderr: String,
-    pub skipped: bool,
+    pub name: compile_error!("UNRESOLVED_CompilerError"),
+    pub success: compile_error!("UNRESOLVED_CompilerError"),
+    pub stdout: compile_error!("UNRESOLVED_CompilerError"),
+    pub stderr: compile_error!("UNRESOLVED_CompilerError"),
+    pub skipped: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentLine {
-    pub text: String,
-    pub is_comment: bool,
-    pub is_blank: bool,
+    pub text: compile_error!("UNRESOLVED_CompilerError"),
+    pub is_comment: compile_error!("UNRESOLVED_CompilerError"),
+    pub is_blank: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentSection {
-    pub title: String,
-    pub has_title: bool,
-    pub lines: Rc<Vec<Rc<DocumentLine>>>,
+    pub title: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_title: compile_error!("UNRESOLVED_CompilerError"),
+    pub lines: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Document {
-    pub header: String,
-    pub has_header: bool,
-    pub comment_prefix: String,
-    pub sections: Rc<Vec<Rc<DocumentSection>>>,
-    pub trailing_newline: bool,
+    pub header: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_header: compile_error!("UNRESOLVED_CompilerError"),
+    pub comment_prefix: compile_error!("UNRESOLVED_CompilerError"),
+    pub sections: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub trailing_newline: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
-    pub path: String,
-    pub document: Rc<Document>,
+    pub path: compile_error!("UNRESOLVED_CompilerError"),
+    pub document: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTextFile {
-    pub path: String,
-    pub content: String,
+    pub path: compile_error!("UNRESOLVED_CompilerError"),
+    pub content: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolEntry {
-    pub name: String,
-    pub command: String,
-    pub description: Option<String>,
+    pub name: compile_error!("UNRESOLVED_CompilerError"),
+    pub command: compile_error!("UNRESOLVED_CompilerError"),
+    pub description: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRegistry {
-    pub tools: Rc<Vec<Rc<ToolEntry>>>,
+    pub tools: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagTopology {
-    pub nodes: Rc<Vec<Rc<TopologyNode>>>,
-    pub edges: Rc<Vec<Rc<TopologyEdge>>>,
-    pub subdag_boundaries: Rc<Vec<String>>,
+    pub nodes: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub edges: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub subdag_boundaries: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopologyNode {
-    pub id: String,
-    pub label: String,
-    pub kind: TopologyNodeKind,
-    pub parent: Option<String>,
+    pub id: compile_error!("UNRESOLVED_CompilerError"),
+    pub label: compile_error!("UNRESOLVED_CompilerError"),
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
+    pub parent: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopologyEdge {
-    pub from: String,
-    pub to: String,
-    pub port: Option<String>,
+    pub from: compile_error!("UNRESOLVED_CompilerError"),
+    pub to: compile_error!("UNRESOLVED_CompilerError"),
+    pub port: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiff {
-    pub added: Rc<Vec<String>>,
-    pub removed: Rc<Vec<String>>,
-    pub changed: Rc<Vec<String>>,
+    pub added: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub removed: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub changed: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CodegenTarget {
-    pub name: String,
-    pub path: String,
-    pub backend: Option<CodegenBackend>,
-    pub target: Option<Rc<TargetTriple>>,
-    pub runtime_env: Option<ExecutionEnv>,
+    pub name: compile_error!("UNRESOLVED_CompilerError"),
+    pub path: compile_error!("UNRESOLVED_CompilerError"),
+    pub backend: compile_error!("UNRESOLVED_CompilerError"),
+    pub target: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub runtime_env: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -638,13 +638,13 @@ pub enum CodegenBackend {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PragmaDirective {
-    pub key: String,
-    pub value: String,
-    pub scope: Option<String>,
+    pub key: compile_error!("UNRESOLVED_CompilerError"),
+    pub value: compile_error!("UNRESOLVED_CompilerError"),
+    pub scope: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocSource {
-    pub path: String,
-    pub kind: DocSourceKind,
+    pub path: compile_error!("UNRESOLVED_CompilerError"),
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
 }

@@ -37,45 +37,45 @@ pub enum ItemKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemInfo {
-    pub name: String,
-    pub module_name: String,
-    pub kind: ItemKind,
-    pub service_names: Rc<Vec<String>>,
-    pub resource_names: Rc<Vec<String>>,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub is_self_recursive: bool,
-    pub has_non_tail_self_call: bool,
+    pub name: compile_error!("UNRESOLVED_CompilerError"),
+    pub module_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub kind: compile_error!("UNRESOLVED_CompilerError"),
+    pub service_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub resource_names: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub params: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub is_self_recursive: compile_error!("UNRESOLVED_CompilerError"),
+    pub has_non_tail_self_call: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Rc<Node>,
-    pub items: Rc<Vec<Rc<Node>>>,
-    pub type_env: Rc<TypeEnv>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub module: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub items: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub type_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub func_env: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
+    pub modules: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub item_registry: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub diagnostics: Rc<compile_error!("UNRESOLVED_CompilerError")>,
+    pub emit_graph_info: Rc<compile_error!("UNRESOLVED_CompilerError")>,
 }
 
 pub fn inferred_to_outputs(
-    inferred: &Option<Rc<InferredNode>>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Node>>> {
+    source_indices: Map<String, NewlineIndex>,
+) -> List<Node> {
     if (inferred.clone() == None) {
         Rc::new(vec![])
     } else {
@@ -93,15 +93,18 @@ pub fn inferred_to_outputs(
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
-                                            let child_type = child_type_node(&child);
+                                            let child_type = child_type_node(child.clone());
                                             make_field_node(
-                                                &authored_name_at(source_indices.clone(), &child),
+                                                authored_name_at(
+                                                    source_indices.clone(),
+                                                    child.clone(),
+                                                ),
                                                 child_type.clone(),
                                                 Cardinality::Required,
                                                 None,
                                                 None,
                                                 span.clone(),
-                                                node_name_span(&child),
+                                                node_name_span(child.clone()),
                                             )
                                         });
                                     }
@@ -109,7 +112,7 @@ pub fn inferred_to_outputs(
                                 })
                             } else {
                                 Rc::new(vec![make_field_node(
-                                    &"value".to_string(),
+                                    "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
                                     None,
@@ -120,7 +123,7 @@ pub fn inferred_to_outputs(
                             }
                         } else {
                             Rc::new(vec![make_field_node(
-                                &"value".to_string(),
+                                "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
                                 None,
@@ -137,7 +140,7 @@ pub fn inferred_to_outputs(
                         Rc::new(vec![])
                     } else {
                         Rc::new(vec![make_field_node(
-                            &"value".to_string(),
+                            "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
                             None,
@@ -152,7 +155,7 @@ pub fn inferred_to_outputs(
     }
 }
 
-pub fn item_kind(item: &Rc<Node>) -> ItemKind {
+pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))
@@ -186,19 +189,20 @@ pub fn item_kind(item: &Rc<Node>) -> ItemKind {
 }
 
 pub fn variant_locals_from_items(
-    items: Rc<Vec<Rc<Node>>>,
-    init: Rc<HashMap<String, Rc<TypeBinding>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    items.iter().cloned().fold(
-        init,
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
+    items: List<Node>,
+    init: Map<String, TypeBinding>,
+    source_indices: Map<String, NewlineIndex>,
+) -> Map<String, TypeBinding> {
+    items
+        .iter()
+        .cloned()
+        .fold(init, |acc: Map<String, TypeBinding>, item: Rc<Node>| {
             let is_coproduct = (item.connective.clone() == Connective::Disj);
             if is_coproduct.clone() {
                 item.children.clone().iter().cloned().fold(
                     acc.clone(),
-                    |vacc: Rc<HashMap<String, Rc<TypeBinding>>>, child: Rc<Node>| {
-                        let child_name = authored_name_at(source_indices.clone(), &child);
+                    |vacc: Map<String, TypeBinding>, child: Rc<Node>| {
+                        let child_name = authored_name_at(source_indices.clone(), child.clone());
                         v2_rt::rc_map_insert(
                             vacc,
                             child_name.clone(),
@@ -213,6 +217,5 @@ pub fn variant_locals_from_items(
             } else {
                 acc.clone()
             }
-        },
-    )
+        })
 }

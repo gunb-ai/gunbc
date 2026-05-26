@@ -44,11 +44,11 @@ pub enum RecursionShape {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InductiveField {
-    pub type_name: String,
-    pub variant_name: String,
-    pub field_name: String,
-    pub shape: RecursionShape,
-    pub element_type: String,
+    pub type_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub variant_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub field_name: compile_error!("UNRESOLVED_CompilerError"),
+    pub shape: compile_error!("UNRESOLVED_CompilerError"),
+    pub element_type: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
@@ -76,7 +76,7 @@ pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
     }
 }
 
-pub fn inductive_field_eq(a: &Rc<InductiveField>, b: &Rc<InductiveField>) -> bool {
+pub fn inductive_field_eq(a: Rc<InductiveField>, b: Rc<InductiveField>) -> bool {
     (((((a.type_name.clone().as_str() == b.type_name.clone().as_str())
         && (a.variant_name.clone().as_str() == b.variant_name.clone().as_str()))
         && (a.field_name.clone().as_str() == b.field_name.clone().as_str()))
@@ -165,11 +165,16 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
                 field: fb,
                 factor: fac_b,
                 ..
-            } => (inductive_field_eq(&fa, &fb) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
+            } => {
+                (inductive_field_eq(fa.clone(), fb.clone())
+                    && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
+            }
             _ => false,
         },
         SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
-            SubValueRelation::IteratedSubValue { field: fb, .. } => inductive_field_eq(&fa, &fb),
+            SubValueRelation::IteratedSubValue { field: fb, .. } => {
+                inductive_field_eq(fa.clone(), fb.clone())
+            }
             _ => false,
         },
         SubValueRelation::ArithmeticDescent {
@@ -549,23 +554,15 @@ impl AtomicCost {
 #[serde(tag = "_variant")]
 pub enum CostBound {
     ConstantBound,
-    AtomicBound {
-        cost: Rc<AtomicCost>,
-    },
-    ProductBound {
-        factors: Rc<Vec<Rc<AtomicCost>>>,
-    },
-    SumOfProductsBound {
-        terms: Rc<Vec<Rc<Vec<Rc<AtomicCost>>>>>,
-    },
-    SumBound {
-        terms: Rc<Vec<Rc<CostBound>>>,
-    },
+    AtomicBound { cost: Rc<AtomicCost> },
+    ProductBound { factors: List<AtomicCost> },
+    SumOfProductsBound { terms: List<List<AtomicCost>> },
+    SumBound { terms: List<CostBound> },
     ForeverBound,
     ErrorBound,
 }
 
-pub fn sum_bound(terms: &Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
+pub fn sum_bound(terms: List<CostBound>) -> Rc<CostBound> {
     match terms.clone().first().cloned() {
         None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
@@ -659,7 +656,7 @@ pub fn cost_log(param: String) -> Rc<CostBound> {
     })
 }
 
-pub fn cost_nlogn(param: &String) -> Rc<CostBound> {
+pub fn cost_nlogn(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::ProductBound {
         factors: Rc::new(vec![
             Rc::new(AtomicCost::PolyCost {
@@ -690,10 +687,10 @@ pub fn cost_graph_linear(v_param: String, e_param: String) -> Rc<CostBound> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecurrenceForm {
-    pub param: String,
-    pub branches: i64,
-    pub divisor: i64,
-    pub work_exponent: i64,
+    pub param: compile_error!("UNRESOLVED_CompilerError"),
+    pub branches: compile_error!("UNRESOLVED_CompilerError"),
+    pub divisor: compile_error!("UNRESOLVED_CompilerError"),
+    pub work_exponent: compile_error!("UNRESOLVED_CompilerError"),
 }
 
 pub fn int_add_checked(a: i64, b: i64) -> Option<i64> {
@@ -853,7 +850,7 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
     }
 }
 
-pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
+pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
     {
         let a = form.branches.clone();
         let b = form.divisor.clone();
@@ -963,7 +960,7 @@ pub fn derive_bound(
                     }
                 }
                 ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
-                    master_theorem(&Rc::new(RecurrenceForm {
+                    master_theorem(Rc::new(RecurrenceForm {
                         param: param,
                         branches: branches.clone(),
                         divisor: proportional_divisor_to_int(d.clone()),

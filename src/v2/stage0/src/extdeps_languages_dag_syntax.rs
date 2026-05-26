@@ -21,9 +21,9 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+pub fn dag_item_forms() -> List<ItemForm> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
+            static CACHED: List<ItemForm> = {
                 Rc::new(vec![Rc::new(ItemForm {
         kind: ItemFormKind::TypeAliasForm,
         keyword: "type".to_string(),
@@ -99,12 +99,12 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<ItemForm>| c.clone())
 }
 
-pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
+pub fn dag_keyword_literals() -> Map<String, LiteralValue> {
     thread_local! {
-            static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
+            static CACHED: Map<String, LiteralValue> = {
                 let mut __m = HashMap::new();
                 __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
         value: true,
@@ -117,12 +117,12 @@ pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
                 Rc::new(__m)
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, LiteralValue>| c.clone())
 }
 
-pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
+pub fn dag_keyword_set() -> Map<String, Bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Map<String, Bool> = {
             let mut __m = HashMap::new();
             __m.insert("module".to_string(), true);
             __m.insert("import".to_string(), true);
@@ -162,12 +162,12 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Bool>| c.clone())
 }
 
-pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
+pub fn dag_non_name_keywords() -> Map<String, Bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Map<String, Bool> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), true);
             __m.insert("false".to_string(), true);
@@ -178,12 +178,12 @@ pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Bool>| c.clone())
 }
 
-pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn dag_operators() -> List<OperatorSpec> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
+            static CACHED: List<OperatorSpec> = {
                 Rc::new(vec![Rc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
@@ -283,12 +283,12 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &List<OperatorSpec>| c.clone())
 }
 
-pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
+pub fn v3_supported_dag_operators() -> Map<String, Bool> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Map<String, Bool> = {
             let mut __m = HashMap::new();
             __m.insert("||".to_string(), true);
             __m.insert("&&".to_string(), true);
@@ -307,7 +307,7 @@ pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Map<String, Bool>| c.clone())
 }
 
 pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
@@ -321,5 +321,5 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
     })
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
 }
