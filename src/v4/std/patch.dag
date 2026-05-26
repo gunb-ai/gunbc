@@ -14,8 +14,7 @@ module v4.std.patch
 import v4.std.algebra { Magma, Semigroup, Monoid }
 
 // 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
-// Per-field patch coproduct for hierarchical config layering.
-// Override carries the replacement value for this field; Inherit defers to the base.
+// Per-field optional-value patch: Inherit = no opinion (identity), Override = explicit replacement.
 type FieldPatch<T>
   = Override { value: T }
   | Inherit
