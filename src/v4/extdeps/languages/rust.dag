@@ -126,9 +126,40 @@ type RustIntegerCarrier {
   width: RustIntWidth
 }
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustIntegerBoundSign
+  = Negative
+  | NonNegative
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustDecimalDigit
+  = Digit0
+  | Digit1
+  | Digit2
+  | Digit3
+  | Digit4
+  | Digit5
+  | Digit6
+  | Digit7
+  | Digit8
+  | Digit9
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustRangeEndpoint
+  = InclusiveMin
+  | InclusiveMax
+
+// Fixed-width Rust integer ranges carry concrete decimal structure. Pointer-sized
+// integer ranges are target-dependent, so they carry the Rust Reference relation
+// to pointer width rather than an opaque bound label.
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type RustIntegerBound
+  = ConcreteIntegerBound { sign: RustIntegerBoundSign, digits: List<RustDecimalDigit> }
+  | PointerWidthIntegerBound { kind: RustIntKind, endpoint: RustRangeEndpoint }
+
 type RustIntegerRangeFacts {
-  inclusive_min: Symbol
-  inclusive_max: Symbol
+  inclusive_min: RustIntegerBound
+  inclusive_max: RustIntegerBound
 }
 
 type RustIntegerPrimitiveFacts {
@@ -275,31 +306,6 @@ data rust_repr_bool: Symbol = rust_repr_bool
 data rust_repr_unit: Symbol = rust_repr_unit
 data rust_repr_never: Symbol = rust_repr_never
 data rust_repr_integer_twos_complement: Symbol = rust_repr_integer_twos_complement
-
-data rust_range_i8_min: Symbol = rust_range_i8_min
-data rust_range_i8_max: Symbol = rust_range_i8_max
-data rust_range_i16_min: Symbol = rust_range_i16_min
-data rust_range_i16_max: Symbol = rust_range_i16_max
-data rust_range_i32_min: Symbol = rust_range_i32_min
-data rust_range_i32_max: Symbol = rust_range_i32_max
-data rust_range_i64_min: Symbol = rust_range_i64_min
-data rust_range_i64_max: Symbol = rust_range_i64_max
-data rust_range_i128_min: Symbol = rust_range_i128_min
-data rust_range_i128_max: Symbol = rust_range_i128_max
-data rust_range_u8_min: Symbol = rust_range_u8_min
-data rust_range_u8_max: Symbol = rust_range_u8_max
-data rust_range_u16_min: Symbol = rust_range_u16_min
-data rust_range_u16_max: Symbol = rust_range_u16_max
-data rust_range_u32_min: Symbol = rust_range_u32_min
-data rust_range_u32_max: Symbol = rust_range_u32_max
-data rust_range_u64_min: Symbol = rust_range_u64_min
-data rust_range_u64_max: Symbol = rust_range_u64_max
-data rust_range_u128_min: Symbol = rust_range_u128_min
-data rust_range_u128_max: Symbol = rust_range_u128_max
-data rust_range_isize_min: Symbol = rust_range_isize_min
-data rust_range_isize_max: Symbol = rust_range_isize_max
-data rust_range_usize_min: Symbol = rust_range_usize_min
-data rust_range_usize_max: Symbol = rust_range_usize_max
 
 data rust_inhabitant_i8: Symbol = rust_inhabitant_i8
 data rust_inhabitant_i16: Symbol = rust_inhabitant_i16
