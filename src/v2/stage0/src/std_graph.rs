@@ -18,30 +18,30 @@ pub struct GraphEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraph {
-    pub edges: Rc<Vec<Rc<GraphEdge>>>,
+    pub edges: Rc<Rc<Vec<Rc<GraphEdge>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphAdjacencyViews {
-    pub forward: Rc<HashMap<String, Rc<Vec<String>>>>,
-    pub reverse: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub forward: Rc<Rc<HashMap<String, Rc<Vec<String>>>>>,
+    pub reverse: Rc<Rc<HashMap<String, Rc<Vec<String>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
-    pub order: Rc<Vec<String>>,
+    pub visited: Rc<Rc<std::collections::BTreeSet<String>>>,
+    pub order: Rc<Rc<Vec<String>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
-    pub members: Rc<Vec<String>>,
+    pub visited: Rc<Rc<std::collections::BTreeSet<String>>>,
+    pub members: Rc<Rc<Vec<String>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccCycleAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<Rc<std::collections::BTreeSet<String>>>,
     pub has_cycle: bool,
 }
 

@@ -212,7 +212,7 @@ pub enum CoercionAssertion {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
     pub test_name: String,
-    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
+    pub assertions: Rc<Rc<Vec<Rc<CoercionAssertion>>>>,
 }
 
 pub fn target_label(target: RenderTarget) -> String {

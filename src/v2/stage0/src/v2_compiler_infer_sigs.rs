@@ -20,29 +20,29 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncSig {
     pub name: String,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Rc<Node>,
+    pub params: Rc<Rc<Vec<Rc<Node>>>>,
+    pub inferred: Rc<Rc<Node>>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub output_provenance: Rc<Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>>,
     pub variant_provenance:
-        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
+        Rc<Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncEnv {
-    pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
+    pub signatures: Rc<Rc<HashMap<String, Rc<ResolvedFuncSig>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveFuncSigsResult {
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub func_env: Rc<Rc<ResolvedFuncEnv>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SigsAccum {
-    pub signatures: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub signatures: Rc<Rc<HashMap<String, Rc<ResolvedFuncSig>>>>,
+    pub diagnostics: Rc<Rc<Vec<Rc<ErrorNode>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

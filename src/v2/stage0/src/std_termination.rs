@@ -243,12 +243,12 @@ pub enum DescentSource {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TerminationProof {
-    pub dimensions: Rc<Vec<Rc<RankingDimension>>>,
+    pub dimensions: Rc<Rc<Vec<Rc<RankingDimension>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProofEdge {
     pub caller: String,
     pub callee: String,
-    pub evidence: Rc<Vec<DescentEvidence>>,
+    pub evidence: Rc<Rc<Vec<DescentEvidence>>>,
 }
