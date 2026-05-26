@@ -234,6 +234,25 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model checked-arithmetic debug/release defaults and explicit overflow-checks behavior"
     );
     assert_eq!(
+        type_record_fields(&module, "RustIntegerRangeFacts")
+            .iter()
+            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
+            .collect::<Vec<_>>(),
+        vec![
+            ("inclusive_min", "RustIntegerBound".to_string()),
+            ("inclusive_max", "RustIntegerBound".to_string()),
+        ],
+        "{RUST_LANGUAGE_PATH}: Rust integer ranges must carry structural bound facts, not opaque Symbol labels"
+    );
+    assert!(
+        surface_declares_type(&module, "RustDecimalDigit"),
+        "{RUST_LANGUAGE_PATH}: fixed-width range bounds must expose decimal digit structure"
+    );
+    assert!(
+        surface_declares_type(&module, "RustRangeEndpoint"),
+        "{RUST_LANGUAGE_PATH}: pointer-width ranges must model min/max endpoints structurally"
+    );
+    assert_eq!(
         type_record_fields(&module, "RustIntegerPrimitiveFacts")
             .iter()
             .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
