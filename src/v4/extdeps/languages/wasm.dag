@@ -578,7 +578,7 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
       wasm_named_edge(
         name: grammar_relation_field_tokens,
         target: Node {
-          kind: TypeNode { connective: Conj },
+          kind: TypeNode { connective: Arrow },
           children: wasm_relation_token_edges(tokens: row.tokens)
         }
       )

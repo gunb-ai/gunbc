@@ -762,7 +762,7 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
       swift_named_edge(
         name: grammar_relation_field_tokens,
         target: Node {
-          kind: TypeNode { connective: Conj },
+          kind: TypeNode { connective: Arrow },
           children: swift_relation_token_edges(tokens: row.tokens)
         }
       )

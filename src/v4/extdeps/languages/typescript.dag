@@ -519,7 +519,7 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
       ts_named_edge(
         name: grammar_relation_field_tokens,
         target: Node {
-          kind: TypeNode { connective: Conj },
+          kind: TypeNode { connective: Arrow },
           children: ts_relation_token_edges(tokens: row.tokens)
         }
       )
