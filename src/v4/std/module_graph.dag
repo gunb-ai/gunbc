@@ -2,7 +2,7 @@
 // Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
 // Owns: ModulePath, ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup; validated graph constructor.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/witness.dag.
-// Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_resolve.dag.
+// Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_module_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
 
