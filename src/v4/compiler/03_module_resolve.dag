@@ -13,10 +13,12 @@ module v4.compiler.module_resolve
 
 import v4.compiler.normalize { NormalizedTree }
 import v4.compiler.resolve {
+  DeclaredBinding,
   Namespace,
   ResolvedTree,
   build_program_namespace,
-  resolve_with_namespace
+  resolve_with_namespace,
+  try_edge_declared_binding
 }
 import v4.extdeps.languages.dag { DagLanguageModel }
 import v4.std.algebra { FreeMonoid, fold_list }
@@ -41,9 +43,7 @@ import v4.std.module_graph {
 import v4.std.node {
   Conj,
   Edge,
-  Named,
   Node,
-  Positional,
   Symbol,
   TypeNode
 }
@@ -133,10 +133,10 @@ fn admit_named_export_edge(
   origin: ModulePath,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
-  match edge.label {
-    Named { name: sym } =>
-      admit_export_symbol(sym: sym, origin: origin, state: state)
-    Positional => state
+  match try_edge_declared_binding(e: edge) {
+    Some { value: b } =>
+      admit_export_symbol(sym: b.name, origin: origin, state: state)
+    None => state
   }
 }
 
@@ -158,7 +158,6 @@ fn admit_module_named_exports(
 
 fn admit_import_entry(
   graph: ModuleGraph,
-  admission: ModuleAdmission,
   import_edge: ModuleImport,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
@@ -189,7 +188,6 @@ fn admit_import_entry(
 
 fn admit_imports(
   graph: ModuleGraph,
-  admission: ModuleAdmission,
   imports: FreeMonoid<ModuleImport>,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
@@ -199,7 +197,6 @@ fn admit_imports(
     cons: fn(acc, import_edge) {
       admit_import_entry(
         graph: graph,
-        admission: admission,
         import_edge: import_edge,
         state: acc
       )
@@ -216,7 +213,6 @@ fn module_namespace_for_subject(
   let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
   match admit_imports(
     graph: graph,
-    admission: admission,
     imports: admission.imports,
     state: admit_module_named_exports(
       root: admission.subject.tree,
