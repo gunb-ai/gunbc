@@ -20,7 +20,7 @@ import v2.std.core {
   param_node_type_expr, param_node_default_value,
   authored_name_at, NewlineIndex, find_child_named,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
-  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, generic_param_name_at,
+  param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
   LiteralValue,
   ExprData, NoExprData,
   ExprLiteral, ExprError, ExprVar, ExprFieldAccess, ExprCall,
@@ -1672,7 +1672,8 @@ fn apply_missing_generic_args(ty: String, type_node: Node, parent_generic_param_
         ty
       } else {
         let explicit_args = explicit_type_arg_strings(type_node: type_node, shared_types: empty_set(), source_indices: source_indices)
-        let inferred_args = if explicit_args |> count == expected { explicit_args }
+        let declaration_formals = summary.generic_param_names
+        let inferred_args = if explicit_args |> count == expected && explicit_args != declaration_formals { explicit_args }
           else { [] }
         if inferred_args |> count == expected {
           let with_args = concat(type_name, "<", inferred_args |> join(separator: ", "), ">")
@@ -1717,7 +1718,15 @@ fn emit_struct_field_from_child(child: Node, parent_generic_param_names: List<St
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices)
   }
-  let generic_ty = apply_missing_generic_args(ty: ty, type_node: rt_child, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
+  let authored_field_ty = field_node_type_expr(n: child)
+  let rendered_ty = match map_get(emit_info.type_summaries, authored_name_at(source_indices: env.source_indices, node: authored_field_ty)) {
+    Some { value: summary } =>
+      if summary.generic_param_names |> count > 0 {
+        render_rust_type(n: authored_field_ty, shared_types: shared_types, source_indices: env.source_indices)
+      } else { ty }
+    None => ty
+  }
+  let generic_ty = apply_missing_generic_args(ty: rendered_ty, type_node: authored_field_ty, parent_generic_param_names: parent_generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
   let final_ty = if needs_box_wrapping(n: rt_child, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
     concat("Box<", generic_ty, ">")
   } else { generic_ty }

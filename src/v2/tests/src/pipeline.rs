@@ -4859,13 +4859,13 @@ type Outer<A, B> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_generic_field_no_fabrication.rs");
     assert!(
-        content.contains("good: NodeFold<B>"),
-        "explicit generic field args should be preserved, got:\n{}",
+        !content.contains("missing: NodeFold<A>"),
+        "bare generic field must not borrow the first parent type arg, got:\n{}",
         content
     );
     assert!(
-        !content.contains("missing: NodeFold<A>"),
-        "bare generic field must not borrow the first parent type arg, got:\n{}",
+        !content.contains("missing: NodeFold<S>"),
+        "bare generic field must not borrow declaration formals from NodeFold<S>, got:\n{}",
         content
     );
     assert!(

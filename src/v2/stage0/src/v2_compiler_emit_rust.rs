@@ -98,7 +98,7 @@ pub use crate::v2_std_core::{
     binop_right, cast_expr, cast_target, expr_call_func_at, expr_has_non_tail_self_call,
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, find_child_named, foreach_body, foreach_collection,
+    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named, foreach_body, foreach_collection,
     foreach_variable_at, generic_param_name_at, if_condition, if_else_branch, if_then_branch,
     import_is_all, import_specific_names_at, index_base, index_expr, is_compiler_error,
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
@@ -3242,8 +3242,11 @@ pub fn apply_missing_generic_args(
                             v2_rt::rc_empty_set::<String>(),
                             source_indices.clone(),
                         );
+                        let declaration_formals = summary.generic_param_names.clone();
                         let inferred_args =
-                            if ((explicit_args.clone().len() as i64) == expected.clone()) {
+                            if (((explicit_args.clone().len() as i64) == expected.clone())
+                                && (explicit_args.clone().as_ref() != declaration_formals.clone().as_ref()))
+                            {
                                 explicit_args.clone()
                             } else {
                                 Rc::new(vec![])
@@ -3370,9 +3373,27 @@ pub fn emit_struct_field_from_child(
         } else {
             render_rust_type(&rt_child, shared_types.clone(), &env.source_indices.clone())
         };
+        let authored_field_ty = field_node_type_expr(&child);
+        let rendered_ty = match v2_rt::map_get(
+            &emit_info.type_summaries.clone(),
+            authored_name_at(env.source_indices.clone(), &authored_field_ty),
+        ) {
+            Some(summary) => {
+                if ((summary.generic_param_names.clone().len() as i64) > 0) {
+                    render_rust_type(
+                        &authored_field_ty,
+                        shared_types.clone(),
+                        &env.source_indices.clone(),
+                    )
+                } else {
+                    ty.clone()
+                }
+            }
+            None => ty.clone(),
+        };
         let generic_ty = apply_missing_generic_args(
-            ty,
-            &rt_child,
+            rendered_ty,
+            &authored_field_ty,
             &parent_generic_param_names,
             emit_info,
             &env.source_indices.clone(),
