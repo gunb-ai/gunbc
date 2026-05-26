@@ -6,7 +6,8 @@
 //       target_serialize_source_from_model, grammar_relation_row_for_emitted, token_sequence_to_source,
 //       token_spelling_from_model, lex_rules_literal_for_class, lex_rule_literal_step, node_atom_identity,
 //       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
-//       translate_fold_step, translate_node, translate.
+//       translate_fold_step, translate_node, translate,
+//       conj_mixed_positional_targets, arrow_positional_targets, arrow_positional_target_lists_equal.
 // Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
 //           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
 //           std/target_model.dag.
@@ -322,6 +323,25 @@ fn arrow_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>)
       }
   }
 }
+// 🟡 gated — feature: serialize-source-token-carrier-split — serialize_source has mixed Named+Positional edges under Conj; violates edge discipline (std/node.dag Conj => LabeledEdges). Dissolve-on: refactor serialize_source into Conj metadata node + Arrow token-list node; delete this function and call arrow_positional_targets at the grammar_serialize_source_matches_row call site.
+fn conj_mixed_positional_targets(parent: Node) -> Outcome<List<Node>> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      Accepted {
+        value: fold(parent.children, init: Empty, f: fn(acc, e) {
+          match e.label {
+            Positional => list_snoc_item(xs: acc, item: e.target)
+            Named { name: _ } => acc
+          }
+        }),
+        diagnostics: None
+      }
+    _ =>
+      outcome_rejected(
+        translate_grammar_inverse_not_realized_diagnostic(emitted: parent)
+      )
+  }
+}
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
   row: Node
@@ -331,7 +351,7 @@ fn grammar_serialize_source_matches_row(
       o: grammar_relation_row_tokens_root(row: row),
       f: fn(tokens_root) {
         bind_outcome(
-          o: arrow_positional_targets(parent: serialize_source),
+          o: conj_mixed_positional_targets(parent: serialize_source),
           f: fn(source_targets) {
             bind_outcome(
               o: arrow_positional_targets(parent: tokens_root),
