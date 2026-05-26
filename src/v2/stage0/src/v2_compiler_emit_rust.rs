@@ -98,23 +98,23 @@ pub use crate::v2_std_core::{
     binop_right, cast_expr, cast_target, expr_call_func_at, expr_has_non_tail_self_call,
     expr_has_self_call, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
-    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named, foreach_body, foreach_collection,
-    foreach_variable_at, generic_param_name_at, if_condition, if_else_branch, if_then_branch,
-    import_is_all, import_specific_names_at, index_base, index_expr, is_compiler_error,
-    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, make_arg_node, make_error_node, make_expr_node,
-    make_named_expr_node, make_span, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, param_node_default_value, param_node_name_at,
-    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
-    transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp,
-    CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern,
-    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind,
-    VarBindingKind,
+    field_init_node_value, field_node_name_at, field_node_type_expr, find_child_named,
+    foreach_body, foreach_collection, foreach_variable_at, generic_param_name_at, if_condition,
+    if_else_branch, if_then_branch, import_is_all, import_specific_names_at, index_base,
+    index_expr, is_compiler_error, is_file_transport, is_rest_transport, is_shell_transport,
+    lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, make_arg_node,
+    make_error_node, make_expr_node, make_named_expr_node, make_span, match_arm_nodes,
+    match_scrutinee, method_arg_nodes, method_receiver, module_imports, module_items,
+    param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
+    resource_use_name_at, resource_use_resource, return_value, service_config_auth,
+    service_config_auth_input, service_config_auth_source, service_config_endpoint, slice_base,
+    slice_end, slice_start, transport_auth_header_name, transport_auth_token, transport_base_url,
+    transport_env, transport_has_auth, transport_headers, transport_method,
+    transport_path_template, transport_query, transport_request_body, transport_response_format,
+    transport_stdin, with_required_cardinality, AlgebraFieldKind, BinOp, CallSemantics,
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, FieldAccessStyle,
+    FieldSummary, FieldValueShape, InferredNode, LiteralValue, MatchPattern, MethodSemantics,
+    NewlineIndex, Node, SourceSpan, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -3243,14 +3243,15 @@ pub fn apply_missing_generic_args(
                             source_indices.clone(),
                         );
                         let declaration_formals = summary.generic_param_names.clone();
-                        let inferred_args =
-                            if (((explicit_args.clone().len() as i64) == expected.clone())
-                                && (explicit_args.clone().as_ref() != declaration_formals.clone().as_ref()))
-                            {
-                                explicit_args.clone()
-                            } else {
-                                Rc::new(vec![])
-                            };
+                        let inferred_args = if (((explicit_args.clone().len() as i64)
+                            == expected.clone())
+                            && (explicit_args.clone().as_ref()
+                                != declaration_formals.clone().as_ref()))
+                        {
+                            explicit_args.clone()
+                        } else {
+                            Rc::new(vec![])
+                        };
                         if ((inferred_args.clone().len() as i64) == expected.clone()) {
                             {
                                 let with_args = v2_rt::concat(
