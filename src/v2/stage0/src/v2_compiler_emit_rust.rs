@@ -3534,10 +3534,10 @@ pub fn emit_struct_field_from_child(
     {
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(child.clone());
-        let ty = if ((generic_param_names.clone().len() as i64) > 0) {
-            render_rust_decl_type(
+        let ty = if ((generic_param_names.len() as i64) > 0) {
+            render_node_type(
                 rt_child.clone(),
-                generic_param_names.clone(),
+                RenderTarget::Rust,
                 shared_types.clone(),
                 env.source_indices.clone(),
             )
