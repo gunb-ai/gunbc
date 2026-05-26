@@ -11571,6 +11571,17 @@ pub fn rust_record_field_needs_box(
     }
 }
 
+pub fn rust_record_field_needs_option_rc(
+    scope: Rc<InferScope>,
+    struct_name: String,
+    field_name: String,
+) -> bool {
+    match rust_struct_field_type_node(scope, struct_name, field_name) {
+        Some(field_type) => field_type.return_cardinality == Cardinality::CardOptional,
+        None => false,
+    }
+}
+
 pub fn wrap_rust_record_field_value(
     raw: String,
     scope: Rc<InferScope>,
@@ -11585,7 +11596,13 @@ pub fn wrap_rust_record_field_value(
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
             v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
         } else {
-            if (is_bounded_lattice_field.clone()
+            if rust_record_field_needs_option_rc(
+                scope.clone(),
+                struct_name.clone(),
+                field_name.clone(),
+            ) {
+                v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
+            } else if (is_bounded_lattice_field.clone()
                 && ((field_name.clone().as_str() == "meet".to_string().as_str())
                     || (field_name.clone().as_str() == "join".to_string().as_str())))
             {
