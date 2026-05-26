@@ -8,6 +8,9 @@
 module v4.extdeps.formats.toml
 
 
+import v4.std.datetime { LocalDate, LocalDateTime, LocalTime, OffsetDateTime }
+
+
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type TomlSign
   = TomlSignAbsent
@@ -71,6 +74,14 @@ type TomlDatetimeLexeme
   | TomlLocalDateTimeLexeme { lexeme: String }
   | TomlLocalDateLexeme { lexeme: String }
   | TomlLocalTimeLexeme { lexeme: String }
+
+
+// 🟢 coproduct dissolution — TOML §Date-Time exposes these four closed user-input profiles.
+type TomlDateTimeValue
+  = TomlOffsetDateTimeValue { value: OffsetDateTime }
+  | TomlLocalDateTimeValue { value: LocalDateTime }
+  | TomlLocalDateValue { value: LocalDate }
+  | TomlLocalTimeValue { value: LocalTime }
 
 
 type TomlDottedKeysDefineTablesFact {}
