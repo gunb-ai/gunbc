@@ -29,7 +29,7 @@ pub use crate::v2_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, default_ident_span,
     expr_call_func_at, expr_method_name_at, field_init_node_name_at, field_init_node_value,
     field_node_cardinality, field_node_default_value, field_node_from_key, field_node_name_at,
-    field_node_type_expr, foreach_variable_at, intern, is_compiler_error, is_container_type,
+    field_node_type_expr, foreach_variable_at, generic_param_name_at, intern, is_compiler_error, is_container_type,
     is_kernel_type, is_local_transport, kernel_span, let_binding_name_at, local_transport_node,
     make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
     make_field_init_node, make_field_node, make_interp_part_node, make_named_expr_node,
@@ -2520,7 +2520,19 @@ pub fn resolve_item_types(
     module_name: &String,
 ) -> Rc<ItemResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tp_names = fn_type_param_names(item.clone(), env.source_indices.clone());
+        let tp_names = if ((item.connective.clone() != Connective::NoConnective)
+            && (item.transport.clone() == None))
+        {
+            Rc::new({
+                let mut __result = Vec::new();
+                for p in item.params.clone().iter().cloned() {
+                    __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
+                }
+                __result
+            })
+        } else {
+            fn_type_param_names(item.clone(), env.source_indices.clone())
+        };
         let collision_diags = if has_duplicate_type_param_name(&tp_names) {
             Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
     message: v2_rt::concat(v2_rt::concat("type param name collides with a value param in fn '".to_string(), authored_name_at(env.source_indices.clone(), &item)), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition.".to_string()),

@@ -937,7 +937,11 @@ fn has_duplicate_type_param_name(names: List<String>) -> Bool {
 fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResult {
   // Register function type params (e.g., <T, B>) as TypeVariable bindings
   // so bare references to T/B in params/body don't produce UnresolvedType.
-  let tp_names = fn_type_param_names(item: item, source_indices: env.source_indices)
+  let tp_names = if item.connective != NoConnective && item.transport == none {
+    item.params |> map(p => generic_param_name_at(n: p, source_indices: env.source_indices))
+  } else {
+    fn_type_param_names(item: item, source_indices: env.source_indices)
+  }
   let collision_diags = if has_duplicate_type_param_name(names: tp_names) {
     [make_error_node(diagnostic: InternalError { message: concat("type param name collides with a value param in fn '", authored_name_at(source_indices: env.source_indices, node: item), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition."), span: item.span }, module_name: module_name)]
   } else { [] }
