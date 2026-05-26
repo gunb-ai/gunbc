@@ -14,6 +14,11 @@ const APPLICATION_DAG: &str = include_str!("../../../../v4/lens/application.dag"
 const APPLICATION_PATH: &str = "src/v4/lens/application.dag";
 const REPORT_DAG: &str = include_str!("../../../../v4/std/report.dag");
 const REPORT_PATH: &str = "src/v4/std/report.dag";
+const INTROSPECT_ADVISORY_CLAIM_DAG: &str = include_str!(
+    "../../../../v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag"
+);
+const INTROSPECT_ADVISORY_CLAIM_PATH: &str =
+    "src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -56,10 +61,53 @@ fn surface_declares_type_sum(
     })
 }
 
+fn import_includes_name(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &[&str],
+    name: &str,
+) -> bool {
+    module.items.iter().any(|item| {
+        let SurfaceItem::Import {
+            path: item_path,
+            names,
+            ..
+        } = item
+        else {
+            return false;
+        };
+        item_path.len() == path.len()
+            && item_path
+                .iter()
+                .zip(path.iter())
+                .all(|(a, &b)| a.as_str() == b)
+            && names.iter().any(|n| n == name)
+    })
+}
+
 #[test]
 fn v4_lens_application_dag_tokenizes_and_parses() {
     let _ = parse_module(REPORT_DAG, REPORT_PATH);
     let _ = parse_module(APPLICATION_DAG, APPLICATION_PATH);
+}
+
+#[test]
+fn v4_lens_application_introspect_advisory_claim_tokenizes_and_parses() {
+    let module = parse_module(
+        INTROSPECT_ADVISORY_CLAIM_DAG,
+        INTROSPECT_ADVISORY_CLAIM_PATH,
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "compiler", "compile"],
+            "CompileLensIntrospect"
+        ),
+        "{INTROSPECT_ADVISORY_CLAIM_PATH}: claim must exercise CompileLensIntrospect"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "witness"], "Violates"),
+        "{INTROSPECT_ADVISORY_CLAIM_PATH}: claim must assert advisory Violates witness"
+    );
 }
 
 #[test]
