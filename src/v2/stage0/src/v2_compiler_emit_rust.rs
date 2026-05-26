@@ -17631,10 +17631,7 @@ pub fn emit_main_call_args(wf: &Rc<WorkflowFunc>, has_services: bool) -> String 
                     let pname = param_node_name_at(p.clone(), wf.source_indices.clone());
                     let ident = emit_ident(pname.clone(), RenderTarget::Rust);
                     let n = param_node_type_expr(&p);
-                    let is_borrowable =
-                        ((v2_rt::set_contains(&wf.read_only_params.clone(), pname.clone())
-                            && ((n.params.clone().len() as i64) == 0))
-                            && needs_reference_node(&n, wf.source_indices.clone()));
+                    let is_borrowable = false;
                     if is_borrowable.clone() {
                         v2_rt::concat("&".to_string(), ident.clone())
                     } else {
