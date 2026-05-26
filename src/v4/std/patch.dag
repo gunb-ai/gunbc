@@ -1,13 +1,15 @@
 // src/v4/std/patch.dag
 // Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
-// Owns: FieldPatch, apply_field_patch.
-// Consumes: none (language primitives only).
+// Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid.
+// Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
 // Status: T-4.16 follow-on — formatter ConfigPatch monoid substrate.
 // External authority: two-element lattice per field (Override = top, Inherit = bottom);
 //   standard layered-config pattern (NixOS module system, Home Manager override/inherit).
+//   Monoid: right-biased composition (later layer wins); identity = Inherit.
 
 module v4.std.patch
 
+import v4.std.algebra { Magma, Semigroup, Monoid }
 
 // 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
 // Per-field patch coproduct for hierarchical config layering.
@@ -21,5 +23,28 @@ fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
   match patch {
     Override { value: v } => v
     Inherit => base
+  }
+}
+
+
+// Right-biased semigroup composition: later layer wins.
+// compose(left, Override{v}) = Override{v}; compose(left, Inherit) = left.
+// Identity: Inherit (compose(Inherit, p) = p and compose(p, Inherit) = p).
+fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPatch<T> {
+  match right {
+    Override { value: v } => Override { value: v }
+    Inherit => left
+  }
+}
+
+
+fn field_patch_monoid<T>() -> Monoid<FieldPatch<T>> {
+  Monoid {
+    semigroup: Semigroup {
+      magma: Magma {
+        op: fn(left, right) { compose_field_patch(left: left, right: right) }
+      }
+    },
+    identity: Inherit,
   }
 }
