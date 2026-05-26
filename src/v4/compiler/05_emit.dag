@@ -25,7 +25,6 @@ import v4.compiler.translate {
   translate
 }
 import v4.std.diagnostic {
-  Accepted,
   Outcome,
   bind_outcome
 }
