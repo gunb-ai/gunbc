@@ -1,15 +1,16 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
 // Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + LM `canonical_symbols` (TASKS T-8).
-// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols; anchor_resolve_wave1_empty_prelude_service_atom; anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols; anchor_resolve_wave1_bind_binder_use; claim_resolve_with_graph_imported_binding_accepts.
-// Consumes: compiler/03_resolve.dag, extdeps/languages/dag.dag, std/module_graph.dag, std/diagnostic.dag, std/node.dag.
+// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols; anchor_resolve_wave1_empty_prelude_service_atom; anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols; anchor_resolve_wave1_bind_binder_use; claim_resolve_module_with_graph_imported_binding_accepts.
+// Consumes: compiler/03_resolve.dag, compiler/03_module_resolve.dag, extdeps/languages/dag.dag, std/module_graph.dag, std/diagnostic.dag, std/node.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.test.claim.manual.resolve_compile_anchor
 
 
-import v4.compiler.resolve { resolve, resolve_with_graph, ResolvedTree }
+import v4.compiler.module_resolve { resolve_module_with_graph }
+import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_fn,
   dag_c3_surface_sugar_service,
@@ -227,11 +228,17 @@ fn resolve_graph_imported_use_tree() -> Node {
 }
 
 
-fn resolve_with_graph_imported_binding_accepts() -> Bool {
-  match resolve_with_graph(
+fn resolve_module_with_graph_imported_binding_accepts() -> Bool {
+  match resolve_module_with_graph(
     tree: resolve_graph_imported_use_tree(),
     lm: dag_language_model_surface_empty_prelude(),
-    graph: resolve_graph_single_import()
+    graph: resolve_graph_single_import(),
+    subject: ModulePath {
+      segments: Cons {
+        head: ModulePathSegment { name: anchor_imported_path_segment },
+        tail: Empty
+      }
+    }
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -239,10 +246,10 @@ fn resolve_with_graph_imported_binding_accepts() -> Bool {
 }
 
 
-data claim_resolve_with_graph_imported_binding_accepts: TestClaim = CompilesClaim {
-  label: "resolve/with_graph: imported module named export resolves",
+data claim_resolve_module_with_graph_imported_binding_accepts: TestClaim = CompilesClaim {
+  label: "module_resolve/with_graph: admitted module named export resolves",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: resolve_graph_claim_node(ok: resolve_with_graph_imported_binding_accepts()),
+  input: resolve_graph_claim_node(ok: resolve_module_with_graph_imported_binding_accepts()),
   expected_value: resolve_graph_claim_node(ok: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

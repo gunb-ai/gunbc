@@ -1,0 +1,80 @@
+// src/v4/compiler/03_module_resolve.dag
+//
+// Scope: Stage 3c — ModuleGraph admission for cross-file resolution.
+// Owns: module_namespace_for_subject; resolve_module_with_graph.
+// Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
+//           extdeps/languages/dag.dag, std/diagnostic.dag, std/module_graph.dag, std/witness.dag.
+// Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
+// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
+
+module v4.compiler.module_resolve
+
+
+import v4.compiler.normalize { NormalizedTree }
+import v4.compiler.resolve {
+  Namespace,
+  ResolvedTree,
+  add_module_named_exports,
+  build_program_namespace,
+  resolve_with_namespace
+}
+import v4.extdeps.languages.dag { DagLanguageModel }
+import v4.std.diagnostic {
+  Outcome,
+  Rejected,
+  diagnostics_singleton
+}
+import v4.std.module_graph {
+  ModuleEntry,
+  ModuleGraph,
+  ModulePath,
+  module_graph_entry_for_path
+}
+import v4.std.witness { Holds, Violates }
+
+
+// 🟡 needs-more-work — feature:T-28-module-namespace — dissolve-on: Namespace.bindings gains
+// module-qualified structure keyed by ModulePath, plus import/visibility/ambiguity rules. Current
+// admission is path-authoritative (module_graph_entry_for_path) but still admits the subject module's
+// root named exports into the unqualified Namespace while preserving resolve's K-1 single-tree scope.
+fn module_namespace_for_subject(
+  tree: NormalizedTree,
+  lm: DagLanguageModel,
+  graph: ModuleGraph,
+  subject: ModulePath
+) -> Outcome<Namespace> {
+  match module_graph_entry_for_path(graph: graph, path: subject) {
+    Holds { value: entry } =>
+      Accepted {
+        value: Namespace {
+          bindings: add_module_named_exports(
+            root: entry.root,
+            acc: build_program_namespace(tree: tree, lm: lm).bindings
+          ),
+          canonical_symbols: build_program_namespace(tree: tree, lm: lm).canonical_symbols
+        },
+        diagnostics: None
+      }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+fn resolve_module_with_graph(
+  tree: NormalizedTree,
+  lm: DagLanguageModel,
+  graph: ModuleGraph,
+  subject: ModulePath
+) -> Outcome<ResolvedTree> {
+  match module_namespace_for_subject(
+    tree: tree,
+    lm: lm,
+    graph: graph,
+    subject: subject
+  ) {
+    Accepted { value: namespace, diagnostics: _ } =>
+      resolve_with_namespace(tree: tree, namespace: namespace)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}

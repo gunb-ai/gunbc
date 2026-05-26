@@ -13,7 +13,7 @@
 //           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
 //           lens/fact_density.dag, std/algebra.dag, std/collection.dag, std/diagnostic.dag,
 //           std/module_graph.dag, std/node.dag, std/text.dag, std/witness.dag.
-// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve_with_graph → compile.
+// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
 
@@ -24,14 +24,13 @@ import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
 import v4.compiler.normalize { normalize }
 import v4.compiler.parse { parse }
-import v4.compiler.resolve { resolve_with_graph }
+import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.algebra { Empty, list_append }
+import v4.std.algebra { list_append }
 import v4.std.collection { List }
-import v4.std.module_graph { module_graph_from_entries }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -346,39 +345,30 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
           bind_outcome(
             o: normalize(parse_tree: parse_tree),
             f: fn(normalized) {
-              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must replace this.
-              match module_graph_from_entries(entries: Empty) {
-                Holds { value: graph } =>
+              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must call compiler/03_module_resolve.dag for cross-file admission.
+              bind_outcome(
+                o: resolve(tree: normalized, lm: lm),
+                f: fn(resolved) {
                   bind_outcome(
-                    o: resolve_with_graph(
-                      tree: normalized,
-                      lm: lm,
-                      graph: graph
+                    o: compile(
+                      source: resolved,
+                      mode: TranslateTo { target: target }
                     ),
-                    f: fn(resolved) {
-                      bind_outcome(
-                        o: compile(
-                          source: resolved,
-                          mode: TranslateTo { target: target }
-                        ),
-                        f: fn(compile_out) {
-                          match compile_out {
-                            TranslateResult { source: target_source } =>
-                              outcome_accepted(target_source)
-                            EvalResult { value: _ } =>
-                              outcome_rejected(
-                                compile_eval_not_realized_diagnostic(
-                                  at: port_locus(port: compile_stage_locus_port)
-                                )
-                              )
-                          }
-                        }
-                      )
+                    f: fn(compile_out) {
+                      match compile_out {
+                        TranslateResult { source: target_source } =>
+                          outcome_accepted(target_source)
+                        EvalResult { value: _ } =>
+                          outcome_rejected(
+                            compile_eval_not_realized_diagnostic(
+                              at: port_locus(port: compile_stage_locus_port)
+                            )
+                          )
+                      }
                     }
                   )
-                Violates { diagnostic: d } =>
-                  Rejected { diagnostics: diagnostics_singleton(d: d) }
-              }
+                }
+              )
             }
           )
         }
