@@ -1505,11 +1505,20 @@ T-23 round-trip workflow.
 2. **AgentStore carrier.** A mutable, path-keyed carrier in
    `src/v4/std/agent.dag`:
    `AgentStore { entries: Map<ModulePath, Node> }` with operations
-   `store_insert`, `store_lookup`, `store_delete`. The store is the
-   agent's write surface; the virtual module-loader is the compiler's read
-   surface. Agents populate the store and invoke `compile_with_store` — the
-   filesystem-free entry point alongside existing `compile_ingest_staging`
-   in `00_compile.dag`.
+   `store_insert`, `store_lookup`, `store_delete`, `store_entries`. The
+   store is the agent's write surface; the virtual module-loader is the
+   compiler's read surface. Agents populate the store and invoke
+   `compile_with_store` — the filesystem-free entry point alongside
+   existing `compile_ingest_staging` in `00_compile.dag`.
+
+   **`store_entries` (enumeration surface):** returns the store's contents as
+   an ordered collection of `(ModulePath, Node)` pairs — the form passable
+   to `module_graph_from_entries`. This is the bridge between the agent's
+   path-keyed write surface and the compiler's canonical admission path.
+   `store_entries` is read-only and deterministic — a pure view of the
+   current store state, not a mutation. Workers must use `store_entries` as
+   the sole enumeration surface; they must not read `entries` directly or
+   construct a parallel collection from the Map.
 
    **Path-keyed invariants (ratified 2026-05-26):**
    - **`ModulePath` is a lookup key, not a Node identity authority.** Node identity within the compiler remains B1 `content_hash` (INVARIANTS §P2, `std/node.dag`). The path is an external boundary handle — the same role a filesystem path plays — not an alternative to the B1 merkle identity.
