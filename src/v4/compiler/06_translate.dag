@@ -342,37 +342,39 @@ fn conj_mixed_positional_targets(parent: Node) -> Outcome<List<Node>> {
       )
   }
 }
+// 🟡 gated — feature: serialize-source-token-carrier-split — serialize_source has pre-existing mixed Named+Positional edges under Conj; well_formed rejects it (Conj => LabeledEdges per std/node.dag:235). Connective-match guard below substitutes until the proper split (Conj metadata + Arrow token-list) lands; dissolve-on: same trigger as conj_mixed_positional_targets.
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
   row: Node
 ) -> Outcome<Node> {
-  if well_formed(n: serialize_source) {
-    bind_outcome(
-      o: grammar_relation_row_tokens_root(row: row),
-      f: fn(tokens_root) {
-        bind_outcome(
-          o: conj_mixed_positional_targets(parent: serialize_source),
-          f: fn(source_targets) {
-            bind_outcome(
-              o: arrow_positional_targets(parent: tokens_root),
-              f: fn(row_targets) {
-                if arrow_positional_target_lists_equal(a: source_targets, b: row_targets) {
-                  Accepted { value: serialize_source, diagnostics: None }
-                } else {
-                  outcome_rejected(
-                    translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
-                  )
+  match serialize_source.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: grammar_relation_row_tokens_root(row: row),
+        f: fn(tokens_root) {
+          bind_outcome(
+            o: conj_mixed_positional_targets(parent: serialize_source),
+            f: fn(source_targets) {
+              bind_outcome(
+                o: arrow_positional_targets(parent: tokens_root),
+                f: fn(row_targets) {
+                  if arrow_positional_target_lists_equal(a: source_targets, b: row_targets) {
+                    Accepted { value: serialize_source, diagnostics: None }
+                  } else {
+                    outcome_rejected(
+                      translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
+                    )
+                  }
                 }
-              }
-            )
-          }
-        )
-      }
-    )
-  } else {
-    outcome_rejected(
-      translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
-    )
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        translate_grammar_inverse_not_realized_diagnostic(emitted: serialize_source)
+      )
   }
 }
 fn grammar_inverse_source_validated(
