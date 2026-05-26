@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_wave1_*; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_wave1_*; emit_row_module_header; emit_row_import_decl; emit_row_data_decl; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens.
 // Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/logic.dag.
 // Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
 // Anchor: docs/v3-spec.md
@@ -53,6 +53,7 @@ import v4.compiler.tokenize {
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.logic { Bool }
+import v4.std.algebra { list_append }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
@@ -1202,6 +1203,71 @@ fn dag_grammar_module_production() -> GrammarProduction {
     name: dag_production_module,
     expression: dag_grammar_module_expr(),
     emitted: dag_surface_module
+  )
+}
+
+
+fn emit_row_module_header(emitted: Node, qualified_name: Node) -> Node {
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: dag_production_module_header,
+      expression: dag_grammar_module_header_expr(),
+      emitted: dag_surface_module_header
+    ),
+    emitted: emitted,
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_module),
+      qualified_name
+    ]
+  )
+}
+
+
+fn emit_row_import_decl(
+  emitted: Node,
+  qualified_name: Node,
+  import_block: Node?
+) -> Node {
+  let prefix = [
+    emit_fixed_token(token_class: dag_token_kw_import),
+    qualified_name
+  ]
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: dag_production_import_decl,
+      expression: dag_grammar_import_decl_expr(),
+      emitted: dag_surface_import_decl
+    ),
+    emitted: emitted,
+    tokens: match import_block {
+      Some { value: block } => list_append(left: prefix, right: [block])
+      None => prefix
+    }
+  )
+}
+
+
+fn emit_row_data_decl(
+  emitted: Node,
+  name_binding: Symbol,
+  type_expr: Node,
+  expr: Node
+) -> Node {
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: dag_production_data_decl,
+      expression: dag_grammar_data_decl_expr(),
+      emitted: dag_surface_data_decl
+    ),
+    emitted: emitted,
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_data),
+      emit_bound_token(token_class: dag_token_ident, binding: name_binding),
+      emit_fixed_token(token_class: dag_token_colon),
+      type_expr,
+      emit_fixed_token(token_class: dag_token_eq),
+      expr
+    ]
   )
 }
 

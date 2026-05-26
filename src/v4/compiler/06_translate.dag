@@ -302,8 +302,60 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
       }
     _ =>
       outcome_rejected(
-        translate_grammar_inverse_not_realized_diagnostic(emitted: parent)
+      translate_grammar_inverse_not_realized_diagnostic(emitted: parent)
       )
+  }
+}
+fn concrete_token_class_child(parent: Node) -> Outcome<Node?> {
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        parent.children,
+        init: BundleChildMissing,
+        f: fn(acc, e) {
+          match acc {
+            BundleChildInvalidEdge => acc
+            BundleChildDuplicate => acc
+            BundleChildMissing =>
+              match e.label {
+                Named { name: n } =>
+                  if n == concrete_syntax_token_field_class {
+                    BundleChildFound { value: e.target }
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            BundleChildFound { value: _ } =>
+              match e.label {
+                Named { name: n } =>
+                  if n == concrete_syntax_token_field_class {
+                    BundleChildDuplicate
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: Some { value: child }, diagnostics: None }
+        BundleChildMissing =>
+          Accepted { value: None, diagnostics: None }
+        BundleChildDuplicate =>
+          outcome_rejected(
+            Diagnostic {
+              reason: translate_target_bundle_duplicate_edge,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        BundleChildInvalidEdge =>
+          outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
+      }
+    _ =>
+      Accepted { value: None, diagnostics: None }
   }
 }
 fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
@@ -502,6 +554,19 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
     }
   )
 }
+fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: concrete_token_class_child(parent: item),
+    f: fn(class_node) {
+      match class_node {
+        Some { value: _ } =>
+          token_spelling_from_model(target: target, token: item)
+        None =>
+          target_serialize_source_from_model(target: target, emitted: item)
+      }
+    }
+  )
+}
 fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
   fold_list(
     xs: tokens,
@@ -510,10 +575,10 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_spelling_from_model(target: target, token: token_node) {
-            Accepted { value: spelling, diagnostics: td } =>
+          match token_item_to_source(item: token_node, target: target) {
+            Accepted { value: source, diagnostics: td } =>
               Accepted {
-                value: list_append(left: partial, right: spelling),
+                value: list_append(left: partial, right: source),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>
