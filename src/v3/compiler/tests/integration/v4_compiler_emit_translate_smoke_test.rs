@@ -234,21 +234,12 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         "{RUST_LANGUAGE_PATH}: Rust overflow disposition must model checked-arithmetic debug/release defaults and explicit overflow-checks behavior"
     );
     assert_eq!(
-        type_record_fields(&module, "RustIntegerRangeFacts")
-            .iter()
-            .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
-            .collect::<Vec<_>>(),
-        vec![("interval", "IntegerIntervalSpec".to_string())],
-        "{RUST_LANGUAGE_PATH}: Rust integer ranges must carry the shared integer interval fact, not opaque Symbol labels or a parallel Rust-local copy"
-    );
-    assert_eq!(
         type_record_fields(&module, "RustIntegerPrimitiveFacts")
             .iter()
             .map(|f| (f.name.as_str(), surface_type_name(&f.ty)))
             .collect::<Vec<_>>(),
         vec![
             ("surface_spelling", "Symbol".to_string()),
-            ("range", "RustIntegerRangeFacts".to_string()),
             (
                 "overflow_disposition",
                 "OverflowDisposition<RustIntegerCarrier>".to_string(),
@@ -261,6 +252,10 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         type_record_field_type(&module, "RustIntegerPrimitiveFacts", "overflow_disposition"),
         Some("OverflowDisposition<RustIntegerCarrier>".to_string()),
         "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
+    );
+    assert!(
+        surface_declares_fn(&module, "rust_integer_carrier_interval_spec"),
+        "{RUST_LANGUAGE_PATH}: Rust integer ranges must derive from the overflow disposition carrier"
     );
     assert!(
         import_includes_name(
