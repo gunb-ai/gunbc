@@ -1510,8 +1510,9 @@ T-23 round-trip workflow.
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — `InferenceResult`,
 `DiagnosticSet`, lens reads, `apply_diff`) belongs to T-23/AGENT-1, which
-already declares this authority (`DECISIONS.md AGENT-1; lens/application.dag
-header; "no new file, no new authority"`). A worker dispatched from T-35
+already declares this authority (see T-23 entry above and
+`lens/application.dag` header mark; "no new file, no new authority"). A
+worker dispatched from T-35
 must not define new output types or a structured output mode — that work
 goes in T-23's scope. T-35 workers stop and escalate if they feel pressure
 to define a new agent output surface.
