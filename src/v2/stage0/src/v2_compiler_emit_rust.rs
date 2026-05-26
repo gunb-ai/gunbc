@@ -3358,9 +3358,13 @@ pub fn emit_struct_field_from_child(
         let rt_child = resolved_type(child.clone());
         let authored_child_type = field_node_type_expr(&child);
         eprintln!(
-            "DBG field={} parent_generics={:?} authored_name={} authored_inferred={:?} authored_children={} child_props={}",
+            "DBG field={} parent_generics={:?} child_inferred={:?} rt_name={} rt_inferred={:?} rt_children={} authored_name={} authored_inferred={:?} authored_children={} child_props={}",
             authored_name_at(env.source_indices.clone(), child),
             parent_generic_param_names,
+            child.inferred,
+            authored_name_at(env.source_indices.clone(), &rt_child),
+            rt_child.inferred,
+            rt_child.children.len(),
             authored_name_at(env.source_indices.clone(), &authored_child_type),
             authored_child_type.inferred,
             authored_child_type.children.len(),
