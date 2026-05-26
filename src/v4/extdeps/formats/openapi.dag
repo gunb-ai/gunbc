@@ -1,7 +1,7 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
 // Owns: OpenAPI 3.1 document/wire-contract fact-bundles and HTTP method/status bridges.
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, std/refinement.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
 //         document/operation wire-contract facts.
@@ -15,7 +15,6 @@ import v4.extdeps.formats.json { JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
 import v4.std.nat { Nat }
 import v4.std.network {
-  CONNECT,
   DELETE,
   GET,
   HEAD,
@@ -27,8 +26,6 @@ import v4.std.network {
   TRACE,
   UriReference
 }
-import v4.std.node { Symbol }
-import v4.std.refinement { Refined, Validation }
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-OpenApiSpecificationExtensionKey.
@@ -125,32 +122,34 @@ type OpenApiSchema {
 
 
 // Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
-// OAS 3.1 §4.8.9 admits GET PUT POST DELETE OPTIONS HEAD PATCH TRACE; excludes CONNECT (RFC 9110 §9.3.6 — tunnel semantics, not routable as an API operation method).
-data openapi_http_method_connect_excluded: Symbol = openapi_http_method_connect_excluded
+// OAS 3.1 §4.8.9 admits exactly these 8 HTTP methods; CONNECT (RFC 9110 §9.3.6 — tunnel
+// semantics) is excluded structurally by not appearing as a coproduct arm.
+// 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethod.
+type OpenApiAdmittedHttpMethod
+  = OpenApiGet
+  | OpenApiPut
+  | OpenApiPost
+  | OpenApiDelete
+  | OpenApiOptions
+  | OpenApiHead
+  | OpenApiPatch
+  | OpenApiTrace
 
-fn openapi_http_method_admitted(method: HttpMethod) -> Bool {
+
+// One-way projection to std.network.HttpMethod; anchored to RFC 9110 method identity.
+// (Not a bridge table — no two-sided row type; single authority for OAS-admitted methods
+//  remains OpenApiAdmittedHttpMethod.)
+fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> HttpMethod {
   match method {
-    CONNECT  => False
-    DELETE   => True
-    GET      => True
-    HEAD     => True
-    OPTIONS  => True
-    PATCH    => True
-    POST     => True
-    PUT      => True
-    TRACE    => True
+    OpenApiGet     => GET
+    OpenApiPut     => PUT
+    OpenApiPost    => POST
+    OpenApiDelete  => DELETE
+    OpenApiOptions => OPTIONS
+    OpenApiHead    => HEAD
+    OpenApiPatch   => PATCH
+    OpenApiTrace   => TRACE
   }
-}
-
-data openapi_http_method_validation: Validation<HttpMethod> = Validation {
-  reason: openapi_http_method_connect_excluded,
-  admits: openapi_http_method_admitted,
-}
-
-// Refinement of HttpMethod admitted by OAS 3.1 (all methods except CONNECT).
-// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE admitted-method constructor at parse boundary (T-6/T-7) — SL-3229-OPENAPI-NETWORK-BRIDGE-PARSE.
-type OpenApiAdmittedHttpMethod {
-  refined: Refined<HttpMethod>
 }
 
 
@@ -633,5 +632,5 @@ type OpenApiDocumentWireContractFacts {
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: unique-name profile parse enforcement binding (OpenApiUniqueNameProfileFacts consumption at parse boundary) — SL-3229-OPENAPI-UNIQUE-NAME-PARSE.
-// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_http_method_validation + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
+// 🟡 gated — feature: OPENAPI-NETWORK-BRIDGE consumer binding at emit boundary (openapi_admitted_to_http_method + openapi_response_key_wildcard_bridge_catalog) — SL-3229-OPENAPI-NETWORK-BRIDGE-EMIT.
 // 🟡 gated — feature: operation WireContractFacts composition with coordination.dag WireContractFacts + ExchangePattern authority — SL-3229-OPENAPI-WIRECONTRACT-COORDINATION.
