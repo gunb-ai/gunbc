@@ -273,7 +273,7 @@ pub fn rust_nominal_identity_carrier_def(name: String) -> String {
             v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
-                        v2_rt::concat(rust_ord_derives_copy_text(), "\n".to_string()),
+                        v2_rt::concat(rust_ord_derives_text(), "\n".to_string()),
                         rust_visibility_prefix(),
                     ),
                     rust_items().struct_keyword.clone(),
@@ -282,7 +282,7 @@ pub fn rust_nominal_identity_carrier_def(name: String) -> String {
             ),
             name,
         ),
-        "(pub &'static str);".to_string(),
+        "(pub String);".to_string(),
     )
 }
 
@@ -16165,7 +16165,7 @@ pub fn rust_nominal_identity_data_expr(
                             v2_rt::concat(type_name.clone(), "(\"".to_string()),
                             escape_string_literal_body(symbol_name),
                         ),
-                        "\")".to_string(),
+                        "\".to_string())".to_string(),
                     ))
                 }
                 _ => None,
