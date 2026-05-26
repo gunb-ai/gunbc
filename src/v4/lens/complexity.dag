@@ -12,14 +12,6 @@
 // a second cost authority — forbidden (the parallel-authority bug U1/U2
 // foreclose).
 //
-//   - Complexity dimension type
-//   - lens read: Node -> Witness<ComplexityBound>
-//     (the asymptotic projection of cost.dag's SymbolicCost — consumed,
-//     not re-derived)
-//   - reads program structure; no heuristic, no escape
-//
-//   - std/node.dag, std/witness.dag, std/diagnostic.dag
-//
 // Status: T-12 filled — ComplexityBound projection + complexity_lens consuming cost_lens + complexity_bound_dominates.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator

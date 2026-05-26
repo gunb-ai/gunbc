@@ -4,7 +4,6 @@
 // Anchor: https://www.iers.org/SharedDocs/News/EN/BulletinC.html
 // Anchor: https://maia.usno.navy.mil/products/leap-second
 // Anchor: https://en.wikipedia.org/wiki/Gregorian_calendar
-//       UTC offset carriers, and validation-discharge constructors.
 // Status: 🟢 T-3 modeled.
 
 module v4.std.datetime

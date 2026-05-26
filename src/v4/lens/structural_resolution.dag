@@ -3,11 +3,6 @@
 // Scope: structural resolution lens — binding status from InferredTree + dependency_lens.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 //
-//   - lens read: (InferredTree, List<DependencyView>) -> Witness<StructuralResolutionFact>
-//
-//   - compiler/infer, compiler/resolve (reason symbols)
-//   - std/algebra (bag_eq), std/dependency, std/node, std/witness
-//
 // Status: T-13 family ratchet — projection-only over `List<DependencyView>` via
 //   parametric `ClassifiedDependencyView<StructuralResolutionStatus>`; per-node
 //   `InferredFacts` read at classify time via `tree.facts.lookup(usage_site)`, not

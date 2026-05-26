@@ -1,6 +1,5 @@
 // src/v4/test/claim/workflow/affected_set_ci_runner.dag
 // Scope: T-21/T-24 receipt — CI runner narrows TestClaim roster via RerunNodeSet node frontier.
-//       ci_runner_shape_collision_claim, ci_runner_inner_frontier_claim.
 // Status: structural claims; host execution lands with generated TestClaim harness.
 
 module v4.test.claim.workflow.affected_set_ci_runner

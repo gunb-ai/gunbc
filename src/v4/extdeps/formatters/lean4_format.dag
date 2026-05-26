@@ -1,6 +1,5 @@
 // src/v4/extdeps/formatters/lean4_format.dag
 // Scope: Lean 4 formatter configuration model — option space grounded in Lean 4 formatter/Lake option surfaces.
-//       Lean4FormatConfig, lean4_format_defaults, lean4_format_layer.
 // Status: T-4.16 scaffold — full documented Lean formatter-facing option surface.
 // Anchor: https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Format.lean
 //         https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Options.lean

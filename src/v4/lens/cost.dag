@@ -16,13 +16,6 @@
 // SymbolicCost lattice axioms at fill (`UnknownCost`-as-top must satisfy
 // the lattice laws — the AbelianGroup<Nat> precedent).
 //
-//   - SymbolicCost lattice (Constant + Linear + Polynomial + PolyLog + Exponential + Factorial + Log + Sum/Product + UnknownCost)
-//   - lens read: Node -> Witness<SymbolicCost>   (total over the closed kernel)
-//   - composes algebra+realization end-to-end
-//
-//   - std/node.dag, std/witness.dag, std/algebra.dag
-//   - extdeps/languages/*.dag: per-target realization cost
-//
 // Status: T-12 filled — SymbolicCost lattice + cost_lens + asymptotic projection surface + llvm_instruction_cost per-target realization.
 // Brief: see BRIEF_TEMPLATE.md; this file's I/O contract is the immutable
 // contract for the worker. Splitting this file requires explicit operator

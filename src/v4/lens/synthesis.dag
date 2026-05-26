@@ -14,44 +14,6 @@
 //         docs/r4-carve-out-routing.md C7 (advisory carrier, NOT fail-closed
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
 //
-//   - lens read: (Node, LowerBoundTechnique) -> Set<Report>  (advisory carrier,
-//     NEVER Witness — Witness is strictly fail-closed per INVARIANTS P3/C-8;
-//     advisory Report must not overload it. Empty set = no advice; non-empty =
-//     advisory observations, never blocking unless user opts in via
-//     apply_lens(synthesis, Enforce { ... })).
-//     The caller DECLARES which technique applies to the node's I/O relation
-//     class; synthesis_lens does NOT infer it from Node structure
-//     (DECLARED, never inferred per T-17 + Rice-undecidability dissolution).
-//   - the user's DECLARED I/O relation (the function's contract/type —
-//     DECLARED, never inferred). There is NO program-to-program
-//     equivalence: general I/O equivalence is Rice-undecidable, and
-//     feedback_decidability_invariant forbids it. The collision is
-//     dissolved by reading the declared relation, not proving equivalence.
-//   - LowerBoundTechnique = CLOSED set (operator-ratified 2026-05-15, C2):
-//       DecisionTree | AlgebraicRank | AdversaryCommunication
-//       | InformationTheoretic | ReductionConditional
-//     Each is a GENERAL algebraic property over a relation CLASS, encoded
-//     ONCE. This is NOT a (naive→better) rule library — that is
-//     engine-shaped and unbounded (feedback_no_engine). Adding the Nth
-//     algorithm adds ZERO entries; the decision-tree theorem already
-//     covers every comparison-decided relation, etc.
-//   - compare(cost-lens-derived cost of the user's realization, the
-//     declared relation's lower bound derived via the technique set)
-//   - NO applicable technique for a relation class ⇒ a helpful Diagnostic
-//     (feedback_no_engine — surfaced honestly with what is unmodeled;
-//     NEVER a fabricated suggestion, NEVER a silent empty set)
-//
-// Discipline (per INVARIANTS C-8 + r4-carve-out-routing.md C7):
-//   - The LENS itself is advisory (emits Report, not Diagnostic) — algorithm
-//     choice is design-tier; programmer informed, programmer chooses
-//   - A user's apply_lens(synthesis, Enforce { ... }) declaration converts
-//     advisory Report into fail-closed Diagnostic per their policy choice
-//   - Default policy: Introspect (advisory) per opt-in-depth discipline
-//
-//   - std/node.dag, std/witness.dag, std/algebra.dag
-//   - std/report.dag (advisory carrier)
-//   - lens/complexity.dag (current-complexity input for cross-algorithm comparison)
-//
 // Status: T-17 filled.
 
 module v4.lens.synthesis
