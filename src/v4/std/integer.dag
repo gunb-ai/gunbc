@@ -289,7 +289,7 @@ fn integer_decimal_digits_node(digits: List<Nat>) -> Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: digits,
-      empty: [],
+      empty: Empty,
       cons: fn(acc, digit) {
         list_snoc_item(xs: acc, item: integer_decimal_digit_edge(digit: digit))
       }

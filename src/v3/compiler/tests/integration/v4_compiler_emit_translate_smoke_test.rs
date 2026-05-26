@@ -241,8 +241,9 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         vec![
             ("inclusive_min", "RustIntegerBound".to_string()),
             ("inclusive_max", "RustIntegerBound".to_string()),
+            ("interval", "IntegerIntervalSpec".to_string()),
         ],
-        "{RUST_LANGUAGE_PATH}: Rust integer ranges must carry structural bound facts, not opaque Symbol labels"
+        "{RUST_LANGUAGE_PATH}: Rust integer ranges must carry structural bound facts and shared integer interval facts, not opaque Symbol labels"
     );
     assert!(
         surface_declares_type(&module, "RustDecimalDigit"),
