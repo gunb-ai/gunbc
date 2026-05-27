@@ -122,6 +122,21 @@ type EnforcedApplication<Output, Budget, Projected> {
   span: SourceSpan
 }
 
+// 🟢 grounded — enforce-mode output carrier. `Projected` flows forward for
+// downstream composition / diagnostics instead of remaining a phantom witness.
+type EnforcedLensResult<Output, Projected> {
+  output: Output
+  projected: Projected
+}
+
+// 🟢 grounded — violation diagnostic input. Generic observed/declared facts
+// flow to the diagnostic boundary even though v4.std.diagnostic is reason/locus shaped today.
+type LensEnforcementViolationInput<Projected, Budget> {
+  at: Node
+  projected: Projected
+  declared: Budget
+}
+
 // 🟢 TERMINAL — introspect-mode application carrier (design-lens-application-surface §2).
 type IntrospectApplication<Output> {
   lens: Lens<Output>
@@ -150,11 +165,25 @@ fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
   }
 }
 
-fn lens_enforcement_violation_diagnostic(at: Node) -> Diagnostic {
+fn lens_enforcement_violation_diagnostic<Projected, Budget>(
+  input: LensEnforcementViolationInput<Projected, Budget>
+) -> Diagnostic {
   Diagnostic {
     reason: lens_enforcement_violation_reason,
-    at: node_locus(node: at),
+    at: node_locus(node: input.at),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn lens_enforcement_violation_input<Projected, Budget>(
+  at: Node,
+  projected: Projected,
+  declared: Budget
+) -> LensEnforcementViolationInput<Projected, Budget> {
+  LensEnforcementViolationInput {
+    at: at,
+    projected: projected,
+    declared: declared
   }
 }
 
@@ -407,6 +436,16 @@ fn lens_enforcement_violated<Output, Budget, Projected>(
   enforcement.violates(output: output, declared: budget)
 }
 
+fn lens_enforcement_result<Output, Projected>(
+  enforcement: LensEnforcement<Output, Budget, Projected>,
+  output: Output
+) -> EnforcedLensResult<Output, Projected> {
+  EnforcedLensResult {
+    output: output,
+    projected: enforcement.project(output: output)
+  }
+}
+
 // Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
 fn apply_lens<Output>(
   lens: Lens<Output>,
@@ -428,21 +467,33 @@ fn apply_lens_enforce<Output, Budget, Projected>(
   root: Node,
   budget: Budget,
   diagnostic_severity: DiagnosticSeverity
-) -> Outcome<Output> {
+) -> Outcome<EnforcedLensResult<Output, Projected>> {
   bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
       bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
+          let enforcement_result = lens_enforcement_result(
+            enforcement: enforceable.enforcement,
+            output: lens_output
+          )
           if lens_enforcement_violated(
             enforcement: enforceable.enforcement,
             output: lens_output,
             budget: budget
           ) {
-            outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
+            outcome_rejected(
+              d: lens_enforcement_violation_diagnostic(
+                input: lens_enforcement_violation_input(
+                  at: subject,
+                  projected: enforcement_result.projected,
+                  declared: budget
+                )
+              )
+            )
           } else {
-            outcome_accepted(value: lens_output)
+            outcome_accepted(value: enforcement_result)
           }
         }
       )

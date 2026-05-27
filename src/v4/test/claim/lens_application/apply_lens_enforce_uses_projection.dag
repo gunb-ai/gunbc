@@ -1,8 +1,8 @@
 // src/v4/test/claim/lens_application/apply_lens_enforce_uses_projection.dag
-// Scope: T-23 worked claim — apply_lens_enforce calls violates(Output, Budget).
+// Scope: T-23 worked claim — apply_lens_enforce carries project(Output) forward.
 // Owns: claim_apply_lens_enforce_uses_projection.
 // Consumes: v4.lens.application, v4.std.node, std verification.
-// Status: compile-only ratchet for LensEnforcement output-shaped violation relation.
+// Status: compile-only ratchet for LensEnforcement projection + output-shaped violation relation.
 
 module v4.test.claim.lens_application.apply_lens_enforce_uses_projection
 
@@ -76,7 +76,8 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
     budget: projection_budget_ok,
     diagnostic_severity: SeverityError {}
   ) {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: result, diagnostics: _ } =>
+      result.output == projection_test_symbol && result.projected == projection_test_symbol
     Rejected { diagnostics: _ } => false
   }
 }
@@ -86,7 +87,7 @@ fn apply_lens_enforce_projection_claim_rhs() -> Bool {
 }
 
 data claim_apply_lens_enforce_uses_projection: TestClaim = EqualsClaim {
-  label: "lens_application/apply_lens_enforce_uses_projection: full-output enforcement path accepts",
+  label: "lens_application/apply_lens_enforce_uses_projection: enforce result carries projection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_enforce_projection_claim_rhs(),
   rhs: true,
