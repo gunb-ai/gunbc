@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_list_right, fold_list_node, ListTailResult, list_tail, ordered_ring_node, approximate_field_node, boolean_algebra_node, free_monoid_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_non_empty, fold_list_right, fold_list_node, ListTailResult, list_tail, ordered_ring_node, approximate_field_node, boolean_algebra_node, free_monoid_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -92,6 +92,9 @@ fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
     Empty => empty
     Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
   }
+}
+fn fold_non_empty<T>(head: T, tail: FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
+  fold_list(xs: tail, empty: head, cons: cons)
 }
 // Right fold: recurse to tail first, then combine. Combinator order is `snoc(tail_result, head)`.
 // With `fn(acc, h) { Cons { head: h, tail: acc } }` the result PRESERVES input order — head is

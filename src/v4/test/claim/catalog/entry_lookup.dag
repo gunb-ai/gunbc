@@ -1,23 +1,22 @@
-// src/v4/test/claim/module_graph/entry_lookup.dag
-// Scope: TestClaim corpus for module_graph_entry_for_path lookup semantics.
+// src/v4/test/claim/catalog/entry_lookup.dag
+// Scope: TestClaim corpus for catalog_entry_for_name lookup semantics.
 // Owns: claim rows for unique-entry success, missing-path rejection, duplicate-path rejection.
-// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.witness v4.std.verification.
+// Consumes: v4.std.catalog v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
-module v4.test.claim.module_graph.entry_lookup
+module v4.test.claim.catalog.entry_lookup
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid }
-import v4.std.module_graph {
-  ModuleEntry,
-  ModuleGraph,
-  ModulePath,
-  ModulePathSegment,
-  module_graph_entry_for_path
+import v4.std.catalog {
+  Catalog,
+  Entry,
+  catalog_entry_for_name
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.qualified_name { QualifiedName }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.verification {
   CompilesClaim,
@@ -51,30 +50,30 @@ fn entry_claim_input(ok: Bool) -> Node {
 }
 
 
-fn path_x() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: entry_seg_x }, tail: Empty } }
+fn name_x() -> QualifiedName {
+  Cons { head: entry_seg_x, tail: Empty }
 }
-fn path_y() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: entry_seg_y }, tail: Empty } }
+fn name_y() -> QualifiedName {
+  Cons { head: entry_seg_y, tail: Empty }
 }
-fn entry_x() -> ModuleEntry { ModuleEntry { path: path_x(), root: entry_root_node() } }
+fn entry_x() -> Entry { Entry { name: name_x(), root: entry_root_node() } }
 
 
-fn graph_unique_x() -> ModuleGraph {
-  ModuleGraph { entries: Cons { head: entry_x(), tail: Empty } }
+fn catalog_unique_x() -> Catalog {
+  Catalog { entries: Cons { head: entry_x(), tail: Empty } }
 }
-fn graph_duplicate_x() -> ModuleGraph {
-  ModuleGraph { entries: Cons { head: entry_x(), tail: Cons { head: entry_x(), tail: Empty } } }
+fn catalog_duplicate_x() -> Catalog {
+  Catalog { entries: Cons { head: entry_x(), tail: Cons { head: entry_x(), tail: Empty } } }
 }
 
 
-fn entry_holds(w: Witness<ModuleEntry>) -> Bool {
+fn entry_holds(w: Witness<Entry>) -> Bool {
   match w {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
 }
-fn entry_violates(w: Witness<ModuleEntry>) -> Bool {
+fn entry_violates(w: Witness<Entry>) -> Bool {
   match w {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
@@ -82,17 +81,17 @@ fn entry_violates(w: Witness<ModuleEntry>) -> Bool {
 }
 
 
-data witness_entry_lookup_unique_holds: Bool = entry_holds(w: module_graph_entry_for_path(graph: graph_unique_x(), path: path_x()))
+data witness_entry_lookup_unique_holds: Bool = entry_holds(w: catalog_entry_for_name(catalog: catalog_unique_x(), name: name_x()))
 
 
-data witness_entry_lookup_missing_violates: Bool = entry_violates(w: module_graph_entry_for_path(graph: graph_unique_x(), path: path_y()))
+data witness_entry_lookup_missing_violates: Bool = entry_violates(w: catalog_entry_for_name(catalog: catalog_unique_x(), name: name_y()))
 
 
-data witness_entry_lookup_duplicate_violates: Bool = entry_violates(w: module_graph_entry_for_path(graph: graph_duplicate_x(), path: path_x()))
+data witness_entry_lookup_duplicate_violates: Bool = entry_violates(w: catalog_entry_for_name(catalog: catalog_duplicate_x(), name: name_x()))
 
 
 data claim_entry_lookup_unique_holds: TestClaim = CompilesClaim {
-  label: "module_graph/entry_for_path: unique entry lookup returns Holds",
+  label: "catalog/entry_for_name: unique entry lookup returns Holds",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: entry_claim_input(ok: witness_entry_lookup_unique_holds),
   expected_value: entry_pass_node(),
@@ -101,7 +100,7 @@ data claim_entry_lookup_unique_holds: TestClaim = CompilesClaim {
 
 
 data claim_entry_lookup_missing_violates: TestClaim = CompilesClaim {
-  label: "module_graph/entry_for_path: missing path returns Violates",
+  label: "catalog/entry_for_name: missing name returns Violates",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: entry_claim_input(ok: witness_entry_lookup_missing_violates),
   expected_value: entry_pass_node(),
@@ -110,7 +109,7 @@ data claim_entry_lookup_missing_violates: TestClaim = CompilesClaim {
 
 
 data claim_entry_lookup_duplicate_violates: TestClaim = CompilesClaim {
-  label: "module_graph/entry_for_path: duplicate path returns Violates",
+  label: "catalog/entry_for_name: duplicate name returns Violates",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: entry_claim_input(ok: witness_entry_lookup_duplicate_violates),
   expected_value: entry_pass_node(),

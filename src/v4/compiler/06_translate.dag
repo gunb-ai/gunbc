@@ -74,6 +74,9 @@ import v4.compiler.tokenize {
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_tokens,
   target_model_edge_declared_inhabitants,
@@ -82,7 +85,8 @@ import v4.std.target_model {
   target_model_edge_translation_rules
 }
 import v4.std.collection { List, Map, empty_map }
-import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item, zip_eq }
+import v4.std.logic { Bool }
 import v4.std.text { String }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution
@@ -99,6 +103,17 @@ data translate_conj_invalid_edge: Symbol = translate_conj_invalid_edge
 data translate_conj_named_child_missing: Symbol = translate_conj_named_child_missing
 data translate_lex_rule_literal_not_found: Symbol = translate_lex_rule_literal_not_found
 data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_not_found
+data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
+data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
+data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
+data translate_default_serialize_fuel: Int = 64
+// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind TASKS.md T-11 —
+// dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
+// concrete tokens from emitted nonterminal nodes before serialization; forbidden:
+// dispatching raw List<Node> row items without this fail-closed classifier.
+type TokenSequenceItemKind
+  = TokenSequenceConcreteToken
+  | TokenSequenceNonterminal
 fn translate_target_bundle_malformed_diagnostic(target: TargetModel) -> Diagnostic {
   Diagnostic {
     reason: translate_target_bundle_malformed,
@@ -244,6 +259,27 @@ fn translate_conj_named_child_missing_diagnostic(parent: Node) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
+fn translate_concrete_token_class_missing_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_concrete_token_class_missing,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_concrete_token_kind_invalid_diagnostic(token: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_concrete_token_kind_invalid,
+    at: node_locus(node: token),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn translate_serialize_recursion_limit_exhausted_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: translate_serialize_recursion_limit_exhausted,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {
   conj_named_child(parent: row, edge_name: grammar_relation_field_emitted)
 }
@@ -302,24 +338,123 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
       }
     _ =>
       outcome_rejected(
-        translate_grammar_inverse_not_realized_diagnostic(emitted: parent)
+      translate_grammar_inverse_not_realized_diagnostic(emitted: parent)
       )
   }
 }
-fn conj_positional_target_lists_equal(a: FreeMonoid<Node>, b: FreeMonoid<Node>) -> Bool {
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
+fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
+  // Token-sequence dispatch items may be inner-production nodes with positional edges.
+  match parent.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        parent.children,
+        init: BundleChildMissing,
+        f: fn(acc, e) {
+          match acc {
+            BundleChildInvalidEdge => acc
+            BundleChildDuplicate => acc
+            BundleChildMissing =>
+              match e.label {
+                Named { name: n } =>
+                  if n == edge_name {
+                    BundleChildFound { value: e.target }
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+            BundleChildFound { value: _ } =>
+              match e.label {
+                Named { name: n } =>
+                  if n == edge_name {
+                    BundleChildDuplicate
+                  } else {
+                    acc
+                  }
+                Positional => acc
+              }
+          }
+        }
+      ) {
+        BundleChildFound { value: child } =>
+          Accepted { value: Some { value: child }, diagnostics: None }
+        BundleChildMissing =>
+          Accepted { value: None, diagnostics: None }
+        BundleChildDuplicate =>
+          outcome_rejected(
+            Diagnostic {
+              reason: translate_target_bundle_duplicate_edge,
+              at: node_locus(node: parent),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        BundleChildInvalidEdge =>
+          outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
       }
-    Cons { head: ha, tail: ta } =>
-      match b {
-        Empty => false
-        Cons { head: hb, tail: tb } =>
-          (ha == hb) && conj_positional_target_lists_equal(a: ta, b: tb)
-      }
+    _ =>
+      Accepted { value: None, diagnostics: None }
   }
+}
+fn concrete_token_class_child(parent: Node) -> Outcome<Node?> {
+  optional_named_child_ignoring_positional(
+    parent: parent,
+    edge_name: concrete_syntax_token_field_class
+  )
+}
+fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
+  optional_named_child_ignoring_positional(
+    parent: parent,
+    edge_name: concrete_syntax_token_field_kind
+  )
+}
+// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — dissolve-on:
+// ConcreteSyntaxToken coproduct lands in target_model.dag; replace symbol-equality
+// with structural pattern matching on the typed carrier.
+fn concrete_token_kind_is_declared(kind: Symbol) -> Bool {
+  kind == concrete_syntax_token_kind_fixed || kind == concrete_syntax_token_kind_bound
+}
+fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
+  bind_outcome(
+    o: concrete_token_class_child(parent: item),
+    f: fn(class_node) {
+      bind_outcome(
+        o: concrete_token_kind_child(parent: item),
+        f: fn(kind_node) {
+          match class_node {
+            Some { value: _ } =>
+              match kind_node {
+                Some { value: kind_node } =>
+                  bind_outcome(
+                    o: node_atom_identity(node: kind_node),
+                    f: fn(kind) {
+                      if concrete_token_kind_is_declared(kind: kind) {
+                        Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
+                      } else {
+                        outcome_rejected(
+                          translate_concrete_token_kind_invalid_diagnostic(token: item)
+                        )
+                      }
+                    }
+                  )
+                None =>
+                  outcome_rejected(
+                    translate_concrete_token_kind_invalid_diagnostic(token: item)
+                  )
+              }
+            None =>
+              match kind_node {
+                Some { value: _ } =>
+                  outcome_rejected(
+                    translate_concrete_token_class_missing_diagnostic(token: item)
+                  )
+                None =>
+                  Accepted { value: TokenSequenceNonterminal, diagnostics: None }
+              }
+          }
+        }
+      )
+    }
+  )
 }
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
@@ -335,7 +470,7 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                if conj_positional_target_lists_equal(a: source_targets, b: row_targets) {
+                if zip_eq(a: source_targets, b: row_targets, eq: fn(a, b) { a == b }) {
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
@@ -377,6 +512,94 @@ fn grammar_inverse_source_validated(
       )
     }
   )
+}
+fn target_serialize_relation_row_from_model_bounded(
+  remaining: Int,
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+      f: fn(rules) {
+        bind_outcome(
+          o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+          f: fn(row) {
+            bind_outcome(
+              o: grammar_relation_row_tokens_root(row: row),
+              f: fn(tokens_root) {
+                bind_outcome(
+                  o: conj_positional_targets(parent: tokens_root),
+                  f: fn(tokens) {
+                    fold_list(
+                      xs: tokens,
+                      empty: Accepted { value: Empty, diagnostics: None },
+                      cons: fn(acc, token_node) {
+                        match acc {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: partial, diagnostics: ad } =>
+                            match token_sequence_item_kind(item: token_node) {
+                              Accepted { value: TokenSequenceConcreteToken, diagnostics: kd } =>
+                                match token_spelling_from_model(target: target, token: token_node) {
+                                  Accepted { value: source, diagnostics: td } =>
+                                    Accepted {
+                                      value: list_append(left: partial, right: source),
+                                      diagnostics: diagnostics_merge(
+                                        outer: diagnostics_merge(outer: ad, inner: kd),
+                                        inner: td
+                                      )
+                                    }
+                                  Rejected { diagnostics: r } =>
+                                    Rejected {
+                                      diagnostics: rejected_with_pending(
+                                        pending: diagnostics_merge(outer: ad, inner: kd),
+                                        rejected: r
+                                      )
+                                    }
+                                }
+                              Accepted { value: TokenSequenceNonterminal, diagnostics: kd } =>
+                                match target_serialize_relation_row_from_model_bounded(
+                                  remaining - 1,
+                                  target,
+                                  token_node
+                                ) {
+                                  Accepted { value: source, diagnostics: td } =>
+                                    Accepted {
+                                      value: list_append(left: partial, right: source),
+                                      diagnostics: diagnostics_merge(
+                                        outer: diagnostics_merge(outer: ad, inner: kd),
+                                        inner: td
+                                      )
+                                    }
+                                  Rejected { diagnostics: r } =>
+                                    Rejected {
+                                      diagnostics: rejected_with_pending(
+                                        pending: diagnostics_merge(outer: ad, inner: kd),
+                                        rejected: r
+                                      )
+                                    }
+                                }
+                              Rejected { diagnostics: r } =>
+                                Rejected {
+                                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                                }
+                            }
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    )
+  }
 }
 fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
@@ -460,41 +683,75 @@ fn lex_rules_literal_for_class(rules: LexRules, token_class: Symbol) -> Outcome<
 }
 fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String> {
   bind_outcome(
-    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
-    f: fn(class_node) {
+    o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_kind),
+    f: fn(kind_node) {
       bind_outcome(
-        o: node_atom_identity(node: class_node),
-        f: fn(token_class) {
+        o: node_atom_identity(node: kind_node),
+        f: fn(kind) {
           bind_outcome(
-            o: conj_optional_named_child(
-              parent: token,
-              edge_name: concrete_syntax_token_field_binding
-            ),
-            f: fn(binding_node) {
-              match binding_node {
-                Some { value: binding_node } =>
+            o: conj_named_child(parent: token, edge_name: concrete_syntax_token_field_class),
+            f: fn(class_node) {
+              bind_outcome(
+                o: node_atom_identity(node: class_node),
+                f: fn(token_class) {
                   bind_outcome(
-                    o: node_atom_identity(node: binding_node),
-                    f: fn(binding) {
-                      // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
-                      // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
-                      // Replace with binding_spellings.lookup(binding) / Holds / Violates when
-                      // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
-                      match map_get(target.binding_spellings, binding) {
-                        Some { value: spelling } =>
-                          Accepted { value: spelling, diagnostics: None }
-                        None =>
-                          Rejected {
-                            diagnostics: diagnostics_singleton(
-                              d: translate_binding_spelling_not_found_diagnostic(binding: binding)
+                    o: conj_optional_named_child(
+                      parent: token,
+                      edge_name: concrete_syntax_token_field_binding
+                    ),
+                    f: fn(binding_node) {
+                      if kind == concrete_syntax_token_kind_fixed {
+                        match binding_node {
+                          Some { value: _ } =>
+                            outcome_rejected(
+                              translate_concrete_token_kind_invalid_diagnostic(token: token)
                             )
+                          None =>
+                            lex_rules_literal_for_class(
+                              rules: target.lex,
+                              token_class: token_class
+                            )
+                        }
+                      } else {
+                        if kind == concrete_syntax_token_kind_bound {
+                          match binding_node {
+                            Some { value: binding_node } =>
+                              bind_outcome(
+                                o: node_atom_identity(node: binding_node),
+                                f: fn(binding) {
+                                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
+                                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
+                                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
+                                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
+                                  match map_get(target.binding_spellings, binding) {
+                                    Some { value: spelling } =>
+                                      Accepted { value: spelling, diagnostics: None }
+                                    None =>
+                                      Rejected {
+                                        diagnostics: diagnostics_singleton(
+                                          d: translate_binding_spelling_not_found_diagnostic(
+                                            binding: binding
+                                          )
+                                        )
+                                      }
+                                  }
+                                }
+                              )
+                            None =>
+                              outcome_rejected(
+                                translate_concrete_token_kind_invalid_diagnostic(token: token)
+                              )
                           }
+                        } else {
+                          outcome_rejected(
+                            translate_concrete_token_kind_invalid_diagnostic(token: token)
+                          )
+                        }
                       }
                     }
                   )
-                None =>
-                  lex_rules_literal_for_class(rules: target.lex, token_class: token_class)
-              }
+                }
+              )
             }
           )
         }
@@ -502,7 +759,31 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
     }
   )
 }
-fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
+fn token_item_to_source_bounded(
+  remaining: Int,
+  item: Node,
+  target: TargetModel
+) -> Outcome<TargetSource> {
+  bind_outcome(
+    o: token_sequence_item_kind(item: item),
+    f: fn(item_kind) {
+      match item_kind {
+        TokenSequenceConcreteToken =>
+          token_spelling_from_model(target: target, token: item)
+        TokenSequenceNonterminal =>
+          target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
+      }
+    }
+  )
+}
+fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
+  token_item_to_source_bounded(translate_default_serialize_fuel, item, target)
+}
+fn token_sequence_to_source_bounded(
+  remaining: Int,
+  tokens: List<Node>,
+  target: TargetModel
+) -> Outcome<TargetSource> {
   fold_list(
     xs: tokens,
     empty: Accepted { value: Empty, diagnostics: None },
@@ -510,10 +791,10 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_spelling_from_model(target: target, token: token_node) {
-            Accepted { value: spelling, diagnostics: td } =>
+          match token_item_to_source_bounded(remaining - 1, token_node, target) {
+            Accepted { value: source, diagnostics: td } =>
               Accepted {
-                value: list_append(left: partial, right: spelling),
+                value: list_append(left: partial, right: source),
                 diagnostics: diagnostics_merge(outer: ad, inner: td)
               }
             Rejected { diagnostics: r } =>
@@ -525,37 +806,33 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
     }
   )
 }
+fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
+  token_sequence_to_source_bounded(translate_default_serialize_fuel, tokens, target)
+}
 // Rust MVP-1 is live through grammar-inverse token_sequence_to_source; remaining targets stay gated by feature:T-11-grammar-inverse-serializer-remaining-targets above. TargetModel.authority_source_text must not substitute for validated emitted Node serialization.
+fn target_serialize_source_from_model_bounded(
+  remaining: Int,
+  target: TargetModel,
+  emitted: Node
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: grammar_inverse_source_validated(target: target, emitted: emitted),
+      f: fn(_) {
+          target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
+      }
+    )
+  }
+}
 fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetSource> {
-  bind_outcome(
-    o: grammar_inverse_source_validated(target: target, emitted: emitted),
-    f: fn(_) {
-      bind_outcome(
-        o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
-        f: fn(rules) {
-          bind_outcome(
-            o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
-            f: fn(row) {
-              bind_outcome(
-                o: grammar_relation_row_tokens_root(row: row),
-                f: fn(tokens_root) {
-                  bind_outcome(
-                    o: conj_positional_targets(parent: tokens_root),
-                    f: fn(tokens) {
-                      token_sequence_to_source(tokens: tokens, target: target)
-                    }
-                  )
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
+  target_serialize_source_from_model_bounded(translate_default_serialize_fuel, target, emitted)
 }
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
