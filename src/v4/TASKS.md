@@ -1819,12 +1819,14 @@ are already landed on main — see PRs #3650, #3651, #3652.)
 - Each formatter file is **pure config substrate** — no dependency on
   `std/node.dag` or any compiler module. This keeps the formatter layer
   independent of the compiler pipeline and usable as a standalone fact bundle.
-- **Hierarchical override**: `*_layer(base: Config, outer: Config) ->
-  Config` where outer wins unconditionally. Layering is
-  `fold(layers, init: *_defaults, f: *_layer)`. Field-granularity patch
-  types (per-field `Override/Inherit` coproduct) are 🟡 gated —
-  feature: `formatter-config-patch` — dissolve when consumers need
-  partial override without full-config specification.
+- **Hierarchical override (per-field patches):** `*_layer(base: Config,
+  patch: *ConfigPatch) -> Config` rebuilds the config by applying
+  `apply_field_patch` on each field. Patches compose with right-biased
+  `compose_field_patch` / `field_patch_monoid` from `v4.std.patch`
+  (`Override { value }` replaces; `Inherit` defers to base). Layering is
+  `fold(layers, init: *_defaults, f: *_layer)` with one patch per layer.
+  The prior full-config `*_layer(base, outer) { outer }` scaffold and
+  `feature:formatter-config-patch` gate are dissolved in the T-4.16 follow-on.
 - **ConfigPatch record projection (interim mirrors):** `feature:config-patch-record-projection` in `v4.std.patch` — formatter `*ConfigPatch` records and `*_layer` bodies are hand mirrors until record-field projection derives them from `*Config`; owner **T-4.16 follow-on** (same lane as formatter-config-patch dissolution); consumers carry `consumer:config-patch-record-projection` tags until projection lands.
 - **Real options, not abstract axes**: each file models the actual
   formatter's documented option space (e.g., `rustfmt.toml` flags, not
