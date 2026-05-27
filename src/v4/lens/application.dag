@@ -15,7 +15,7 @@
 //       - subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
 //       - apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
 //
-// Status: T-23 filled — carriers + apply_lens + D1 ops (see header for immutable I/O contract).
+// Status: T-23 filled — carriers + apply_lens + D1 ops; section_subject is identity stub (feature:section-ref-to-subject-projection gate below).
 // P2 boundary: THIS module is the single authority for section-scoped `Lens<Output>.read`,
 // `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
 // `v4.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
