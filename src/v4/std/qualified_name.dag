@@ -43,48 +43,6 @@ fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
 }
 
 
-// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: v2 bootstrap accepts fn(T) -> Outcome<U> higher-order fn types (Ratified Q4); faithful form sequences over List<Edge> via traverse_node; forbidden: re-inlining the Accepted/Rejected short-circuit ladder after Q4 resolves.
-fn qualified_name_find_edge(name: Symbol, n: Node) -> Outcome<Node> {
-  let match_count = fold(
-    n.children,
-    init: 0,
-    f: fn(acc, e) {
-      match e.label {
-        Named { name: ename } => if ename == name { acc + 1 } else { acc }
-        _ => acc
-      }
-    }
-  )
-  if match_count == 1 {
-    fold(
-      n.children,
-      init: outcome_rejected(Diagnostic {
-        reason: qualified_name_structure_invalid,
-        at: node_locus(node: n),
-        correction: Unavailable { reason: ExternalContractUnknown }
-      }),
-      f: fn(acc, e) {
-        match acc {
-          Accepted { value: _, diagnostics: _ } => acc
-          Rejected { diagnostics: _ } =>
-            match e.label {
-              Named { name: ename } =>
-                if ename == name { outcome_accepted(value: e.target) } else { acc }
-              _ => acc
-            }
-        }
-      }
-    )
-  } else {
-    outcome_rejected(Diagnostic {
-      reason: qualified_name_structure_invalid,
-      at: node_locus(node: n),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    })
-  }
-}
-
-
 // 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate (Outcome-bearing fold_node algebra dissolves the nested Rejected/Accepted propagation chains in step); forbidden: re-inlining the carrier ladder after Q4 resolves.
 // Accepts a fold_list_node(symbols) Node — the caller obtains this by walking the
 // dag_surface_module_header_qualified_name edge of an emitted module header node.
