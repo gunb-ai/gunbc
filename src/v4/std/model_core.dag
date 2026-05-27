@@ -265,7 +265,15 @@ fn wave1_model_core() -> ModelCore {
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
     ],
     effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    partiality: PartialitySemanticsDecl {
+      operations: [
+        PartialOperationDecl {
+          operation: Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_operation } }, children: [] },
+          precondition: Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [] },
+          discharge: FailClosedAtBoundary { reason: field_reciprocal_operation }
+        }
+      ]
+    }
   }
 }
 
