@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Owns: RustScalar, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
+// Owns: RustScalar, RustIntegerCarrier, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_integer_carrier_interval_spec, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
 // Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11 Rust emit; layout-in-literals bridge gated to T-6 TokenLayout; bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
@@ -46,6 +46,7 @@ import v4.std.model_core {
   PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
+  primitive_fact_axis_range,
   primitive_fact_axis_signedness,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic,
@@ -89,6 +90,22 @@ import v4.std.algebra {
   ordered_ring_node
 }
 import v4.std.cardinality { Never }
+import v4.std.integer {
+  IntegerIntervalSpec,
+  int8_interval_spec,
+  int16_interval_spec,
+  int32_interval_spec,
+  int64_interval_spec,
+  int128_interval_spec,
+  int_platform_interval_spec,
+  integer_interval_spec_node,
+  uint8_interval_spec,
+  uint16_interval_spec,
+  uint32_interval_spec,
+  uint64_interval_spec,
+  uint128_interval_spec,
+  uint_platform_interval_spec
+}
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -352,12 +369,12 @@ data rust_inhabitant_field_facts: Symbol = rust_inhabitant_field_facts
 data rust_facts_field_surface_spelling: Symbol = rust_facts_field_surface_spelling
 data rust_facts_field_signedness: Symbol = rust_facts_field_signedness
 data rust_facts_field_width: Symbol = rust_facts_field_width
+data rust_facts_field_range: Symbol = rust_facts_field_range
 data rust_facts_field_overflow_disposition: Symbol = rust_facts_field_overflow_disposition
 data rust_facts_field_std_projection: Symbol = rust_facts_field_std_projection
 data rust_facts_field_scalar_classifier: Symbol = rust_facts_field_scalar_classifier
 data rust_facts_field_ieee754_binary: Symbol = rust_facts_field_ieee754_binary
 data rust_facts_field_representation: Symbol = rust_facts_field_representation
-
 data rust_scalar_field_classifier: Symbol = rust_scalar_field_classifier
 data rust_scalar_field_kind: Symbol = rust_scalar_field_kind
 data rust_scalar_field_width: Symbol = rust_scalar_field_width
@@ -667,6 +684,27 @@ fn rust_integer_carrier_as_scalar(carrier: RustIntegerCarrier) -> RustScalar {
   IntScalar { kind: carrier.kind, width: carrier.width }
 }
 
+fn rust_integer_carrier_interval_spec(carrier: RustIntegerCarrier) -> IntegerIntervalSpec {
+  match carrier.kind {
+    Signed => match carrier.width {
+      Bits8 => int8_interval_spec()
+      Bits16 => int16_interval_spec()
+      Bits32 => int32_interval_spec()
+      Bits64 => int64_interval_spec()
+      Bits128 => int128_interval_spec()
+      Pointer => int_platform_interval_spec()
+    }
+    Unsigned => match carrier.width {
+      Bits8 => uint8_interval_spec()
+      Bits16 => uint16_interval_spec()
+      Bits32 => uint32_interval_spec()
+      Bits64 => uint64_interval_spec()
+      Bits128 => uint128_interval_spec()
+      Pointer => uint_platform_interval_spec()
+    }
+  }
+}
+
 fn rust_overflow_disposition_node(disposition: OverflowDisposition<RustIntegerCarrier>) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -738,6 +776,10 @@ fn rust_noninteger_scalar_as_rust_scalar(scalar: RustNonIntegerScalar) -> RustSc
   }
 }
 
+fn rust_integer_range_node(carrier: RustIntegerCarrier) -> Node {
+  integer_interval_spec_node(spec: rust_integer_carrier_interval_spec(carrier: carrier))
+}
+
 fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -753,6 +795,10 @@ fn rust_integer_facts_node(facts: RustIntegerPrimitiveFacts) -> Node {
       rust_named_edge(
         name: rust_facts_field_width,
         target: rust_int_width_node(width: facts.overflow_disposition.ir_carrier.width)
+      ),
+      rust_named_edge(
+        name: rust_facts_field_range,
+        target: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier)
       ),
       rust_named_edge(
         name: rust_facts_field_overflow_disposition,
@@ -1465,6 +1511,8 @@ fn rust_integer_spec_facts(facts: RustIntegerPrimitiveFacts) -> Map<Symbol, Node
           Holds { value: rust_int_kind_node(kind: facts.overflow_disposition.ir_carrier.kind) }
         primitive_fact_axis_encoding =>
           Holds { value: rust_inhabitant_atom(id: rust_repr_integer_twos_complement) }
+        primitive_fact_axis_range =>
+          Holds { value: rust_integer_range_node(carrier: facts.overflow_disposition.ir_carrier) }
         primitive_fact_axis_overflow_disposition =>
           Holds { value: rust_overflow_disposition_node(disposition: facts.overflow_disposition) }
         _ =>
