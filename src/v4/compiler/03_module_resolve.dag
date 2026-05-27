@@ -35,7 +35,6 @@ import v4.std.diagnostic {
 }
 import v4.std.module_graph {
   ModuleGraph,
-  ModulePath,
   module_graph_entry_for_path
 }
 import v4.std.node {
@@ -45,6 +44,7 @@ import v4.std.node {
   Symbol,
   TypeNode
 }
+import v4.std.qualified_name { QualifiedName }
 import v4.std.witness { Holds, Violates }
 
 
@@ -55,13 +55,13 @@ type ModuleImportVisibility
 
 
 type ModuleImport {
-  target: ModulePath
+  target: QualifiedName
   visibility: ModuleImportVisibility
 }
 
 
 type ModuleSubject {
-  path: ModulePath
+  path: QualifiedName
   tree: NormalizedTree
 }
 
@@ -76,7 +76,7 @@ type ModuleAdmission {
 type ModuleAdmissionState
   = ModuleAdmissionAccepted {
       bindings: Map<Symbol, Symbol>,
-      origins: Map<Symbol, ModulePath>
+      origins: Map<Symbol, QualifiedName>
     }
   | ModuleAdmissionRejected { diagnostic: Diagnostic }
 
@@ -104,7 +104,7 @@ fn module_admission_initial(base: Namespace) -> ModuleAdmissionState {
 
 fn admit_export_symbol(
   sym: Symbol,
-  origin: ModulePath,
+  origin: QualifiedName,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
   match state {
@@ -128,7 +128,7 @@ fn admit_export_symbol(
 
 fn admit_named_export_edge(
   edge: Edge,
-  origin: ModulePath,
+  origin: QualifiedName,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
   match try_edge_declared_binding(e: edge) {
@@ -141,7 +141,7 @@ fn admit_named_export_edge(
 
 fn admit_module_named_exports(
   root: Node,
-  origin: ModulePath,
+  origin: QualifiedName,
   state: ModuleAdmissionState
 ) -> ModuleAdmissionState {
   match root.kind {
