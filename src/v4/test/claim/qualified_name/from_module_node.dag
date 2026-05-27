@@ -13,14 +13,12 @@ module v4.test.claim.qualified_name.from_module_node
 
 
 import v4.extdeps.languages.dag {
-  dag_surface_module_header,
-  dag_surface_module_header_qualified_name,
   emit_module_header_emitted_node,
   qualified_name_from_module_node
 }
 import v4.std.algebra { Cons, Empty, fold_list_node }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.qualified_name { QualifiedName }
 import v4.std.logic { Bool }
 import v4.std.verification {
