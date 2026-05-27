@@ -407,6 +407,9 @@ fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
     edge_name: concrete_syntax_token_field_kind
   )
 }
+// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — dissolve-on:
+// ConcreteSyntaxToken coproduct lands in target_model.dag; replace symbol-equality
+// with structural pattern matching on the typed carrier.
 fn concrete_token_kind_is_declared(kind: Symbol) -> Bool {
   kind == concrete_syntax_token_kind_fixed || kind == concrete_syntax_token_kind_bound
 }
