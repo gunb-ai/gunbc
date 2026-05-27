@@ -430,19 +430,16 @@ fn ts_mvp1_positional_edges_from_token_classes() -> List<Edge> {
 }
 
 fn ts_mvp1_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: ts_named_edge(
+  [
+    ts_named_edge(
       name: ts_mvp1_source_text_field,
       target: ts_inhabitant_atom(id: ts_mvp1_source_literal)
     ),
-    tail: Cons {
-      head: ts_named_edge(
-        name: ts_mvp1_source_grammar_field,
-        target: ts_inhabitant_atom(id: ts_production_mvp1_fn_add)
-      ),
-      tail: Empty
-    }
-  }
+    ts_named_edge(
+      name: ts_mvp1_source_grammar_field,
+      target: ts_inhabitant_atom(id: ts_production_mvp1_fn_add)
+    )
+  ]
 }
 
 fn ts_mvp1_serialize_source_children() -> List<Edge> {
