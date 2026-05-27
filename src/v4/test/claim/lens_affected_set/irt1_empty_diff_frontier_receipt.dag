@@ -7,6 +7,7 @@
 module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt
 
 import v4.lens.affected_set {
+  affected_set,
   empty_affected_fold_acc,
   empty_frontier,
   frontier_from_fold_acc
@@ -16,7 +17,7 @@ import v4.lens.affected_set_examples {
   affected_set_example_node
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
+import v4.std.node { Diff, Node }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -26,6 +27,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v4.std.witness { Holds }
 
 fn irt1_empty_diff_frontier_receipt_claim_holds() -> Bool {
   frontier_from_fold_acc(
@@ -33,8 +35,19 @@ fn irt1_empty_diff_frontier_receipt_claim_holds() -> Bool {
   ) == empty_frontier()
 }
 
+fn irt1_public_affected_set_empty_diff_claim_holds() -> Bool {
+  match affected_set(
+    dag: affected_set_example_node,
+    diff: Diff { edits: [] }
+  ) {
+    Holds { value: frontier } => frontier == empty_frontier()
+    _ => false
+  }
+}
+
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
-  if irt1_empty_diff_frontier_receipt_claim_holds() {
+  if irt1_empty_diff_frontier_receipt_claim_holds()
+    && irt1_public_affected_set_empty_diff_claim_holds() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
