@@ -80,8 +80,8 @@ data affected_set_node_precision_claim: LensAffectedSetClaim = LensAffectedSetCl
   edit_locus: affected_set_mid,
   expected: AffectedSetReading {
     edit_locus: affected_set_mid,
-    affected: [affected_set_leaf, affected_set_root, affected_set_mid],
-    dependencies: [affected_set_mid_to_leaf_dependency, affected_set_root_to_mid_dependency]
+    affected: [affected_set_mid, affected_set_root, affected_set_leaf],
+    dependencies: [affected_set_root_to_mid_dependency, affected_set_mid_to_leaf_dependency]
   },
   actual: affected_set_reading(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
 }
