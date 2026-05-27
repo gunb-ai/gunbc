@@ -8,8 +8,10 @@
 > **No comment-duplicating ledgers (standing rule, 2026-05-19).** Do not
 > create or maintain docs that re-list facts whose source-of-truth is an inline
 > model mark (`🟢`/`🟡`/`🔴`, `feature:`/`consumer:` gate, dissolution slug).
-> Deleted: `src/v4/DECISIONS.md`, `src/v4/STRUCTURE.md`,
-> `docs/audit/dissolution-inventory.md`. The **inline mark on the carrier** is
+> Deleted as maintained mark ledgers: `src/v4/STRUCTURE.md` and
+> `docs/audit/dissolution-inventory.md`. `src/v4/DECISIONS.md` is permitted only
+> as the bounded P1-KEYSTONE D2-reversal / fact-bundle reseed record, not as a
+> carrier-mark ledger. The **inline mark on the carrier** is
 > the system; verbose dissolution-pattern analysis and architectural debate live
 > in **PR review** (process receipts in the commit message). Unchanged:
 > dissolution is merge-blocking (INVARIANTS §P5), yellow must dissolve, Practice
@@ -90,7 +92,17 @@ relevant practice, where it could be violated, and whether the existing
 checks are structural (type-system enforced) or merely behavioral
 (convention).
 
-> **Ledger-doc retirement (operator 2026-05-19):** `src/v4/DECISIONS.md`, `src/v4/STRUCTURE.md`, and `docs/audit/dissolution-inventory.md` are **deleted** — no maintained manifests or parallel prose ledgers for facts that belong in inline `//` marks. **Standing principle:** do not create or maintain new docs that duplicate comment or model marks; marks plus PR review are authoritative. Classification and dissolution **discipline** (Practices 4 / 9 / 10, INVARIANTS P5) is unchanged. Where older text below still names `DECISIONS.md` or a doc ledger for the same job, read **PR review, issues, and commit messages** unless that sentence was rewritten in this PR.
+> **Ledger-doc retirement (operator 2026-05-19):** `src/v4/STRUCTURE.md` and
+> `docs/audit/dissolution-inventory.md` are **deleted**, and
+> `src/v4/DECISIONS.md` is not a maintained mark ledger — no maintained
+> manifests or parallel prose ledgers for facts that belong in inline `//`
+> marks. The only live `DECISIONS.md` scope is the bounded P1-KEYSTONE
+> D2-reversal / fact-bundle reseed record. **Standing principle:** do not create
+> or maintain docs that duplicate comment or model marks; marks plus PR review
+> are authoritative. Classification and dissolution **discipline** (Practices 4
+> / 9 / 10, INVARIANTS P5) is unchanged. Where older text below names
+> `DECISIONS.md` for carrier-mark ledgers, read **PR review, issues, and commit
+> messages** unless that sentence was rewritten in this PR.
 
 ### 1. Fail-closed
 
