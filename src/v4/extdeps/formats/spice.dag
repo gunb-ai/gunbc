@@ -128,6 +128,7 @@ type NamedNode {
 }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NodeRef
   = Ground
   | Named { node: NamedNode }
@@ -138,6 +139,7 @@ type SpiceValue {
 }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SpiceVoltUnit
 
 type SpiceApproxVoltage {
@@ -157,6 +159,7 @@ type Parameter {
 }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type Modifier
   = Flag { name: Symbol }
   | KeyValue { name: Symbol, value: SpiceValue }
@@ -167,6 +170,7 @@ type IncludeCard {
 }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SweepSourceKind
   = Voltage
   | Current
@@ -183,11 +187,13 @@ type InductorRef {
 }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SubstrateSpec
   = SubstrateImplicit
   | SubstrateExplicit { node: NodeRef }
 
 
+// 🟡 coproduct dissolution — feature:spice-component-spec-exhaustive-coverage — dissolve-on-arrival: all SPICE3F5 element kinds and per-variant statement grammar are modeled structurally.
 type Component
   = Resistor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Capacitor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
@@ -201,6 +207,7 @@ type Component
   | SubcircuitCall { name: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
 
+// 🟡 coproduct dissolution — feature:spice-model-kind-spec-exhaustive-coverage — dissolve-on-arrival: all model-referencing SPICE3F5 component variants have matching ModelKind coverage.
 type ModelKind
   = DiodeModel
   | BjtNpn
@@ -216,6 +223,7 @@ type ModelCard {
 }
 
 
+// 🟡 coproduct dissolution — consumer:spice-ac-sweep-point-generator — dissolve-on-arrival: first frequency-stepping consumer derives from spacing-law and ratio-base axes.
 type AcSweepKind
   = Linear
   | Decade
@@ -234,6 +242,7 @@ type NodeVoltageBindings {
 }
 
 
+// 🟡 coproduct dissolution — feature:spice-directive-spec-exhaustive-coverage — dissolve-on-arrival: all SPICE3F5 analysis/control directives and per-variant grammar are modeled structurally.
 type Directive
   = Op
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
@@ -245,6 +254,7 @@ type Directive
   | Include { card: IncludeCard }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SubcircuitStatement
   = StmtComponent { component: Component }
   | StmtModel { model: ModelCard }
@@ -271,6 +281,7 @@ type SubcircuitConnections {
 }
 
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type DeckStatement
   = DeckComponent { component: Component }
   | DeckModelCard { model: ModelCard }
