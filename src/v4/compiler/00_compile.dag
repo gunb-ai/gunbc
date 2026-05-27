@@ -62,7 +62,7 @@ import v4.std.diagnostic {
 import v4.std.module_graph {
   ModuleEntry,
   ModuleGraph,
-  module_path_eq
+  ModulePath
 }
 import v4.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v4.std.text { String }
@@ -500,49 +500,49 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
       path: store.entry,
       lm: lm
     ),
-        f: fn(entry) {
-          if node_contains_dag_import_surface(n: entry.root) {
-            outcome_rejected(d: agent_store_single_module_diagnostic())
-          } else {
+    f: fn(entry) {
+      if node_contains_dag_import_surface(n: entry.root) {
+        outcome_rejected(d: agent_store_single_module_diagnostic())
+      } else {
+        bind_outcome(
+          o: agent_store_to_module_graph(entry: entry),
+          f: fn(graph) {
             bind_outcome(
-              o: agent_store_to_module_graph(entry: entry),
-              f: fn(graph) {
+              o: resolve_module_with_admission(
+                lm: lm,
+                graph: graph,
+                admission: ModuleAdmission {
+                  subject: ModuleSubject {
+                    path: store.entry,
+                    tree: entry.root
+                  },
+                  imports: Empty
+                }
+              ),
+              f: fn(resolved) {
                 bind_outcome(
-                  o: resolve_module_with_admission(
-                    lm: lm,
-                    graph: graph,
-                    admission: ModuleAdmission {
-                      subject: ModuleSubject {
-                        path: store.entry,
-                        tree: entry.root
-                      },
-                      imports: Empty
-                    }
+                  o: compile(
+                    source: resolved,
+                    mode: TranslateTo { target: target }
                   ),
-                  f: fn(resolved) {
-                    bind_outcome(
-                      o: compile(
-                        source: resolved,
-                        mode: TranslateTo { target: target }
-                      ),
-                      f: fn(compile_out) {
-                        match compile_out {
-                          TranslateResult { source: target_source } =>
-                            outcome_accepted(target_source)
-                          EvalResult { value: _ } =>
-                            outcome_rejected(
-                              compile_eval_not_realized_diagnostic(
-                                at: port_locus(port: compile_stage_locus_port)
-                              )
-                            )
-                        }
-                      }
-                    )
+                  f: fn(compile_out) {
+                    match compile_out {
+                      TranslateResult { source: target_source } =>
+                        outcome_accepted(target_source)
+                      EvalResult { value: _ } =>
+                        outcome_rejected(
+                          compile_eval_not_realized_diagnostic(
+                            at: port_locus(port: compile_stage_locus_port)
+                          )
+                        )
+                    }
                   }
                 )
               }
             )
           }
-        }
-      )
+        )
+      }
+    }
+  )
 }
