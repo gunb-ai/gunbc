@@ -181,7 +181,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
               reason: translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
-            )
+            }
           )
         BundleChildInvalidEdge =>
           outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
@@ -696,7 +696,7 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
                                           d: translate_binding_spelling_not_found_diagnostic(
                                             binding: binding
                                           )
-                                        }
+                                        )
                                       }
                                   }
                                 }
