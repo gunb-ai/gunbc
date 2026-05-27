@@ -99,12 +99,6 @@ type FixptStage1Stage2 {
   pinned_hash: BootstrapHashPin
 }
 
-type ConvergenceLadder {
-  entry_seed: Symbol
-  plan: BootstrapPlan
-  fixed_point: FixptStage1Stage2
-}
-
 type SeedHonestyDischarge {
   seed_honesty_axiom: Symbol
   diverse_double_compilation: Witness<DiverseCompilationAgreement>
@@ -116,6 +110,12 @@ type BootstrapPlan {
   self0: CompileStage
   self1: CompileStage
   fixpt: FixptStage1Stage2
+}
+
+type ConvergenceLadder {
+  entry_seed: Symbol
+  plan: BootstrapPlan
+  fixed_point: FixptStage1Stage2
 }
 
 data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
@@ -168,16 +168,6 @@ fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   } else {
     false
   }
-}
-
-fn bootstrap_construct_member(construct: BootstrapConstruct, constructs: List<BootstrapConstruct>) -> Bool {
-  count_equal(xs: constructs, item: construct, eq: bootstrap_construct_eq) != 0
-}
-
-fn bootstrap_constructs_subset(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
-  fold(left, init: true, f: fn(acc, construct) {
-    acc && bootstrap_construct_member(construct: construct, constructs: right)
-  })
 }
 
 fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
@@ -390,6 +380,8 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin }
   }
 })
+
+data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstrap_convergence_ladder(plan: bootstrap_plan)
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)
