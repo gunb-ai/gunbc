@@ -1,6 +1,6 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
+// Owns: Optional, List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
 // Consumes: std/algebra.dag; std/witness.dag; std/diagnostic.dag; std/node.dag.
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
@@ -17,6 +17,11 @@ import v4.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
 import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
+// 🟢 coproduct dissolution — M6-Optional-generic.
+// Anchor: initial algebra of F(X) = 1 + T; Haskell Maybe / Rust Option / ML option.
+type Optional<T>
+  = Absent
+  | Present { value: T }
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
