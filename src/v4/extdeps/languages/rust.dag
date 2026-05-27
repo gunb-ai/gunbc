@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Owns: RustScalar, RustIntegerCarrier, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_integer_carrier_interval_spec, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
+// Owns: RustScalar, RustIntegerCarrier, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_integer_carrier_interval_spec, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex, RustGramBuild1State.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
 // Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11 Rust emit; layout-in-literals bridge gated to T-6 TokenLayout; bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
@@ -86,6 +86,7 @@ import v4.std.algebra {
   BooleanAlgebra,
   approximate_field_node,
   boolean_algebra_node,
+  Empty,
   fold_list,
   list_append,
   list_snoc_item,
@@ -1190,19 +1191,16 @@ fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
 }
 
 fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: rust_named_edge(
+  [
+    rust_named_edge(
       name: rust_mvp1_source_text_field,
       target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
     ),
-    tail: Cons {
-      head: rust_named_edge(
-        name: rust_mvp1_source_grammar_field,
-        target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
-      ),
-      tail: Empty
-    }
-  }
+    rust_named_edge(
+      name: rust_mvp1_source_grammar_field,
+      target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
+    )
+  ]
 }
 
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
@@ -1225,26 +1223,34 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_grammar_sequence_fold_step(acc: GrammarExpr, token: RustConcreteSyntaxToken) -> GrammarExpr {
-  let token_class = rust_concrete_token_class(token: token)
-  if token_class == rust_token_kw_fn {
-    acc
-  } else {
-    Sequence {
-      left: rust_grammar_terminal(token_class: token_class),
-      right: acc
-    }
-  }
-}
+type RustGramBuild1State
+  = RustGramBuild1StateInit
+  | RustGramBuild1StateReady { expr: GrammarExpr }
 
 fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  fold_list(
+  match fold_list(
     xs: rust_mvp1_concrete_tokens(),
-    empty: rust_grammar_terminal(token_class: rust_token_kw_fn),
-    cons: fn(acc, token) {
-      rust_grammar_sequence_fold_step(acc: acc, token: token)
+    empty: RustGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        RustGramBuild1StateInit =>
+          RustGramBuild1StateReady {
+            expr: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+          }
+        RustGramBuild1StateReady { expr: acc } =>
+          RustGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+            }
+          }
+      }
     }
-  )
+  ) {
+    RustGramBuild1StateInit =>
+      rust_grammar_terminal(token_class: rust_token_kw_fn)
+    RustGramBuild1StateReady { expr: result } => result
+  }
 }
 
 fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {

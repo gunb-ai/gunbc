@@ -842,9 +842,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/v4_compiler_compile_public_terminal_smoke_test.rs",
     // T-10 / Wave-3-B: tokenize/parse smoke on `06_translate.dag`, `05_emit.dag`, MVP-1 claim.
     // SG-0 + INVARIANTS §P5(b) receipt; dissolves when `.dag` TestClaim / generated harness replaces probe.
-    // **This PR (+0 paths):** `v4_rust_language_model_declares_t11_translation_rules` +
-    // `v4_java_language_model_declares_t11_translation_rules` (T-4 `java.dag` grammar-relation
-    // parse surface, same harness file) — interim ratchet rows appended in INVARIANTS.md §SG-0.
+    // **This PR (+0 paths):** same-file T-11 ratchet expansion for `05_emit.dag`
+    // and Python/Go/C++ grammar-relation target models; interim ratchet row restored
+    // in INVARIANTS.md §SG-0 (no new Rust test path).
     "src/v3/compiler/tests/integration/v4_compiler_emit_translate_smoke_test.rs",
     // T-7: parse-table memoization receipt (`02_parse.dag`, grammar_validation claim, ListTailResult).
     // SG-0 + INVARIANTS §P5(b) receipt — row `v4_compiler_parse_table_dag_smoke_test.rs` in INVARIANTS.md.

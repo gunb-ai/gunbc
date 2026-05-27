@@ -98,15 +98,30 @@ type SwiftFloatWidth
   = Bits32
   | Bits64
 
-type SwiftStringRepresentation {}
+// 🟢 grounded.
+type SwiftStringRepresentation {
+  tag: Symbol
+}
 
-type SwiftCharacterRepresentation {}
+// 🟢 grounded.
+type SwiftCharacterRepresentation {
+  tag: Symbol
+}
 
-type SwiftUnitRepresentation {}
+// 🟢 grounded.
+type SwiftUnitRepresentation {
+  tag: Symbol
+}
 
-type SwiftBoolRepresentation {}
+// 🟢 grounded.
+type SwiftBoolRepresentation {
+  tag: Symbol
+}
 
-type SwiftIntegerOverflowSemantics {}
+// 🟢 grounded.
+type SwiftIntegerOverflowSemantics {
+  tag: Symbol
+}
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftScalar
@@ -278,11 +293,21 @@ fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
 }
 data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
 
-data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {}
-data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {}
-data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterRepresentation {}
-data swift_string_representation: SwiftStringRepresentation = SwiftStringRepresentation {}
-data swift_unit_representation: SwiftUnitRepresentation = SwiftUnitRepresentation {}
+data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {
+  tag: swift_tag_trap_on_overflow
+}
+data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {
+  tag: swift_tag_bool_representation
+}
+data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterRepresentation {
+  tag: swift_tag_character_extended_grapheme_cluster
+}
+data swift_string_representation: SwiftStringRepresentation = SwiftStringRepresentation {
+  tag: swift_tag_string_unicode_text
+}
+data swift_unit_representation: SwiftUnitRepresentation = SwiftUnitRepresentation {
+  tag: swift_tag_void_empty_tuple
+}
 
 data swift_facts_int: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
   surface_spelling: swift_surface_spelling_int,
@@ -449,8 +474,7 @@ fn swift_float_width_node(width: SwiftFloatWidth) -> Node {
 }
 
 fn swift_overflow_node(overflow: SwiftIntegerOverflowSemantics) -> Node {
-  let _witness = overflow
-  swift_atom(id: swift_tag_trap_on_overflow)
+  swift_atom(id: overflow.tag)
 }
 
 fn swift_scalar_node(scalar: SwiftScalar) -> Node {
@@ -466,14 +490,10 @@ fn swift_scalar_node(scalar: SwiftScalar) -> Node {
 
 fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   match facts {
-    SwiftBoolPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_bool_representation)
-    SwiftCharacterPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_character_extended_grapheme_cluster)
-    SwiftStringPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_string_unicode_text)
-    SwiftVoidPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_void_empty_tuple)
+    SwiftBoolPrimitiveFacts { representation } => swift_atom(id: representation.tag)
+    SwiftCharacterPrimitiveFacts { representation } => swift_atom(id: representation.tag)
+    SwiftStringPrimitiveFacts { representation } => swift_atom(id: representation.tag)
+    SwiftVoidPrimitiveFacts { representation } => swift_atom(id: representation.tag)
   }
 }
 

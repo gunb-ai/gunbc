@@ -17,10 +17,16 @@
 //! `v4_translate_dag_dispatches_token_sequence_items`,
 //! `v4_rust_language_model_declares_t11_translation_rules`,
 //! `v4_java_language_model_declares_t11_translation_rules`,
+//! `v4_python_language_model_declares_t11_translation_rules`,
+//! `v4_go_language_model_declares_t11_translation_rules`,
+//! `v4_cpp_language_model_declares_t11_translation_rules`,
 //! `v4_typescript_language_model_declares_t11_translation_rules`,
 //! `v4_swift_language_model_declares_t11_translation_rules`,
 //! `v4_wasm_language_model_declares_t11_translation_rules`, and
 //! `v4_dag_language_model_declares_surface_emit_rows` in INVARIANTS.md.
+//! **This PR (+0 paths):** same-file T-11 ratchet expansion for `05_emit.dag` and
+//! Python/Go/C++ grammar-relation target models; interim ratchet row restored in
+//! INVARIANTS.md §SG-0 (no new Rust test path).
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -38,11 +44,15 @@ const EMIT_DAG: &str = include_str!("../../../../v4/compiler/05_emit.dag");
 const EMIT_PATH: &str = "src/v4/compiler/05_emit.dag";
 const RUST_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/rust.dag");
 const RUST_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/rust.dag";
+const PYTHON_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/python.dag");
+const PYTHON_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/python.dag";
 const JAVA_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/java.dag");
 const JAVA_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/java.dag";
 const TYPESCRIPT_LANGUAGE_DAG: &str =
     include_str!("../../../../v4/extdeps/languages/typescript.dag");
 const TYPESCRIPT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/typescript.dag";
+const CPP_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/cpp.dag");
+const CPP_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/cpp.dag";
 const SWIFT_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/swift.dag");
 const SWIFT_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/swift.dag";
 const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/wasm.dag");
@@ -348,6 +358,85 @@ fn v4_java_language_model_declares_t11_translation_rules() {
     assert!(
         surface_declares_fn(&module, "java_mvp1_translation_rules_node"),
         "{JAVA_LANGUAGE_PATH}: must project MVP-1 Java translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_python_language_model_declares_t11_translation_rules() {
+    let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{PYTHON_LANGUAGE_PATH}: Python TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "algebra"], "Empty"),
+        "{PYTHON_LANGUAGE_PATH}: Python T-11 folds must import Empty from v4.std.algebra"
+    );
+    assert!(
+        surface_declares_type(&module, "PythonGrammarRelationRow"),
+        "{PYTHON_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_mvp1_translation_rules_node"),
+        "{PYTHON_LANGUAGE_PATH}: must project MVP-1 Python translation rules into the target model"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_mvp1_target_model"),
+        "{PYTHON_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
+    );
+}
+
+#[test]
+fn v4_go_language_model_declares_t11_translation_rules() {
+    let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{GO_LANGUAGE_PATH}: Go TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "GoGrammarRelationRow"),
+        "{GO_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "go_mvp1_translation_rules_node"),
+        "{GO_LANGUAGE_PATH}: must project MVP-1 Go translation rules into the target model"
+    );
+    assert!(
+        surface_declares_fn(&module, "go_mvp1_target_model"),
+        "{GO_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
+    );
+}
+
+#[test]
+fn v4_cpp_language_model_declares_t11_translation_rules() {
+    let module = parse_module(CPP_LANGUAGE_DAG, CPP_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "target_model_edge_translation_rules"
+        ),
+        "{CPP_LANGUAGE_PATH}: C++ TargetModel must consume the shared translation-rules edge"
+    );
+    assert!(
+        surface_declares_type(&module, "CppGrammarRelationRow"),
+        "{CPP_LANGUAGE_PATH}: must declare the grammar relation row carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "cpp_mvp1_translation_rules_node"),
+        "{CPP_LANGUAGE_PATH}: must project MVP-1 C++ translation rules into the target model"
+    );
+    assert!(
+        surface_declares_fn(&module, "cpp_mvp1_target_model"),
+        "{CPP_LANGUAGE_PATH}: must expose the target-profile-parameterized MVP-1 TargetModel"
     );
 }
 
