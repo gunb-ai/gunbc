@@ -8,10 +8,10 @@ module v4.test.claim.round_trip.dag_ingest_round_trip
 
 
 import v4.extdeps.languages.dag {
-  dag_language_model_surface_id,
-  dag_surface_data_decl,
   dag_surface_module,
+  dag_surface_module_header,
   dag_surface_qualified_name,
+  dag_surface_top_level_item,
   dag_surface_type_expr,
   emit_data_decl_emitted_node,
   emit_module_header_emitted_node
@@ -89,14 +89,14 @@ fn dag_ingest_round_trip_source_program_node() -> Node {
     children: [
       dag_ingest_round_trip_edge(
         name: dag_surface_module,
-        target: dag_ingest_round_trip_atom(s: dag_language_model_surface_id)
+        target: dag_ingest_round_trip_atom(s: dag_surface_module)
       ),
       dag_ingest_round_trip_edge(
-        name: dag_surface_module,
+        name: dag_surface_module_header,
         target: module_header
       ),
       dag_ingest_round_trip_edge(
-        name: dag_surface_data_decl,
+        name: dag_surface_top_level_item,
         target: claim_decl
       )
     ]
