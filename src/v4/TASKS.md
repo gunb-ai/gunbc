@@ -1562,8 +1562,8 @@ Sequencing). T-35 workers must not proceed without both gates.
    same stage at which `compile_ingest_staging` calls `catalog_from_entries`
    today. Callers are responsible for normalizing their source before
    `batch_insert`; `compile_with_batch` does NOT re-normalize. After admission
-   the selected root Node is resolved via `resolve_with_graph` (cross-file
-   names resolved against the admitted module graph), then the resulting
+   the selected root Node is resolved via `resolve_with_admission` (cross-file
+   names resolved against the admitted module catalog), then the resulting
    `CoreNode` enters `validate_then_compile`. The stage contract is:
    batch-in = post-normalize Node; compile-in = post-resolve CoreNode.
    The batch is read by the compiler; callers write to it. No filesystem
@@ -1617,31 +1617,23 @@ to define a new agent output surface.
   The `root` parameter is the sole root-selection authority: the caller names
   which batch node is the compilation entry point by `QualifiedName`.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-<<<<<<< HEAD
-  `qualified_name_from_node` to build `FreeMonoid<ModuleEntry>`, then calls
-  `module_graph_from_entries` → `Holds { value: graph }`. The fold is
-  fail-closed: any entry where `qualified_name_from_node` returns `None` (no
-  declared module name) causes the fold to return `Rejected` with a
-  module-malformed diagnostic immediately (INVARIANTS P2 — no silent promotion
-  of nameless Nodes past the admission boundary). `module_graph_from_entries`
-  itself is fail-closed on duplicate qualified names (`Violates`). On `Holds`, the root `CoreNode` is
-  retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
-=======
   `qualified_name_from_node` to build `FreeMonoid<Entry>`, then calls
   `catalog_from_entries` → `Holds { value: catalog }` (fail-closed:
   `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
   retrieved via `catalog_entry_for_name(catalog: catalog, name: root)` →
->>>>>>> 72f139debe (Fix catalog terminology after rebase)
   `Holds { value: entry }` (fail-closed: `Violates` if absent, using
   `catalog_entry_not_found` as the diagnostic reason). `entry.root` is
   the **post-normalize Node** admitted from the batch — it is then resolved:
-  `resolve_with_admission(tree: entry.root, lm: dag_language_model_wave1(), catalog:
-  catalog)` produces the `CoreNode` (post-resolve) that enters
-  `validate_then_compile`. Workers must not skip `resolve_with_graph`, not
+  `resolve_with_admission(lm: dag_language_model_wave1(), catalog: catalog,
+  admission: Admission { subject: ResolutionSubject { name: root, tree:
+  entry.root }, imports: admitted_imports })` produces the `CoreNode`
+  (post-resolve) that enters `validate_then_compile`. `admitted_imports` is the
+  import set extracted by the module-admission stage; T-35 must not invent a
+  second import authority. Workers must not skip `resolve_with_admission`, not
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
   convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
   boundary discipline: the `CoreNode` reaching `validate_then_compile` is
-  produced by a complete normalize → graph-admission → resolve chain, matching
+  produced by a complete normalize → catalog-admission → resolve chain, matching
   the live `compile_ingest_staging` pipeline exactly.
   `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
   FreeMonoid<Entry> bridge and catalog_from_entries call are
