@@ -1,0 +1,60 @@
+// src/v4/std/module_batch.dag
+// Scope: Filesystem-free compile ingest carrier.
+// Owns: ModuleBatch; batch_insert; batch_delete.
+// Consumes: std/algebra.dag, std/node.dag, std/qualified_name.dag.
+// Status: T-35 modeled; compiler/00_compile.dag owns admission and root selection.
+// Anchor: INVARIANTS.md P2 boundary discipline.
+
+module v4.std.module_batch
+
+
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_right, list_snoc_item }
+import v4.std.diagnostic { Accepted, Rejected }
+import v4.std.node { Node }
+import v4.std.qualified_name {
+  QualifiedName,
+  qualified_name_eq,
+  qualified_name_from_node
+}
+
+
+type ModuleBatch {
+  entries: FreeMonoid<Node>
+}
+
+
+fn batch_insert(batch: ModuleBatch, node: Node) -> ModuleBatch {
+  ModuleBatch {
+    entries: list_snoc_item(xs: batch.entries, item: node)
+  }
+}
+
+
+fn batch_delete_keep_node(node: Node, qname: QualifiedName) -> FreeMonoid<Node> {
+  match qualified_name_from_node(root: node) {
+    Accepted { value: name, diagnostics: _ } =>
+      if qualified_name_eq(a: name, b: qname) {
+        Empty
+      } else {
+        Cons { head: node, tail: Empty }
+      }
+    Rejected { diagnostics: _ } =>
+      Cons { head: node, tail: Empty }
+  }
+}
+
+
+fn batch_delete(batch: ModuleBatch, qname: QualifiedName) -> ModuleBatch {
+  ModuleBatch {
+    entries: fold_list_right(
+      xs: batch.entries,
+      empty: Empty,
+      snoc: fn(acc, node) {
+        match batch_delete_keep_node(node: node, qname: qname) {
+          Empty => acc
+          Cons { head: kept, tail: _ } => Cons { head: kept, tail: acc }
+        }
+      }
+    )
+  }
+}
