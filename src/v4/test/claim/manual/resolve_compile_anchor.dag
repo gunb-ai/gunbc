@@ -229,7 +229,7 @@ fn resolve_name_with_admission_imported_binding_accepts() -> Bool {
     graph: resolve_graph_single_import(),
     admission: NameAdmission {
       subject: NameSubject {
-        path: Empty,
+        qualified_name: Empty,
         tree: resolve_graph_imported_use_tree()
       },
       imports: Cons {

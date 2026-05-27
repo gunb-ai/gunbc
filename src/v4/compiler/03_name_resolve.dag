@@ -62,7 +62,7 @@ type NameImport {
 
 
 type NameSubject {
-  path: QualifiedName
+  qualified_name: QualifiedName
   tree: NormalizedTree
 }
 
@@ -218,7 +218,7 @@ fn name_namespace_for_subject(
     imports: admission.imports,
     state: admit_module_named_exports(
       root: admission.subject.tree,
-      origin: admission.subject.path,
+      origin: admission.subject.qualified_name,
       state: name_admission_initial(base: base)
     )
   ) {
