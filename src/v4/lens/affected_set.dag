@@ -260,6 +260,12 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 }
 
 
+data affected_set_reason_boundary_hash_unavailable: Symbol = affected_set_reason_boundary_hash_unavailable
+data affected_set_reason_changed_dimensions_unavailable: Symbol = affected_set_reason_changed_dimensions_unavailable
+data affected_set_reason_frontier_unavailable: Symbol = affected_set_reason_frontier_unavailable
+data affected_set_reason_propagation_unavailable: Symbol = affected_set_reason_propagation_unavailable
+
+
 fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
   contains(
     xs: lens_frontier_dependency_kinds(),
