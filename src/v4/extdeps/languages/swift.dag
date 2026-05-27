@@ -96,20 +96,25 @@ type SwiftFloatWidth
   = Bits32
   | Bits64
 
-type SwiftStringRepresentation
-  = SwiftStringUnicodeText
+type SwiftStringRepresentation {
+  tag: Symbol
+}
 
-type SwiftCharacterRepresentation
-  = SwiftCharacterExtendedGraphemeCluster
+type SwiftCharacterRepresentation {
+  tag: Symbol
+}
 
-type SwiftUnitRepresentation
-  = SwiftVoidEmptyTuple
+type SwiftUnitRepresentation {
+  tag: Symbol
+}
 
-type SwiftBoolRepresentation
-  = SwiftBoolRuntimeRepresentation
+type SwiftBoolRepresentation {
+  tag: Symbol
+}
 
-type SwiftIntegerOverflowSemantics
-  = SwiftTrapOnOverflow
+type SwiftIntegerOverflowSemantics {
+  tag: Symbol
+}
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftScalar
@@ -283,11 +288,21 @@ fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
 }
 data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
 
-data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftTrapOnOverflow
-data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRuntimeRepresentation
-data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterExtendedGraphemeCluster
-data swift_string_representation: SwiftStringRepresentation = SwiftStringUnicodeText
-data swift_unit_representation: SwiftUnitRepresentation = SwiftVoidEmptyTuple
+data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {
+  tag: swift_tag_trap_on_overflow
+}
+data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {
+  tag: swift_tag_bool_representation
+}
+data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterRepresentation {
+  tag: swift_tag_character_extended_grapheme_cluster
+}
+data swift_string_representation: SwiftStringRepresentation = SwiftStringRepresentation {
+  tag: swift_tag_string_unicode_text
+}
+data swift_unit_representation: SwiftUnitRepresentation = SwiftUnitRepresentation {
+  tag: swift_tag_void_empty_tuple
+}
 
 data swift_facts_int: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
   surface_spelling: swift_surface_spelling_int,
