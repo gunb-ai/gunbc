@@ -21,6 +21,9 @@ import v4.std.change {
   AffectedSetReason,
   Change,
   ChangeSet,
+  DependencyDependent,
+  DependencyEndpoint,
+  DependencySource,
   NodeChanged
 }
 import v4.std.dependency { Contains, DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
@@ -133,10 +136,10 @@ type PropagationReceipt
   | PropagationUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21 — dissolve-on: typed invalidation frontier replaces affected node sidecar
+// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21 — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
 type FrontierDependency {
   dependency: DependencyView
-  affected: Node
+  target: DependencyEndpoint
 }
 
 
@@ -363,7 +366,7 @@ fn record_affected_dependency(
   acc: AffectedSetFoldAcc,
   change: Change,
   dependency: DependencyView,
-  affected_node: Node
+  target: DependencyEndpoint
 ) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
@@ -374,7 +377,7 @@ fn record_affected_dependency(
           affected: list_snoc_item(xs: affected, item: AffectedDependency {
               change: change,
               dependency: dependency,
-              affected: affected_node
+              target: target
             }),
           exclusions: exclusions
         }
@@ -470,7 +473,10 @@ fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<N
 
 fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
-    list_snoc_item(xs: acc, item: row.affected)
+    list_snoc_item(
+      xs: acc,
+      item: dependency_endpoint_node(dependency: row.dependency, target: row.target)
+    )
   })
 }
 
@@ -563,9 +569,20 @@ fn root_key(subject: Node, dimension: AffectedDimension) -> ExclusionKey {
 }
 
 
+fn dependency_endpoint_node(dependency: DependencyView, target: DependencyEndpoint) -> Node {
+  match target {
+    DependencySource => dependency.source
+    DependencyDependent => dependency.dependent
+  }
+}
+
+
 fn frontier_dependency_key(dependency: FrontierDependency, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
-    at: dependency.affected,
+    at: dependency_endpoint_node(
+      dependency: dependency.dependency,
+      target: dependency.target
+    ),
     dimension: dimension
   }
 }
@@ -848,7 +865,7 @@ fn expand_affected_dimension(
               acc: acc2,
               change: change_for_edit(edit: edit),
               dependency: frontier_dependency.dependency,
-              affected_node: frontier_dependency.affected
+              target: frontier_dependency.target
             )
           DoesNotPropagate { proof: p } =>
             record_affected_exclusion(
