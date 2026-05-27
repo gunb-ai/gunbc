@@ -1226,7 +1226,7 @@ consumes `std/module_graph.dag` and calls
 single-tree K-1 resolution only: `resolve(tree, lm)` and
 `resolve_with_namespace(tree, namespace)`.
 **Boundary:** the new stage receives the fully loaded `ModuleGraph` plus
-the subject `ModulePath` / tree, enforces import / visibility / ambiguity
+the subject `QualifiedName` / tree, enforces import / visibility / ambiguity
 rules, and produces the exact `Namespace` admitted for that subject module.
 It must not flat-fold `graph.entries`; module paths remain authoritative
 until admission is complete.
