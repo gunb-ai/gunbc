@@ -8,9 +8,9 @@ module v4.test.claim.round_trip.dag_ingest_round_trip
 
 
 import v4.extdeps.languages.dag {
-  DagRoundTripSourceText,
   dag_fidelity_disposition,
-  dag_fidelity_disposition_node
+  dag_fidelity_disposition_node,
+  dag_round_trip_source_text_feature
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -58,7 +58,7 @@ fn dag_ingest_round_trip_expected_node() -> Node {
       dag_ingest_round_trip_edge(
         name: dag_ingest_round_trip_fidelity_axis,
         target: dag_fidelity_disposition_node(
-          disposition: dag_fidelity_disposition(feature: DagRoundTripSourceText)
+          disposition: dag_fidelity_disposition(feature: dag_round_trip_source_text_feature)
         )
       )
     ]

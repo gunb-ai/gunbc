@@ -211,12 +211,15 @@ type DagLanguageModel {
 // this authority instead of minting local "bit-identical" facts.
 type DagFidelityFeature
   = DagRoundTripSourceText
+  | DagRoundTripLexicalTrivia
 
 
 data dag_fidelity_modeled: Symbol = dag_fidelity_modeled
 data dag_fidelity_declared_normalized: Symbol = dag_fidelity_declared_normalized
 data dag_fidelity_fail_closed: Symbol = dag_fidelity_fail_closed
 data dag_fidelity_round_trip_source_text: Symbol = dag_fidelity_round_trip_source_text
+data dag_fidelity_round_trip_lexical_trivia: Symbol = dag_fidelity_round_trip_lexical_trivia
+data dag_round_trip_source_text_feature: DagFidelityFeature = DagRoundTripSourceText
 
 
 fn dag_fidelity_disposition(
@@ -224,6 +227,7 @@ fn dag_fidelity_disposition(
 ) -> FidelityDisposition<DagFidelityFeature> {
   match feature {
     DagRoundTripSourceText => Modeled
+    DagRoundTripLexicalTrivia => DeclaredNormalized { feature: DagRoundTripLexicalTrivia }
   }
 }
 
@@ -231,6 +235,7 @@ fn dag_fidelity_disposition(
 fn dag_fidelity_feature_node(feature: DagFidelityFeature) -> Node {
   match feature {
     DagRoundTripSourceText => dag_grammar_atom(id: dag_fidelity_round_trip_source_text)
+    DagRoundTripLexicalTrivia => dag_grammar_atom(id: dag_fidelity_round_trip_lexical_trivia)
   }
 }
 
