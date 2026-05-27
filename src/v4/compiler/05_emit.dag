@@ -2,10 +2,9 @@
 // Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
 // Owns: serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
-//           extdeps/languages/{rust,python,go,cpp,typescript}.dag, std/diagnostic.dag.
+//           std/diagnostic.dag.
 // Status: T-11 — emit = serialize_target ∘ translate; serialize delegates to
-// target_serialize_source_from_model grammar-inverse lex walk (no string templates);
-// Shape-A specialization table covers rust/python/go/cpp/typescript MVP-1 target models.
+// target_serialize_source_from_model grammar-inverse lex walk (no string templates).
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5b + Ratified Q11.
 
 
@@ -20,12 +19,9 @@ import v4.compiler.translate {
   translate
 }
 import v4.std.diagnostic {
-  Accepted,
   Outcome,
   bind_outcome
 }
-import v4.std.collection { List }
-import v4.std.node { Node }
 
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,

@@ -24,6 +24,9 @@
 //! `v4_swift_language_model_declares_t11_translation_rules`,
 //! `v4_wasm_language_model_declares_t11_translation_rules`, and
 //! `v4_dag_language_model_declares_surface_emit_rows` in INVARIANTS.md.
+//! **This PR (+0 paths):** same-file T-11 ratchet expansion for `05_emit.dag` and
+//! Python/Go/C++ grammar-relation target models; interim ratchet row restored in
+//! INVARIANTS.md §SG-0 (no new Rust test path).
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
