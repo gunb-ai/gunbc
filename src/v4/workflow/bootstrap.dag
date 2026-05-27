@@ -9,8 +9,7 @@ module v4.workflow.bootstrap
 
 import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.algebra {
-  count_equal,
-  length
+  bag_eq
 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
@@ -161,23 +160,11 @@ fn seed_capability_language_model() -> Node {
 }
 
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  if length(xs: a) == length(xs: b) {
-    fold(a, init: true, f: fn(acc, x) {
-      acc && (count_equal(xs: a, item: x, eq: bs_symbol_eq) == count_equal(xs: b, item: x, eq: bs_symbol_eq))
-    })
-  } else {
-    false
-  }
+  bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
 }
 
 fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
-  if length(xs: left) == length(xs: right) {
-    fold(left, init: true, f: fn(acc, construct) {
-      acc && (count_equal(xs: left, item: construct, eq: bootstrap_construct_eq) == count_equal(xs: right, item: construct, eq: bootstrap_construct_eq))
-    })
-  } else {
-    false
-  }
+  bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
 }
 
 // 🟡 needs-more-work — feature:t21-bootstrap-footprint-fold — scaffold:T-32 Phase 1 · dissolve-on: T-21 affected-set/content-hash fold can read the projection input closure and return Holds with the concrete footprint.
