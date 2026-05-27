@@ -436,7 +436,7 @@ fn lens_enforcement_violated<Output, Budget, Projected>(
   enforcement.violates(output: output, declared: budget)
 }
 
-fn lens_enforcement_result<Output, Projected>(
+fn lens_enforcement_result<Output, Budget, Projected>(
   enforcement: LensEnforcement<Output, Budget, Projected>,
   output: Output
 ) -> EnforcedLensResult<Output, Projected> {
