@@ -10,11 +10,15 @@
 module v4.extdeps.languages.swift
 
 import v4.compiler.parse {
+  Choice,
   Grammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
+  Optional,
+  Repeat,
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
@@ -24,15 +28,19 @@ import v4.compiler.tokenize {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
+  KeywordPattern,
   LexPattern,
   LexRule,
   LexRuleSet,
   LexRules,
   LiteralPattern,
   ModeledLexRules,
+  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
-  TokenRule
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
@@ -242,20 +250,84 @@ data swift_inhabitant_field_facts: Symbol = swift_inhabitant_field_facts
 
 data swift_token_kw_func: Symbol = swift_token_kw_func
 data swift_token_kw_return: Symbol = swift_token_kw_return
+data swift_token_kw_let: Symbol = swift_token_kw_let
+data swift_token_kw_var: Symbol = swift_token_kw_var
+data swift_token_kw_if: Symbol = swift_token_kw_if
+data swift_token_kw_else: Symbol = swift_token_kw_else
+data swift_token_kw_while: Symbol = swift_token_kw_while
+data swift_token_kw_for: Symbol = swift_token_kw_for
+data swift_token_kw_in: Symbol = swift_token_kw_in
+data swift_token_kw_struct: Symbol = swift_token_kw_struct
+data swift_token_kw_class: Symbol = swift_token_kw_class
+data swift_token_kw_enum: Symbol = swift_token_kw_enum
+data swift_token_kw_protocol: Symbol = swift_token_kw_protocol
+data swift_token_kw_extension: Symbol = swift_token_kw_extension
+data swift_token_kw_import: Symbol = swift_token_kw_import
+data swift_token_kw_true: Symbol = swift_token_kw_true
+data swift_token_kw_false: Symbol = swift_token_kw_false
 data swift_token_ident: Symbol = swift_token_ident
+data swift_token_int_literal: Symbol = swift_token_int_literal
+data swift_token_string_literal: Symbol = swift_token_string_literal
+data swift_token_ty_int: Symbol = swift_token_ty_int
 data swift_token_ty_int32: Symbol = swift_token_ty_int32
+data swift_token_ty_string: Symbol = swift_token_ty_string
+data swift_token_ty_bool: Symbol = swift_token_ty_bool
+data swift_token_ty_double: Symbol = swift_token_ty_double
+data swift_token_ty_void: Symbol = swift_token_ty_void
 data swift_token_plus: Symbol = swift_token_plus
+data swift_token_minus: Symbol = swift_token_minus
+data swift_token_star: Symbol = swift_token_star
+data swift_token_slash: Symbol = swift_token_slash
+data swift_token_percent: Symbol = swift_token_percent
 data swift_token_arrow: Symbol = swift_token_arrow
+data swift_token_equal: Symbol = swift_token_equal
+data swift_token_eq_eq: Symbol = swift_token_eq_eq
+data swift_token_bang_eq: Symbol = swift_token_bang_eq
+data swift_token_lt: Symbol = swift_token_lt
+data swift_token_gt: Symbol = swift_token_gt
+data swift_token_lte: Symbol = swift_token_lte
+data swift_token_gte: Symbol = swift_token_gte
 data swift_token_lbrace: Symbol = swift_token_lbrace
 data swift_token_rbrace: Symbol = swift_token_rbrace
 data swift_token_lparen: Symbol = swift_token_lparen
 data swift_token_rparen: Symbol = swift_token_rparen
+data swift_token_lbracket: Symbol = swift_token_lbracket
+data swift_token_rbracket: Symbol = swift_token_rbracket
 data swift_token_comma: Symbol = swift_token_comma
 data swift_token_colon: Symbol = swift_token_colon
+data swift_token_dot: Symbol = swift_token_dot
+data swift_token_semicolon: Symbol = swift_token_semicolon
 
 data swift_production_mvp1_fn_add: Symbol = swift_production_mvp1_fn_add
+data swift_production_fn_decl: Symbol = swift_production_fn_decl
+data swift_production_typed_param: Symbol = swift_production_typed_param
+data swift_production_param_list: Symbol = swift_production_param_list
+data swift_production_type_expr: Symbol = swift_production_type_expr
+data swift_production_block: Symbol = swift_production_block
+data swift_production_stmt: Symbol = swift_production_stmt
+data swift_production_return_stmt: Symbol = swift_production_return_stmt
+data swift_production_let_stmt: Symbol = swift_production_let_stmt
+data swift_production_if_stmt: Symbol = swift_production_if_stmt
+data swift_production_while_stmt: Symbol = swift_production_while_stmt
+data swift_production_expr: Symbol = swift_production_expr
+data swift_production_binary_expr: Symbol = swift_production_binary_expr
+data swift_production_call_expr: Symbol = swift_production_call_expr
+data swift_production_primary_expr: Symbol = swift_production_primary_expr
 
 data swift_surface_fn_item: Symbol = swift_surface_fn_item
+data swift_surface_typed_param: Symbol = swift_surface_typed_param
+data swift_surface_param_list: Symbol = swift_surface_param_list
+data swift_surface_type_expr: Symbol = swift_surface_type_expr
+data swift_surface_block: Symbol = swift_surface_block
+data swift_surface_stmt: Symbol = swift_surface_stmt
+data swift_surface_return_stmt: Symbol = swift_surface_return_stmt
+data swift_surface_let_stmt: Symbol = swift_surface_let_stmt
+data swift_surface_if_stmt: Symbol = swift_surface_if_stmt
+data swift_surface_while_stmt: Symbol = swift_surface_while_stmt
+data swift_surface_expr: Symbol = swift_surface_expr
+data swift_surface_binary_expr: Symbol = swift_surface_binary_expr
+data swift_surface_call_expr: Symbol = swift_surface_call_expr
+data swift_surface_primary_expr: Symbol = swift_surface_primary_expr
 data swift_surface_type_int32: Symbol = swift_surface_type_int32
 data swift_surface_bin_add: Symbol = swift_surface_bin_add
 data swift_binding_fn_add: Symbol = swift_binding_fn_add
