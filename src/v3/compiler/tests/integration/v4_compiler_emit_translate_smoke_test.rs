@@ -14,11 +14,13 @@
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
 //! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
+//! `v4_translate_dag_dispatches_token_sequence_items`,
 //! `v4_rust_language_model_declares_t11_translation_rules`,
 //! `v4_java_language_model_declares_t11_translation_rules`,
 //! `v4_typescript_language_model_declares_t11_translation_rules`,
-//! `v4_swift_language_model_declares_t11_translation_rules`, and
-//! `v4_wasm_language_model_declares_t11_translation_rules` in INVARIANTS.md.
+//! `v4_swift_language_model_declares_t11_translation_rules`,
+//! `v4_wasm_language_model_declares_t11_translation_rules`, and
+//! `v4_dag_language_model_declares_surface_emit_rows` in INVARIANTS.md.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -47,6 +49,8 @@ const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/w
 const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const DAG_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/dag.dag");
+const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
@@ -127,6 +131,47 @@ fn v4_translate_dag_declares_translate_node_and_translate() {
 }
 
 #[test]
+fn v4_translate_dag_dispatches_token_sequence_items() {
+    let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_field_kind"
+        ),
+        "{TRANSLATE_PATH}: must inspect concrete-token kind before treating class absence as nonterminal"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_fixed"
+        ),
+        "{TRANSLATE_PATH}: fixed-token rows must validate the shared token-kind discriminator"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_bound"
+        ),
+        "{TRANSLATE_PATH}: bound-token rows must validate the shared token-kind discriminator"
+    );
+    assert!(
+        surface_declares_fn(&module, "token_sequence_item_kind"),
+        "{TRANSLATE_PATH}: must classify concrete tokens and nonterminal emitted nodes explicitly"
+    );
+    assert!(
+        surface_declares_fn(&module, "token_item_to_source"),
+        "{TRANSLATE_PATH}: token_sequence_to_source must dispatch nonterminals recursively"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_serialize_source_from_model_bounded"),
+        "{TRANSLATE_PATH}: recursive nonterminal serialization must be explicitly bounded"
+    );
+}
+
+#[test]
 fn v4_translate_dag_imports_find_witness_types_not_inline_fn() {
     let module = parse_module(TRANSLATE_DAG, TRANSLATE_PATH);
     assert!(
@@ -194,6 +239,7 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
         ),
         "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, RUST_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "RustGrammarRelationRow"),
         "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -294,6 +340,7 @@ fn v4_java_language_model_declares_t11_translation_rules() {
         ),
         "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, JAVA_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "JavaGrammarRelationRow"),
         "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -315,6 +362,7 @@ fn v4_typescript_language_model_declares_t11_translation_rules() {
         ),
         "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, TYPESCRIPT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "TsGrammarRelationRow"),
         "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -336,6 +384,7 @@ fn v4_swift_language_model_declares_t11_translation_rules() {
         ),
         "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, SWIFT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "SwiftGrammarRelationRow"),
         "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -357,6 +406,7 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
         ),
         "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, WASM_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "WasmGrammarRelationRow"),
         "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -364,6 +414,79 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
     assert!(
         surface_declares_fn(&module, "wasm_mvp1_translation_rules_node"),
         "{WASM_LANGUAGE_PATH}: must project MVP-1 Wasm translation rules into the target model"
+    );
+}
+
+#[test]
+fn v4_dag_language_model_declares_surface_emit_rows() {
+    let module = parse_module(DAG_LANGUAGE_DAG, DAG_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "grammar_relation_field_tokens"
+        ),
+        "{DAG_LANGUAGE_PATH}: emit rows must use the shared grammar-relation field symbols"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_field_kind"
+        ),
+        "{DAG_LANGUAGE_PATH}: token rows must use the shared concrete-token field symbols"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_fixed"
+        ),
+        "{DAG_LANGUAGE_PATH}: fixed-token rows must use the shared token-kind identity"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_bound"
+        ),
+        "{DAG_LANGUAGE_PATH}: bound-token rows must use the shared token-kind identity"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_fixed_token"),
+        "{DAG_LANGUAGE_PATH}: must declare fixed-token grammar row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_bound_token"),
+        "{DAG_LANGUAGE_PATH}: must declare bound-token grammar row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_grammar_relation_row"),
+        "{DAG_LANGUAGE_PATH}: must declare grammar relation row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_data_decl_emitted_node"),
+        "{DAG_LANGUAGE_PATH}: data-decl emit rows must carry concrete emitted identity"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_module_header_emitted_node"),
+        "{DAG_LANGUAGE_PATH}: module-header emit rows must carry concrete emitted identity"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_import_decl_emitted_node"),
+        "{DAG_LANGUAGE_PATH}: import-decl emit rows must carry concrete emitted identity"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_row_module_header"),
+        "{DAG_LANGUAGE_PATH}: must declare module-header grammar row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_row_import_decl"),
+        "{DAG_LANGUAGE_PATH}: must declare import-decl grammar row emission"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_row_data_decl"),
+        "{DAG_LANGUAGE_PATH}: must declare data-decl grammar row emission"
     );
 }
 
@@ -454,6 +577,28 @@ fn import_includes_name(
                 .all(|(a, &b)| a.as_str() == b)
             && names.iter().any(|n| n == name)
     })
+}
+
+fn assert_imports_shared_token_kinds(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &str,
+) {
+    assert!(
+        import_includes_name(
+            module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_fixed"
+        ),
+        "{path}: fixed-token rows must use the shared token-kind identity"
+    );
+    assert!(
+        import_includes_name(
+            module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_bound"
+        ),
+        "{path}: bound-token rows must use the shared token-kind identity"
+    );
 }
 
 fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
