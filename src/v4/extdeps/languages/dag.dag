@@ -1783,6 +1783,7 @@ fn dag_language_model_wave1_modeled() -> DagLanguageModel {
 // 🟡 gated — T-8 parse fidelity — dissolve-on: T-8 lands per-identifier hashing. Until then every
 // segment extracted from a real parse tree carries dag_token_ident (identifier identity unavailable);
 // this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName (P3).
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node; the nested Rejected/Accepted propagation inherits the same carrier threading constraint; forbidden: re-inlining the ladder after Q4 resolves.
 fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
   match qualified_name_find_edge(name: dag_surface_module_header_qualified_name, n: root) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

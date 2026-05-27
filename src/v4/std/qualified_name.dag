@@ -41,6 +41,7 @@ fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
 }
 
 
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: v2 bootstrap accepts fn(T) -> Outcome<U> higher-order fn types (Ratified Q4); faithful form sequences over List<Edge> via traverse_node; forbidden: re-inlining the Accepted/Rejected short-circuit ladder after Q4 resolves.
 fn qualified_name_find_edge(name: Symbol, n: Node) -> Outcome<Node> {
   fold(
     n.children,
@@ -76,6 +77,8 @@ fn qualified_name_atom_sym(n: Node) -> Outcome<Symbol> {
 }
 
 
+// 🟡 walker-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: v2 bootstrap accepts fn(Node) -> Outcome<R> higher-order fn types (Ratified Q4); faithful form is fold_node + NodeFold<Outcome<QualifiedName>> algebra; forbidden: re-inlining the structural Node recursion after Q4 resolves.
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate (Outcome-bearing fold_node algebra dissolves the nested Rejected/Accepted propagation chains); forbidden: re-inlining the carrier ladder after Q4 resolves.
 // Accepts a fold_list_node(symbols) Node — the caller obtains this by walking the
 // dag_surface_module_header_qualified_name edge of an emitted module header node.
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
