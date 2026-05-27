@@ -28,7 +28,7 @@ import v4.lens.affected_set_examples {
 import v4.std.algebra { length }
 import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -86,8 +86,15 @@ data irt1_public_missing_path_edit: Edit = Edit {
   replacement: affected_set_claim_failure_node
 }
 
+data irt1_public_other_dimension: Symbol = irt1_public_other_dimension
+
 data irt1_public_dimension_not_read_receipt_node: Node = Node {
-  kind: TypeNode { connective: Conj },
+  kind: TypeNode { connective: Atom { identity: affected_set_default_dimension } },
+  children: []
+}
+
+data irt1_public_mismatched_dimension_not_read_receipt_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: irt1_public_other_dimension } },
   children: []
 }
 
@@ -97,6 +104,16 @@ data irt1_public_receipted_usage_site: Node = Node {
     Edge {
       label: Named { name: affected_set_dimension_not_read_receipt_edge },
       target: irt1_public_dimension_not_read_receipt_node
+    }
+  ]
+}
+
+data irt1_public_mismatched_receipted_usage_site: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: affected_set_dimension_not_read_receipt_edge },
+      target: irt1_public_mismatched_dimension_not_read_receipt_node
     }
   ]
 }
@@ -113,6 +130,13 @@ data irt1_public_nonfrontier_dependency_with_receipt: DependencyView = Dependenc
   dependent: affected_set_claim_failure_node,
   kind: Contains,
   usage_site: irt1_public_receipted_usage_site
+}
+
+data irt1_public_nonfrontier_dependency_with_mismatched_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: Contains,
+  usage_site: irt1_public_mismatched_receipted_usage_site
 }
 
 data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
@@ -209,6 +233,17 @@ fn irt1_public_nonfrontier_dependency_with_read_receipt_excludes() -> Bool {
   }
 }
 
+fn irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_nonfrontier_dependency_with_mismatched_receipt
+  ) {
+    Propagates => true
+    _ => false
+  }
+}
+
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
   if irt1_empty_diff_frontier_receipt_claim_holds() {
     affected_set_example_node
@@ -275,6 +310,14 @@ fn irt1_public_nonfrontier_dependency_without_read_receipt_claim_rhs() -> Node {
 
 fn irt1_public_nonfrontier_dependency_with_read_receipt_claim_rhs() -> Node {
   if irt1_public_nonfrontier_dependency_with_read_receipt_excludes() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_claim_rhs() -> Node {
+  if irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_reruns() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
@@ -350,5 +393,13 @@ data claim_irt1_public_nonfrontier_dependency_with_read_receipt: TestClaim = Equ
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: irt1_public_nonfrontier_dependency_with_read_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonfrontier_dependency_with_mismatched_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonfrontier_mismatched_read_receipt: stale exclusion receipt reruns",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonfrontier_dependency_with_mismatched_read_receipt_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
