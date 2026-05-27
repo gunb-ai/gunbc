@@ -96,22 +96,27 @@ type SwiftFloatWidth
   = Bits32
   | Bits64
 
+// 🟢 grounded.
 type SwiftStringRepresentation {
   tag: Symbol
 }
 
+// 🟢 grounded.
 type SwiftCharacterRepresentation {
   tag: Symbol
 }
 
+// 🟢 grounded.
 type SwiftUnitRepresentation {
   tag: Symbol
 }
 
+// 🟢 grounded.
 type SwiftBoolRepresentation {
   tag: Symbol
 }
 
+// 🟢 grounded.
 type SwiftIntegerOverflowSemantics {
   tag: Symbol
 }
