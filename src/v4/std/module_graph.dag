@@ -26,13 +26,14 @@ import v4.std.qualified_name {
 import v4.std.witness { Holds, Violates, Witness }
 
 
+// 🟡 gated — feature:T-8-qualified-root-projection-bridge — bind TASKS.md T-28-B/T-35 and T-28-C — QualifiedRoot is a construction row, not a second module-identity authority: it exists only because qualified_name_from_node is fail-closed until T-8 can project a declared name from each root Node; forbidden: exposing QualifiedRoot as a stable caller contract or using it outside graph admission; dissolve-on: module_graph_from_nodes projects QualifiedName from Node internally and QualifiedRoot is deleted.
 type QualifiedRoot {
   name: QualifiedName
   root: Node
 }
 
 
-// 🟡 feature:T-28-carrier-level-uniqueness — Map<QualifiedName, Node> cannot represent duplicate roots after construction; module_graph_from_roots is the canonical construction path that rejects duplicate source roots before map insertion — dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_roots as the sole construction path.
+// 🟡 gated — feature:T-28-carrier-level-uniqueness — bind TASKS.md T-28-C — Map<QualifiedName, Node> cannot represent duplicate roots after construction; module_graph_from_roots is the canonical construction path that rejects duplicate source roots before map insertion; forbidden: direct ModuleGraph record construction outside std/module_graph.dag tests/scaffolds; dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_roots/module_graph_from_nodes as the sole construction path.
 type ModuleGraph {
   roots: Map<QualifiedName, Node>
 }

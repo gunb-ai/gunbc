@@ -1242,6 +1242,29 @@ namespace plus origin facts, delete the local name-admission gate-state
 carrier; cross-file resolution continues to enter through
 `03_name_resolve.dag`, not through a resolver-local graph fold.
 
+### T-28-C — Opaque constructors for module graph proof carriers  [SCHEDULED]
+**Gap:** `.dag` record types are still directly constructible, so
+`ModuleGraph { roots: ... }`, `QualifiedRoot { name, root }`, and
+`AncestorRelation { ancestor, descendant }` can be written without the
+validation surfaces that reject duplicate roots or non-prefix ancestor claims.
+This is substrate-scaffold debt, not a second admission authority.
+**Disposition — SCHEDULED (substrate primitive).** Add an opaque-record or
+smart-constructor primitive that lets `std/module_graph.dag` expose
+`module_graph_from_roots` / the future `module_graph_from_nodes`,
+`module_graph_root_for_name`, and `module_ancestor_witness` while preventing
+direct construction of proof-carrying records outside their owning module.
+**Interim boundary:** until that primitive exists, `module_graph_from_roots` is
+the canonical construction path. `QualifiedRoot` is a bounded bridge row for the
+T-8 parse-fidelity gap: callers may supply the name/root pair only at graph
+admission, and the row dissolves once `module_graph_from_nodes` can call
+`qualified_name_from_node` internally. Workers must not expose `QualifiedRoot`
+as a stable API or add direct `ModuleGraph` record construction outside
+`std/module_graph.dag` scaffolds/claims.
+**Dissolve gate:** T-8 makes declared-name projection available from each root
+Node, then T-28-C makes the graph and ancestor carriers opaque. Delete
+`QualifiedRoot`, replace `module_graph_from_roots` with the Node-projecting
+constructor, and keep duplicate-root rejection inside `std/module_graph.dag`.
+
 ### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
 **Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
 `std/` numeric vocabulary is undefined without an ABI data-model — C++
