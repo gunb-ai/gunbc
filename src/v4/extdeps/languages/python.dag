@@ -54,6 +54,8 @@ import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -185,8 +187,6 @@ data python_production_mvp1_fn_add: Symbol = python_production_mvp1_fn_add
 data python_binding_fn_add: Symbol = python_binding_fn_add
 data python_binding_param_x: Symbol = python_binding_param_x
 data python_binding_param_y: Symbol = python_binding_param_y
-data python_relation_token_fixed: Symbol = python_relation_token_fixed
-data python_relation_token_bound: Symbol = python_relation_token_bound
 data python_relation_rule_mvp1_fn_add: Symbol = python_relation_rule_mvp1_fn_add
 data python_mvp1_source_literal: Symbol = python_mvp1_source_literal
 data python_mvp1_source_text_field: Symbol = serialize_source_field_source_text
@@ -693,7 +693,7 @@ fn python_concrete_token_node(token: PythonConcreteSyntaxToken) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          python_named_edge(name: concrete_syntax_token_field_kind, target: python_inhabitant_atom(id: python_relation_token_fixed)),
+          python_named_edge(name: concrete_syntax_token_field_kind, target: python_inhabitant_atom(id: concrete_syntax_token_kind_fixed)),
           python_named_edge(name: concrete_syntax_token_field_class, target: python_inhabitant_atom(id: c))
         ]
       }
@@ -701,7 +701,7 @@ fn python_concrete_token_node(token: PythonConcreteSyntaxToken) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          python_named_edge(name: concrete_syntax_token_field_kind, target: python_inhabitant_atom(id: python_relation_token_bound)),
+          python_named_edge(name: concrete_syntax_token_field_kind, target: python_inhabitant_atom(id: concrete_syntax_token_kind_bound)),
           python_named_edge(name: concrete_syntax_token_field_class, target: python_inhabitant_atom(id: c)),
           python_named_edge(name: concrete_syntax_token_field_binding, target: python_inhabitant_atom(id: b))
         ]
@@ -744,37 +744,47 @@ fn python_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 gated — fold1 accumulator interim — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside python_mvp1_concrete_tokens.
-type PythonGrammarSequenceBuild
-  = PythonGrammarSequenceEmpty
-  | PythonGrammarSequenceBuilt { expression: GrammarExpr }
-
-fn python_grammar_sequence_append(acc: PythonGrammarSequenceBuild, token: PythonConcreteSyntaxToken) -> PythonGrammarSequenceBuild {
-  let terminal = python_grammar_terminal(token_class: python_concrete_token_class(token: token))
-  match acc {
-    PythonGrammarSequenceEmpty => PythonGrammarSequenceBuilt { expression: terminal }
-    PythonGrammarSequenceBuilt { expression: expression } =>
-      PythonGrammarSequenceBuilt {
-        expression: Sequence { left: expression, right: terminal }
-      }
-  }
+// 🟡 gated — non-empty grammar token carrier — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace this per-file non-empty carrier with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside python_mvp1_concrete_tokens.
+type PythonGrammarTokenSequence {
+  head: PythonConcreteSyntaxToken
+  tail: List<PythonConcreteSyntaxToken>
 }
 
-fn python_grammar_sequence_from_tokens(tokens: List<PythonConcreteSyntaxToken>) -> PythonGrammarSequenceBuild {
+fn python_grammar_sequence_from_tokens(tokens: PythonGrammarTokenSequence) -> GrammarExpr {
+  let terminal = python_grammar_terminal(token_class: python_concrete_token_class(token: tokens.head))
   fold_list(
-    xs: tokens,
-    empty: PythonGrammarSequenceEmpty,
+    xs: tokens.tail,
+    empty: terminal,
     cons: fn(acc, token) {
-      python_grammar_sequence_append(acc: acc, token: token)
+      Sequence {
+        left: acc,
+        right: python_grammar_terminal(token_class: python_concrete_token_class(token: token))
+      }
     }
   )
 }
 
-fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match python_grammar_sequence_from_tokens(tokens: python_mvp1_concrete_tokens()) {
-    PythonGrammarSequenceBuilt { expression: expression } => expression
-    PythonGrammarSequenceEmpty => python_grammar_terminal(token_class: python_token_kw_def)
+fn python_mvp1_grammar_tokens() -> PythonGrammarTokenSequence {
+  PythonGrammarTokenSequence {
+    head: PythonFixedToken { token_class: concrete_syntax_token_kind_fixed },
+    tail: [
+      PythonBoundToken { token_class: python_token_ident, binding: python_binding_fn_add },
+      PythonFixedToken { token_class: python_token_lparen },
+      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_x },
+      PythonFixedToken { token_class: python_token_comma },
+      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_y },
+      PythonFixedToken { token_class: python_token_rparen },
+      PythonFixedToken { token_class: python_token_colon },
+      PythonFixedToken { token_class: python_token_kw_return },
+      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_x },
+      PythonFixedToken { token_class: python_token_plus },
+      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_y }
+    ]
   }
+}
+
+fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
+  python_grammar_sequence_from_tokens(tokens: python_mvp1_grammar_tokens())
 }
 
 fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {

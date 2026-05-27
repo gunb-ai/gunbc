@@ -44,6 +44,8 @@ import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -240,8 +242,6 @@ data cpp_production_mvp1_fn_add: Symbol = cpp_production_mvp1_fn_add
 data cpp_binding_fn_add: Symbol = cpp_binding_fn_add
 data cpp_binding_param_x: Symbol = cpp_binding_param_x
 data cpp_binding_param_y: Symbol = cpp_binding_param_y
-data cpp_relation_token_fixed: Symbol = cpp_relation_token_fixed
-data cpp_relation_token_bound: Symbol = cpp_relation_token_bound
 data cpp_relation_rule_mvp1_fn_add: Symbol = cpp_relation_rule_mvp1_fn_add
 data cpp_mvp1_source_literal: Symbol = cpp_mvp1_source_literal
 data cpp_mvp1_source_text_field: Symbol = serialize_source_field_source_text
@@ -839,7 +839,7 @@ fn cpp_concrete_token_node(token: CppConcreteSyntaxToken) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: cpp_relation_token_fixed)),
+          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_fixed)),
           cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c))
         ]
       }
@@ -847,7 +847,7 @@ fn cpp_concrete_token_node(token: CppConcreteSyntaxToken) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: cpp_relation_token_bound)),
+          cpp_named_edge(name: concrete_syntax_token_field_kind, target: cpp_atom(id: concrete_syntax_token_kind_bound)),
           cpp_named_edge(name: concrete_syntax_token_field_class, target: cpp_atom(id: c)),
           cpp_named_edge(name: concrete_syntax_token_field_binding, target: cpp_atom(id: b))
         ]
@@ -887,37 +887,51 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 gated — fold1 accumulator interim — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside cpp_mvp1_concrete_tokens.
-type CppGrammarSequenceBuild
-  = CppGrammarSequenceEmpty
-  | CppGrammarSequenceBuilt { expression: GrammarExpr }
-
-fn cpp_grammar_sequence_append(acc: CppGrammarSequenceBuild, token: CppConcreteSyntaxToken) -> CppGrammarSequenceBuild {
-  let terminal = cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
-  match acc {
-    CppGrammarSequenceEmpty => CppGrammarSequenceBuilt { expression: terminal }
-    CppGrammarSequenceBuilt { expression: expression } =>
-      CppGrammarSequenceBuilt {
-        expression: Sequence { left: expression, right: terminal }
-      }
-  }
+// 🟡 gated — non-empty grammar token carrier — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace this per-file non-empty carrier with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside cpp_mvp1_concrete_tokens.
+type CppGrammarTokenSequence {
+  head: CppConcreteSyntaxToken
+  tail: List<CppConcreteSyntaxToken>
 }
 
-fn cpp_grammar_sequence_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> CppGrammarSequenceBuild {
+fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarTokenSequence) -> GrammarExpr {
+  let terminal = cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: tokens.head))
   fold_list(
-    xs: tokens,
-    empty: CppGrammarSequenceEmpty,
+    xs: tokens.tail,
+    empty: terminal,
     cons: fn(acc, token) {
-      cpp_grammar_sequence_append(acc: acc, token: token)
+      Sequence {
+        left: acc,
+        right: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
+      }
     }
   )
 }
 
-fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match cpp_grammar_sequence_from_tokens(tokens: cpp_mvp1_concrete_tokens()) {
-    CppGrammarSequenceBuilt { expression: expression } => expression
-    CppGrammarSequenceEmpty => cpp_grammar_terminal(token_class: cpp_token_ty_int)
+fn cpp_mvp1_grammar_tokens() -> CppGrammarTokenSequence {
+  CppGrammarTokenSequence {
+    head: CppFixedToken { token_class: concrete_syntax_token_kind_fixed },
+    tail: [
+      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },
+      CppFixedToken { token_class: cpp_token_lparen },
+      CppFixedToken { token_class: cpp_token_ty_int },
+      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
+      CppFixedToken { token_class: cpp_token_comma },
+      CppFixedToken { token_class: cpp_token_ty_int },
+      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
+      CppFixedToken { token_class: cpp_token_rparen },
+      CppFixedToken { token_class: cpp_token_lbrace },
+      CppFixedToken { token_class: cpp_token_kw_return },
+      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
+      CppFixedToken { token_class: cpp_token_plus },
+      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
+      CppFixedToken { token_class: cpp_token_semicolon },
+      CppFixedToken { token_class: cpp_token_rbrace }
+    ]
   }
+}
+
+fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
+  cpp_grammar_sequence_from_tokens(tokens: cpp_mvp1_grammar_tokens())
 }
 
 fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction {

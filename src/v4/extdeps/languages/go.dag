@@ -41,6 +41,8 @@ import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -236,8 +238,6 @@ data go_production_mvp1_fn_add: Symbol = go_production_mvp1_fn_add
 data go_binding_fn_add: Symbol = go_binding_fn_add
 data go_binding_param_x: Symbol = go_binding_param_x
 data go_binding_param_y: Symbol = go_binding_param_y
-data go_relation_token_fixed: Symbol = go_relation_token_fixed
-data go_relation_token_bound: Symbol = go_relation_token_bound
 data go_relation_rule_mvp1_fn_add: Symbol = go_relation_rule_mvp1_fn_add
 data go_mvp1_source_literal: Symbol = go_mvp1_source_literal
 data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
@@ -1015,7 +1015,7 @@ fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: go_relation_token_fixed)),
+          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: concrete_syntax_token_kind_fixed)),
           go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c))
         ]
       }
@@ -1023,7 +1023,7 @@ fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: go_relation_token_bound)),
+          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: concrete_syntax_token_kind_bound)),
           go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c)),
           go_named_edge(name: concrete_syntax_token_field_binding, target: go_inhabitant_atom(id: b))
         ]
@@ -1063,37 +1063,51 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 gated — fold1 accumulator interim — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside go_mvp1_concrete_tokens.
-type GoGrammarSequenceBuild
-  = GoGrammarSequenceEmpty
-  | GoGrammarSequenceBuilt { expression: GrammarExpr }
-
-fn go_grammar_sequence_append(acc: GoGrammarSequenceBuild, token: GoConcreteSyntaxToken) -> GoGrammarSequenceBuild {
-  let terminal = go_grammar_terminal(token_class: go_concrete_token_class(token: token))
-  match acc {
-    GoGrammarSequenceEmpty => GoGrammarSequenceBuilt { expression: terminal }
-    GoGrammarSequenceBuilt { expression: expression } =>
-      GoGrammarSequenceBuilt {
-        expression: Sequence { left: expression, right: terminal }
-      }
-  }
+// 🟡 gated — non-empty grammar token carrier — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace this per-file non-empty carrier with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside go_mvp1_concrete_tokens.
+type GoGrammarTokenSequence {
+  head: GoConcreteSyntaxToken
+  tail: List<GoConcreteSyntaxToken>
 }
 
-fn go_grammar_sequence_from_tokens(tokens: List<GoConcreteSyntaxToken>) -> GoGrammarSequenceBuild {
+fn go_grammar_sequence_from_tokens(tokens: GoGrammarTokenSequence) -> GrammarExpr {
+  let terminal = go_grammar_terminal(token_class: go_concrete_token_class(token: tokens.head))
   fold_list(
-    xs: tokens,
-    empty: GoGrammarSequenceEmpty,
+    xs: tokens.tail,
+    empty: terminal,
     cons: fn(acc, token) {
-      go_grammar_sequence_append(acc: acc, token: token)
+      Sequence {
+        left: acc,
+        right: go_grammar_terminal(token_class: go_concrete_token_class(token: token))
+      }
     }
   )
 }
 
-fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match go_grammar_sequence_from_tokens(tokens: go_mvp1_concrete_tokens()) {
-    GoGrammarSequenceBuilt { expression: expression } => expression
-    GoGrammarSequenceEmpty => go_grammar_terminal(token_class: go_token_kw_func)
+fn go_mvp1_grammar_tokens() -> GoGrammarTokenSequence {
+  GoGrammarTokenSequence {
+    head: GoFixedToken { token_class: concrete_syntax_token_kind_fixed },
+    tail: [
+      GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
+      GoFixedToken { token_class: go_token_lparen },
+      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+      GoFixedToken { token_class: go_token_ty_int },
+      GoFixedToken { token_class: go_token_comma },
+      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+      GoFixedToken { token_class: go_token_ty_int },
+      GoFixedToken { token_class: go_token_rparen },
+      GoFixedToken { token_class: go_token_ty_int },
+      GoFixedToken { token_class: go_token_lbrace },
+      GoFixedToken { token_class: go_token_kw_return },
+      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+      GoFixedToken { token_class: go_token_plus },
+      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+      GoFixedToken { token_class: go_token_rbrace }
+    ]
   }
+}
+
+fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
+  go_grammar_sequence_from_tokens(tokens: go_mvp1_grammar_tokens())
 }
 
 fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
