@@ -1486,7 +1486,7 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 
-### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [SCHEDULED]
+### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [PARTIAL]
 
 **Operator-ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
 where `ModulePathSegment = { name: Symbol }` is structurally a nickname for
@@ -1507,10 +1507,9 @@ to `QualifiedName`, add the projection.
 2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.** Extracts
    the declared name from a Node's `module_header` child. The name is already in
    the parse tree (`dag_surface_module_header` → `dag_production_qualified_name`);
-   this function makes it accessible without an external key. Once this exists,
-   `ModuleEntry { path: QualifiedName, root: Node }` is a denormalized pair —
-   path is projectable from root. Callers that carry the pair can simplify to
-   `FreeMonoid<Node>`.
+   this function makes it accessible without an external key. The modeled
+   surface is currently fail-closed behind the T-8 parse-fidelity gate, so
+   workers must not treat projection as available until that gate lands.
 
 **Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
@@ -1538,10 +1537,14 @@ exists in the codebase — no prerequisite task is needed. Workers must read
 implementing `qualified_name_from_node`; they may not assume a fixed child
 index or invent a traversal not grounded in that grammar declaration.
 
-**Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
-`FreeMonoid<Node>` + `qualified_name_from_node`, `ModuleEntry`, `ModuleGraph`,
-and `std/module_graph.dag` dissolve. Change 2 may be bundled with T-35 or land
-immediately after.
+**Change 2 (follow-on):** `ModulePath` vocabulary is dissolved to
+`QualifiedName`, the former path/root pair carrier is deleted, and `ModuleGraph`
+is retained as the modeled admission carrier over `Map<QualifiedName, Node>`
+with the canonical construction path
+`module_graph_from_roots(FreeMonoid<QualifiedRoot>)`. Callers that start from
+raw Nodes project names through `qualified_name_from_node` and then build
+`QualifiedRoot` rows for graph admission; they do not carry a separate
+path/root entry carrier.
 
 **Sequencing.** Prerequisite for T-35. Dispatch is independent of T-35's
 operator code-examples gate.
@@ -1557,28 +1560,30 @@ T-23/AGENT-1 composes over — T-35 owns the no-filesystem entry point;
 T-23 owns the non-text AGENT-SURFACE contract (lens reads, `apply_diff`,
 structured output). These are complementary, not overlapping.
 
-**On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
-`QualifiedName` and `qualified_name_from_node` are available and this spec
-applies. T-35 dispatch additionally requires operator code examples (see
-Sequencing). T-35 workers must not proceed without both gates.
+**On hold pending the T-8 qualified-name projection gate.** `QualifiedName` is
+modeled, but `qualified_name_from_node` remains fail-closed until the parser
+surface can project declared names from module-header Nodes. T-35 dispatch
+additionally requires operator code examples (see Sequencing). T-35 workers
+must not proceed without both gates.
 
 **Scope — two pieces (ingest side only):**
 
-1. **Virtual module-loader.** The module-admission stage (T-28-B) is
-   replaced with a caller-supplied `ModuleBatch` (**post-normalize** `.dag`
-   Nodes, identified by their declared `QualifiedName`). "Post-normalize"
-   means each Node has passed through `normalize(parse_tree: …)` — the
-   same stage at which `compile_ingest_staging` calls `module_graph_from_entries`
-   today. Callers are responsible for normalizing their source before
-   `batch_insert`; `compile_with_batch` does NOT re-normalize. After admission
-   the selected root Node is resolved via `resolve_with_graph` (cross-file
-   names resolved against the admitted module graph), then the resulting
-   `CoreNode` enters `validate_then_compile`. The stage contract is:
-   batch-in = post-normalize Node; compile-in = post-resolve CoreNode.
-   The batch is read by the compiler; callers write to it. No filesystem
-   I/O anywhere in the compile path.
-   `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
-   from 03_resolve.dag before the virtual loader can replace it.`
+1. **Virtual module-loader.** The name-admission stage (T-28-B) receives a
+   caller-supplied `ModuleBatch` (**post-normalize** `.dag` Nodes, identified by
+   their declared `QualifiedName`). "Post-normalize" means each Node has passed
+   through `normalize(parse_tree: …)`. Callers are responsible for normalizing
+   their source before `batch_insert`; `compile_with_batch` does NOT
+   re-normalize. Admission folds the batch into `QualifiedRoot` rows and calls
+   `module_graph_from_roots`; the selected root Node is then resolved through
+   `resolve_name_with_admission`, which uses `03_name_resolve.dag` to admit
+   cross-file names against the `ModuleGraph` before calling the single-tree
+   resolver's `resolve_with_namespace`. The stage contract is: batch-in =
+   post-normalize Node; compile-in = post-resolve CoreNode. The batch is read by
+   the compiler; callers write to it. No filesystem I/O anywhere in the compile
+   path.
+   `🟡 gate: dissolve-on T-8 — qualified_name_from_node must project declared
+   names from module-header nodes before the virtual loader can admit arbitrary
+   caller batches.`
 
 2. **ModuleBatch carrier.** An ordered-entry carrier in
    `src/v4/std/module_batch.dag`:
@@ -1625,31 +1630,31 @@ to define a new agent output surface.
   The `root` parameter is the sole root-selection authority: the caller names
   which batch node is the compilation entry point by `QualifiedName`.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_node` to build `FreeMonoid<ModuleEntry>`, then calls
-  `module_graph_from_entries` → `Holds { value: graph }` (fail-closed:
-  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
-  retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
-  `Holds { value: entry }` (fail-closed: `Violates` if absent, using
-  `module_graph_entry_not_found` as the diagnostic reason). `entry.root` is
-  the **post-normalize Node** admitted from the batch — it is then resolved:
-  `resolve_with_graph(tree: entry.root, lm: dag_language_model_wave1(), graph:
-  graph)` produces the `CoreNode` (post-resolve) that enters
-  `validate_then_compile`. Workers must not skip `resolve_with_graph`, not
-  substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
-  convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
-  boundary discipline: the `CoreNode` reaching `validate_then_compile` is
-  produced by a complete normalize → graph-admission → resolve chain, matching
-  the live `compile_ingest_staging` pipeline exactly.
-  `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
-  FreeMonoid<ModuleEntry> bridge and module_graph_from_entries call are
-  temporary scaffolding; once Change 2 lands, admission folds directly over
-  FreeMonoid<Node> via qualified_name_from_node without the ModuleEntry bridge.`
+  `qualified_name_from_node` to build `FreeMonoid<QualifiedRoot>`, then calls
+  `module_graph_from_roots` → `Holds { value: graph }` (fail-closed:
+  `Violates` on duplicate qualified names). On `Holds`, the root Node is
+  retrieved via `module_graph_root_for_name(graph: graph, name: root)` →
+  `Holds { value: selected }` (fail-closed: `Violates` if absent, using the
+  module-graph root-not-found diagnostic). `selected` is the **post-normalize
+  Node** admitted from the batch — it is then resolved through
+  `resolve_name_with_admission(lm: dag_language_model_wave1(), graph: graph,
+  admission: NameAdmission { subject: NameSubject { qualified_name: root, tree:
+  selected }, imports: ... })`, producing the post-resolve tree that enters
+  `validate_then_compile`. Workers must not skip name admission, substitute raw
+  `batch_lookup` on the unadmitted batch, use a first-entry convention, or add a
+  resolver-local graph fold. This satisfies INVARIANTS P2 boundary discipline:
+  the `CoreNode` reaching `validate_then_compile` is produced by a complete
+  normalize → graph-admission → name-admission/resolve chain, matching the live
+  staged pipeline intent.
+  `🟡 gate: dissolve-on T-8 / T-35 integration — once qualified-name projection
+  and import extraction are live, batch admission can fold directly from
+  FreeMonoid<Node> into QualifiedRoot rows without extra caller-supplied
+  identity.`
 
-  **Scope of T-35's change:** `batch.entries` (a `FreeMonoid<Node>`) replaces
-  the `entries: Empty` argument to `module_graph_from_entries` (currently in
-  `compile_ingest_staging`), with a `qualified_name_from_node` projection step
-  to build the `FreeMonoid<ModuleEntry>` the existing admission gate expects.
-  No other part of the ingest pipeline changes. `compile_with_batch` routes
+  **Scope of T-35's change:** `batch.entries` (a `FreeMonoid<Node>`) becomes
+  the source for `QualifiedRoot` graph-admission rows, with a
+  `qualified_name_from_node` projection step for each Node. No other part of the
+  ingest pipeline changes. `compile_with_batch` routes
   through `validate_then_compile` — the sole public compile terminal in
   `00_compile.dag` — passing `mode: TranslateTo { target: target }` (the
   `target: TargetModel` parameter wraps directly into `CompileMode`) with an
