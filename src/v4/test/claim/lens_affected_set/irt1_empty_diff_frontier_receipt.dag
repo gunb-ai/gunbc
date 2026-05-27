@@ -8,12 +8,17 @@ module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt
 
 import v4.lens.affected_set {
   ChangedSubgraphFrontier,
+  DoesNotPropagate,
+  EditDimension,
   ExclusionKey,
   FailClosed,
+  Propagates,
   Rerun,
   affected_set_boundary_pure_receipt_edge,
   affected_set_default_dimension,
+  affected_set_dimension_not_read_receipt_edge,
   affected_set,
+  canonical_propagation_receipt,
   empty_affected_fold_acc,
   empty_frontier,
   frontier_from_fold_acc
@@ -24,6 +29,7 @@ import v4.lens.affected_set_examples {
 }
 import v4.std.algebra { length }
 import v4.std.collection { empty_map, map_insert }
+import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
 import v4.std.node { Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode }
 import v4.std.verification {
@@ -81,6 +87,40 @@ data irt1_public_missing_path_symbol: Symbol = irt1_public_missing_path_symbol
 data irt1_public_missing_path_edit: Edit = Edit {
   at: Path { steps: [irt1_public_missing_path_symbol] },
   replacement: affected_set_claim_failure_node
+}
+
+data irt1_public_dimension_not_read_receipt_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+data irt1_public_receipted_usage_site: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: affected_set_dimension_not_read_receipt_edge },
+      target: irt1_public_dimension_not_read_receipt_node
+    }
+  ]
+}
+
+data irt1_public_nonfrontier_dependency_without_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: Contains,
+  usage_site: affected_set_claim_failure_node
+}
+
+data irt1_public_nonfrontier_dependency_with_receipt: DependencyView = DependencyView {
+  source: affected_set_example_node,
+  dependent: affected_set_claim_failure_node,
+  kind: Contains,
+  usage_site: irt1_public_receipted_usage_site
+}
+
+data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
+  edit: irt1_public_changed_edit,
+  dimension: affected_set_default_dimension
 }
 
 fn irt1_empty_diff_frontier_receipt_claim_holds() -> Bool {
@@ -163,6 +203,28 @@ fn irt1_public_affected_set_missing_path_fails_closed() -> Bool {
   }
 }
 
+fn irt1_public_nonfrontier_dependency_without_read_receipt_reruns() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_nonfrontier_dependency_without_receipt
+  ) {
+    Propagates => true
+    _ => false
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_read_receipt_excludes() -> Bool {
+  match canonical_propagation_receipt(
+    dag: affected_set_example_node,
+    edit_dimension: irt1_public_propagation_edit_dimension,
+    dependency: irt1_public_nonfrontier_dependency_with_receipt
+  ) {
+    DoesNotPropagate { proof: _ } => true
+    _ => false
+  }
+}
+
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
   if irt1_empty_diff_frontier_receipt_claim_holds() {
     affected_set_example_node
@@ -213,6 +275,22 @@ fn irt1_public_affected_set_nonroot_context_dependency_claim_rhs() -> Node {
 
 fn irt1_public_affected_set_missing_path_fail_closed_claim_rhs() -> Node {
   if irt1_public_affected_set_missing_path_fails_closed() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_without_read_receipt_claim_rhs() -> Node {
+  if irt1_public_nonfrontier_dependency_without_read_receipt_reruns() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_nonfrontier_dependency_with_read_receipt_claim_rhs() -> Node {
+  if irt1_public_nonfrontier_dependency_with_read_receipt_excludes() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
@@ -272,5 +350,21 @@ data claim_irt1_public_affected_set_missing_path_fail_closed: TestClaim = Equals
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: irt1_public_affected_set_missing_path_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonfrontier_dependency_without_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonfrontier_without_read_receipt: non-frontier dependency reruns without exclusion receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonfrontier_dependency_without_read_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonfrontier_dependency_with_read_receipt: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonfrontier_with_read_receipt: non-frontier dependency excludes only with receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonfrontier_dependency_with_read_receipt_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

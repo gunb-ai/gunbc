@@ -264,6 +264,7 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 
 data affected_set_default_dimension: Symbol = affected_set_default_dimension
 data affected_set_boundary_pure_receipt_edge: Symbol = affected_set_boundary_pure_receipt_edge
+data affected_set_dimension_not_read_receipt_edge: Symbol = affected_set_dimension_not_read_receipt_edge
 data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
 data affected_set_reason_boundary_purity_unproven: Symbol = affected_set_reason_boundary_purity_unproven
 data affected_set_reason_frontier_path_unresolved: Symbol = affected_set_reason_frontier_path_unresolved
@@ -1133,12 +1134,17 @@ fn canonical_propagation_receipt(
   if dependency_in_lens_frontier(dependency: dependency) {
     Propagates
   } else {
-    DoesNotPropagate {
-      proof: DimensionNotRead {
-        usage_site: dependency.usage_site,
-        changed_dimension: edit_dimension.dimension
+    match find_child_by_name(root: dependency.usage_site, name: affected_set_dimension_not_read_receipt_edge) {
+      Accepted { value: _, diagnostics: _ } =>
+        DoesNotPropagate {
+          proof: DimensionNotRead {
+            usage_site: dependency.usage_site,
+            changed_dimension: edit_dimension.dimension
+          }
+        }
+      Rejected { diagnostics: _ } =>
+        Propagates
       }
-    }
   }
 }
 
