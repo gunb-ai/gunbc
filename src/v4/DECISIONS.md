@@ -1,10 +1,17 @@
-# v4 Decisions
+# P1-KEYSTONE D2 Reversal Decision
 
 This file is a bounded decision record for the P1-KEYSTONE fact-bundle
 reseed. It is not a revived comment-ledger: inline model marks, gate
 slugs, dissolution classifications, and per-carrier receipts stay on the
 owning `.dag` declarations, in `src/v4/TASKS.md`, or in PR review as
 required by `docs/modeling-discipline.md`.
+
+Scope guard: only citations to `DECISIONS.md` for **D2-REV** or
+**"D2 REVERSAL + FACT-BUNDLE RESEED"** resolve to this file. Older
+citations to `DECISIONS.md` rows such as U1, B1, C1, L-1, L-3, L-4,
+T-23, Part 6, item I, or ledger ids are historical stale references
+unless another current document names their owning authority. They do
+not revive this file as a broad v4 decision ledger.
 
 ## D2 REVERSAL + FACT-BUNDLE RESEED - RATIFIED 2026-05-17
 
