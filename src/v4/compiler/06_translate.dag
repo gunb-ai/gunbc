@@ -529,7 +529,7 @@ fn grammar_relation_row_to_source_bounded(
             token_sequence_to_source_bounded(
               tokens: tokens,
               target: target,
-              remaining: remaining
+              remaining: remaining - 1
             )
           }
         )
@@ -557,7 +557,7 @@ fn target_serialize_relation_row_from_model_bounded(
               row: row,
               target: target,
               emitted: emitted,
-              remaining: remaining
+              remaining: remaining - 1
             )
           }
         )
@@ -766,7 +766,7 @@ fn token_sequence_to_source_bounded(
           match token_item_to_source_bounded(
             item: token_node,
             target: target,
-            remaining: remaining
+            remaining: remaining - 1
           ) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
@@ -803,11 +803,11 @@ fn target_serialize_source_from_model_bounded(
     bind_outcome(
       o: grammar_inverse_source_validated(target: target, emitted: emitted),
       f: fn(_) {
-        target_serialize_relation_row_from_model_bounded(
-          target: target,
-          emitted: emitted,
-          remaining: remaining
-        )
+          target_serialize_relation_row_from_model_bounded(
+            target: target,
+            emitted: emitted,
+            remaining: remaining - 1
+          )
       }
     )
   }
