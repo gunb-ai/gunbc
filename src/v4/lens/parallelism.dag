@@ -89,6 +89,8 @@ fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> P
   }
 }
 
+// 🟡 predicate dissolution — feature:T-13-parallelism-relation-unresolved.
+// dissolve-on: substrate projects ParallelismRelation resolved/unresolved from coproduct.
 fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
   match relation {
     UnknownCoupling => true

@@ -7,9 +7,9 @@
 
 module v4.lens.effect
 
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.algebra { bag_eq }
-import v4.std.collection { List }
+import v4.std.collection { Absent, List, Optional, Present }
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyView,
@@ -23,6 +23,7 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.logic { Bool }
+import v4.std.node { Node }
 import v4.std.witness { Holds, Violates, Witness }
 
 data effect_reason_unresolved_projection: Symbol = effect_reason_unresolved_projection
@@ -60,10 +61,30 @@ fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Effect
   }
 }
 
-// B3 / #3468: signature-deferred — every classified edge is unresolved until
-// `InferredFacts` decodes to a closed effect-kind carrier. Dissolve this helper
-// when decoding lands and route through `tree.facts.lookup(dependency.source)`.
-fn effect_fact_unresolved(_tree: InferredTree, fact: EffectFact) -> Bool {
+fn effect_source_facts(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(source)
+}
+
+fn effect_first_upstream_diagnostic(
+  tree: InferredTree,
+  fact: EffectFact
+) -> Optional<Diagnostic> {
+  fold(fact.dependencies, init: Absent, f: fn(acc, dep) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match effect_source_facts(tree: tree, source: dep.dependency.source) {
+          Violates { diagnostic: d } => Present { value: d }
+          Holds { value: _ } => Absent
+        }
+    }
+  })
+}
+
+// 🟡 predicate dissolution — feature:T-13-effect-signature-deferred-unresolved.
+// B3 / #3468: Holds on `tree.facts.lookup` still lacks closed effect-kind decoding.
+// dissolve-on: `InferredFacts` decodes to a closed effect-kind carrier (#3468).
+fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
   fold(fact.dependencies, init: false, f: fn(_acc, _) {
     true
   })
@@ -79,10 +100,15 @@ fn effect_witness_diagnostic() -> Diagnostic {
 
 fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
-  if effect_fact_unresolved(tree: tree, fact: fact) {
-    Violates { diagnostic: effect_witness_diagnostic() }
-  } else {
-    Holds { value: fact }
+  match effect_first_upstream_diagnostic(tree: tree, fact: fact) {
+    Present { value: d } =>
+      Violates { diagnostic: d }
+    Absent =>
+      if effect_signature_deferred_unresolved(fact: fact) {
+        Violates { diagnostic: effect_witness_diagnostic() }
+      } else {
+        Holds { value: fact }
+      }
   }
 }
 
