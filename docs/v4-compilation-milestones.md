@@ -173,11 +173,12 @@ M4/T-15. Reaching M3 is a necessary step toward that target, not the target itse
 **Known blockers (beyond M2):**
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
    present in src/v4 itself. Currently modeled; exercised at M2 only for trivial input.
-2. **T-8 resolve cross-file bindings (T-28 bridge).** `resolve_with_graph` passes the
-   `Catalog` to `namespace_from_tree_and_graph`, but that function has a `🟡` gate
-   and does not walk `Catalog.entries` — cross-file exports are never merged into the
-   namespace. Cross-file imports (which src/v4 has extensively) won't resolve until
-   `namespace_from_tree_and_graph` is filled.
+2. **T-8 resolve cross-file bindings (T-28 bridge).** The live boundary is
+   `compiler/03_name_resolve.dag`: `resolve_with_admission(lm, catalog, admission)`
+   calls `namespace_for_subject`, which admits visible imports from the `Catalog`
+   before delegating to `resolve_with_namespace`. M3 still needs this admission
+   path wired into the full loader/self-compile path for arbitrary user-module
+   graph walking.
 3. **Full lex/grammar data for .dag language.** dag.dag already has wave-1 lex/grammar
    data. It needs to be complete enough to parse all of src/v4's constructs.
 
@@ -275,11 +276,14 @@ not for the compiled binary to execute its pipeline. The two tracks are genuinel
 independent at M2.
 
 **Gap 3 — T-28 cross-file resolution**
-`resolve_with_graph` passes the `Catalog` through to `namespace_from_tree_and_graph`,
-but that function has a `🟡` gate (`03_resolve.dag:564-570`) and does not walk
-`Catalog.entries` — cross-file exports are never merged into the namespace. Cross-file
-imports (which every v4 file uses) won't resolve correctly until `namespace_from_tree_and_graph`
-is filled. M3 requires this for arbitrary user-module graph walking. M2 also requires T-28: the trivial fixture's `import v4.std.node { Symbol }` is a cross-file import — std library name lookup exercises `namespace_from_tree_and_graph` — consistent with the Required work list at line 146.
+The live cross-file boundary is `compiler/03_name_resolve.dag`:
+`resolve_with_admission(lm, catalog, admission)` calls `namespace_for_subject`,
+admits the subject's visible imports from `Catalog`, and then delegates to
+`resolve_with_namespace`. M3 requires this admission path to be wired through
+the full loader/self-compile path for arbitrary user-module graph walking. M2
+also requires T-28: the trivial fixture's `import v4.std.node { Symbol }` is a
+cross-file import, so std library name lookup exercises catalog admission before
+single-tree resolution.
 
 **Gap 4 — T-10 emit scope vs. translate**
 `06_translate.dag` is 707 lines and more developed. `05_emit.dag` is 45 lines. Is
