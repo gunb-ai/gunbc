@@ -848,7 +848,7 @@ fn ts_bool_algebra_witness_node() -> Node {
 }
 
 fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = ts_number_facts_node(facts: facts)
+  let inhabitant = ts_number_inhabitant_node(id: ts_inhabitant_number, facts: facts)
   AlgebraInhabitanceDecl {
     algebra: approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
@@ -857,7 +857,7 @@ fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> AlgebraInhabi
 }
 
 fn ts_bigint_algebra_inhabitance(facts: TsBigIntPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = ts_bigint_facts_node(facts: facts)
+  let inhabitant = ts_bigint_inhabitant_node(id: ts_inhabitant_bigint, facts: facts)
   AlgebraInhabitanceDecl {
     algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
