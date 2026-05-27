@@ -24,9 +24,19 @@ import v4.compiler.tokenize {
 }
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  approximate_field_node,
+  boolean_algebra_node,
+  Empty,
+  fold_list,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node
+}
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
@@ -247,6 +257,9 @@ data cpp_mvp1_source_literal: Symbol = cpp_mvp1_source_literal
 data cpp_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data cpp_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
+
+data cpp_witness_ordered_ring_integer: Symbol = cpp_witness_ordered_ring_integer
+data cpp_witness_bool_boolean_algebra: Symbol = cpp_witness_bool_boolean_algebra
 
 fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
   [
@@ -765,10 +778,80 @@ fn cpp_wave1_primitive_fact_bundles(
   )
 }
 
+fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: cpp_witness_ordered_ring_integer, target: cpp_atom(id: cpp_witness_ordered_ring_integer)),
+      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ]
+  }
+}
+
+fn cpp_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = cpp_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: cpp_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: cpp_witness_bool_boolean_algebra, target: cpp_atom(id: cpp_witness_bool_boolean_algebra)),
+      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
+    ]
+  }
+}
+
+fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = cpp_bool_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: cpp_bool_algebra_witness_node(facts: facts)
+  }
+}
+
+fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: cpp_integer_facts_catalog(target_profile: target_profile),
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: cpp_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn cpp_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: cpp_bool_facts_catalog(),
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: cpp_bool_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn cpp_model_core_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: cpp_integer_algebra_inhabitance_decls(target_profile: target_profile),
+    right: cpp_bool_algebra_inhabitance_decls()
+  )
+}
+
 fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
   ModelCore {
     primitives: cpp_wave1_primitive_fact_bundles(target_profile: target_profile),
-    inhabitance: [],
+    inhabitance: cpp_model_core_inhabitance_decls(target_profile: target_profile),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
