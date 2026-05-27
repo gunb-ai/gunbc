@@ -2,7 +2,7 @@
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* / java_wave2_* grammar/lex, java_language_model_wave2.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 method-add + wave-2 lex/grammar (compilation unit, class/method/field, block, return/local-var, additive/multiplicative expressions). JLS §4.2 primitives in `primitive_type` (excludes `void`); `void` only in `result` production (JLS §8.4) for method return types. canonical_symbols projects via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.4 MethodDeclarator/FormalParameterList, §14.17 optional return Expression). canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -250,6 +250,7 @@ data java_production_primitive_type: Symbol = java_production_primitive_type
 data java_production_result: Symbol = java_production_result
 data java_production_type: Symbol = java_production_type
 data java_production_formal_parameter_list: Symbol = java_production_formal_parameter_list
+data java_production_method_declarator: Symbol = java_production_method_declarator
 data java_production_block: Symbol = java_production_block
 data java_production_block_statement: Symbol = java_production_block_statement
 data java_production_statement: Symbol = java_production_statement
@@ -271,6 +272,7 @@ data java_surface_primitive_type: Symbol = java_surface_primitive_type
 data java_surface_result: Symbol = java_surface_result
 data java_surface_type: Symbol = java_surface_type
 data java_surface_formal_parameter_list: Symbol = java_surface_formal_parameter_list
+data java_surface_method_declarator: Symbol = java_surface_method_declarator
 data java_surface_block: Symbol = java_surface_block
 data java_surface_block_statement: Symbol = java_surface_block_statement
 data java_surface_statement: Symbol = java_surface_statement
@@ -1097,14 +1099,23 @@ fn java_grammar_formal_parameter_expr() -> GrammarExpr {
   )
 }
 
+// JLS §8.4.1 FormalParameterList — comma-separated parameters only (no parentheses).
 fn java_grammar_formal_parameter_list_expr() -> GrammarExpr {
+  java_grammar_optional(
+    element: java_grammar_comma_list_expr(item: java_grammar_formal_parameter_expr())
+  )
+}
+
+// JLS §8.4 MethodDeclarator — Identifier ( FormalParameterList ).
+fn java_grammar_method_declarator_expr() -> GrammarExpr {
   java_grammar_sequence(
-    left: java_grammar_terminal(token_class: java_token_lparen),
+    left: java_grammar_terminal(token_class: java_token_ident),
     right: java_grammar_sequence(
-      left: java_grammar_optional(
-        element: java_grammar_comma_list_expr(item: java_grammar_formal_parameter_expr())
-      ),
-      right: java_grammar_terminal(token_class: java_token_rparen)
+      left: java_grammar_terminal(token_class: java_token_lparen),
+      right: java_grammar_sequence(
+        left: java_grammar_nonterminal(production: java_production_formal_parameter_list),
+        right: java_grammar_terminal(token_class: java_token_rparen)
+      )
     )
   )
 }
@@ -1144,11 +1155,14 @@ fn java_grammar_expression_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: java_production_additive_expression)
 }
 
+// JLS §14.17 ReturnStatement — return [Expression] ;
 fn java_grammar_return_statement_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: java_token_kw_return),
     right: java_grammar_sequence(
-      left: java_grammar_nonterminal(production: java_production_additive_expression),
+      left: java_grammar_optional(
+        element: java_grammar_nonterminal(production: java_production_expression)
+      ),
       right: java_grammar_terminal(token_class: java_token_semicolon)
     )
   )
@@ -1191,11 +1205,8 @@ fn java_grammar_method_declaration_expr() -> GrammarExpr {
     right: java_grammar_sequence(
       left: java_grammar_nonterminal(production: java_production_result),
       right: java_grammar_sequence(
-        left: java_grammar_terminal(token_class: java_token_ident),
-        right: java_grammar_sequence(
-          left: java_grammar_nonterminal(production: java_production_formal_parameter_list),
-          right: java_grammar_nonterminal(production: java_production_block)
-        )
+        left: java_grammar_nonterminal(production: java_production_method_declarator),
+        right: java_grammar_nonterminal(production: java_production_block)
       )
     )
   )
@@ -1303,6 +1314,11 @@ fn java_wave2_grammar_root() -> GrammarRoot {
     expression: java_grammar_formal_parameter_list_expr(),
     emitted: java_surface_formal_parameter_list
   )
+  let method_declarator = java_grammar_production(
+    name: java_production_method_declarator,
+    expression: java_grammar_method_declarator_expr(),
+    emitted: java_surface_method_declarator
+  )
   let block = java_grammar_production(
     name: java_production_block,
     expression: java_grammar_block_expr(),
@@ -1362,6 +1378,7 @@ fn java_wave2_grammar_root() -> GrammarRoot {
       result,
       type,
       formal_parameter_list,
+      method_declarator,
       block,
       block_statement,
       statement,
