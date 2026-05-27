@@ -71,6 +71,7 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
+// 🟡 gated — coproduct dissolution — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v4.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate coproduct as the permanent lens representation.
 type CompileLens
   = FactDensityCompileLens
   | StaticCompileLens { outcome: Outcome<Witness<Node>> }
