@@ -1,7 +1,7 @@
-// src/v4/compiler/03_module_resolve.dag
+// src/v4/compiler/03_name_resolve.dag
 //
 // Scope: Stage 3c — ModuleGraph admission for cross-file resolution.
-// Owns: ModuleSubject; ModuleAdmission; module_namespace_for_subject; resolve_module_with_admission.
+// Owns: ResolutionSubject; Admission; namespace_for_subject; resolve_with_admission.
 // Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
 //           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
 //           std/diagnostic.dag, std/module_graph.dag, std/node.dag,
@@ -9,7 +9,7 @@
 // Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
-module v4.compiler.module_resolve
+module v4.compiler.name_resolve
 
 
 import v4.compiler.normalize { NormalizedTree }
@@ -50,43 +50,43 @@ import v4.std.witness { Holds, Violates }
 
 
 // 🟢 coproduct dissolution — T-28-B admission visibility is a closed alternative: a declared import is either admitted into the subject namespace or rejected as hidden; no third visibility state is modeled.
-type ModuleImportVisibility
-  = ModuleImportVisible
-  | ModuleImportHidden
+type ImportVisibility
+  = ImportVisible
+  | ImportHidden
 
 
-type ModuleImport {
+type Import {
   target: QualifiedName
-  visibility: ModuleImportVisibility
+  visibility: ImportVisibility
 }
 
 
-type ModuleSubject {
-  path: QualifiedName
+type ResolutionSubject {
+  name: QualifiedName
   tree: NormalizedTree
 }
 
 
-type ModuleAdmission {
-  subject: ModuleSubject
-  imports: FreeMonoid<ModuleImport>
+type Admission {
+  subject: ResolutionSubject
+  imports: FreeMonoid<Import>
 }
 
 
-// 🟡 gated — feature:T-28-B-module-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
-type ModuleAdmissionState
-  = ModuleAdmissionAccepted {
+// 🟡 gated — feature:T-28-B-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
+type AdmissionState
+  = AdmissionAccepted {
       bindings: Map<Symbol, Symbol>,
       origins: Map<Symbol, QualifiedName>
     }
-  | ModuleAdmissionRejected { diagnostic: Diagnostic }
+  | AdmissionRejected { diagnostic: Diagnostic }
 
 
-data module_resolve_import_not_visible: Symbol = module_resolve_import_not_visible
-data module_resolve_ambiguous_export: Symbol = module_resolve_ambiguous_export
+data resolve_import_not_visible: Symbol = resolve_import_not_visible
+data resolve_ambiguous_export: Symbol = resolve_ambiguous_export
 
 
-fn module_resolve_diagnostic(reason: Symbol) -> Diagnostic {
+fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
     at: port_locus(port: reason),
@@ -95,8 +95,8 @@ fn module_resolve_diagnostic(reason: Symbol) -> Diagnostic {
 }
 
 
-fn module_admission_initial(base: Namespace) -> ModuleAdmissionState {
-  ModuleAdmissionAccepted {
+fn admission_initial(base: Namespace) -> AdmissionState {
+  AdmissionAccepted {
     bindings: base.bindings,
     origins: empty_map()
   }
@@ -106,19 +106,19 @@ fn module_admission_initial(base: Namespace) -> ModuleAdmissionState {
 fn admit_export_symbol(
   sym: Symbol,
   origin: QualifiedName,
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
+  state: AdmissionState
+) -> AdmissionState {
   match state {
-    ModuleAdmissionRejected { diagnostic: d } =>
-      ModuleAdmissionRejected { diagnostic: d }
-    ModuleAdmissionAccepted { bindings: b, origins: os } =>
+    AdmissionRejected { diagnostic: d } =>
+      AdmissionRejected { diagnostic: d }
+    AdmissionAccepted { bindings: b, origins: os } =>
       match map_get(os, sym) {
         Some { value: _ } =>
-          ModuleAdmissionRejected {
-            diagnostic: module_resolve_diagnostic(reason: module_resolve_ambiguous_export)
+          AdmissionRejected {
+            diagnostic: resolve_diagnostic(reason: resolve_ambiguous_export)
           }
         None =>
-          ModuleAdmissionAccepted {
+          AdmissionAccepted {
             bindings: map_insert(m: b, key: sym, value: sym),
             origins: map_insert(m: os, key: sym, value: origin)
           }
@@ -130,8 +130,8 @@ fn admit_export_symbol(
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
+  state: AdmissionState
+) -> AdmissionState {
   match try_edge_declared_binding(e: edge) {
     Some { value: b } =>
       admit_export_symbol(sym: b.name, origin: origin, state: state)
@@ -140,11 +140,11 @@ fn admit_named_export_edge(
 }
 
 
-fn admit_module_named_exports(
+fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
+  state: AdmissionState
+) -> AdmissionState {
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: state, f: fn(acc, e) {
@@ -157,28 +157,28 @@ fn admit_module_named_exports(
 
 fn admit_import_entry(
   graph: ModuleGraph,
-  import_edge: ModuleImport,
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
+  import_edge: Import,
+  state: AdmissionState
+) -> AdmissionState {
   match state {
-    ModuleAdmissionRejected { diagnostic: d } =>
-      ModuleAdmissionRejected { diagnostic: d }
-    ModuleAdmissionAccepted { bindings: _, origins: _ } =>
+    AdmissionRejected { diagnostic: d } =>
+      AdmissionRejected { diagnostic: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
       match import_edge.visibility {
-        ModuleImportHidden =>
-          ModuleAdmissionRejected {
-            diagnostic: module_resolve_diagnostic(reason: module_resolve_import_not_visible)
+        ImportHidden =>
+          AdmissionRejected {
+            diagnostic: resolve_diagnostic(reason: resolve_import_not_visible)
           }
-        ModuleImportVisible =>
+        ImportVisible =>
           match module_graph_entry_for_path(graph: graph, path: import_edge.target) {
             Holds { value: entry } =>
-              admit_module_named_exports(
+              admit_named_exports(
                 root: entry.root,
                 origin: import_edge.target,
                 state: state
               )
             Violates { diagnostic: d } =>
-              ModuleAdmissionRejected { diagnostic: d }
+              AdmissionRejected { diagnostic: d }
           }
       }
   }
@@ -187,10 +187,10 @@ fn admit_import_entry(
 
 fn admit_imports(
   graph: ModuleGraph,
-  imports: FreeMonoid<ModuleImport>,
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
-  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleimport — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleImport>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+  imports: FreeMonoid<Import>,
+  state: AdmissionState
+) -> AdmissionState {
+  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-import — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<Import>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
   match imports {
     Empty => state
     Cons { head: import_edge, tail: rest } =>
@@ -207,22 +207,22 @@ fn admit_imports(
 }
 
 
-fn module_namespace_for_subject(
+fn namespace_for_subject(
   lm: DagLanguageModel,
   graph: ModuleGraph,
-  admission: ModuleAdmission
+  admission: Admission
 ) -> Outcome<Namespace> {
   let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
   match admit_imports(
     graph: graph,
     imports: admission.imports,
-    state: admit_module_named_exports(
+    state: admit_named_exports(
       root: admission.subject.tree,
-      origin: admission.subject.path,
-      state: module_admission_initial(base: base)
+      origin: admission.subject.name,
+      state: admission_initial(base: base)
     )
   ) {
-    ModuleAdmissionAccepted { bindings: b, origins: _ } =>
+    AdmissionAccepted { bindings: b, origins: _ } =>
       Accepted {
         value: Namespace {
           bindings: b,
@@ -230,18 +230,18 @@ fn module_namespace_for_subject(
         },
         diagnostics: None
       }
-    ModuleAdmissionRejected { diagnostic: d } =>
+    AdmissionRejected { diagnostic: d } =>
       Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
 
-fn resolve_module_with_admission(
+fn resolve_with_admission(
   lm: DagLanguageModel,
   graph: ModuleGraph,
-  admission: ModuleAdmission
+  admission: Admission
 ) -> Outcome<ResolvedTree> {
-  match module_namespace_for_subject(
+  match namespace_for_subject(
     lm: lm,
     graph: graph,
     admission: admission

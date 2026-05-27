@@ -345,7 +345,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
           bind_outcome(
             o: normalize(parse_tree: parse_tree),
             f: fn(normalized) {
-              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must call compiler/03_module_resolve.dag for cross-file admission.
+              // 🟡 gate: T-8 parse fidelity maps all identifiers to dag_token_ident — namespace lookup is vacuously satisfied. Dissolve-on: T-8 lands per-identifier hashing; at that point the static registry (Option A) or recursive loader (Option B) must call compiler/03_name_resolve.dag for cross-file admission.
               bind_outcome(
                 o: resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
