@@ -86,6 +86,7 @@ import v4.std.algebra {
   BooleanAlgebra,
   approximate_field_node,
   boolean_algebra_node,
+  Empty,
   fold_list,
   list_append,
   list_snoc_item,
@@ -1190,19 +1191,16 @@ fn rust_mvp1_positional_edges_from_token_classes() -> List<Edge> {
 }
 
 fn rust_mvp1_serialize_source_prefix_edges() -> List<Edge> {
-  Cons {
-    head: rust_named_edge(
+  [
+    rust_named_edge(
       name: rust_mvp1_source_text_field,
       target: rust_inhabitant_atom(id: rust_mvp1_source_literal)
     ),
-    tail: Cons {
-      head: rust_named_edge(
-        name: rust_mvp1_source_grammar_field,
-        target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
-      ),
-      tail: Empty
-    }
-  }
+    rust_named_edge(
+      name: rust_mvp1_source_grammar_field,
+      target: rust_inhabitant_atom(id: rust_production_mvp1_fn_add)
+    )
+  ]
 }
 
 fn rust_mvp1_serialize_source_children() -> List<Edge> {
