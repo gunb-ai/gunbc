@@ -416,6 +416,11 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
 }
 
 
+// 🟡 module-header path bridge: feature:T-35-agent-entry-path-bridge.
+// Owner/lane: T-7 parse tree construction + T-8 normalize/module admission.
+// Dissolve-on: parse/normalize preserves the source module header as a typed
+// ModulePath; then this function validates that header against AgentStore.entry
+// or constructs ModuleEntry from the parsed header and drops the bridge path.
 fn agent_module_source_to_entry(
   module_source: AgentModuleSource,
   path: ModulePath,
