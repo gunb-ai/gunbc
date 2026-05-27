@@ -13,7 +13,7 @@ import v4.std.collection {
   List,
   Optional,
   optional_absent,
-  optional_is_present,
+  optional_prefer_first_present,
   optional_present,
   optional_present_witness
 }
@@ -77,14 +77,13 @@ fn effect_first_upstream_diagnostic(
   fact: EffectFact
 ) -> Optional<Diagnostic> {
   fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
-    if optional_is_present(opt: acc) {
-      acc
-    } else {
-      match effect_usage_facts_witness(tree: tree, source: dep.dependency.source) {
+    optional_prefer_first_present(
+      left: acc,
+      right: match effect_usage_facts_witness(tree: tree, source: dep.dependency.source) {
         Violates { diagnostic: d } => optional_present(value: d)
         Holds { value: _ } => optional_absent()
       }
-    }
+    )
   })
 }
 
@@ -104,17 +103,15 @@ fn effect_witness_diagnostic() -> Diagnostic {
 fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
   let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
-  if optional_is_present(opt: upstream) {
-    match optional_present_witness(opt: upstream) {
-      Holds { value: d } =>
-        Violates { diagnostic: d }
-      Violates { diagnostic: d } =>
-        Violates { diagnostic: d }
-    }
-  } else if effect_signature_deferred_unresolved(fact: fact) {
-    Violates { diagnostic: effect_witness_diagnostic() }
-  } else {
-    Holds { value: fact }
+  match optional_present_witness(opt: upstream) {
+    Holds { value: d } =>
+      Violates { diagnostic: d }
+    Violates { diagnostic: _ } =>
+      if effect_signature_deferred_unresolved(fact: fact) {
+        Violates { diagnostic: effect_witness_diagnostic() }
+      } else {
+        Holds { value: fact }
+      }
   }
 }
 

@@ -1,6 +1,6 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: Optional, optional_absent, optional_present, optional_is_present, optional_present_witness, List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
+// Owns: Optional, optional_absent, optional_present, optional_prefer_first_present, optional_present_witness, List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
 // Consumes: std/algebra.dag; std/witness.dag; std/diagnostic.dag; std/node.dag.
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
@@ -28,11 +28,10 @@ fn optional_absent<T>() -> Optional<T> {
 fn optional_present<T>(value: T) -> Optional<T> {
   Present { value: value }
 }
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:optional-is-present — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived Present-variant discriminant on Optional<T>; forbidden: parallel ad-hoc Optional<T> Bool predicates outside collection.dag.
-fn optional_is_present<T>(opt: Optional<T>) -> Bool {
-  match opt {
-    Present { value: _ } => true
-    Absent => false
+fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Optional<T> {
+  match left {
+    Present { value: _ } => left
+    Absent => right
   }
 }
 data optional_absent_unwrap: Symbol = optional_absent_unwrap
