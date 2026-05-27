@@ -51,6 +51,7 @@ fn fmn_bool_atom(b: Bool) -> Node {
   }
 }
 
+// TODO(T-22): test-local scaffolding — see from_node.dag qn_outcome_accepted for the canonical TODO.
 fn fmn_outcome_accepted(out: Outcome<QualifiedName>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true

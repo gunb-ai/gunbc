@@ -43,6 +43,9 @@ fn qn_bool_atom(b: Bool) -> Node {
   }
 }
 
+// TODO(T-22): qn_outcome_accepted is test-local scaffolding — Outcome<T> cannot be compared
+// directly in EqualsClaim today. A canonical accepted/rejected claim form for Outcome should
+// live in std/verification.dag (or a dedicated test helper) so this pattern doesn't proliferate.
 fn qn_outcome_accepted(out: Outcome<QualifiedName>) -> Bool {
   match out {
     Accepted { value: _, diagnostics: _ } => true
