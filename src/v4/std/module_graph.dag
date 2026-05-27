@@ -1,7 +1,7 @@
 // src/v4/std/module_graph.dag
 // Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
-// Owns: ModuleGraph, AncestorRelation; ancestor-prefix Witness; root lookup.
-// Consumes: std/collection.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
+// Owns: ModuleGraph, AncestorRelation; ancestor-prefix Witness; root lookup; validated graph constructor.
+// Consumes: std/algebra.dag, std/collection.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
@@ -9,7 +9,8 @@
 module v4.std.module_graph
 
 
-import v4.std.collection { Map }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
+import v4.std.collection { Map, empty_map, map_insert }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -25,6 +26,13 @@ import v4.std.qualified_name {
 import v4.std.witness { Holds, Violates, Witness }
 
 
+type QualifiedRoot {
+  name: QualifiedName
+  root: Node
+}
+
+
+// 🟡 feature:T-28-carrier-level-uniqueness — Map<QualifiedName, Node> cannot represent duplicate roots after construction; module_graph_from_roots is the canonical construction path that rejects duplicate source roots before map insertion — dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_roots as the sole construction path.
 type ModuleGraph {
   roots: Map<QualifiedName, Node>
 }
@@ -39,6 +47,7 @@ type AncestorRelation {
 
 data module_graph_ancestor_not_prefix: Symbol = module_graph_ancestor_not_prefix
 data module_graph_root_not_found: Symbol = module_graph_root_not_found
+data module_graph_duplicate_root: Symbol = module_graph_duplicate_root
 
 
 fn module_ancestor_not_prefix_diagnostic() -> Diagnostic {
@@ -54,6 +63,15 @@ fn module_root_not_found_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: module_graph_root_not_found,
     at: port_locus(port: module_graph_root_not_found),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn module_graph_duplicate_root_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: module_graph_duplicate_root,
+    at: port_locus(port: module_graph_duplicate_root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
@@ -77,6 +95,53 @@ fn module_ancestor_witness(
     }
   } else {
     Violates { diagnostic: module_ancestor_not_prefix_diagnostic() }
+  }
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+type ModuleGraphBuildState
+  = ModuleGraphBuildValid { roots: Map<QualifiedName, Node> }
+  | ModuleGraphBuildDuplicate
+
+
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-qualifiedroot — hand-rolls Empty/Cons accumulation over FreeMonoid<QualifiedRoot>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+fn module_graph_build_fold(
+  roots: FreeMonoid<QualifiedRoot>,
+  acc: ModuleGraphBuildState
+) -> ModuleGraphBuildState {
+  match roots {
+    Empty => acc
+    Cons { head: row, tail: rest } =>
+      match acc {
+        ModuleGraphBuildDuplicate =>
+          module_graph_build_fold(roots: rest, acc: ModuleGraphBuildDuplicate)
+        ModuleGraphBuildValid { roots: prior } =>
+          module_graph_build_fold(
+            roots: rest,
+            acc: match map_get(prior, row.name) {
+              Some { value: _ } => ModuleGraphBuildDuplicate
+              None => ModuleGraphBuildValid {
+                roots: map_insert(m: prior, key: row.name, value: row.root)
+              }
+            }
+          )
+      }
+  }
+}
+
+
+fn module_graph_from_roots(
+  roots: FreeMonoid<QualifiedRoot>
+) -> Witness<ModuleGraph> {
+  match module_graph_build_fold(
+    roots: roots,
+    acc: ModuleGraphBuildValid { roots: empty_map() }
+  ) {
+    ModuleGraphBuildValid { roots: admitted } =>
+      Holds { value: ModuleGraph { roots: admitted } }
+    ModuleGraphBuildDuplicate =>
+      Violates { diagnostic: module_graph_duplicate_root_diagnostic() }
   }
 }
 
