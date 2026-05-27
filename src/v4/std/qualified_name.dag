@@ -135,7 +135,14 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
                     match edge.label {
                       Named { name: ename } =>
                         if ename == fold_list_node_head {
-                          outcome_accepted(value: child_qn)
+                          match acc_qn {
+                            Empty => outcome_accepted(value: child_qn)
+                            _ => outcome_rejected(Diagnostic {
+                              reason: qualified_name_structure_invalid,
+                              at: node_locus(node: edge.target),
+                              correction: Unavailable { reason: ExternalContractUnknown }
+                            })
+                          }
                         } else if ename == fold_list_node_tail {
                           match acc_qn {
                             Empty => outcome_rejected(Diagnostic {
