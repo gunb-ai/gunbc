@@ -10,6 +10,7 @@ import v4.compiler.compile {
   CompileLens,
   CompileLensEnforce,
   CompileLensIntrospect,
+  StaticCompileLens,
   apply_compile_lens,
   compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic
@@ -58,8 +59,10 @@ fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>>
   )
 }
 
-data apply_lens_mode_rejecting_lens: CompileLens = CompileLens {
-  gate: apply_lens_mode_rejecting_gate
+data apply_lens_mode_rejecting_lens: CompileLens = StaticCompileLens {
+  outcome: outcome_rejected(
+    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: apply_lens_mode_gate_at })
+  )
 }
 
 fn apply_lens_mode_gate_rejects_enforce() -> Bool {

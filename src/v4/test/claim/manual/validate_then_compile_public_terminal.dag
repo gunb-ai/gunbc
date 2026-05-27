@@ -16,6 +16,7 @@ import v4.compiler.compile {
   CompileMode,
   CompileLens,
   CompileOutput,
+  StaticCompileLens,
   TranslateResult,
   TranslateTo,
   Validated,
@@ -83,8 +84,12 @@ fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
 }
 
 
-data rejecting_lens: CompileLens = CompileLens {
-  gate: always_reject_lens_gate
+data rejecting_lens: CompileLens = StaticCompileLens {
+  outcome: outcome_rejected(
+    compile_lens_gate_rejected_diagnostic(
+      at: port_locus(port: rejecting_lens_gate_at)
+    )
+  )
 }
 
 
@@ -93,8 +98,8 @@ fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
 }
 
 
-data grounding_sanity_lens: CompileLens = CompileLens {
-  gate: grounding_sanity_gate
+data grounding_sanity_lens: CompileLens = StaticCompileLens {
+  outcome: outcome_accepted(Holds { value: claim_symbol_node(s: claim_validate_then_compile_module) })
 }
 
 
@@ -194,4 +199,3 @@ fn claim_rejecting_lens_blocks_passes() -> Node {
     }
   }
 }
-
