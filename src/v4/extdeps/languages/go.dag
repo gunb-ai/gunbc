@@ -1064,12 +1064,12 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside go_mvp1_concrete_tokens.
-type GoGrammarTokenSequence {
+type GoGrammarSequenceBuild {
   head: GoConcreteSyntaxToken
   tail: List<GoConcreteSyntaxToken>
 }
 
-fn go_grammar_sequence_from_tokens(tokens: GoGrammarTokenSequence) -> GrammarExpr {
+fn go_grammar_sequence_from_tokens(tokens: GoGrammarSequenceBuild) -> GrammarExpr {
   let terminal = go_grammar_terminal(token_class: go_concrete_token_class(token: tokens.head))
   fold_list(
     xs: tokens.tail,
@@ -1083,8 +1083,8 @@ fn go_grammar_sequence_from_tokens(tokens: GoGrammarTokenSequence) -> GrammarExp
   )
 }
 
-fn go_mvp1_grammar_tokens() -> GoGrammarTokenSequence {
-  GoGrammarTokenSequence {
+fn go_mvp1_grammar_tokens() -> GoGrammarSequenceBuild {
+  GoGrammarSequenceBuild {
     head: GoFixedToken { token_class: go_token_kw_func },
     tail: [
       GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },

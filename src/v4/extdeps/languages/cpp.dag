@@ -888,12 +888,12 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside cpp_mvp1_concrete_tokens.
-type CppGrammarTokenSequence {
+type CppGrammarSequenceBuild {
   head: CppConcreteSyntaxToken
   tail: List<CppConcreteSyntaxToken>
 }
 
-fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarTokenSequence) -> GrammarExpr {
+fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarSequenceBuild) -> GrammarExpr {
   let terminal = cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: tokens.head))
   fold_list(
     xs: tokens.tail,
@@ -907,8 +907,8 @@ fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarTokenSequence) -> GrammarE
   )
 }
 
-fn cpp_mvp1_grammar_tokens() -> CppGrammarTokenSequence {
-  CppGrammarTokenSequence {
+fn cpp_mvp1_grammar_tokens() -> CppGrammarSequenceBuild {
+  CppGrammarSequenceBuild {
     head: CppFixedToken { token_class: cpp_token_ty_int },
     tail: [
       CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },

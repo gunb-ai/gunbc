@@ -465,6 +465,31 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
+type TsGrammarSequenceBuild
+  = TsGrammarSequenceEmpty
+  | TsGrammarSequenceBuilt { expression: GrammarExpr }
+
+fn ts_grammar_sequence_append(acc: TsGrammarSequenceBuild, token: TsConcreteSyntaxToken) -> TsGrammarSequenceBuild {
+  let terminal = ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
+  match acc {
+    TsGrammarSequenceEmpty => TsGrammarSequenceBuilt { expression: terminal }
+    TsGrammarSequenceBuilt { expression: expression } =>
+      TsGrammarSequenceBuilt {
+        expression: Sequence { left: expression, right: terminal }
+      }
+  }
+}
+
+fn ts_grammar_sequence_from_tokens_legacy(tokens: List<TsConcreteSyntaxToken>) -> TsGrammarSequenceBuild {
+  fold_list(
+    xs: tokens,
+    empty: TsGrammarSequenceEmpty,
+    cons: fn(acc, token) {
+      ts_grammar_sequence_append(acc: acc, token: token)
+    }
+  )
+}
+
 type TsGrammarTokenSequence {
   head: TsConcreteSyntaxToken
   tail: List<TsConcreteSyntaxToken>
