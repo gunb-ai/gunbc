@@ -9,7 +9,6 @@ module v4.test.claim.lens_application.rejecting_lens_blocks_before_compile
 import v4.compiler.compile {
   CompileOutput,
   CompileLens,
-  StaticCompileLens,
   TranslateTo,
   Validated,
   compile_lens_gate_rejected,
@@ -56,11 +55,7 @@ fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data rejecting_lens: CompileLens = StaticCompileLens {
-  outcome: outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: rejecting_lens_gate_at })
-  )
-}
+data rejecting_lens: CompileLens = CompileLens { gate: rejecting_lens_gate }
 
 fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
   match validate_then_compile(

@@ -6,7 +6,7 @@
 
 module v4.test.claim.lens_application.introspect_clean_tree_passes
 
-import v4.compiler.compile { CompileLens, CompileLensIntrospect, StaticCompileLens, apply_compile_lens }
+import v4.compiler.compile { CompileLens, CompileLensIntrospect, apply_compile_lens }
 import v4.compiler.infer { InferredTree }
 import v4.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v4.std.logic { Bool }
@@ -48,9 +48,7 @@ fn introspect_passing_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   Accepted { value: Holds { value: introspect_root }, diagnostics: None }
 }
 
-data introspect_passing_lens: CompileLens = StaticCompileLens {
-  outcome: Accepted { value: Holds { value: introspect_root }, diagnostics: None }
-}
+data introspect_passing_lens: CompileLens = CompileLens { gate: introspect_passing_gate }
 
 fn introspect_clean_tree_passes_claim_holds() -> Bool {
   match apply_compile_lens(lens: introspect_passing_lens, inferred: introspect_tree(), mode: CompileLensIntrospect) {

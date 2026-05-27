@@ -9,7 +9,6 @@ module v4.test.claim.lens_application.enforce_rejecting_gate_fires
 import v4.compiler.compile {
   CompileLens,
   CompileLensEnforce,
-  StaticCompileLens,
   apply_compile_lens,
   compile_lens_gate_rejected,
   compile_lens_gate_rejected_diagnostic
@@ -58,11 +57,7 @@ fn enforce_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data enforce_rejecting_lens: CompileLens = StaticCompileLens {
-  outcome: outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: PortLocus { port: enforce_reject_gate_at })
-  )
-}
+data enforce_rejecting_lens: CompileLens = CompileLens { gate: enforce_rejecting_gate }
 
 fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
   match apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: CompileLensEnforce) {
