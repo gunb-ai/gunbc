@@ -96,15 +96,20 @@ type SwiftFloatWidth
   = Bits32
   | Bits64
 
-type SwiftStringRepresentation {}
+type SwiftStringRepresentation
+  = SwiftStringUnicodeText
 
-type SwiftCharacterRepresentation {}
+type SwiftCharacterRepresentation
+  = SwiftCharacterExtendedGraphemeCluster
 
-type SwiftUnitRepresentation {}
+type SwiftUnitRepresentation
+  = SwiftVoidEmptyTuple
 
-type SwiftBoolRepresentation {}
+type SwiftBoolRepresentation
+  = SwiftBoolRuntimeRepresentation
 
-type SwiftIntegerOverflowSemantics {}
+type SwiftIntegerOverflowSemantics
+  = SwiftTrapOnOverflow
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SwiftScalar
@@ -278,11 +283,11 @@ fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
 }
 data swift_mvp1_source_text: String = "func add(x: Int32, y: Int32) -> Int32 { return x + y }"
 
-data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftIntegerOverflowSemantics {}
-data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRepresentation {}
-data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterRepresentation {}
-data swift_string_representation: SwiftStringRepresentation = SwiftStringRepresentation {}
-data swift_unit_representation: SwiftUnitRepresentation = SwiftUnitRepresentation {}
+data swift_integer_overflow_trap: SwiftIntegerOverflowSemantics = SwiftTrapOnOverflow
+data swift_bool_representation: SwiftBoolRepresentation = SwiftBoolRuntimeRepresentation
+data swift_character_representation: SwiftCharacterRepresentation = SwiftCharacterExtendedGraphemeCluster
+data swift_string_representation: SwiftStringRepresentation = SwiftStringUnicodeText
+data swift_unit_representation: SwiftUnitRepresentation = SwiftVoidEmptyTuple
 
 data swift_facts_int: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts {
   surface_spelling: swift_surface_spelling_int,
