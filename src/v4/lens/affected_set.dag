@@ -146,11 +146,6 @@ type FrontierReceipt
   | FrontierRejected { diagnostic: Diagnostic }
 
 
-type CanonicalRegionDependencies
-  = CanonicalRegionDependenciesProduced { dependencies: List<DependencyView> }
-  | CanonicalRegionDependenciesUnknown { reason: Symbol }
-
-
 // RULING-1: 🟡 needs-more-work — frontier read.
 type AffectedFrontierRead {
   proven_transitive_dependency_frontier: fn(Dag, EditDimension) -> FrontierReceipt
@@ -1050,10 +1045,10 @@ fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimension
 }
 
 
-fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> CanonicalRegionDependencies {
+fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceipt {
   match find_child_by_name(root: frame.ancestor, name: frame.step) {
     Accepted { value: child, diagnostics: _ } =>
-      CanonicalRegionDependenciesProduced {
+      FrontierProduced {
         dependencies: [
           DependencyView {
             source: frame.ancestor,
@@ -1064,52 +1059,58 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> CanonicalRegio
         ]
       }
     Rejected { diagnostics: _ } =>
-      CanonicalRegionDependenciesUnknown { reason: affected_set_reason_frontier_ancestor_unresolved }
+      FrontierUnknown { reason: affected_set_reason_frontier_ancestor_unresolved }
   }
 }
 
 
 fn append_canonical_ancestor_dependencies(
-  acc: CanonicalRegionDependencies,
+  acc: FrontierReceipt,
   frame: AncestorFrame
-) -> CanonicalRegionDependencies {
+) -> FrontierReceipt {
   match acc {
-    CanonicalRegionDependenciesProduced { dependencies: dependencies } =>
+    FrontierProduced { dependencies: dependencies } =>
       match canonical_ancestor_frame_dependencies(frame: frame) {
-        CanonicalRegionDependenciesProduced { dependencies: frame_dependencies } =>
-          CanonicalRegionDependenciesProduced {
+        FrontierProduced { dependencies: frame_dependencies } =>
+          FrontierProduced {
             dependencies: list_append(
               left: dependencies,
               right: frame_dependencies
             )
           }
-        CanonicalRegionDependenciesUnknown { reason: r } =>
-          CanonicalRegionDependenciesUnknown { reason: r }
+        FrontierUnknown { reason: r } =>
+          FrontierUnknown { reason: r }
+        FrontierRejected { diagnostic: d } =>
+          FrontierRejected { diagnostic: d }
       }
-    CanonicalRegionDependenciesUnknown { reason: r } =>
-      CanonicalRegionDependenciesUnknown { reason: r }
+    FrontierUnknown { reason: r } =>
+      FrontierUnknown { reason: r }
+    FrontierRejected { diagnostic: d } =>
+      FrontierRejected { diagnostic: d }
   }
 }
 
 
-fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> CanonicalRegionDependencies {
-  fold(frames, init: CanonicalRegionDependenciesProduced { dependencies: [] }, f: fn(acc, frame) {
+fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> FrontierReceipt {
+  fold(frames, init: FrontierProduced { dependencies: [] }, f: fn(acc, frame) {
     append_canonical_ancestor_dependencies(acc: acc, frame: frame)
   })
 }
 
 
-fn canonical_region_dependencies(walk: AncestorWalk) -> CanonicalRegionDependencies {
+fn canonical_region_dependencies(walk: AncestorWalk) -> FrontierReceipt {
   match canonical_ancestor_dependencies(frames: walk.frames) {
-    CanonicalRegionDependenciesProduced { dependencies: ancestor_dependencies } =>
-      CanonicalRegionDependenciesProduced {
+    FrontierProduced { dependencies: ancestor_dependencies } =>
+      FrontierProduced {
         dependencies: list_append(
           left: ancestor_dependencies,
           right: dependency_lens(root: walk.current)
         )
       }
-    CanonicalRegionDependenciesUnknown { reason: r } =>
-      CanonicalRegionDependenciesUnknown { reason: r }
+    FrontierUnknown { reason: r } =>
+      FrontierUnknown { reason: r }
+    FrontierRejected { diagnostic: d } =>
+      FrontierRejected { diagnostic: d }
   }
 }
 
@@ -1117,12 +1118,7 @@ fn canonical_region_dependencies(walk: AncestorWalk) -> CanonicalRegionDependenc
 fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
   match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
     Accepted { value: walk, diagnostics: _ } =>
-      match canonical_region_dependencies(walk: walk) {
-        CanonicalRegionDependenciesProduced { dependencies: dependencies } =>
-          FrontierProduced { dependencies: dependencies }
-        CanonicalRegionDependenciesUnknown { reason: r } =>
-          FrontierUnknown { reason: r }
-      }
+      canonical_region_dependencies(walk: walk)
     Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: affected_set_reason_frontier_path_unresolved }
   }
