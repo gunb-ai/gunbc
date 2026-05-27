@@ -24,7 +24,7 @@
 
 module v4.lens.application
 
-import v4.std.algebra { Cons, Empty, is_empty, fold_list }
+import v4.std.algebra { Cons, Empty, is_empty, fold_list, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.diagnostic {
@@ -268,7 +268,7 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
         match split.first {
           true => PathSplit { init: [], last: step, first: false }
           false => PathSplit {
-            init: list_push(split.init, split.last),
+            init: list_snoc_item(xs: split.init, item: split.last),
             last: step,
             first: false
           }
@@ -295,8 +295,8 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
                 true => replace_edge_target(e: edge, replacement: child)
                 false => edge
               }
-              list_push(current_acc, next_edge)
-            Positional => list_push(current_acc, edge)
+              list_snoc_item(xs: current_acc, item: next_edge)
+            Positional => list_snoc_item(xs: current_acc, item: edge)
           }
         }
       )
