@@ -264,6 +264,7 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 
 data affected_set_default_dimension: Symbol = affected_set_default_dimension
 data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
+data affected_set_reason_boundary_purity_unproven: Symbol = affected_set_reason_boundary_purity_unproven
 
 
 fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
@@ -997,7 +998,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
   match subterm_at(root: dag, p: path) {
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
-        HashUnchangedPure { content_hash: content_hash(n: current) }
+        HashUnknown { reason: affected_set_reason_boundary_purity_unproven }
       } else {
         HashChanged
       }

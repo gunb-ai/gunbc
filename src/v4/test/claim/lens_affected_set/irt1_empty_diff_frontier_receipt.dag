@@ -9,12 +9,10 @@ module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt
 import v4.lens.affected_set {
   ChangedSubgraphFrontier,
   FailClosed,
-  UnchangedPureBoundary,
   affected_set,
   empty_affected_fold_acc,
   empty_frontier,
-  frontier_from_fold_acc,
-  mark_boundary_excluded
+  frontier_from_fold_acc
 }
 import v4.lens.affected_set_examples {
   affected_set_claim_failure_node,
@@ -22,7 +20,7 @@ import v4.lens.affected_set_examples {
 }
 import v4.std.algebra { length }
 import v4.std.logic { Bool }
-import v4.std.node { Diff, Edit, Node, Path, content_hash }
+import v4.std.node { Diff, Edit, Node, Path }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -60,19 +58,12 @@ fn irt1_public_affected_set_empty_diff_claim_holds() -> Bool {
   }
 }
 
-fn irt1_public_affected_set_prunes_unchanged_boundary() -> Bool {
+fn irt1_public_affected_set_fails_closed_without_purity_receipt() -> Bool {
   match affected_set(
     dag: affected_set_example_node,
     diff: Diff { edits: [irt1_public_unchanged_edit] }
   ) {
-    Holds { value: frontier } =>
-      frontier == mark_boundary_excluded(
-        frontier: empty_frontier(),
-        edit: irt1_public_unchanged_edit,
-        proof: UnchangedPureBoundary {
-          content_hash: content_hash(n: affected_set_example_node)
-        }
-      )
+    Holds { value: FailClosed { reason: _ } } => true
     _ => false
   }
 }
@@ -92,7 +83,7 @@ fn irt1_public_affected_set_changed_edit_stays_narrow() -> Bool {
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
   if irt1_empty_diff_frontier_receipt_claim_holds()
     && irt1_public_affected_set_empty_diff_claim_holds()
-    && irt1_public_affected_set_prunes_unchanged_boundary()
+    && irt1_public_affected_set_fails_closed_without_purity_receipt()
     && irt1_public_affected_set_changed_edit_stays_narrow() {
     affected_set_example_node
   } else {
