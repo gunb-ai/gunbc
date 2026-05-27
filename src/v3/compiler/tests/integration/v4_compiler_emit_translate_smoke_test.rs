@@ -157,18 +157,6 @@ fn v4_translate_dag_dispatches_token_sequence_items() {
         ),
         "{TRANSLATE_PATH}: bound-token rows must validate the shared token-kind discriminator"
     );
-    eprintln!(
-        "translate fns: {:?}",
-        module
-            .items
-            .iter()
-            .filter_map(|item| match item {
-                SurfaceItem::Fn { name, .. } | SurfaceItem::FnExternalBody { name, .. } =>
-                    Some(name.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-    );
     assert!(
         surface_declares_fn(&module, "token_sequence_item_kind"),
         "{TRANSLATE_PATH}: must classify concrete tokens and nonterminal emitted nodes explicitly"
