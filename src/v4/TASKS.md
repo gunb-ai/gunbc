@@ -1251,22 +1251,18 @@ until admission is complete. As a follow-on, dissolve `AdmissionState` in
 `Outcome` accumulator of the admission stage once generic `Outcome`
 fold/traverse can carry the accumulator directly.
 
-### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
-**Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
-`std/` numeric vocabulary is undefined without an ABI data-model — C++
-integer widths are implementation-defined (LP64 / ILP32 / …), so the
-width fact is not a constant of the language but of the target ABI.
-**Disposition — SCHEDULED (operator ruling 2026-05-17; no fork).** Schedule
-an `extdeps` ABI / target-data-model slice that the `cpp.dag` fact-bundles
-parameterize over (LP64 / ILP32 / …). Low-dependency — it needs only T-3's
-machine / width vocabulary, otherwise a leaf — but it is **NOT parallel
-fill**: T-29 is a **side-branch feeder of T-4** (a hard prerequisite of
-T-4's cpp slice — the cpp fact-bundle cannot ground implementation-defined
-integer widths without it; hence the `T-4 [needs … T-29]` edge). It is a
-**watch item** — schedulable the instant T-3's `machine` lands, and it
-*should* be scheduled then, because if it slips the `{P1-KEYSTONE, T-30,
-T-29, T-25-core} → T-4 → T-9` side branch goes critical. Low-dependency
-≠ low-priority.
+### T-29 — extdeps C++ ABI / target data-model  [DONE]
+**Status:** Landed across PRs #3277, #3535, #3628.
+`src/v4/extdeps/cpp_abi.dag` owns: `CppMachineWidth{8,16,32,64}`,
+`CppIntegerWidth` (coproduct), `CppCoreIntegerWidthModel` (named-field record),
+`CppPlainCharSignedness`, `CppWcharTSignedness`, `CppDataModelFamily`
+(ILP32/LP64/LLP64/ILP64), `CppAbiModel`, `CppTargetDataModel`,
+`CppTargetProfile`, plus four concrete data-model aliases
+(`CppILP32DataModel`, `CppLP64DataModel`, `CppLLP64DataModel`, `CppILP64DataModel`).
+`cpp.dag` imports `CppTargetProfile`; C++ integer widths are ABI-width-parametric
+through `CppTargetProfile` width-selection witnesses. Testcase
+`test/claim/manual/cpp_scalar_grounding_anchor.dag` anchors the ABI-width compile
+paths. The `T-4 [needs … T-29]` dependency edge is now satisfied.
 
 ### T-30 — std/ structural fact-density / hollow-alias gate  [ENFORCEMENT GATE LANDED]
 **Status:** Substrate landed **PR #3359**. Enforcement gate landed (operator-ratified mechanism 2026-05-25): structural `fact_density_hollow_alias_gate: Node -> Outcome<Witness<Node>>` in `src/v4/lens/fact_density.dag`, with the temporary compile-local `InferredTree -> Outcome<Witness<Node>>` adapter `fact_density_hollow_alias_compile_gate` and `CompileLens` row `fact_density_lens` owned by `src/v4/compiler/00_compile.dag` until T-23 dissolves the local lens stub. `validate_then_compile` runs `run_required_lens_gates_on_subtree`, so the required gate is applied to the inferred root and every child node. Six TestClaims in `src/v4/test/claim/lens_fact_density/` — `hollow_alias_compile_lens_rejects`, `fact_bundle_compile_lens_passes`, `hollow_alias_blocked_in_run_gates`, `hollow_alias_blocked_via_always_required_lenses`, `hollow_alias_vtc_empty_lenses_rejected`, `hollow_alias_nested_rejected` — scaffold gate through `apply_compile_lens` / `run_required_lens_gates` / `always_required_lenses()` / `validate_then_compile` with empty caller-lenses and nested hollow-alias rejection (compile-only until T-22 execution). `carrier_spec_fact`, `SourceSpecReadFact`, kernel-ambient exemption remain substrate authority. Hand-Rust bootstrap mirror at `src/v3/compiler/src/v4_hollow_alias_gate.rs` (P5(b) interim; dissolves when generated `.dag` checker runs during bootstrap).
