@@ -1,6 +1,6 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
+// Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_get, map_insert, TotalMap, TotalPolicy.
 // Consumes: std/algebra.dag; std/witness.dag; std/diagnostic.dag; std/node.dag.
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
@@ -52,6 +52,9 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
       }
     }
   }
+}
+fn map_get<K, V>(m: Map<K, V>, key: K) -> Witness<V> {
+  m.lookup(key)
 }
 fn list_nth<T>(xs: List<T>, wanted: Int, absent: Diagnostic) -> Witness<T> {
   fold_list(
