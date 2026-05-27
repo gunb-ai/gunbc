@@ -174,8 +174,8 @@ M4/T-15. Reaching M3 is a necessary step toward that target, not the target itse
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
    present in src/v4 itself. Currently modeled; exercised at M2 only for trivial input.
 2. **T-8 resolve cross-file bindings (T-28 bridge).** `resolve_with_graph` passes the
-   `ModuleGraph` to `namespace_from_tree_and_graph`, but that function has a `🟡` gate
-   and does not walk `ModuleGraph.entries` — cross-file exports are never merged into the
+   `Catalog` to `namespace_from_tree_and_graph`, but that function has a `🟡` gate
+   and does not walk `Catalog.entries` — cross-file exports are never merged into the
    namespace. Cross-file imports (which src/v4 has extensively) won't resolve until
    `namespace_from_tree_and_graph` is filled.
 3. **Full lex/grammar data for .dag language.** dag.dag already has wave-1 lex/grammar
@@ -275,9 +275,9 @@ not for the compiled binary to execute its pipeline. The two tracks are genuinel
 independent at M2.
 
 **Gap 3 — T-28 cross-file resolution**
-`resolve_with_graph` passes the `ModuleGraph` through to `namespace_from_tree_and_graph`,
+`resolve_with_graph` passes the `Catalog` through to `namespace_from_tree_and_graph`,
 but that function has a `🟡` gate (`03_resolve.dag:564-570`) and does not walk
-`ModuleGraph.entries` — cross-file exports are never merged into the namespace. Cross-file
+`Catalog.entries` — cross-file exports are never merged into the namespace. Cross-file
 imports (which every v4 file uses) won't resolve correctly until `namespace_from_tree_and_graph`
 is filled. M3 requires this for arbitrary user-module graph walking. M2 also requires T-28: the trivial fixture's `import v4.std.node { Symbol }` is a cross-file import — std library name lookup exercises `namespace_from_tree_and_graph` — consistent with the Required work list at line 146.
 

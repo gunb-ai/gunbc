@@ -1208,36 +1208,36 @@ visibility both need a module-tree + an ancestor-relation `Witness`; no
 substrate exists, no scheduled task. (This is the substrate side of the
 Theme-B "module-loading" dependency.)
 **Disposition — SCHEDULED (operator ruling 2026-05-17).** Schedule a
-`std/` module-graph carrier, **bundled into T-8** (the
+`std/` module-catalog carrier, **bundled into T-8** (the
 `03_normalize`/`03_resolve` work — `03_resolve` is the primary consumer).
 Not a standalone task: the module-tree + ancestor-relation `Witness` land
 inside the T-8 resolver scope.
 
-### T-28-B — Extract module graph admission from `03_resolve.dag`  [SCHEDULED]
+### T-28-B — Extract module catalog admission from `03_resolve.dag`  [SCHEDULED]
 **Gap:** `03_resolve.dag` currently exposes `resolve_with_graph` /
 `namespace_from_tree_and_graph`, so the K-1 resolver has a
-`ModuleGraph`-shaped cross-file surface even though it does not load files
-and the graph path remains gated. This keeps module admission policy in
+`Catalog`-shaped cross-file surface even though it does not load files
+and the catalog path remains gated. This keeps module admission policy in
 the resolver layer.
 **Disposition — SCHEDULED (T-28 follow-up, bundled with T-8).** Move
-graph-to-namespace projection into a separate module-resolution stage that
+catalog-to-namespace projection into a separate module-resolution stage that
 consumes `std/module_graph.dag` and calls
 `compiler/03_resolve.resolve_with_namespace`. `03_resolve.dag` remains
 single-tree K-1 resolution only: `resolve(tree, lm)` and
 `resolve_with_namespace(tree, namespace)`.
-**Boundary:** the new stage receives the fully loaded `ModuleGraph` plus
+**Boundary:** the new stage receives the fully loaded `Catalog` plus
 the subject `QualifiedName` / tree, enforces import / visibility / ambiguity
 rules, and produces the exact `Namespace` admitted for that subject module.
-It must not flat-fold `graph.entries`; module paths remain authoritative
+It must not flat-fold `catalog.entries`; module names remain authoritative
 until admission is complete.
 As a follow-on after T-28-B extraction, dissolve `AdmissionState` in `03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the `Outcome` accumulator of the new admission stage.
-**Move out of `03_resolve.dag`:** `ModuleGraph` import,
+**Move out of `03_resolve.dag`:** `Catalog` import,
 `namespace_from_tree_and_graph`, `resolve_with_graph`, and header
-ownership / consume claims for `ModuleGraph`.
+ownership / consume claims for `Catalog`.
 **Dissolve gate:** once the external stage owns module admission and emits
-a `Namespace`, delete the T-28 graph gate from `03_resolve.dag`;
+a `Namespace`, delete the T-28 catalog gate from `03_resolve.dag`;
 cross-file resolution enters through the new stage, not through a third
-`Scope` arm or a resolver-local graph fold.
+`Scope` arm or a resolver-local catalog fold.
 
 ### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
 **Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
