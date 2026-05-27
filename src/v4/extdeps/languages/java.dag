@@ -1094,7 +1094,7 @@ fn java_grammar_result_expr() -> GrammarExpr {
 
 fn java_grammar_formal_parameter_expr() -> GrammarExpr {
   java_grammar_sequence(
-    left: java_grammar_nonterminal(production: java_production_primitive_type),
+    left: java_grammar_nonterminal(production: java_production_type),
     right: java_grammar_terminal(token_class: java_token_ident)
   )
 }
@@ -1170,7 +1170,7 @@ fn java_grammar_return_statement_expr() -> GrammarExpr {
 
 fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
   java_grammar_sequence(
-    left: java_grammar_nonterminal(production: java_production_primitive_type),
+    left: java_grammar_nonterminal(production: java_production_type),
     right: java_grammar_sequence(
       left: java_grammar_terminal(token_class: java_token_ident),
       right: java_grammar_terminal(token_class: java_token_semicolon)
@@ -1178,15 +1178,16 @@ fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
   )
 }
 
-fn java_grammar_block_statement_expr() -> GrammarExpr {
+// JLS §14.2 Statement — wave-2 subset: ReturnStatement | LocalVariableDeclarationStatement.
+fn java_grammar_statement_expr() -> GrammarExpr {
   java_grammar_choice(
     left: java_grammar_nonterminal(production: java_production_return_statement),
     right: java_grammar_nonterminal(production: java_production_local_variable_declaration)
   )
 }
 
-fn java_grammar_statement_expr() -> GrammarExpr {
-  java_grammar_nonterminal(production: java_production_block_statement)
+fn java_grammar_block_statement_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: java_production_statement)
 }
 
 fn java_grammar_block_expr() -> GrammarExpr {
@@ -1216,7 +1217,7 @@ fn java_grammar_field_declaration_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: java_token_kw_static),
     right: java_grammar_sequence(
-      left: java_grammar_nonterminal(production: java_production_primitive_type),
+      left: java_grammar_nonterminal(production: java_production_type),
       right: java_grammar_sequence(
         left: java_grammar_terminal(token_class: java_token_ident),
         right: java_grammar_terminal(token_class: java_token_semicolon)
@@ -1259,6 +1260,7 @@ fn java_grammar_compilation_unit_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: java_production_class_declaration)
 }
 
+// JLS §4.3 Type — wave-2 subset aliases to PrimitiveType.
 fn java_grammar_type_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: java_production_primitive_type)
 }
