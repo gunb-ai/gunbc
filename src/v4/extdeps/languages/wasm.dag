@@ -735,7 +735,7 @@ fn wasm_digit_run_lex_pattern() -> LexPattern {
           right: CharClassPattern { class: DigitChar }
         )
       )
-    )
+    }
   )
 }
 
@@ -750,7 +750,7 @@ fn wasm_hex_digit_run_lex_pattern() -> LexPattern {
           right: CharClassPattern { class: HexDigitChar }
         )
       )
-    )
+    }
   )
 }
 
@@ -789,7 +789,7 @@ fn wasm_decimal_number_lex_pattern() -> LexPattern {
         left: OptionalPattern {
           element: wasm_lex_sequence(
             left: LiteralPattern { text: "." },
-            right: RepeatPattern { element: CharClassPattern { class: DigitChar } }
+            right: OptionalPattern { element: wasm_digit_run_lex_pattern() }
           )
         },
         right: OptionalPattern { element: wasm_decimal_exponent_lex_pattern() }
@@ -812,7 +812,7 @@ fn wasm_hex_number_lex_pattern() -> LexPattern {
           left: OptionalPattern {
             element: wasm_lex_sequence(
               left: LiteralPattern { text: "." },
-              right: RepeatPattern { element: CharClassPattern { class: HexDigitChar } }
+              right: OptionalPattern { element: wasm_hex_digit_run_lex_pattern() }
             )
           },
           right: OptionalPattern { element: wasm_hex_exponent_lex_pattern() }
