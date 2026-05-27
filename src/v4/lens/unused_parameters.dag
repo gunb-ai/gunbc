@@ -11,23 +11,10 @@ import v4.compiler.infer { InferredTree }
 import v4.std.algebra { Empty, bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_view,
   classified_dependency_view_eq
 }
 import v4.std.logic { Bool }
@@ -58,33 +45,30 @@ type UnusedParametersFact {
   unused: List<UnusedParameterFact>
 }
 
-fn use_relation_for_dependency(view: DependencyView) -> UseRelation {
-  match view.kind {
-    BindsTo => IsUseOfDeclaration
-    Contains => IsStructuralComposition
-    DataDependsOn => IsNonUseDependency
-    TypeDependsOn => IsNonUseDependency
-    EffectDependsOn => IsNonUseDependency
-    ResourceDependsOn => IsNonUseDependency
-    BarrierBefore => IsNonUseDependency
-    ModuleDependsOn => IsNonUseDependency
-    PlacementDependsOn => IsNonUseDependency
-    ModelDependsOn => IsNonUseDependency
-    ProjectionDependsOn => IsNonUseDependency
-    GeneratedFrom => RequiresResolutionWitness
-    VerifiedBy => RequiresResolutionWitness
-    PromotedBy => RequiresResolutionWitness
-    BootstrapDependsOn => RequiresResolutionWitness
+fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRelation> {
+  DependencyKindClassifier {
+    contains: IsStructuralComposition,
+    binds_to: IsUseOfDeclaration,
+    type_depends_on: IsNonUseDependency,
+    data_depends_on: IsNonUseDependency,
+    effect_depends_on: IsNonUseDependency,
+    resource_depends_on: IsNonUseDependency,
+    module_depends_on: IsNonUseDependency,
+    barrier_before: IsNonUseDependency,
+    placement_depends_on: IsNonUseDependency,
+    model_depends_on: IsNonUseDependency,
+    projection_depends_on: IsNonUseDependency,
+    generated_from: RequiresResolutionWitness,
+    verified_by: RequiresResolutionWitness,
+    promoted_by: RequiresResolutionWitness,
+    bootstrap_depends_on: RequiresResolutionWitness
   }
 }
 
 fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
   // P6 orientation: BindsTo carries Declaration → Use, so `view.source`
   // is the declaration; downstream readers access via `classified_source`.
-  ClassifiedDependencyView {
-    dependency: view,
-    classification: use_relation_for_dependency(view: view)
-  }
+  classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
 
 fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {

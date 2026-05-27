@@ -647,6 +647,14 @@ usage sites come from `tree.facts.lookup`, not row payload (Practice 11).
 `structural_resolution` also exports `at(tree: InferredTree)` for registry/dry-run
 entry (wires `dependency_lens(root: tree.root)` internally).
 
+**Classifier algebra:** `std/dependency.dag` owns
+`DependencyKindClassifier<C>` plus `classify_dependency_view` as the single
+`DependencyKind` dispatch point. Parallelism, ownership, idempotency,
+unused-parameters, and structural-resolution supply classifier data rows rather
+than per-lens `match view.kind` duplication. `effect.dag` is intentionally
+excluded: `EffectClassification` remains B3 signature-deferred, so deriving it
+from `DependencyKind` would re-author the effect fact in the wrong place.
+
 **Modeling decisions per lens** (see file headers).
 
 ---

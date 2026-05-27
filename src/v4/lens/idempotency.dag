@@ -11,23 +11,10 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_view,
   classified_dependency_view_eq
 }
 import v4.std.logic { Bool }
@@ -44,31 +31,28 @@ type IdempotencyFact {
   dependencies: List<ClassifiedDependencyView<IdempotencyVerdict>>
 }
 
-fn idempotency_verdict_for_dependency(view: DependencyView) -> IdempotencyVerdict {
-  match view.kind {
-    Contains => RequiresAlgebraWitness
-    BindsTo => RequiresAlgebraWitness
-    TypeDependsOn => RequiresAlgebraWitness
-    DataDependsOn => RequiresAlgebraWitness
-    BarrierBefore => RequiresAlgebraWitness
-    EffectDependsOn => RequiresAlgebraWitness
-    ResourceDependsOn => RequiresAlgebraWitness
-    ModuleDependsOn => RequiresAlgebraWitness
-    PlacementDependsOn => RequiresAlgebraWitness
-    ModelDependsOn => RequiresAlgebraWitness
-    ProjectionDependsOn => RequiresAlgebraWitness
-    GeneratedFrom => RequiresAlgebraWitness
-    VerifiedBy => RequiresAlgebraWitness
-    PromotedBy => RequiresAlgebraWitness
-    BootstrapDependsOn => RequiresAlgebraWitness
+fn idempotency_dependency_kind_classifier() -> DependencyKindClassifier<IdempotencyVerdict> {
+  DependencyKindClassifier {
+    contains: RequiresAlgebraWitness,
+    binds_to: RequiresAlgebraWitness,
+    type_depends_on: RequiresAlgebraWitness,
+    data_depends_on: RequiresAlgebraWitness,
+    effect_depends_on: RequiresAlgebraWitness,
+    resource_depends_on: RequiresAlgebraWitness,
+    module_depends_on: RequiresAlgebraWitness,
+    barrier_before: RequiresAlgebraWitness,
+    placement_depends_on: RequiresAlgebraWitness,
+    model_depends_on: RequiresAlgebraWitness,
+    projection_depends_on: RequiresAlgebraWitness,
+    generated_from: RequiresAlgebraWitness,
+    verified_by: RequiresAlgebraWitness,
+    promoted_by: RequiresAlgebraWitness,
+    bootstrap_depends_on: RequiresAlgebraWitness
   }
 }
 
 fn idempotency_classify(view: DependencyView) -> ClassifiedDependencyView<IdempotencyVerdict> {
-  ClassifiedDependencyView {
-    dependency: view,
-    classification: idempotency_verdict_for_dependency(view: view)
-  }
+  classify_dependency_view(classifier: idempotency_dependency_kind_classifier(), view: view)
 }
 
 fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
