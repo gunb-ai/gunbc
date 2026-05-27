@@ -52,7 +52,18 @@ fn qualified_name_find_edge(name: Symbol, n: Node) -> Outcome<Node> {
     }),
     f: fn(acc, e) {
       match acc {
-        Accepted { value: _, diagnostics: _ } => acc
+        Accepted { value: _, diagnostics: _ } =>
+          match e.label {
+            Named { name: ename } =>
+              if ename == name {
+                outcome_rejected(Diagnostic {
+                  reason: qualified_name_structure_invalid,
+                  at: node_locus(node: n),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                })
+              } else { acc }
+            _ => acc
+          }
         Rejected { diagnostics: _ } =>
           match e.label {
             Named { name: ename } =>
