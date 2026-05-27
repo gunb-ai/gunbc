@@ -1564,7 +1564,7 @@ T-23 owns the non-text AGENT-SURFACE contract (lens reads, `apply_diff`,
 structured output). These are complementary, not overlapping.
 
 **On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
-`QualifiedName` and `qualified_name_from_node` are available and this spec
+`QualifiedName`, `qualified_name_from_node`, and `qualified_name_from_module_node` are available and this spec
 applies. T-35 dispatch additionally requires operator code examples (see
 Sequencing). T-35 workers must not proceed without both gates.
 
@@ -1598,10 +1598,10 @@ Sequencing). T-35 workers must not proceed without both gates.
    `batch_insert(batch: ModuleBatch, node: Node)`,
    `batch_delete(batch: ModuleBatch, qname: QualifiedName)`;
    `batch_lookup` is an internal fold helper (folds `entries` applying
-   `qualified_name_from_node`, matching only `Accepted` qualified names) — not
+   `qualified_name_from_module_node`, matching only `Accepted` qualified names) — not
    exported from `module_batch.dag`, not a root-selection path (see Files
    section). Each admitted Node carries its own `QualifiedName` via the
-   `qualified_name_from_node` projection (T-QN-1); no external path key is
+   `qualified_name_from_module_node` projection (T-QN-1); no external path key is
    required. Callers build the batch and invoke
    `compile_with_batch` — the filesystem-free entry point alongside existing
    `compile_ingest_staging` in `00_compile.dag`.
@@ -1610,18 +1610,18 @@ Sequencing). T-35 workers must not proceed without both gates.
    `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
    Witness<V> }` — unenumerable by construction. `FreeMonoid<Node>` keeps the
    batch enumerable so `compile_with_batch` can fold over entries. `batch_lookup`
-   is a fold using `qualified_name_from_node` to match on the `Accepted` branch;
+   is a fold using `qualified_name_from_module_node` to match on the `Accepted` branch;
    `Rejected` entries are non-matches for lookup and remain admission failures.
    `batch_insert` appends a Node; `batch_delete` filters by `QualifiedName`.
    Name-uniqueness is not the batch's responsibility — it is enforced at
    admission time.
 
    **Node-keyed invariants (ratified 2026-05-27):**
-   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via the `Accepted` branch of `qualified_name_from_node`; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
+   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via the `Accepted` branch of `qualified_name_from_module_node`; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
    - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
    - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
    - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
-   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove unprojectable Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
+   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_module_node`; entries where `qualified_name_from_module_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove unprojectable Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1645,7 +1645,7 @@ to define a new agent output surface.
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
+  `qualified_name_from_module_node`. For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
   `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
   diagnostics and the overall admission returns `Rejected` before catalog
@@ -1673,11 +1673,11 @@ to define a new agent output surface.
   `🟡 gate: dissolve-on Change 2 (std/catalog.dag dissolution) — the
   FreeMonoid<Entry> bridge and catalog_from_entries call are
   temporary scaffolding; once Change 2 lands, admission folds over
-  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge while
+  FreeMonoid<Node> via qualified_name_from_module_node without the Entry bridge while
   still preserving the projection `Rejected` branch.`
 
   **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
-  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step that
+  (a `FreeMonoid<Node>`) with a `qualified_name_from_module_node` projection step that
   either builds the `FreeMonoid<Entry>` that `catalog_from_entries` expects or
   returns `Rejected` with the projection diagnostics. The live
   `compile_ingest_staging` path does not call `catalog_from_entries` today; it
@@ -1693,8 +1693,8 @@ to define a new agent output surface.
   as `validate_then_compile`; T-35 workers must not redefine it.
 
 **Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
-- **T-QN-1** is the hard design prerequisite: `QualifiedName` and
-  `qualified_name_from_node` must exist before T-35 workers can build a
+- **T-QN-1** is the hard design prerequisite: `QualifiedName`,
+  `qualified_name_from_node`, and `qualified_name_from_module_node` must exist before T-35 workers can build a
   `ModuleBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
