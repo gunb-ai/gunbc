@@ -388,34 +388,6 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
 fn v4_dag_language_model_declares_surface_emit_rows() {
     let module = parse_module(DAG_LANGUAGE_DAG, DAG_LANGUAGE_PATH);
     assert!(
-        import_includes_name(
-            &module,
-            &["v4", "std", "target_model"],
-            "grammar_relation_field_tokens"
-        ),
-        "{DAG_LANGUAGE_PATH}: emit rows must use the shared grammar-relation field symbols"
-    );
-    assert!(
-        import_includes_name(
-            &module,
-            &["v4", "std", "target_model"],
-            "concrete_syntax_token_field_kind"
-        ),
-        "{DAG_LANGUAGE_PATH}: token rows must use the shared concrete-token field symbols"
-    );
-    assert!(
-        surface_declares_fn(&module, "emit_fixed_token"),
-        "{DAG_LANGUAGE_PATH}: must declare fixed-token grammar row emission"
-    );
-    assert!(
-        surface_declares_fn(&module, "emit_bound_token"),
-        "{DAG_LANGUAGE_PATH}: must declare bound-token grammar row emission"
-    );
-    assert!(
-        surface_declares_fn(&module, "emit_grammar_relation_row"),
-        "{DAG_LANGUAGE_PATH}: must declare grammar relation row emission"
-    );
-    assert!(
         surface_declares_fn(&module, "emit_row_module_header"),
         "{DAG_LANGUAGE_PATH}: must declare module-header grammar row emission"
     );

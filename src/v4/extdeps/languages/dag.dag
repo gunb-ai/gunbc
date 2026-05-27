@@ -9,7 +9,7 @@
 module v4.extdeps.languages.dag
 
 
-import v4.std.collection { List, Set }
+import v4.std.collection { Set }
 import v4.compiler.parse {
   Grammar,
   GrammarExpr,
@@ -345,99 +345,6 @@ fn dag_grammar_atom(id: Symbol) -> Node {
       connective: Atom { identity: id }
     },
     children: []
-  }
-}
-
-
-fn dag_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge {
-    label: Named { name: name },
-    target: target
-  }
-}
-
-
-fn dag_positional_edge(target: Node) -> Edge {
-  Edge {
-    label: Positional,
-    target: target
-  }
-}
-
-
-fn emit_fixed_token(token_class: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: concrete_syntax_token_field_kind,
-        target: dag_grammar_atom(id: dag_relation_token_fixed)
-      ),
-      dag_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: dag_grammar_atom(id: token_class)
-      )
-    ]
-  }
-}
-
-
-fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: concrete_syntax_token_field_kind,
-        target: dag_grammar_atom(id: dag_relation_token_bound)
-      ),
-      dag_named_edge(
-        name: concrete_syntax_token_field_class,
-        target: dag_grammar_atom(id: token_class)
-      ),
-      dag_named_edge(
-        name: concrete_syntax_token_field_binding,
-        target: dag_grammar_atom(id: binding)
-      )
-    ]
-  }
-}
-
-
-fn emit_relation_token_edges(tokens: List<Node>) -> List<Edge> {
-  fold_list(
-    xs: tokens,
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: dag_positional_edge(target: token))
-    }
-  )
-}
-
-
-fn emit_grammar_relation_row(
-  production: GrammarProduction,
-  emitted: Symbol,
-  tokens: List<Node>
-) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      dag_named_edge(
-        name: grammar_relation_field_production,
-        target: dag_grammar_atom(id: production.name)
-      ),
-      dag_named_edge(
-        name: grammar_relation_field_emitted,
-        target: dag_grammar_atom(id: emitted)
-      ),
-      dag_named_edge(
-        name: grammar_relation_field_tokens,
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: emit_relation_token_edges(tokens: tokens)
-        }
-      )
-    ]
   }
 }
 
