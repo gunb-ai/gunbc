@@ -53,12 +53,10 @@ fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
 }
 
 
-data dag_ingest_round_trip_source_node: Node =
-  dag_ingest_round_trip_atom(s: dag_ingest_round_trip_source_identity)
+data dag_ingest_round_trip_source_node: Node = dag_ingest_round_trip_atom(s: dag_ingest_round_trip_source_identity)
 
 
-data dag_ingest_round_trip_mismatch_node: Node =
-  dag_ingest_round_trip_atom(s: dag_ingest_round_trip_output_identity)
+data dag_ingest_round_trip_mismatch_node: Node = dag_ingest_round_trip_atom(s: dag_ingest_round_trip_output_identity)
 
 
 fn dag_ingest_round_trip_target_model() -> TargetModel {
@@ -72,11 +70,10 @@ fn dag_ingest_round_trip_target_model() -> TargetModel {
 }
 
 
-data dag_ingest_round_trip_receipt: Outcome<TargetSource> =
-  compile_ingest_staging(
-    source: dag_ingest_round_trip_fixture_source,
-    target: dag_ingest_round_trip_target_model()
-  )
+data dag_ingest_round_trip_receipt: Outcome<TargetSource> = compile_ingest_staging(
+  source: dag_ingest_round_trip_fixture_source,
+  target: dag_ingest_round_trip_target_model()
+)
 
 
 fn dag_ingest_round_trip_output_node() -> Node {
