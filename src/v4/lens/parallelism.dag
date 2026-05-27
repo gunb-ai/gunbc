@@ -17,8 +17,19 @@ import v4.std.dependency {
   classify_dependency_view,
   classified_dependency_view_eq
 }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v4.std.logic { Bool }
-import v4.std.witness { Holds, Witness }
+import v4.std.node { Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+data parallelism_reason_unresolved_projection: Symbol = parallelism_reason_unresolved_projection
+data parallelism_projection_virtual_file: Symbol = parallelism_projection_virtual_file
 
 // 🟢 lens-specific classification; endpoints live on the inner DependencyView.
 type ParallelismRelation
@@ -63,9 +74,36 @@ fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> P
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc UnknownCoupling Bool predicates outside parallelism_witness.
+fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
+  match relation {
+    UnknownCoupling => true
+    DataDependent => false
+    EffectCoupled => false
+    BarrierCoupled => false
+  }
+}
+
+fn parallelism_fact_unresolved(fact: ParallelismFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || parallelism_relation_unresolved(relation: dep.classification)
+  })
+}
+
+fn parallelism_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: parallelism_reason_unresolved_projection,
+    at: Textual { file: parallelism_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn parallelism_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<ParallelismFact> {
-  Holds {
-    value: parallelism_fact(tree: tree, dependencies: dependencies)
+  let fact = parallelism_fact(tree: tree, dependencies: dependencies)
+  if parallelism_fact_unresolved(fact: fact) {
+    Violates { diagnostic: parallelism_witness_diagnostic() }
+  } else {
+    Holds { value: fact }
   }
 }
 
