@@ -13,7 +13,6 @@ import v4.std.text { String }
 
 
 type AgentModuleSource {
-  path: ModulePath
   file: Symbol
   source: String
 }

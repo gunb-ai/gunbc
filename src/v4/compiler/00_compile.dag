@@ -418,6 +418,7 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
 
 fn agent_module_source_to_entry(
   module_source: AgentModuleSource,
+  path: ModulePath,
   lm: DagLanguageModel
 ) -> Outcome<ModuleEntry> {
   bind_outcome(
@@ -435,7 +436,7 @@ fn agent_module_source_to_entry(
             f: fn(normalized) {
               outcome_accepted(
                 value: ModuleEntry {
-                  path: module_source.path,
+                  path: path,
                   root: normalized
                 }
               )
@@ -480,19 +481,6 @@ fn agent_store_single_module_diagnostic() -> Diagnostic {
 }
 
 
-fn agent_store_entry_module(store: AgentStore) -> Outcome<AgentModuleSource> {
-  if module_path_eq(a: store.module.path, b: store.entry) {
-    outcome_accepted(value: store.module)
-  } else {
-    outcome_rejected(
-      d: compile_agent_store_entry_missing_diagnostic(
-        at: port_locus(port: compile_agent_store_entry_missing)
-      )
-    )
-  }
-}
-
-
 fn agent_store_to_module_graph(
   entry: ModuleEntry
 ) -> Outcome<ModuleGraph> {
@@ -507,10 +495,11 @@ fn agent_store_to_module_graph(
 fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetSource> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: agent_store_entry_module(store: store),
-    f: fn(module_source) {
-      bind_outcome(
-        o: agent_module_source_to_entry(module_source: module_source, lm: lm),
+    o: agent_module_source_to_entry(
+      module_source: store.module,
+      path: store.entry,
+      lm: lm
+    ),
         f: fn(entry) {
           if node_contains_dag_import_surface(n: entry.root) {
             outcome_rejected(d: agent_store_single_module_diagnostic())
@@ -556,6 +545,4 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
           }
         }
       )
-    }
-  )
 }
