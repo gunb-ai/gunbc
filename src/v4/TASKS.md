@@ -1630,11 +1630,15 @@ to define a new agent output surface.
   retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
   `Holds { value: entry }` (fail-closed: `Violates` if absent, using
   `module_graph_entry_not_found` as the diagnostic reason). `entry.root` is
-  the `CoreNode` that enters the compile pipeline. Workers must not substitute
-  raw `store_lookup` on the unadmitted store, a first-entry convention, or any
-  other secondary mechanism. This satisfies INVARIANTS P2 boundary discipline:
-  the root `CoreNode` is selected exclusively from an admission-witnessed
-  lookup.
+  the **post-normalize Node** admitted from the store — it is then resolved:
+  `resolve_with_graph(tree: entry.root, lm: dag_language_model_wave1(), graph:
+  graph)` produces the `CoreNode` (post-resolve) that enters
+  `validate_then_compile`. Workers must not skip `resolve_with_graph`, not
+  substitute raw `store_lookup` on the unadmitted store, not use a first-entry
+  convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
+  boundary discipline: the `CoreNode` reaching `validate_then_compile` is
+  produced by a complete normalize → graph-admission → resolve chain, matching
+  the live `compile_ingest_staging` pipeline exactly.
   `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
   FreeMonoid<ModuleEntry> bridge and module_graph_from_entries call are
   temporary scaffolding; once Change 2 lands, admission folds directly over
