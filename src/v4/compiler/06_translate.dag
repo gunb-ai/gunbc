@@ -118,17 +118,38 @@ fn node_subtree_count(n: Node) -> Int {
     }
   )
 }
-fn target_translation_rules_budget(target: TargetModel) -> Int {
-  match target_bundle_child(target: target, edge_name: target_model_edge_translation_rules) {
-    Accepted { value: rules, diagnostics: _ } => node_subtree_count(n: rules)
-    Rejected { diagnostics: _ } => 0
-  }
+fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      Accepted {
+        value: node_subtree_count(n: rules),
+        diagnostics: None
+      }
+    }
+  )
 }
-fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Int {
-  node_subtree_count(n: emitted) + target_translation_rules_budget(target: target) + 1
+fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: node_subtree_count(n: emitted) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
 }
-fn token_item_serialize_measure(item: Node, target: TargetModel) -> Int {
-  node_subtree_count(n: item) + target_translation_rules_budget(target: target) + 1
+fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: node_subtree_count(n: item) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
 }
 fn token_list_node_budget(tokens: List<Node>) -> Int {
   fold_list(
@@ -137,8 +158,16 @@ fn token_list_node_budget(tokens: List<Node>) -> Int {
     cons: fn(acc, item) { acc + node_subtree_count(n: item) }
   )
 }
-fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> Int {
-  length(xs: tokens) + token_list_node_budget(tokens: tokens) + target_translation_rules_budget(target: target) + 1
+fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: length(xs: tokens) + token_list_node_budget(tokens: tokens) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
 }
 // 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind TASKS.md T-11 —
 // dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
@@ -810,7 +839,12 @@ fn token_item_to_source_bounded(
   )
 }
 fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
-  token_item_to_source_bounded(token_item_serialize_measure(item: item, target: target), item, target)
+  bind_outcome(
+    o: token_item_serialize_measure(item: item, target: target),
+    f: fn(measure) {
+      token_item_to_source_bounded(measure, item, target)
+    }
+  )
 }
 fn token_sequence_to_source_bounded(
   remaining: Int,
@@ -840,10 +874,11 @@ fn token_sequence_to_source_bounded(
   )
 }
 fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
-  token_sequence_to_source_bounded(
-    token_sequence_serialize_measure(tokens: tokens, target: target),
-    tokens,
-    target
+  bind_outcome(
+    o: token_sequence_serialize_measure(tokens: tokens, target: target),
+    f: fn(measure) {
+      token_sequence_to_source_bounded(measure, tokens, target)
+    }
   )
 }
 // Rust MVP-1 is live through grammar-inverse token_sequence_to_source; remaining targets stay gated by feature:T-11-grammar-inverse-serializer-remaining-targets above. TargetModel.authority_source_text must not substitute for validated emitted Node serialization.
@@ -869,10 +904,11 @@ fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetSource> {
-  target_serialize_source_from_model_bounded(
-    translate_serialize_measure(target: target, emitted: emitted),
-    target,
-    emitted
+  bind_outcome(
+    o: translate_serialize_measure(target: target, emitted: emitted),
+    f: fn(measure) {
+      target_serialize_source_from_model_bounded(measure, target, emitted)
+    }
   )
 }
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
