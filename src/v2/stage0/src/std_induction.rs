@@ -76,7 +76,7 @@ pub fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> bool {
     }
 }
 
-pub fn inductive_field_eq(a: &Rc<InductiveField>, b: &Rc<InductiveField>) -> bool {
+pub fn inductive_field_eq(a: Rc<InductiveField>, b: Rc<InductiveField>) -> bool {
     (((((a.type_name.clone().as_str() == b.type_name.clone().as_str())
         && (a.variant_name.clone().as_str() == b.variant_name.clone().as_str()))
         && (a.field_name.clone().as_str() == b.field_name.clone().as_str()))
@@ -165,11 +165,16 @@ pub fn sub_value_structural_eq(a: Rc<SubValueRelation>, b: Rc<SubValueRelation>)
                 field: fb,
                 factor: fac_b,
                 ..
-            } => (inductive_field_eq(&fa, &fb) && shrink_factor_eq(fac_a.clone(), fac_b.clone())),
+            } => {
+                (inductive_field_eq(fa.clone(), fb.clone())
+                    && shrink_factor_eq(fac_a.clone(), fac_b.clone()))
+            }
             _ => false,
         },
         SubValueRelation::IteratedSubValue { field: fa, .. } => match (*b).clone() {
-            SubValueRelation::IteratedSubValue { field: fb, .. } => inductive_field_eq(&fa, &fb),
+            SubValueRelation::IteratedSubValue { field: fb, .. } => {
+                inductive_field_eq(fa.clone(), fb.clone())
+            }
             _ => false,
         },
         SubValueRelation::ArithmeticDescent {
@@ -565,7 +570,7 @@ pub enum CostBound {
     ErrorBound,
 }
 
-pub fn sum_bound(terms: &Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
+pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
     match terms.clone().first().cloned() {
         None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
@@ -659,7 +664,7 @@ pub fn cost_log(param: String) -> Rc<CostBound> {
     })
 }
 
-pub fn cost_nlogn(param: &String) -> Rc<CostBound> {
+pub fn cost_nlogn(param: String) -> Rc<CostBound> {
     Rc::new(CostBound::ProductBound {
         factors: Rc::new(vec![
             Rc::new(AtomicCost::PolyCost {
@@ -853,7 +858,7 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
     }
 }
 
-pub fn master_theorem(form: &Rc<RecurrenceForm>) -> Rc<CostBound> {
+pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
     {
         let a = form.branches.clone();
         let b = form.divisor.clone();
@@ -963,7 +968,7 @@ pub fn derive_bound(
                     }
                 }
                 ShrinkFactor::ProportionalShrink { divisor: d, .. } => {
-                    master_theorem(&Rc::new(RecurrenceForm {
+                    master_theorem(Rc::new(RecurrenceForm {
                         param: param,
                         branches: branches.clone(),
                         divisor: proportional_divisor_to_int(d.clone()),

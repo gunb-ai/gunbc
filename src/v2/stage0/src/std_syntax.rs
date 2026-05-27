@@ -126,7 +126,7 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
     })])
             };
         }
-    CACHED.with(|c| c.clone())
+    CACHED.with(|c: &Rc<Vec<Rc<AlgebraFieldEntry>>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

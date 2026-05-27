@@ -278,12 +278,24 @@ fn v4_rust_integer_overflow_disposition_is_mode_aware_and_axis_bound() {
         "{RUST_LANGUAGE_PATH}: integer primitive facts must carry the mode-aware overflow disposition"
     );
     assert!(
+        surface_declares_fn(&module, "rust_integer_carrier_interval_spec"),
+        "{RUST_LANGUAGE_PATH}: Rust integer ranges must derive from the overflow disposition carrier"
+    );
+    assert!(
         import_includes_name(
             &module,
             &["v4", "std", "model_core"],
             "primitive_fact_axis_overflow_disposition"
         ),
         "{RUST_LANGUAGE_PATH}: Rust must import the shared overflow-disposition primitive fact axis"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "primitive_fact_axis_range"
+        ),
+        "{RUST_LANGUAGE_PATH}: Rust must import the shared range primitive fact axis"
     );
     assert!(
         surface_declares_fn(&module, "rust_integer_overflow_disposition"),
