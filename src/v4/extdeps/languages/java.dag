@@ -8,11 +8,15 @@
 module v4.extdeps.languages.java
 
 import v4.compiler.parse {
+  Choice,
   Grammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
+  Optional,
+  Repeat,
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
@@ -790,6 +794,46 @@ fn java_mvp1_serialize_source_node() -> Node {
 
 fn java_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
+}
+
+fn java_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+  Nonterminal { production: production }
+}
+
+fn java_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn java_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn java_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn java_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn java_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbol) -> GrammarProduction {
+  GrammarProduction {
+    name: name,
+    expression: expression,
+    emitted: java_grammar_atom(id: emitted)
+  }
+}
+
+fn java_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
+  java_grammar_sequence(
+    left: item,
+    right: java_grammar_repeat(
+      element: java_grammar_sequence(
+        left: java_grammar_terminal(token_class: java_token_comma),
+        right: item
+      )
+    )
+  )
 }
 
 fn java_grammar_sequence_fold_step(acc: GrammarExpr, token: JavaConcreteSyntaxToken) -> GrammarExpr {
