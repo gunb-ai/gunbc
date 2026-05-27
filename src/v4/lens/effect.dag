@@ -7,7 +7,7 @@
 
 module v4.lens.effect
 
-import v4.compiler.infer { InferredFacts, InferredTree }
+import v4.compiler.infer { InferredTree }
 import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
@@ -23,7 +23,6 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
 import v4.std.witness { Holds, Violates, Witness }
 
 data effect_reason_unresolved_projection: Symbol = effect_reason_unresolved_projection
@@ -41,10 +40,6 @@ type EffectClassification {}
 
 type EffectFact {
   dependencies: List<ClassifiedDependencyView<EffectClassification>>
-}
-
-fn effect_source_facts(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(source)
 }
 
 fn effect_classify(
@@ -65,18 +60,12 @@ fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Effect
   }
 }
 
-fn effect_dependency_unresolved(tree: InferredTree, view: DependencyView) -> Bool {
-  match effect_source_facts(tree: tree, source: view.source) {
-    Violates { diagnostic: _ } => true
-    Holds { value: _ } =>
-      // Signature-deferred marker: effect kind is not yet decoded from facts (B3 / #3468).
-      true
-  }
-}
-
-fn effect_fact_unresolved(tree: InferredTree, fact: EffectFact) -> Bool {
-  fold(fact.dependencies, init: false, f: fn(acc, dep) {
-    acc || effect_dependency_unresolved(tree: tree, view: dep.dependency)
+// B3 / #3468: signature-deferred — every classified edge is unresolved until
+// `InferredFacts` decodes to a closed effect-kind carrier. Dissolve this helper
+// when decoding lands and route through `tree.facts.lookup(dependency.source)`.
+fn effect_fact_unresolved(_tree: InferredTree, fact: EffectFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(_acc, _) {
+    true
   })
 }
 
