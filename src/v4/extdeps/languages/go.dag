@@ -65,8 +65,7 @@ import v4.std.algebra {
   free_monoid_node,
   list_append,
   list_snoc_item,
-  ring_node,
-  semiring_node
+  ordered_ring_node
 }
 import v4.std.text { String }
 
@@ -232,13 +231,10 @@ data go_surface_spelling_bool: Symbol = go_surface_spelling_bool
 data go_surface_spelling_string: Symbol = go_surface_spelling_string
 
 data go_inhabitant_int: Symbol = go_inhabitant_int
-data go_inhabitant_string: Symbol = go_inhabitant_string
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
-data go_inhabitant_field_string: Symbol = go_inhabitant_field_string
-data go_witness_signed_integer_ring: Symbol = go_witness_signed_integer_ring
-data go_witness_unsigned_integer_semiring: Symbol = go_witness_unsigned_integer_semiring
+data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
 data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
 data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
@@ -977,26 +973,10 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      match facts {
-        GoSignedIntegerPrimitiveFacts {
-          surface_spelling: _,
-          width: _,
-          encoding: _,
-          std_projection
-        } => go_named_edge(
-          name: go_witness_signed_integer_ring,
-          target: go_inhabitant_atom(id: facts.std_projection)
-        )
-        GoUnsignedIntegerPrimitiveFacts {
-          surface_spelling: _,
-          width: _,
-          encoding: _,
-          std_projection
-        } => go_named_edge(
-          name: go_witness_unsigned_integer_semiring,
-          target: go_inhabitant_atom(id: facts.std_projection)
-        )
-      },
+      go_named_edge(
+        name: go_witness_integer_ordered_ring,
+        target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+      ),
       go_named_edge(
         name: go_facts_field_std_projection,
         target: go_inhabitant_atom(id: facts.std_projection)
@@ -1063,27 +1043,10 @@ fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
 
 fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = go_integer_facts_node(facts: facts)
-  match facts {
-    GoSignedIntegerPrimitiveFacts {
-      surface_spelling: _,
-      width: _,
-      encoding: _,
-      std_projection: _
-    } => AlgebraInhabitanceDecl {
-      algebra: ring_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: go_integer_algebra_witness_node(facts: facts)
-    }
-    GoUnsignedIntegerPrimitiveFacts {
-      surface_spelling: _,
-      width: _,
-      encoding: _,
-      std_projection: _
-    } => AlgebraInhabitanceDecl {
-      algebra: semiring_node(inhabitant: inhabitant),
-      inhabitant: inhabitant,
-      witness: go_integer_algebra_witness_node(facts: facts)
-    }
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_integer_algebra_witness_node(facts: facts)
   }
 }
 
@@ -1126,7 +1089,7 @@ fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 }
 
 fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = go_string_inhabitant_node()
+  let inhabitant = go_string_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
     algebra: free_monoid_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
@@ -1156,22 +1119,6 @@ fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
     go_bool_algebra_inhabitance()
   ]
-}
-
-fn go_string_inhabitant_node() -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      go_named_edge(
-        name: go_inhabitant_field_string,
-        target: go_inhabitant_atom(id: go_inhabitant_string)
-      ),
-      go_named_edge(
-        name: go_inhabitant_field_facts,
-        target: go_string_facts_node(facts: go_facts_string)
-      )
-    ]
-  }
 }
 
 fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
