@@ -1,6 +1,6 @@
 // src/v4/std/qualified_name.dag
 // Scope: Qualified names as a projection over symbol sequences.
-// Owns: QualifiedName, qualified_name_projection_gated, qualified_name_eq, qualified_name_is_prefix_of, qualified_name_from_node.
+// Owns: QualifiedName, qualified_name_projection_gated, qualified_name_eq, qualified_name_from_node.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag.
 // Status: T-28 support carrier; consumed by std/module_graph.dag, compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Qualified_name
@@ -9,7 +9,7 @@
 module v4.std.qualified_name
 
 
-import v4.std.algebra { FreeMonoid, is_prefix_of, zip_eq }
+import v4.std.algebra { FreeMonoid, zip_eq }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -29,11 +29,6 @@ data qualified_name_projection_gated: Symbol = qualified_name_projection_gated
 
 fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
-}
-
-
-fn qualified_name_is_prefix_of(prefix: QualifiedName, name: QualifiedName) -> Bool {
-  is_prefix_of(prefix: prefix, xs: name, eq: fn(a, b) { a == b })
 }
 
 
