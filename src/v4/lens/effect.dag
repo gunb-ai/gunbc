@@ -8,7 +8,7 @@
 module v4.lens.effect
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.std.algebra { bag_eq, list_snoc_item }
+import v4.std.algebra { bag_eq, list_snoc_item, non_empty }
 import v4.std.collection {
   List,
   Optional,
@@ -88,9 +88,7 @@ fn effect_first_upstream_diagnostic(
 
 // 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-effect-signature-deferred-unresolved — dissolve-on-arrival: `InferredFacts` decodes to a closed effect-kind carrier (#3468); forbidden: parallel ad-hoc signature-deferred Bool predicates outside effect_witness.
 fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
-  fold(fact.dependencies, init: false, f: fn(_acc, _) {
-    true
-  })
+  non_empty(xs: fact.dependencies)
 }
 
 fn effect_witness_diagnostic() -> Diagnostic {
