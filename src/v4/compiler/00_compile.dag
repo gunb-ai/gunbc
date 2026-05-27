@@ -519,42 +519,41 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
             bind_outcome(
               o: agent_store_to_module_graph(entry: entry),
               f: fn(graph) {
-              bind_outcome(
-                o: resolve_module_with_admission(
-                  lm: lm,
-                  graph: graph,
-                  admission: ModuleAdmission {
-                    subject: ModuleSubject {
-                      path: store.entry,
-                      tree: entry.root
-                    },
-                    imports: Empty
-                  }
-                ),
-                f: fn(resolved) {
-                  bind_outcome(
-                    o: compile(
-                      source: resolved,
-                      mode: TranslateTo { target: target }
-                    ),
-                    f: fn(compile_out) {
-                      match compile_out {
-                        TranslateResult { source: target_source } =>
-                          outcome_accepted(target_source)
-                        EvalResult { value: _ } =>
-                          outcome_rejected(
-                            compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
-                            )
-                          )
-                      }
+                bind_outcome(
+                  o: resolve_module_with_admission(
+                    lm: lm,
+                    graph: graph,
+                    admission: ModuleAdmission {
+                      subject: ModuleSubject {
+                        path: store.entry,
+                        tree: entry.root
+                      },
+                      imports: Empty
                     }
-                  )
-                }
-              )
-            }
-          )
-            }
+                  ),
+                  f: fn(resolved) {
+                    bind_outcome(
+                      o: compile(
+                        source: resolved,
+                        mode: TranslateTo { target: target }
+                      ),
+                      f: fn(compile_out) {
+                        match compile_out {
+                          TranslateResult { source: target_source } =>
+                            outcome_accepted(target_source)
+                          EvalResult { value: _ } =>
+                            outcome_rejected(
+                              compile_eval_not_realized_diagnostic(
+                                at: port_locus(port: compile_stage_locus_port)
+                              )
+                            )
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+            )
           }
         }
       )
