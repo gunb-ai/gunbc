@@ -1233,7 +1233,16 @@ until admission is complete. As a follow-on, dissolve `AdmissionState` in
 `Outcome` accumulator of the admission stage once generic `Outcome`
 fold/traverse can carry the accumulator directly.
 
-### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
+### T-29 — extdeps C++ ABI / target data-model  [DONE]
+**Status:** Landed across PRs #3277, #3535, #3628.
+`src/v4/extdeps/cpp_abi.dag` owns: `CppMachineWidth{8,16,32,64}`,
+`CppIntegerWidth` (coproduct), `CppCoreIntegerWidthModel` (record),
+`CppPlainCharSignedness`, `CppWcharTSignedness`, `CppDataModelFamily`
+(ILP32/LP64/LLP64/ILP64), `CppAbiModel`, `CppTargetDataModel`,
+`CppTargetProfile`, plus four concrete data-model aliases. `cpp.dag`
+imports `CppTargetProfile`; testcase `test/claim/manual/cpp_scalar_grounding_anchor.dag`
+anchors the ABI-width compile paths.
+
 **Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
 `std/` numeric vocabulary is undefined without an ABI data-model — C++
 integer widths are implementation-defined (LP64 / ILP32 / …), so the
