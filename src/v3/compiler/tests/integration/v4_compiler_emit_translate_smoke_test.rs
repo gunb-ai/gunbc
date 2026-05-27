@@ -469,6 +469,14 @@ fn v4_dag_language_model_declares_surface_emit_rows() {
         "{DAG_LANGUAGE_PATH}: data-decl emit rows must carry concrete emitted identity"
     );
     assert!(
+        surface_declares_fn(&module, "emit_module_header_emitted_node"),
+        "{DAG_LANGUAGE_PATH}: module-header emit rows must carry concrete emitted identity"
+    );
+    assert!(
+        surface_declares_fn(&module, "emit_import_decl_emitted_node"),
+        "{DAG_LANGUAGE_PATH}: import-decl emit rows must carry concrete emitted identity"
+    );
+    assert!(
         surface_declares_fn(&module, "emit_row_module_header"),
         "{DAG_LANGUAGE_PATH}: must declare module-header grammar row emission"
     );

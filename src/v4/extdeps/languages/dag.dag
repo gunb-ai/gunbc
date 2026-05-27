@@ -117,6 +117,9 @@ data dag_token_lbracket: Symbol = dag_token_lbracket
 data dag_token_rbracket: Symbol = dag_token_rbracket
 data dag_token_lt: Symbol = dag_token_lt
 data dag_token_gt: Symbol = dag_token_gt
+data dag_surface_module_header_qualified_name: Symbol = dag_surface_module_header_qualified_name
+data dag_surface_import_decl_qualified_name: Symbol = dag_surface_import_decl_qualified_name
+data dag_surface_import_decl_block: Symbol = dag_surface_import_decl_block
 data dag_surface_data_decl_name: Symbol = dag_surface_data_decl_name
 data dag_surface_data_decl_type: Symbol = dag_surface_data_decl_type
 data dag_surface_data_decl_expr: Symbol = dag_surface_data_decl_expr
@@ -1313,6 +1316,23 @@ fn dag_grammar_module_production() -> GrammarProduction {
 }
 
 
+fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_module_header,
+        target: dag_grammar_atom(id: dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: dag_surface_module_header_qualified_name,
+        target: qualified_name
+      )
+    ]
+  }
+}
+
+
 fn emit_row_module_header(qualified_name: Node) -> Node {
   emit_grammar_relation_row(
     production: dag_grammar_production(
@@ -1320,12 +1340,42 @@ fn emit_row_module_header(qualified_name: Node) -> Node {
       expression: dag_grammar_module_header_expr(),
       emitted: dag_surface_module_header
     ),
-    emitted: dag_grammar_atom(id: dag_surface_module_header),
+    emitted: emit_module_header_emitted_node(qualified_name: qualified_name),
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_module),
       qualified_name
     ]
   )
+}
+
+
+fn emit_import_decl_emitted_node(
+  qualified_name: Node,
+  import_block: Node?
+) -> Node {
+  let prefix = [
+    dag_named_edge(
+      name: dag_surface_import_decl,
+      target: dag_grammar_atom(id: dag_surface_import_decl)
+    ),
+    dag_named_edge(
+      name: dag_surface_import_decl_qualified_name,
+      target: qualified_name
+    )
+  ]
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: match import_block {
+      Some { value: block } =>
+        list_append(
+          left: prefix,
+          right: [
+            dag_named_edge(name: dag_surface_import_decl_block, target: block)
+          ]
+        )
+      None => prefix
+    }
+  }
 }
 
 
@@ -1343,7 +1393,10 @@ fn emit_row_import_decl(
       expression: dag_grammar_import_decl_expr(),
       emitted: dag_surface_import_decl
     ),
-    emitted: dag_grammar_atom(id: dag_surface_import_decl),
+    emitted: emit_import_decl_emitted_node(
+      qualified_name: qualified_name,
+      import_block: import_block
+    ),
     tokens: match import_block {
       Some { value: block } => list_append(left: prefix, right: [block])
       None => prefix
