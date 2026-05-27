@@ -1519,11 +1519,20 @@ Enforcement via lens (forthcoming).
 **Files:**
 - `std/node.dag` or `std/qualified_name.dag` — `QualifiedName` type +
   `qualified_name_from_node`.
+- `extdeps/languages/dag.dag` — **read reference only.** `qualified_name_from_node`
+  reads the parse-tree structure produced by `dag_surface_module_header` →
+  `dag_production_qualified_name`. Workers must consult this file to know the
+  exact child layout a module-declaration Node presents. No changes to this file.
 - Any caller of `ModulePath`/`ModulePathSegment` — migrate to `QualifiedName`.
 - `INVARIANTS.md` §P1 — naming invariant entry.
 
-**Dependencies:** none — `qualified_name_from_node` only reads Node structure
-already defined in `std/node.dag`.
+**Dependencies:** The module-header parse-tree surface (`dag_surface_module_header`
+/ `dag_production_qualified_name`) in `extdeps/languages/dag.dag` is the
+structural authority `qualified_name_from_node` reads from. This surface already
+exists in the codebase — no prerequisite task is needed. Workers must read
+`extdeps/languages/dag.dag` to understand the Node child layout before
+implementing `qualified_name_from_node`; they may not assume a fixed child
+index or invent a traversal not grounded in that grammar declaration.
 
 **Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `ModuleEntry`, `ModuleGraph`,
