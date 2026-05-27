@@ -12,11 +12,13 @@ import v4.lens.affected_set {
   EditDimension,
   FailClosed,
   Propagates,
+  FrontierProduced,
   affected_set_boundary_pure_receipt_edge,
   affected_set_boundary_pure_receipt_node,
   affected_set_default_dimension,
   affected_set_dimension_not_read_receipt_edge,
   affected_set,
+  canonical_transitive_frontier,
   canonical_propagation_receipt,
   empty_affected_fold_acc,
   empty_frontier,
@@ -41,6 +43,8 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds }
 import v4.test.claim.lens_affected_set.node_precision {
+  affected_set_mid,
+  affected_set_mid_to_leaf_dependency,
   affected_set_root,
   affected_set_root_edge_symbol
 }
@@ -157,6 +161,13 @@ data irt1_public_nonfrontier_dependency_with_mismatched_receipt: DependencyView 
   usage_site: irt1_public_mismatched_receipted_usage_site
 }
 
+data irt1_public_mid_to_root_ancestor_dependency: DependencyView = DependencyView {
+  source: affected_set_mid,
+  dependent: affected_set_root,
+  kind: Contains,
+  usage_site: affected_set_root
+}
+
 data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
   edit: irt1_public_changed_edit,
   dimension: affected_set_default_dimension
@@ -225,6 +236,23 @@ fn irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_
     diff: Diff { edits: [irt1_public_nonroot_changed_edit] }
   ) {
     Holds { value: FailClosed { reason: _ } } => true
+    _ => false
+  }
+}
+
+fn irt1_public_nonroot_frontier_points_to_ancestor() -> Bool {
+  match canonical_transitive_frontier(
+    dag: affected_set_root,
+    edit_dimension: EditDimension {
+      edit: irt1_public_nonroot_changed_edit,
+      dimension: affected_set_default_dimension
+    }
+  ) {
+    FrontierProduced { dependencies: dependencies } =>
+      dependencies == [
+        irt1_public_mid_to_root_ancestor_dependency,
+        affected_set_mid_to_leaf_dependency
+      ]
     _ => false
   }
 }
@@ -328,6 +356,14 @@ fn irt1_public_affected_set_nonroot_changed_edit_fail_closed_claim_rhs() -> Node
   }
 }
 
+fn irt1_public_nonroot_frontier_points_to_ancestor_claim_rhs() -> Node {
+  if irt1_public_nonroot_frontier_points_to_ancestor() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
 fn irt1_public_affected_set_missing_path_fail_closed_claim_rhs() -> Node {
   if irt1_public_affected_set_missing_path_fails_closed() {
     affected_set_example_node
@@ -413,6 +449,14 @@ data claim_irt1_public_affected_set_nonroot_changed_edit_fail_closed: TestClaim 
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: irt1_public_affected_set_nonroot_changed_edit_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_nonroot_frontier_points_to_ancestor: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonroot_frontier_points_to_ancestor: non-root frontier reruns ancestor",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_nonroot_frontier_points_to_ancestor_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

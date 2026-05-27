@@ -1068,10 +1068,10 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
       FrontierProduced {
         dependencies: [
           DependencyView {
-            source: frame.ancestor,
-            dependent: child,
+            source: child,
+            dependent: frame.ancestor,
             kind: Contains,
-            usage_site: child
+            usage_site: frame.ancestor
           }
         ]
       }
