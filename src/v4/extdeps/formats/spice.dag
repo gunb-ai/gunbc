@@ -291,6 +291,7 @@ type DeckStatement
   | DeckDirective { directive: Directive }
 
 
+// 🟡 needs-more-work — feature:spice-nested-subckt-position-fidelity — consumer:byte-exact-nested-subckt-roundtrip — dissolve-on-arrival: prefer SubcircuitDefinition as SubcircuitStatement; fallback position_in_parent metadata while A1 holds.
 type SpiceNetlist {
   title: String
   body: List<DeckStatement>
