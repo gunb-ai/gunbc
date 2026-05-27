@@ -62,6 +62,7 @@ fn v4_compile_dag_declares_public_validate_then_compile() {
     );
 }
 
+#[test]
 fn v4_compile_dag_declares_ratified_compile_core() {
     let module = parse_module(COMPILE_DAG, COMPILE_PATH);
     assert!(
