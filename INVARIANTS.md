@@ -119,8 +119,6 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Canonical example (ratified 2026-05-27):** `ModulePath` was `FreeMonoid<ModulePathSegment>` where `ModulePathSegment = { name: Symbol }` — a qualified identifier sequence (`[v4, std, algebra]`), not a path through any graph. The `Path` concept in `std/node.dag` is `{ steps: List<Symbol> }` — a route through Node edges. `ModulePath` was a nickname for `QualifiedName`; renamed accordingly. `ModulePathSegment` was a nickname for `Symbol`; deleted.
 
-**Enforcement:** forthcoming naming lens over the `src/v4/` substrate.
-
 ### Procedure: substrate-fact introduction (decision procedure for new modeling)
 
 **When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
