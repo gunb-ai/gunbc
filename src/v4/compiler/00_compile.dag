@@ -13,7 +13,7 @@
 //           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
 //           lens/fact_density.dag, std/algebra.dag, std/collection.dag, std/diagnostic.dag,
 //           std/node.dag, std/text.dag, std/witness.dag.
-// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → compile.
+// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
 
@@ -37,6 +37,7 @@ import v4.std.diagnostic {
   ExternalContractUnknown,
   Locus,
   Outcome,
+  Some,
   port_locus,
   Rejected,
   Unavailable,
@@ -44,7 +45,8 @@ import v4.std.diagnostic {
   bind_outcome_accepted,
   diagnostics_singleton,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  outcome_with_diagnostics
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
@@ -69,8 +71,13 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
+type CompileLensOutcome = Outcome<Witness<Node>>
+
+type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
+
+// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v4.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate record as the permanent lens representation.
 type CompileLens {
-  gate: fn(InferredTree) -> Outcome<Witness<Node>>
+  gate: CompileLensGate
 }
 
 
@@ -125,9 +132,7 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-data fact_density_lens: CompileLens = CompileLens {
-  gate: fact_density_hollow_alias_compile_gate
-}
+data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
 
 
 fn always_required_lenses() -> List<CompileLens> {
@@ -140,17 +145,43 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 }
 
 
+fn run_compile_lens_gate(lens: CompileLens, inferred: InferredTree) -> Outcome<Witness<Node>> {
+  lens.gate(inferred)
+}
+
+
+// Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
+// so introspect mode never blocks compilation. Full NonEmptyDiagnostics from Rejected flows
+// forward as advisory Accepted.diagnostics; Violates.diagnostic carries the head.
+// Extracted to avoid nested match directly in arm (v2-compiler constraint).
+fn apply_compile_lens_introspect(
+  lens: CompileLens,
+  inferred: InferredTree
+) -> Outcome<Witness<Node>> {
+  match run_compile_lens_gate(lens: lens, inferred: inferred) {
+    Accepted { value: w, diagnostics: od } =>
+      outcome_with_diagnostics(value: w, diagnostics: od)
+    Rejected { diagnostics: d } =>
+      outcome_with_diagnostics(
+        value: Violates { diagnostic: d.head },
+        diagnostics: Some { diagnostics: d }
+      )
+  }
+}
+
+
 // 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
-// T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
-// CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion lands with application.dag.
+// T-23 migration stub: mirrors v4.lens.application apply_lens / apply_lens_enforce split.
+// CompileLensEnforce: fail-closed — gate rejection propagates as Rejected.
+// CompileLensIntrospect: advisory — gate runs but rejection is wrapped as Accepted(Violates) so compilation is never blocked.
 fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
   mode: CompileLensMode
 ) -> Outcome<Witness<Node>> {
   match mode {
-    CompileLensEnforce => lens.gate(tree: inferred)
-    CompileLensIntrospect => lens.gate(tree: inferred)
+    CompileLensEnforce => run_compile_lens_gate(lens: lens, inferred: inferred)
+    CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
   }
 }
 
@@ -350,12 +381,13 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
                 o: resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
                   bind_outcome(
-                    o: compile(
+                    o: validate_then_compile(
                       source: resolved,
+                      lenses: [],
                       mode: TranslateTo { target: target }
                     ),
-                    f: fn(compile_out) {
-                      match compile_out {
+                    f: fn(validated) {
+                      match validated.value {
                         TranslateResult { source: target_source } =>
                           outcome_accepted(target_source)
                         EvalResult { value: _ } =>
