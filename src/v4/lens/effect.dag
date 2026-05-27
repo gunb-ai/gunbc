@@ -8,7 +8,7 @@
 module v4.lens.effect
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection {
   List,
   Optional,
@@ -60,7 +60,7 @@ fn effect_classify(
 fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, effect_classify(tree: tree, view: view))
+      list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
     })
   }
 }

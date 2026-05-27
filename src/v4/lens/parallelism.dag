@@ -8,7 +8,7 @@
 module v4.lens.parallelism
 
 import v4.compiler.infer { InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -84,7 +84,7 @@ fn parallelism_classify(view: DependencyView) -> ClassifiedDependencyView<Parall
 fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
   ParallelismFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, parallelism_classify(view: view))
+      list_snoc_item(xs: acc, item: parallelism_classify(view: view))
     })
   }
 }
