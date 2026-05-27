@@ -1,15 +1,15 @@
 // src/v4/std/module_graph.dag
 // Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
-// Owns: ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup; validated graph constructor.
-// Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
-// Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_module_resolve.dag.
+// Owns: ModuleGraph, AncestorRelation; ancestor-prefix Witness; root lookup.
+// Consumes: std/collection.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
+// Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
 
 module v4.std.module_graph
 
 
-import v4.std.algebra { Empty, Cons, FreeMonoid }
+import v4.std.collection { Map }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -20,21 +20,13 @@ import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.qualified_name {
   QualifiedName,
-  qualified_name_eq,
   qualified_name_is_prefix_of
 }
 import v4.std.witness { Holds, Violates, Witness }
 
 
-type ModuleEntry {
-  path: QualifiedName
-  root: Node
-}
-
-
-// 🟡 feature:T-28-carrier-level-uniqueness — FreeMonoid<ModuleEntry> admits duplicate paths at carrier level; module_graph_from_entries is the canonical construction path that enforces path uniqueness — dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_entries as the sole construction path.
 type ModuleGraph {
-  entries: FreeMonoid<ModuleEntry>
+  roots: Map<QualifiedName, Node>
 }
 
 
@@ -46,8 +38,7 @@ type AncestorRelation {
 
 
 data module_graph_ancestor_not_prefix: Symbol = module_graph_ancestor_not_prefix
-data module_graph_entry_not_found: Symbol = module_graph_entry_not_found
-data module_graph_duplicate_path: Symbol = module_graph_duplicate_path
+data module_graph_root_not_found: Symbol = module_graph_root_not_found
 
 
 fn module_ancestor_not_prefix_diagnostic() -> Diagnostic {
@@ -59,36 +50,11 @@ fn module_ancestor_not_prefix_diagnostic() -> Diagnostic {
 }
 
 
-fn module_entry_not_found_diagnostic() -> Diagnostic {
+fn module_root_not_found_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: module_graph_entry_not_found,
-    at: port_locus(port: module_graph_entry_not_found),
+    reason: module_graph_root_not_found,
+    at: port_locus(port: module_graph_root_not_found),
     correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
-fn module_graph_duplicate_path_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: module_graph_duplicate_path,
-    at: port_locus(port: module_graph_duplicate_path),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type ModuleEntryFindState
-  = EntryNotFound
-  | EntryFoundOnce { found: ModuleEntry }
-  | EntryFoundDuplicate
-
-
-fn module_entry_find_state_to_witness(state: ModuleEntryFindState) -> Witness<ModuleEntry> {
-  match state {
-    EntryNotFound => Violates { diagnostic: module_entry_not_found_diagnostic() }
-    EntryFoundOnce { found: entry } => Holds { value: entry }
-    EntryFoundDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
   }
 }
 
@@ -115,86 +81,12 @@ fn module_ancestor_witness(
 }
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
-fn module_graph_entry_for_path_fold(
-  entries: FreeMonoid<ModuleEntry>,
-  path: QualifiedName,
-  acc: ModuleEntryFindState
-) -> ModuleEntryFindState {
-  match entries {
-    Empty => acc
-    Cons { head: entry, tail: rest } =>
-      module_graph_entry_for_path_fold(
-        entries: rest,
-        path: path,
-        acc: if qualified_name_eq(a: entry.path, b: path) {
-          match acc {
-            EntryNotFound => EntryFoundOnce { found: entry }
-            EntryFoundOnce { found: _ } => EntryFoundDuplicate
-            EntryFoundDuplicate => EntryFoundDuplicate
-          }
-        } else {
-          acc
-        }
-      )
-  }
-}
-
-
-fn module_graph_entry_for_path(
+fn module_graph_root_for_name(
   graph: ModuleGraph,
-  path: QualifiedName
-) -> Witness<ModuleEntry> {
-  module_entry_find_state_to_witness(
-    state: module_graph_entry_for_path_fold(
-      entries: graph.entries,
-      path: path,
-      acc: EntryNotFound
-    )
-  )
-}
-
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type ModuleGraphBuildState
-  = BuildValid { seen: FreeMonoid<ModuleEntry> }
-  | BuildDuplicate
-
-
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — same v2 bootstrap limitation as module_graph_entry_for_path_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleEntry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn module_graph_build_fold(
-  entries: FreeMonoid<ModuleEntry>,
-  acc: ModuleGraphBuildState
-) -> ModuleGraphBuildState {
-  match entries {
-    Empty => acc
-    Cons { head: entry, tail: rest } =>
-      match acc {
-        BuildDuplicate =>
-          module_graph_build_fold(entries: rest, acc: BuildDuplicate)
-        BuildValid { seen: prior } =>
-          module_graph_build_fold(
-            entries: rest,
-            acc: match module_graph_entry_for_path_fold(
-              entries: prior,
-              path: entry.path,
-              acc: EntryNotFound
-            ) {
-              EntryNotFound => BuildValid { seen: Cons { head: entry, tail: prior } }
-              EntryFoundOnce { found: _ } => BuildDuplicate
-              EntryFoundDuplicate => BuildDuplicate
-            }
-          )
-      }
-  }
-}
-
-
-fn module_graph_from_entries(
-  entries: FreeMonoid<ModuleEntry>
-) -> Witness<ModuleGraph> {
-  match module_graph_build_fold(entries: entries, acc: BuildValid { seen: Empty }) {
-    BuildValid { seen: _ } => Holds { value: ModuleGraph { entries: entries } }
-    BuildDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
+  name: QualifiedName
+) -> Witness<Node> {
+  match graph.roots.lookup(name) {
+    Holds { value: root } => Holds { value: root }
+    Violates { diagnostic: _ } => Violates { diagnostic: module_root_not_found_diagnostic() }
   }
 }

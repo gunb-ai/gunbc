@@ -1230,7 +1230,7 @@ the subject `QualifiedName` / tree, enforces import / visibility / ambiguity
 rules, and produces the exact `Namespace` admitted for that subject module.
 It must not flat-fold `graph.entries`; module paths remain authoritative
 until admission is complete.
-As a follow-on after T-28-B extraction, dissolve `ModuleAdmissionState` in `03_module_resolve.dag` — its accepted/rejected coproduct can collapse into the `Outcome` accumulator of the new admission stage.
+As a follow-on after T-28-B extraction, dissolve `NameAdmissionState` in `03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the `Outcome` accumulator of the new admission stage.
 **Move out of `03_resolve.dag`:** `ModuleGraph` import,
 `namespace_from_tree_and_graph`, `resolve_with_graph`, and header
 ownership / consume claims for `ModuleGraph`.
