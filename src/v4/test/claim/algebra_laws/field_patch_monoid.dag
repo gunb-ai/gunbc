@@ -85,6 +85,9 @@ data witness_monoid_left_identity: Bool = apply_field_patch(base: false, patch: 
 // Witness: monoid op right identity — op(Override{v}, identity) applies as Override{v}.
 data witness_monoid_right_identity: Bool = apply_field_patch(base: false, patch: fp_monoid_op(left: Override { value: true }, right: fp_monoid_identity())) == true
 
+// Witness: monoid op right-bias — op(Override{left}, Override{right}) applies as Override{right}.
+data witness_monoid_right_bias: Bool = apply_field_patch(base: true, patch: fp_monoid_op(left: Override { value: true }, right: Override { value: false })) == false
+
 
 // ── Claims ────────────────────────────────────────────────────────────────────
 
@@ -164,6 +167,15 @@ data claim_monoid_right_identity: TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(p, identity) == p (Monoid witness right identity)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_monoid_right_identity),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_monoid_right_bias: TestClaim = CompilesClaim {
+  label: "field_patch/monoid: op(Override, Override) right-biased (later layer wins)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_monoid_right_bias),
   expected_value: fp_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
