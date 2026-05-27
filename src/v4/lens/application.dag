@@ -58,9 +58,14 @@ import v4.std.node {
 }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
-// Mechanical port (interface-freeze pin §4): opaque until shared substrate graduates.
-type DeclarationId
-type NodeId
+// Mechanical port (interface-freeze pin §4): bounded structural projection handles until
+// shared declaration/node identity substrate graduates.
+type DeclarationId {
+  path: Path
+}
+type NodeId {
+  path: Path
+}
 type SourceSpan
 
 // 🟢 TERMINAL — disjoint sum over section shapes (design-lens-application-surface §1.2).
@@ -376,14 +381,35 @@ fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
-// 🟡 gated — feature:section-ref-to-subject-projection — bind: TASKS.md T-23 follow-on wire —
-// dissolve-on-arrival: resolve `DeclarationScope` / `NodeScope` to the bounded sub-`Node` the
-// lens reads (declaration body sub-DAG or expression subtree); forbidden: decorative `SectionRef`
-// parameters with whole-graph `read(root)` while claiming section-scoped application.
+// 🟢 grounded — SectionRef projection authority. DeclarationScope resolves from the program root;
+// NodeScope first resolves the enclosing declaration and then the node path within that declaration.
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
-    DeclarationScope { declaration: _ } => outcome_accepted(value: root)
-    NodeScope { declaration: _, node: _ } => outcome_accepted(value: root)
+    DeclarationScope { declaration: declaration } =>
+      subterm_at(root: root, p: declaration.path)
+    NodeScope { declaration: declaration, node: node } =>
+      bind_outcome(
+        o: subterm_at(root: root, p: declaration.path),
+        f: fn(declaration_subject) {
+          subterm_at(root: declaration_subject, p: node.path)
+        }
+      )
+  }
+}
+
+type LensEnforcementVerdict<Projected> {
+  projected: Projected
+  violated: Bool
+}
+
+fn lens_enforcement_verdict<Output, Budget, Projected>(
+  enforcement: LensEnforcement<Output, Budget, Projected>,
+  output: Output,
+  budget: Budget
+) -> LensEnforcementVerdict<Projected> {
+  LensEnforcementVerdict {
+    projected: enforcement.project(output: output),
+    violated: enforcement.violates(output: output, declared: budget)
   }
 }
 
@@ -415,7 +441,12 @@ fn apply_lens_enforce<Output, Budget, Projected>(
       bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
-          if enforceable.enforcement.violates(output: lens_output, declared: budget) {
+          let verdict = lens_enforcement_verdict(
+            enforcement: enforceable.enforcement,
+            output: lens_output,
+            budget: budget
+          )
+          if verdict.violated {
             outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
           } else {
             outcome_accepted(value: lens_output)

@@ -18,7 +18,7 @@ import v4.lens.application {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, ComputationNode, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, ComputationNode, Conj, Node, Path, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -66,7 +66,7 @@ data projection_test_enforceable: EnforceableLens<Symbol, Symbol, Symbol> = Enfo
   enforcement: projection_test_enforcement
 }
 
-data projection_test_declaration: DeclarationId = projection_test_declaration
+data projection_test_declaration: DeclarationId = DeclarationId { path: Path { steps: [] } }
 
 fn apply_lens_enforce_projection_claim_holds() -> Bool {
   match apply_lens_enforce(
