@@ -29,7 +29,7 @@ type ChangeSet {
   changes: List<Change>
 }
 
-// RULING-1: 🟢 pretty-much-done — invalidation target is one endpoint of DependencyView.
+// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21/T-24 — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
 type DependencyEndpoint
   = DependencySource
   | DependencyDependent
