@@ -1102,7 +1102,7 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
               kind: Contains,
               usage_site: child
             },
-            affected: frame.ancestor
+            target: DependencySource
           }
         ]
       }
@@ -1115,7 +1115,7 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
 fn frontier_dependency_from_dependency_view(dependency: DependencyView) -> FrontierDependency {
   FrontierDependency {
     dependency: dependency,
-    affected: dependency.dependent
+    target: DependencyDependent
   }
 }
 
