@@ -463,7 +463,7 @@ fn rust_integer_overflow_disposition(kind: RustIntKind, width: RustIntWidth) -> 
 }
 
 // Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
-fn rust_mvp1_concrete_tokens() -> FreeMonoid<RustConcreteSyntaxToken> {
+fn rust_mvp1_concrete_tokens() -> List<RustConcreteSyntaxToken> {
   [
     RustFixedToken { token_class: rust_token_kw_fn },
     RustBoundToken { token_class: rust_token_ident, binding: rust_binding_fn_add },

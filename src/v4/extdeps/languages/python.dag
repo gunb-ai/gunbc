@@ -186,7 +186,7 @@ data python_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data python_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data python_mvp1_source_text: String = "def add(x, y): return x + y"
 
-fn python_mvp1_concrete_tokens() -> FreeMonoid<PythonConcreteSyntaxToken> {
+fn python_mvp1_concrete_tokens() -> List<PythonConcreteSyntaxToken> {
   [
     PythonFixedToken { token_class: python_token_kw_def },
     PythonBoundToken { token_class: python_token_ident, binding: python_binding_fn_add },

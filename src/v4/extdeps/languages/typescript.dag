@@ -178,7 +178,7 @@ data ts_mvp1_source_literal: Symbol = ts_mvp1_source_literal
 data ts_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data ts_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
-fn ts_mvp1_concrete_tokens() -> FreeMonoid<TsConcreteSyntaxToken> {
+fn ts_mvp1_concrete_tokens() -> List<TsConcreteSyntaxToken> {
   [
     TsFixedToken { token_class: ts_token_kw_function },
     TsBoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },

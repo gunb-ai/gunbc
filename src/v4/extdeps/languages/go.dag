@@ -244,7 +244,7 @@ data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data go_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data go_mvp1_source_text: String = "func add(x int, y int) int { return x + y }"
 
-fn go_mvp1_concrete_tokens() -> FreeMonoid<GoConcreteSyntaxToken> {
+fn go_mvp1_concrete_tokens() -> List<GoConcreteSyntaxToken> {
   [
     GoFixedToken { token_class: go_token_kw_func },
     GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },

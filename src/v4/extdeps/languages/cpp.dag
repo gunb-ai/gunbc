@@ -248,7 +248,7 @@ data cpp_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data cpp_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
 
-fn cpp_mvp1_concrete_tokens() -> FreeMonoid<CppConcreteSyntaxToken> {
+fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
   [
     CppFixedToken { token_class: cpp_token_ty_int },
     CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },
