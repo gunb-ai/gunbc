@@ -38,6 +38,7 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.logic { Bool }
+import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
 data parallelism_reason_unresolved_projection: Symbol = parallelism_reason_unresolved_projection

@@ -28,7 +28,7 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
+import v4.std.node { Node, Symbol }
 import v4.std.witness { Holds, Violates, Witness }
 
 data effect_reason_unresolved_projection: Symbol = effect_reason_unresolved_projection
