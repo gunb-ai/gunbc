@@ -1,6 +1,6 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetReading, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierReceipt, affected_set, affected_set_reading, re_exec_frontier_from_diff, affected_set_from_diff.
+// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetReading, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierDependency, FrontierReceipt, affected_set, affected_set_reading, re_exec_frontier_from_diff, affected_set_from_diff.
 // Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView, InferredTree; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: T-21 IRT-1 filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI/T-24 node-precision closure via affected_set_from_diff.
 
@@ -133,9 +133,16 @@ type PropagationReceipt
   | PropagationUnknown { reason: Symbol }
 
 
+// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — bind T-21 — dissolve-on: typed invalidation frontier replaces affected node sidecar
+type FrontierDependency {
+  dependency: DependencyView
+  affected: Node
+}
+
+
 // 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — bind T-21 — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
 type FrontierReceipt
-  = FrontierProduced { dependencies: List<DependencyView> }
+  = FrontierProduced { dependencies: List<FrontierDependency> }
   | FrontierUnknown { reason: Symbol }
   | FrontierRejected { diagnostic: Diagnostic }
 
@@ -554,9 +561,9 @@ fn root_key(subject: Node, dimension: AffectedDimension) -> ExclusionKey {
 }
 
 
-fn dependency_key(dependency: DependencyView, dimension: AffectedDimension) -> ExclusionKey {
+fn frontier_dependency_key(dependency: FrontierDependency, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
-    at: dependency.dependent,
+    at: dependency.affected,
     dimension: dimension
   }
 }
@@ -681,7 +688,7 @@ fn expand_dimension(
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
       match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
         FrontierProduced { dependencies: dependencies } =>
-          fold(dependencies, init: frontier, f: fn(acc2, dependency) {
+          fold(dependencies, init: frontier, f: fn(acc2, frontier_dependency) {
             match acc2 {
               FailClosed { reason: e } => FailClosed { reason: e }
               ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } =>
@@ -690,12 +697,12 @@ fn expand_dimension(
                   dag: dag,
                   edit: edit,
                   dimension: dimension,
-                  dependency: dependency
+                  dependency: frontier_dependency.dependency
                 ) {
                   Propagates =>
-                    mark_rerun(frontier: acc2, key: dependency_key(dependency: dependency, dimension: dimension))
+                    mark_rerun(frontier: acc2, key: frontier_dependency_key(dependency: frontier_dependency, dimension: dimension))
                   DoesNotPropagate { proof: p } =>
-                    mark_excluded(frontier: acc2, key: dependency_key(dependency: dependency, dimension: dimension), proof: p)
+                    mark_excluded(frontier: acc2, key: frontier_dependency_key(dependency: frontier_dependency, dimension: dimension), proof: p)
                   PropagationUnknown { reason: r } =>
                     mark_whole_dag(reason: r)
                 }
@@ -826,25 +833,25 @@ fn expand_affected_dimension(
 ) -> AffectedSetFoldAcc {
   match frontier_receipt(read_model: read_model, dag: dag, edit: edit, dimension: dimension) {
     FrontierProduced { dependencies: dependencies } =>
-      fold(dependencies, init: acc, f: fn(acc2, dependency) {
+      fold(dependencies, init: acc, f: fn(acc2, frontier_dependency) {
         match propagation_receipt(
           read_model: read_model,
           dag: dag,
           edit: edit,
           dimension: dimension,
-          dependency: dependency
+          dependency: frontier_dependency.dependency
         ) {
           Propagates =>
             record_affected_dependency(
               acc: acc2,
               change: change_for_edit(edit: edit),
-              dependency: dependency
+              dependency: frontier_dependency.dependency
             )
           DoesNotPropagate { proof: p } =>
             record_affected_exclusion(
               acc: acc2,
               change: change_for_edit(edit: edit),
-              dependency: dependency,
+              dependency: frontier_dependency.dependency,
               proof: p
             )
           PropagationUnknown { reason: r } =>
@@ -1068,17 +1075,38 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
     Accepted { value: child, diagnostics: _ } =>
       FrontierProduced {
         dependencies: [
-          DependencyView {
-            source: child,
-            dependent: frame.ancestor,
-            kind: Contains,
-            usage_site: frame.ancestor
+          FrontierDependency {
+            dependency: DependencyView {
+              source: frame.ancestor,
+              dependent: child,
+              kind: Contains,
+              usage_site: child
+            },
+            affected: frame.ancestor
           }
         ]
       }
     Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: affected_set_reason_frontier_ancestor_unresolved }
   }
+}
+
+
+fn frontier_dependency_from_dependency_view(dependency: DependencyView) -> FrontierDependency {
+  FrontierDependency {
+    dependency: dependency,
+    affected: dependency.dependent
+  }
+}
+
+
+fn frontier_dependencies_from_dependency_views(dependencies: List<DependencyView>) -> List<FrontierDependency> {
+  fold(dependencies, init: [], f: fn(acc, dependency) {
+    list_snoc_item(
+      xs: acc,
+      item: frontier_dependency_from_dependency_view(dependency: dependency)
+    )
+  })
 }
 
 
@@ -1122,7 +1150,9 @@ fn canonical_region_dependencies(walk: AncestorWalk) -> FrontierReceipt {
       FrontierProduced {
         dependencies: list_append(
           left: ancestor_dependencies,
-          right: dependency_lens(root: walk.current)
+          right: frontier_dependencies_from_dependency_views(
+            dependencies: dependency_lens(root: walk.current)
+          )
         )
       }
     FrontierUnknown { reason: r } =>

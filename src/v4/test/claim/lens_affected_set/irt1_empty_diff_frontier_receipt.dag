@@ -12,6 +12,7 @@ import v4.lens.affected_set {
   EditDimension,
   FailClosed,
   Propagates,
+  FrontierDependency,
   FrontierProduced,
   affected_set_boundary_pure_receipt_edge,
   affected_set_boundary_pure_receipt_node,
@@ -43,10 +44,12 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds }
 import v4.test.claim.lens_affected_set.node_precision {
+  affected_set_leaf,
   affected_set_mid,
   affected_set_mid_to_leaf_dependency,
   affected_set_root,
-  affected_set_root_edge_symbol
+  affected_set_root_edge_symbol,
+  affected_set_root_to_mid_dependency
 }
 
 data irt1_public_unchanged_edit: Edit = Edit {
@@ -161,11 +164,14 @@ data irt1_public_nonfrontier_dependency_with_mismatched_receipt: DependencyView 
   usage_site: irt1_public_mismatched_receipted_usage_site
 }
 
-data irt1_public_mid_to_root_ancestor_dependency: DependencyView = DependencyView {
-  source: affected_set_mid,
-  dependent: affected_set_root,
-  kind: Contains,
-  usage_site: affected_set_root
+data irt1_public_mid_to_root_ancestor_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_root_to_mid_dependency,
+  affected: affected_set_root
+}
+
+data irt1_public_mid_to_leaf_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_mid_to_leaf_dependency,
+  affected: affected_set_leaf
 }
 
 data irt1_public_propagation_edit_dimension: EditDimension = EditDimension {
@@ -250,8 +256,8 @@ fn irt1_public_nonroot_frontier_points_to_ancestor() -> Bool {
   ) {
     FrontierProduced { dependencies: dependencies } =>
       dependencies == [
-        irt1_public_mid_to_root_ancestor_dependency,
-        affected_set_mid_to_leaf_dependency
+        irt1_public_mid_to_root_ancestor_frontier_dependency,
+        irt1_public_mid_to_leaf_frontier_dependency
       ]
     _ => false
   }
