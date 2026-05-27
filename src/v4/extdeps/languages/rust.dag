@@ -1226,36 +1226,52 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 // 🟡 gated — fold1 accumulator interim — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside rust_mvp1_concrete_tokens.
-type RustGrammarSequenceBuild
-  = RustGrammarSequenceEmpty
-  | RustGrammarSequenceBuilt { expression: GrammarExpr }
-
-fn rust_grammar_sequence_append(acc: RustGrammarSequenceBuild, token: RustConcreteSyntaxToken) -> RustGrammarSequenceBuild {
-  let terminal = rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
-  match acc {
-    RustGrammarSequenceEmpty => RustGrammarSequenceBuilt { expression: terminal }
-    RustGrammarSequenceBuilt { expression: expression } =>
-      RustGrammarSequenceBuilt {
-        expression: Sequence { left: expression, right: terminal }
-      }
-  }
+type RustGrammarTokenSequence {
+  head: RustConcreteSyntaxToken
+  tail: List<RustConcreteSyntaxToken>
 }
 
-fn rust_grammar_sequence_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> RustGrammarSequenceBuild {
+fn rust_grammar_sequence_from_tokens(tokens: RustGrammarTokenSequence) -> GrammarExpr {
+  let terminal = rust_grammar_terminal(token_class: rust_concrete_token_class(token: tokens.head))
   fold_list(
-    xs: tokens,
-    empty: RustGrammarSequenceEmpty,
+    xs: tokens.tail,
+    empty: terminal,
     cons: fn(acc, token) {
-      rust_grammar_sequence_append(acc: acc, token: token)
+      Sequence {
+        left: acc,
+        right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+      }
     }
   )
 }
 
-fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match rust_grammar_sequence_from_tokens(tokens: rust_mvp1_concrete_tokens()) {
-    RustGrammarSequenceBuilt { expression: expression } => expression
-    RustGrammarSequenceEmpty => rust_grammar_terminal(token_class: rust_token_kw_fn)
+fn rust_mvp1_grammar_tokens() -> RustGrammarTokenSequence {
+  RustGrammarTokenSequence {
+    head: RustFixedToken { token_class: rust_token_kw_fn },
+    tail: [
+      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_fn_add },
+      RustFixedToken { token_class: rust_token_lparen },
+      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
+      RustFixedToken { token_class: rust_token_colon },
+      RustFixedToken { token_class: rust_token_ty_i32 },
+      RustFixedToken { token_class: rust_token_comma },
+      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
+      RustFixedToken { token_class: rust_token_colon },
+      RustFixedToken { token_class: rust_token_ty_i32 },
+      RustFixedToken { token_class: rust_token_rparen },
+      RustFixedToken { token_class: rust_token_arrow },
+      RustFixedToken { token_class: rust_token_ty_i32 },
+      RustFixedToken { token_class: rust_token_lbrace },
+      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
+      RustFixedToken { token_class: rust_token_plus },
+      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
+      RustFixedToken { token_class: rust_token_rbrace }
+    ]
   }
+}
+
+fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
+  rust_grammar_sequence_from_tokens(tokens: rust_mvp1_grammar_tokens())
 }
 
 fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {

@@ -465,36 +465,54 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
-type TsGrammarSequenceBuild
-  = TsGrammarSequenceEmpty
-  | TsGrammarSequenceBuilt { expression: GrammarExpr }
-
-fn ts_grammar_sequence_append(acc: TsGrammarSequenceBuild, token: TsConcreteSyntaxToken) -> TsGrammarSequenceBuild {
-  let terminal = ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
-  match acc {
-    TsGrammarSequenceEmpty => TsGrammarSequenceBuilt { expression: terminal }
-    TsGrammarSequenceBuilt { expression: expression } =>
-      TsGrammarSequenceBuilt {
-        expression: Sequence { left: expression, right: terminal }
-      }
-  }
+type TsGrammarTokenSequence {
+  head: TsConcreteSyntaxToken
+  tail: List<TsConcreteSyntaxToken>
 }
 
-fn ts_grammar_sequence_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> TsGrammarSequenceBuild {
+fn ts_grammar_sequence_from_tokens(tokens: TsGrammarTokenSequence) -> GrammarExpr {
+  let terminal = ts_grammar_terminal(token_class: ts_concrete_token_class(token: tokens.head))
   fold_list(
-    xs: tokens,
-    empty: TsGrammarSequenceEmpty,
+    xs: tokens.tail,
+    empty: terminal,
     cons: fn(acc, token) {
-      ts_grammar_sequence_append(acc: acc, token: token)
+      Sequence {
+        left: acc,
+        right: ts_grammar_terminal(token_class: ts_concrete_token_class(token: token))
+      }
     }
   )
 }
 
-fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match ts_grammar_sequence_from_tokens(tokens: ts_mvp1_concrete_tokens()) {
-    TsGrammarSequenceBuilt { expression: expression } => expression
-    TsGrammarSequenceEmpty => ts_grammar_terminal(token_class: ts_token_kw_function)
+fn ts_mvp1_grammar_tokens() -> TsGrammarTokenSequence {
+  TsGrammarTokenSequence {
+    head: TsFixedToken { token_class: ts_token_kw_function },
+    tail: [
+      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },
+      TsFixedToken { token_class: ts_token_lparen },
+      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+      TsFixedToken { token_class: ts_token_colon },
+      TsFixedToken { token_class: ts_token_ty_number },
+      TsFixedToken { token_class: ts_token_comma },
+      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
+      TsFixedToken { token_class: ts_token_colon },
+      TsFixedToken { token_class: ts_token_ty_number },
+      TsFixedToken { token_class: ts_token_rparen },
+      TsFixedToken { token_class: ts_token_colon },
+      TsFixedToken { token_class: ts_token_ty_number },
+      TsFixedToken { token_class: ts_token_lbrace },
+      TsFixedToken { token_class: ts_token_kw_return },
+      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
+      TsFixedToken { token_class: ts_token_plus },
+      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
+      TsFixedToken { token_class: ts_token_semicolon },
+      TsFixedToken { token_class: ts_token_rbrace }
+    ]
   }
+}
+
+fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
+  ts_grammar_sequence_from_tokens(tokens: ts_mvp1_grammar_tokens())
 }
 
 fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {

@@ -744,7 +744,7 @@ fn python_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 gated — non-empty grammar token carrier — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace this per-file non-empty carrier with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside python_mvp1_concrete_tokens.
+// 🟡 gated — fold1 accumulator interim — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside python_mvp1_concrete_tokens.
 type PythonGrammarTokenSequence {
   head: PythonConcreteSyntaxToken
   tail: List<PythonConcreteSyntaxToken>
@@ -766,7 +766,7 @@ fn python_grammar_sequence_from_tokens(tokens: PythonGrammarTokenSequence) -> Gr
 
 fn python_mvp1_grammar_tokens() -> PythonGrammarTokenSequence {
   PythonGrammarTokenSequence {
-    head: PythonFixedToken { token_class: concrete_syntax_token_kind_fixed },
+    head: PythonFixedToken { token_class: python_token_kw_def },
     tail: [
       PythonBoundToken { token_class: python_token_ident, binding: python_binding_fn_add },
       PythonFixedToken { token_class: python_token_lparen },
