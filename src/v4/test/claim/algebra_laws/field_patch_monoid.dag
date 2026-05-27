@@ -36,35 +36,22 @@ fn fp_ok(b: Bool) -> Node {
 
 
 // Left identity: compose(Inherit, Override{v}) applies as Override{v}.
-// Witness: base=false, patch=compose(Inherit, Override{true}) → result must be true.
-data witness_left_identity: Bool =
-  apply_field_patch(base: false, patch: compose_field_patch(left: Inherit, right: Override { value: true })) == true
+data witness_left_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Inherit, right: Override { value: true })) == true
 
 
 // Right identity: compose(Override{v}, Inherit) applies as Override{v}.
-// Witness: base=false, patch=compose(Override{true}, Inherit) → result must be true.
-data witness_right_identity: Bool =
-  apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
+data witness_right_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
 
 
 // Associativity: apply((a∘b)∘c, base) == apply(a∘(b∘c), base).
 // a=Override{true}, b=Override{false}, c=Inherit → both sides yield false from base=true.
-data witness_associativity: Bool =
-  apply_field_patch(
-    base: true,
-    patch: compose_field_patch(
-      left: compose_field_patch(left: Override { value: true }, right: Override { value: false }),
-      right: Inherit
-    )
-  )
-  ==
-  apply_field_patch(
-    base: true,
-    patch: compose_field_patch(
-      left: Override { value: true },
-      right: compose_field_patch(left: Override { value: false }, right: Inherit)
-    )
-  )
+fn compose_assoc_lhs() -> Bool {
+  apply_field_patch(base: true, patch: compose_field_patch(left: compose_field_patch(left: Override { value: true }, right: Override { value: false }), right: Inherit))
+}
+fn compose_assoc_rhs() -> Bool {
+  apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: compose_field_patch(left: Override { value: false }, right: Inherit)))
+}
+data witness_associativity: Bool = compose_assoc_lhs() == compose_assoc_rhs()
 
 
 // apply: Inherit defers to base.
