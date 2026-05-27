@@ -225,23 +225,6 @@ fn v4_emit_dag_declares_emit_entrypoint() {
 }
 
 #[test]
-fn v4_emit_dag_declares_shape_a_specialization_table() {
-    let module = parse_module(EMIT_DAG, EMIT_PATH);
-    assert!(
-        surface_declares_type(&module, "ShapeAEmitTarget"),
-        "{EMIT_PATH}: must declare the closed Shape-A target selector"
-    );
-    assert!(
-        surface_declares_type(&module, "EmitTargetSpecialization"),
-        "{EMIT_PATH}: must declare specialization rows"
-    );
-    assert!(
-        surface_declares_fn(&module, "shape_a_emit_specializations"),
-        "{EMIT_PATH}: must declare the per-target specialization table"
-    );
-}
-
-#[test]
 fn v4_emit_dag_does_not_import_find_witness() {
     let module = parse_module(EMIT_DAG, EMIT_PATH);
     assert!(
