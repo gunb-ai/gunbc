@@ -1886,13 +1886,15 @@ fact-bundles on main but lack complete lex/grammar data for round-trip ingest:
   base language — distinct fact-bundle, distinct surface spelling authority, distinct
   grammar (no type annotations). Anchor: ECMA-262 specification.
 
-**Wave 2a (lex/grammar data):** `[needs T-6, T-7, T-4 Wave-1 for each language]`
+**Wave 2a (lex/grammar data):**
+- java/swift/kotlin/wasm (extending existing landed files): `[needs T-6, T-7, T-4 Wave-1 for that language]` — T-4 feeder gates (P1-KEYSTONE, T-30, T-25-core, T-33, T-19, T-21) were satisfied when those files were originally authored through T-4.
+- **ecmascript.dag** (new file): `[needs T-3, P1-KEYSTONE, T-30, T-25-core, T-33, T-19, T-21, T-6, T-7]` — same canonical T-4 feeder gates as any new LanguageModel authority.
+
 **Wave 2b (type deepening):** `[needs T-4 Wave-1 per language, T-33, T-2 Node constructors]`
 
 Both waves are in scope for this task; they may be dispatched per-language in parallel.
 
-**Scheduling note:** ECMAScript requires a new file; java/swift/kotlin/wasm extend
-existing files. All five can be dispatched in parallel once T-2 #3748 merges.
+**Scheduling note:** ECMAScript requires a new file and carries the full T-4 canonical gate set; java/swift/kotlin/wasm extend existing files (T-4 gates transitively satisfied). All five can be dispatched once T-2 #3748 merges (and T-4 feeder gates for ecmascript.dag are confirmed clear).
 
 ---
 
@@ -1959,7 +1961,7 @@ productions; ambiguous constructs → Diagnostic, never silent pick-one).
 conformance test for this model — not a refutation of it. Update T-4.11 brief to
 reflect that it tests the boundary of `english.dag`, not the absence of the file.
 
-**Deps**: `[needs T-6, T-7, T-4 Wave-1 pattern]`
+**Deps**: `[needs T-3, P1-KEYSTONE, T-30, T-25-core, T-33, T-19, T-21, T-6, T-7]` — english.dag is a new LanguageModel authority; it carries the same canonical T-4 feeder gate set as any other new language model file.
 
 ---
 
