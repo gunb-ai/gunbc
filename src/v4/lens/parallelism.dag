@@ -89,8 +89,7 @@ fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> P
   }
 }
 
-// 🟡 predicate dissolution — feature:T-13-parallelism-relation-unresolved.
-// dissolve-on: substrate projects ParallelismRelation resolved/unresolved from coproduct.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc UnknownCoupling Bool predicates outside parallelism_witness.
 fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
   match relation {
     UnknownCoupling => true

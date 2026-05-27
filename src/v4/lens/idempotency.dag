@@ -94,8 +94,7 @@ fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> I
   }
 }
 
-// 🟡 predicate dissolution — feature:T-13-idempotency-verdict-unresolved.
-// dissolve-on: substrate projects IdempotencyVerdict resolved/unresolved from coproduct.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-idempotency-verdict-unresolved — dissolve-on-arrival: substrate projects IdempotencyVerdict resolved/unresolved from coproduct; forbidden: parallel ad-hoc IdempotencyVerdict Bool predicates outside idempotency_witness.
 fn idempotency_verdict_unresolved(verdict: IdempotencyVerdict) -> Bool {
   match verdict {
     RequiresAlgebraWitness => true

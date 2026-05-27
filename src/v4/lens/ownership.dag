@@ -91,8 +91,7 @@ fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Own
   }
 }
 
-// 🟡 predicate dissolution — feature:T-13-ownership-mode-unresolved.
-// dissolve-on: substrate projects OwnershipMode resolved/unresolved from coproduct.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-ownership-mode-unresolved — dissolve-on-arrival: substrate projects OwnershipMode resolved/unresolved from coproduct; forbidden: parallel ad-hoc RequiresAccessWitness/UnknownOwnership Bool predicates outside ownership_witness.
 fn ownership_mode_unresolved(mode: OwnershipMode) -> Bool {
   match mode {
     RequiresAccessWitness => true
