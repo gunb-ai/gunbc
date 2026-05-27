@@ -1,6 +1,6 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: Optional, optional_diagnostic_absent, optional_diagnostic_present, List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
+// Owns: Optional, optional_diagnostic_absent, optional_diagnostic_present, optional_diagnostic_is_present, optional_diagnostic_value, List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
 // Consumes: std/algebra.dag; std/witness.dag; std/diagnostic.dag; std/node.dag.
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
@@ -27,6 +27,18 @@ fn optional_diagnostic_absent() -> Optional<Diagnostic> {
 }
 fn optional_diagnostic_present(diagnostic: Diagnostic) -> Optional<Diagnostic> {
   Present { value: diagnostic }
+}
+fn optional_diagnostic_is_present(opt: Optional<Diagnostic>) -> Bool {
+  match opt {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+fn optional_diagnostic_value(opt: Optional<Diagnostic>) -> Diagnostic {
+  match opt {
+    Present { value: d } => d
+    Absent => map_absent_diagnostic()
+  }
 }
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
