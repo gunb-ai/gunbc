@@ -24,7 +24,7 @@ import v4.compiler.tokenize {
 }
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, fold_non_empty, list_append, list_snoc_item }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
@@ -887,13 +887,6 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
-type CppGramBuild1State
-  = CppGramBuild1StateInit
-  | CppGramBuild1StateReady { head: CppConcreteSyntaxToken, tail: List<CppConcreteSyntaxToken> }
-
-data cpp_gram_build1_empty_unreachable: Symbol = cpp_gram_build1_empty_unreachable
-
 type CppGrammarSequenceBuild {
   head: CppConcreteSyntaxToken
   tail: List<CppConcreteSyntaxToken>
@@ -914,30 +907,21 @@ fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarSequenceBuild) -> GrammarE
 }
 
 fn cpp_mvp1_grammar_tokens() -> CppGrammarSequenceBuild {
-  match fold_list(
-    xs: cpp_mvp1_concrete_tokens(),
-    empty: CppGramBuild1StateInit,
-    cons: fn(state, token) {
-      match state {
-        CppGramBuild1StateInit =>
-          CppGramBuild1StateReady { head: token, tail: Empty }
-        CppGramBuild1StateReady { head: h, tail: t } =>
-          CppGramBuild1StateReady {
-            head: h,
-            tail: list_snoc_item(xs: t, item: token)
+  match cpp_mvp1_concrete_tokens() {
+    Cons { head: first_tok, tail: rest_toks } =>
+      fold_non_empty(
+        head: CppGrammarSequenceBuild {
+          head: first_tok,
+          tail: Empty
+        },
+        tail: rest_toks,
+        cons: fn(acc, token) {
+          CppGrammarSequenceBuild {
+            head: acc.head,
+            tail: list_snoc_item(xs: acc.tail, item: token)
           }
-      }
-    }
-  ) {
-    CppGramBuild1StateInit =>
-      CppGrammarSequenceBuild {
-        head: CppFixedToken { token_class: cpp_gram_build1_empty_unreachable },
-        tail: Empty
-      }
-    CppGramBuild1StateReady { head: h, tail: t } => CppGrammarSequenceBuild {
-      head: h,
-      tail: t
-    }
+        }
+      )
   }
 }
 
