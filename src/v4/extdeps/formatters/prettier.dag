@@ -1,6 +1,6 @@
 // src/v4/extdeps/formatters/prettier.dag
 // Scope: Prettier configuration file model (.prettierrc / package.json "prettier").
-// Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap, PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting, PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierParser, PrettierFormattingOptions, PrettierOverrideOptions, PrettierOverrideEntry, PrettierConfig, prettier_defaults, PrettierConfigPatch, prettier_layer.
+// Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap, PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting, PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierParser, PrettierFormattingOptions, PrettierFormattingOptionsPatch, PrettierOverrideOptions, PrettierOverrideEntry, PrettierConfig, prettier_defaults, PrettierConfigPatch, prettier_layer.
 // Consumes: v4.std.collection { List }, v4.std.patch { FieldPatch, apply_field_patch }.
 // Status: T-4.16 scaffold — Prettier stable config/options docs (v3 defaults).
 // Anchor: https://prettier.io/docs/configuration
@@ -202,8 +202,8 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierConfigPatch projected from PrettierConfig field set.
-type PrettierConfigPatch {
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierFormattingOptionsPatch projected from PrettierFormattingOptions field set.
+type PrettierFormattingOptionsPatch {
   print_width: FieldPatch<Int>
   tab_width: FieldPatch<Int>
   use_tabs: FieldPatch<Bool>
@@ -227,37 +227,48 @@ type PrettierConfigPatch {
   embedded_language_formatting: FieldPatch<PrettierEmbeddedLanguageFormatting>
   experimental_ternaries: FieldPatch<Bool>
   experimental_operator_position: FieldPatch<PrettierExperimentalOperatorPosition>
+}
+
+
+fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patch: PrettierFormattingOptionsPatch) -> PrettierFormattingOptions {
+  PrettierFormattingOptions {
+    print_width: apply_field_patch(base: base.print_width, patch: patch.print_width),
+    tab_width: apply_field_patch(base: base.tab_width, patch: patch.tab_width),
+    use_tabs: apply_field_patch(base: base.use_tabs, patch: patch.use_tabs),
+    semi: apply_field_patch(base: base.semi, patch: patch.semi),
+    single_quote: apply_field_patch(base: base.single_quote, patch: patch.single_quote),
+    quote_props: apply_field_patch(base: base.quote_props, patch: patch.quote_props),
+    jsx_single_quote: apply_field_patch(base: base.jsx_single_quote, patch: patch.jsx_single_quote),
+    trailing_comma: apply_field_patch(base: base.trailing_comma, patch: patch.trailing_comma),
+    bracket_spacing: apply_field_patch(base: base.bracket_spacing, patch: patch.bracket_spacing),
+    object_wrap: apply_field_patch(base: base.object_wrap, patch: patch.object_wrap),
+    bracket_same_line: apply_field_patch(base: base.bracket_same_line, patch: patch.bracket_same_line),
+    arrow_parens: apply_field_patch(base: base.arrow_parens, patch: patch.arrow_parens),
+    require_pragma: apply_field_patch(base: base.require_pragma, patch: patch.require_pragma),
+    insert_pragma: apply_field_patch(base: base.insert_pragma, patch: patch.insert_pragma),
+    check_ignore_pragma: apply_field_patch(base: base.check_ignore_pragma, patch: patch.check_ignore_pragma),
+    prose_wrap: apply_field_patch(base: base.prose_wrap, patch: patch.prose_wrap),
+    html_whitespace_sensitivity: apply_field_patch(base: base.html_whitespace_sensitivity, patch: patch.html_whitespace_sensitivity),
+    vue_indent_script_and_style: apply_field_patch(base: base.vue_indent_script_and_style, patch: patch.vue_indent_script_and_style),
+    single_attribute_per_line: apply_field_patch(base: base.single_attribute_per_line, patch: patch.single_attribute_per_line),
+    end_of_line: apply_field_patch(base: base.end_of_line, patch: patch.end_of_line),
+    embedded_language_formatting: apply_field_patch(base: base.embedded_language_formatting, patch: patch.embedded_language_formatting),
+    experimental_ternaries: apply_field_patch(base: base.experimental_ternaries, patch: patch.experimental_ternaries),
+    experimental_operator_position: apply_field_patch(base: base.experimental_operator_position, patch: patch.experimental_operator_position),
+  }
+}
+
+
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierConfigPatch projected from PrettierConfig field set (options + overrides).
+type PrettierConfigPatch {
+  options: PrettierFormattingOptionsPatch
   overrides: FieldPatch<List<PrettierOverrideEntry>>
 }
 
 
 fn prettier_layer(base: PrettierConfig, patch: PrettierConfigPatch) -> PrettierConfig {
   PrettierConfig {
-    options: PrettierFormattingOptions {
-      print_width: apply_field_patch(base: base.options.print_width, patch: patch.print_width),
-      tab_width: apply_field_patch(base: base.options.tab_width, patch: patch.tab_width),
-      use_tabs: apply_field_patch(base: base.options.use_tabs, patch: patch.use_tabs),
-      semi: apply_field_patch(base: base.options.semi, patch: patch.semi),
-      single_quote: apply_field_patch(base: base.options.single_quote, patch: patch.single_quote),
-      quote_props: apply_field_patch(base: base.options.quote_props, patch: patch.quote_props),
-      jsx_single_quote: apply_field_patch(base: base.options.jsx_single_quote, patch: patch.jsx_single_quote),
-      trailing_comma: apply_field_patch(base: base.options.trailing_comma, patch: patch.trailing_comma),
-      bracket_spacing: apply_field_patch(base: base.options.bracket_spacing, patch: patch.bracket_spacing),
-      object_wrap: apply_field_patch(base: base.options.object_wrap, patch: patch.object_wrap),
-      bracket_same_line: apply_field_patch(base: base.options.bracket_same_line, patch: patch.bracket_same_line),
-      arrow_parens: apply_field_patch(base: base.options.arrow_parens, patch: patch.arrow_parens),
-      require_pragma: apply_field_patch(base: base.options.require_pragma, patch: patch.require_pragma),
-      insert_pragma: apply_field_patch(base: base.options.insert_pragma, patch: patch.insert_pragma),
-      check_ignore_pragma: apply_field_patch(base: base.options.check_ignore_pragma, patch: patch.check_ignore_pragma),
-      prose_wrap: apply_field_patch(base: base.options.prose_wrap, patch: patch.prose_wrap),
-      html_whitespace_sensitivity: apply_field_patch(base: base.options.html_whitespace_sensitivity, patch: patch.html_whitespace_sensitivity),
-      vue_indent_script_and_style: apply_field_patch(base: base.options.vue_indent_script_and_style, patch: patch.vue_indent_script_and_style),
-      single_attribute_per_line: apply_field_patch(base: base.options.single_attribute_per_line, patch: patch.single_attribute_per_line),
-      end_of_line: apply_field_patch(base: base.options.end_of_line, patch: patch.end_of_line),
-      embedded_language_formatting: apply_field_patch(base: base.options.embedded_language_formatting, patch: patch.embedded_language_formatting),
-      experimental_ternaries: apply_field_patch(base: base.options.experimental_ternaries, patch: patch.experimental_ternaries),
-      experimental_operator_position: apply_field_patch(base: base.options.experimental_operator_position, patch: patch.experimental_operator_position),
-    },
+    options: apply_prettier_formatting_options_patch(base: base.options, patch: patch.options),
     overrides: apply_field_patch(base: base.overrides, patch: patch.overrides),
   }
 }
