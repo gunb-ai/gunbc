@@ -1241,11 +1241,7 @@ fn rust_gram_seq_fold(tokens: FreeMonoid<RustConcreteSyntaxToken>, acc: GrammarE
 
 fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
   match rust_mvp1_concrete_tokens() {
-    Empty =>
-      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — rust_mvp1_concrete_tokens() is always
-      // non-empty by construction; this branch is structurally unreachable.
-      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
-      rust_grammar_terminal(token_class: rust_token_kw_fn)
+    Empty => rust_grammar_terminal(token_class: rust_token_kw_fn)
     Cons { head: first_tok, tail: rest_toks } =>
       rust_gram_seq_fold(
         tokens: rest_toks,

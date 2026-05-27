@@ -1079,11 +1079,7 @@ fn go_gram_seq_fold(tokens: FreeMonoid<GoConcreteSyntaxToken>, acc: GrammarExpr)
 
 fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
   match go_mvp1_concrete_tokens() {
-    Empty =>
-      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — go_mvp1_concrete_tokens() is always
-      // non-empty by construction; this branch is structurally unreachable.
-      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
-      go_grammar_terminal(token_class: go_token_kw_func)
+    Empty => go_grammar_terminal(token_class: go_token_kw_func)
     Cons { head: first_tok, tail: rest_toks } =>
       go_gram_seq_fold(
         tokens: rest_toks,

@@ -738,11 +738,7 @@ fn python_gram_seq_fold(tokens: FreeMonoid<PythonConcreteSyntaxToken>, acc: Gram
 
 fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
   match python_mvp1_concrete_tokens() {
-    Empty =>
-      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — python_mvp1_concrete_tokens() is always
-      // non-empty by construction; this branch is structurally unreachable.
-      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
-      python_grammar_terminal(token_class: python_token_kw_def)
+    Empty => python_grammar_terminal(token_class: python_token_kw_def)
     Cons { head: first_tok, tail: rest_toks } =>
       python_gram_seq_fold(
         tokens: rest_toks,

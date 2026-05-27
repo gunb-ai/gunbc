@@ -903,11 +903,7 @@ fn cpp_gram_seq_fold(tokens: FreeMonoid<CppConcreteSyntaxToken>, acc: GrammarExp
 
 fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
   match cpp_mvp1_concrete_tokens() {
-    Empty =>
-      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — cpp_mvp1_concrete_tokens() is always
-      // non-empty by construction; this branch is structurally unreachable.
-      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
-      cpp_grammar_terminal(token_class: cpp_token_ty_int)
+    Empty => cpp_grammar_terminal(token_class: cpp_token_ty_int)
     Cons { head: first_tok, tail: rest_toks } =>
       cpp_gram_seq_fold(
         tokens: rest_toks,

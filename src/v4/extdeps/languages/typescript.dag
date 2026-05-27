@@ -460,8 +460,6 @@ fn ts_mvp1_serialize_source_node() -> Node {
 fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
-
-// 🟢 grounded.
 fn ts_gram_seq_fold(tokens: FreeMonoid<TsConcreteSyntaxToken>, acc: GrammarExpr) -> GrammarExpr {
   match tokens {
     Empty => acc
@@ -478,11 +476,7 @@ fn ts_gram_seq_fold(tokens: FreeMonoid<TsConcreteSyntaxToken>, acc: GrammarExpr)
 
 fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
   match ts_mvp1_concrete_tokens() {
-    Empty =>
-      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — ts_mvp1_concrete_tokens() is always
-      // non-empty by construction; this branch is structurally unreachable.
-      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
-      ts_grammar_terminal(token_class: ts_token_kw_function)
+    Empty => ts_grammar_terminal(token_class: ts_token_kw_function)
     Cons { head: first_tok, tail: rest_toks } =>
       ts_gram_seq_fold(
         tokens: rest_toks,
