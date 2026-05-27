@@ -993,15 +993,55 @@ fn re_exec_frontier_from_diff(
 }
 
 
-fn affected_set(
-  read_model: AffectedSetRead,
-  post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
+fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
+  HashUnknown { reason: affected_set_reason_boundary_hash_unavailable }
+}
+
+
+fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
+  ChangedDimensionsUnknown { reason: affected_set_reason_changed_dimensions_unavailable }
+}
+
+
+fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
+  FrontierUnknown { reason: affected_set_reason_frontier_unavailable }
+}
+
+
+fn canonical_propagation_receipt(
   dag: Dag,
-  diff: Diff
-) -> Witness<ReExecFrontier> {
+  edit_dimension: EditDimension,
+  dependency: DependencyView
+) -> PropagationReceipt {
+  PropagationUnknown { reason: affected_set_reason_propagation_unavailable }
+}
+
+
+fn canonical_affected_set_read() -> AffectedSetRead {
+  AffectedSetRead {
+    boundary: AffectedBoundaryRead {
+      boundary_hash_receipt: canonical_boundary_hash_receipt,
+      changed_dimension_receipt: canonical_changed_dimension_receipt
+    },
+    frontier: AffectedFrontierRead {
+      proven_transitive_dependency_frontier: canonical_transitive_frontier
+    },
+    propagation_receipt: canonical_propagation_receipt
+  }
+}
+
+
+fn canonical_post_edit_dag(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
+  AffectedPostEditDagRead {
+    outcome: Accepted { value: dag, diagnostics: None }
+  }
+}
+
+
+fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
   re_exec_frontier_from_diff(
-    read_model: read_model,
-    post_edit_dag: post_edit_dag,
+    read_model: canonical_affected_set_read(),
+    post_edit_dag: canonical_post_edit_dag,
     dag: dag,
     diff: diff
   )
