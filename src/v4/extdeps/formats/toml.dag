@@ -170,7 +170,6 @@ type TomlParseAxis {
 
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 type TomlEmitAxis {
-  grammar_schema: GrammarSchema,
   document: TomlDocument,
 }
 
