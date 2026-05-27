@@ -1,7 +1,7 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands;
-//       compile_with_store filesystem-free ingest over agent-supplied module bundles.
+//       compile_with_store filesystem-free ingest over agent-supplied single-module source.
 // Owns: CoreNode, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
 //       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,

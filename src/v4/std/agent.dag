@@ -1,5 +1,5 @@
 // src/v4/std/agent.dag
-// Scope: agent-supplied source bundle carrier for filesystem-free compiler ingest.
+// Scope: agent-supplied single-module source carrier for filesystem-free compiler ingest.
 // Owns: AgentModuleSource, AgentStore.
 // Consumes: std/module_graph.dag, std/node.dag, std/text.dag.
 // Status: T-35 modeled — agent store is a virtual module-loader input, not filesystem authority.
@@ -18,6 +18,10 @@ type AgentModuleSource {
 }
 
 
+// 🟡 single-module agent store scaffold: feature:T-35-agent-store-single-module.
+// Owner/lane: T-28-B module admission + T-35 multi-module agent ingest.
+// Dissolve-on: AgentStore carries ordered ModuleEntry source entries plus an
+// independent root ModulePath, and compile_with_store feeds source-derived imports.
 type AgentStore {
   entry: ModulePath
   module: AgentModuleSource
