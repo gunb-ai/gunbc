@@ -70,8 +70,8 @@ fn v4_compile_dag_declares_filesystem_free_batch_terminal() {
         "{COMPILE_PATH}: must declare compile_with_batch filesystem-free terminal"
     );
     assert!(
-        import_includes_name(&module, &["v4", "std", "module_batch"], "ModuleBatch"),
-        "{COMPILE_PATH}: compile_with_batch must consume ModuleBatch carrier authority"
+        import_includes_name(&module, &["v4", "std", "ingest_batch"], "IngestBatch"),
+        "{COMPILE_PATH}: compile_with_batch must consume IngestBatch carrier authority"
     );
     assert!(
         import_includes_name(

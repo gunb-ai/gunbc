@@ -1,12 +1,12 @@
-// src/v4/std/module_batch.dag
-// Scope: Filesystem-free module batch carrier for compile-time ingest (T-35).
-// Owns: ModuleBatch, batch_insert, batch_delete.
+// src/v4/std/ingest_batch.dag
+// Scope: Filesystem-free ingest batch carrier for compile-time ingest (T-35).
+// Owns: IngestBatch, ingest_batch_insert, ingest_batch_delete.
 // Consumes: std/algebra.dag, std/node.dag, std/qualified_name.dag.
 // Status: T-35 modeled; consumed by compiler/00_compile.dag.
 // Anchor: INVARIANTS.md P2 boundary discipline — files are transport, not compile authority.
 
 
-module v4.std.module_batch
+module v4.std.ingest_batch
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid }
@@ -19,19 +19,19 @@ import v4.std.qualified_name {
 }
 
 
-type ModuleBatch {
+type IngestBatch {
   entries: FreeMonoid<Node>
 }
 
 
-fn batch_insert(batch: ModuleBatch, node: Node) -> ModuleBatch {
-  ModuleBatch {
+fn ingest_batch_insert(batch: IngestBatch, node: Node) -> IngestBatch {
+  IngestBatch {
     entries: Cons { head: node, tail: batch.entries }
   }
 }
 
 
-fn batch_delete_entries(
+fn ingest_batch_delete_entries(
   entries: FreeMonoid<Node>,
   qname: QualifiedName
 ) -> FreeMonoid<Node> {
@@ -41,25 +41,25 @@ fn batch_delete_entries(
       match qualified_name_from_node(root: node) {
         Accepted { value: node_name, diagnostics: _ } =>
           if qualified_name_eq(a: node_name, b: qname) {
-            batch_delete_entries(entries: rest, qname: qname)
+            ingest_batch_delete_entries(entries: rest, qname: qname)
           } else {
             Cons {
               head: node,
-              tail: batch_delete_entries(entries: rest, qname: qname)
+              tail: ingest_batch_delete_entries(entries: rest, qname: qname)
             }
           }
         Rejected { diagnostics: _ } =>
           Cons {
             head: node,
-            tail: batch_delete_entries(entries: rest, qname: qname)
+            tail: ingest_batch_delete_entries(entries: rest, qname: qname)
           }
       }
   }
 }
 
 
-fn batch_delete(batch: ModuleBatch, qname: QualifiedName) -> ModuleBatch {
-  ModuleBatch {
-    entries: batch_delete_entries(entries: batch.entries, qname: qname)
+fn ingest_batch_delete(batch: IngestBatch, qname: QualifiedName) -> IngestBatch {
+  IngestBatch {
+    entries: ingest_batch_delete_entries(entries: batch.entries, qname: qname)
   }
 }

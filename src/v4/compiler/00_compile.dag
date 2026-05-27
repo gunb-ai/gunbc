@@ -57,8 +57,8 @@ import v4.std.diagnostic {
   outcome_with_diagnostics,
   rejected_with_pending
 }
-import v4.std.module_batch { ModuleBatch }
 import v4.std.catalog {
+import v4.std.ingest_batch { IngestBatch }
   Entry,
   catalog_entry_for_name,
   catalog_from_entries
@@ -380,7 +380,7 @@ fn validate_then_compile(
 }
 
 
-fn module_batch_admit_entries(
+fn ingest_batch_admit_entries(
   nodes: FreeMonoid<Node>,
   acc: Outcome<FreeMonoid<Entry>>
 ) -> Outcome<FreeMonoid<Entry>> {
@@ -394,7 +394,7 @@ fn module_batch_admit_entries(
             Rejected { diagnostics: r } =>
               Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
             Accepted { value: name, diagnostics: nd } =>
-              module_batch_admit_entries(
+              ingest_batch_admit_entries(
                 nodes: rest,
                 acc: Accepted {
                   value: Cons {
@@ -410,10 +410,10 @@ fn module_batch_admit_entries(
 }
 
 
-fn module_batch_catalog_entries(
-  batch: ModuleBatch
+fn ingest_batch_catalog_entries(
+  batch: IngestBatch
 ) -> Outcome<FreeMonoid<Entry>> {
-  module_batch_admit_entries(
+  ingest_batch_admit_entries(
     nodes: batch.entries,
     acc: outcome_accepted(value: Empty)
   )
@@ -422,13 +422,13 @@ fn module_batch_catalog_entries(
 
 fn compile_with_batch(
   root: QualifiedName,
-  batch: ModuleBatch,
+  batch: IngestBatch,
   imports: FreeMonoid<Import>,
   target: TargetModel
 ) -> Outcome<Validated<CompileOutput>> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: module_batch_catalog_entries(batch: batch),
+    o: ingest_batch_catalog_entries(batch: batch),
     f: fn(entries) {
       match catalog_from_entries(entries: entries) {
         Violates { diagnostic: d } => outcome_rejected(d: d)
