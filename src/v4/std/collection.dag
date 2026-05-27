@@ -20,13 +20,13 @@ import v4.std.witness { Holds, Violates, Witness }
 // 🟢 coproduct dissolution — M6-Optional-generic.
 // Anchor: initial algebra of F(X) = 1 + T; Haskell Maybe / Rust Option / ML option.
 type Optional<T>
-  = Absent
-  | Present { value: T }
+  = None
+  | Some { value: T }
 fn optional_diagnostic_absent() -> Optional<Diagnostic> {
-  Absent
+  None
 }
 fn optional_diagnostic_present(diagnostic: Diagnostic) -> Optional<Diagnostic> {
-  Present { value: diagnostic }
+  Some { value: diagnostic }
 }
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
