@@ -120,12 +120,6 @@ type BoundaryReceipt
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:B5-boundary-purity-receipt-carrier — bind T-21/B-5 — dissolve-on: effect lens emits first-class per-boundary purity receipts instead of this explicit marker edge
-type BoundaryPurityReceipt
-  = BoundaryPureReceipt { receipt: Node }
-  | BoundaryPurityUnknown { reason: Symbol }
-
-
 // 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — bind T-21 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
@@ -1008,12 +1002,16 @@ fn re_exec_frontier_from_diff(
 }
 
 
-fn canonical_boundary_purity_receipt(node: Node) -> BoundaryPurityReceipt {
+fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: affected_set_boundary_pure_receipt_edge) {
-    Accepted { value: receipt, diagnostics: _ } =>
-      BoundaryPureReceipt { receipt: receipt }
+    Accepted { value: _, diagnostics: _ } =>
+      BoundaryPruned {
+        proof: UnchangedPureBoundary {
+          content_hash: h
+        }
+      }
     Rejected { diagnostics: _ } =>
-      BoundaryPurityUnknown { reason: affected_set_reason_boundary_purity_unproven }
+      BoundaryUnknown { reason: affected_set_reason_boundary_purity_unproven }
   }
 }
 
@@ -1022,11 +1020,13 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
   match subterm_at(root: dag, p: path) {
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
-        match canonical_boundary_purity_receipt(node: current) {
-          BoundaryPureReceipt { receipt: _ } =>
-            HashUnchangedPure { content_hash: content_hash(n: current) }
-          BoundaryPurityUnknown { reason: r } =>
+        match canonical_boundary_exclusion_receipt(node: current, h: content_hash(n: current)) {
+          BoundaryPruned { proof: UnchangedPureBoundary { content_hash: h } } =>
+            HashUnchangedPure { content_hash: h }
+          BoundaryUnknown { reason: r } =>
             HashUnknown { reason: r }
+          BoundaryExpands =>
+            HashChanged
         }
       } else {
         HashChanged
