@@ -2,6 +2,8 @@
 //!
 //! T-23 wire: `src/v4/lens/application.dag` — lens application surface carriers,
 //! `apply_lens`, D1 `subterm_at` / `apply_diff`, advisory→fail-closed bridge.
+//! T-17 wire: `src/v4/lens/synthesis.dag` + `src/v4/std/report.dag` — C7 advisory
+//! cross-algorithm complexity (`synthesis_lens`, closed `ReportReason`).
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge
 //! deferred until cross-module v4 load lands (peer v4 smoke posture).
@@ -14,6 +16,12 @@ const APPLICATION_DAG: &str = include_str!("../../../../v4/lens/application.dag"
 const APPLICATION_PATH: &str = "src/v4/lens/application.dag";
 const REPORT_DAG: &str = include_str!("../../../../v4/std/report.dag");
 const REPORT_PATH: &str = "src/v4/std/report.dag";
+const SYNTHESIS_DAG: &str = include_str!("../../../../v4/lens/synthesis.dag");
+const SYNTHESIS_PATH: &str = "src/v4/lens/synthesis.dag";
+const SYNTHESIS_GAP_POLY_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/lens_synthesis/synthesis_gap_polynomial.dag");
+const SYNTHESIS_GAP_POLY_CLAIM_PATH: &str =
+    "src/v4/test/claim/lens_synthesis/synthesis_gap_polynomial.dag";
 const INTROSPECT_ADVISORY_CLAIM_DAG: &str = include_str!(
     "../../../../v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag"
 );
@@ -91,6 +99,72 @@ fn import_includes_name(
 fn v4_lens_application_dag_tokenizes_and_parses() {
     let _ = parse_module(REPORT_DAG, REPORT_PATH);
     let _ = parse_module(APPLICATION_DAG, APPLICATION_PATH);
+    let _ = parse_module(SYNTHESIS_DAG, SYNTHESIS_PATH);
+}
+
+#[test]
+fn v4_lens_synthesis_dag_module_authority_and_entrypoints() {
+    let module = parse_module(SYNTHESIS_DAG, SYNTHESIS_PATH);
+    assert_eq!(
+        module_path(&module),
+        vec!["v4", "lens", "synthesis"],
+        "{SYNTHESIS_PATH}: module path"
+    );
+    assert!(
+        surface_declares_type_sum(&module, "LowerBoundTechnique"),
+        "{SYNTHESIS_PATH}: LowerBoundTechnique closed set"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "report"], "Report"),
+        "{SYNTHESIS_PATH}: Report advisory carrier imported from std/report"
+    );
+    assert!(
+        surface_declares_fn(&module, "synthesis_lens"),
+        "{SYNTHESIS_PATH}: synthesis_lens advisory entrypoint"
+    );
+    assert!(
+        surface_declares_fn(&module, "synthesis_lens_diagnostics"),
+        "{SYNTHESIS_PATH}: synthesis_lens_diagnostics companion"
+    );
+}
+
+#[test]
+fn v4_std_report_dag_advisory_carrier_shape() {
+    let module = parse_module(REPORT_DAG, REPORT_PATH);
+    assert_eq!(
+        module_path(&module),
+        vec!["v4", "std", "report"],
+        "{REPORT_PATH}: module path"
+    );
+    assert!(
+        surface_declares_type_sum(&module, "ReportReason"),
+        "{REPORT_PATH}: ReportReason closed enum"
+    );
+    assert!(
+        surface_declares_fn(&module, "report_reason_to_diagnostic_reason"),
+        "{REPORT_PATH}: advisory→diagnostic reason seam"
+    );
+    assert!(
+        REPORT_DAG.contains("SynthesisGapDecisionTree"),
+        "{REPORT_PATH}: DecisionTree gap reason variant"
+    );
+    assert!(
+        REPORT_DAG.contains("SynthesisGapInformationTheoretic"),
+        "{REPORT_PATH}: InformationTheoretic gap reason variant"
+    );
+}
+
+#[test]
+fn v4_lens_synthesis_gap_polynomial_claim_tokenizes_and_parses() {
+    let module = parse_module(SYNTHESIS_GAP_POLY_CLAIM_DAG, SYNTHESIS_GAP_POLY_CLAIM_PATH);
+    assert!(
+        import_includes_name(&module, &["v4", "lens", "synthesis"], "synthesis_lens"),
+        "{SYNTHESIS_GAP_POLY_CLAIM_PATH}: claim must call synthesis_lens"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "lens", "synthesis"], "DecisionTree"),
+        "{SYNTHESIS_GAP_POLY_CLAIM_PATH}: claim must declare DecisionTree technique"
+    );
 }
 
 #[test]
