@@ -1,7 +1,7 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_non_empty, fold_list_right, fold_list_node, ListTailResult, list_tail, ordered_ring_node, approximate_field_node, boolean_algebra_node, free_monoid_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
+// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_non_empty, fold_list_right, fold_list_node, ListTailResult, list_tail, algebra_inhabitance_node, algebra_unary_fn_node, algebra_binary_fn_node, magma_node, magma_type_node, semigroup_node, semigroup_type_node, monoid_node, monoid_type_node, commutative_monoid_node, commutative_monoid_type_node, group_node, group_type_node, abelian_group_node, abelian_group_type_node, semiring_node, semiring_type_node, commutative_semiring_node, commutative_semiring_type_node, ring_node, ring_type_node, commutative_ring_node, commutative_ring_type_node, ordered_ring_node, ordered_ring_type_node, field_node, field_type_node, field_reciprocal_operation, field_reciprocal_operation_node, field_reciprocal_nonzero_precondition, field_reciprocal_nonzero_precondition_node, approximate_field_node, approximate_field_type_node, lattice_node, lattice_type_node, bounded_lattice_node, bounded_lattice_type_node, boolean_algebra_node, boolean_algebra_type_node, free_monoid_node, free_monoid_type_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
 // Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
@@ -10,7 +10,7 @@
 module v4.std.algebra
 
 
-import v4.std.node { Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode }
 type Magma<T> {
   op: fn(T, T) -> T
 }
@@ -51,7 +51,9 @@ type OrderedRing<T> {
 }
 type Field<T> {
   commutative_ring: CommutativeRing<T>
+  reciprocal: fn(T) -> T
 }
+// 🟡 needs-more-work — feature:field-reciprocal-partiality-declaration — field.reciprocal is carried as a fail-closed partiality declaration in v4.std.model_core.field_partiality_decl(); this file only exports the algebra carrier and inhabitance Node surface. dissolve-on: model_core wiring consumes the PartialOperationDecl carrier for reciprocal non-zero partiality without introducing an algebra -> model_core import.
 type ApproximateField<T> {
   add: fn(T, T) -> T
   zero: T
@@ -143,13 +145,22 @@ data magma_field_op: Symbol = magma_field_op
 data semigroup_field_magma: Symbol = semigroup_field_magma
 data monoid_field_semigroup: Symbol = monoid_field_semigroup
 data monoid_field_identity: Symbol = monoid_field_identity
+data commutative_monoid_field_monoid: Symbol = commutative_monoid_field_monoid
 data group_field_monoid: Symbol = group_field_monoid
 data group_field_inverse: Symbol = group_field_inverse
 data abelian_group_field_group: Symbol = abelian_group_field_group
+data semiring_field_add: Symbol = semiring_field_add
+data semiring_field_mul: Symbol = semiring_field_mul
+data commutative_semiring_field_semiring: Symbol = commutative_semiring_field_semiring
 data ring_field_add: Symbol = ring_field_add
 data ring_field_mul: Symbol = ring_field_mul
+data commutative_ring_field_ring: Symbol = commutative_ring_field_ring
 data ordered_ring_field_ring: Symbol = ordered_ring_field_ring
 data ordered_ring_field_compare: Symbol = ordered_ring_field_compare
+data field_field_commutative_ring: Symbol = field_field_commutative_ring
+data field_field_reciprocal: Symbol = field_field_reciprocal
+data field_reciprocal_operation: Symbol = field_reciprocal_operation
+data field_reciprocal_nonzero_precondition: Symbol = field_reciprocal_nonzero_precondition
 data approximate_field_field_add: Symbol = approximate_field_field_add
 data approximate_field_field_zero: Symbol = approximate_field_field_zero
 data approximate_field_field_negate: Symbol = approximate_field_field_negate
@@ -171,12 +182,6 @@ data free_monoid_variant_cons: Symbol = free_monoid_variant_cons
 data free_monoid_field_head: Symbol = free_monoid_field_head
 data free_monoid_field_tail: Symbol = free_monoid_field_tail
 data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
-data ordered_ring_algebra_kind: Symbol = ordered_ring_algebra_kind
-data ordered_ring_inhabitant: Symbol = ordered_ring_inhabitant
-data approximate_field_algebra_kind: Symbol = approximate_field_algebra_kind
-data approximate_field_inhabitant: Symbol = approximate_field_inhabitant
-data boolean_algebra_kind: Symbol = boolean_algebra_kind
-data boolean_algebra_inhabitant: Symbol = boolean_algebra_inhabitant
 
 
 fn algebra_empty_conj() -> Node {
@@ -290,6 +295,16 @@ fn monoid_type_node(inhabitant: Node) -> Node {
 }
 
 
+fn commutative_monoid_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: commutative_monoid_field_monoid }, target: monoid_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
 fn group_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -314,12 +329,43 @@ fn abelian_group_type_node(inhabitant: Node) -> Node {
 }
 
 
+fn semiring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: semiring_field_add }, target: commutative_monoid_type_node(inhabitant: inhabitant) },
+      Edge { label: Named { name: semiring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
+fn commutative_semiring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: commutative_semiring_field_semiring }, target: semiring_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
 fn ring_type_node(inhabitant: Node) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: ring_field_add }, target: abelian_group_type_node(inhabitant: inhabitant) },
       Edge { label: Named { name: ring_field_mul }, target: monoid_type_node(inhabitant: inhabitant) },
+    ]
+  }
+}
+
+
+fn commutative_ring_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: commutative_ring_field_ring }, target: ring_type_node(inhabitant: inhabitant) },
     ]
   }
 }
@@ -338,6 +384,25 @@ fn ordered_ring_type_node(inhabitant: Node) -> Node {
   }
 }
 
+
+fn field_type_node(inhabitant: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
+      Edge { label: Named { name: field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
+    ]
+  }
+}
+
+fn field_reciprocal_operation_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_operation } }, children: [] }
+}
+
+
+fn field_reciprocal_nonzero_precondition_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [] }
+}
 
 fn approximate_field_type_node(inhabitant: Node) -> Node {
   Node {
@@ -423,36 +488,131 @@ fn algebra_inhabitance_node(algebra: Node, inhabitant: Node) -> Node {
 }
 
 
+fn magma_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: magma_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn semigroup_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: semigroup_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn monoid_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn commutative_monoid_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: commutative_monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn group_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: group_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn abelian_group_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: abelian_group_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn semiring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: semiring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn commutative_semiring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: commutative_semiring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn ring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn commutative_ring_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: commutative_ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
 fn ordered_ring_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: ordered_ring_algebra_kind }, target: Node { kind: TypeNode { connective: Atom { identity: ordered_ring_algebra_kind } }, children: [] } },
-      Edge { label: Named { name: ordered_ring_inhabitant }, target: inhabitant },
-    ]
-  }
+  algebra_inhabitance_node(
+    algebra: ordered_ring_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn field_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: field_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
 }
 
 
 fn approximate_field_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: approximate_field_algebra_kind }, target: Node { kind: TypeNode { connective: Atom { identity: approximate_field_algebra_kind } }, children: [] } },
-      Edge { label: Named { name: approximate_field_inhabitant }, target: inhabitant },
-    ]
-  }
+  algebra_inhabitance_node(
+    algebra: approximate_field_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn lattice_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: lattice_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
+}
+
+
+fn bounded_lattice_node(inhabitant: Node) -> Node {
+  algebra_inhabitance_node(
+    algebra: bounded_lattice_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
 }
 
 
 fn boolean_algebra_node(inhabitant: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Named { name: boolean_algebra_kind }, target: Node { kind: TypeNode { connective: Atom { identity: boolean_algebra_kind } }, children: [] } },
-      Edge { label: Named { name: boolean_algebra_inhabitant }, target: inhabitant },
-    ]
-  }
+  algebra_inhabitance_node(
+    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant
+  )
 }
 
 

@@ -23,7 +23,7 @@ import v4.extdeps.runtimes.v4_evaluator {
 }
 import v4.std.collection { List }
 import v4.std.diagnostic { Rejected }
-import v4.std.model_core { ModelCore }
+import v4.std.model_core { ModelCore, wave1_model_core }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.runtime {
   ExecutionSemantics,
@@ -70,6 +70,8 @@ data v4_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v4_evalua
 
 data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == v4_evaluator_runtime_id
 
+data witness_v4_evaluator_model_core_wires_wave1: Bool = v4_evaluator_anchor_core == wave1_model_core() && v4_evaluator_anchor_core_standalone == wave1_model_core()
+
 data witness_v4_evaluator_semantics_fail_closed: Bool = match v4_eval_wave1_call_primitive(
   node: v4_eval_wave1_unit_type_node(),
   args: [],
@@ -105,7 +107,7 @@ fn v4_evaluator_witness_claim_input(ok: Bool) -> Node {
 data claim_v4_evaluator_runtime_bundle: TestClaim = CompilesClaim {
   label: "T-34 v4 evaluator concrete runtime bundle constructs and carriers wire",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: v4_eval_wave1_unit_type_node(),
+  input: v4_evaluator_witness_claim_input(ok: witness_v4_evaluator_runtime_identity && witness_v4_evaluator_model_core_wires_wave1),
   expected_value: v4_eval_wave1_unit_type_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
