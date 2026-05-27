@@ -1,36 +1,42 @@
 // src/v4/test/claim/round_trip/dag_ingest_round_trip.dag
 // Scope: T-36 self-referential .dag ingest round-trip fidelity claim.
 // Owns: claim_dag_ingest_round_trip_fidelity.
-// Consumes: v4.extdeps.languages.dag, v4.test.fixture.dag_ingest_round_trip_fixture, v4.std.verification, v4.std.node.
-// Status: EqualsClaim over committed source fixture + canonical C5 fidelity disposition.
+// Consumes: v4.extdeps.languages.dag, v4.std.verification, v4.std.node.
+// Status: RoundTripClaim fixture; execution authority remains compiler/05_eval.dag.
 
 module v4.test.claim.round_trip.dag_ingest_round_trip
 
 
 import v4.extdeps.languages.dag {
-  DagRoundTripSourceText,
-  dag_fidelity_disposition,
-  dag_fidelity_disposition_node
+  dag_language_model_surface_id,
+  dag_production_data_decl,
+  dag_production_module,
+  dag_token_ident,
+  dag_token_kw_data,
+  dag_token_kw_module
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.verification {
-  EqualsClaim,
   ManualAnchorAbsent,
+  RoundTripClaim,
   TestClaim,
   TestClassification,
   Tier1,
   Integration,
   manual_claim_anchor
 }
-import v4.test.fixture.dag_ingest_round_trip_fixture {
-  dag_ingest_round_trip_fixture_source_node
-}
 
 
 data dag_ingest_round_trip_claim_axis: Symbol = dag_ingest_round_trip_claim_axis
-data dag_ingest_round_trip_source_fixture_axis: Symbol = dag_ingest_round_trip_source_fixture_axis
-data dag_ingest_round_trip_fidelity_axis: Symbol = dag_ingest_round_trip_fidelity_axis
+data dag_ingest_round_trip_ingest_axis: Symbol = dag_ingest_round_trip_ingest_axis
+data dag_ingest_round_trip_emit_axis: Symbol = dag_ingest_round_trip_emit_axis
+data dag_ingest_round_trip_source_axis: Symbol = dag_ingest_round_trip_source_axis
+data dag_ingest_round_trip_language_axis: Symbol = dag_ingest_round_trip_language_axis
+data dag_ingest_round_trip_round_trip_axis: Symbol = dag_ingest_round_trip_round_trip_axis
 data dag_ingest_round_trip_claim_name: Symbol = claim_dag_ingest_round_trip_fidelity
+data dag_ingest_round_trip_ingest_to_node: Symbol = dag_ingest_round_trip_ingest_to_node
+data dag_ingest_round_trip_emit_to_string: Symbol = dag_ingest_round_trip_emit_to_string
+data dag_ingest_round_trip_bit_identical: Symbol = dag_ingest_round_trip_bit_identical
 
 
 fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
@@ -43,7 +49,7 @@ fn dag_ingest_round_trip_edge(name: Symbol, target: Node) -> Edge {
 }
 
 
-fn dag_ingest_round_trip_expected_node() -> Node {
+fn dag_ingest_round_trip_fixture_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -52,24 +58,49 @@ fn dag_ingest_round_trip_expected_node() -> Node {
         target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_claim_name)
       ),
       dag_ingest_round_trip_edge(
-        name: dag_ingest_round_trip_source_fixture_axis,
-        target: dag_ingest_round_trip_fixture_source_node()
+        name: dag_ingest_round_trip_language_axis,
+        target: dag_ingest_round_trip_atom(s: dag_language_model_surface_id)
       ),
       dag_ingest_round_trip_edge(
-        name: dag_ingest_round_trip_fidelity_axis,
-        target: dag_fidelity_disposition_node(
-          disposition: dag_fidelity_disposition(feature: DagRoundTripSourceText)
-        )
+        name: dag_ingest_round_trip_ingest_axis,
+        target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_ingest_to_node)
+      ),
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_emit_axis,
+        target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_emit_to_string)
+      ),
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_source_axis,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            dag_ingest_round_trip_edge(
+              name: dag_token_kw_module,
+              target: dag_ingest_round_trip_atom(s: dag_production_module)
+            ),
+            dag_ingest_round_trip_edge(
+              name: dag_token_kw_data,
+              target: dag_ingest_round_trip_atom(s: dag_production_data_decl)
+            ),
+            dag_ingest_round_trip_edge(
+              name: dag_token_ident,
+              target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_claim_name)
+            )
+          ]
+        }
+      ),
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_round_trip_axis,
+        target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_bit_identical)
       )
     ]
   }
 }
 
 
-data claim_dag_ingest_round_trip_fidelity: TestClaim = EqualsClaim {
-  label: "T-36 .dag ingest round-trip fixture follows dag language C5 fidelity model",
+data claim_dag_ingest_round_trip_fidelity: TestClaim = RoundTripClaim {
+  label: "T-36 .dag ingest round-trip: TestClaim source ingests to Node and emits bit-identical String",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: dag_ingest_round_trip_expected_node(),
-  rhs: dag_ingest_round_trip_expected_node(),
+  input: dag_ingest_round_trip_fixture_node(),
   classification: TestClassification { tier: Tier1, layer: Integration }
 }

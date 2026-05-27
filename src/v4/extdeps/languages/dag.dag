@@ -51,12 +51,6 @@ import v4.compiler.tokenize {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.extdeps.languages.fidelity {
-  DeclaredNormalized,
-  FailClosed,
-  FidelityDisposition,
-  Modeled
-}
 import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
@@ -204,63 +198,6 @@ type DagLanguageModel {
   grammar: Grammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
-}
-
-
-// C5 fidelity features for the modeled `.dag` surface. The round-trip fixture consumes
-// this authority instead of minting local "bit-identical" facts.
-type DagFidelityFeature
-  = DagRoundTripSourceText
-
-
-data dag_fidelity_modeled: Symbol = dag_fidelity_modeled
-data dag_fidelity_declared_normalized: Symbol = dag_fidelity_declared_normalized
-data dag_fidelity_fail_closed: Symbol = dag_fidelity_fail_closed
-data dag_fidelity_round_trip_source_text: Symbol = dag_fidelity_round_trip_source_text
-
-
-fn dag_fidelity_disposition(
-  feature: DagFidelityFeature
-) -> FidelityDisposition<DagFidelityFeature> {
-  match feature {
-    DagRoundTripSourceText => Modeled
-  }
-}
-
-
-fn dag_fidelity_feature_node(feature: DagFidelityFeature) -> Node {
-  match feature {
-    DagRoundTripSourceText => dag_grammar_atom(id: dag_fidelity_round_trip_source_text)
-  }
-}
-
-
-fn dag_fidelity_disposition_node(
-  disposition: FidelityDisposition<DagFidelityFeature>
-) -> Node {
-  match disposition {
-    Modeled => dag_grammar_atom(id: dag_fidelity_modeled)
-    DeclaredNormalized { feature: f } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          dag_named_edge(
-            name: dag_fidelity_declared_normalized,
-            target: dag_fidelity_feature_node(feature: f)
-          )
-        ]
-      }
-    FailClosed { feature: f } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          dag_named_edge(
-            name: dag_fidelity_fail_closed,
-            target: dag_fidelity_feature_node(feature: f)
-          )
-        ]
-      }
-  }
 }
 
 
