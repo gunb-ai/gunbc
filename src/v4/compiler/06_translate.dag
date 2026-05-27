@@ -947,10 +947,7 @@ fn translate_fold_step(
           Accepted {
             value: Node {
               kind: parent.kind,
-              children: list_push(
-                parent.children,
-                Edge { label: edge.label, target: translated_child }
-              )
+              children: list_snoc_item(xs: parent.children, item: Edge { label: edge.label, target: translated_child })
             },
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
