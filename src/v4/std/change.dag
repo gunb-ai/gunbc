@@ -32,6 +32,7 @@ type ChangeSet {
 type AffectedDependency {
   change: Change
   dependency: DependencyView
+  affected: Node
 }
 
 type AffectedExclusion {

@@ -362,7 +362,8 @@ fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: Change) -> Affect
 fn record_affected_dependency(
   acc: AffectedSetFoldAcc,
   change: Change,
-  dependency: DependencyView
+  dependency: DependencyView,
+  affected_node: Node
 ) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: dag, changes: changes, affected: affected, exclusions: exclusions } =>
@@ -372,7 +373,8 @@ fn record_affected_dependency(
           changes: changes,
           affected: list_snoc_item(xs: affected, item: AffectedDependency {
               change: change,
-              dependency: dependency
+              dependency: dependency,
+              affected: affected_node
             }),
           exclusions: exclusions
         }
@@ -468,7 +470,7 @@ fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<N
 
 fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
-    list_snoc_item(xs: acc, item: row.dependency.dependent)
+    list_snoc_item(xs: acc, item: row.affected)
   })
 }
 
@@ -845,7 +847,8 @@ fn expand_affected_dimension(
             record_affected_dependency(
               acc: acc2,
               change: change_for_edit(edit: edit),
-              dependency: frontier_dependency.dependency
+              dependency: frontier_dependency.dependency,
+              affected_node: frontier_dependency.affected
             )
           DoesNotPropagate { proof: p } =>
             record_affected_exclusion(
