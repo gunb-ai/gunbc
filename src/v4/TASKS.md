@@ -1207,13 +1207,13 @@ task that will not exist.
 no substrate existed before this lane. (This is the substrate side of the
 Theme-B "module-loading" dependency.)
 **Disposition — MODELED (operator ruling 2026-05-17, narrowed by Change 3).**
-`std/module_graph.dag` now owns the `Catalog` / `Entry` carrier, entry lookup,
+`std/catalog.dag` now owns the `Catalog` / `Entry` carrier, entry lookup,
 and validated catalog constructor, bundled into T-8. `AncestorRelation` and
 the ancestor-prefix witness were cut as speculative in Change 3; they are not
 part of the live catalog surface.
 **Residual:** `rust.dag`'s `PubInPath` visibility still needs a visibility
 authority if/when that slice is made executable. That authority is **not**
-`std/module_graph.dag` today; schedule it as a Rust visibility / module-tree
+`std/catalog.dag` today; schedule it as a Rust visibility / module-tree
 fact model before dispatching `PubInPath` consumers. Do not reintroduce an
 ancestor witness through the catalog carrier without a fresh modeling decision.
 
@@ -1534,7 +1534,7 @@ index or invent a traversal not grounded in that grammar declaration.
 
 **Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
-and `std/module_graph.dag` dissolve. Change 2 may be bundled with T-35 or land
+and `std/catalog.dag` dissolve. Change 2 may be bundled with T-35 or land
 immediately after.
 
 **Sequencing.** Prerequisite for T-35. Dispatch is independent of T-35's
@@ -1658,7 +1658,7 @@ to define a new agent output surface.
   produced by the future complete normalize → catalog-admission → resolve
   chain. This is the T-35 replacement for the current `compile_ingest_staging`
   resolve gate, not a claim that catalog admission is already wired there.
-  `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
+  `🟡 gate: dissolve-on Change 2 (std/catalog.dag dissolution) — the
   FreeMonoid<Entry> bridge and catalog_from_entries call are
   temporary scaffolding; once Change 2 lands, admission folds over
   FreeMonoid<Node> via qualified_name_from_node without the Entry bridge while
