@@ -1563,11 +1563,9 @@ to define a new agent output surface.
   lookup; the raw `AgentStore` is the write log, `ModuleGraph` is the
   unique-path map, and only `module_graph_from_entries` bridges the two.
 
-  **Scope of T-35's change:** `compile_with_store` is a new function that
-  introduces the `module_graph_from_entries(entries: store.entries)` call —
-  this call does not currently exist in the codebase (`compile_ingest_staging`
-  on main is a stub that returns `Rejected` with no module-graph construction).
-  The single call to `module_graph_from_entries`
+  **Scope of T-35's change:** `store.entries` replaces the `entries: Empty`
+  argument to `module_graph_from_entries` (currently in
+  `compile_ingest_staging`). The single call to `module_graph_from_entries`
   serves both purposes: (1) it admits the store (enforcing path uniqueness)
   and (2) it provides the root `CoreNode` via `module_graph_entry_for_path` on
   the resulting `ModuleGraph`. No other part of the ingest pipeline changes.
