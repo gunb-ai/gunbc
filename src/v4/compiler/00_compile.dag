@@ -71,10 +71,14 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
-// 🟡 gated — coproduct dissolution — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v4.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate coproduct as the permanent lens representation.
-type CompileLens
-  = FactDensityCompileLens
-  | StaticCompileLens { outcome: Outcome<Witness<Node>> }
+type CompileLensOutcome = Outcome<Witness<Node>>
+
+type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
+
+// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v4.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate record as the permanent lens representation.
+type CompileLens {
+  gate: CompileLensGate
+}
 
 
 // 🟢 coproduct dissolution
@@ -128,7 +132,7 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-data fact_density_lens: CompileLens = FactDensityCompileLens
+data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
 
 
 fn always_required_lenses() -> List<CompileLens> {
@@ -142,10 +146,7 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 
 
 fn run_compile_lens_gate(lens: CompileLens, inferred: InferredTree) -> Outcome<Witness<Node>> {
-  match lens {
-    FactDensityCompileLens => fact_density_hollow_alias_compile_gate(tree: inferred)
-    StaticCompileLens { outcome: outcome } => outcome
-  }
+  lens.gate(inferred)
 }
 
 
