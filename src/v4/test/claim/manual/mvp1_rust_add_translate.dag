@@ -563,13 +563,12 @@ data claim_mvp1_serialize_rejects_missing_translation_rules: TestClaim = Diagnos
 }
 
 
-data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> =
-  TestClaimEvalSubject {
-    claim: claim_mvp1_serialize_rejects_missing_translation_rules,
-    context: infer_receipt_context(),
-    tree: mvp1_rust_inferred_tree,
-    input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
-  }
+data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_mvp1_serialize_rejects_missing_translation_rules,
+  context: infer_receipt_context(),
+  tree: mvp1_rust_inferred_tree,
+  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+}
 
 
 data run_mvp1_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
