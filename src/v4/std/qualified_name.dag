@@ -77,22 +77,26 @@ fn qualified_name_atom_sym(n: Node) -> Outcome<Symbol> {
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      match qualified_name_find_edge(name: fold_list_node_head, n: root) {
-        Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
-        Accepted { value: head_node, diagnostics: _ } =>
-          match qualified_name_atom_sym(n: head_node) {
-            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-            Accepted { value: sym, diagnostics: _ } =>
-              match qualified_name_find_edge(name: fold_list_node_tail, n: root) {
-                Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-                Accepted { value: tail_node, diagnostics: _ } =>
-                  match qualified_name_from_node(root: tail_node) {
-                    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-                    Accepted { value: tail_qn, diagnostics: _ } =>
-                      outcome_accepted(value: Cons { head: sym, tail: tail_qn })
-                  }
-              }
-          }
+      if count(root.children) == 0 {
+        outcome_accepted(value: Empty)
+      } else {
+        match qualified_name_find_edge(name: fold_list_node_head, n: root) {
+          Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+          Accepted { value: head_node, diagnostics: _ } =>
+            match qualified_name_atom_sym(n: head_node) {
+              Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+              Accepted { value: sym, diagnostics: _ } =>
+                match qualified_name_find_edge(name: fold_list_node_tail, n: root) {
+                  Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                  Accepted { value: tail_node, diagnostics: _ } =>
+                    match qualified_name_from_node(root: tail_node) {
+                      Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                      Accepted { value: tail_qn, diagnostics: _ } =>
+                        outcome_accepted(value: Cons { head: sym, tail: tail_qn })
+                    }
+                }
+            }
+        }
       }
     _ => outcome_rejected(Diagnostic {
       reason: qualified_name_projection_gated,
