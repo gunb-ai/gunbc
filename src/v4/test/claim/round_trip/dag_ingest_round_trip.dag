@@ -118,6 +118,7 @@ fn dag_ingest_round_trip_re_emitted_node(
 }
 
 
+// 🟡 bootstrap-limitation:T-36-executable-round-trip — EqualsClaim lhs == rhs (source_node == source_node) because ingest()/emit() are not callable as .dag functions until T-10 lands; this claim is a prep fixture that models the round-trip structure and declares the C5 fidelity disposition — dissolve-on: T-10 (05_emit.dag + 00_compile.dag) merges with callable ingest(source, dag_language_model()) -> Node and emit(node, dag_language_model()) -> String; at that point replace lhs with ingest(fixture_source) and rhs with ingest(emit(ingest(fixture_source))).
 data claim_dag_ingest_round_trip_fidelity: TestClaim = EqualsClaim {
   label: "T-36 .dag ingest round-trip source program re-emits according to C5 fidelity disposition",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
