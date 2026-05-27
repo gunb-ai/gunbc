@@ -1,6 +1,6 @@
 // src/v4/std/module_graph.dag
-// Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
-// Owns: ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup; validated graph constructor.
+// Scope: Module-tree carrier for cross-file binding (T-28).
+// Owns: ModuleGraph, ModuleEntry; entry lookup; validated graph constructor.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
@@ -16,12 +16,10 @@ import v4.std.diagnostic {
   Unavailable,
   port_locus
 }
-import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 import v4.std.qualified_name {
   QualifiedName,
-  qualified_name_eq,
-  qualified_name_is_prefix_of
+  qualified_name_eq
 }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -38,25 +36,8 @@ type ModuleGraph {
 }
 
 
-// 🟡 feature:opaque-proof-constructor — AncestorRelation is a plain record; non-prefix pairs are constructible outside module_ancestor_witness; dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_ancestor_witness as the sole construction path.
-type AncestorRelation {
-  ancestor: QualifiedName
-  descendant: QualifiedName
-}
-
-
-data module_graph_ancestor_not_prefix: Symbol = module_graph_ancestor_not_prefix
 data module_graph_entry_not_found: Symbol = module_graph_entry_not_found
 data module_graph_duplicate_path: Symbol = module_graph_duplicate_path
-
-
-fn module_ancestor_not_prefix_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: module_graph_ancestor_not_prefix,
-    at: port_locus(port: module_graph_ancestor_not_prefix),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
 
 
 fn module_entry_not_found_diagnostic() -> Diagnostic {
@@ -89,28 +70,6 @@ fn module_entry_find_state_to_witness(state: ModuleEntryFindState) -> Witness<Mo
     EntryNotFound => Violates { diagnostic: module_entry_not_found_diagnostic() }
     EntryFoundOnce { found: entry } => Holds { value: entry }
     EntryFoundDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
-  }
-}
-
-
-fn module_is_prefix_of(ancestor: QualifiedName, descendant: QualifiedName) -> Bool {
-  qualified_name_is_prefix_of(prefix: ancestor, name: descendant)
-}
-
-
-fn module_ancestor_witness(
-  ancestor: QualifiedName,
-  descendant: QualifiedName
-) -> Witness<AncestorRelation> {
-  if module_is_prefix_of(ancestor: ancestor, descendant: descendant) {
-    Holds {
-      value: AncestorRelation {
-        ancestor: ancestor,
-        descendant: descendant
-      }
-    }
-  } else {
-    Violates { diagnostic: module_ancestor_not_prefix_diagnostic() }
   }
 }
 
