@@ -10,7 +10,14 @@ module v4.std.qualified_name
 
 
 import v4.std.algebra { FreeMonoid, is_prefix_of, zip_eq }
-import v4.std.diagnostic { Diagnostic, Outcome, node_locus, outcome_rejected }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_rejected
+}
 import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
 
@@ -34,6 +41,7 @@ fn qualified_name_is_prefix_of(prefix: QualifiedName, name: QualifiedName) -> Bo
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   outcome_rejected(Diagnostic {
     reason: qualified_name_projection_gated,
-    at: node_locus(node: root)
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
   })
 }
