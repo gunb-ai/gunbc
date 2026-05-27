@@ -232,6 +232,7 @@ data go_surface_spelling_bool: Symbol = go_surface_spelling_bool
 data go_surface_spelling_string: Symbol = go_surface_spelling_string
 
 data go_inhabitant_int: Symbol = go_inhabitant_int
+data go_inhabitant_string: Symbol = go_inhabitant_string
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
@@ -1071,19 +1072,7 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
     } => AlgebraInhabitanceDecl {
       algebra: ordered_ring_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
-      witness: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          go_named_edge(
-            name: go_witness_signed_integer_ordered_ring,
-            target: go_inhabitant_atom(id: go_witness_signed_integer_ordered_ring)
-          ),
-          go_named_edge(
-            name: go_facts_field_std_projection,
-            target: go_inhabitant_atom(id: facts.std_projection)
-          )
-        ]
-      }
+      witness: go_integer_algebra_witness_node(facts: facts)
     }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling: _,
@@ -1093,19 +1082,7 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
     } => AlgebraInhabitanceDecl {
       algebra: semiring_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
-      witness: Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          go_named_edge(
-            name: go_witness_unsigned_integer_semiring,
-            target: go_inhabitant_atom(id: go_witness_unsigned_integer_semiring)
-          ),
-          go_named_edge(
-            name: go_facts_field_std_projection,
-            target: go_inhabitant_atom(id: facts.std_projection)
-          )
-        ]
-      }
+      witness: go_integer_algebra_witness_node(facts: facts)
     }
   }
 }
@@ -1149,9 +1126,9 @@ fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 }
 
 fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = go_string_facts_node(facts: facts)
+  let inhabitant = go_string_inhabitant_node()
   AlgebraInhabitanceDecl {
-    algebra: free_monoid_node(inhabitant: go_inhabitant_atom(id: go_surface_spelling_uint8)),
+    algebra: free_monoid_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_string_algebra_witness_node(facts: facts)
   }
@@ -1180,6 +1157,22 @@ fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
     go_bool_algebra_inhabitance()
   ]
+}
+
+fn go_string_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_inhabitant_field_string,
+        target: go_inhabitant_atom(id: go_inhabitant_string)
+      ),
+      go_named_edge(
+        name: go_inhabitant_field_facts,
+        target: go_string_facts_node(facts: go_facts_string)
+      )
+    ]
+  }
 }
 
 fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
