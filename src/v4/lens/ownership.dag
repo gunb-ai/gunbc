@@ -17,8 +17,19 @@ import v4.std.dependency {
   classify_dependency_view,
   classified_dependency_view_eq
 }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v4.std.logic { Bool }
-import v4.std.witness { Holds, Witness }
+import v4.std.node { Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+data ownership_reason_unresolved_projection: Symbol = ownership_reason_unresolved_projection
+data ownership_projection_virtual_file: Symbol = ownership_projection_virtual_file
 
 // 🟢 projection-only classification. `RequiresAccessWitness` is the
 // fail-closed slot for resource/effect edges that need access evidence.
@@ -65,9 +76,37 @@ fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Own
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-ownership-mode-unresolved — dissolve-on-arrival: substrate projects OwnershipMode resolved/unresolved from coproduct; forbidden: parallel ad-hoc RequiresAccessWitness/UnknownOwnership Bool predicates outside ownership_witness.
+fn ownership_mode_unresolved(mode: OwnershipMode) -> Bool {
+  match mode {
+    RequiresAccessWitness => true
+    UnknownOwnership => true
+    OwnedContainment => false
+    SharedRead => false
+    BorrowedDependency => false
+  }
+}
+
+fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || ownership_mode_unresolved(mode: dep.classification)
+  })
+}
+
+fn ownership_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ownership_reason_unresolved_projection,
+    at: Textual { file: ownership_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
-  Holds {
-    value: ownership_fact(tree: tree, dependencies: dependencies)
+  let fact = ownership_fact(tree: tree, dependencies: dependencies)
+  if ownership_fact_unresolved(fact: fact) {
+    Violates { diagnostic: ownership_witness_diagnostic() }
+  } else {
+    Holds { value: fact }
   }
 }
 

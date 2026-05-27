@@ -9,7 +9,14 @@ module v4.lens.idempotency
 
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.algebra { bag_eq, list_snoc_item }
-import v4.std.collection { List }
+import v4.std.collection {
+  List,
+  Optional,
+  optional_absent,
+  optional_prefer_first_present,
+  optional_present,
+  optional_present_witness
+}
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyKindClassifier,
@@ -17,8 +24,19 @@ import v4.std.dependency {
   classify_dependency_view,
   classified_dependency_view_eq
 }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v4.std.logic { Bool }
-import v4.std.witness { Holds, Witness }
+import v4.std.node { Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+data idempotency_reason_unresolved_projection: Symbol = idempotency_reason_unresolved_projection
+data idempotency_projection_virtual_file: Symbol = idempotency_projection_virtual_file
 
 // 🟢 lens classification — dependency-edge alone never proves the positive
 // algebraic law, so `RequiresAlgebraWitness` is the fail-closed default;
@@ -63,9 +81,57 @@ fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> I
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-idempotency-verdict-unresolved — dissolve-on-arrival: substrate projects IdempotencyVerdict resolved/unresolved from coproduct; forbidden: parallel ad-hoc IdempotencyVerdict Bool predicates outside idempotency_witness.
+fn idempotency_verdict_unresolved(verdict: IdempotencyVerdict) -> Bool {
+  match verdict {
+    RequiresAlgebraWitness => true
+    AlgebraicIdempotenceProven { law: law } =>
+      match law {
+        Holds { value: _ } => false
+        Violates { diagnostic: _ } => true
+      }
+  }
+}
+
+fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> Optional<Diagnostic> {
+  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
+    optional_prefer_first_present(
+      left: acc,
+      right: match dep.classification {
+        AlgebraicIdempotenceProven { law: Violates { diagnostic: d } } =>
+          optional_present(value: d)
+        _ => optional_absent()
+      }
+    )
+  })
+}
+
+fn idempotency_fact_unresolved(fact: IdempotencyFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || idempotency_verdict_unresolved(verdict: dep.classification)
+  })
+}
+
+fn idempotency_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: idempotency_reason_unresolved_projection,
+    at: Textual { file: idempotency_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
-  Holds {
-    value: idempotency_fact(tree: tree, dependencies: dependencies)
+  let fact = idempotency_fact(tree: tree, dependencies: dependencies)
+  let law_diagnostic = idempotency_first_law_violation_diagnostic(fact: fact)
+  match optional_present_witness(opt: law_diagnostic) {
+    Holds { value: d } =>
+      Violates { diagnostic: d }
+    Violates { diagnostic: _ } =>
+      if idempotency_fact_unresolved(fact: fact) {
+        Violates { diagnostic: idempotency_witness_diagnostic() }
+      } else {
+        Holds { value: fact }
+      }
   }
 }
 
