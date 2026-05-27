@@ -483,15 +483,12 @@ fn token_position_indices(tokens: List<Token>) -> List<Int> {
   match is_empty(xs: tokens) {
     true => Cons { head: 0, tail: Empty }
     false =>
-      list_snoc_item(
-        xs: fold_list(
-          xs: tokens,
-          empty: Cons { head: 0, tail: Empty },
-          cons: fn(acc, _) {
-            list_snoc_item(xs: acc, item: length(xs: acc))
-          }
-        ),
-        item: length(xs: tokens)
+      fold_list(
+        xs: tokens,
+        empty: Cons { head: 0, tail: Empty },
+        cons: fn(acc, _) {
+          list_snoc_item(xs: acc, item: length(xs: acc))
+        }
       )
   }
 }
@@ -1127,9 +1124,7 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
-  if !well_formed(n: grammar_node) {
-    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
-  } else {
+  if well_formed(n: grammar_node) {
     match grammar {
       VoidGrammar =>
         if ntok == 0 {
@@ -1144,5 +1139,7 @@ fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
             parse_production(tokens: tokens.tokens, validated: validated, production_name: root.start)
         }
     }
+  } else {
+    Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_not_well_formed_diagnostic(at: at)) }
   }
 }

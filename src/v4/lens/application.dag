@@ -58,9 +58,16 @@ import v4.std.node {
 }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
-// Mechanical port (interface-freeze pin §4): opaque until shared substrate graduates.
-type DeclarationId
-type NodeId
+// 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
+// dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
+// node-containment evidence from the shared declaration/node identity substrate; forbidden:
+// marking SectionRef construction fully grounded while arbitrary paths can inhabit these handles.
+type DeclarationId {
+  path: Path
+}
+type NodeId {
+  path: Path
+}
 type SourceSpan
 
 // 🟢 TERMINAL — disjoint sum over section shapes (design-lens-application-surface §1.2).
@@ -115,6 +122,23 @@ type EnforcedApplication<Output, Budget, Projected> {
   span: SourceSpan
 }
 
+// 🟢 grounded — enforce-mode output carrier. `Projected` flows forward for
+// downstream composition / diagnostics instead of remaining a phantom witness.
+type EnforcedLensResult<Output, Projected> {
+  output: Output
+  projected: Projected
+}
+
+// 🟡 gated — feature:lens-enforcement-diagnostic-detail — generic observed/declared facts
+// flow to the diagnostic boundary, but v4.std.diagnostic is reason/locus shaped today.
+// dissolve-on-arrival: Diagnostic detail payloads can carry Projected/Budget evidence;
+// forbidden: claiming projected/declared facts are consumed by plain Diagnostic.
+type LensEnforcementViolationInput<Projected, Budget> {
+  at: Node
+  projected: Projected
+  declared: Budget
+}
+
 // 🟢 TERMINAL — introspect-mode application carrier (design-lens-application-surface §2).
 type IntrospectApplication<Output> {
   lens: Lens<Output>
@@ -143,11 +167,25 @@ fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
   }
 }
 
-fn lens_enforcement_violation_diagnostic(at: Node) -> Diagnostic {
+fn lens_enforcement_violation_diagnostic<Projected, Budget>(
+  input: LensEnforcementViolationInput<Projected, Budget>
+) -> Diagnostic {
   Diagnostic {
     reason: lens_enforcement_violation_reason,
-    at: node_locus(node: at),
+    at: node_locus(node: input.at),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn lens_enforcement_violation_input<Projected, Budget>(
+  at: Node,
+  projected: Projected,
+  declared: Budget
+) -> LensEnforcementViolationInput<Projected, Budget> {
+  LensEnforcementViolationInput {
+    at: at,
+    projected: projected,
+    declared: declared
   }
 }
 
@@ -376,14 +414,37 @@ fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
-// 🟡 gated — feature:section-ref-to-subject-projection — bind: TASKS.md T-23 follow-on wire —
-// dissolve-on-arrival: resolve `DeclarationScope` / `NodeScope` to the bounded sub-`Node` the
-// lens reads (declaration body sub-DAG or expression subtree); forbidden: decorative `SectionRef`
-// parameters with whole-graph `read(root)` while claiming section-scoped application.
+// 🟡 gated — feature:section-ref-identity-evidence — projection is real, but handle construction is
+// still a bounded bridge until DeclarationId proves declaration-ness and NodeId proves containment.
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
-    DeclarationScope { declaration: _ } => outcome_accepted(value: root)
-    NodeScope { declaration: _, node: _ } => outcome_accepted(value: root)
+    DeclarationScope { declaration: declaration } =>
+      subterm_at(root: root, p: declaration.path)
+    NodeScope { declaration: declaration, node: node } =>
+      bind_outcome(
+        o: subterm_at(root: root, p: declaration.path),
+        f: fn(declaration_subject) {
+          subterm_at(root: declaration_subject, p: node.path)
+        }
+      )
+  }
+}
+
+fn lens_enforcement_violated<Output, Budget, Projected>(
+  enforcement: LensEnforcement<Output, Budget, Projected>,
+  output: Output,
+  budget: Budget
+) -> Bool {
+  enforcement.violates(output: output, declared: budget)
+}
+
+fn lens_enforcement_result<Output, Budget, Projected>(
+  enforcement: LensEnforcement<Output, Budget, Projected>,
+  output: Output
+) -> EnforcedLensResult<Output, Projected> {
+  EnforcedLensResult {
+    output: output,
+    projected: enforcement.project(output: output)
   }
 }
 
@@ -408,17 +469,33 @@ fn apply_lens_enforce<Output, Budget, Projected>(
   root: Node,
   budget: Budget,
   diagnostic_severity: DiagnosticSeverity
-) -> Outcome<Output> {
+) -> Outcome<EnforcedLensResult<Output, Projected>> {
   bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
       bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
-          if enforceable.enforcement.violates(output: lens_output, declared: budget) {
-            outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
+          let enforcement_result = lens_enforcement_result(
+            enforcement: enforceable.enforcement,
+            output: lens_output
+          )
+          if lens_enforcement_violated(
+            enforcement: enforceable.enforcement,
+            output: lens_output,
+            budget: budget
+          ) {
+            outcome_rejected(
+              d: lens_enforcement_violation_diagnostic(
+                input: lens_enforcement_violation_input(
+                  at: subject,
+                  projected: enforcement_result.projected,
+                  declared: budget
+                )
+              )
+            )
           } else {
-            outcome_accepted(value: lens_output)
+            outcome_accepted(value: enforcement_result)
           }
         }
       )
