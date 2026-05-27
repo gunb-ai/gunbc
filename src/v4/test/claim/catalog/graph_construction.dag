@@ -1,16 +1,16 @@
-// src/v4/test/claim/module_graph/graph_construction.dag
+// src/v4/test/claim/catalog/graph_construction.dag
 // Scope: TestClaim corpus for catalog_from_entries validated constructor.
 // Owns: claim rows for unique-name construction success and duplicate-name rejection.
-// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
+// Consumes: v4.std.catalog v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 
-module v4.test.claim.module_graph.graph_construction
+module v4.test.claim.catalog.graph_construction
 
 
 import v4.std.algebra { Cons, Empty, FreeMonoid }
-import v4.std.module_graph {
+import v4.std.catalog {
   Catalog,
   Entry,
   catalog_from_entries

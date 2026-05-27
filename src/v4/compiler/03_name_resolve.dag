@@ -4,7 +4,7 @@
 // Owns: ResolutionSubject; Admission; namespace_for_subject; resolve_with_admission.
 // Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
 //           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
-//           std/diagnostic.dag, std/module_graph.dag, std/node.dag,
+//           std/diagnostic.dag, std/catalog.dag, std/node.dag,
 //           std/qualified_name.dag, std/witness.dag.
 // Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
@@ -34,7 +34,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   port_locus
 }
-import v4.std.module_graph {
+import v4.std.catalog {
   Catalog,
   catalog_entry_for_name
 }
@@ -190,7 +190,7 @@ fn admit_imports(
   imports: FreeMonoid<Import>,
   state: AdmissionState
 ) -> AdmissionState {
-  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-import — same v2 bootstrap limitation as std/module_graph.dag's Entry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<Import>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-import — same v2 bootstrap limitation as std/catalog.dag's Entry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<Import>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
   match imports {
     Empty => state
     Cons { head: import_edge, tail: rest } =>
