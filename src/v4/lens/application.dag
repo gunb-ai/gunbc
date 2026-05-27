@@ -56,6 +56,7 @@ import v4.std.node {
   TypeNode,
   name_occurrences
 }
+import v4.std.node_query { find_named_child }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
 // 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
@@ -197,34 +198,9 @@ fn advisory_report_diagnostic(report: Report) -> Diagnostic {
   }
 }
 
-// 🟢 grounded — D1 path step via std.node `name_occurrences` uniqueness gate (Practice 10:
-// canonical substrate accessor; no parallel EdgeLabel walker).
+// Delegates to the 🟢-canonical find_named_child in std/node_query.dag.
 fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
-  if name_occurrences(name: name, children: root.children) == 0 {
-    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
-  } else if name_occurrences(name: name, children: root.children) == 1 {
-    fold(
-      root.children,
-      init: outcome_rejected(d: path_unresolvable_diagnostic(at: root)),
-      f: fn(acc, e) {
-        match acc {
-          Rejected { diagnostics: _ } =>
-            match e.label {
-              Named { name: edge_name } =>
-                if edge_name == name {
-                  outcome_accepted(value: e.target)
-                } else {
-                  acc
-                }
-              Positional => acc
-            }
-          Accepted { value: _, diagnostics: _ } => acc
-        }
-      }
-    )
-  } else {
-    outcome_rejected(d: path_ambiguous_diagnostic(at: root))
-  }
+  find_named_child(root: root, name: name)
 }
 
 fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {

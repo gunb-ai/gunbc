@@ -51,7 +51,8 @@ import v4.compiler.tokenize {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, name_occurrences }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node_query { find_named_child }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
