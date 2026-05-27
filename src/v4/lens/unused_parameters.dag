@@ -8,26 +8,13 @@
 module v4.lens.unused_parameters
 
 import v4.compiler.infer { InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { Empty, bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_view,
   classified_dependency_view_eq
 }
 import v4.std.logic { Bool }
@@ -49,14 +36,7 @@ type UseClassificationFact {
   uses: List<ClassifiedDependencyView<UseRelation>>
 }
 
-// BEHAVIORAL OUTPUT — registry-aligned (`LensIdV0::UnusedParameters` /
-// v3 declaration-centric query). Derived from `UseClassificationFact`
-// via `rollup_unused`; no parallel mechanism. The row holds the typed
-// reference (`declaration`) only — per-node `InferredFacts` flow forward
-// by reference via `tree.facts.lookup(declaration)` at use-sites
-// (Practice 3 / P2 — facts must not be copied onto carriers, even on
-// the registry-aligned row, otherwise the same parallel-payload defect
-// this ratchet dissolves leaks through the back door).
+// BEHAVIORAL OUTPUT — registry-aligned; rollup_unused derives rows from UseClassificationFact without copying InferredFacts payloads.
 type UnusedParameterFact {
   declaration: Node
 }
@@ -65,39 +45,36 @@ type UnusedParametersFact {
   unused: List<UnusedParameterFact>
 }
 
-fn use_relation_for_dependency(view: DependencyView) -> UseRelation {
-  match view.kind {
-    BindsTo => IsUseOfDeclaration
-    Contains => IsStructuralComposition
-    DataDependsOn => IsNonUseDependency
-    TypeDependsOn => IsNonUseDependency
-    EffectDependsOn => IsNonUseDependency
-    ResourceDependsOn => IsNonUseDependency
-    BarrierBefore => IsNonUseDependency
-    ModuleDependsOn => IsNonUseDependency
-    PlacementDependsOn => IsNonUseDependency
-    ModelDependsOn => IsNonUseDependency
-    ProjectionDependsOn => IsNonUseDependency
-    GeneratedFrom => RequiresResolutionWitness
-    VerifiedBy => RequiresResolutionWitness
-    PromotedBy => RequiresResolutionWitness
-    BootstrapDependsOn => RequiresResolutionWitness
+fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRelation> {
+  DependencyKindClassifier {
+    contains: IsStructuralComposition,
+    binds_to: IsUseOfDeclaration,
+    type_depends_on: IsNonUseDependency,
+    data_depends_on: IsNonUseDependency,
+    effect_depends_on: IsNonUseDependency,
+    resource_depends_on: IsNonUseDependency,
+    module_depends_on: IsNonUseDependency,
+    barrier_before: IsNonUseDependency,
+    placement_depends_on: IsNonUseDependency,
+    model_depends_on: IsNonUseDependency,
+    projection_depends_on: IsNonUseDependency,
+    generated_from: RequiresResolutionWitness,
+    verified_by: RequiresResolutionWitness,
+    promoted_by: RequiresResolutionWitness,
+    bootstrap_depends_on: RequiresResolutionWitness
   }
 }
 
 fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
   // P6 orientation: BindsTo carries Declaration → Use, so `view.source`
   // is the declaration; downstream readers access via `classified_source`.
-  ClassifiedDependencyView {
-    dependency: view,
-    classification: use_relation_for_dependency(view: view)
-  }
+  classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
 
 fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
   UseClassificationFact {
     uses: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, use_classify(view: view))
+      list_snoc_item(xs: acc, item: use_classify(view: view))
     })
   }
 }
@@ -108,25 +85,7 @@ fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyV
   }
 }
 
-// roll-up: derive the declaration-centric set from the per-edge projection.
-// A declaration N is "unused" iff N is a Contains-dependent in `uses`
-// (the canonical declaration position under P6 — parameters/locals
-// contained in their declaring scope, matching the v3 lens contract)
-// AND no edge in `uses` has `source == N` with `relation ==
-// IsUseOfDeclaration`. Roll-up scope is derived from the existing
-// classification (feedback_scope_from_query_not_type_tag — scope is a
-// query fact, not a substrate tag).
-// 🟡 predicate dissolution — feature:variant-tag-partition-predicate.
-// Fail-closed: a relation BLOCKS the unused-verdict if it is either a
-// proven use (`IsUseOfDeclaration`) or unresolved-use evidence
-// (`RequiresResolutionWitness` — the lens couldn't classify the edge
-// kind, so the conservative answer is "uncertain, don't claim unused").
-// `IsStructuralComposition` and `IsNonUseDependency` are positive
-// non-use evidence and do not block. Dissolves on arrival of a
-// substrate variant-tag partition primitive (Practice 10 — currently
-// no parametric "partition variants of <Coproduct> by <classifier>"
-// primitive exists, so the match is hand-rolled with the dissolution
-// obligation tracked here).
+// 🟡 predicate dissolution — feature:variant-tag-partition-predicate — roll-up blocks unused on proven use or unresolved-use evidence until variant partition is substrate-derived.
 fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
   match relation {
     IsUseOfDeclaration => true
@@ -158,19 +117,10 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
   })
 }
 
-// P6 + P2 boundary discipline: a declaration candidate is a node that
-// the dependency model positions AS a declaration. Containment-children
-// (parameters/locals contained in their declaring scope) are the
-// canonical declaration position and match the v3 lens contract
-// ("function + parameter port"). Sources of `BindsTo` edges are
-// declarations too, but by definition have a use, so they can never be
-// unused. Other dependency kinds do not carry declaration-position
-// semantics on either endpoint and MUST NOT be treated as candidates —
-// doing so would let a non-declaration source with only non-USE
-// dependencies appear in `unused`, an illegal state (Practice 2).
+// P6/P2: only Contains dependents are unused candidates; BindsTo sources already have a use, and other dependency kinds are not declaration positions.
 fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
-    unused: fold(use_fact.uses, init: [], f: fn(acc, classified) {
+    unused: fold(use_fact.uses, init: Empty, f: fn(acc, classified) {
       if use_relation_eq(a: classified.classification, b: IsStructuralComposition) {
         let candidate = classified.dependency.dependent
         if already_in_unused(unused: acc, declaration: candidate) {
@@ -179,7 +129,7 @@ fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
           if declaration_has_use_or_unresolved(uses: use_fact.uses, declaration: candidate) {
             acc
           } else {
-            list_push(acc, unused_parameter_for_declaration(declaration: candidate))
+            list_snoc_item(xs: acc, item: unused_parameter_for_declaration(declaration: candidate))
           }
         }
       } else {

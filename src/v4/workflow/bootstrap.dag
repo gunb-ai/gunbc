@@ -1,17 +1,19 @@
 // src/v4/workflow/bootstrap.dag
 // Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
 // 🟡 needs-more-work — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; bootstrap_plan_well_formed must then require computed digest equality (stage1 ≠ stage2 until fixpt proves convergence), not symbolic placeholder Hash data aliases. Until then, pin Symbols identify carrier slots; digest fields are placeholder identities — accepted bootstrap_plan below is structural wiring only, NOT proof of fixed-point convergence.
-// Owns: CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan, bootstrap_fixpt_witness, bootstrap_plan_fixpt_witness
+// Owns: BootstrapConstruct, SeedCapability, BootstrapFootprint, BootstrapCapabilityExact, ConvergenceLadder, SeedHonestyDischarge, CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan, bootstrap_fixpt_witness, bootstrap_plan_fixpt_witness
 // Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.std.witness
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
 module v4.workflow.bootstrap
 
-import v4.std.node { Hash, Symbol }
+import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.algebra {
-  count_equal,
-  length
+  bag_eq
 }
+import v4.compiler.target_carriers { LanguageModel, TargetModel }
+import v4.extdeps.languages.rust { rust_mvp1_target_model }
+import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -20,6 +22,7 @@ data v4_stage0_binary: Symbol = v4_stage0_binary
 data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
+data v4_live_compiler_source_snapshot_root: Symbol = v4_live_compiler_source_snapshot_root
 data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
@@ -33,6 +36,63 @@ data pinned_v4_fixed_point_hash: Hash = pinned_v4_fixed_point_hash
 type BootstrapHashPin {
   digest: Hash
   pin: Symbol
+}
+
+type BootstrapConstruct {
+  identity: Symbol
+}
+
+type SeedCapability {
+  language_model: LanguageModel
+  constructs: List<BootstrapConstruct>
+  frozen_at: Symbol
+}
+
+type BootstrapSourceSnapshot {
+  root: Node
+  language_model: LanguageModel
+  content_hash: BootstrapHashPin
+}
+
+type BootstrapProjectionInputs {
+  snapshot: BootstrapSourceSnapshot
+  target_model: TargetModel
+  runtime_model: V4EvaluatorRuntime
+}
+
+type BootstrapFootprint {
+  inputs: BootstrapProjectionInputs
+  constructs: List<BootstrapConstruct>
+}
+
+type BootstrapCapabilityExact {
+  footprint: BootstrapFootprint
+  capability: SeedCapability
+}
+
+type PhysicalExecutionAxiom {
+  machine_model: Symbol
+  executes_as_modeled: Symbol
+}
+
+type DiverseCompilationRun {
+  source: Symbol
+  compiler: Symbol
+  output: Symbol
+  output_hash: BootstrapHashPin
+}
+
+type IndependentCompilerPair {
+  primary: Symbol
+  secondary: Symbol
+  evidence: Symbol
+}
+
+type DiverseCompilationAgreement {
+  primary: DiverseCompilationRun
+  secondary: DiverseCompilationRun
+  independent_compilers: IndependentCompilerPair
+  agreed_hash: BootstrapHashPin
 }
 
 // RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
@@ -52,6 +112,11 @@ type FixptStage1Stage2 {
   pinned_hash: BootstrapHashPin
 }
 
+type SeedHonestyDischarge {
+  seed_honesty_axiom: Symbol
+  diverse_double_compilation: DiverseCompilationAgreement
+}
+
 // RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
 type BootstrapPlan {
   seed: CompileStage
@@ -60,7 +125,28 @@ type BootstrapPlan {
   fixpt: FixptStage1Stage2
 }
 
+type ConvergenceLadder {
+  entry_seed: Symbol
+  plan: BootstrapPlan
+  fixed_point: FixptStage1Stage2
+}
+
 data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
+data bootstrap_footprint_not_realized: Symbol = bootstrap_footprint_not_realized
+data bootstrap_capability_not_minimal: Symbol = bootstrap_capability_not_minimal
+data bootstrap_plan_unavailable_for_ladder: Symbol = bootstrap_plan_unavailable_for_ladder
+data bootstrap_diverse_compilation_mismatch: Symbol = bootstrap_diverse_compilation_mismatch
+data bootstrap_phase1_frozen_submodel: Symbol = bootstrap_phase1_frozen_submodel
+data bootstrap_seed_language_model_identity: Symbol = bootstrap_seed_language_model_identity
+data bootstrap_construct_source_language_subset: Symbol = bootstrap_construct_source_language_subset
+data bootstrap_construct_target_model_subset: Symbol = bootstrap_construct_target_model_subset
+data bootstrap_construct_runtime_model_subset: Symbol = bootstrap_construct_runtime_model_subset
+data bootstrap_construct_lowering_subset: Symbol = bootstrap_construct_lowering_subset
+data physical_machine_model_axiom: Symbol = physical_machine_model_axiom
+data physical_machine_executes_isa_as_modeled: Symbol = physical_machine_executes_isa_as_modeled
+data seed_honesty_axiom: Symbol = seed_honesty_axiom
+data independent_compiler_witness: Symbol = independent_compiler_witness
+data diverse_compile_fixed_point_output: Symbol = diverse_compile_fixed_point_output
 data bootstrap_workflow_file: Symbol = bootstrap_workflow_file
 
 fn bs_diagnostic(reason: Symbol) -> Diagnostic {
@@ -75,13 +161,122 @@ fn bs_symbol_eq(left: Symbol, right: Symbol) -> Bool {
   left == right
 }
 
+fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -> Bool {
+  left.identity == right.identity
+}
+
+fn seed_capability_language_model() -> LanguageModel {
+  Node {
+    kind: TypeNode { connective: Atom { identity: bootstrap_seed_language_model_identity } },
+    children: []
+  }
+}
+
+fn bootstrap_source_snapshot_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: v4_live_compiler_source_snapshot_root } },
+    children: []
+  }
+}
+
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
-  if length(xs: a) == length(xs: b) {
-    fold(a, init: true, f: fn(acc, x) {
-      acc && (count_equal(xs: a, item: x, eq: bs_symbol_eq) == count_equal(xs: b, item: x, eq: bs_symbol_eq))
-    })
+  bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
+}
+
+fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
+  bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
+}
+
+// 🟡 needs-more-work — feature:t21-bootstrap-footprint-fold — scaffold:T-32 Phase 1 · dissolve-on: T-21 affected-set/content-hash fold can read the projection input closure and return Holds with the concrete footprint.
+fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
+  Violates { diagnostic: bs_diagnostic(reason: bootstrap_footprint_not_realized) }
+}
+
+fn bootstrap_seed_capability_matches_footprint(
+  footprint: Witness<BootstrapFootprint>,
+  capability: SeedCapability
+) -> Witness<BootstrapCapabilityExact> {
+  match footprint {
+    Holds { value: fp } =>
+      if bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
+        Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
+      } else {
+        Violates { diagnostic: bs_diagnostic(reason: bootstrap_capability_not_minimal) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
+  match plan {
+    Accepted { value: bp, diagnostics: _ } =>
+      Holds { value: ConvergenceLadder { entry_seed: v2_pipeline, plan: bp, fixed_point: bp.fixpt } }
+    Rejected { diagnostics: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: bootstrap_plan_unavailable_for_ladder) }
+  }
+}
+
+fn independent_compiler_pair_witness(
+  primary: Symbol,
+  secondary: Symbol,
+  evidence: Symbol
+) -> Witness<IndependentCompilerPair> {
+  if (primary != secondary) && (evidence == independent_compiler_witness) {
+    Holds { value: IndependentCompilerPair { primary: primary, secondary: secondary, evidence: evidence } }
   } else {
-    false
+    Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+  }
+}
+
+fn diverse_compilation_agreement_witness(
+  primary: DiverseCompilationRun,
+  secondary: DiverseCompilationRun,
+  independent_compilers: Witness<IndependentCompilerPair>,
+  agreed_hash: BootstrapHashPin
+) -> Witness<DiverseCompilationAgreement> {
+  match independent_compilers {
+    Holds { value: pair } =>
+      if (primary.compiler == pair.primary)
+           && (secondary.compiler == pair.secondary)
+           && (primary.source == secondary.source)
+           && (primary.output == secondary.output)
+           && (primary.output_hash.digest == secondary.output_hash.digest)
+           && (agreed_hash.digest == primary.output_hash.digest)
+           && (primary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
+           && (secondary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
+           && (agreed_hash.pin == pinned_v4_fixed_point_hash_pin) {
+        Holds {
+          value: DiverseCompilationAgreement {
+            primary: primary,
+            secondary: secondary,
+            independent_compilers: pair,
+            agreed_hash: agreed_hash
+          }
+        }
+      } else {
+        Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bootstrap_seed_honesty_discharge_witness(
+  axiom: Symbol,
+  diverse_double_compilation: Witness<DiverseCompilationAgreement>
+) -> Witness<SeedHonestyDischarge> {
+  match diverse_double_compilation {
+    Holds { value: agreement } =>
+      if axiom == seed_honesty_axiom {
+        Holds {
+          value: SeedHonestyDischarge {
+            seed_honesty_axiom: axiom,
+            diverse_double_compilation: agreement
+          }
+        }
+      } else {
+        Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -98,6 +293,63 @@ fn bootstrap_fixpt_witness(f: FixptStage1Stage2) -> Witness<FixptStage1Stage2> {
     Violates { diagnostic: bs_diagnostic(reason: bootstrap_mis_wired) }
   }
 }
+
+data seed_capability: SeedCapability = SeedCapability {
+  language_model: seed_capability_language_model(),
+  constructs: [
+    BootstrapConstruct { identity: bootstrap_construct_source_language_subset },
+    BootstrapConstruct { identity: bootstrap_construct_target_model_subset },
+    BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset },
+    BootstrapConstruct { identity: bootstrap_construct_lowering_subset }
+  ],
+  frozen_at: bootstrap_phase1_frozen_submodel
+}
+
+data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectionInputs {
+  snapshot: BootstrapSourceSnapshot {
+    root: bootstrap_source_snapshot_root(),
+    language_model: seed_capability_language_model(),
+    content_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+  },
+  target_model: rust_mvp1_target_model(),
+  runtime_model: v4_evaluator_runtime_wave1()
+}
+
+data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
+
+data bootstrap_seed_capability_gate: Witness<BootstrapCapabilityExact> = bootstrap_seed_capability_matches_footprint(
+  footprint: bootstrap_footprint_witness,
+  capability: seed_capability
+)
+
+data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
+  machine_model: physical_machine_model_axiom,
+  executes_as_modeled: physical_machine_executes_isa_as_modeled
+}
+
+data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap_seed_honesty_discharge_witness(
+  axiom: seed_honesty_axiom,
+  diverse_double_compilation: diverse_compilation_agreement_witness(
+    primary: DiverseCompilationRun {
+      source: v4_dag_source,
+      compiler: v2_pipeline,
+      output: diverse_compile_fixed_point_output,
+      output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+    },
+    secondary: DiverseCompilationRun {
+      source: v4_dag_source,
+      compiler: independent_compiler_witness,
+      output: diverse_compile_fixed_point_output,
+      output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+    },
+    independent_compilers: independent_compiler_pair_witness(
+      primary: v2_pipeline,
+      secondary: independent_compiler_witness,
+      evidence: independent_compiler_witness
+    ),
+    agreed_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+  )
+)
 
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   match plan {
@@ -191,6 +443,8 @@ data bootstrap_plan: Outcome<BootstrapPlan> = bootstrap_plan_well_formed(p: Boot
     pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin }
   }
 })
+
+data bootstrap_convergence_ladder_witness: Witness<ConvergenceLadder> = bootstrap_convergence_ladder(plan: bootstrap_plan)
 
 data bootstrap_plan_fixpt_witness: Witness<FixptStage1Stage2> = match bootstrap_plan {
   Accepted { value: bp, diagnostics: _ } => bootstrap_fixpt_witness(f: bp.fixpt)

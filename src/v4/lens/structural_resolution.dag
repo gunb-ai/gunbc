@@ -23,29 +23,16 @@ import v4.compiler.infer {
   InferredTree,
   infer_facts_lookup_miss
 }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.compiler.resolve {
   resolve_reason_unbound_symbol
 }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_kind,
   classified_dependency_view_eq,
   dependency_lens
 }
@@ -64,6 +51,11 @@ type StructuralResolutionStatus
   | FactsLookupMiss
   | UnresolvedInferWitness
   | OutOfScopeDependencyKind
+
+// 🟡 coproduct dissolution — feature:structural-resolution-kind-policy-axis — consumer:structural_resolution_status_for_view — dissolve-on-arrival: substrate variant-tag partition primitive replaces lens-local policy axis.
+type StructuralResolutionKindPolicy
+  = ReadsBindingFacts
+  | OutOfScopeForStructuralResolution
 
 type StructuralResolutionFact {
   dependencies: List<ClassifiedDependencyView<StructuralResolutionStatus>>
@@ -91,26 +83,33 @@ fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> Structu
   }
 }
 
-fn status_for_dependency(
-  view: DependencyView,
+fn structural_resolution_dependency_kind_classifier() -> DependencyKindClassifier<StructuralResolutionKindPolicy> {
+  DependencyKindClassifier {
+    contains: OutOfScopeForStructuralResolution,
+    binds_to: ReadsBindingFacts,
+    type_depends_on: OutOfScopeForStructuralResolution,
+    data_depends_on: OutOfScopeForStructuralResolution,
+    effect_depends_on: OutOfScopeForStructuralResolution,
+    resource_depends_on: OutOfScopeForStructuralResolution,
+    module_depends_on: OutOfScopeForStructuralResolution,
+    barrier_before: OutOfScopeForStructuralResolution,
+    placement_depends_on: OutOfScopeForStructuralResolution,
+    model_depends_on: OutOfScopeForStructuralResolution,
+    projection_depends_on: OutOfScopeForStructuralResolution,
+    generated_from: OutOfScopeForStructuralResolution,
+    verified_by: OutOfScopeForStructuralResolution,
+    promoted_by: OutOfScopeForStructuralResolution,
+    bootstrap_depends_on: OutOfScopeForStructuralResolution
+  }
+}
+
+fn structural_resolution_status_for_policy(
+  policy: StructuralResolutionKindPolicy,
   usage_site_facts: Witness<InferredFacts>
 ) -> StructuralResolutionStatus {
-  match view.kind {
-    BindsTo => status_for_binding_facts(usage_site_facts: usage_site_facts)
-    ModuleDependsOn => OutOfScopeDependencyKind
-    BootstrapDependsOn => OutOfScopeDependencyKind
-    Contains => OutOfScopeDependencyKind
-    TypeDependsOn => OutOfScopeDependencyKind
-    DataDependsOn => OutOfScopeDependencyKind
-    EffectDependsOn => OutOfScopeDependencyKind
-    ResourceDependsOn => OutOfScopeDependencyKind
-    BarrierBefore => OutOfScopeDependencyKind
-    PlacementDependsOn => OutOfScopeDependencyKind
-    ModelDependsOn => OutOfScopeDependencyKind
-    ProjectionDependsOn => OutOfScopeDependencyKind
-    GeneratedFrom => OutOfScopeDependencyKind
-    VerifiedBy => OutOfScopeDependencyKind
-    PromotedBy => OutOfScopeDependencyKind
+  match policy {
+    ReadsBindingFacts => status_for_binding_facts(usage_site_facts: usage_site_facts)
+    OutOfScopeForStructuralResolution => OutOfScopeDependencyKind
   }
 }
 
@@ -118,8 +117,11 @@ fn structural_resolution_status_for_view(
   tree: InferredTree,
   view: DependencyView
 ) -> StructuralResolutionStatus {
-  status_for_dependency(
-    view: view,
+  structural_resolution_status_for_policy(
+    policy: classify_dependency_kind(
+      classifier: structural_resolution_dependency_kind_classifier(),
+      kind: view.kind
+    ),
     usage_site_facts: inferred_facts_for_node(tree: tree, node: view.usage_site)
   )
 }
@@ -140,7 +142,7 @@ fn structural_resolution_fact(
 ) -> StructuralResolutionFact {
   StructuralResolutionFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, structural_resolution_classify(tree: tree, view: view))
+      list_snoc_item(xs: acc, item: structural_resolution_classify(tree: tree, view: view))
     })
   }
 }

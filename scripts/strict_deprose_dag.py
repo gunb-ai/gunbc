@@ -53,11 +53,6 @@ FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
 )
-INTEGER_CONCRETE_BOUND_SIGN_ZERO_COMMENT = (
-    "// 🟡 needs-more-work — feature:integer-concrete-bound-sign-zero-coherence — "
-    "dissolve-on: IntegerConcreteZero coproduct variant separate from IntegerConcreteBound "
-    "when negative-zero must be structurally unreachable"
-)
 
 # Any `…lexeme`-shaped field typed `String` (partial lexical authority / D3200-style).
 # Uses a name suffix rule so new `foo_lexeme: String` sites classify as 🟢→🟡 without
@@ -275,6 +270,18 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
         out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["TsGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/rust.dag":
+        out["RustGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/python.dag":
+        out["PythonConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["PythonGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/go.dag":
+        out["GoConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["GoGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/cpp.dag":
+        out["CppConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["CppGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/swift.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (
@@ -367,6 +374,17 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
 
 
 def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if ref == "SL-T11-GRAMMAR-FROM-TOKEN-ROW":
+        return (
+            "// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — "
+            "feature:t11-grammar-from-token-row — "
+            "bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — "
+            "owner:T-11 target-model grammar rows — "
+            "dissolve-on-arrival: replace the fold1 accumulator with a std "
+            "fold_non_empty/list-to-sequence helper once that helper lands and "
+            "T-11 grammar rows consume it; forbidden: hand-authoring token-class "
+            "sequence trees beside the *_mvp1_concrete_tokens source."
+        )
     if type_name == "LlvmWave1IntegerBits":
         return (
             "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "
@@ -532,7 +550,6 @@ def strip_body_comments(after_module: str) -> str:
         if (
             sl.lstrip().startswith("//")
             and not COPRODUCT_TAG_RE.match(sl)
-            and sl.strip() != INTEGER_CONCRETE_BOUND_SIGN_ZERO_COMMENT
         ):
             continue
         out_lines.append(line)

@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_ownership/resource_dependency.dag
-// Scope: T-13 worked claim — ResourceDependsOn classifies as RequiresAccessWitness over `ClassifiedDependencyView<OwnershipMode>`.
+// Scope: T-13 worked claim — ResourceDependsOn classifies as RequiresAccessWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
 // Owns: ownership_resource_dependency_claim.
 // Consumes: lens ownership, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
@@ -11,6 +11,7 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.ownership {
   OwnershipFact,
   RequiresAccessWitness,
+  ownership_fact,
   ownership_fact_eq,
   ownership_witness
 }
@@ -21,7 +22,7 @@ import v4.std.dependency {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -83,8 +84,14 @@ data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClai
 
 fn ownership_resource_dependency_claim_holds() -> Bool {
   match ownership_resource_dependency_claim.actual {
-    Holds { value: actual } =>
-      ownership_fact_eq(a: actual, b: ownership_resource_dependency_claim.expected)
+    Violates { diagnostic: _ } =>
+      ownership_fact_eq(
+        a: ownership_fact(
+          tree: ownership_resource_dependency_claim.input,
+          dependencies: [ownership_dependency]
+        ),
+        b: ownership_resource_dependency_claim.expected
+      )
     _ => false
   }
 }

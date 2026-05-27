@@ -1,18 +1,30 @@
 // src/v4/std/qualified_name.dag
-// Scope: QualifiedName carrier for dotted/scope-qualified identifiers.
+// Scope: Qualified names as a projection over symbol sequences.
 // Anchor: INVARIANTS.md P1 "Model names must reflect what they are" (T-QN-1).
-// Owns: QualifiedName, qualified_name_from_node.
-// Consumes: std/algebra.dag (FreeMonoid), std/node.dag (Node, Symbol).
-// Status: T-QN-1 modeled.
+// Owns: QualifiedName, qualified_name_projection_gated, qualified_name_singleton, qualified_name_eq, qualified_name_from_node.
+// Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag.
+// Status: T-QN-1 modeled; T-28 support carrier; consumed by std/catalog.dag, compiler/03_name_resolve.dag.
+// Anchor: https://en.wikipedia.org/wiki/Qualified_name
 
 module v4.std.qualified_name
 
 
-import v4.std.algebra { Cons, Empty, FreeMonoid }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.algebra { Cons, Empty, FreeMonoid, zip_eq }
+import v4.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Unavailable,
+  node_locus,
+  outcome_rejected
+}
+import v4.std.logic { Bool }
+import v4.std.node { Node, Symbol }
 
 
 type QualifiedName = FreeMonoid<Symbol>
+
+data qualified_name_projection_gated: Symbol = qualified_name_projection_gated
 
 
 fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
@@ -20,10 +32,16 @@ fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
 }
 
 
-fn qualified_name_from_node(n: Node) -> QualifiedName? {
-  match n.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      Some { value: qualified_name_singleton(sym: sym) }
-    _ => None
-  }
+fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
+}
+
+
+// 🟡 gated — T-8 parse fidelity — feature: per-identifier-symbol-mapping — bind TASKS.md T-8 — dissolve-on: T-8 lands per-identifier hashing so each dag_token_ident terminal in the module_header child carries its actual symbol identity, enabling segment extraction; forbidden: relying on this function before T-8 (always returns Rejected until T-8 lands; see 00_compile.dag T-8 gate comment).
+fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
+  outcome_rejected(Diagnostic {
+    reason: qualified_name_projection_gated,
+    at: node_locus(node: root),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  })
 }
