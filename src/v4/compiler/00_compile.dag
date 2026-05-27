@@ -449,6 +449,10 @@ fn agent_module_source_to_entry(
 }
 
 
+// 🟡 predicate dissolution gate: feature:T-35-agent-import-surface-predicate.
+// Owner/lane: T-8/T-28-B module admission + dag.dag import query.
+// Dissolve-on: dag.dag exposes typed import-presence/import-extraction facts and
+// compile_with_store feeds source-derived ModuleAdmission.imports for agent stores.
 fn node_is_dag_import_surface(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
