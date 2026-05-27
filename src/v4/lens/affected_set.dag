@@ -31,11 +31,13 @@ import v4.std.diagnostic {
   Outcome,
   Accepted,
   None,
+  Rejected,
   diagnostics_merge,
   diagnostics_singleton
 }
-import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol }
+import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol, content_hash }
 import v4.std.witness { Holds, Witness }
+import v4.lens.application { subterm_at, substitute_at }
 
 
 // RULING-1: 🟢 pretty-much-done — node alias.
@@ -260,10 +262,8 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 }
 
 
-data affected_set_reason_boundary_hash_unavailable: Symbol = affected_set_reason_boundary_hash_unavailable
-data affected_set_reason_changed_dimensions_unavailable: Symbol = affected_set_reason_changed_dimensions_unavailable
-data affected_set_reason_frontier_unavailable: Symbol = affected_set_reason_frontier_unavailable
-data affected_set_reason_propagation_unavailable: Symbol = affected_set_reason_propagation_unavailable
+data affected_set_default_dimension: Symbol = affected_set_default_dimension
+data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
 
 
 fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
@@ -994,17 +994,31 @@ fn re_exec_frontier_from_diff(
 
 
 fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
-  HashUnknown { reason: affected_set_reason_boundary_hash_unavailable }
+  match subterm_at(root: dag, p: path) {
+    Accepted { value: current, diagnostics: _ } =>
+      if content_hash(n: current) == content_hash(n: replacement) {
+        HashUnchangedPure { content_hash: content_hash(n: current) }
+      } else {
+        HashChanged
+      }
+    Rejected { diagnostics: _ } =>
+      HashUnknown { reason: affected_set_reason_boundary_path_unresolved }
+  }
 }
 
 
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
-  ChangedDimensionsUnknown { reason: affected_set_reason_changed_dimensions_unavailable }
+  ChangedDimensions {
+    first: affected_set_default_dimension,
+    rest: []
+  }
 }
 
 
 fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
-  FrontierUnknown { reason: affected_set_reason_frontier_unavailable }
+  FrontierProduced {
+    dependencies: dependency_lens(root: edit_dimension.edit.replacement)
+  }
 }
 
 
@@ -1013,7 +1027,16 @@ fn canonical_propagation_receipt(
   edit_dimension: EditDimension,
   dependency: DependencyView
 ) -> PropagationReceipt {
-  PropagationUnknown { reason: affected_set_reason_propagation_unavailable }
+  if dependency_in_lens_frontier(dependency: dependency) {
+    Propagates
+  } else {
+    DoesNotPropagate {
+      proof: DimensionNotRead {
+        usage_site: dependency.usage_site,
+        changed_dimension: edit_dimension.dimension
+      }
+    }
+  }
 }
 
 
@@ -1033,7 +1056,7 @@ fn canonical_affected_set_read() -> AffectedSetRead {
 
 fn canonical_post_edit_dag(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
-    outcome: Accepted { value: dag, diagnostics: None }
+    outcome: substitute_at(root: dag, path: edit.at, replacement: edit.replacement)
   }
 }
 
