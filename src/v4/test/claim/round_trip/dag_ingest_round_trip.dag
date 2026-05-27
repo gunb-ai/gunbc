@@ -11,7 +11,6 @@ import v4.extdeps.languages.dag {
   dag_language_model_surface_id,
   dag_production_data_decl,
   dag_production_module,
-  dag_production_module_header,
   dag_token_ident,
   dag_token_kw_data,
   dag_token_kw_module
