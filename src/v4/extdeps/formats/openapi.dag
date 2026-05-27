@@ -372,7 +372,7 @@ type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 
 
-// 🟡 coproduct dissolution — T-4.6-P4-OpenApiConcreteSyntaxAuthority.
+// 🟡 coproduct dissolution — feature:openapi-json-yaml-parse-emit-selector — consumer:T-10/T-11 OpenAPI parse/emit boundary — dissolve-on-arrival: parse/emit selects JsonDocument or YamlDocument directly from source media type / target artifact kind, eliminating this document-local selector; forbidden: adding a third OpenAPI concrete grammar authority.
 type OpenApiConcreteSyntaxAuthority
   = OpenApiJsonSyntax { json_document: JsonDocument }
   | OpenApiYamlSyntax { yaml_document: YamlDocument }
