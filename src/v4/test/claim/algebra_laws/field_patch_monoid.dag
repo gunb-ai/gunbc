@@ -38,11 +38,11 @@ fn fp_ok(b: Bool) -> Node {
 
 // Helpers that route through the monoid witness surface, not the raw helpers.
 fn fp_monoid_op(left: FieldPatch<Bool>, right: FieldPatch<Bool>) -> FieldPatch<Bool> {
-  let m = field_patch_monoid<Bool>()
+  let m = field_patch_monoid()
   m.semigroup.magma.op(left, right)
 }
 fn fp_monoid_identity() -> FieldPatch<Bool> {
-  field_patch_monoid<Bool>().identity
+  field_patch_monoid().identity
 }
 
 
