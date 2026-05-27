@@ -1,11 +1,19 @@
+<<<<<<< HEAD:src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
 // src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
 // Scope: T-23 worked claim — Enforce rejects a failing gate; Introspect admits a failing gate as Accepted(Violates)
 //        with the full rejected NonEmptyDiagnostics preserved as advisory Accepted.diagnostics.
 // Owns: claim_apply_lens_enforce_introspect_same_gate_today.
 // Consumes: compiler compile, lens_common fixture, std verification.
 // Status: scaffold — compile-only until application.dag fills full T-23 adapter wiring.
+=======
+// src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
+// Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness.
+// Owns: claim_apply_lens_introspect_rejection_is_advisory.
+// Consumes: compiler compile, lens_common fixture, std verification.
+// Status: scaffold — compile-only until application.dag fills.
+>>>>>>> origin/main:src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
 
-module v4.test.claim.lens_application.apply_lens_enforce_introspect_same_gate_today
+module v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory
 
 import v4.compiler.compile {
   CompileLens,
@@ -16,7 +24,11 @@ import v4.compiler.compile {
   compile_lens_gate_rejected_diagnostic
 }
 import v4.compiler.infer { InferredTree }
+<<<<<<< HEAD:src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
 import v4.std.diagnostic { Accepted, Diagnostics, None, Outcome, PortLocus, Rejected, Some, outcome_rejected }
+=======
+import v4.std.diagnostic { Accepted, None, Outcome, PortLocus, Rejected, Some, outcome_rejected }
+>>>>>>> origin/main:src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -59,9 +71,7 @@ fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>>
   )
 }
 
-data apply_lens_mode_rejecting_lens: CompileLens = CompileLens {
-  gate: apply_lens_mode_rejecting_gate
-}
+data apply_lens_mode_rejecting_lens: CompileLens = CompileLens { gate: apply_lens_mode_rejecting_gate }
 
 fn apply_lens_mode_enforce_rejects() -> Bool {
   match apply_compile_lens(
@@ -74,6 +84,7 @@ fn apply_lens_mode_enforce_rejects() -> Bool {
   }
 }
 
+<<<<<<< HEAD:src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
 // 🟡 gated — feature:v2-nested-match — dissolve-on: v2-compiler supports nested match in arm OR
 // T-23 migration deletes apply_compile_lens; forbidden: treating as permanent API surface.
 // Extracted only to satisfy the v2-compiler nested-match constraint (Practice 10 derived-operation:
@@ -96,24 +107,46 @@ fn introspect_result_diagnostics_is_some(od: Diagnostics) -> Bool {
 }
 
 fn apply_lens_mode_introspect_admits_violates() -> Bool {
+=======
+fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
+>>>>>>> origin/main:src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
   match apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
     mode: CompileLensIntrospect
   ) {
+<<<<<<< HEAD:src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
     Accepted { value: w, diagnostics: od } =>
       introspect_result_witness_is_violates(w: w) &&
       introspect_result_diagnostics_is_some(od: od)
+=======
+    Accepted { value: w, diagnostics: ds } =>
+      match w {
+        Violates { diagnostic: d } =>
+          match ds {
+            Some { diagnostics: r } =>
+              (d.reason == compile_lens_gate_rejected)
+                && (r.head.reason == compile_lens_gate_rejected)
+            None => false
+          }
+        Holds { value: _ } => false
+      }
+>>>>>>> origin/main:src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
     Rejected { diagnostics: _ } => false
   }
 }
 
+<<<<<<< HEAD:src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
 fn apply_lens_enforce_introspect_same_gate_today_claim_holds() -> Bool {
   apply_lens_mode_enforce_rejects() && apply_lens_mode_introspect_admits_violates()
+=======
+fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> Bool {
+  apply_lens_mode_gate_rejects_enforce() && apply_lens_mode_gate_is_advisory_in_introspect()
+>>>>>>> origin/main:src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
 }
 
-fn apply_lens_enforce_introspect_same_gate_today_claim_rhs() -> Node {
-  if apply_lens_enforce_introspect_same_gate_today_claim_holds() {
+fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
+  if apply_lens_introspect_rejection_is_advisory_claim_holds() {
     apply_lens_mode_root
   } else {
     Node {
@@ -123,10 +156,15 @@ fn apply_lens_enforce_introspect_same_gate_today_claim_rhs() -> Node {
   }
 }
 
+<<<<<<< HEAD:src/v4/test/claim/lens_application/apply_lens_enforce_introspect_same_gate_today.dag
 data claim_apply_lens_enforce_introspect_same_gate_today: TestClaim = EqualsClaim {
   label: "lens_application/apply_lens_enforce_introspect_same_gate_today: Enforce rejects; Introspect admits Violates with Some advisory diagnostics",
+=======
+data claim_apply_lens_introspect_rejection_is_advisory: TestClaim = EqualsClaim {
+  label: "lens_application/apply_lens_introspect_rejection_is_advisory: Introspect accepts gate rejection as advisory",
+>>>>>>> origin/main:src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_mode_root,
-  rhs: apply_lens_enforce_introspect_same_gate_today_claim_rhs(),
+  rhs: apply_lens_introspect_rejection_is_advisory_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
