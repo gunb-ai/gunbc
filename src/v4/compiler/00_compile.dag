@@ -37,7 +37,7 @@ import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { DagLanguageModel, dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
 import v4.std.agent { AgentModuleSource, AgentStore }
-import v4.std.algebra { Cons, Empty, FreeMonoid, list_append }
+import v4.std.algebra { Cons, Empty, list_append }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -446,37 +446,6 @@ fn agent_module_source_to_entry(
 }
 
 
-fn agent_store_entries(
-  store: AgentStore,
-  lm: DagLanguageModel
-) -> Outcome<List<ModuleEntry>> {
-  agent_store_entries_fold(modules: store.modules, lm: lm)
-}
-
-
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-agentmodulesource — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<AgentModuleSource>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn agent_store_entries_fold(
-  modules: FreeMonoid<AgentModuleSource>,
-  lm: DagLanguageModel
-) -> Outcome<List<ModuleEntry>> {
-  match modules {
-    Empty => Accepted { value: Empty, diagnostics: None }
-    Cons { head: module_source, tail: rest } =>
-      bind_outcome(
-        o: agent_module_source_to_entry(module_source: module_source, lm: lm),
-        f: fn(entry) {
-          bind_outcome(
-            o: agent_store_entries_fold(modules: rest, lm: lm),
-            f: fn(entries) {
-              outcome_accepted(value: list_push(entries, entry))
-            }
-          )
-        }
-      )
-  }
-}
-
-
 fn agent_store_single_module_diagnostic() -> Diagnostic {
   compile_agent_store_imports_not_modeled_diagnostic(
     at: port_locus(port: compile_agent_store_imports_not_modeled)
@@ -516,12 +485,17 @@ fn agent_store_to_module_graph(
   lm: DagLanguageModel
 ) -> Outcome<ModuleGraph> {
   bind_outcome(
-    o: agent_store_entries(store: store, lm: lm),
-    f: fn(entries) {
-      match module_graph_from_entries(entries: entries) {
-        Holds { value: graph } => outcome_accepted(value: graph)
-        Violates { diagnostic: d } => outcome_rejected(d: d)
-      }
+    o: agent_store_is_single_entry_module(store: store),
+    f: fn(module_source) {
+      bind_outcome(
+        o: agent_module_source_to_entry(module_source: module_source, lm: lm),
+        f: fn(entry) {
+          match module_graph_from_entries(entries: Cons { head: entry, tail: Empty }) {
+            Holds { value: graph } => outcome_accepted(value: graph)
+            Violates { diagnostic: d } => outcome_rejected(d: d)
+          }
+        }
+      )
     }
   )
 }
@@ -530,55 +504,50 @@ fn agent_store_to_module_graph(
 fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetSource> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: agent_store_is_single_entry_module(store: store),
-    f: fn(_) {
-      bind_outcome(
-        o: agent_store_to_module_graph(store: store, lm: lm),
-        f: fn(graph) {
-          match module_graph_entry_for_path(graph: graph, path: store.entry) {
-            Holds { value: entry } =>
+    o: agent_store_to_module_graph(store: store, lm: lm),
+    f: fn(graph) {
+      match module_graph_entry_for_path(graph: graph, path: store.entry) {
+        Holds { value: entry } =>
+          bind_outcome(
+            o: resolve_module_with_admission(
+              lm: lm,
+              graph: graph,
+              admission: ModuleAdmission {
+                subject: ModuleSubject {
+                  path: store.entry,
+                  tree: entry.root
+                },
+                imports: Empty
+              }
+            ),
+            f: fn(resolved) {
               bind_outcome(
-                o: resolve_module_with_admission(
-                  lm: lm,
-                  graph: graph,
-                  admission: ModuleAdmission {
-                    subject: ModuleSubject {
-                      path: store.entry,
-                      tree: entry.root
-                    },
-                    imports: Empty
-                  }
+                o: compile(
+                  source: resolved,
+                  mode: TranslateTo { target: target }
                 ),
-                f: fn(resolved) {
-                  bind_outcome(
-                    o: compile(
-                      source: resolved,
-                      mode: TranslateTo { target: target }
-                    ),
-                    f: fn(compile_out) {
-                      match compile_out {
-                        TranslateResult { source: target_source } =>
-                          outcome_accepted(target_source)
-                        EvalResult { value: _ } =>
-                          outcome_rejected(
-                            compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
-                            )
-                          )
-                      }
-                    }
-                  )
+                f: fn(compile_out) {
+                  match compile_out {
+                    TranslateResult { source: target_source } =>
+                      outcome_accepted(target_source)
+                    EvalResult { value: _ } =>
+                      outcome_rejected(
+                        compile_eval_not_realized_diagnostic(
+                          at: port_locus(port: compile_stage_locus_port)
+                        )
+                      )
+                  }
                 }
               )
-            Violates { diagnostic: _ } =>
-              outcome_rejected(
-                d: compile_agent_store_entry_missing_diagnostic(
-                  at: port_locus(port: compile_agent_store_entry_missing)
-                )
-              )
-          }
-        }
-      )
+            }
+          )
+        Violates { diagnostic: _ } =>
+          outcome_rejected(
+            d: compile_agent_store_entry_missing_diagnostic(
+              at: port_locus(port: compile_agent_store_entry_missing)
+            )
+          )
+      }
     }
   )
 }
