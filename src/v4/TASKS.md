@@ -1203,41 +1203,35 @@ stable; the original gap text is intentionally removed — it described a
 task that will not exist.
 
 ### T-28 — std/ module-graph substrate  [SCHEDULED]
-**Gap:** `03_resolve` cross-file binding and `rust.dag`'s `PubInPath`
-visibility both need a module-tree + an ancestor-relation `Witness`; no
-substrate exists, no scheduled task. (This is the substrate side of the
+**Gap:** `03_resolve` cross-file binding needs a declared module catalog;
+no substrate existed before this lane. (This is the substrate side of the
 Theme-B "module-loading" dependency.)
-**Disposition — SCHEDULED (operator ruling 2026-05-17).** Schedule a
-`std/` module-catalog carrier, **bundled into T-8** (the
-`03_normalize`/`03_resolve` work — `03_resolve` is the primary consumer).
-Not a standalone task: the module-tree + ancestor-relation `Witness` land
-inside the T-8 resolver scope.
+**Disposition — MODELED (operator ruling 2026-05-17, narrowed by Change 3).**
+`std/module_graph.dag` now owns the `Catalog` / `Entry` carrier, entry lookup,
+and validated catalog constructor, bundled into T-8. `AncestorRelation` and
+the ancestor-prefix witness were cut as speculative in Change 3; they are not
+part of the live catalog surface.
+**Residual:** `rust.dag`'s `PubInPath` visibility still needs a visibility
+authority if/when that slice is made executable. That authority is **not**
+`std/module_graph.dag` today; schedule it as a Rust visibility / module-tree
+fact model before dispatching `PubInPath` consumers. Do not reintroduce an
+ancestor witness through the catalog carrier without a fresh modeling decision.
 
-### T-28-B — Extract module catalog admission from `03_resolve.dag`  [SCHEDULED]
-**Gap:** `03_resolve.dag` currently exposes `resolve_with_graph` /
-`namespace_from_tree_and_graph`, so the K-1 resolver has a
-`Catalog`-shaped cross-file surface even though it does not load files
-and the catalog path remains gated. This keeps module admission policy in
-the resolver layer.
-**Disposition — SCHEDULED (T-28 follow-up, bundled with T-8).** Move
-catalog-to-namespace projection into a separate module-resolution stage that
-consumes `std/module_graph.dag` and calls
-`compiler/03_resolve.resolve_with_namespace`. `03_resolve.dag` remains
+### T-28-B — Extract module catalog admission from `03_resolve.dag`  [MODELED]
+**Landed boundary:** `compiler/03_name_resolve.dag` owns catalog admission.
+The stage receives the fully loaded `Catalog` plus an `Admission { subject,
+imports }`, enforces import visibility and ambiguity rules, and produces the
+exact `Namespace` admitted for that subject module via `namespace_for_subject`.
+`resolve_with_admission(lm, catalog, admission)` then delegates to
+`compiler/03_resolve.resolve_with_namespace`; `03_resolve.dag` remains
 single-tree K-1 resolution only: `resolve(tree, lm)` and
 `resolve_with_namespace(tree, namespace)`.
-**Boundary:** the new stage receives the fully loaded `Catalog` plus
-the subject `QualifiedName` / tree, enforces import / visibility / ambiguity
-rules, and produces the exact `Namespace` admitted for that subject module.
+
 It must not flat-fold `catalog.entries`; module names remain authoritative
-until admission is complete.
-As a follow-on after T-28-B extraction, dissolve `AdmissionState` in `03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the `Outcome` accumulator of the new admission stage.
-**Move out of `03_resolve.dag`:** `Catalog` import,
-`namespace_from_tree_and_graph`, `resolve_with_graph`, and header
-ownership / consume claims for `Catalog`.
-**Dissolve gate:** once the external stage owns module admission and emits
-a `Namespace`, delete the T-28 catalog gate from `03_resolve.dag`;
-cross-file resolution enters through the new stage, not through a third
-`Scope` arm or a resolver-local catalog fold.
+until admission is complete. As a follow-on, dissolve `AdmissionState` in
+`03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the
+`Outcome` accumulator of the admission stage once generic `Outcome`
+fold/traverse can carry the accumulator directly.
 
 ### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
 **Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
@@ -1505,8 +1499,8 @@ to `QualifiedName`, add the projection.
    the declared name from a Node's `module_header` child. The name is already in
    the parse tree (`dag_surface_module_header` → `dag_production_qualified_name`);
    this function makes it accessible without an external key. Once this exists,
-   `ModuleEntry { path: QualifiedName, root: Node }` is a denormalized pair —
-   path is projectable from root. Callers that carry the pair can simplify to
+   `Entry { name: QualifiedName, root: Node }` is a denormalized pair —
+   name is projectable from root. Callers that carry the pair can simplify to
    `FreeMonoid<Node>`.
 
 **Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
@@ -1536,7 +1530,7 @@ implementing `qualified_name_from_node`; they may not assume a fixed child
 index or invent a traversal not grounded in that grammar declaration.
 
 **Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
-`FreeMonoid<Node>` + `qualified_name_from_node`, `ModuleEntry`, `ModuleGraph`,
+`FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
 and `std/module_graph.dag` dissolve. Change 2 may be bundled with T-35 or land
 immediately after.
 
@@ -1565,7 +1559,7 @@ Sequencing). T-35 workers must not proceed without both gates.
    replaced with a caller-supplied `ModuleBatch` (**post-normalize** `.dag`
    Nodes, identified by their declared `QualifiedName`). "Post-normalize"
    means each Node has passed through `normalize(parse_tree: …)` — the
-   same stage at which `compile_ingest_staging` calls `module_graph_from_entries`
+   same stage at which `compile_ingest_staging` calls `catalog_from_entries`
    today. Callers are responsible for normalizing their source before
    `batch_insert`; `compile_with_batch` does NOT re-normalize. After admission
    the selected root Node is resolved via `resolve_with_graph` (cross-file
@@ -1623,6 +1617,7 @@ to define a new agent output surface.
   The `root` parameter is the sole root-selection authority: the caller names
   which batch node is the compilation entry point by `QualifiedName`.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
+<<<<<<< HEAD
   `qualified_name_from_node` to build `FreeMonoid<ModuleEntry>`, then calls
   `module_graph_from_entries` → `Holds { value: graph }`. The fold is
   fail-closed: any entry where `qualified_name_from_node` returns `None` (no
@@ -1631,11 +1626,17 @@ to define a new agent output surface.
   of nameless Nodes past the admission boundary). `module_graph_from_entries`
   itself is fail-closed on duplicate qualified names (`Violates`). On `Holds`, the root `CoreNode` is
   retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
+=======
+  `qualified_name_from_node` to build `FreeMonoid<Entry>`, then calls
+  `catalog_from_entries` → `Holds { value: catalog }` (fail-closed:
+  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
+  retrieved via `catalog_entry_for_name(catalog: catalog, name: root)` →
+>>>>>>> 72f139debe (Fix catalog terminology after rebase)
   `Holds { value: entry }` (fail-closed: `Violates` if absent, using
-  `module_graph_entry_not_found` as the diagnostic reason). `entry.root` is
+  `catalog_entry_not_found` as the diagnostic reason). `entry.root` is
   the **post-normalize Node** admitted from the batch — it is then resolved:
-  `resolve_with_graph(tree: entry.root, lm: dag_language_model_wave1(), graph:
-  graph)` produces the `CoreNode` (post-resolve) that enters
+  `resolve_with_admission(tree: entry.root, lm: dag_language_model_wave1(), catalog:
+  catalog)` produces the `CoreNode` (post-resolve) that enters
   `validate_then_compile`. Workers must not skip `resolve_with_graph`, not
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
   convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
@@ -1643,14 +1644,14 @@ to define a new agent output surface.
   produced by a complete normalize → graph-admission → resolve chain, matching
   the live `compile_ingest_staging` pipeline exactly.
   `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
-  FreeMonoid<ModuleEntry> bridge and module_graph_from_entries call are
+  FreeMonoid<Entry> bridge and catalog_from_entries call are
   temporary scaffolding; once Change 2 lands, admission folds directly over
-  FreeMonoid<Node> via qualified_name_from_node without the ModuleEntry bridge.`
+  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge.`
 
   **Scope of T-35's change:** `batch.entries` (a `FreeMonoid<Node>`) replaces
-  the `entries: Empty` argument to `module_graph_from_entries` (currently in
+  the `entries: Empty` argument to `catalog_from_entries` (currently in
   `compile_ingest_staging`), with a `qualified_name_from_node` projection step
-  to build the `FreeMonoid<ModuleEntry>` the existing admission gate expects.
+  to build the `FreeMonoid<Entry>` the existing admission gate expects.
   No other part of the ingest pipeline changes. `compile_with_batch` routes
   through `validate_then_compile` — the sole public compile terminal in
   `00_compile.dag` — passing `mode: TranslateTo { target: target }` (the
