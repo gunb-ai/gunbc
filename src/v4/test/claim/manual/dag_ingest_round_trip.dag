@@ -1,7 +1,7 @@
 // src/v4/test/claim/manual/dag_ingest_round_trip.dag
 // Scope: Omni-ingest .dag round-trip fidelity claim over the modeled .dag language surface.
 // Owns: claim_dag_ingest_round_trip_fidelity.
-// Consumes: v4.extdeps.languages.dag, v4.extdeps.languages.fidelity, v4.std.verification, v4.std.node.
+// Consumes: v4.extdeps.languages.dag, v4.std.verification, v4.std.node.
 // Status: manual TestClaim receipt; RoundTripClaim execution remains owned by compiler/05_eval.dag.
 
 module v4.test.claim.manual.dag_ingest_round_trip
@@ -21,7 +21,6 @@ import v4.extdeps.languages.dag {
   dag_token_kw_module,
   dag_wave1_lex_token_symbol
 }
-import v4.extdeps.languages.fidelity { FidelityDisposition, Modeled }
 import v4.compiler.parse { grammar_carries_symbol }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
@@ -51,20 +50,6 @@ fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
 
 fn dag_ingest_round_trip_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
-}
-
-
-data dag_ingest_round_trip_fidelity: FidelityDisposition<Symbol> = Modeled
-
-
-fn dag_ingest_round_trip_fidelity_modeled(
-  disposition: FidelityDisposition<Symbol>
-) -> Bool {
-  match disposition {
-    Modeled => true
-    DeclaredNormalized { feature: _ } => false
-    FailClosed { feature: _ } => false
-  }
 }
 
 
@@ -112,11 +97,7 @@ fn dag_ingest_round_trip_input_node() -> Node {
       ),
       dag_ingest_round_trip_edge(
         name: dag_ingest_round_trip_fidelity_axis,
-        target: dag_ingest_round_trip_axis_node(
-          pass: dag_ingest_round_trip_fidelity_modeled(
-            disposition: dag_ingest_round_trip_fidelity
-          )
-        )
+        target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_modeled)
       )
     ]
   }
