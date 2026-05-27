@@ -56,6 +56,8 @@ import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens
@@ -115,8 +117,6 @@ data dag_token_lbracket: Symbol = dag_token_lbracket
 data dag_token_rbracket: Symbol = dag_token_rbracket
 data dag_token_lt: Symbol = dag_token_lt
 data dag_token_gt: Symbol = dag_token_gt
-data dag_relation_token_fixed: Symbol = dag_relation_token_fixed
-data dag_relation_token_bound: Symbol = dag_relation_token_bound
 data dag_surface_data_decl_name: Symbol = dag_surface_data_decl_name
 data dag_surface_data_decl_type: Symbol = dag_surface_data_decl_type
 data dag_surface_data_decl_expr: Symbol = dag_surface_data_decl_expr
@@ -374,7 +374,7 @@ fn emit_fixed_token(token_class: Symbol) -> Node {
     children: [
       dag_named_edge(
         name: concrete_syntax_token_field_kind,
-        target: dag_grammar_atom(id: dag_relation_token_fixed)
+        target: dag_grammar_atom(id: concrete_syntax_token_kind_fixed)
       ),
       dag_named_edge(
         name: concrete_syntax_token_field_class,
@@ -391,7 +391,7 @@ fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
     children: [
       dag_named_edge(
         name: concrete_syntax_token_field_kind,
-        target: dag_grammar_atom(id: dag_relation_token_bound)
+        target: dag_grammar_atom(id: concrete_syntax_token_kind_bound)
       ),
       dag_named_edge(
         name: concrete_syntax_token_field_class,
