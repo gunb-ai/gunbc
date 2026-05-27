@@ -44,18 +44,16 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Locus,
+  None,
   Outcome,
   port_locus,
   Rejected,
-  ShortCircuit,
-  StageDiagnosticPolicy,
   Unavailable,
-  append_outcome_value,
   bind_outcome,
   bind_outcome_accepted,
   diagnostics_singleton,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
 }
 import v4.std.module_graph {
   ModuleEntry,
@@ -448,53 +446,32 @@ fn agent_module_source_to_entry(
 }
 
 
-fn agent_store_load_policy() -> StageDiagnosticPolicy {
-  StageDiagnosticPolicy { accumulation: ShortCircuit }
-}
-
-
-fn agent_store_load_step(
-  lm: DagLanguageModel,
-  state: Outcome<List<ModuleEntry>>,
-  module_source: AgentModuleSource
-) -> Outcome<List<ModuleEntry>> {
-  append_outcome_value(
-    acc: state,
-    child: agent_module_source_to_entry(module_source: module_source, lm: lm),
-    policy: agent_store_load_policy()
-  )
-}
-
-
 fn agent_store_entries(
   store: AgentStore,
   lm: DagLanguageModel
 ) -> Outcome<List<ModuleEntry>> {
-  agent_store_entries_fold(
-    modules: store.modules,
-    lm: lm,
-    state: outcome_accepted(value: [])
-  )
+  agent_store_entries_fold(modules: store.modules, lm: lm)
 }
 
 
 // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-agentmodulesource — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<AgentModuleSource>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
 fn agent_store_entries_fold(
   modules: FreeMonoid<AgentModuleSource>,
-  lm: DagLanguageModel,
-  state: Outcome<List<ModuleEntry>>
+  lm: DagLanguageModel
 ) -> Outcome<List<ModuleEntry>> {
   match modules {
-    Empty => state
+    Empty => Accepted { value: Empty, diagnostics: None }
     Cons { head: module_source, tail: rest } =>
-      agent_store_entries_fold(
-        modules: rest,
-        lm: lm,
-        state: agent_store_load_step(
-          lm: lm,
-          state: state,
-          module_source: module_source
-        )
+      bind_outcome(
+        o: agent_module_source_to_entry(module_source: module_source, lm: lm),
+        f: fn(entry) {
+          bind_outcome(
+            o: agent_store_entries_fold(modules: rest, lm: lm),
+            f: fn(entries) {
+              outcome_accepted(value: list_push(entries, entry))
+            }
+          )
+        }
       )
   }
 }
@@ -597,7 +574,6 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
               outcome_rejected(
                 d: compile_agent_store_entry_missing_diagnostic(
                   at: port_locus(port: compile_agent_store_entry_missing)
-                        )
                 )
               )
           }
