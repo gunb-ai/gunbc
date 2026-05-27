@@ -1296,7 +1296,10 @@ fn swift_grammar_block_expr() -> GrammarExpr {
     left: swift_grammar_terminal(token_class: swift_token_lbrace),
     right: swift_grammar_sequence(
       left: swift_grammar_repeat(
-        element: swift_grammar_nonterminal(production: swift_production_stmt)
+        element: swift_grammar_sequence(
+          left: swift_grammar_nonterminal(production: swift_production_stmt),
+          right: swift_grammar_terminal(token_class: swift_token_semicolon)
+        )
       ),
       right: swift_grammar_terminal(token_class: swift_token_rbrace)
     )
