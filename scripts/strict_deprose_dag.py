@@ -380,8 +380,12 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
         return (
             "// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — "
             "feature:t11-grammar-from-token-row — "
+            "bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — "
+            "owner:T-11 target-model grammar rows — "
             "dissolve-on-arrival: replace the fold1 accumulator with a std "
-            "fold_non_empty/list-to-sequence helper consumed by T-11 grammar rows."
+            "fold_non_empty/list-to-sequence helper once that helper lands and "
+            "T-11 grammar rows consume it; forbidden: hand-authoring token-class "
+            "sequence trees beside the *_mvp1_concrete_tokens source."
         )
     if type_name == "LlvmWave1IntegerBits":
         return (
