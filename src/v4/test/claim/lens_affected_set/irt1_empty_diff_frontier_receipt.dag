@@ -1,6 +1,6 @@
 // src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag
 // Scope: IRT-1 leaf — empty accumulator yields empty frontier.
-// Owns: claim_irt1_empty_diff_frontier_receipt.
+// Owns: claim_irt1_empty_diff_frontier_receipt and public affected_set IRT-1 behavior claims.
 // Consumes: lens affected_set, lens affected_set_examples, std logic, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
@@ -24,7 +24,7 @@ import v4.lens.affected_set_examples {
 }
 import v4.std.algebra { length }
 import v4.std.logic { Bool }
-import v4.std.node { Conj, Diff, Edge, Edit, Named, Node, Path, TypeNode }
+import v4.std.node { Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -72,6 +72,13 @@ data irt1_public_unreceipted_unchanged_edit: Edit = Edit {
 
 data irt1_public_nonroot_changed_edit: Edit = Edit {
   at: Path { steps: [affected_set_root_edge_symbol] },
+  replacement: affected_set_claim_failure_node
+}
+
+data irt1_public_missing_path_symbol: Symbol = irt1_public_missing_path_symbol
+
+data irt1_public_missing_path_edit: Edit = Edit {
+  at: Path { steps: [irt1_public_missing_path_symbol] },
   replacement: affected_set_claim_failure_node
 }
 
@@ -145,13 +152,66 @@ fn irt1_public_affected_set_nonroot_keeps_context_dependency() -> Bool {
   }
 }
 
+fn irt1_public_affected_set_missing_path_fails_closed() -> Bool {
+  match affected_set(
+    dag: affected_set_root,
+    diff: Diff { edits: [irt1_public_missing_path_edit] }
+  ) {
+    Holds { value: FailClosed { reason: _ } } => true
+    _ => false
+  }
+}
+
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
-  if irt1_empty_diff_frontier_receipt_claim_holds()
-    && irt1_public_affected_set_empty_diff_claim_holds()
-    && irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary()
-    && irt1_public_affected_set_fails_closed_without_purity_receipt()
-    && irt1_public_affected_set_changed_edit_stays_narrow()
-    && irt1_public_affected_set_nonroot_keeps_context_dependency() {
+  if irt1_empty_diff_frontier_receipt_claim_holds() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_empty_diff_claim_rhs() -> Node {
+  if irt1_public_affected_set_empty_diff_claim_holds() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_receipted_boundary_prune_claim_rhs() -> Node {
+  if irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_fails_closed_without_purity_receipt() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_changed_edit_stays_narrow_claim_rhs() -> Node {
+  if irt1_public_affected_set_changed_edit_stays_narrow() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_nonroot_context_dependency_claim_rhs() -> Node {
+  if irt1_public_affected_set_nonroot_keeps_context_dependency() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
+fn irt1_public_affected_set_missing_path_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_missing_path_fails_closed() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
@@ -163,5 +223,53 @@ data claim_irt1_empty_diff_frontier_receipt: TestClaim = EqualsClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: irt1_empty_diff_frontier_receipt_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_empty_diff: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_empty_diff: public affected_set returns empty frontier",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_empty_diff_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_receipted_boundary_prune: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_receipted_boundary_prune: public affected_set prunes only with purity receipt",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_receipted_boundary_prune_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_unreceipted_boundary_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_unreceipted_boundary_fail_closed: unchanged boundary without purity receipt fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_changed_edit_stays_narrow: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_changed_edit_stays_narrow: changed root edit avoids boundary exclusion",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_changed_edit_stays_narrow_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_nonroot_context_dependency: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonroot_context_dependency: non-root edit retains context dependency",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_nonroot_context_dependency_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_missing_path_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_missing_path_fail_closed: unresolved edit path fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_missing_path_fail_closed_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
