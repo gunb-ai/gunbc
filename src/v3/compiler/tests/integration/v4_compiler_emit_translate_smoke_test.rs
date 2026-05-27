@@ -13,20 +13,12 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-//! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
-//! `v4_translate_dag_dispatches_token_sequence_items`,
-//! `v4_rust_language_model_declares_t11_translation_rules`,
-//! `v4_java_language_model_declares_t11_translation_rules`,
-//! `v4_python_language_model_declares_t11_translation_rules`,
-//! `v4_go_language_model_declares_t11_translation_rules`,
-//! `v4_cpp_language_model_declares_t11_translation_rules`,
-//! `v4_typescript_language_model_declares_t11_translation_rules`,
-//! `v4_swift_language_model_declares_t11_translation_rules`,
-//! `v4_wasm_language_model_declares_t11_translation_rules`, and
-//! `v4_dag_language_model_declares_surface_emit_rows` in INVARIANTS.md.
-//! **This PR (+0 paths):** same-file T-11 ratchet expansion for `05_emit.dag` and
-//! Python/Go/C++ grammar-relation target models; interim ratchet row restored in
-//! INVARIANTS.md §SG-0 (no new Rust test path).
+//! land in the same PR. **This PR (+0 census paths):** structural serialize-measure ratchet
+//! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
+//! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
+//! `run_mvp1_serialize_rejects_missing_translation_rules` in `mvp1_rust_add_translate.dag`
+//! (not host `str::contains` probes). See INVARIANTS.md row
+//! `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt and T-PB-B deferral lane.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
