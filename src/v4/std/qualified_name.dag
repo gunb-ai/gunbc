@@ -109,7 +109,15 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
                               correction: Unavailable { reason: ExternalContractUnknown }
                             })
                             Cons { head: sym, tail: Empty } =>
-                              outcome_accepted(value: Cons { head: sym, tail: child_qn })
+                              match edge.target.kind {
+                                TypeNode { connective: Conj } =>
+                                  outcome_accepted(value: Cons { head: sym, tail: child_qn })
+                                _ => outcome_rejected(Diagnostic {
+                                  reason: qualified_name_structure_invalid,
+                                  at: node_locus(node: edge.target),
+                                  correction: Unavailable { reason: ExternalContractUnknown }
+                                })
+                              }
                             Cons { head: _, tail: _ } => outcome_rejected(Diagnostic {
                               reason: qualified_name_structure_invalid,
                               at: node_locus(node: edge.target),
