@@ -1,14 +1,22 @@
 // src/v4/extdeps/formats/toml.dag
 // Scope: TOML v1.0.0 structural value model — declarative only; parse/emit deferred.
-// Owns: TOML structural value, document, lexeme, table-syntax, and parse/emit axis model.
-// Consumes: std/node.dag; std/diagnostic.dag; std/collection.dag.
+// Owns: TOML structural value, grammar schema, document, lexeme, table-syntax, and parse/emit axis model.
+// Consumes: compiler/tokenize.dag; compiler/parse.dag; std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 scaffold — parse/emit, numeric/datetime, table-syntax axes per TASKS.md T-4.6.
 // Anchor: https://toml.io/en/v1.0.0
 
 module v4.extdeps.formats.toml
 
 
+import v4.compiler.tokenize { LexRules }
+import v4.compiler.parse { Grammar }
 import v4.std.datetime { LocalDate, LocalDateTime, LocalTime, OffsetDateTime }
+
+
+type TomlGrammarSchema {
+  lex: LexRules,
+  grammar: Grammar,
+}
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -153,6 +161,7 @@ type TomlValue
 
 
 type TomlDocument {
+  grammar_schema: TomlGrammarSchema,
   root: TomlRootTable,
   unique_names: TomlUniqueNameProfile,
 }
@@ -160,6 +169,7 @@ type TomlDocument {
 
 // 🟡 gated — feature: T-6 lexical-walk + T-7 parse-walk compiler pipeline-stage substrate (TASKS T-6/T-7) — SL-3229-T4-FORMAT-T6T7 (parse half).
 type TomlParseAxis {
+  grammar_schema: TomlGrammarSchema,
   source_text: String,
   unique_names: TomlUniqueNameProfile,
 }
@@ -167,6 +177,7 @@ type TomlParseAxis {
 
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 type TomlEmitAxis {
+  grammar_schema: TomlGrammarSchema,
   document: TomlDocument,
 }
 
