@@ -49,7 +49,6 @@ import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Locus,
-  None,
   Outcome,
   port_locus,
   Rejected,
