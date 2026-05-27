@@ -7,7 +7,7 @@
 
 module v4.lens.effect
 
-import v4.compiler.infer { InferredTree }
+import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.algebra { bag_eq }
 import v4.std.collection { List }
 import v4.std.dependency {
@@ -15,8 +15,19 @@ import v4.std.dependency {
   DependencyView,
   classified_dependency_view_eq
 }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v4.std.logic { Bool }
-import v4.std.witness { Holds, Witness }
+import v4.std.node { Node }
+import v4.std.witness { Holds, Violates, Witness }
+
+data effect_reason_unresolved_projection: Symbol = effect_reason_unresolved_projection
+data effect_projection_virtual_file: Symbol = effect_projection_virtual_file
 
 // 🟡 signature-deferred slot. B3: the type signature is the effect
 // authority. The row carries `EffectClassification` as an empty
@@ -32,7 +43,14 @@ type EffectFact {
   dependencies: List<ClassifiedDependencyView<EffectClassification>>
 }
 
-fn effect_classify(view: DependencyView) -> ClassifiedDependencyView<EffectClassification> {
+fn effect_source_facts(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
+  tree.facts.lookup(source)
+}
+
+fn effect_classify(
+  tree: InferredTree,
+  view: DependencyView
+) -> ClassifiedDependencyView<EffectClassification> {
   ClassifiedDependencyView {
     dependency: view,
     classification: EffectClassification {}
@@ -42,14 +60,40 @@ fn effect_classify(view: DependencyView) -> ClassifiedDependencyView<EffectClass
 fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, effect_classify(view: view))
+      list_push(acc, effect_classify(tree: tree, view: view))
     })
   }
 }
 
+fn effect_dependency_unresolved(tree: InferredTree, view: DependencyView) -> Bool {
+  match effect_source_facts(tree: tree, source: view.source) {
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } =>
+      // Signature-deferred marker: effect kind is not yet decoded from facts (B3 / #3468).
+      true
+  }
+}
+
+fn effect_fact_unresolved(tree: InferredTree, fact: EffectFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || effect_dependency_unresolved(tree: tree, view: dep.dependency)
+  })
+}
+
+fn effect_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: effect_reason_unresolved_projection,
+    at: Textual { file: effect_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
-  Holds {
-    value: effect_fact(tree: tree, dependencies: dependencies)
+  let fact = effect_fact(tree: tree, dependencies: dependencies)
+  if effect_fact_unresolved(tree: tree, fact: fact) {
+    Violates { diagnostic: effect_witness_diagnostic() }
+  } else {
+    Holds { value: fact }
   }
 }
 

@@ -30,8 +30,18 @@ import v4.std.dependency {
   VerifiedBy,
   classified_dependency_view_eq
 }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v4.std.logic { Bool }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Holds, Violates, Witness }
+
+data idempotency_reason_unresolved_projection: Symbol = idempotency_reason_unresolved_projection
+data idempotency_projection_virtual_file: Symbol = idempotency_projection_virtual_file
 
 // 🟢 lens classification — dependency-edge alone never proves the positive
 // algebraic law, so `RequiresAlgebraWitness` is the fail-closed default;
@@ -79,9 +89,33 @@ fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> I
   }
 }
 
+fn idempotency_verdict_unresolved(verdict: IdempotencyVerdict) -> Bool {
+  match verdict {
+    RequiresAlgebraWitness => true
+    AlgebraicIdempotenceProven { law: _ } => false
+  }
+}
+
+fn idempotency_fact_unresolved(fact: IdempotencyFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || idempotency_verdict_unresolved(verdict: dep.classification)
+  })
+}
+
+fn idempotency_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: idempotency_reason_unresolved_projection,
+    at: Textual { file: idempotency_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
-  Holds {
-    value: idempotency_fact(tree: tree, dependencies: dependencies)
+  let fact = idempotency_fact(tree: tree, dependencies: dependencies)
+  if idempotency_fact_unresolved(fact: fact) {
+    Violates { diagnostic: idempotency_witness_diagnostic() }
+  } else {
+    Holds { value: fact }
   }
 }
 
