@@ -1042,6 +1042,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
 }
 
 
+// 🟡 canonical-read scaffold — feature:affected-set-dimension-delta-receipt-carrier — bind T-21/T-24 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions.
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
   ChangedDimensionsUnknown { reason: affected_set_reason_changed_dimension_unresolved }
 }
