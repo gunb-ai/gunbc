@@ -1495,13 +1495,16 @@ to `QualifiedName`, add the projection.
    `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
    all callers to `QualifiedName`.
 
-2. **`qualified_name_from_node(root: Node) -> QualifiedName?`.** Extracts
-   the declared name from a Node's `module_header` child. The name is already in
-   the parse tree (`dag_surface_module_header` → `dag_production_qualified_name`);
-   this function makes it accessible without an external key. Once this exists,
-   `Entry { name: QualifiedName, root: Node }` is a denormalized pair —
-   name is projectable from root. Callers that carry the pair can simplify to
-   `FreeMonoid<Node>`.
+2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.**
+   Extracts the declared name from a Node's `module_header` child, or returns
+   `Rejected` with diagnostics when the projection is unavailable. The name is
+   already in the parse tree (`dag_surface_module_header` →
+   `dag_production_qualified_name`); this function makes it accessible without
+   an external key while preserving fail-closed projection failures. Once this
+   exists, `Entry { name: QualifiedName, root: Node }` is a denormalized pair —
+   name is projectable from root on the `Accepted` branch. Callers that carry
+   the pair can simplify to `FreeMonoid<Node>` only when they thread the
+   `Rejected` branch to their admission boundary.
 
 **Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
@@ -1580,10 +1583,11 @@ Sequencing). T-35 workers must not proceed without both gates.
    `batch_insert(batch: ModuleBatch, node: Node)`,
    `batch_delete(batch: ModuleBatch, qname: QualifiedName)`;
    `batch_lookup` is an internal fold helper (folds `entries` applying
-   `qualified_name_from_node` to match) — not exported from `module_batch.dag`,
-   not a root-selection path (see Files section). Each Node carries its own
-   `QualifiedName` via the `qualified_name_from_node` projection (T-QN-1); no
-   external path key is required. Callers build the batch and invoke
+   `qualified_name_from_node`, matching only `Accepted` qualified names) — not
+   exported from `module_batch.dag`, not a root-selection path (see Files
+   section). Each admitted Node carries its own `QualifiedName` via the
+   `qualified_name_from_node` projection (T-QN-1); no external path key is
+   required. Callers build the batch and invoke
    `compile_with_batch` — the filesystem-free entry point alongside existing
    `compile_ingest_staging` in `00_compile.dag`.
 
@@ -1591,16 +1595,18 @@ Sequencing). T-35 workers must not proceed without both gates.
    `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
    Witness<V> }` — unenumerable by construction. `FreeMonoid<Node>` keeps the
    batch enumerable so `compile_with_batch` can fold over entries. `batch_lookup`
-   is a fold using `qualified_name_from_node` to match; `batch_insert` appends
-   a Node; `batch_delete` filters by `QualifiedName`. Name-uniqueness is not
-   the batch's responsibility — it is enforced at admission time.
+   is a fold using `qualified_name_from_node` to match on the `Accepted` branch;
+   `Rejected` entries are non-matches for lookup and remain admission failures.
+   `batch_insert` appends a Node; `batch_delete` filters by `QualifiedName`.
+   Name-uniqueness is not the batch's responsibility — it is enforced at
+   admission time.
 
    **Node-keyed invariants (ratified 2026-05-27):**
-   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via `qualified_name_from_node`. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
+   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via the `Accepted` branch of `qualified_name_from_node`; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
    - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
    - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
    - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
-   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `None` (no declared module name) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no identifiable name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove nameless Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
+   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove unprojectable Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1620,12 +1626,19 @@ to define a new agent output surface.
   The `root` parameter is the sole root-selection authority: the caller names
   which batch node is the compilation entry point by `QualifiedName`.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_node` to build `FreeMonoid<Entry>`, then calls
+  `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
+  appends `Entry { name: name, root: node }` to the candidate
+  `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
+  diagnostics and the overall admission returns `Rejected` before catalog
+  construction. Only if every projection is accepted does it call
   `catalog_from_entries` → `Holds { value: catalog }` (fail-closed:
   `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
   retrieved via `catalog_entry_for_name(catalog: catalog, name: root)` →
   `Holds { value: entry }` (fail-closed: `Violates` if absent, using
-  `catalog_entry_not_found` as the diagnostic reason). `entry.root` is
+  `catalog_entry_not_found` as the diagnostic reason). Any `Violates` or
+  projection `Rejected` becomes the `Rejected` branch of
+  `Outcome<Validated<CompileOutput>>`; workers must not drop or fabricate past
+  projection diagnostics. `entry.root` is
   the **post-normalize Node** admitted from the batch — it is then resolved:
   `resolve_with_admission(lm: dag_language_model_wave1(), catalog: catalog,
   admission: Admission { subject: ResolutionSubject { name: root, tree:
@@ -1641,12 +1654,14 @@ to define a new agent output surface.
   resolve gate, not a claim that catalog admission is already wired there.
   `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
   FreeMonoid<Entry> bridge and catalog_from_entries call are
-  temporary scaffolding; once Change 2 lands, admission folds directly over
-  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge.`
+  temporary scaffolding; once Change 2 lands, admission folds over
+  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge while
+  still preserving the projection `Rejected` branch.`
 
   **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
-  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step to
-  build the `FreeMonoid<Entry>` that `catalog_from_entries` expects. The live
+  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step that
+  either builds the `FreeMonoid<Entry>` that `catalog_from_entries` expects or
+  returns `Rejected` with the projection diagnostics. The live
   `compile_ingest_staging` path does not call `catalog_from_entries` today; it
   remains the tokenize → parse → normalize → single-tree resolve path until the
   batch entry point lands. No infer/emit behavior changes. `compile_with_batch` routes
