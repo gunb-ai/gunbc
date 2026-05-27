@@ -453,30 +453,59 @@ fn agent_store_single_module_diagnostic() -> Diagnostic {
 }
 
 
-fn agent_store_is_single_entry_module(store: AgentStore) -> Outcome<AgentModuleSource> {
-  match store.modules {
-    Empty =>
+// 🟡 gated — feature:T-35-source-derived-module-admission — single-module validation state rejects bundles until imports are derived from parsed source/module facts; dissolve-on: source-derived ModuleAdmission.imports lands and compile_with_store can admit multi-module AgentStore bundles without this state.
+type AgentStoreSingleModule
+  = AgentStoreNoModules
+  | AgentStoreSingleEntry { source: AgentModuleSource }
+  | AgentStoreEntryPathMismatch
+  | AgentStoreMultipleModules
+
+
+fn agent_store_single_module_to_outcome(
+  state: AgentStoreSingleModule
+) -> Outcome<AgentModuleSource> {
+  match state {
+    AgentStoreNoModules =>
       outcome_rejected(
         d: compile_agent_store_entry_missing_diagnostic(
           at: port_locus(port: compile_agent_store_entry_missing)
         )
       )
+    AgentStoreSingleEntry { source } => outcome_accepted(value: source)
+    AgentStoreEntryPathMismatch =>
+      outcome_rejected(
+        d: compile_agent_store_entry_missing_diagnostic(
+          at: port_locus(port: compile_agent_store_entry_missing)
+        )
+      )
+    AgentStoreMultipleModules =>
+      outcome_rejected(d: agent_store_single_module_diagnostic())
+  }
+}
+
+
+fn agent_store_single_module_state(store: AgentStore) -> AgentStoreSingleModule {
+  match store.modules {
+    Empty => AgentStoreNoModules
     Cons { head: module_source, tail: rest } =>
       match rest {
         Empty =>
           if module_path_eq(a: module_source.path, b: store.entry) {
-            outcome_accepted(value: module_source)
+            AgentStoreSingleEntry { source: module_source }
           } else {
-            outcome_rejected(
-              d: compile_agent_store_entry_missing_diagnostic(
-                at: port_locus(port: compile_agent_store_entry_missing)
-              )
-            )
+            AgentStoreEntryPathMismatch
           }
         Cons { head: _, tail: _ } =>
-          outcome_rejected(d: agent_store_single_module_diagnostic())
+          AgentStoreMultipleModules
       }
   }
+}
+
+
+fn agent_store_is_single_entry_module(store: AgentStore) -> Outcome<AgentModuleSource> {
+  agent_store_single_module_to_outcome(
+    state: agent_store_single_module_state(store: store)
+  )
 }
 
 
@@ -490,7 +519,7 @@ fn agent_store_to_module_graph(
       bind_outcome(
         o: agent_module_source_to_entry(module_source: module_source, lm: lm),
         f: fn(entry) {
-          match module_graph_from_entries(entries: Cons { head: entry, tail: Empty }) {
+          match module_graph_from_entries(entries: list_push([], entry)) {
             Holds { value: graph } => outcome_accepted(value: graph)
             Violates { diagnostic: d } => outcome_rejected(d: d)
           }
