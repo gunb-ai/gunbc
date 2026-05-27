@@ -55,7 +55,6 @@ type ImportVisibility
   | ImportHidden
 
 
-<<<<<<< HEAD:src/v4/compiler/03_name_resolve.dag
 type Import {
   target: QualifiedName
   visibility: ImportVisibility
@@ -64,16 +63,6 @@ type Import {
 
 type ResolutionSubject {
   name: QualifiedName
-=======
-type ModuleImport {
-  target: QualifiedName
-  visibility: ModuleImportVisibility
-}
-
-
-type ModuleSubject {
-  path: QualifiedName
->>>>>>> origin/main:src/v4/compiler/03_module_resolve.dag
   tree: NormalizedTree
 }
 
@@ -117,13 +106,8 @@ fn admission_initial(base: Namespace) -> AdmissionState {
 fn admit_export_symbol(
   sym: Symbol,
   origin: QualifiedName,
-<<<<<<< HEAD:src/v4/compiler/03_name_resolve.dag
   state: AdmissionState
 ) -> AdmissionState {
-=======
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
->>>>>>> origin/main:src/v4/compiler/03_module_resolve.dag
   match state {
     AdmissionRejected { diagnostic: d } =>
       AdmissionRejected { diagnostic: d }
@@ -146,13 +130,8 @@ fn admit_export_symbol(
 fn admit_named_export_edge(
   edge: Edge,
   origin: QualifiedName,
-<<<<<<< HEAD:src/v4/compiler/03_name_resolve.dag
   state: AdmissionState
 ) -> AdmissionState {
-=======
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
->>>>>>> origin/main:src/v4/compiler/03_module_resolve.dag
   match try_edge_declared_binding(e: edge) {
     Some { value: b } =>
       admit_export_symbol(sym: b.name, origin: origin, state: state)
@@ -164,13 +143,8 @@ fn admit_named_export_edge(
 fn admit_named_exports(
   root: Node,
   origin: QualifiedName,
-<<<<<<< HEAD:src/v4/compiler/03_name_resolve.dag
   state: AdmissionState
 ) -> AdmissionState {
-=======
-  state: ModuleAdmissionState
-) -> ModuleAdmissionState {
->>>>>>> origin/main:src/v4/compiler/03_module_resolve.dag
   match root.kind {
     TypeNode { connective: Conj } =>
       fold(root.children, init: state, f: fn(acc, e) {

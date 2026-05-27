@@ -233,7 +233,6 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
     graph: resolve_graph_single_import(),
-<<<<<<< HEAD
     admission: Admission {
       subject: ResolutionSubject {
         name: Empty,
@@ -243,17 +242,6 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
         head: Import {
           target: Cons { head: anchor_imported_path_segment, tail: Empty },
           visibility: ImportVisible
-=======
-    admission: ModuleAdmission {
-      subject: ModuleSubject {
-        path: Empty,
-        tree: resolve_graph_imported_use_tree()
-      },
-      imports: Cons {
-        head: ModuleImport {
-          target: Cons { head: anchor_imported_path_segment, tail: Empty },
-          visibility: ModuleImportVisible
->>>>>>> origin/main
         },
         tail: Empty
       }
