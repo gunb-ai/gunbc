@@ -4,7 +4,7 @@
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_namespace; Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag,
 //           compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 modeled — K-1 single-file resolution; cross-file module admission lives in compiler/03_module_resolve.dag.
+// Status: T-8 modeled — K-1 single-file resolution; cross-file name admission lives in compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -57,7 +57,7 @@ type Namespace {
 }
 
 
-// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension enters through compiler/03_module_resolve.dag, not a third Scope arm.
+// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension enters through compiler/03_name_resolve.dag, not a third Scope arm.
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
