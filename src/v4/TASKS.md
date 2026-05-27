@@ -892,7 +892,7 @@ model shape to keep the probe "parallel."
 
 Where `Task = { id: TaskId, title: String, status: TaskStatus }` and `TaskStatus = Open | InProgress | Done`.
 
-The React frontend declares an explicit **transport call** via coordination.dag's `WireContract` — e.g. `wire_call(contract: task_api_contract, operation: "listTasks", response_type: FreeMonoid<Task>)` — making the client-server composition structurally visible in the Node tree, not implicit. This exercises the lego model: the Rust handler, the OpenAPI spec, and the React component are all separate `DeploymentUnit` fragments of the same Node; `WireContract` is the declared joint between them.
+The React frontend declares an explicit **transport call** via coordination.dag's `WireContract` — the contract binds to the canonical function via `CoordinationBind { bind: BindRef { identity: list_tasks }, effect: ... }`; the response type is derived from the bind's declared Arrow, not restated as a parallel field. This exercises the lego model: the Rust handler, the OpenAPI spec, and the React component are all separate `DeploymentUnit` fragments of the same Node; `WireContract { facts: WireContractFacts { from: react_endpoint, to: rust_endpoint, ... }, bind: CoordinationBind { ... } }` is the declared joint. No string operation name, no parallel `response_type` field — single authority through the bind reference.
 
 All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tree); coherence is structural, not test-checked.
 
