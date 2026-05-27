@@ -103,6 +103,10 @@ data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_n
 data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
 data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
 data translate_default_serialize_fuel: Int = 64
+// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind TASKS.md T-11 —
+// dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
+// concrete tokens from emitted nonterminal nodes before serialization; forbidden:
+// dispatching raw List<Node> row items without this fail-closed classifier.
 type TokenSequenceItemKind
   = TokenSequenceConcreteToken
   | TokenSequenceNonterminal
