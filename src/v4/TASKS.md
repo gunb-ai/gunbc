@@ -1566,7 +1566,10 @@ Sequencing). T-35 workers must not proceed without both gates.
    The live `compile_ingest_staging` path still calls single-tree
    `resolve(tree: normalized, lm: lm)` until this T-35 work wires catalog
    admission into a new `compile_with_batch` entry point. Callers are
-   responsible for normalizing their source before `batch_insert`;
+   responsible for normalizing their source before `batch_insert` and for
+   supplying the `FreeMonoid<Import>` admission list for the selected root;
+   until a canonical import projection from `Node` is modeled, that explicit
+   argument is the sole import authority for this entry point.
    `compile_with_batch` does NOT re-normalize. After admission
    the selected root Node is resolved via `resolve_with_admission` (cross-file
    names resolved against the admitted module catalog), then the resulting
@@ -1622,9 +1625,13 @@ to define a new agent output surface.
 **Files:**
 - `src/v4/std/module_batch.dag` — new file; `ModuleBatch` carrier only.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_batch` entry point.
-  **Signature:** `compile_with_batch(root: QualifiedName, batch: ModuleBatch, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
+  **Signature:** `compile_with_batch(root: QualifiedName, batch: ModuleBatch, imports: FreeMonoid<Import>, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
   The `root` parameter is the sole root-selection authority: the caller names
-  which batch node is the compilation entry point by `QualifiedName`.
+  which batch node is the compilation entry point by `QualifiedName`. The
+  `imports` parameter is the sole import-admission authority for that selected
+  root until a later task models import extraction from the normalized Node;
+  T-35 workers must not synthesize imports from filenames, batch order, or an
+  undeclared parse traversal.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
   `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
@@ -1642,10 +1649,9 @@ to define a new agent output surface.
   the **post-normalize Node** admitted from the batch — it is then resolved:
   `resolve_with_admission(lm: dag_language_model_wave1(), catalog: catalog,
   admission: Admission { subject: ResolutionSubject { name: root, tree:
-  entry.root }, imports: admitted_imports })` produces the `CoreNode`
-  (post-resolve) that enters `validate_then_compile`. `admitted_imports` is the
-  import set extracted by the module-admission stage; T-35 must not invent a
-  second import authority. Workers must not skip `resolve_with_admission`, not
+  entry.root }, imports: imports })` produces the `CoreNode`
+  (post-resolve) that enters `validate_then_compile`. Workers must not skip
+  `resolve_with_admission`, not
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
   convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
   boundary discipline: the `CoreNode` reaching `validate_then_compile` is
