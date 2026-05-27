@@ -65,8 +65,8 @@ import v4.std.algebra {
   free_monoid_node,
   list_append,
   list_snoc_item,
-  semiring_node,
-  ordered_ring_node
+  ring_node,
+  semiring_node
 }
 import v4.std.text { String }
 
@@ -237,7 +237,7 @@ data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
 data go_inhabitant_field_string: Symbol = go_inhabitant_field_string
-data go_witness_signed_integer_ordered_ring: Symbol = go_witness_signed_integer_ordered_ring
+data go_witness_signed_integer_ring: Symbol = go_witness_signed_integer_ring
 data go_witness_unsigned_integer_semiring: Symbol = go_witness_unsigned_integer_semiring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
 data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
@@ -984,7 +984,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           encoding: _,
           std_projection
         } => go_named_edge(
-          name: go_witness_signed_integer_ordered_ring,
+          name: go_witness_signed_integer_ring,
           target: go_inhabitant_atom(id: facts.std_projection)
         )
         GoUnsignedIntegerPrimitiveFacts {
@@ -1070,7 +1070,7 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
       encoding: _,
       std_projection: _
     } => AlgebraInhabitanceDecl {
-      algebra: ordered_ring_node(inhabitant: inhabitant),
+      algebra: ring_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
       witness: go_integer_algebra_witness_node(facts: facts)
     }
@@ -1144,11 +1144,10 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — Go complex values are
-// declared primitive facts, but `std.algebra` does not yet export a dedicated complex
-// algebra constructor. dissolve-on: a complex-specific algebra surface lands in std/algebra
-// or the Go slice gains an explicit complex carrier that can be grounded without reusing
-// `ApproximateField` as a proxy.
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md
+// T-4 Wave 2b. Go complex values are declared primitive facts, but `std.algebra` does not yet
+// export a dedicated complex algebra constructor. dissolve-on: a complex-specific algebra
+// surface lands in std/algebra and this file wires it into go_model_core_wave1().
 fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   []
 }
