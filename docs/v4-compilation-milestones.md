@@ -176,9 +176,10 @@ M4/T-15. Reaching M3 is a necessary step toward that target, not the target itse
 **Known blockers (beyond M2):**
 1. **T-9 infer fully exercised.** The infer stage must process all v4 type constructs
    present in src/v4 itself. Currently modeled; exercised at M2 only for trivial input.
-2. **T-8 resolve cross-file bindings (T-28 bridge).** The live boundary is
-   `compiler/03_name_resolve.dag`: `resolve_with_admission(lm, catalog, admission)`
-   calls `namespace_for_subject`, which admits visible imports from the `Catalog`
+2. **T-8 resolve cross-file bindings.** The live boundary is
+   `compiler/03_name_resolve.dag`: `resolve_with_admission(lm, roots, admission)`
+   calls `namespace_for_subject`, which admits visible imports from module roots
+   by projecting each root through `qualified_name_from_node`
    before delegating to `resolve_with_namespace`. M3 still needs this admission
    path wired into the full loader/self-compile path for arbitrary user-module
    graph walking.
@@ -281,8 +282,8 @@ independent at M2.
 
 **Gap 3 — T-28 cross-file resolution**
 The live cross-file boundary is `compiler/03_name_resolve.dag`:
-`resolve_with_admission(lm, catalog, admission)` calls `namespace_for_subject`,
-admits the subject's visible imports from `Catalog`, and then delegates to
+`resolve_with_admission(lm, roots, admission)` calls `namespace_for_subject`,
+admits the subject's visible imports from module roots, and then delegates to
 `resolve_with_namespace`. M3 requires this admission path to be wired through
 the full loader/self-compile path for arbitrary user-module graph walking. M2
 also requires T-28: the trivial fixture's `import v4.std.node { Symbol }` is a

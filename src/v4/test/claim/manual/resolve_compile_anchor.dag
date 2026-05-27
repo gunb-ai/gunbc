@@ -22,10 +22,9 @@ import v4.extdeps.languages.dag {
   dag_language_model_surface_empty_prelude,
   dag_language_model_wave1_void
 }
-import v4.std.algebra { Cons, Empty }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.catalog { Catalog, Entry }
 import v4.std.node {
   Atom,
   Bind,
@@ -53,8 +52,8 @@ data anchor_decl_first: Symbol = anchor_decl_first
 data anchor_decl_second: Symbol = anchor_decl_second
 data anchor_imported_decl: Symbol = anchor_imported_decl
 data anchor_imported_path_segment: Symbol = anchor_imported_path_segment
-data anchor_resolve_catalog_pass: Symbol = anchor_resolve_catalog_pass
-data anchor_resolve_catalog_fail: Symbol = anchor_resolve_catalog_fail
+data anchor_resolve_roots_pass: Symbol = anchor_resolve_roots_pass
+data anchor_resolve_roots_fail: Symbol = anchor_resolve_roots_fail
 
 
 fn service_atom_conj_tree() -> Node {
@@ -168,22 +167,22 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
 }
 
 
-fn resolve_catalog_claim_node(ok: Bool) -> Node {
+fn resolve_roots_claim_node(ok: Bool) -> Node {
   if ok {
     Node {
-      kind: TypeNode { connective: Atom { identity: anchor_resolve_catalog_pass } },
+      kind: TypeNode { connective: Atom { identity: anchor_resolve_roots_pass } },
       children: []
     }
   } else {
     Node {
-      kind: TypeNode { connective: Atom { identity: anchor_resolve_catalog_fail } },
+      kind: TypeNode { connective: Atom { identity: anchor_resolve_roots_fail } },
       children: []
     }
   }
 }
 
 
-fn resolve_catalog_imported_root() -> Node {
+fn resolve_imported_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -201,25 +200,15 @@ fn resolve_catalog_imported_root() -> Node {
 }
 
 
-fn resolve_catalog_imported_entry() -> Entry {
-  Entry {
-    name: Cons { head: anchor_imported_path_segment, tail: Empty },
-    root: resolve_catalog_imported_root()
+fn resolve_roots_single_import() -> FreeMonoid<Node> {
+  Cons {
+    head: resolve_imported_root(),
+    tail: Empty
   }
 }
 
 
-fn resolve_catalog_single_import() -> Catalog {
-  Catalog {
-    entries: Cons {
-      head: resolve_catalog_imported_entry(),
-      tail: Empty
-    }
-  }
-}
-
-
-fn resolve_catalog_imported_use_tree() -> Node {
+fn resolve_imported_use_tree() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: anchor_imported_decl } },
     children: []
@@ -227,14 +216,14 @@ fn resolve_catalog_imported_use_tree() -> Node {
 }
 
 
-fn resolve_with_admission_imported_binding_accepts() -> Bool {
+fn resolve_with_admission_imported_binding_projection_gated() -> Bool {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
-    catalog: resolve_catalog_single_import(),
+    roots: resolve_roots_single_import(),
     admission: Admission {
       subject: ResolutionSubject {
         name: Empty,
-        tree: resolve_catalog_imported_use_tree()
+        tree: resolve_imported_use_tree()
       },
       imports: Cons {
         head: Import {
@@ -245,16 +234,16 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
       }
     }
   ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
   }
 }
 
 
-data claim_resolve_with_admission_imported_binding_accepts: TestClaim = CompilesClaim {
-  label: "resolve/with_admission: visible imported module named export resolves",
+data claim_resolve_with_admission_imported_binding_projection_gated: TestClaim = CompilesClaim {
+  label: "resolve/with_admission: imported module lookup rejects until qualified name projection lands",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: resolve_catalog_claim_node(ok: resolve_with_admission_imported_binding_accepts()),
-  expected_value: resolve_catalog_claim_node(ok: true),
+  input: resolve_roots_claim_node(ok: resolve_with_admission_imported_binding_projection_gated()),
+  expected_value: resolve_roots_claim_node(ok: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

@@ -1290,33 +1290,35 @@ a semver / ordering lattice. Tombstoned here so the T-2# numbering stays
 stable; the original gap text is intentionally removed — it described a
 task that will not exist.
 
-### T-28 — std/ module-graph substrate  [MODELED]
+### T-28 — std/ module-graph substrate  [DISSOLVED]
 **Gap:** `03_resolve` cross-file binding needs a declared module catalog;
 no substrate existed before this lane. (This is the substrate side of the
 Theme-B "module-loading" dependency.)
-**Disposition — MODELED (operator ruling 2026-05-17, narrowed by Change 3).**
-`std/catalog.dag` now owns the `Catalog` / `Entry` carrier, entry lookup,
-and validated catalog constructor, bundled into T-8. `AncestorRelation` and
-the ancestor-prefix witness were cut as speculative in Change 3; they are not
-part of the live catalog surface.
+**Disposition — DISSOLVED (T-QN-1 Change 2 follow-on).**
+`std/catalog.dag` and its `Catalog` / `Entry` bridge are deleted. Cross-file
+admission now consumes enumerable module roots directly (`FreeMonoid<Node>`) and
+projects each root's `QualifiedName` through `qualified_name_from_node`.
+`AncestorRelation` and the ancestor-prefix witness were cut as speculative in
+Change 3; they are not part of the live module-root surface.
 **Residual:** `rust.dag`'s `PubInPath` visibility still needs a visibility
 authority if/when that slice is made executable. That authority is **not**
-`std/catalog.dag` today; schedule it as a Rust visibility / module-tree
+the deleted module graph carrier; schedule it as a Rust visibility / module-tree
 fact model before dispatching `PubInPath` consumers. Do not reintroduce an
 ancestor witness through the catalog carrier without a fresh modeling decision.
 
-### T-28-B — Extract module catalog admission from `03_resolve.dag`  [MODELED]
-**Landed boundary:** `compiler/03_name_resolve.dag` owns catalog admission.
-The stage receives the fully loaded `Catalog` plus an `Admission { subject,
-imports }`, enforces import visibility and ambiguity rules, and produces the
-exact `Namespace` admitted for that subject module via `namespace_for_subject`.
-`resolve_with_admission(lm, catalog, admission)` then delegates to
+### T-28-B — Extract module-root admission from `03_resolve.dag`  [MODELED]
+**Landed boundary:** `compiler/03_name_resolve.dag` owns module-root admission.
+The stage receives enumerable module roots (`FreeMonoid<Node>`) plus an
+`Admission { subject, imports }`, projects names through
+`qualified_name_from_node`, enforces import visibility and ambiguity rules, and
+produces the exact `Namespace` admitted for that subject module via
+`namespace_for_subject`. `resolve_with_admission(lm, roots, admission)` then delegates to
 `compiler/03_resolve.resolve_with_namespace`; `03_resolve.dag` remains
 single-tree K-1 resolution only: `resolve(tree, lm)` and
 `resolve_with_namespace(tree, namespace)`.
 
-It must not flat-fold `catalog.entries`; module names remain authoritative
-until admission is complete. As a follow-on, dissolve `AdmissionState` in
+It must not accept caller-supplied name/root pairs; module names remain
+authoritative only when projected from the Node. As a follow-on, dissolve `AdmissionState` in
 `03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the
 `Outcome` accumulator of the admission stage once generic `Outcome`
 fold/traverse can carry the accumulator directly.
@@ -1778,26 +1780,20 @@ to define a new agent output surface.
   the **post-normalize Node** admitted from the batch — it is then resolved:
   `resolve_with_admission(lm: dag_language_model_wave1(), catalog: catalog,
   admission: Admission { subject: ResolutionSubject { name: root, tree:
-  entry.root }, imports: imports })` produces the `CoreNode`
+  selected_root }, imports: imports })` produces the `CoreNode`
   (post-resolve) that enters `validate_then_compile`. Workers must not skip
   `resolve_with_admission`, not
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
   convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
   boundary discipline: the `CoreNode` reaching `validate_then_compile` is
-  produced by the future complete normalize → catalog-admission → resolve
+  produced by the future complete normalize → module-root admission → resolve
   chain. This is the T-35 replacement for the current `compile_ingest_staging`
-  resolve gate, not a claim that catalog admission is already wired there.
-  `🟡 gate: dissolve-on Change 2 (std/catalog.dag dissolution) — the
-  FreeMonoid<Entry> bridge and catalog_from_entries call are
-  temporary scaffolding; once Change 2 lands, admission folds over
-  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge while
-  still preserving the projection `Rejected` branch.`
+  resolve gate, not a claim that module-root admission is already wired there.
 
   **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
-  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step that
-  either builds the `FreeMonoid<Entry>` that `catalog_from_entries` expects or
-  returns `Rejected` with the projection diagnostics. The live
-  `compile_ingest_staging` path does not call `catalog_from_entries` today; it
+  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step and
+  returns `Rejected` with projection diagnostics on failure. The live
+  `compile_ingest_staging` path does not run module-root admission today; it
   remains the tokenize → parse → normalize → single-tree resolve path until the
   batch entry point lands. No infer/emit behavior changes. `compile_with_batch` routes
   through `validate_then_compile` — the sole public compile terminal in
