@@ -1656,12 +1656,14 @@ to define a new agent output surface.
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
-  **Current execution gate:** because `qualified_name_from_node` is still the
-  T-8-gated projection stub and explicitly returns `Rejected`, the public
-  `compile_with_batch` terminal currently fails closed with
-  `qualified_name_projection_gated` before admission. The admission fold below
-  is modeled in the same file but is not the reachable public path until T-8
-  lands per-identifier symbol mapping. This is not a successful virtual-loader
+  **Current execution gate:** `qualified_name_from_node` (T-QN-1) is now the
+  real structural walker; the T-8 segment-identity gate moved to
+  `qualified_name_from_module_node` in `extdeps/languages/dag.dag`. However,
+  `compile_with_batch` itself is currently the stub: it returns
+  `compile_with_batch_projection_gated_diagnostic()` unconditionally
+  (`src/v4/compiler/00_compile.dag:439`). The admission fold below is modeled
+  in the same file but is not the reachable public path until T-8 lands
+  per-identifier symbol mapping. This is not a successful virtual-loader
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
