@@ -521,12 +521,13 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
               ),
               f: fn(resolved) {
                 bind_outcome(
-                  o: compile(
+                  o: validate_then_compile(
                     source: resolved,
+                    lenses: Empty,
                     mode: TranslateTo { target: target }
                   ),
-                  f: fn(compile_out) {
-                    match compile_out {
+                  f: fn(validated) {
+                    match validated.value {
                       TranslateResult { source: target_source } =>
                         outcome_accepted(target_source)
                       EvalResult { value: _ } =>
