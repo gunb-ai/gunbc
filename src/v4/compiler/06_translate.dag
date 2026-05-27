@@ -311,7 +311,7 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   }
                 Positional => acc
-              }
+              )
           }
         }
       ) {
@@ -419,13 +419,16 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                   bind_outcome(
                     o: node_atom_identity(node: kind_node),
                     f: fn(kind) {
-                      if kind == concrete_syntax_token_kind_fixed ||
-                        kind == concrete_syntax_token_kind_bound {
+                      if kind == concrete_syntax_token_kind_fixed {
                         Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
                       } else {
-                        outcome_rejected(
-                          translate_concrete_token_kind_invalid_diagnostic(token: item)
-                        )
+                        if kind == concrete_syntax_token_kind_bound {
+                          Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
+                        } else {
+                          outcome_rejected(
+                            translate_concrete_token_kind_invalid_diagnostic(token: item)
+                          )
+                        }
                       }
                     }
                   )
@@ -673,39 +676,41 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
                               token_class: token_class
                             )
                         }
-                      } else if kind == concrete_syntax_token_kind_bound {
-                        match binding_node {
-                          Some { value: binding_node } =>
-                            bind_outcome(
-                              o: node_atom_identity(node: binding_node),
-                              f: fn(binding) {
-                                // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
-                                // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
-                                // Replace with binding_spellings.lookup(binding) / Holds / Violates when
-                                // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
-                                match map_get(target.binding_spellings, binding) {
-                                  Some { value: spelling } =>
-                                    Accepted { value: spelling, diagnostics: None }
-                                  None =>
-                                    Rejected {
-                                      diagnostics: diagnostics_singleton(
-                                        d: translate_binding_spelling_not_found_diagnostic(
-                                          binding: binding
-                                        )
-                                      )
-                                    }
-                                }
-                              }
-                            )
-                          None =>
-                            outcome_rejected(
-                              translate_concrete_token_kind_invalid_diagnostic(token: token)
-                            )
-                        }
                       } else {
-                        outcome_rejected(
-                          translate_concrete_token_kind_invalid_diagnostic(token: token)
-                        )
+                        if kind == concrete_syntax_token_kind_bound {
+                          match binding_node {
+                            Some { value: binding_node } =>
+                              bind_outcome(
+                                o: node_atom_identity(node: binding_node),
+                                f: fn(binding) {
+                                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
+                                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
+                                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
+                                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
+                                  match map_get(target.binding_spellings, binding) {
+                                    Some { value: spelling } =>
+                                      Accepted { value: spelling, diagnostics: None }
+                                    None =>
+                                      Rejected {
+                                        diagnostics: diagnostics_singleton(
+                                          d: translate_binding_spelling_not_found_diagnostic(
+                                            binding: binding
+                                          )
+                                        }
+                                      }
+                                  }
+                                }
+                              )
+                            None =>
+                              outcome_rejected(
+                                translate_concrete_token_kind_invalid_diagnostic(token: token)
+                              )
+                          }
+                        } else {
+                          outcome_rejected(
+                            translate_concrete_token_kind_invalid_diagnostic(token: token)
+                          )
+                        }
                       }
                     }
                   )
