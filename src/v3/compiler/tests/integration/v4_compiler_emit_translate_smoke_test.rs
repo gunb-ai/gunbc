@@ -239,6 +239,7 @@ fn v4_rust_language_model_declares_t11_translation_rules() {
         ),
         "{RUST_LANGUAGE_PATH}: Rust TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, RUST_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "RustGrammarRelationRow"),
         "{RUST_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -339,6 +340,7 @@ fn v4_java_language_model_declares_t11_translation_rules() {
         ),
         "{JAVA_LANGUAGE_PATH}: Java TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, JAVA_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "JavaGrammarRelationRow"),
         "{JAVA_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -360,6 +362,7 @@ fn v4_typescript_language_model_declares_t11_translation_rules() {
         ),
         "{TYPESCRIPT_LANGUAGE_PATH}: TypeScript TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, TYPESCRIPT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "TsGrammarRelationRow"),
         "{TYPESCRIPT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -381,6 +384,7 @@ fn v4_swift_language_model_declares_t11_translation_rules() {
         ),
         "{SWIFT_LANGUAGE_PATH}: Swift TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, SWIFT_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "SwiftGrammarRelationRow"),
         "{SWIFT_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -402,6 +406,7 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
         ),
         "{WASM_LANGUAGE_PATH}: Wasm TargetModel must consume the shared translation-rules edge"
     );
+    assert_imports_shared_token_kinds(&module, WASM_LANGUAGE_PATH);
     assert!(
         surface_declares_type(&module, "WasmGrammarRelationRow"),
         "{WASM_LANGUAGE_PATH}: must declare the grammar relation row carrier"
@@ -564,6 +569,28 @@ fn import_includes_name(
                 .all(|(a, &b)| a.as_str() == b)
             && names.iter().any(|n| n == name)
     })
+}
+
+fn assert_imports_shared_token_kinds(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    path: &str,
+) {
+    assert!(
+        import_includes_name(
+            module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_fixed"
+        ),
+        "{path}: fixed-token rows must use the shared token-kind identity"
+    );
+    assert!(
+        import_includes_name(
+            module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_bound"
+        ),
+        "{path}: bound-token rows must use the shared token-kind identity"
+    );
 }
 
 fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
