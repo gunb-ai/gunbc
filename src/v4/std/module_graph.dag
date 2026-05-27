@@ -85,8 +85,8 @@ fn module_graph_root_for_name(
   graph: ModuleGraph,
   name: QualifiedName
 ) -> Witness<Node> {
-  match graph.roots.lookup(name) {
-    Holds { value: root } => Holds { value: root }
-    Violates { diagnostic: _ } => Violates { diagnostic: module_root_not_found_diagnostic() }
+  match map_get(graph.roots, name) {
+    Some { value: root } => Holds { value: root }
+    None => Violates { diagnostic: module_root_not_found_diagnostic() }
   }
 }
