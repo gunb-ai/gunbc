@@ -549,7 +549,72 @@ fn target_serialize_relation_row_from_model_bounded(
         bind_outcome(
           o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
           f: fn(row) {
-            grammar_relation_row_to_source_bounded(remaining - 1, row, target, emitted)
+            bind_outcome(
+              o: grammar_relation_row_tokens_root(row: row),
+              f: fn(tokens_root) {
+                bind_outcome(
+                  o: conj_positional_targets(parent: tokens_root),
+                  f: fn(tokens) {
+                    fold_list(
+                      xs: tokens,
+                      empty: Accepted { value: Empty, diagnostics: None },
+                      cons: fn(acc, token_node) {
+                        match acc {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: partial, diagnostics: ad } =>
+                            match token_sequence_item_kind(item: token_node) {
+                              Accepted { value: TokenSequenceConcreteToken, diagnostics: kd } =>
+                                match token_spelling_from_model(target: target, token: token_node) {
+                                  Accepted { value: source, diagnostics: td } =>
+                                    Accepted {
+                                      value: list_append(left: partial, right: source),
+                                      diagnostics: diagnostics_merge(
+                                        outer: diagnostics_merge(outer: ad, inner: kd),
+                                        inner: td
+                                      )
+                                    }
+                                  Rejected { diagnostics: r } =>
+                                    Rejected {
+                                      diagnostics: rejected_with_pending(
+                                        pending: diagnostics_merge(outer: ad, inner: kd),
+                                        rejected: r
+                                      )
+                                    }
+                                }
+                              Accepted { value: TokenSequenceNonterminal, diagnostics: kd } =>
+                                match target_serialize_relation_row_from_model_bounded(
+                                  remaining - 1,
+                                  target,
+                                  token_node
+                                ) {
+                                  Accepted { value: source, diagnostics: td } =>
+                                    Accepted {
+                                      value: list_append(left: partial, right: source),
+                                      diagnostics: diagnostics_merge(
+                                        outer: diagnostics_merge(outer: ad, inner: kd),
+                                        inner: td
+                                      )
+                                    }
+                                  Rejected { diagnostics: r } =>
+                                    Rejected {
+                                      diagnostics: rejected_with_pending(
+                                        pending: diagnostics_merge(outer: ad, inner: kd),
+                                        rejected: r
+                                      )
+                                    }
+                                }
+                              Rejected { diagnostics: r } =>
+                                Rejected {
+                                  diagnostics: rejected_with_pending(pending: ad, rejected: r)
+                                }
+                            }
+                        }
+                      }
+                    )
+                  }
+                )
+              }
+            )
           }
         )
       }
