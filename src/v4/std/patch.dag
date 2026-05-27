@@ -3,13 +3,13 @@
 // Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid, field_patch_inherit.
 // Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
 // Status: T-4.16 follow-on — scalar FieldPatch monoid landed; per-record *ConfigPatch projection is 🟡 below.
-// Anchor: https://en.wikipedia.org/wiki/Monoid (NixOS module system / Home Manager override/inherit pattern)
+// Anchor: https://en.wikipedia.org/wiki/Monoid
 
 module v4.std.patch
 
 import v4.std.algebra { Magma, Semigroup, Monoid }
 
-// 🟡 gated — feature:config-patch-record-projection — bind T-4.16 follow-on — dissolve-on-arrival: record-field map derives each formatter *ConfigPatch and *_layer from *Config without hand-maintained parallel field lists; forbidden: ConfigPatch mirrors that can drift when Config gains a field.
+// 🟡 gated — feature:config-patch-record-projection — bind src/v4/TASKS.md §T-4.16 — dissolve-on-arrival: record-field map derives *ConfigPatch and *_layer from *Config; interim consumer-tagged hand mirrors only while this feature is open; forbidden: untagged mirrors after projection lands.
 // 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
 // FieldPatch<T> = 1 + T: Inherit = absent/identity, Override = present payload.
 type FieldPatch<T>

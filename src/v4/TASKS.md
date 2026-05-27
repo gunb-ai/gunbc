@@ -1824,6 +1824,7 @@ are already landed on main — see PRs #3650, #3651, #3652.)
   types (per-field `Override/Inherit` coproduct) are 🟡 gated —
   feature: `formatter-config-patch` — dissolve when consumers need
   partial override without full-config specification.
+- **ConfigPatch record projection (interim mirrors):** `feature:config-patch-record-projection` in `v4.std.patch` — formatter `*ConfigPatch` records and `*_layer` bodies are hand mirrors until record-field projection derives them from `*Config`; owner **T-4.16 follow-on** (same lane as formatter-config-patch dissolution); consumers carry `consumer:config-patch-record-projection` tags until projection lands.
 - **Real options, not abstract axes**: each file models the actual
   formatter's documented option space (e.g., `rustfmt.toml` flags, not
   a synthetic `IndentWidth` abstraction shared across languages). A
