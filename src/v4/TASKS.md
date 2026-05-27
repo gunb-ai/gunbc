@@ -1628,7 +1628,9 @@ to define a new agent output surface.
   to build the `FreeMonoid<ModuleEntry>` the existing admission gate expects.
   No other part of the ingest pipeline changes. `compile_with_store` routes
   through `validate_then_compile` — the sole public compile terminal in
-  `00_compile.dag` — with an empty caller-lenses list; the always-required
+  `00_compile.dag` — passing `mode: TranslateTo { target: target }` (the
+  `target: TargetModel` parameter wraps directly into `CompileMode`) with an
+  empty caller-lenses list; the always-required
   lens gates (fact-density) run on agent-supplied code via
   `always_required_lenses()`. T-35 does NOT implement or modify the infer/emit
   pipeline. Output type is `Outcome<Validated<CompileOutput>>`, the same carrier
