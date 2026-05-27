@@ -86,6 +86,7 @@ import v4.std.target_model {
 }
 import v4.std.collection { List, Map, empty_map }
 import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item, zip_eq }
+import v4.std.logic { Bool }
 import v4.std.text { String }
 type TargetNodeTree = Node
 // 🟢 coproduct dissolution
@@ -180,7 +181,7 @@ fn conj_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node> {
               reason: translate_target_bundle_duplicate_edge,
               at: node_locus(node: parent),
               correction: Unavailable { reason: ExternalContractUnknown }
-            }
+            )
           )
         BundleChildInvalidEdge =>
           outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
@@ -405,6 +406,9 @@ fn concrete_token_kind_child(parent: Node) -> Outcome<Node?> {
     edge_name: concrete_syntax_token_field_kind
   )
 }
+fn concrete_token_kind_is_declared(kind: Symbol) -> Bool {
+  kind == concrete_syntax_token_kind_fixed || kind == concrete_syntax_token_kind_bound
+}
 fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
   bind_outcome(
     o: concrete_token_class_child(parent: item),
@@ -419,16 +423,12 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
                   bind_outcome(
                     o: node_atom_identity(node: kind_node),
                     f: fn(kind) {
-                      if kind == concrete_syntax_token_kind_fixed {
+                      if concrete_token_kind_is_declared(kind: kind) {
                         Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
                       } else {
-                        if kind == concrete_syntax_token_kind_bound {
-                          Accepted { value: TokenSequenceConcreteToken, diagnostics: None }
-                        } else {
-                          outcome_rejected(
-                            translate_concrete_token_kind_invalid_diagnostic(token: item)
-                          )
-                        }
+                        outcome_rejected(
+                          translate_concrete_token_kind_invalid_diagnostic(token: item)
+                        )
                       }
                     }
                   )
