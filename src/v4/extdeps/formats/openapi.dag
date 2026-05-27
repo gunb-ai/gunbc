@@ -1,7 +1,7 @@
 // src/v4/extdeps/formats/openapi.dag
 // Scope: OpenAPI 3.1.0 document slice; Lane C (TASKS.md T-4.6).
-// Owns: OpenAPI 3.1 grammar schema, document/wire-contract fact-bundles and HTTP method/status bridges.
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
+// Owns: OpenAPI 3.1 document/wire-contract fact-bundles and HTTP method/status bridges.
+// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag, std/nat.dag, std/network.dag, extdeps/coordination.dag, extdeps/formats/json_schema.dag, extdeps/formats/json.dag, extdeps/formats/yaml.dag
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (OAS §4.1 openapi semver),
 //         unique-name profile (OAS Map-key uniqueness), OPENAPI-NETWORK-BRIDGE (HttpMethod + status-code),
 //         document/operation wire-contract facts.
@@ -11,10 +11,9 @@ module v4.extdeps.formats.openapi
 
 
 import v4.extdeps.coordination { ExchangePattern, RequestReply }
-import v4.extdeps.formats.json { JsonValue }
+import v4.extdeps.formats.json { JsonDocument, JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
-import v4.compiler.tokenize { LexRules }
-import v4.compiler.parse { Grammar }
+import v4.extdeps.formats.yaml { YamlDocument }
 import v4.std.collection { Optional }
 import v4.std.network {
   DELETE,
@@ -29,12 +28,6 @@ import v4.std.network {
   UriReference
 }
 import v4.std.nat { Nat }
-
-
-type OpenApiGrammarSchema {
-  lex: LexRules,
-  grammar: Grammar,
-}
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-OpenApiSpecificationExtensionKey.
@@ -379,8 +372,14 @@ type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 
 
+// 🟡 coproduct dissolution — T-4.6-P4-OpenApiConcreteSyntaxAuthority.
+type OpenApiConcreteSyntaxAuthority
+  = OpenApiJsonSyntax { json_document: JsonDocument }
+  | OpenApiYamlSyntax { yaml_document: YamlDocument }
+
+
 type OpenApiDocument {
-  grammar_schema: OpenApiGrammarSchema,
+  concrete_syntax: OpenApiConcreteSyntaxAuthority,
   openapi: OpenApiOpenapiField3_1,
   json_schema_dialect: Optional<String>,
   info: OpenApiInfo,

@@ -1,23 +1,15 @@
 // src/v4/extdeps/formats/json_schema.dag
 // Scope: JSON Schema Draft 2020-12 instance shell + default-dialect keyword bundle (Lane C T-4.6); typed slots favor Core-shaped surface; additional_keywords enumerates keywords authorized by the meta-schema anchor.
-// Owns: JsonSchemaGrammarSchema, JsonSchemaCoreTypeName, JsonSchemaTypeSlot, JsonSchemaAdditionalKeywordKey, JsonSchemaDocument, JsonSchema
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/node.dag, std/diagnostic.dag, std/witness.dag, std/collection.dag, extdeps/formats/json.dag
+// Owns: JsonSchemaCoreTypeName, JsonSchemaTypeSlot, JsonSchemaAdditionalKeywordKey, JsonSchemaDocument, JsonSchema
+// Consumes: std/node.dag, std/diagnostic.dag, std/witness.dag, std/collection.dag, extdeps/formats/json.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://json-schema.org/draft/2020-12/schema
 
 module v4.extdeps.formats.json_schema
 
 
-import v4.extdeps.formats.json { JsonValue }
-import v4.compiler.tokenize { LexRules }
-import v4.compiler.parse { Grammar }
+import v4.extdeps.formats.json { JsonDocument, JsonValue }
 import v4.std.collection { Map, Optional, Set }
-
-
-type JsonSchemaGrammarSchema {
-  lex: LexRules,
-  grammar: Grammar,
-}
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaCoreTypeName.
@@ -111,6 +103,6 @@ type JsonSchema
 
 
 type JsonSchemaDocument {
-  grammar_schema: JsonSchemaGrammarSchema,
+  json_document: JsonDocument,
   schema: JsonSchema,
 }
