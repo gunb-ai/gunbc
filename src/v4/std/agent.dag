@@ -1,13 +1,12 @@
 // src/v4/std/agent.dag
 // Scope: agent-supplied source bundle carrier for filesystem-free compiler ingest.
 // Owns: AgentModuleSource, AgentStore.
-// Consumes: std/algebra.dag, std/module_graph.dag, std/node.dag, std/text.dag.
+// Consumes: std/module_graph.dag, std/node.dag, std/text.dag.
 // Status: T-35 modeled — agent store is a virtual module-loader input, not filesystem authority.
 // Anchor: docs/design-read-edit-pipeline.md §6.10 (library-first agent surface)
 
 module v4.std.agent
 
-import v4.std.algebra { FreeMonoid }
 import v4.std.module_graph { ModulePath }
 import v4.std.node { Symbol }
 import v4.std.text { String }
@@ -22,5 +21,5 @@ type AgentModuleSource {
 
 type AgentStore {
   entry: ModulePath
-  modules: FreeMonoid<AgentModuleSource>
+  module: AgentModuleSource
 }
