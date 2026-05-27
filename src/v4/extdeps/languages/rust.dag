@@ -58,6 +58,8 @@ import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
   grammar_relation_field_emitted,
   grammar_relation_field_production,
   grammar_relation_field_tokens,
@@ -359,8 +361,6 @@ data rust_binding_fn_add: Symbol = rust_binding_fn_add
 data rust_binding_param_x: Symbol = rust_binding_param_x
 data rust_binding_param_y: Symbol = rust_binding_param_y
 
-data rust_relation_token_fixed: Symbol = rust_relation_token_fixed
-data rust_relation_token_bound: Symbol = rust_relation_token_bound
 data rust_relation_rule_mvp1_fn_add: Symbol = rust_relation_rule_mvp1_fn_add
 
 data rust_inhabitant_field_atom: Symbol = rust_inhabitant_field_atom
@@ -1140,7 +1140,7 @@ fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
         children: [
           rust_named_edge(
             name: concrete_syntax_token_field_kind,
-            target: rust_inhabitant_atom(id: rust_relation_token_fixed)
+            target: rust_inhabitant_atom(id: concrete_syntax_token_kind_fixed)
           ),
           rust_named_edge(
             name: concrete_syntax_token_field_class,
@@ -1154,7 +1154,7 @@ fn rust_concrete_token_node(token: RustConcreteSyntaxToken) -> Node {
         children: [
           rust_named_edge(
             name: concrete_syntax_token_field_kind,
-            target: rust_inhabitant_atom(id: rust_relation_token_bound)
+            target: rust_inhabitant_atom(id: concrete_syntax_token_kind_bound)
           ),
           rust_named_edge(
             name: concrete_syntax_token_field_class,
