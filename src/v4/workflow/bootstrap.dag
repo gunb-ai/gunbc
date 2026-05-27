@@ -1,13 +1,12 @@
 // src/v4/workflow/bootstrap.dag
 // Scope: v4-owned bootstrap orchestration AS DATA — four stages (seed→stage0→stage1→stage2, fixpt stage1==stage2). compiled_by = stage compiler-of-record: seed←v2 (seed used once), self0←stage0, self1←stage1; v2 is never in the loop again (STRUCTURE.md "Seed used once" :404-405, SELF_HOSTING.md §meta-circular). The fixed-point binary is content-addressed by the pinned stage1/stage2 hash. Hash pin Symbols are placeholder identities unified by bootstrap_plan_well_formed.
 // 🟡 needs-more-work — feature:bootstrap-content-hash-pins — scaffold:T-20-bootstrap · dissolve-on: T-15 B1 content_hash supplies merkle-computed digests per stage; bootstrap_plan_well_formed must then require computed digest equality (stage1 ≠ stage2 until fixpt proves convergence), not symbolic placeholder Hash data aliases. Until then, pin Symbols identify carrier slots; digest fields are placeholder identities — accepted bootstrap_plan below is structural wiring only, NOT proof of fixed-point convergence.
-// Owns: BootstrapConstruct, SeedCapability, BootstrapFootprint, BootstrapCapabilitySubset, ConvergenceLadder, SeedHonestyDischarge, CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan, bootstrap_fixpt_witness, bootstrap_plan_fixpt_witness
-// Consumes: v4.compiler.target_carriers, v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.std.witness
+// Owns: BootstrapConstruct, SeedCapability, BootstrapFootprint, BootstrapCapabilityExact, ConvergenceLadder, SeedHonestyDischarge, CompileStage, FixptStage1Stage2, BootstrapPlan, bootstrap_stage_output, bootstrap_plan_well_formed, bootstrap_plan, bootstrap_fixpt_witness, bootstrap_plan_fixpt_witness
+// Consumes: v4.std.node, v4.std.diagnostic, v4.std.algebra, v4.std.witness
 // Status: filled — compiler-of-record is the self-hosting structural fact; structural gate only.
 
 module v4.workflow.bootstrap
 
-import v4.compiler.target_carriers { LanguageModel }
 import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.algebra {
   count_equal,
@@ -44,7 +43,7 @@ type BootstrapConstruct {
 }
 
 type SeedCapability {
-  language_model: LanguageModel
+  language_model: Node
   constructs: List<BootstrapConstruct>
   frozen_at: Symbol
 }
@@ -60,17 +59,9 @@ type BootstrapFootprint {
   constructs: List<BootstrapConstruct>
 }
 
-type BootstrapCapabilitySubset {
+type BootstrapCapabilityExact {
   footprint: BootstrapFootprint
   capability: SeedCapability
-}
-
-type ConvergenceStage {
-  name: Symbol
-  source: Symbol
-  compiled_by: Symbol
-  output: Symbol
-  output_hash: BootstrapHashPin
 }
 
 type PhysicalExecutionAxiom {
@@ -78,18 +69,17 @@ type PhysicalExecutionAxiom {
   executes_as_modeled: Symbol
 }
 
-type DiverseCompilationWitness {
+type DiverseCompilationRun {
   source: Symbol
-  primary_compiler: Symbol
-  secondary_compiler: Symbol
-  primary_output: Symbol
-  secondary_output: Symbol
+  compiler: Symbol
+  output: Symbol
   output_hash: BootstrapHashPin
 }
 
-type SeedHonestyDischarge {
-  seed_honesty_axiom: Symbol
-  diverse_double_compilation: DiverseCompilationWitness
+type DiverseCompilationAgreement {
+  primary: DiverseCompilationRun
+  secondary: DiverseCompilationRun
+  agreed_hash: BootstrapHashPin
 }
 
 // RULING-1: 🟢 pretty-much-done — compiler-of-record chain.
@@ -111,10 +101,13 @@ type FixptStage1Stage2 {
 
 type ConvergenceLadder {
   entry_seed: Symbol
-  c0: ConvergenceStage
-  c1: ConvergenceStage
-  c_star: ConvergenceStage
+  plan: BootstrapPlan
   fixed_point: FixptStage1Stage2
+}
+
+type SeedHonestyDischarge {
+  seed_honesty_axiom: Symbol
+  diverse_double_compilation: Witness<DiverseCompilationAgreement>
 }
 
 // RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
@@ -127,16 +120,15 @@ type BootstrapPlan {
 
 data bootstrap_mis_wired: Symbol = bootstrap_mis_wired
 data bootstrap_footprint_not_realized: Symbol = bootstrap_footprint_not_realized
-data bootstrap_capability_escape: Symbol = bootstrap_capability_escape
+data bootstrap_capability_not_minimal: Symbol = bootstrap_capability_not_minimal
+data bootstrap_plan_unavailable_for_ladder: Symbol = bootstrap_plan_unavailable_for_ladder
+data bootstrap_diverse_compilation_mismatch: Symbol = bootstrap_diverse_compilation_mismatch
 data bootstrap_phase1_frozen_submodel: Symbol = bootstrap_phase1_frozen_submodel
 data bootstrap_seed_language_model_identity: Symbol = bootstrap_seed_language_model_identity
 data bootstrap_construct_source_language_subset: Symbol = bootstrap_construct_source_language_subset
 data bootstrap_construct_target_model_subset: Symbol = bootstrap_construct_target_model_subset
 data bootstrap_construct_runtime_model_subset: Symbol = bootstrap_construct_runtime_model_subset
 data bootstrap_construct_lowering_subset: Symbol = bootstrap_construct_lowering_subset
-data convergence_stage_c0: Symbol = convergence_stage_c0
-data convergence_stage_c1: Symbol = convergence_stage_c1
-data convergence_stage_c_star: Symbol = convergence_stage_c_star
 data physical_machine_model_axiom: Symbol = physical_machine_model_axiom
 data physical_machine_executes_isa_as_modeled: Symbol = physical_machine_executes_isa_as_modeled
 data seed_honesty_axiom: Symbol = seed_honesty_axiom
@@ -161,7 +153,7 @@ fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -
   left.identity == right.identity
 }
 
-fn seed_capability_language_model() -> LanguageModel {
+fn seed_capability_language_model() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: bootstrap_seed_language_model_identity } },
     children: []
@@ -188,23 +180,59 @@ fn bootstrap_constructs_subset(left: List<BootstrapConstruct>, right: List<Boots
   })
 }
 
+fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<BootstrapConstruct>) -> Bool {
+  if length(xs: left) == length(xs: right) {
+    fold(left, init: true, f: fn(acc, construct) {
+      acc && (count_equal(xs: left, item: construct, eq: bootstrap_construct_eq) == count_equal(xs: right, item: construct, eq: bootstrap_construct_eq))
+    })
+  } else {
+    false
+  }
+}
+
 // 🟡 needs-more-work — feature:t21-bootstrap-footprint-fold — scaffold:T-32 Phase 1 · dissolve-on: T-21 affected-set/content-hash fold can read the projection input closure and return Holds with the concrete footprint.
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
   Violates { diagnostic: bs_diagnostic(reason: bootstrap_footprint_not_realized) }
 }
 
-fn bootstrap_seed_capability_covers_footprint(
+fn bootstrap_seed_capability_matches_footprint(
   footprint: Witness<BootstrapFootprint>,
   capability: SeedCapability
-) -> Witness<BootstrapCapabilitySubset> {
+) -> Witness<BootstrapCapabilityExact> {
   match footprint {
     Holds { value: fp } =>
-      if bootstrap_constructs_subset(left: fp.constructs, right: capability.constructs) {
-        Holds { value: BootstrapCapabilitySubset { footprint: fp, capability: capability } }
+      if bootstrap_constructs_eq(left: fp.constructs, right: capability.constructs) {
+        Holds { value: BootstrapCapabilityExact { footprint: fp, capability: capability } }
       } else {
-        Violates { diagnostic: bs_diagnostic(reason: bootstrap_capability_escape) }
+        Violates { diagnostic: bs_diagnostic(reason: bootstrap_capability_not_minimal) }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<ConvergenceLadder> {
+  match plan {
+    Accepted { value: bp, diagnostics: _ } =>
+      Holds { value: ConvergenceLadder { entry_seed: v2_pipeline, plan: bp, fixed_point: bp.fixpt } }
+    Rejected { diagnostics: _ } =>
+      Violates { diagnostic: bs_diagnostic(reason: bootstrap_plan_unavailable_for_ladder) }
+  }
+}
+
+fn diverse_compilation_agreement_witness(
+  primary: DiverseCompilationRun,
+  secondary: DiverseCompilationRun,
+  agreed_hash: BootstrapHashPin
+) -> Witness<DiverseCompilationAgreement> {
+  if (primary.source == secondary.source)
+       && (primary.output_hash.digest == secondary.output_hash.digest)
+       && (agreed_hash.digest == primary.output_hash.digest)
+       && (primary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
+       && (secondary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
+       && (agreed_hash.pin == pinned_v4_fixed_point_hash_pin) {
+    Holds { value: DiverseCompilationAgreement { primary: primary, secondary: secondary, agreed_hash: agreed_hash } }
+  } else {
+    Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
   }
 }
 
@@ -241,42 +269,10 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
 
 data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
 
-data bootstrap_seed_capability_gate: Witness<BootstrapCapabilitySubset> = bootstrap_seed_capability_covers_footprint(
+data bootstrap_seed_capability_gate: Witness<BootstrapCapabilityExact> = bootstrap_seed_capability_matches_footprint(
   footprint: bootstrap_footprint_witness,
   capability: seed_capability
 )
-
-data bootstrap_convergence_ladder: ConvergenceLadder = ConvergenceLadder {
-  entry_seed: v2_pipeline,
-  c0: ConvergenceStage {
-    name: convergence_stage_c0,
-    source: v4_dag_source,
-    compiled_by: v2_pipeline,
-    output: v4_stage0_binary,
-    output_hash: BootstrapHashPin { digest: v4_stage0_hash, pin: v4_stage0_hash_pin }
-  },
-  c1: ConvergenceStage {
-    name: convergence_stage_c1,
-    source: v4_dag_source,
-    compiled_by: v4_stage0_binary,
-    output: v4_stage1_binary,
-    output_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin }
-  },
-  c_star: ConvergenceStage {
-    name: convergence_stage_c_star,
-    source: v4_dag_source,
-    compiled_by: v4_stage1_binary,
-    output: v4_stage2_binary,
-    output_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin }
-  },
-  fixed_point: FixptStage1Stage2 {
-    left: v4_stage1_binary,
-    left_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage1_hash_pin },
-    right: v4_stage2_binary,
-    right_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: v4_stage2_hash_pin },
-    pinned_hash: BootstrapHashPin { digest: v4_stage1_hash, pin: pinned_v4_fixed_point_hash_pin }
-  }
-}
 
 data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
   machine_model: physical_machine_model_axiom,
@@ -285,14 +281,21 @@ data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
 
 data bootstrap_seed_honesty_discharge: SeedHonestyDischarge = SeedHonestyDischarge {
   seed_honesty_axiom: seed_honesty_axiom,
-  diverse_double_compilation: DiverseCompilationWitness {
-    source: v4_dag_source,
-    primary_compiler: v2_pipeline,
-    secondary_compiler: independent_compiler_witness,
-    primary_output: diverse_compile_primary_output,
-    secondary_output: diverse_compile_secondary_output,
-    output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
-  }
+  diverse_double_compilation: diverse_compilation_agreement_witness(
+    primary: DiverseCompilationRun {
+      source: v4_dag_source,
+      compiler: v2_pipeline,
+      output: diverse_compile_primary_output,
+      output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+    },
+    secondary: DiverseCompilationRun {
+      source: v4_dag_source,
+      compiler: independent_compiler_witness,
+      output: diverse_compile_secondary_output,
+      output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+    },
+    agreed_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+  )
 }
 
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
