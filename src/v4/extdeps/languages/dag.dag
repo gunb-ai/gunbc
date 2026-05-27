@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_relation_token_*; dag_wave1_*; emit_grammar_relation_row; emit_row_module_header; emit_row_import_decl; emit_row_data_decl; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens.
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/logic.dag.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_relation_token_*; dag_wave1_*; emit_grammar_relation_row; emit_row_module_header; emit_row_import_decl; emit_row_data_decl; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens; qualified_name_from_module_node.
+// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/logic.dag, std/diagnostic.dag, std/qualified_name.dag.
 // Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
 // Anchor: docs/v3-spec.md
 
@@ -64,6 +64,8 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.qualified_name { QualifiedName, qualified_name_find_edge, qualified_name_from_node }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
@@ -1770,4 +1772,19 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
 // Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
 fn dag_language_model_wave1_modeled() -> DagLanguageModel {
   dag_language_model_wave1()
+}
+
+
+// T-35 caller-facing entry point: extracts the declared QualifiedName from a module header Node
+// (produced by emit_module_header_emitted_node) by walking the dag_surface_module_header_qualified_name
+// edge to the fold_list_node sub-node, then delegating to qualified_name_from_node.
+// std/qualified_name.dag cannot import dag_surface_module_header_qualified_name (extdeps/ → std/ only),
+// so this wrapper lives here. T-35's compile_with_batch folds batch.entries calling this function.
+// 🟡 gated — T-8 parse fidelity — same constraint as qualified_name_from_node; segment symbols carry dag_token_ident until T-8 lands.
+fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+  match qualified_name_find_edge(name: dag_surface_module_header_qualified_name, n: root) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: qn_node, diagnostics: _ } =>
+      qualified_name_from_node(root: qn_node)
+  }
 }

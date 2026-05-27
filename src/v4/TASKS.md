@@ -1495,16 +1495,31 @@ to `QualifiedName`, add the projection.
    `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
    all callers to `QualifiedName`.
 
-2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.**
-   Extracts the declared name from a Node's `module_header` child, or returns
-   `Rejected` with diagnostics when the projection is unavailable. The name is
-   already in the parse tree (`dag_surface_module_header` →
-   `dag_production_qualified_name`); this function makes it accessible without
-   an external key while preserving fail-closed projection failures. Once this
-   exists, `Entry { name: QualifiedName, root: Node }` is a denormalized pair —
-   name is projectable from root on the `Accepted` branch. Callers that carry
-   the pair can simplify to `FreeMonoid<Node>` only when they thread the
-   `Rejected` branch to their admission boundary.
+2. **Two-function surface (std/ primitive + extdeps/ entry point).**
+
+   **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`** in
+   `std/qualified_name.dag`. Primitive: `root` is the `fold_list_node`
+   sub-node already resolved by the caller. Walks the `fold_list_node_head` /
+   `fold_list_node_tail` edge spine and collects the symbol sequence into
+   `FreeMonoid<Symbol>`. Returns `Rejected` (fail-closed) for any non-Conj root
+   or malformed structure. `std/` cannot import `extdeps/`; the
+   `dag_surface_module_header_qualified_name` edge name lives in
+   `extdeps/languages/dag.dag`, so the edge lookup belongs in the layer that
+   owns that symbol.
+
+   **`qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName>`**
+   in `extdeps/languages/dag.dag`. T-35 caller-facing entry point: `root` is a
+   module header Node produced by `emit_module_header_emitted_node`. Looks up
+   the `dag_surface_module_header_qualified_name` edge from `root` and delegates
+   to `qualified_name_from_node`. T-35's `compile_with_batch` folds
+   `batch.entries` calling this function. `extdeps/` may import `std/`, so the
+   layering invariant is preserved.
+
+   Once this two-function surface exists, `Entry { name: QualifiedName, root: Node }`
+   is a denormalized pair — name is projectable from root on the `Accepted`
+   branch via `qualified_name_from_module_node`. Callers that carry the pair can
+   simplify to `FreeMonoid<Node>` only when they thread the `Rejected` branch to
+   their admission boundary.
 
 **Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
@@ -1515,22 +1530,19 @@ graph-traversal concept; the declared module identifier is not a path.
 Enforcement via lens (forthcoming).
 
 **Files:**
-- `std/node.dag` or `std/qualified_name.dag` — `QualifiedName` type +
-  `qualified_name_from_node`.
-- `extdeps/languages/dag.dag` — **read reference only.** `qualified_name_from_node`
-  reads the parse-tree structure produced by `dag_surface_module_header` →
-  `dag_production_qualified_name`. Workers must consult this file to know the
-  exact child layout a module-declaration Node presents. No changes to this file.
+- `std/qualified_name.dag` — `QualifiedName` type + `qualified_name_from_node` primitive.
+- `extdeps/languages/dag.dag` — `qualified_name_from_module_node` entry point.
+  Workers must read this file to understand the Node child layout a
+  module-declaration Node presents (`emit_module_header_emitted_node`). The
+  `dag_surface_module_header_qualified_name` edge symbol is the structural
+  authority here.
 - Any caller of `ModulePath`/`ModulePathSegment` — migrate to `QualifiedName`.
 - `INVARIANTS.md` §P1 — naming invariant entry.
 
-**Dependencies:** The module-header parse-tree surface (`dag_surface_module_header`
-/ `dag_production_qualified_name`) in `extdeps/languages/dag.dag` is the
-structural authority `qualified_name_from_node` reads from. This surface already
-exists in the codebase — no prerequisite task is needed. Workers must read
-`extdeps/languages/dag.dag` to understand the Node child layout before
-implementing `qualified_name_from_node`; they may not assume a fixed child
-index or invent a traversal not grounded in that grammar declaration.
+**Dependencies:** The module-header parse-tree surface
+(`dag_surface_module_header_qualified_name`) in `extdeps/languages/dag.dag` is
+the structural authority `qualified_name_from_module_node` reads from. This
+surface already exists in the codebase — no prerequisite task is needed.
 
 **Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
