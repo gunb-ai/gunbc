@@ -1,0 +1,131 @@
+// src/v4/test/claim/manual/dag_ingest_round_trip.dag
+// Scope: Omni-ingest .dag round-trip fidelity claim over the modeled .dag language surface.
+// Owns: claim_dag_ingest_round_trip_fidelity.
+// Consumes: v4.extdeps.languages.dag, v4.extdeps.languages.fidelity, v4.std.verification, v4.std.node.
+// Status: manual TestClaim receipt; RoundTripClaim execution remains owned by compiler/05_eval.dag.
+
+module v4.test.claim.manual.dag_ingest_round_trip
+
+
+import v4.extdeps.languages.dag {
+  DagLanguageModel,
+  dag_language_model_surface_id,
+  dag_language_model_wave1_modeled,
+  dag_production_data_decl,
+  dag_production_fn_decl,
+  dag_production_module,
+  dag_production_module_header,
+  dag_token_ident,
+  dag_token_kw_data,
+  dag_token_kw_fn,
+  dag_token_kw_module,
+  dag_wave1_lex_token_symbol
+}
+import v4.extdeps.languages.fidelity { FidelityDisposition, Modeled }
+import v4.compiler.parse { grammar_carries_symbol }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.verification {
+  ManualAnchorAbsent,
+  RoundTripClaim,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  Integration,
+  manual_claim_anchor
+}
+
+
+data dag_ingest_round_trip_language_axis: Symbol = dag_ingest_round_trip_language_axis
+data dag_ingest_round_trip_lex_axis: Symbol = dag_ingest_round_trip_lex_axis
+data dag_ingest_round_trip_grammar_axis: Symbol = dag_ingest_round_trip_grammar_axis
+data dag_ingest_round_trip_fidelity_axis: Symbol = dag_ingest_round_trip_fidelity_axis
+data dag_ingest_round_trip_modeled: Symbol = dag_ingest_round_trip_modeled
+data dag_ingest_round_trip_unmodeled: Symbol = dag_ingest_round_trip_unmodeled
+
+
+fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [] }
+}
+
+
+fn dag_ingest_round_trip_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+
+data dag_ingest_round_trip_fidelity: FidelityDisposition<Symbol> = Modeled
+
+
+fn dag_ingest_round_trip_fidelity_modeled(
+  disposition: FidelityDisposition<Symbol>
+) -> Bool {
+  match disposition {
+    Modeled => true
+    DeclaredNormalized { feature: _ } => false
+    FailClosed { feature: _ } => false
+  }
+}
+
+
+fn dag_ingest_round_trip_lex_ready() -> Bool {
+  dag_wave1_lex_token_symbol(sym: dag_token_kw_module) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_kw_data) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_kw_fn) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_ident)
+}
+
+
+fn dag_ingest_round_trip_grammar_ready(lm: DagLanguageModel) -> Bool {
+  grammar_carries_symbol(grammar: lm.grammar, sym: dag_production_module) &&
+  grammar_carries_symbol(grammar: lm.grammar, sym: dag_production_module_header) &&
+  grammar_carries_symbol(grammar: lm.grammar, sym: dag_production_data_decl) &&
+  grammar_carries_symbol(grammar: lm.grammar, sym: dag_production_fn_decl)
+}
+
+
+fn dag_ingest_round_trip_axis_node(pass: Bool) -> Node {
+  if pass {
+    dag_ingest_round_trip_atom(s: dag_ingest_round_trip_modeled)
+  } else {
+    dag_ingest_round_trip_atom(s: dag_ingest_round_trip_unmodeled)
+  }
+}
+
+
+fn dag_ingest_round_trip_input_node() -> Node {
+  let lm = dag_language_model_wave1_modeled()
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_language_axis,
+        target: dag_ingest_round_trip_atom(s: dag_language_model_surface_id)
+      ),
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_lex_axis,
+        target: dag_ingest_round_trip_axis_node(pass: dag_ingest_round_trip_lex_ready())
+      ),
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_grammar_axis,
+        target: dag_ingest_round_trip_axis_node(pass: dag_ingest_round_trip_grammar_ready(lm: lm))
+      ),
+      dag_ingest_round_trip_edge(
+        name: dag_ingest_round_trip_fidelity_axis,
+        target: dag_ingest_round_trip_axis_node(
+          pass: dag_ingest_round_trip_fidelity_modeled(
+            disposition: dag_ingest_round_trip_fidelity
+          )
+        )
+      )
+    ]
+  }
+}
+
+
+data claim_dag_ingest_round_trip_fidelity: TestClaim = RoundTripClaim {
+  label: "T-36 .dag omni-ingest round-trip fidelity claim",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: dag_ingest_round_trip_input_node(),
+  classification: TestClassification { tier: Tier3, layer: Integration }
+}
