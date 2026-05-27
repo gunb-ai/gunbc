@@ -13,6 +13,7 @@ import v4.lens.affected_set {
   FailClosed,
   Propagates,
   affected_set_boundary_pure_receipt_edge,
+  affected_set_boundary_pure_receipt_node,
   affected_set_default_dimension,
   affected_set_dimension_not_read_receipt_edge,
   affected_set,
@@ -49,7 +50,9 @@ data irt1_public_unchanged_edit: Edit = Edit {
   replacement: irt1_public_pure_boundary_node
 }
 
-data irt1_public_pure_boundary_receipt: Node = Node {
+data irt1_public_pure_boundary_receipt: Node = affected_set_boundary_pure_receipt_node()
+
+data irt1_public_malformed_pure_boundary_receipt: Node = Node {
   kind: TypeNode { connective: Conj },
   children: []
 }
@@ -64,6 +67,16 @@ data irt1_public_pure_boundary_node: Node = Node {
   ]
 }
 
+data irt1_public_malformed_pure_boundary_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: affected_set_boundary_pure_receipt_edge },
+      target: irt1_public_malformed_pure_boundary_receipt
+    }
+  ]
+}
+
 data irt1_public_changed_edit: Edit = Edit {
   at: Path { steps: [] },
   replacement: affected_set_claim_failure_node
@@ -72,6 +85,11 @@ data irt1_public_changed_edit: Edit = Edit {
 data irt1_public_unreceipted_unchanged_edit: Edit = Edit {
   at: Path { steps: [] },
   replacement: affected_set_example_node
+}
+
+data irt1_public_malformed_receipted_unchanged_edit: Edit = Edit {
+  at: Path { steps: [] },
+  replacement: irt1_public_malformed_pure_boundary_node
 }
 
 data irt1_public_nonroot_changed_edit: Edit = Edit {
@@ -181,6 +199,16 @@ fn irt1_public_affected_set_fails_closed_without_purity_receipt() -> Bool {
   }
 }
 
+fn irt1_public_affected_set_fails_closed_with_malformed_purity_receipt() -> Bool {
+  match affected_set(
+    dag: irt1_public_malformed_pure_boundary_node,
+    diff: Diff { edits: [irt1_public_malformed_receipted_unchanged_edit] }
+  ) {
+    Holds { value: FailClosed { reason: _ } } => true
+    _ => false
+  }
+}
+
 fn irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt() -> Bool {
   match affected_set(
     dag: affected_set_example_node,
@@ -276,6 +304,14 @@ fn irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs() -> Node
   }
 }
 
+fn irt1_public_affected_set_malformed_boundary_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_fails_closed_with_malformed_purity_receipt() {
+    affected_set_example_node
+  } else {
+    affected_set_claim_failure_node
+  }
+}
+
 fn irt1_public_affected_set_changed_edit_fail_closed_claim_rhs() -> Node {
   if irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt() {
     affected_set_example_node
@@ -353,6 +389,14 @@ data claim_irt1_public_affected_set_unreceipted_boundary_fail_closed: TestClaim 
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
   rhs: irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_irt1_public_affected_set_malformed_boundary_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_malformed_boundary_fail_closed: malformed purity receipt fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: affected_set_example_node,
+  rhs: irt1_public_affected_set_malformed_boundary_fail_closed_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 

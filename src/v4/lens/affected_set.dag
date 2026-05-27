@@ -264,12 +264,22 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 
 data affected_set_default_dimension: Symbol = affected_set_default_dimension
 data affected_set_boundary_pure_receipt_edge: Symbol = affected_set_boundary_pure_receipt_edge
+data affected_set_boundary_pure_receipt_payload: Symbol = affected_set_boundary_pure_receipt_payload
 data affected_set_dimension_not_read_receipt_edge: Symbol = affected_set_dimension_not_read_receipt_edge
 data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
 data affected_set_reason_boundary_purity_unproven: Symbol = affected_set_reason_boundary_purity_unproven
 data affected_set_reason_changed_dimension_unresolved: Symbol = affected_set_reason_changed_dimension_unresolved
 data affected_set_reason_frontier_path_unresolved: Symbol = affected_set_reason_frontier_path_unresolved
 data affected_set_reason_frontier_ancestor_unresolved: Symbol = affected_set_reason_frontier_ancestor_unresolved
+
+
+// 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — bind T-21 — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
+fn affected_set_boundary_pure_receipt_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: affected_set_boundary_pure_receipt_payload } },
+    children: []
+  }
+}
 
 
 // 🟡 receipt-node scaffold — feature:affected-set-propagation-exclusion-proof-carrier — bind T-21 — dissolve-on: B-4/B-5 per-arrow effect receipts replace dimension atom target.
@@ -1009,11 +1019,15 @@ fn re_exec_frontier_from_diff(
 
 fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: affected_set_boundary_pure_receipt_edge) {
-    Accepted { value: _, diagnostics: _ } =>
-      BoundaryPruned {
-        proof: UnchangedPureBoundary {
-          content_hash: h
+    Accepted { value: receipt, diagnostics: _ } =>
+      if receipt == affected_set_boundary_pure_receipt_node() {
+        BoundaryPruned {
+          proof: UnchangedPureBoundary {
+            content_hash: h
+          }
         }
+      } else {
+        BoundaryUnknown { reason: affected_set_reason_boundary_purity_unproven }
       }
     Rejected { diagnostics: _ } =>
       BoundaryUnknown { reason: affected_set_reason_boundary_purity_unproven }
