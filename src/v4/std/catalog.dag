@@ -1,4 +1,4 @@
-// src/v4/std/module_graph.dag
+// src/v4/std/catalog.dag
 // Scope: Module catalog carrier for cross-file binding (T-28).
 // Owns: Catalog, Entry; entry lookup; validated catalog constructor.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
@@ -6,7 +6,7 @@
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
 
-module v4.std.module_graph
+module v4.std.catalog
 
 
 import v4.std.algebra { Empty, Cons, FreeMonoid }
