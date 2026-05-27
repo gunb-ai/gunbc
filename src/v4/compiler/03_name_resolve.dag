@@ -112,6 +112,10 @@ fn admit_export_symbol(
     AdmissionRejected { diagnostic: d } =>
       AdmissionRejected { diagnostic: d }
     AdmissionAccepted { bindings: b, origins: os } =>
+      // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
+      // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
+      // Replace with origins.lookup(sym) / Holds / Violates when
+      // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
       match map_get(os, sym) {
         Some { value: _ } =>
           AdmissionRejected {

@@ -204,6 +204,10 @@ fn scope_root_module(s: Scope) -> Namespace {
 }
 
 
+// Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
+// Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
+// Replace with locals/bindings.lookup(name) / Holds / Violates when
+// the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
 fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
   match s {
     ScopeFrame { locals: m, outer: o } =>
