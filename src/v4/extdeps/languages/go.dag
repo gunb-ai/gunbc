@@ -25,6 +25,7 @@ import v4.compiler.tokenize {
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.collection { List, Map, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
@@ -55,7 +56,16 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  approximate_field_node,
+  boolean_algebra_node,
+  Empty,
+  fold_list,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node
+}
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -223,6 +233,9 @@ data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
+data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
+data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
+data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
 
 data go_token_kw_func: Symbol = go_token_kw_func
 data go_token_kw_return: Symbol = go_token_kw_return
@@ -954,6 +967,134 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_integer_ordered_ring,
+        target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: match facts {
+          GoSignedIntegerPrimitiveFacts {
+            surface_spelling: _,
+            width: _,
+            encoding: _,
+            std_projection
+          } => go_inhabitant_atom(id: std_projection)
+          GoUnsignedIntegerPrimitiveFacts {
+            surface_spelling: _,
+            width: _,
+            encoding: _,
+            std_projection
+          } => go_inhabitant_atom(id: std_projection)
+        }
+      )
+    ]
+  }
+}
+
+fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_float_approximate_field,
+        target: go_inhabitant_atom(id: go_witness_float_approximate_field)
+      ),
+      go_named_edge(
+        name: go_facts_field_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_bool_boolean_algebra,
+        target: go_inhabitant_atom(id: go_witness_bool_boolean_algebra)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: go_facts_bool.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_float_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = go_bool_facts_node(facts: go_facts_bool)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_bool_algebra_witness_node()
+  }
+}
+
+fn go_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    go_bool_algebra_inhabitance()
+  ]
+}
+
+fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
+      left: go_integer_algebra_inhabitance_decls(),
+      right: go_float_algebra_inhabitance_decls()
+    ),
+    right: go_bool_algebra_inhabitance_decls()
+  )
+}
+
 // 🟡 needs-more-work — feature:go-language-model-wave1-consumer — E-6(b) bounded
 // exception — scaffold: T-4 go slice has no GoLanguageModel carrier yet (lex / grammar /
 // MVP are T-11 rust-first specialization follow-on). Dissolve-on: GoLanguageModel lands and
@@ -961,7 +1102,7 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 fn go_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: go_wave1_primitive_fact_bundles(),
-    inhabitance: [],
+    inhabitance: go_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
