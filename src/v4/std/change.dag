@@ -29,6 +29,7 @@ type ChangeSet {
   changes: List<Change>
 }
 
+// 🟡 needs-more-work — feature:affected-dependency-invalidation-target-carrier — bind T-21 — dissolve-on: typed invalidation frontier makes affected target structurally derived from DependencyView plus DependencyKind
 type AffectedDependency {
   change: Change
   dependency: DependencyView
