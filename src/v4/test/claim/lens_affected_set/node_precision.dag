@@ -8,7 +8,7 @@
 module v4.test.claim.lens_affected_set.node_precision
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.lens.affected_set { AffectedSetReading, affected_set }
+import v4.lens.affected_set { AffectedSetReading, affected_set_reading }
 import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
@@ -76,7 +76,7 @@ data affected_set_node_precision_claim: LensAffectedSetClaim = LensAffectedSetCl
     affected: [affected_set_mid, affected_set_leaf],
     dependencies: [affected_set_mid_to_leaf_dependency]
   },
-  actual: affected_set(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
+  actual: affected_set_reading(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
 }
 
 fn affected_set_node_precision_claim_holds() -> Bool {
