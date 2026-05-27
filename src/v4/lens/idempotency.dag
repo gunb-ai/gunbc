@@ -103,14 +103,14 @@ fn idempotency_verdict_unresolved(verdict: IdempotencyVerdict) -> Bool {
 }
 
 fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> Optional<Diagnostic> {
-  fold(fact.dependencies, init: None, f: fn(acc, dep) {
+  fold(fact.dependencies, init: Absent, f: fn(acc, dep) {
     match acc {
-      Some { value: _ } => acc
-      None =>
+      Present { value: _ } => acc
+      Absent =>
         match dep.classification {
           AlgebraicIdempotenceProven { law: Violates { diagnostic: d } } =>
-            Some { value: d }
-          _ => None
+            Present { value: d }
+          _ => Absent
         }
     }
   })
@@ -133,9 +133,9 @@ fn idempotency_witness_diagnostic() -> Diagnostic {
 fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
   let fact = idempotency_fact(tree: tree, dependencies: dependencies)
   match idempotency_first_law_violation_diagnostic(fact: fact) {
-    Some { value: d } =>
+    Present { value: d } =>
       Violates { diagnostic: d }
-    None =>
+    Absent =>
       if idempotency_fact_unresolved(fact: fact) {
         Violates { diagnostic: idempotency_witness_diagnostic() }
       } else {

@@ -23,7 +23,6 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node }
 import v4.std.witness { Holds, Violates, Witness }
 
 data effect_reason_unresolved_projection: Symbol = effect_reason_unresolved_projection
@@ -61,21 +60,17 @@ fn effect_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Effect
   }
 }
 
-fn effect_source_facts(tree: InferredTree, source: Node) -> Witness<InferredFacts> {
-  tree.facts.lookup(source)
-}
-
 fn effect_first_upstream_diagnostic(
   tree: InferredTree,
   fact: EffectFact
 ) -> Optional<Diagnostic> {
-  fold(fact.dependencies, init: None, f: fn(acc, dep) {
+  fold(fact.dependencies, init: Absent, f: fn(acc, dep) {
     match acc {
-      Some { value: _ } => acc
-      None =>
-        match effect_source_facts(tree: tree, source: dep.dependency.source) {
-          Violates { diagnostic: d } => Some { value: d }
-          Holds { value: _ } => None
+      Present { value: _ } => acc
+      Absent =>
+        match tree.facts.lookup(dep.dependency.source) {
+          Violates { diagnostic: d } => Present { value: d }
+          Holds { value: _ } => Absent
         }
     }
   })
@@ -101,9 +96,9 @@ fn effect_witness_diagnostic() -> Diagnostic {
 fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
   match effect_first_upstream_diagnostic(tree: tree, fact: fact) {
-    Some { value: d } =>
+    Present { value: d } =>
       Violates { diagnostic: d }
-    None =>
+    Absent =>
       if effect_signature_deferred_unresolved(fact: fact) {
         Violates { diagnostic: effect_witness_diagnostic() }
       } else {
