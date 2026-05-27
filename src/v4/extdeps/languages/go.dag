@@ -1041,6 +1041,10 @@ fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
   }
 }
 
+fn go_string_element_node() -> Node {
+  go_inhabitant_atom(id: go_surface_spelling_uint8)
+}
+
 fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = go_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
@@ -1091,7 +1095,7 @@ fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = go_string_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: free_monoid_node(inhabitant: inhabitant),
+    algebra: free_monoid_node(inhabitant: go_string_element_node()),
     inhabitant: inhabitant,
     witness: go_string_algebra_witness_node(facts: facts)
   }
