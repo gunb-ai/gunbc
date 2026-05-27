@@ -11,6 +11,7 @@ import v4.lens.affected_set {
   ExclusionKey,
   FailClosed,
   Rerun,
+  affected_set_boundary_pure_receipt_edge,
   affected_set_default_dimension,
   affected_set,
   empty_affected_fold_acc,
@@ -23,7 +24,7 @@ import v4.lens.affected_set_examples {
 }
 import v4.std.algebra { length }
 import v4.std.logic { Bool }
-import v4.std.node { Diff, Edit, Node, Path }
+import v4.std.node { Conj, Diff, Edge, Edit, Named, Node, Path, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -41,12 +42,32 @@ import v4.test.claim.lens_affected_set.node_precision {
 
 data irt1_public_unchanged_edit: Edit = Edit {
   at: Path { steps: [] },
-  replacement: affected_set_example_node
+  replacement: irt1_public_pure_boundary_node
+}
+
+data irt1_public_pure_boundary_receipt: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+data irt1_public_pure_boundary_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: affected_set_boundary_pure_receipt_edge },
+      target: irt1_public_pure_boundary_receipt
+    }
+  ]
 }
 
 data irt1_public_changed_edit: Edit = Edit {
   at: Path { steps: [] },
   replacement: affected_set_claim_failure_node
+}
+
+data irt1_public_unreceipted_unchanged_edit: Edit = Edit {
+  at: Path { steps: [] },
+  replacement: affected_set_example_node
 }
 
 data irt1_public_nonroot_changed_edit: Edit = Edit {
@@ -70,13 +91,23 @@ fn irt1_public_affected_set_empty_diff_claim_holds() -> Bool {
   }
 }
 
-fn irt1_public_affected_set_prunes_structurally_pure_unchanged_boundary() -> Bool {
+fn irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary() -> Bool {
   match affected_set(
-    dag: affected_set_example_node,
+    dag: irt1_public_pure_boundary_node,
     diff: Diff { edits: [irt1_public_unchanged_edit] }
   ) {
     Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
       length(xs: boundary_exclusions) == 1
+    _ => false
+  }
+}
+
+fn irt1_public_affected_set_fails_closed_without_purity_receipt() -> Bool {
+  match affected_set(
+    dag: affected_set_example_node,
+    diff: Diff { edits: [irt1_public_unreceipted_unchanged_edit] }
+  ) {
+    Holds { value: FailClosed { reason: _ } } => true
     _ => false
   }
 }
@@ -117,7 +148,8 @@ fn irt1_public_affected_set_nonroot_keeps_context_dependency() -> Bool {
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
   if irt1_empty_diff_frontier_receipt_claim_holds()
     && irt1_public_affected_set_empty_diff_claim_holds()
-    && irt1_public_affected_set_prunes_structurally_pure_unchanged_boundary()
+    && irt1_public_affected_set_prunes_receipted_pure_unchanged_boundary()
+    && irt1_public_affected_set_fails_closed_without_purity_receipt()
     && irt1_public_affected_set_changed_edit_stays_narrow()
     && irt1_public_affected_set_nonroot_keeps_context_dependency() {
     affected_set_example_node

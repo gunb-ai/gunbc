@@ -8,7 +8,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.algebra { contains, count_where, list_append }
+import v4.std.algebra { contains, list_append }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
@@ -23,7 +23,7 @@ import v4.std.change {
   ChangeSet,
   NodeChanged
 }
-import v4.std.dependency { Contains, DependencyKind, DependencyView, EffectDependsOn, ProjectionDependsOn, VerifiedBy, dependency_lens }
+import v4.std.dependency { Contains, DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
 import v4.std.diagnostic {
   Diagnostic,
   Diagnostics,
@@ -120,9 +120,9 @@ type BoundaryReceipt
   | BoundaryUnknown { reason: Symbol }
 
 
-// 🟡 needs-more-work — feature:B5-boundary-purity-receipt-carrier — bind T-21/B-5 — dissolve-on: effect lens emits first-class per-boundary purity receipts instead of structural no-EffectDependsOn dependency evidence
+// 🟡 needs-more-work — feature:B5-boundary-purity-receipt-carrier — bind T-21/B-5 — dissolve-on: effect lens emits first-class per-boundary purity receipts instead of this explicit marker edge
 type BoundaryPurityReceipt
-  = BoundaryPureNoEffects { dependencies: List<DependencyView> }
+  = BoundaryPureReceipt { receipt: Node }
   | BoundaryPurityUnknown { reason: Symbol }
 
 
@@ -269,6 +269,7 @@ fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
 
 
 data affected_set_default_dimension: Symbol = affected_set_default_dimension
+data affected_set_boundary_pure_receipt_edge: Symbol = affected_set_boundary_pure_receipt_edge
 data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
 data affected_set_reason_boundary_purity_unproven: Symbol = affected_set_reason_boundary_purity_unproven
 data affected_set_reason_frontier_path_unresolved: Symbol = affected_set_reason_frontier_path_unresolved
@@ -1006,17 +1007,12 @@ fn re_exec_frontier_from_diff(
 }
 
 
-fn dependency_is_effect_coupled(dependency: DependencyView) -> Bool {
-  dependency.kind == EffectDependsOn
-}
-
-
 fn canonical_boundary_purity_receipt(node: Node) -> BoundaryPurityReceipt {
-  let dependencies = dependency_lens(root: node)
-  if count_where(xs: dependencies, predicate: dependency_is_effect_coupled) == 0 {
-    BoundaryPureNoEffects { dependencies: dependencies }
-  } else {
-    BoundaryPurityUnknown { reason: affected_set_reason_boundary_purity_unproven }
+  match find_child_by_name(root: node, name: affected_set_boundary_pure_receipt_edge) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      BoundaryPureReceipt { receipt: receipt }
+    Rejected { diagnostics: _ } =>
+      BoundaryPurityUnknown { reason: affected_set_reason_boundary_purity_unproven }
   }
 }
 
@@ -1026,7 +1022,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
         match canonical_boundary_purity_receipt(node: current) {
-          BoundaryPureNoEffects { dependencies: _ } =>
+          BoundaryPureReceipt { receipt: _ } =>
             HashUnchangedPure { content_hash: content_hash(n: current) }
           BoundaryPurityUnknown { reason: r } =>
             HashUnknown { reason: r }
