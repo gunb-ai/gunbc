@@ -9,7 +9,12 @@ module v4.lens.effect
 
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.std.algebra { bag_eq }
-import v4.std.collection { List, Optional }
+import v4.std.collection {
+  List,
+  Optional,
+  optional_diagnostic_absent,
+  optional_diagnostic_present
+}
 import v4.std.dependency {
   ClassifiedDependencyView,
   DependencyView,
@@ -64,13 +69,13 @@ fn effect_first_upstream_diagnostic(
   tree: InferredTree,
   fact: EffectFact
 ) -> Optional<Diagnostic> {
-  fold(fact.dependencies, init: Absent, f: fn(acc, dep) {
+  fold(fact.dependencies, init: optional_diagnostic_absent(), f: fn(acc, dep) {
     match acc {
       Present { value: _ } => acc
       Absent =>
         match tree.facts.lookup(dep.dependency.source) {
-          Violates { diagnostic: d } => Present { value: d }
-          Holds { value: _ } => Absent
+          Violates { diagnostic: d } => optional_diagnostic_present(diagnostic: d)
+          Holds { value: _ } => optional_diagnostic_absent()
         }
     }
   })

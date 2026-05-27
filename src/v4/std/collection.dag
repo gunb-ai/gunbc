@@ -22,6 +22,12 @@ import v4.std.witness { Holds, Violates, Witness }
 type Optional<T>
   = Absent
   | Present { value: T }
+fn optional_diagnostic_absent() -> Optional<Diagnostic> {
+  Absent
+}
+fn optional_diagnostic_present(diagnostic: Diagnostic) -> Optional<Diagnostic> {
+  Present { value: diagnostic }
+}
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 type Map<K, V> {
