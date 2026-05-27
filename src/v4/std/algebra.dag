@@ -177,12 +177,6 @@ data free_monoid_variant_cons: Symbol = free_monoid_variant_cons
 data free_monoid_field_head: Symbol = free_monoid_field_head
 data free_monoid_field_tail: Symbol = free_monoid_field_tail
 data free_monoid_type_fixpoint: Symbol = free_monoid_type_fixpoint
-data ordered_ring_algebra_kind: Symbol = ordered_ring_algebra_kind
-data ordered_ring_inhabitant: Symbol = ordered_ring_inhabitant
-data approximate_field_algebra_kind: Symbol = approximate_field_algebra_kind
-data approximate_field_inhabitant: Symbol = approximate_field_inhabitant
-data boolean_algebra_kind: Symbol = boolean_algebra_kind
-data boolean_algebra_inhabitant: Symbol = boolean_algebra_inhabitant
 
 
 fn algebra_empty_conj() -> Node {
