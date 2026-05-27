@@ -268,7 +268,7 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
 
 // 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v4.workflow.ci ci_select_from_affected_set — bind TASKS.md T-21 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
-  [ProjectionDependsOn, VerifiedBy]
+  [ProjectionDependsOn, VerifiedBy, Contains]
 }
 
 
@@ -1204,29 +1204,24 @@ fn canonical_propagation_receipt(
   edit_dimension: EditDimension,
   dependency: DependencyView
 ) -> PropagationReceipt {
-  match dependency.kind {
-    Contains =>
-      Propagates
-    _ =>
-      if dependency_in_lens_frontier(dependency: dependency) {
-        Propagates
-      } else {
-        match find_child_by_name(root: dependency.usage_site, name: affected_set_dimension_not_read_receipt_edge) {
-          Accepted { value: receipt, diagnostics: _ } =>
-            if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
-              DoesNotPropagate {
-                proof: DimensionNotRead {
-                  usage_site: dependency.usage_site,
-                  changed_dimension: edit_dimension.dimension
-                }
-              }
-            } else {
-              Propagates
+  if dependency_in_lens_frontier(dependency: dependency) {
+    Propagates
+  } else {
+    match find_child_by_name(root: dependency.usage_site, name: affected_set_dimension_not_read_receipt_edge) {
+      Accepted { value: receipt, diagnostics: _ } =>
+        if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
+          DoesNotPropagate {
+            proof: DimensionNotRead {
+              usage_site: dependency.usage_site,
+              changed_dimension: edit_dimension.dimension
             }
-          Rejected { diagnostics: _ } =>
+          }
+        } else {
           Propagates
         }
-      }
+      Rejected { diagnostics: _ } =>
+      Propagates
+    }
   }
 }
 
