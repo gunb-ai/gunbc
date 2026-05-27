@@ -73,14 +73,6 @@ type ConvergenceStage {
   output_hash: BootstrapHashPin
 }
 
-type ConvergenceLadder {
-  entry_seed: Symbol
-  c0: ConvergenceStage
-  c1: ConvergenceStage
-  c_star: ConvergenceStage
-  fixed_point: FixptStage1Stage2
-}
-
 type PhysicalExecutionAxiom {
   machine_model: Symbol
   executes_as_modeled: Symbol
@@ -115,6 +107,14 @@ type FixptStage1Stage2 {
   right: Symbol
   right_hash: BootstrapHashPin
   pinned_hash: BootstrapHashPin
+}
+
+type ConvergenceLadder {
+  entry_seed: Symbol
+  c0: ConvergenceStage
+  c1: ConvergenceStage
+  c_star: ConvergenceStage
+  fixed_point: FixptStage1Stage2
 }
 
 // RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
