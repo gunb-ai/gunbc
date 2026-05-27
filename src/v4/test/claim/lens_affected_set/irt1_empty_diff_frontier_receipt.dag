@@ -8,7 +8,11 @@ module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt
 
 import v4.lens.affected_set {
   ChangedSubgraphFrontier,
+  DimensionNotRead,
+  Excluded,
+  ExclusionKey,
   FailClosed,
+  affected_set_default_dimension,
   affected_set,
   empty_affected_fold_acc,
   empty_frontier,
@@ -31,6 +35,10 @@ import v4.std.verification {
   manual_claim_anchor
 }
 import v4.std.witness { Holds }
+import v4.test.claim.lens_affected_set.node_precision {
+  affected_set_root,
+  affected_set_root_edge_symbol
+}
 
 data irt1_public_unchanged_edit: Edit = Edit {
   at: Path { steps: [] },
@@ -39,6 +47,11 @@ data irt1_public_unchanged_edit: Edit = Edit {
 
 data irt1_public_changed_edit: Edit = Edit {
   at: Path { steps: [] },
+  replacement: affected_set_claim_failure_node
+}
+
+data irt1_public_nonroot_changed_edit: Edit = Edit {
+  at: Path { steps: [affected_set_root_edge_symbol] },
   replacement: affected_set_claim_failure_node
 }
 
@@ -80,11 +93,39 @@ fn irt1_public_affected_set_changed_edit_stays_narrow() -> Bool {
   }
 }
 
+fn irt1_public_affected_set_nonroot_keeps_context_dependency() -> Bool {
+  match affected_set(
+    dag: affected_set_root,
+    diff: Diff { edits: [irt1_public_nonroot_changed_edit] }
+  ) {
+    Holds { value: frontier } =>
+      frontier == ChangedSubgraphFrontier {
+        boundary_exclusions: [],
+        decisions: map_insert(
+          empty_map(),
+          ExclusionKey {
+            at: affected_set_claim_failure_node,
+            dimension: affected_set_default_dimension
+          },
+          Excluded {
+            first: DimensionNotRead {
+              usage_site: affected_set_claim_failure_node,
+              changed_dimension: affected_set_default_dimension
+            },
+            rest: []
+          }
+        )
+      }
+    _ => false
+  }
+}
+
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
   if irt1_empty_diff_frontier_receipt_claim_holds()
     && irt1_public_affected_set_empty_diff_claim_holds()
     && irt1_public_affected_set_fails_closed_without_purity_receipt()
-    && irt1_public_affected_set_changed_edit_stays_narrow() {
+    && irt1_public_affected_set_changed_edit_stays_narrow()
+    && irt1_public_affected_set_nonroot_keeps_context_dependency() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
