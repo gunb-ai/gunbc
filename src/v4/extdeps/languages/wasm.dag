@@ -600,6 +600,23 @@ fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Choice { left: left, right: right }
 }
 
+fn wasm_grammar_choice_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: token_class),
+    right: acc
+  )
+}
+
+fn wasm_grammar_choice_from_token_classes(token_classes: List<Symbol>, last: Symbol) -> GrammarExpr {
+  fold_list(
+    xs: token_classes,
+    empty: wasm_grammar_terminal(token_class: last),
+    cons: fn(acc, token_class) {
+      wasm_grammar_choice_fold_step(acc: acc, token_class: token_class)
+    }
+  )
+}
+
 fn wasm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
@@ -813,7 +830,27 @@ fn wasm_hex_exponent_lex_pattern() -> LexPattern {
   )
 }
 
-fn wasm_decimal_number_lex_pattern() -> LexPattern {
+fn wasm_decimal_integer_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_optional_sign_lex_pattern(),
+    right: wasm_digit_run_lex_pattern()
+  )
+}
+
+fn wasm_hex_integer_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_optional_sign_lex_pattern(),
+    right: wasm_lex_sequence(
+      left: wasm_lex_choice(
+        left: LiteralPattern { text: "0x" },
+        right: LiteralPattern { text: "0X" }
+      ),
+      right: wasm_hex_digit_run_lex_pattern()
+    )
+  )
+}
+
+fn wasm_decimal_float_lex_pattern() -> LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_sequence(
@@ -825,13 +862,13 @@ fn wasm_decimal_number_lex_pattern() -> LexPattern {
             right: OptionalPattern { element: wasm_digit_run_lex_pattern() }
           )
         },
-        right: OptionalPattern { element: wasm_decimal_exponent_lex_pattern() }
+        right: wasm_decimal_exponent_lex_pattern()
       )
     )
   )
 }
 
-fn wasm_hex_number_lex_pattern() -> LexPattern {
+fn wasm_hex_float_lex_pattern() -> LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_sequence(
@@ -848,7 +885,7 @@ fn wasm_hex_number_lex_pattern() -> LexPattern {
               right: OptionalPattern { element: wasm_hex_digit_run_lex_pattern() }
             )
           },
-          right: OptionalPattern { element: wasm_hex_exponent_lex_pattern() }
+          right: wasm_hex_exponent_lex_pattern()
         )
       )
     )
@@ -875,20 +912,34 @@ fn wasm_float_special_lex_pattern() -> LexPattern {
   )
 }
 
-fn wasm_wat_numeric_literal_lex_pattern() -> LexPattern {
+fn wasm_wat_int_literal_lex_pattern() -> LexPattern {
+  wasm_lex_choice(
+    left: wasm_hex_integer_lex_pattern(),
+    right: wasm_decimal_integer_lex_pattern()
+  )
+}
+
+fn wasm_wat_float_literal_lex_pattern() -> LexPattern {
   wasm_lex_choice(
     left: wasm_float_special_lex_pattern(),
     right: wasm_lex_choice(
-      left: wasm_hex_number_lex_pattern(),
-      right: wasm_decimal_number_lex_pattern()
+      left: wasm_hex_float_lex_pattern(),
+      right: wasm_decimal_float_lex_pattern()
     )
   )
 }
 
-fn wasm_numeric_literal_lex_rule() -> LexRule {
+fn wasm_int_numeric_literal_lex_rule() -> LexRule {
   TokenRule {
-    token_class: wasm_token_numeric_literal,
-    pattern: wasm_wat_numeric_literal_lex_pattern()
+    token_class: wasm_token_int_numeric_literal,
+    pattern: wasm_wat_int_literal_lex_pattern()
+  }
+}
+
+fn wasm_float_numeric_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: wasm_token_float_numeric_literal,
+    pattern: wasm_wat_float_literal_lex_pattern()
   }
 }
 
@@ -909,23 +960,56 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_lex_rule(token_class: wasm_token_type_i64, text: "i64"),
       wasm_lex_rule(token_class: wasm_token_type_f32, text: "f32"),
       wasm_lex_rule(token_class: wasm_token_type_f64, text: "f64"),
-      wasm_numeric_literal_lex_rule(),
+      wasm_int_numeric_literal_lex_rule(),
+      wasm_float_numeric_literal_lex_rule(),
       wasm_lex_rule(token_class: wasm_token_i32_const, text: "i32.const "),
       wasm_lex_rule(token_class: wasm_token_i32_add, text: "i32.add"),
       wasm_lex_rule(token_class: wasm_token_i32_sub, text: "i32.sub"),
       wasm_lex_rule(token_class: wasm_token_i32_mul, text: "i32.mul"),
+      wasm_lex_rule(token_class: wasm_token_i32_div_s, text: "i32.div_s"),
+      wasm_lex_rule(token_class: wasm_token_i32_div_u, text: "i32.div_u"),
+      wasm_lex_rule(token_class: wasm_token_i32_rem_s, text: "i32.rem_s"),
+      wasm_lex_rule(token_class: wasm_token_i32_rem_u, text: "i32.rem_u"),
+      wasm_lex_rule(token_class: wasm_token_i32_and, text: "i32.and"),
+      wasm_lex_rule(token_class: wasm_token_i32_or, text: "i32.or"),
+      wasm_lex_rule(token_class: wasm_token_i32_xor, text: "i32.xor"),
+      wasm_lex_rule(token_class: wasm_token_i32_shl, text: "i32.shl"),
+      wasm_lex_rule(token_class: wasm_token_i32_shr_s, text: "i32.shr_s"),
+      wasm_lex_rule(token_class: wasm_token_i32_shr_u, text: "i32.shr_u"),
+      wasm_lex_rule(token_class: wasm_token_i32_rotl, text: "i32.rotl"),
+      wasm_lex_rule(token_class: wasm_token_i32_rotr, text: "i32.rotr"),
       wasm_lex_rule(token_class: wasm_token_i64_const, text: "i64.const "),
       wasm_lex_rule(token_class: wasm_token_i64_add, text: "i64.add"),
       wasm_lex_rule(token_class: wasm_token_i64_sub, text: "i64.sub"),
       wasm_lex_rule(token_class: wasm_token_i64_mul, text: "i64.mul"),
+      wasm_lex_rule(token_class: wasm_token_i64_div_s, text: "i64.div_s"),
+      wasm_lex_rule(token_class: wasm_token_i64_div_u, text: "i64.div_u"),
+      wasm_lex_rule(token_class: wasm_token_i64_rem_s, text: "i64.rem_s"),
+      wasm_lex_rule(token_class: wasm_token_i64_rem_u, text: "i64.rem_u"),
+      wasm_lex_rule(token_class: wasm_token_i64_and, text: "i64.and"),
+      wasm_lex_rule(token_class: wasm_token_i64_or, text: "i64.or"),
+      wasm_lex_rule(token_class: wasm_token_i64_xor, text: "i64.xor"),
+      wasm_lex_rule(token_class: wasm_token_i64_shl, text: "i64.shl"),
+      wasm_lex_rule(token_class: wasm_token_i64_shr_s, text: "i64.shr_s"),
+      wasm_lex_rule(token_class: wasm_token_i64_shr_u, text: "i64.shr_u"),
+      wasm_lex_rule(token_class: wasm_token_i64_rotl, text: "i64.rotl"),
+      wasm_lex_rule(token_class: wasm_token_i64_rotr, text: "i64.rotr"),
       wasm_lex_rule(token_class: wasm_token_f32_const, text: "f32.const "),
       wasm_lex_rule(token_class: wasm_token_f32_add, text: "f32.add"),
       wasm_lex_rule(token_class: wasm_token_f32_sub, text: "f32.sub"),
       wasm_lex_rule(token_class: wasm_token_f32_mul, text: "f32.mul"),
+      wasm_lex_rule(token_class: wasm_token_f32_div, text: "f32.div"),
+      wasm_lex_rule(token_class: wasm_token_f32_min, text: "f32.min"),
+      wasm_lex_rule(token_class: wasm_token_f32_max, text: "f32.max"),
+      wasm_lex_rule(token_class: wasm_token_f32_copysign, text: "f32.copysign"),
       wasm_lex_rule(token_class: wasm_token_f64_const, text: "f64.const "),
       wasm_lex_rule(token_class: wasm_token_f64_add, text: "f64.add"),
       wasm_lex_rule(token_class: wasm_token_f64_sub, text: "f64.sub"),
-      wasm_lex_rule(token_class: wasm_token_f64_mul, text: "f64.mul")
+      wasm_lex_rule(token_class: wasm_token_f64_mul, text: "f64.mul"),
+      wasm_lex_rule(token_class: wasm_token_f64_div, text: "f64.div"),
+      wasm_lex_rule(token_class: wasm_token_f64_min, text: "f64.min"),
+      wasm_lex_rule(token_class: wasm_token_f64_max, text: "f64.max"),
+      wasm_lex_rule(token_class: wasm_token_f64_copysign, text: "f64.copysign")
     ]
   }
 }
@@ -963,21 +1047,21 @@ fn wasm_grammar_numeric_const_instr_expr() -> GrammarExpr {
   wasm_grammar_choice(
     left: wasm_grammar_sequence(
       left: wasm_grammar_terminal(token_class: wasm_token_i32_const),
-      right: wasm_grammar_terminal(token_class: wasm_token_numeric_literal)
+      right: wasm_grammar_terminal(token_class: wasm_token_int_numeric_literal)
     ),
     right: wasm_grammar_choice(
       left: wasm_grammar_sequence(
         left: wasm_grammar_terminal(token_class: wasm_token_i64_const),
-        right: wasm_grammar_terminal(token_class: wasm_token_numeric_literal)
+        right: wasm_grammar_terminal(token_class: wasm_token_int_numeric_literal)
       ),
       right: wasm_grammar_choice(
         left: wasm_grammar_sequence(
           left: wasm_grammar_terminal(token_class: wasm_token_f32_const),
-          right: wasm_grammar_terminal(token_class: wasm_token_numeric_literal)
+          right: wasm_grammar_terminal(token_class: wasm_token_float_numeric_literal)
         ),
         right: wasm_grammar_sequence(
           left: wasm_grammar_terminal(token_class: wasm_token_f64_const),
-          right: wasm_grammar_terminal(token_class: wasm_token_numeric_literal)
+          right: wasm_grammar_terminal(token_class: wasm_token_float_numeric_literal)
         )
       )
     )
