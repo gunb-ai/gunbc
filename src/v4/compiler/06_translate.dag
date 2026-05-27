@@ -510,10 +510,10 @@ fn grammar_inverse_source_validated(
   )
 }
 fn grammar_relation_row_to_source_bounded(
+  remaining: Int,
   row: Node,
   target: TargetModel,
-  emitted: Node,
-  remaining: Int
+  emitted: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
@@ -526,11 +526,7 @@ fn grammar_relation_row_to_source_bounded(
         bind_outcome(
           o: conj_positional_targets(parent: tokens_root),
           f: fn(tokens) {
-            token_sequence_to_source_bounded(
-              tokens: tokens,
-              target: target,
-              remaining: remaining - 1
-            )
+            token_sequence_to_source_bounded(remaining - 1, tokens, target)
           }
         )
       }
@@ -538,9 +534,9 @@ fn grammar_relation_row_to_source_bounded(
   }
 }
 fn target_serialize_relation_row_from_model_bounded(
+  remaining: Int,
   target: TargetModel,
-  emitted: Node,
-  remaining: Int
+  emitted: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
@@ -553,12 +549,7 @@ fn target_serialize_relation_row_from_model_bounded(
         bind_outcome(
           o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
           f: fn(row) {
-            grammar_relation_row_to_source_bounded(
-              row: row,
-              target: target,
-              emitted: emitted,
-              remaining: remaining - 1
-            )
+            grammar_relation_row_to_source_bounded(remaining - 1, row, target, emitted)
           }
         )
       }
@@ -724,9 +715,9 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
   )
 }
 fn token_item_to_source_bounded(
+  remaining: Int,
   item: Node,
-  target: TargetModel,
-  remaining: Int
+  target: TargetModel
 ) -> Outcome<TargetSource> {
   bind_outcome(
     o: token_sequence_item_kind(item: item),
@@ -735,26 +726,18 @@ fn token_item_to_source_bounded(
         TokenSequenceConcreteToken =>
           token_spelling_from_model(target: target, token: item)
         TokenSequenceNonterminal =>
-          target_serialize_relation_row_from_model_bounded(
-            target: target,
-            emitted: item,
-            remaining: remaining - 1
-          )
+          target_serialize_relation_row_from_model_bounded(remaining - 1, target, item)
       }
     }
   )
 }
 fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
-  token_item_to_source_bounded(
-    item: item,
-    target: target,
-    remaining: translate_default_serialize_fuel
-  )
+  token_item_to_source_bounded(translate_default_serialize_fuel, item, target)
 }
 fn token_sequence_to_source_bounded(
+  remaining: Int,
   tokens: List<Node>,
-  target: TargetModel,
-  remaining: Int
+  target: TargetModel
 ) -> Outcome<TargetSource> {
   fold_list(
     xs: tokens,
@@ -763,11 +746,7 @@ fn token_sequence_to_source_bounded(
       match acc {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: partial, diagnostics: ad } =>
-          match token_item_to_source_bounded(
-            item: token_node,
-            target: target,
-            remaining: remaining - 1
-          ) {
+          match token_item_to_source_bounded(remaining - 1, token_node, target) {
             Accepted { value: source, diagnostics: td } =>
               Accepted {
                 value: list_append(left: partial, right: source),
@@ -783,17 +762,13 @@ fn token_sequence_to_source_bounded(
   )
 }
 fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
-  token_sequence_to_source_bounded(
-    tokens: tokens,
-    target: target,
-    remaining: translate_default_serialize_fuel
-  )
+  token_sequence_to_source_bounded(translate_default_serialize_fuel, tokens, target)
 }
 // Rust MVP-1 is live through grammar-inverse token_sequence_to_source; remaining targets stay gated by feature:T-11-grammar-inverse-serializer-remaining-targets above. TargetModel.authority_source_text must not substitute for validated emitted Node serialization.
 fn target_serialize_source_from_model_bounded(
+  remaining: Int,
   target: TargetModel,
-  emitted: Node,
-  remaining: Int
+  emitted: Node
 ) -> Outcome<TargetSource> {
   if remaining <= 0 {
     outcome_rejected(
@@ -803,11 +778,7 @@ fn target_serialize_source_from_model_bounded(
     bind_outcome(
       o: grammar_inverse_source_validated(target: target, emitted: emitted),
       f: fn(_) {
-          target_serialize_relation_row_from_model_bounded(
-            target: target,
-            emitted: emitted,
-            remaining: remaining - 1
-          )
+          target_serialize_relation_row_from_model_bounded(remaining - 1, target, emitted)
       }
     )
   }
@@ -816,11 +787,7 @@ fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetSource> {
-  target_serialize_source_from_model_bounded(
-    target: target,
-    emitted: emitted,
-    remaining: translate_default_serialize_fuel
-  )
+  target_serialize_source_from_model_bounded(translate_default_serialize_fuel, target, emitted)
 }
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
