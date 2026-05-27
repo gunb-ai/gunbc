@@ -110,3 +110,12 @@ data claim_from_node_multi_accepted: TestClaim = EqualsClaim {
   rhs: qn_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
+
+
+data claim_from_node_malformed_conj_rejected: TestClaim = EqualsClaim {
+  label: "qualified_name_from_node returns Rejected for Conj with tail-only edge (no head — malformed fold_list_node)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: qn_bool_atom(b: qn_outcome_accepted(out: qualified_name_from_node(root: qn_tail_only_node))),
+  rhs: qn_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
