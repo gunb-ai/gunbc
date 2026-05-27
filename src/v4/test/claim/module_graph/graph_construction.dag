@@ -1,7 +1,7 @@
 // src/v4/test/claim/module_graph/graph_construction.dag
 // Scope: TestClaim corpus for module_graph_from_entries validated constructor.
 // Owns: claim rows for unique-path construction success and duplicate-path rejection.
-// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.witness v4.std.verification.
+// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
@@ -13,11 +13,10 @@ import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.module_graph {
   ModuleEntry,
   ModuleGraph,
-  ModulePath,
-  ModulePathSegment,
   module_graph_from_entries
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.qualified_name { QualifiedName }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.verification {
   CompilesClaim,
@@ -51,11 +50,11 @@ fn build_claim_input(ok: Bool) -> Node {
 }
 
 
-fn build_path_x() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: build_seg_x }, tail: Empty } }
+fn build_path_x() -> QualifiedName {
+  Cons { head: build_seg_x, tail: Empty }
 }
-fn build_path_y() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: build_seg_y }, tail: Empty } }
+fn build_path_y() -> QualifiedName {
+  Cons { head: build_seg_y, tail: Empty }
 }
 fn build_entry_x() -> ModuleEntry { ModuleEntry { path: build_path_x(), root: build_root_node() } }
 fn build_entry_y() -> ModuleEntry { ModuleEntry { path: build_path_y(), root: build_root_node() } }

@@ -1,7 +1,7 @@
 // src/v4/test/claim/module_graph/ancestor_witness.dag
 // Scope: TestClaim corpus for module_ancestor_witness prefix-based ancestor relation.
 // Owns: claim rows for prefix-holds, equal-path-holds, and non-prefix-violates cases.
-// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.witness v4.std.verification.
+// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
@@ -12,11 +12,10 @@ module v4.test.claim.module_graph.ancestor_witness
 import v4.std.algebra { Cons, Empty }
 import v4.std.module_graph {
   AncestorRelation,
-  ModulePath,
-  ModulePathSegment,
   module_ancestor_witness
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.qualified_name { QualifiedName }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.verification {
   CompilesClaim,
@@ -46,14 +45,14 @@ fn anc_claim_input(ok: Bool) -> Node {
 }
 
 
-fn anc_path_x() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: anc_seg_x }, tail: Empty } }
+fn anc_path_x() -> QualifiedName {
+  Cons { head: anc_seg_x, tail: Empty }
 }
-fn anc_path_xy() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: anc_seg_x }, tail: Cons { head: ModulePathSegment { name: anc_seg_y }, tail: Empty } } }
+fn anc_path_xy() -> QualifiedName {
+  Cons { head: anc_seg_x, tail: Cons { head: anc_seg_y, tail: Empty } }
 }
-fn anc_path_y() -> ModulePath {
-  ModulePath { segments: Cons { head: ModulePathSegment { name: anc_seg_y }, tail: Empty } }
+fn anc_path_y() -> QualifiedName {
+  Cons { head: anc_seg_y, tail: Empty }
 }
 
 
