@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/go.dag
 // Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, T-11 MVP-1 grammar-data target model.
-// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, GoIntegerPrimitiveFacts, GoFloatPrimitiveFacts, GoComplexPrimitiveFacts, GoBoolPrimitiveFacts, GoStringPrimitiveFacts, go_*_facts_catalog, go_*_primitive_bundle, go_model_core_wave1, go_bool_grounding, go_gram_seq_fold.
+// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, GoIntegerPrimitiveFacts, GoFloatPrimitiveFacts, GoComplexPrimitiveFacts, GoBoolPrimitiveFacts, GoStringPrimitiveFacts, go_*_facts_catalog, go_*_primitive_bundle, go_model_core_wave1, go_bool_grounding.
 // Consumes: v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
 // Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance/laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
@@ -55,7 +55,7 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -1063,29 +1063,62 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn go_gram_seq_fold(tokens: FreeMonoid<GoConcreteSyntaxToken>, acc: GrammarExpr) -> GrammarExpr {
-  match tokens {
-    Empty => acc
-    Cons { head: tok, tail: rest } =>
-      go_gram_seq_fold(
-        tokens: rest,
-        acc: Sequence {
-          left: acc,
-          right: go_grammar_terminal(token_class: go_concrete_token_class(token: tok))
-        }
-      )
+// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
+type GoGramBuild1State
+  = GoGramBuild1StateInit
+  | GoGramBuild1StateReady { head: GoConcreteSyntaxToken, tail: List<GoConcreteSyntaxToken> }
+
+data go_gram_build1_empty_unreachable: Symbol = go_gram_build1_empty_unreachable
+
+type GoGrammarSequenceBuild {
+  head: GoConcreteSyntaxToken
+  tail: List<GoConcreteSyntaxToken>
+}
+
+fn go_grammar_sequence_from_tokens(tokens: GoGrammarSequenceBuild) -> GrammarExpr {
+  let terminal = go_grammar_terminal(token_class: go_concrete_token_class(token: tokens.head))
+  fold_list(
+    xs: tokens.tail,
+    empty: terminal,
+    cons: fn(acc, token) {
+      Sequence {
+        left: acc,
+        right: go_grammar_terminal(token_class: go_concrete_token_class(token: token))
+      }
+    }
+  )
+}
+
+fn go_mvp1_grammar_tokens() -> GoGrammarSequenceBuild {
+  match fold_list(
+    xs: go_mvp1_concrete_tokens(),
+    empty: GoGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        GoGramBuild1StateInit =>
+          GoGramBuild1StateReady { head: token, tail: Empty }
+        GoGramBuild1StateReady { head: h, tail: t } =>
+          GoGramBuild1StateReady {
+            head: h,
+            tail: list_snoc_item(xs: t, item: token)
+          }
+      }
+    }
+  ) {
+    GoGramBuild1StateInit =>
+      GoGrammarSequenceBuild {
+        head: GoFixedToken { token_class: go_gram_build1_empty_unreachable },
+        tail: Empty
+      }
+    GoGramBuild1StateReady { head: h, tail: t } => GoGrammarSequenceBuild {
+      head: h,
+      tail: t
+    }
   }
 }
 
 fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match go_mvp1_concrete_tokens() {
-    Empty => go_grammar_terminal(token_class: go_token_kw_func)
-    Cons { head: first_tok, tail: rest_toks } =>
-      go_gram_seq_fold(
-        tokens: rest_toks,
-        acc: go_grammar_terminal(token_class: go_concrete_token_class(token: first_tok))
-      )
-  }
+  go_grammar_sequence_from_tokens(tokens: go_mvp1_grammar_tokens())
 }
 
 fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {

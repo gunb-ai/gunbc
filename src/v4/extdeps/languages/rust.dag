@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Owns: RustScalar, RustIntegerCarrier, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_integer_carrier_interval_spec, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex, rust_gram_seq_fold.
+// Owns: RustScalar, RustIntegerCarrier, RustIntegerPrimitiveFacts, RustFloatPrimitiveFacts, RustNonIntegerPrimitiveFacts, RustLanguageModel, rust_*_facts, rust_*_inhabitant_node, rust_integer_carrier_interval_spec, rust_declared_inhabitants_root, rust_mvp1_declared_inhabitants_root, rust_mvp1_fixture_emitted_add_fn, rust_mvp1_target_model, rust_wave1_* grammar/lex.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.cardinality, v4.std.text.
 // Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11 Rust emit; layout-in-literals bridge gated to T-6 TokenLayout; bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
@@ -84,11 +84,9 @@ import v4.std.node {
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
-  Cons,
   approximate_field_node,
   boolean_algebra_node,
   Empty,
-  FreeMonoid,
   fold_list,
   list_append,
   list_snoc_item,
@@ -1225,29 +1223,62 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn rust_gram_seq_fold(tokens: FreeMonoid<RustConcreteSyntaxToken>, acc: GrammarExpr) -> GrammarExpr {
-  match tokens {
-    Empty => acc
-    Cons { head: tok, tail: rest } =>
-      rust_gram_seq_fold(
-        tokens: rest,
-        acc: Sequence {
-          left: acc,
-          right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: tok))
-        }
-      )
+// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
+type RustGramBuild1State
+  = RustGramBuild1StateInit
+  | RustGramBuild1StateReady { head: RustConcreteSyntaxToken, tail: List<RustConcreteSyntaxToken> }
+
+data rust_gram_build1_empty_unreachable: Symbol = rust_gram_build1_empty_unreachable
+
+type RustGrammarSequenceBuild {
+  head: RustConcreteSyntaxToken
+  tail: List<RustConcreteSyntaxToken>
+}
+
+fn rust_grammar_sequence_from_tokens(tokens: RustGrammarSequenceBuild) -> GrammarExpr {
+  let terminal = rust_grammar_terminal(token_class: rust_concrete_token_class(token: tokens.head))
+  fold_list(
+    xs: tokens.tail,
+    empty: terminal,
+    cons: fn(acc, token) {
+      Sequence {
+        left: acc,
+        right: rust_grammar_terminal(token_class: rust_concrete_token_class(token: token))
+      }
+    }
+  )
+}
+
+fn rust_mvp1_grammar_tokens() -> RustGrammarSequenceBuild {
+  match fold_list(
+    xs: rust_mvp1_concrete_tokens(),
+    empty: RustGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        RustGramBuild1StateInit =>
+          RustGramBuild1StateReady { head: token, tail: Empty }
+        RustGramBuild1StateReady { head: h, tail: t } =>
+          RustGramBuild1StateReady {
+            head: h,
+            tail: list_snoc_item(xs: t, item: token)
+          }
+      }
+    }
+  ) {
+    RustGramBuild1StateInit =>
+      RustGrammarSequenceBuild {
+        head: RustFixedToken { token_class: rust_gram_build1_empty_unreachable },
+        tail: Empty
+      }
+    RustGramBuild1StateReady { head: h, tail: t } => RustGrammarSequenceBuild {
+      head: h,
+      tail: t
+    }
   }
 }
 
 fn rust_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match rust_mvp1_concrete_tokens() {
-    Empty => rust_grammar_terminal(token_class: rust_token_kw_fn)
-    Cons { head: first_tok, tail: rest_toks } =>
-      rust_gram_seq_fold(
-        tokens: rest_toks,
-        acc: rust_grammar_terminal(token_class: rust_concrete_token_class(token: first_tok))
-      )
-  }
+  rust_grammar_sequence_from_tokens(tokens: rust_mvp1_grammar_tokens())
 }
 
 fn rust_mvp1_grammar_relation_row() -> RustGrammarRelationRow {
