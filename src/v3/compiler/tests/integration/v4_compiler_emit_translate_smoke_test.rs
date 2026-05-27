@@ -142,6 +142,22 @@ fn v4_translate_dag_dispatches_token_sequence_items() {
         "{TRANSLATE_PATH}: must inspect concrete-token kind before treating class absence as nonterminal"
     );
     assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_fixed"
+        ),
+        "{TRANSLATE_PATH}: fixed-token rows must validate the shared token-kind discriminator"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_bound"
+        ),
+        "{TRANSLATE_PATH}: bound-token rows must validate the shared token-kind discriminator"
+    );
+    assert!(
         surface_declares_fn(&module, "token_sequence_item_kind"),
         "{TRANSLATE_PATH}: must classify concrete tokens and nonterminal emitted nodes explicitly"
     );
@@ -414,6 +430,22 @@ fn v4_dag_language_model_declares_surface_emit_rows() {
             "concrete_syntax_token_field_kind"
         ),
         "{DAG_LANGUAGE_PATH}: token rows must use the shared concrete-token field symbols"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_fixed"
+        ),
+        "{DAG_LANGUAGE_PATH}: fixed-token rows must use the shared token-kind identity"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "target_model"],
+            "concrete_syntax_token_kind_bound"
+        ),
+        "{DAG_LANGUAGE_PATH}: bound-token rows must use the shared token-kind identity"
     );
     assert!(
         surface_declares_fn(&module, "emit_fixed_token"),
