@@ -1,6 +1,6 @@
 // src/v4/extdeps/formats/json.dag
 // Scope: JSON value grammar (RFC 8259 / ECMA-404) with unique-name object profile — declarative model only.
-// Owns: JSON value type, grammar schema, numeric-lexeme fact-bundle, unique-name profile fact-bundle.
+// Owns: JSON value type, numeric-lexeme fact-bundle, unique-name profile fact-bundle.
 // Consumes: compiler/tokenize.dag; compiler/parse.dag; std/node.dag; std/diagnostic.dag; std/collection.dag.
 // Status: T-4.6 — parse/emit axes (gated T-6/T-7/T-10), numeric-lexeme profile (RFC 8259 §6),
 //         unique-name profile (RFC 8259 §4 SHOULD→MUST enforcement witness).
@@ -8,14 +8,7 @@
 
 module v4.extdeps.formats.json
 
-import v4.compiler.tokenize { LexRules }
-import v4.compiler.parse { Grammar }
-
-
-type JsonGrammarSchema {
-  lex: LexRules,
-  grammar: Grammar,
-}
+import v4.compiler.parse { GrammarSchema }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -78,7 +71,7 @@ type JsonUniqueNameProfileFacts {
 
 
 type JsonDocument {
-  grammar_schema: JsonGrammarSchema,
+  grammar_schema: GrammarSchema,
   unique_names: JsonUniqueNameProfileFacts,
   value: JsonValue,
 }
