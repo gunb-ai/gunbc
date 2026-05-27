@@ -983,7 +983,7 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           std_projection
         } => go_named_edge(
           name: go_witness_signed_integer_ordered_ring,
-          target: go_inhabitant_atom(id: std_projection)
+          target: go_inhabitant_atom(id: facts.std_projection)
         )
         GoUnsignedIntegerPrimitiveFacts {
           surface_spelling: _,
@@ -992,25 +992,12 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
           std_projection
         } => go_named_edge(
           name: go_witness_unsigned_integer_semiring,
-          target: go_inhabitant_atom(id: std_projection)
+          target: go_inhabitant_atom(id: facts.std_projection)
         )
       },
       go_named_edge(
         name: go_facts_field_std_projection,
-        target: match facts {
-          GoSignedIntegerPrimitiveFacts {
-            surface_spelling: _,
-            width: _,
-            encoding: _,
-            std_projection
-          } => go_inhabitant_atom(id: std_projection)
-          GoUnsignedIntegerPrimitiveFacts {
-            surface_spelling: _,
-            width: _,
-            encoding: _,
-            std_projection
-          } => go_inhabitant_atom(id: std_projection)
-        }
+        target: go_inhabitant_atom(id: facts.std_projection)
       )
     ]
   }
@@ -1092,7 +1079,7 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
           ),
           go_named_edge(
             name: go_facts_field_std_projection,
-            target: go_inhabitant_atom(id: std_projection)
+            target: go_inhabitant_atom(id: facts.std_projection)
           )
         ]
       }
@@ -1114,7 +1101,7 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
           ),
           go_named_edge(
             name: go_facts_field_std_projection,
-            target: go_inhabitant_atom(id: std_projection)
+            target: go_inhabitant_atom(id: facts.std_projection)
           )
         ]
       }
