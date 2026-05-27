@@ -715,7 +715,7 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
                     }
                   )
                 }
-              }
+              )
             }
           )
         }
