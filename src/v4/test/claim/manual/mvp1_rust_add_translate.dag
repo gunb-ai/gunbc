@@ -170,8 +170,7 @@ fn anchor_mvp1_serialize_rejects_missing_translation_rules() -> Outcome<TargetSo
 }
 
 
-data mvp1_serialize_reject_receipt: Outcome<TargetSource> =
-  anchor_mvp1_serialize_rejects_missing_translation_rules()
+data mvp1_serialize_reject_receipt: Outcome<TargetSource> = anchor_mvp1_serialize_rejects_missing_translation_rules()
 
 
 fn mvp1_serialize_reject_claim_outcome() -> Outcome<Node> {
