@@ -8,7 +8,7 @@
 module v4.lens.idempotency
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -74,7 +74,7 @@ fn idempotency_classify(view: DependencyView) -> ClassifiedDependencyView<Idempo
 fn idempotency_fact(tree: InferredTree, dependencies: List<DependencyView>) -> IdempotencyFact {
   IdempotencyFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, idempotency_classify(view: view))
+      list_snoc_item(xs: acc, item: idempotency_classify(view: view))
     })
   }
 }

@@ -8,7 +8,7 @@
 module v4.lens.ownership
 
 import v4.compiler.infer { InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -76,7 +76,7 @@ fn ownership_classify(view: DependencyView) -> ClassifiedDependencyView<Ownershi
 fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
   OwnershipFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, ownership_classify(view: view))
+      list_snoc_item(xs: acc, item: ownership_classify(view: view))
     })
   }
 }

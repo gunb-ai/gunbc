@@ -8,7 +8,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.algebra { contains }
+import v4.std.algebra { contains, list_snoc_item }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
@@ -298,7 +298,7 @@ fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
 
 fn append_change(changes: ChangeSet, change: Change) -> ChangeSet {
   ChangeSet {
-    changes: list_push(changes.changes, change)
+    changes: list_snoc_item(xs: changes.changes, item: change)
   }
 }
 
@@ -332,13 +332,10 @@ fn record_affected_dependency(
         AffectedSetActive {
           dag: dag,
           changes: changes,
-          affected: list_push(
-            affected,
-            AffectedDependency {
+          affected: list_snoc_item(xs: affected, item: AffectedDependency {
               change: change,
               dependency: dependency
-            }
-          ),
+            }),
           exclusions: exclusions
         }
       } else {
@@ -373,8 +370,8 @@ fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
 fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyView) -> AffectedSetClosureAcc {
   if node_in_list(nodes: acc.frontier, needle: dependency.source) && (node_in_list(nodes: acc.frontier, needle: dependency.dependent) == false) {
     AffectedSetClosureAcc {
-      frontier: list_push(acc.frontier, dependency.dependent),
-      dependencies: list_push(acc.dependencies, dependency)
+      frontier: list_snoc_item(xs: acc.frontier, item: dependency.dependent),
+      dependencies: list_snoc_item(xs: acc.dependencies, item: dependency)
     }
   } else {
     acc
@@ -421,14 +418,14 @@ fn affected_set(graph: InferredTree, edit_locus: Node) -> AffectedSetReading {
 
 fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<Node> {
   fold(changes.changes, init: nodes, f: fn(acc, change) {
-    list_push(acc, change.subject)
+    list_snoc_item(xs: acc, item: change.subject)
   })
 }
 
 
 fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
-    list_push(acc, row.dependency.dependent)
+    list_snoc_item(xs: acc, item: row.dependency.dependent)
   })
 }
 
@@ -464,15 +461,12 @@ fn record_affected_exclusion(
             dag: dag,
             changes: changes,
             affected: affected,
-            exclusions: list_push(
-              exclusions,
-              AffectedExclusion {
+            exclusions: list_snoc_item(xs: exclusions, item: AffectedExclusion {
                 change: change,
                 dependency: dependency,
                 usage_site: usage_site,
                 changed_dimension: changed_dimension
-              }
-            )
+              })
           }
       }
     AffectedSetFailed { changes: changes, evidence: evidence } =>
@@ -549,7 +543,7 @@ fn mark_boundary_excluded(frontier: ReExecFrontier, edit: Edit, proof: BoundaryE
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
       ChangedSubgraphFrontier {
-        boundary_exclusions: list_push(boundary_exclusions, BoundaryExclusion { edit: edit, proof: proof }),
+        boundary_exclusions: list_snoc_item(xs: boundary_exclusions, item: BoundaryExclusion { edit: edit, proof: proof }),
         decisions: decisions
       }
   }
@@ -569,7 +563,7 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
         Some { value: Excluded { first: first, rest: rest } } =>
           ChangedSubgraphFrontier {
             boundary_exclusions: boundary_exclusions,
-            decisions: map_insert(decisions, key, Excluded { first: first, rest: list_push(rest, proof) })
+            decisions: map_insert(decisions, key, Excluded { first: first, rest: list_snoc_item(xs: rest, item: proof) })
           }
         None =>
           ChangedSubgraphFrontier {

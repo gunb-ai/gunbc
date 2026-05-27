@@ -9,6 +9,7 @@
 module v4.compiler.infer
 
 
+import v4.std.algebra { list_snoc_item }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { List, Map }
@@ -239,7 +240,7 @@ fn concat_inferred_facts_entries(
   b: List<InferredFactsEntry>,
 ) -> List<InferredFactsEntry> {
   fold(b, init: a, f: fn(acc, entry) {
-    list_push(acc, entry)
+    list_snoc_item(xs: acc, item: entry)
   })
 }
 
@@ -304,7 +305,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
         if entry.node == entry.facts.grounding.node {
-          Accepted { value: list_push(ok_entries, entry), diagnostics: d }
+          Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
         } else {
           Rejected {
             diagnostics: diagnostics_singleton(

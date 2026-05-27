@@ -8,7 +8,7 @@
 module v4.lens.unused_parameters
 
 import v4.compiler.infer { InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
   BarrierBefore,
@@ -97,7 +97,7 @@ fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
 fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
   UseClassificationFact {
     uses: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, use_classify(view: view))
+      list_snoc_item(xs: acc, item: use_classify(view: view))
     })
   }
 }
@@ -179,7 +179,7 @@ fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
           if declaration_has_use_or_unresolved(uses: use_fact.uses, declaration: candidate) {
             acc
           } else {
-            list_push(acc, unused_parameter_for_declaration(declaration: candidate))
+            list_snoc_item(xs: acc, item: unused_parameter_for_declaration(declaration: candidate))
           }
         }
       } else {
