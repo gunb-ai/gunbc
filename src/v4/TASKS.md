@@ -1501,7 +1501,7 @@ to `QualifiedName`, add the projection.
    `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
    all callers to `QualifiedName`.
 
-2. **`qualified_name_from_node(root: Node) -> QualifiedName?`.** Extracts
+2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.** Extracts
    the declared name from a Node's `module_header` child. The name is already in
    the parse tree (`dag_surface_module_header` → `dag_production_qualified_name`);
    this function makes it accessible without an external key. Once this exists,
@@ -1603,7 +1603,6 @@ Sequencing). T-35 workers must not proceed without both gates.
    - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
    - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
    - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
-   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `None` (no declared module name) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no identifiable name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove nameless Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1624,12 +1623,8 @@ to define a new agent output surface.
   which batch node is the compilation entry point by `QualifiedName`.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
   `qualified_name_from_node` to build `FreeMonoid<ModuleEntry>`, then calls
-  `module_graph_from_entries` → `Holds { value: graph }`. The fold is
-  fail-closed: any entry where `qualified_name_from_node` returns `None` (no
-  declared module name) causes the fold to return `Rejected` with a
-  module-malformed diagnostic immediately (INVARIANTS P2 — no silent promotion
-  of nameless Nodes past the admission boundary). `module_graph_from_entries`
-  itself is fail-closed on duplicate qualified names (`Violates`). On `Holds`, the root `CoreNode` is
+  `module_graph_from_entries` → `Holds { value: graph }` (fail-closed:
+  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
   retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
   `Holds { value: entry }` (fail-closed: `Violates` if absent, using
   `module_graph_entry_not_found` as the diagnostic reason). `entry.root` is
