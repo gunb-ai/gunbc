@@ -1561,10 +1561,19 @@ Sequencing). T-35 workers must not proceed without both gates.
 **Scope — two pieces (ingest side only):**
 
 1. **Virtual module-loader.** The module-admission stage (T-28-B) is
-   replaced with an agent-supplied `AgentStore` (pre-parsed `.dag` AST nodes,
-   identified by their declared `QualifiedName`). The stage reads from the
-   store rather than the filesystem. Agents write to the store; the compiler
-   reads from it. No filesystem I/O anywhere in the compile path.
+   replaced with an agent-supplied `AgentStore` (**post-normalize** `.dag`
+   Nodes, identified by their declared `QualifiedName`). "Post-normalize"
+   means each stored Node has passed through `normalize(parse_tree: …)` — the
+   same stage at which `compile_ingest_staging` calls `module_graph_from_entries`
+   today. Agents are responsible for normalizing their source before
+   `store_insert`; `compile_with_store` does NOT re-normalize. After admission
+   the selected root Node is resolved via `resolve_with_graph` (cross-file
+   names resolved against the admitted module graph), then the resulting
+   `CoreNode` enters `validate_then_compile`. The stage contract is:
+   store-in = post-normalize Node; compile-in = post-resolve CoreNode.
+   The stage reads from the store rather than the filesystem. Agents write
+   to the store; the compiler reads from it. No filesystem I/O anywhere in
+   the compile path.
    `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
    from 03_resolve.dag before the virtual loader can replace it.`
 
