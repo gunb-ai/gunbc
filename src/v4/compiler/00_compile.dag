@@ -114,7 +114,6 @@ data compile_ingest_staging_source_file: Symbol = compile_ingest_staging_source_
 data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
 data compile_lens_gate_rejected: Symbol = compile_lens_gate_rejected
 data compile_eval_not_realized: Symbol = compile_eval_not_realized
-data compile_agent_store_entry_missing: Symbol = compile_agent_store_entry_missing
 data compile_agent_store_imports_not_modeled: Symbol = compile_agent_store_imports_not_modeled
 
 
@@ -139,15 +138,6 @@ fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
 fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: compile_eval_not_realized,
-    at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
-fn compile_agent_store_entry_missing_diagnostic(at: Locus) -> Diagnostic {
-  Diagnostic {
-    reason: compile_agent_store_entry_missing,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -454,7 +444,8 @@ fn agent_module_source_to_entry(
 }
 
 
-// 🟡 predicate dissolution gate: feature:T-35-agent-import-surface-predicate.
+// 🟡 predicate dissolution gate for node_is_dag_import_surface and
+// node_contains_dag_import_surface: feature:T-35-agent-import-surface-predicate.
 // Owner/lane: T-8/T-28-B module admission + dag.dag import query.
 // Dissolve-on: dag.dag exposes typed import-presence/import-extraction facts and
 // compile_with_store feeds source-derived ModuleAdmission.imports for agent stores.
