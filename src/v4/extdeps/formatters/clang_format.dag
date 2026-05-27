@@ -1031,6 +1031,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
 }
 
 
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: ClangFormatConfigPatch projected from ClangFormatConfig field set.
 type ClangFormatConfigPatch {
   access_modifier_offset: FieldPatch<Int>
   align_after_open_bracket: FieldPatch<Bool>

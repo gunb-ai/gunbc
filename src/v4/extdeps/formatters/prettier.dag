@@ -202,6 +202,7 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 }
 
 
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierConfigPatch projected from PrettierConfig field set.
 type PrettierConfigPatch {
   print_width: FieldPatch<Int>
   tab_width: FieldPatch<Int>
