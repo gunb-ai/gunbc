@@ -71,8 +71,11 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
+type CompileLensGateOutcome = Outcome<Witness<Node>>
+
+
 type CompileLens {
-  gate: fn(InferredTree) -> Outcome<Witness<Node>>
+  gate: fn(InferredTree) -> CompileLensGateOutcome
 }
 
 
@@ -137,7 +140,7 @@ fn always_required_lenses() -> List<CompileLens> {
 }
 
 
-fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> CompileLensGateOutcome {
   fact_density_hollow_alias_gate(node: tree.root)
 }
 
@@ -149,7 +152,7 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 fn apply_compile_lens_introspect(
   lens: CompileLens,
   inferred: InferredTree
-) -> Outcome<Witness<Node>> {
+) -> CompileLensGateOutcome {
   match lens.gate(tree: inferred) {
     Accepted { value: w, diagnostics: od } =>
       outcome_with_diagnostics(value: w, diagnostics: od)
@@ -170,7 +173,7 @@ fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
   mode: CompileLensMode
-) -> Outcome<Witness<Node>> {
+) -> CompileLensGateOutcome {
   match mode {
     CompileLensEnforce => lens.gate(tree: inferred)
     CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
