@@ -1559,9 +1559,12 @@ Sequencing). T-35 workers must not proceed without both gates.
    replaced with a caller-supplied `ModuleBatch` (**post-normalize** `.dag`
    Nodes, identified by their declared `QualifiedName`). "Post-normalize"
    means each Node has passed through `normalize(parse_tree: …)` — the
-   same stage at which `compile_ingest_staging` calls `catalog_from_entries`
-   today. Callers are responsible for normalizing their source before
-   `batch_insert`; `compile_with_batch` does NOT re-normalize. After admission
+   stage immediately before today's `compile_ingest_staging` resolve gate.
+   The live `compile_ingest_staging` path still calls single-tree
+   `resolve(tree: normalized, lm: lm)` until this T-35 work wires catalog
+   admission into a new `compile_with_batch` entry point. Callers are
+   responsible for normalizing their source before `batch_insert`;
+   `compile_with_batch` does NOT re-normalize. After admission
    the selected root Node is resolved via `resolve_with_admission` (cross-file
    names resolved against the admitted module catalog), then the resulting
    `CoreNode` enters `validate_then_compile`. The stage contract is:
@@ -1633,18 +1636,20 @@ to define a new agent output surface.
   substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
   convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
   boundary discipline: the `CoreNode` reaching `validate_then_compile` is
-  produced by a complete normalize → catalog-admission → resolve chain, matching
-  the live `compile_ingest_staging` pipeline exactly.
+  produced by the future complete normalize → catalog-admission → resolve
+  chain. This is the T-35 replacement for the current `compile_ingest_staging`
+  resolve gate, not a claim that catalog admission is already wired there.
   `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
   FreeMonoid<Entry> bridge and catalog_from_entries call are
   temporary scaffolding; once Change 2 lands, admission folds directly over
   FreeMonoid<Node> via qualified_name_from_node without the Entry bridge.`
 
-  **Scope of T-35's change:** `batch.entries` (a `FreeMonoid<Node>`) replaces
-  the `entries: Empty` argument to `catalog_from_entries` (currently in
-  `compile_ingest_staging`), with a `qualified_name_from_node` projection step
-  to build the `FreeMonoid<Entry>` the existing admission gate expects.
-  No other part of the ingest pipeline changes. `compile_with_batch` routes
+  **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
+  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step to
+  build the `FreeMonoid<Entry>` that `catalog_from_entries` expects. The live
+  `compile_ingest_staging` path does not call `catalog_from_entries` today; it
+  remains the tokenize → parse → normalize → single-tree resolve path until the
+  batch entry point lands. No infer/emit behavior changes. `compile_with_batch` routes
   through `validate_then_compile` — the sole public compile terminal in
   `00_compile.dag` — passing `mode: TranslateTo { target: target }` (the
   `target: TargetModel` parameter wraps directly into `CompileMode`) with an
