@@ -27,7 +27,7 @@ import v4.extdeps.languages.dag {
 import v4.std.algebra { Cons, Empty }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.module_graph { ModuleEntry, ModuleGraph, ModulePath, ModulePathSegment }
+import v4.std.module_graph { ModuleEntry, ModuleGraph }
 import v4.std.node {
   Atom,
   Bind,
@@ -205,12 +205,7 @@ fn resolve_graph_imported_root() -> Node {
 
 fn resolve_graph_imported_entry() -> ModuleEntry {
   ModuleEntry {
-    path: ModulePath {
-      segments: Cons {
-        head: ModulePathSegment { name: anchor_imported_path_segment },
-        tail: Empty
-      }
-    },
+    path: Cons { head: anchor_imported_path_segment, tail: Empty },
     root: resolve_graph_imported_root()
   }
 }
@@ -240,17 +235,12 @@ fn resolve_module_with_admission_imported_binding_accepts() -> Bool {
     graph: resolve_graph_single_import(),
     admission: ModuleAdmission {
       subject: ModuleSubject {
-        path: ModulePath { segments: Empty },
+        path: Empty,
         tree: resolve_graph_imported_use_tree()
       },
       imports: Cons {
         head: ModuleImport {
-          target: ModulePath {
-            segments: Cons {
-              head: ModulePathSegment { name: anchor_imported_path_segment },
-              tail: Empty
-            }
-          },
+          target: Cons { head: anchor_imported_path_segment, tail: Empty },
           visibility: ModuleImportVisible
         },
         tail: Empty

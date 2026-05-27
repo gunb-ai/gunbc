@@ -1,7 +1,7 @@
 // src/v4/std/module_graph.dag
 // Scope: Module-tree carrier + ancestor-relation Witness for cross-file binding (T-28).
-// Owns: ModulePath, ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup; validated graph constructor.
-// Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/witness.dag.
+// Owns: ModuleGraph, AncestorRelation; ancestor-prefix Witness; entry lookup; validated graph constructor.
+// Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_module_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
@@ -9,7 +9,7 @@
 module v4.std.module_graph
 
 
-import v4.std.algebra { Empty, Cons, FreeMonoid, is_prefix_of, zip_eq }
+import v4.std.algebra { Empty, Cons, FreeMonoid }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -18,21 +18,16 @@ import v4.std.diagnostic {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Node, Symbol }
+import v4.std.qualified_name {
+  QualifiedName,
+  qualified_name_eq,
+  qualified_name_is_prefix_of
+}
 import v4.std.witness { Holds, Violates, Witness }
 
 
-type ModulePathSegment {
-  name: Symbol
-}
-
-
-type ModulePath {
-  segments: FreeMonoid<ModulePathSegment>
-}
-
-
 type ModuleEntry {
-  path: ModulePath
+  path: QualifiedName
   root: Node
 }
 
@@ -45,8 +40,8 @@ type ModuleGraph {
 
 // 🟡 feature:opaque-proof-constructor — AncestorRelation is a plain record; non-prefix pairs are constructible outside module_ancestor_witness; dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_ancestor_witness as the sole construction path.
 type AncestorRelation {
-  ancestor: ModulePath
-  descendant: ModulePath
+  ancestor: QualifiedName
+  descendant: QualifiedName
 }
 
 
@@ -98,45 +93,14 @@ fn module_entry_find_state_to_witness(state: ModuleEntryFindState) -> Witness<Mo
 }
 
 
-fn module_path_segment_eq(a: ModulePathSegment, b: ModulePathSegment) -> Bool {
-  a.name == b.name
-}
-
-
-// 🟢 predicate dissolution — zip_eq canonical two-list primitive landed in std/algebra.dag.
-fn module_path_segments_eq(
-  a: FreeMonoid<ModulePathSegment>,
-  b: FreeMonoid<ModulePathSegment>
-) -> Bool {
-  zip_eq(a: a, b: b, eq: fn(x, y) { module_path_segment_eq(a: x, b: y) })
-}
-
-
-fn module_path_eq(a: ModulePath, b: ModulePath) -> Bool {
-  module_path_segments_eq(a: a.segments, b: b.segments)
-}
-
-
-// 🟢 predicate dissolution — is_prefix_of canonical two-list primitive landed in std/algebra.dag.
-fn module_segments_is_prefix_of(
-  prefix: FreeMonoid<ModulePathSegment>,
-  path: FreeMonoid<ModulePathSegment>
-) -> Bool {
-  is_prefix_of(prefix: prefix, xs: path, eq: fn(a, b) { module_path_segment_eq(a: a, b: b) })
-}
-
-
-fn module_is_prefix_of(ancestor: ModulePath, descendant: ModulePath) -> Bool {
-  module_segments_is_prefix_of(
-    prefix: ancestor.segments,
-    path: descendant.segments
-  )
+fn module_is_prefix_of(ancestor: QualifiedName, descendant: QualifiedName) -> Bool {
+  qualified_name_is_prefix_of(prefix: ancestor, name: descendant)
 }
 
 
 fn module_ancestor_witness(
-  ancestor: ModulePath,
-  descendant: ModulePath
+  ancestor: QualifiedName,
+  descendant: QualifiedName
 ) -> Witness<AncestorRelation> {
   if module_is_prefix_of(ancestor: ancestor, descendant: descendant) {
     Holds {
@@ -154,7 +118,7 @@ fn module_ancestor_witness(
 // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
 fn module_graph_entry_for_path_fold(
   entries: FreeMonoid<ModuleEntry>,
-  path: ModulePath,
+  path: QualifiedName,
   acc: ModuleEntryFindState
 ) -> ModuleEntryFindState {
   match entries {
@@ -163,7 +127,7 @@ fn module_graph_entry_for_path_fold(
       module_graph_entry_for_path_fold(
         entries: rest,
         path: path,
-        acc: if module_path_eq(a: entry.path, b: path) {
+        acc: if qualified_name_eq(a: entry.path, b: path) {
           match acc {
             EntryNotFound => EntryFoundOnce { found: entry }
             EntryFoundOnce { found: _ } => EntryFoundDuplicate
@@ -179,7 +143,7 @@ fn module_graph_entry_for_path_fold(
 
 fn module_graph_entry_for_path(
   graph: ModuleGraph,
-  path: ModulePath
+  path: QualifiedName
 ) -> Witness<ModuleEntry> {
   module_entry_find_state_to_witness(
     state: module_graph_entry_for_path_fold(

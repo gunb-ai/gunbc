@@ -1,20 +1,36 @@
 // src/v4/std/qualified_name.dag
+<<<<<<< HEAD
 // Scope: QualifiedName carrier for dotted/scope-qualified identifiers.
 // Anchor: INVARIANTS.md P1 "Model names must reflect what they are" (T-QN-1).
 // Owns: QualifiedName, qualified_name_from_node.
 // Consumes: std/algebra.dag (FreeMonoid), std/node.dag (Node, Symbol).
 // Status: T-QN-1 modeled.
+=======
+// Scope: Qualified names as a projection over symbol sequences.
+// Owns: QualifiedName, qualified_name_eq, qualified_name_is_prefix_of.
+// Consumes: std/algebra.dag, std/node.dag.
+// Status: T-28 support carrier; consumed by std/module_graph.dag.
+// Anchor: https://en.wikipedia.org/wiki/Qualified_name
+
+>>>>>>> 9be9cfa631 (WIP: Change 1: Delete ModulePath/ModulePathSegment, introduce QualifiedName a)
 
 module v4.std.qualified_name
 
 
+<<<<<<< HEAD
 import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
+=======
+import v4.std.algebra { FreeMonoid, is_prefix_of, zip_eq }
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+>>>>>>> 9be9cfa631 (WIP: Change 1: Delete ModulePath/ModulePathSegment, introduce QualifiedName a)
 
 
 type QualifiedName = FreeMonoid<Symbol>
 
 
+<<<<<<< HEAD
 fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
   Cons { head: sym, tail: Empty }
 }
@@ -26,4 +42,13 @@ fn qualified_name_from_node(n: Node) -> QualifiedName? {
       Some { value: qualified_name_singleton(sym: sym) }
     _ => None
   }
+=======
+fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
+}
+
+
+fn qualified_name_is_prefix_of(prefix: QualifiedName, name: QualifiedName) -> Bool {
+  is_prefix_of(prefix: prefix, xs: name, eq: fn(a, b) { a == b })
+>>>>>>> 9be9cfa631 (WIP: Change 1: Delete ModulePath/ModulePathSegment, introduce QualifiedName a)
 }
