@@ -1,7 +1,7 @@
 // src/v4/test/claim/module_graph/entry_lookup.dag
 // Scope: TestClaim corpus for module_graph_entry_for_path lookup semantics.
 // Owns: claim rows for unique-entry success, missing-path rejection, duplicate-path rejection.
-// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.witness v4.std.verification.
+// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
