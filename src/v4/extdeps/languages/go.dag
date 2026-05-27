@@ -975,10 +975,26 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(
-        name: go_witness_integer_ordered_ring,
-        target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
-      ),
+      match facts {
+        GoSignedIntegerPrimitiveFacts {
+          surface_spelling: _,
+          width: _,
+          encoding: _,
+          std_projection
+        } => go_named_edge(
+          name: go_witness_signed_integer_ordered_ring,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+        GoUnsignedIntegerPrimitiveFacts {
+          surface_spelling: _,
+          width: _,
+          encoding: _,
+          std_projection
+        } => go_named_edge(
+          name: go_witness_unsigned_integer_semiring,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      },
       go_named_edge(
         name: go_facts_field_std_projection,
         target: match facts {
@@ -1020,26 +1036,6 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
   }
 }
 
-fn go_complex_algebra_witness_node(facts: GoComplexPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      go_named_edge(
-        name: go_witness_complex_approximate_field,
-        target: go_inhabitant_atom(id: go_witness_complex_approximate_field)
-      ),
-      go_named_edge(
-        name: go_facts_field_component_ieee754_binary,
-        target: go_inhabitant_atom(id: facts.component_ieee754_binary)
-      ),
-      go_named_edge(
-        name: go_facts_field_std_projection,
-        target: go_inhabitant_atom(id: facts.std_projection)
-      )
-    ]
-  }
-}
-
 fn go_bool_algebra_witness_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1056,12 +1052,73 @@ fn go_bool_algebra_witness_node() -> Node {
   }
 }
 
+fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_string_free_monoid,
+        target: go_inhabitant_atom(id: go_witness_string_free_monoid)
+      ),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
 fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = go_integer_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
-    inhabitant: inhabitant,
-    witness: go_integer_algebra_witness_node(facts: facts)
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => AlgebraInhabitanceDecl {
+      algebra: ordered_ring_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          go_named_edge(
+            name: go_witness_signed_integer_ordered_ring,
+            target: go_inhabitant_atom(id: go_witness_signed_integer_ordered_ring)
+          ),
+          go_named_edge(
+            name: go_facts_field_std_projection,
+            target: go_inhabitant_atom(id: std_projection)
+          )
+        ]
+      }
+    }
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => AlgebraInhabitanceDecl {
+      algebra: semiring_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          go_named_edge(
+            name: go_witness_unsigned_integer_semiring,
+            target: go_inhabitant_atom(id: go_witness_unsigned_integer_semiring)
+          ),
+          go_named_edge(
+            name: go_facts_field_std_projection,
+            target: go_inhabitant_atom(id: std_projection)
+          )
+        ]
+      }
+    }
   }
 }
 
@@ -1071,15 +1128,6 @@ fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabita
     algebra: approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_float_algebra_witness_node(facts: facts)
-  }
-}
-
-fn go_complex_algebra_inhabitance(facts: GoComplexPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = go_complex_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: approximate_field_node(inhabitant: inhabitant),
-    inhabitant: inhabitant,
-    witness: go_complex_algebra_witness_node(facts: facts)
   }
 }
 
@@ -1112,14 +1160,32 @@ fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_string_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_node(inhabitant: go_inhabitant_atom(id: go_surface_spelling_uint8)),
+    inhabitant: inhabitant,
+    witness: go_string_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
-    xs: go_complex_facts_catalog,
+    xs: go_string_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: go_complex_algebra_inhabitance(facts: facts))
+      list_snoc_item(xs: acc, item: go_string_algebra_inhabitance(facts: facts))
     }
   )
+}
+
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — Go complex values are
+// declared primitive facts, but `std.algebra` does not yet export a dedicated complex
+// algebra constructor. dissolve-on: a complex-specific algebra surface lands in std/algebra
+// or the Go slice gains an explicit complex carrier that can be grounded without reusing
+// `ApproximateField` as a proxy.
+fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  []
 }
 
 fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
@@ -1132,12 +1198,15 @@ fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   list_append(
     left: list_append(
       left: list_append(
-        left: go_integer_algebra_inhabitance_decls(),
-        right: go_float_algebra_inhabitance_decls()
+        left: list_append(
+          left: go_integer_algebra_inhabitance_decls(),
+          right: go_float_algebra_inhabitance_decls()
+        ),
+        right: go_bool_algebra_inhabitance_decls()
       ),
-      right: go_complex_algebra_inhabitance_decls()
+      right: go_string_algebra_inhabitance_decls()
     ),
-    right: go_bool_algebra_inhabitance_decls()
+    right: go_complex_algebra_inhabitance_decls()
   )
 }
 
