@@ -178,6 +178,8 @@ data wasm_inhabitant_field_atom: Symbol = wasm_inhabitant_field_atom
 data wasm_inhabitant_field_facts: Symbol = wasm_inhabitant_field_facts
 
 data wasm_token_lparen: Symbol = wasm_token_lparen
+data wasm_token_rparen: Symbol = wasm_token_rparen
+data wasm_token_kw_module: Symbol = wasm_token_kw_module
 data wasm_token_kw_func: Symbol = wasm_token_kw_func
 data wasm_token_ident: Symbol = wasm_token_ident
 data wasm_token_param_list: Symbol = wasm_token_param_list
@@ -185,13 +187,40 @@ data wasm_token_result: Symbol = wasm_token_result
 data wasm_token_local_get: Symbol = wasm_token_local_get
 data wasm_token_local_idx_0: Symbol = wasm_token_local_idx_0
 data wasm_token_local_idx_1: Symbol = wasm_token_local_idx_1
+data wasm_token_type_i32: Symbol = wasm_token_type_i32
+data wasm_token_type_i64: Symbol = wasm_token_type_i64
+data wasm_token_type_f32: Symbol = wasm_token_type_f32
+data wasm_token_type_f64: Symbol = wasm_token_type_f64
+data wasm_token_i32_const: Symbol = wasm_token_i32_const
 data wasm_token_i32_add: Symbol = wasm_token_i32_add
+data wasm_token_i32_sub: Symbol = wasm_token_i32_sub
+data wasm_token_i32_mul: Symbol = wasm_token_i32_mul
+data wasm_token_i64_const: Symbol = wasm_token_i64_const
+data wasm_token_i64_add: Symbol = wasm_token_i64_add
+data wasm_token_i64_sub: Symbol = wasm_token_i64_sub
+data wasm_token_i64_mul: Symbol = wasm_token_i64_mul
+data wasm_token_f32_const: Symbol = wasm_token_f32_const
+data wasm_token_f32_add: Symbol = wasm_token_f32_add
+data wasm_token_f32_sub: Symbol = wasm_token_f32_sub
+data wasm_token_f32_mul: Symbol = wasm_token_f32_mul
+data wasm_token_f64_const: Symbol = wasm_token_f64_const
+data wasm_token_f64_add: Symbol = wasm_token_f64_add
+data wasm_token_f64_sub: Symbol = wasm_token_f64_sub
+data wasm_token_f64_mul: Symbol = wasm_token_f64_mul
 
 data wasm_production_mvp1_fn_add: Symbol = wasm_production_mvp1_fn_add
+data wasm_production_module: Symbol = wasm_production_module
+data wasm_production_value_type: Symbol = wasm_production_value_type
+data wasm_production_numeric_const_instr: Symbol = wasm_production_numeric_const_instr
+data wasm_production_numeric_binop_instr: Symbol = wasm_production_numeric_binop_instr
 
 data wasm_surface_fn_item: Symbol = wasm_surface_fn_item
+data wasm_surface_module_item: Symbol = wasm_surface_module_item
 data wasm_surface_type_i32: Symbol = wasm_surface_type_i32
+data wasm_surface_value_type: Symbol = wasm_surface_value_type
 data wasm_surface_bin_add: Symbol = wasm_surface_bin_add
+data wasm_surface_numeric_const_instr: Symbol = wasm_surface_numeric_const_instr
+data wasm_surface_numeric_binop_instr: Symbol = wasm_surface_numeric_binop_instr
 data wasm_binding_fn_add: Symbol = wasm_binding_fn_add
 
 data wasm_relation_rule_mvp1_fn_add: Symbol = wasm_relation_rule_mvp1_fn_add
@@ -523,6 +552,14 @@ fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
+fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn wasm_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
 fn wasm_grammar_sequence_fold_step(acc: GrammarExpr, token: WasmConcreteSyntaxToken) -> GrammarExpr {
   let token_class = wasm_concrete_token_class(token: token)
   if token_class == wasm_token_lparen {
@@ -691,9 +728,125 @@ fn wasm_grammar_production_mvp1_fn_add() -> GrammarProduction {
   }
 }
 
+fn wasm_grammar_value_type_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: wasm_token_type_i32),
+    right: wasm_grammar_choice(
+      left: wasm_grammar_terminal(token_class: wasm_token_type_i64),
+      right: wasm_grammar_choice(
+        left: wasm_grammar_terminal(token_class: wasm_token_type_f32),
+        right: wasm_grammar_terminal(token_class: wasm_token_type_f64)
+      )
+    )
+  )
+}
+
+fn wasm_grammar_numeric_const_instr_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: wasm_token_i32_const),
+    right: wasm_grammar_choice(
+      left: wasm_grammar_terminal(token_class: wasm_token_i64_const),
+      right: wasm_grammar_choice(
+        left: wasm_grammar_terminal(token_class: wasm_token_f32_const),
+        right: wasm_grammar_terminal(token_class: wasm_token_f64_const)
+      )
+    )
+  )
+}
+
+fn wasm_grammar_numeric_binop_instr_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: wasm_token_i32_add),
+    right: wasm_grammar_choice(
+      left: wasm_grammar_terminal(token_class: wasm_token_i32_sub),
+      right: wasm_grammar_choice(
+        left: wasm_grammar_terminal(token_class: wasm_token_i32_mul),
+        right: wasm_grammar_choice(
+          left: wasm_grammar_terminal(token_class: wasm_token_i64_add),
+          right: wasm_grammar_choice(
+            left: wasm_grammar_terminal(token_class: wasm_token_i64_sub),
+            right: wasm_grammar_choice(
+              left: wasm_grammar_terminal(token_class: wasm_token_i64_mul),
+              right: wasm_grammar_choice(
+                left: wasm_grammar_terminal(token_class: wasm_token_f32_add),
+                right: wasm_grammar_choice(
+                  left: wasm_grammar_terminal(token_class: wasm_token_f32_sub),
+                  right: wasm_grammar_choice(
+                    left: wasm_grammar_terminal(token_class: wasm_token_f32_mul),
+                    right: wasm_grammar_choice(
+                      left: wasm_grammar_terminal(token_class: wasm_token_f64_add),
+                      right: wasm_grammar_choice(
+                        left: wasm_grammar_terminal(token_class: wasm_token_f64_sub),
+                        right: wasm_grammar_terminal(token_class: wasm_token_f64_mul)
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn wasm_grammar_module_expr() -> GrammarExpr {
+  wasm_grammar_sequence(
+    left: wasm_grammar_terminal(token_class: wasm_token_lparen),
+    right: wasm_grammar_sequence(
+      left: wasm_grammar_terminal(token_class: wasm_token_kw_module),
+      right: wasm_grammar_sequence(
+        left: Nonterminal { production: wasm_production_mvp1_fn_add },
+        right: wasm_grammar_terminal(token_class: wasm_token_rparen)
+      )
+    )
+  )
+}
+
+fn wasm_grammar_production_module() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_module,
+    expression: wasm_grammar_module_expr(),
+    emitted: wasm_grammar_atom(id: wasm_surface_module_item)
+  }
+}
+
+fn wasm_grammar_production_value_type() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_value_type,
+    expression: wasm_grammar_value_type_expr(),
+    emitted: wasm_grammar_atom(id: wasm_surface_value_type)
+  }
+}
+
+fn wasm_grammar_production_numeric_const_instr() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_numeric_const_instr,
+    expression: wasm_grammar_numeric_const_instr_expr(),
+    emitted: wasm_grammar_atom(id: wasm_surface_numeric_const_instr)
+  }
+}
+
+fn wasm_grammar_production_numeric_binop_instr() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_numeric_binop_instr,
+    expression: wasm_grammar_numeric_binop_instr_expr(),
+    emitted: wasm_grammar_atom(id: wasm_surface_numeric_binop_instr)
+  }
+}
+
 fn wasm_wave1_grammar_root() -> GrammarRoot {
   let start = wasm_grammar_production_mvp1_fn_add()
-  GrammarRoot { start: wasm_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  let module = wasm_grammar_production_module()
+  let value_type = wasm_grammar_production_value_type()
+  let numeric_const = wasm_grammar_production_numeric_const_instr()
+  let numeric_binop = wasm_grammar_production_numeric_binop_instr()
+  GrammarRoot {
+    start: wasm_production_mvp1_fn_add,
+    productions: [start, module, value_type, numeric_const, numeric_binop],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
 }
 
 fn wasm_wave1_grammar() -> Grammar {
