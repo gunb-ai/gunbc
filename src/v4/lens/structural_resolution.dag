@@ -52,6 +52,7 @@ type StructuralResolutionStatus
   | UnresolvedInferWitness
   | OutOfScopeDependencyKind
 
+// 🟡 coproduct dissolution — feature:structural-resolution-kind-policy-axis — consumer:structural_resolution_status_for_view — dissolve-on-arrival: substrate variant-tag partition primitive replaces lens-local policy axis.
 type StructuralResolutionKindPolicy
   = ReadsBindingFacts
   | OutOfScopeForStructuralResolution
