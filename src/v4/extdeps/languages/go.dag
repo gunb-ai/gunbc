@@ -55,7 +55,7 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, fold_non_empty, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, FreeMonoid, fold_list, fold_non_empty, list_append, list_snoc_item }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -244,7 +244,7 @@ data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data go_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data go_mvp1_source_text: String = "func add(x int, y int) int { return x + y }"
 
-fn go_mvp1_concrete_tokens() -> List<GoConcreteSyntaxToken> {
+fn go_mvp1_concrete_tokens() -> FreeMonoid<GoConcreteSyntaxToken> {
   [
     GoFixedToken { token_class: go_token_kw_func },
     GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
