@@ -390,22 +390,7 @@ fn field_type_node(inhabitant: Node) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge { label: Named { name: field_field_commutative_ring }, target: commutative_ring_type_node(inhabitant: inhabitant) },
-      Edge {
-        label: Named { name: field_field_reciprocal },
-        target: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge {
-              label: Named { name: field_reciprocal_operation },
-              target: field_reciprocal_operation_node()
-            },
-            Edge {
-              label: Named { name: field_field_reciprocal },
-              target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant)
-            },
-          ]
-        }
-      },
+      Edge { label: Named { name: field_field_reciprocal }, target: algebra_unary_fn_node(domain: inhabitant, codomain: inhabitant) },
     ]
   }
 }
