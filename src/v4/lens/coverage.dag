@@ -752,7 +752,10 @@ fn expected_coproduct_exhaustiveness_testgen_keys() -> List<TestgenCoverageKey> 
 }
 
 
-// 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolves when expected_testgen_coverage_keys is generated from the full scheduled-generator manifest.
+// 🟡 gated — feature:testgen-lens-applicability-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: LensApplicability enters expected_testgen_coverage_keys via scheduled-generator projection.
+// 🟡 gated — feature:testgen-bidirectional-roundtrip-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: BidirectionalRoundtrip enters expected_testgen_coverage_keys via scheduled-generator projection.
+// 🟡 gated — feature:testgen-refinement-preservation-schedule — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: RefinementPreservation enters expected_testgen_coverage_keys via scheduled-generator projection.
+// 🟡 gated — feature:testgen-concept-reflection — bind task: src/v4/TASKS.md#t-19-lenstestgendag — dissolve-on-arrival: replace hand-assembled expected slices with full manifest projection.
 fn expected_testgen_coverage_keys() -> List<TestgenCoverageKey> {
   fold_list_right(
     xs: expected_type_construction_testgen_keys(),
