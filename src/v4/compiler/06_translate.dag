@@ -477,6 +477,62 @@ fn grammar_inverse_source_validated(
     }
   )
 }
+fn grammar_relation_row_to_source_bounded(
+  row: Node,
+  target: TargetModel,
+  emitted: Node,
+  remaining: Int
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: grammar_relation_row_tokens_root(row: row),
+      f: fn(tokens_root) {
+        bind_outcome(
+          o: conj_positional_targets(parent: tokens_root),
+          f: fn(tokens) {
+            token_sequence_to_source_bounded(
+              tokens: tokens,
+              target: target,
+              remaining: remaining
+            )
+          }
+        )
+      }
+    )
+  }
+}
+fn target_serialize_relation_row_from_model_bounded(
+  target: TargetModel,
+  emitted: Node,
+  remaining: Int
+) -> Outcome<TargetSource> {
+  if remaining <= 0 {
+    outcome_rejected(
+      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
+    )
+  } else {
+    bind_outcome(
+      o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+      f: fn(rules) {
+        bind_outcome(
+          o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
+          f: fn(row) {
+            grammar_relation_row_to_source_bounded(
+              row: row,
+              target: target,
+              emitted: emitted,
+              remaining: remaining
+            )
+          }
+        )
+      }
+    )
+  }
+}
 fn translate_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
     reason: translate_lex_rule_literal_not_found,
@@ -613,7 +669,7 @@ fn token_item_to_source_bounded(
         TokenSequenceConcreteToken =>
           token_spelling_from_model(target: target, token: item)
         TokenSequenceNonterminal =>
-          target_serialize_source_from_model_bounded(
+          target_serialize_relation_row_from_model_bounded(
             target: target,
             emitted: item,
             remaining: remaining - 1
@@ -681,30 +737,10 @@ fn target_serialize_source_from_model_bounded(
     bind_outcome(
       o: grammar_inverse_source_validated(target: target, emitted: emitted),
       f: fn(_) {
-        bind_outcome(
-          o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
-          f: fn(rules) {
-            bind_outcome(
-              o: grammar_relation_row_for_emitted(rules: rules, emitted: emitted),
-              f: fn(row) {
-                bind_outcome(
-                  o: grammar_relation_row_tokens_root(row: row),
-                  f: fn(tokens_root) {
-                    bind_outcome(
-                      o: conj_positional_targets(parent: tokens_root),
-                      f: fn(tokens) {
-                        token_sequence_to_source_bounded(
-                          tokens: tokens,
-                          target: target,
-                          remaining: remaining
-                        )
-                      }
-                    )
-                  }
-                )
-              }
-            )
-          }
+        target_serialize_relation_row_from_model_bounded(
+          target: target,
+          emitted: emitted,
+          remaining: remaining
         )
       }
     )

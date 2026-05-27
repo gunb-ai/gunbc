@@ -9,7 +9,7 @@
 module v4.extdeps.languages.dag
 
 
-import v4.std.collection { Set }
+import v4.std.collection { List, Set }
 import v4.compiler.parse {
   Grammar,
   GrammarExpr,
@@ -117,6 +117,9 @@ data dag_token_lt: Symbol = dag_token_lt
 data dag_token_gt: Symbol = dag_token_gt
 data dag_relation_token_fixed: Symbol = dag_relation_token_fixed
 data dag_relation_token_bound: Symbol = dag_relation_token_bound
+data dag_surface_data_decl_name: Symbol = dag_surface_data_decl_name
+data dag_surface_data_decl_type: Symbol = dag_surface_data_decl_type
+data dag_surface_data_decl_expr: Symbol = dag_surface_data_decl_expr
 
 data dag_production_module: Symbol = dag_production_module
 data dag_production_module_header: Symbol = dag_production_module_header
@@ -345,6 +348,99 @@ fn dag_grammar_atom(id: Symbol) -> Node {
       connective: Atom { identity: id }
     },
     children: []
+  }
+}
+
+
+fn dag_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target
+  }
+}
+
+
+fn dag_positional_edge(target: Node) -> Edge {
+  Edge {
+    label: Positional,
+    target: target
+  }
+}
+
+
+fn emit_fixed_token(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: dag_grammar_atom(id: dag_relation_token_fixed)
+      ),
+      dag_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: dag_grammar_atom(id: token_class)
+      )
+    ]
+  }
+}
+
+
+fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: dag_grammar_atom(id: dag_relation_token_bound)
+      ),
+      dag_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: dag_grammar_atom(id: token_class)
+      ),
+      dag_named_edge(
+        name: concrete_syntax_token_field_binding,
+        target: dag_grammar_atom(id: binding)
+      )
+    ]
+  }
+}
+
+
+fn emit_relation_token_edges(tokens: List<Node>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: dag_positional_edge(target: token))
+    }
+  )
+}
+
+
+fn emit_grammar_relation_row(
+  production: GrammarProduction,
+  emitted: Node,
+  tokens: List<Node>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: grammar_relation_field_production,
+        target: dag_grammar_atom(id: production.name)
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_emitted,
+        target: emitted
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: emit_relation_token_edges(tokens: tokens)
+        }
+      )
+    ]
   }
 }
 
@@ -1224,7 +1320,7 @@ fn emit_row_module_header(qualified_name: Node) -> Node {
       expression: dag_grammar_module_header_expr(),
       emitted: dag_surface_module_header
     ),
-    emitted: dag_surface_module_header,
+    emitted: dag_grammar_atom(id: dag_surface_module_header),
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_module),
       qualified_name
@@ -1247,12 +1343,41 @@ fn emit_row_import_decl(
       expression: dag_grammar_import_decl_expr(),
       emitted: dag_surface_import_decl
     ),
-    emitted: dag_surface_import_decl,
+    emitted: dag_grammar_atom(id: dag_surface_import_decl),
     tokens: match import_block {
       Some { value: block } => list_append(left: prefix, right: [block])
       None => prefix
     }
   )
+}
+
+
+fn emit_data_decl_emitted_node(
+  name_binding: Symbol,
+  type_expr: Node,
+  expr: Node
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_data_decl,
+        target: dag_grammar_atom(id: dag_surface_data_decl)
+      ),
+      dag_named_edge(
+        name: dag_surface_data_decl_name,
+        target: dag_grammar_atom(id: name_binding)
+      ),
+      dag_named_edge(
+        name: dag_surface_data_decl_type,
+        target: type_expr
+      ),
+      dag_named_edge(
+        name: dag_surface_data_decl_expr,
+        target: expr
+      )
+    ]
+  }
 }
 
 
@@ -1267,7 +1392,11 @@ fn emit_row_data_decl(
       expression: dag_grammar_data_decl_expr(),
       emitted: dag_surface_data_decl
     ),
-    emitted: dag_surface_data_decl,
+    emitted: emit_data_decl_emitted_node(
+      name_binding: name_binding,
+      type_expr: type_expr,
+      expr: expr
+    ),
     tokens: [
       emit_fixed_token(token_class: dag_token_kw_data),
       emit_bound_token(token_class: dag_token_ident, binding: name_binding),
