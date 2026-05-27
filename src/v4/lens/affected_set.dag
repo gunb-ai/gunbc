@@ -419,7 +419,7 @@ fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyV
           target: DependencyDependent
         })
     }
-  } else if node_in_list(nodes: acc.frontier, needle: dependency.dependent) && (node_in_list(nodes: acc.frontier, needle: dependency.source) == false) {
+  } else if dependency_in_lens_frontier(dependency: dependency) && node_in_list(nodes: acc.frontier, needle: dependency.dependent) && (node_in_list(nodes: acc.frontier, needle: dependency.source) == false) {
     AffectedSetClosureAcc {
       frontier: list_snoc_item(xs: acc.frontier, item: dependency.source),
       dependencies: list_snoc_item(xs: acc.dependencies, item: FrontierDependency {
@@ -1170,16 +1170,12 @@ fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> FrontierRecei
 }
 
 
-fn canonical_region_dependencies(walk: AncestorWalk) -> FrontierReceipt {
+fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceipt {
   match canonical_ancestor_dependencies(frames: walk.frames) {
-    FrontierProduced { dependencies: ancestor_dependencies } =>
+    FrontierProduced { dependencies: _ } =>
+      let closure = affected_set_closure(dependencies: dependency_lens(root: dag), edit_locus: walk.current)
       FrontierProduced {
-        dependencies: list_append(
-          left: ancestor_dependencies,
-          right: frontier_dependencies_from_dependency_views(
-            dependencies: dependency_lens(root: walk.current)
-          )
-        )
+        dependencies: closure.dependencies
       }
     FrontierUnknown { reason: r } =>
       FrontierUnknown { reason: r }
@@ -1192,7 +1188,7 @@ fn canonical_region_dependencies(walk: AncestorWalk) -> FrontierReceipt {
 fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
   match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
     Accepted { value: walk, diagnostics: _ } =>
-      canonical_region_dependencies(walk: walk)
+      canonical_region_dependencies(dag: dag, walk: walk)
     Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: affected_set_reason_frontier_path_unresolved }
   }
