@@ -1,9 +1,12 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
-//       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
+//       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands;
+//       compile_with_store filesystem-free ingest over agent-supplied module bundles.
 // Owns: CoreNode, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
 //       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
+//       AgentStoreLoadState, AgentModuleSourceLookup, compile_with_store,
+//       agent_store_to_module_graph, agent_module_source_to_entry,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
@@ -12,7 +15,7 @@
 //           compiler/03_resolve.dag, compiler/04_infer.dag, compiler/05_emit.dag,
 //           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
 //           lens/fact_density.dag, std/algebra.dag, std/collection.dag, std/diagnostic.dag,
-//           std/node.dag, std/text.dag, std/witness.dag.
+//           std/agent.dag, std/module_graph.dag, std/node.dag, std/text.dag, std/witness.dag.
 // Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
@@ -22,20 +25,29 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.module_resolve {
+  ModuleAdmission,
+  ModuleImport,
+  ModuleImportVisible,
+  ModuleSubject,
+  resolve_module_with_admission
+}
 import v4.compiler.normalize { normalize }
 import v4.compiler.parse { parse }
 import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
-import v4.extdeps.languages.dag { dag_language_model_wave1 }
+import v4.extdeps.languages.dag { DagLanguageModel, dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.algebra { list_append }
+import v4.std.agent { AgentModuleSource, AgentStore }
+import v4.std.algebra { Cons, Empty, FreeMonoid, list_append }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
   Locus,
+  NonEmptyDiagnostics,
   Outcome,
   port_locus,
   Rejected,
@@ -45,6 +57,14 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   outcome_accepted,
   outcome_rejected
+}
+import v4.std.module_graph {
+  ModuleEntry,
+  ModuleGraph,
+  ModulePath,
+  module_graph_entry_for_path,
+  module_graph_from_entries,
+  module_path_eq
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
@@ -96,6 +116,7 @@ data compile_ingest_staging_source_file: Symbol = compile_ingest_staging_source_
 data compile_pipeline_not_realized: Symbol = compile_pipeline_not_realized
 data compile_lens_gate_rejected: Symbol = compile_lens_gate_rejected
 data compile_eval_not_realized: Symbol = compile_eval_not_realized
+data compile_agent_store_entry_missing: Symbol = compile_agent_store_entry_missing
 
 
 fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
@@ -119,6 +140,15 @@ fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
 fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: compile_eval_not_realized,
+    at: at,
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn compile_agent_store_entry_missing_diagnostic(at: Locus) -> Diagnostic {
+  Diagnostic {
+    reason: compile_agent_store_entry_missing,
     at: at,
     correction: Unavailable { reason: ExternalContractUnknown }
   }
@@ -371,6 +401,255 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
               )
             }
           )
+        }
+      )
+    }
+  )
+}
+
+
+type AgentStoreLoadState
+  = AgentStoreLoadAccepted { entries: List<ModuleEntry> }
+  | AgentStoreLoadRejected { diagnostics: NonEmptyDiagnostics }
+
+
+type AgentModuleSourceLookup
+  = AgentModuleSourceMissing
+  | AgentModuleSourceFound { source: AgentModuleSource }
+
+
+fn agent_store_load_state_to_outcome(state: AgentStoreLoadState) -> Outcome<List<ModuleEntry>> {
+  match state {
+    AgentStoreLoadAccepted { entries } => outcome_accepted(value: entries)
+    AgentStoreLoadRejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+
+fn agent_module_source_to_entry(
+  module_source: AgentModuleSource,
+  lm: DagLanguageModel
+) -> Outcome<ModuleEntry> {
+  bind_outcome(
+    o: tokenize(
+      text: module_source.source,
+      file: module_source.file,
+      rules: lm.lex
+    ),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse(tokens: token_stream, grammar: lm.grammar),
+        f: fn(parse_tree) {
+          bind_outcome(
+            o: normalize(parse_tree: parse_tree),
+            f: fn(normalized) {
+              outcome_accepted(
+                value: ModuleEntry {
+                  path: module_source.path,
+                  root: normalized
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+
+fn agent_module_source_lookup_to_outcome(
+  lookup: AgentModuleSourceLookup
+) -> Outcome<AgentModuleSource> {
+  match lookup {
+    AgentModuleSourceMissing =>
+      outcome_rejected(
+        d: compile_agent_store_entry_missing_diagnostic(
+          at: port_locus(port: compile_agent_store_entry_missing)
+        )
+      )
+    AgentModuleSourceFound { source } => outcome_accepted(value: source)
+  }
+}
+
+
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-agentmodulesource — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons lookup over FreeMonoid<AgentModuleSource>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+fn agent_store_source_for_path_fold(
+  modules: FreeMonoid<AgentModuleSource>,
+  path: ModulePath,
+  lookup: AgentModuleSourceLookup
+) -> AgentModuleSourceLookup {
+  match modules {
+    Empty => lookup
+    Cons { head: module_source, tail: rest } =>
+      match lookup {
+        AgentModuleSourceFound { source: found } =>
+          AgentModuleSourceFound { source: found }
+        AgentModuleSourceMissing =>
+          agent_store_source_for_path_fold(
+            modules: rest,
+            path: path,
+            lookup: if module_path_eq(a: module_source.path, b: path) {
+              AgentModuleSourceFound { source: module_source }
+            } else {
+              AgentModuleSourceMissing
+            }
+          )
+      }
+  }
+}
+
+
+fn agent_store_source_for_path(
+  store: AgentStore,
+  path: ModulePath
+) -> Outcome<AgentModuleSource> {
+  agent_module_source_lookup_to_outcome(
+    lookup: agent_store_source_for_path_fold(
+      modules: store.modules,
+      path: path,
+      lookup: AgentModuleSourceMissing
+    )
+  )
+}
+
+
+fn module_imports_from_paths(paths: FreeMonoid<ModulePath>) -> FreeMonoid<ModuleImport> {
+  match paths {
+    Empty => Empty
+    Cons { head: path, tail: rest } =>
+      Cons {
+        head: ModuleImport {
+          target: path,
+          visibility: ModuleImportVisible
+        },
+        tail: module_imports_from_paths(paths: rest)
+      }
+  }
+}
+
+
+fn agent_store_load_step(
+  lm: DagLanguageModel,
+  state: AgentStoreLoadState,
+  module_source: AgentModuleSource
+) -> AgentStoreLoadState {
+  match state {
+    AgentStoreLoadRejected { diagnostics: r } =>
+      AgentStoreLoadRejected { diagnostics: r }
+    AgentStoreLoadAccepted { entries } =>
+      match agent_module_source_to_entry(module_source: module_source, lm: lm) {
+        Accepted { value: entry, diagnostics: _ } =>
+          AgentStoreLoadAccepted { entries: list_push(entries, entry) }
+        Rejected { diagnostics: r } =>
+          AgentStoreLoadRejected { diagnostics: r }
+      }
+  }
+}
+
+
+fn agent_store_entries(
+  store: AgentStore,
+  lm: DagLanguageModel
+) -> Outcome<List<ModuleEntry>> {
+  agent_store_load_state_to_outcome(
+    state: agent_store_entries_fold(
+      modules: store.modules,
+      lm: lm,
+      state: AgentStoreLoadAccepted { entries: [] }
+    )
+  )
+}
+
+
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-agentmodulesource — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<AgentModuleSource>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+fn agent_store_entries_fold(
+  modules: FreeMonoid<AgentModuleSource>,
+  lm: DagLanguageModel,
+  state: AgentStoreLoadState
+) -> AgentStoreLoadState {
+  match modules {
+    Empty => state
+    Cons { head: module_source, tail: rest } =>
+      agent_store_entries_fold(
+        modules: rest,
+        lm: lm,
+        state: agent_store_load_step(
+          lm: lm,
+          state: state,
+          module_source: module_source
+        )
+      )
+  }
+}
+
+
+fn agent_store_to_module_graph(
+  store: AgentStore,
+  lm: DagLanguageModel
+) -> Outcome<ModuleGraph> {
+  bind_outcome(
+    o: agent_store_entries(store: store, lm: lm),
+    f: fn(entries) {
+      match module_graph_from_entries(entries: entries) {
+        Holds { value: graph } => outcome_accepted(value: graph)
+        Violates { diagnostic: d } => outcome_rejected(d: d)
+      }
+    }
+  )
+}
+
+
+fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetSource> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: agent_store_to_module_graph(store: store, lm: lm),
+    f: fn(graph) {
+      bind_outcome(
+        o: agent_store_source_for_path(store: store, path: store.entry),
+        f: fn(entry_source) {
+          match module_graph_entry_for_path(graph: graph, path: store.entry) {
+            Holds { value: entry } =>
+              bind_outcome(
+                o: resolve_module_with_admission(
+                  lm: lm,
+                  graph: graph,
+                  admission: ModuleAdmission {
+                    subject: ModuleSubject {
+                      path: store.entry,
+                      tree: entry.root
+                    },
+                    imports: module_imports_from_paths(paths: entry_source.imports)
+                  }
+                ),
+                f: fn(resolved) {
+                  bind_outcome(
+                    o: compile(
+                      source: resolved,
+                      mode: TranslateTo { target: target }
+                    ),
+                    f: fn(compile_out) {
+                      match compile_out {
+                        TranslateResult { source: target_source } =>
+                          outcome_accepted(target_source)
+                        EvalResult { value: _ } =>
+                          outcome_rejected(
+                            compile_eval_not_realized_diagnostic(
+                              at: port_locus(port: compile_stage_locus_port)
+                            )
+                          )
+                      }
+                    }
+                  )
+                }
+              )
+            Violates { diagnostic: _ } =>
+              outcome_rejected(
+                d: compile_agent_store_entry_missing_diagnostic(
+                  at: port_locus(port: compile_agent_store_entry_missing)
+                )
+              )
+          }
         }
       )
     }
