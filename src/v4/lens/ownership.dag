@@ -11,27 +11,25 @@ import v4.compiler.infer { InferredTree }
 import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_view,
   classified_dependency_view_eq
 }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v4.std.logic { Bool }
-import v4.std.witness { Holds, Witness }
+import v4.std.node { Symbol }
+import v4.std.witness { Holds, Violates, Witness }
+
+data ownership_reason_unresolved_projection: Symbol = ownership_reason_unresolved_projection
+data ownership_projection_virtual_file: Symbol = ownership_projection_virtual_file
 
 // 🟢 projection-only classification. `RequiresAccessWitness` is the
 // fail-closed slot for resource/effect edges that need access evidence.
@@ -46,31 +44,28 @@ type OwnershipFact {
   dependencies: List<ClassifiedDependencyView<OwnershipMode>>
 }
 
-fn ownership_mode_for_dependency(view: DependencyView) -> OwnershipMode {
-  match view.kind {
-    Contains => OwnedContainment
-    BindsTo => BorrowedDependency
-    DataDependsOn => SharedRead
-    EffectDependsOn => RequiresAccessWitness
-    ResourceDependsOn => RequiresAccessWitness
-    BarrierBefore => UnknownOwnership
-    TypeDependsOn => UnknownOwnership
-    ModuleDependsOn => UnknownOwnership
-    PlacementDependsOn => UnknownOwnership
-    ModelDependsOn => UnknownOwnership
-    ProjectionDependsOn => UnknownOwnership
-    GeneratedFrom => UnknownOwnership
-    VerifiedBy => UnknownOwnership
-    PromotedBy => UnknownOwnership
-    BootstrapDependsOn => UnknownOwnership
+fn ownership_dependency_kind_classifier() -> DependencyKindClassifier<OwnershipMode> {
+  DependencyKindClassifier {
+    contains: OwnedContainment,
+    binds_to: BorrowedDependency,
+    type_depends_on: UnknownOwnership,
+    data_depends_on: SharedRead,
+    effect_depends_on: RequiresAccessWitness,
+    resource_depends_on: RequiresAccessWitness,
+    module_depends_on: UnknownOwnership,
+    barrier_before: UnknownOwnership,
+    placement_depends_on: UnknownOwnership,
+    model_depends_on: UnknownOwnership,
+    projection_depends_on: UnknownOwnership,
+    generated_from: UnknownOwnership,
+    verified_by: UnknownOwnership,
+    promoted_by: UnknownOwnership,
+    bootstrap_depends_on: UnknownOwnership
   }
 }
 
 fn ownership_classify(view: DependencyView) -> ClassifiedDependencyView<OwnershipMode> {
-  ClassifiedDependencyView {
-    dependency: view,
-    classification: ownership_mode_for_dependency(view: view)
-  }
+  classify_dependency_view(classifier: ownership_dependency_kind_classifier(), view: view)
 }
 
 fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> OwnershipFact {
@@ -81,9 +76,37 @@ fn ownership_fact(tree: InferredTree, dependencies: List<DependencyView>) -> Own
   }
 }
 
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:T-13-ownership-mode-unresolved — dissolve-on-arrival: substrate projects OwnershipMode resolved/unresolved from coproduct; forbidden: parallel ad-hoc RequiresAccessWitness/UnknownOwnership Bool predicates outside ownership_witness.
+fn ownership_mode_unresolved(mode: OwnershipMode) -> Bool {
+  match mode {
+    RequiresAccessWitness => true
+    UnknownOwnership => true
+    OwnedContainment => false
+    SharedRead => false
+    BorrowedDependency => false
+  }
+}
+
+fn ownership_fact_unresolved(fact: OwnershipFact) -> Bool {
+  fold(fact.dependencies, init: false, f: fn(acc, dep) {
+    acc || ownership_mode_unresolved(mode: dep.classification)
+  })
+}
+
+fn ownership_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ownership_reason_unresolved_projection,
+    at: Textual { file: ownership_projection_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
 fn ownership_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<OwnershipFact> {
-  Holds {
-    value: ownership_fact(tree: tree, dependencies: dependencies)
+  let fact = ownership_fact(tree: tree, dependencies: dependencies)
+  if ownership_fact_unresolved(fact: fact) {
+    Violates { diagnostic: ownership_witness_diagnostic() }
+  } else {
+    Holds { value: fact }
   }
 }
 
