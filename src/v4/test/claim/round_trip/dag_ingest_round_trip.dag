@@ -35,8 +35,8 @@ import v4.std.verification {
 
 
 data dag_ingest_round_trip_claim_name: Symbol = claim_dag_ingest_round_trip_fidelity
-data dag_ingest_round_trip_testclaim_type: Symbol = TestClaim
-data dag_ingest_round_trip_fixture_module: Symbol = v4_test_claim_round_trip_dag_ingest_round_trip
+data dag_ingest_round_trip_testclaim_type: Symbol = dag_ingest_round_trip_testclaim_type
+data dag_ingest_round_trip_fixture_module: Symbol = dag_ingest_round_trip_fixture_module
 
 
 fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
