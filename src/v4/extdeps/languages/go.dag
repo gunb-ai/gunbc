@@ -235,6 +235,7 @@ data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
+data go_inhabitant_field_string: Symbol = go_inhabitant_field_string
 data go_witness_signed_integer_ordered_ring: Symbol = go_witness_signed_integer_ordered_ring
 data go_witness_unsigned_integer_semiring: Symbol = go_witness_unsigned_integer_semiring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
