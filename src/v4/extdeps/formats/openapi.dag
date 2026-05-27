@@ -11,8 +11,9 @@ module v4.extdeps.formats.openapi
 
 
 import v4.extdeps.coordination { ExchangePattern, RequestReply }
-import v4.extdeps.formats.json { JsonValue }
+import v4.extdeps.formats.json { JsonDocument, JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
+import v4.extdeps.formats.yaml { YamlDocument }
 import v4.std.collection { Optional }
 import v4.std.network {
   DELETE,
@@ -371,7 +372,14 @@ type OpenApiOpenapiField3_1
   = OpenApiOpenapi31Patch { patch: Nat }
 
 
+// 🟡 coproduct dissolution — feature:openapi-json-yaml-parse-emit-selector — consumer:T-10/T-11 OpenAPI parse/emit boundary — dissolve-on-arrival: parse/emit selects JsonDocument or YamlDocument directly from source media type / target artifact kind, eliminating this document-local selector; forbidden: adding a third OpenAPI concrete grammar authority.
+type OpenApiConcreteSyntaxAuthority
+  = OpenApiJsonSyntax { json_document: JsonDocument }
+  | OpenApiYamlSyntax { yaml_document: YamlDocument }
+
+
 type OpenApiDocument {
+  concrete_syntax: OpenApiConcreteSyntaxAuthority,
   openapi: OpenApiOpenapiField3_1,
   json_schema_dialect: Optional<String>,
   info: OpenApiInfo,

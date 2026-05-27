@@ -22,7 +22,7 @@
 module v4.compiler.parse
 
 
-import v4.compiler.tokenize { Token, TokenStream }
+import v4.compiler.tokenize { LexRules, Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -67,6 +67,12 @@ type ValidatedGrammarRoot {
 type Grammar
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
+
+
+type GrammarSchema {
+  lex: LexRules
+  grammar: Grammar
+}
 
 
 type ParseTree = Node

@@ -719,10 +719,7 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
                               bind_outcome(
                                 o: node_atom_identity(node: binding_node),
                                 f: fn(binding) {
-                                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
-                                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
-                                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
-                                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
+                                  // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
                                   match map_get(target.binding_spellings, binding) {
                                     Some { value: spelling } =>
                                       Accepted { value: spelling, diagnostics: None }
@@ -947,10 +944,7 @@ fn translate_fold_step(
           Accepted {
             value: Node {
               kind: parent.kind,
-              children: list_push(
-                parent.children,
-                Edge { label: edge.label, target: translated_child }
-              )
+              children: list_snoc_item(xs: parent.children, item: Edge { label: edge.label, target: translated_child })
             },
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }
