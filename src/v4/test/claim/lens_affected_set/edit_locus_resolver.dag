@@ -87,7 +87,7 @@ fn edit_locus_affected_set_wire_holds() -> Bool {
     Holds { value: reading } =>
       (reading.edit_locus == affected_set_mid)
         && (length(xs: reading.affected) == 3)
-        && (reading.dependencies == [affected_set_mid_to_leaf_dependency, affected_set_root_to_mid_dependency])
+        && (reading.dependencies == [affected_set_root_to_mid_dependency, affected_set_mid_to_leaf_dependency])
     Violates { diagnostic: _ } => false
   }
 }
