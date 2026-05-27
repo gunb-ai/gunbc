@@ -44,13 +44,7 @@ data constraints_ill_formed_root: Symbol = constraints_ill_formed_root
 type ConstraintGraph {
   root: Node
 }
-// Sole production path: solve_constraints is the ONLY permitted non-test construction of
-// CanonicalGrounding in production code; node/witness coherence is atomically enforced by
-// solve_constraints → find_witness. Direct construction outside solve_constraints is FORBIDDEN
-// in production callers. Test fixtures (src/v4/test/claim/**) may construct CanonicalGrounding
-// directly as staging placeholders — this is an accepted test-only exception until T-9
-// dissolution supplies richer closedness evidence.
-// Dissolution gate: scaffold:T-9-closedness-bridge (above on CanonicalGroundingWitness.closedness).
+// 🟡 gated — scaffold:T-9-closedness-bridge — production CanonicalGrounding construction flows through solve_constraints; test fixtures may stage direct values until richer closedness evidence lands.
 type CanonicalGrounding {
   node: Node
   witness: CanonicalGroundingWitness
