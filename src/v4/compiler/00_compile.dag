@@ -57,8 +57,8 @@ import v4.std.diagnostic {
   outcome_with_diagnostics,
   rejected_with_pending
 }
+import v4.std.module_batch { ModuleBatch }
 import v4.std.catalog {
-import v4.std.ingest_batch { IngestBatch }
   Entry,
   catalog_entry_for_name,
   catalog_from_entries
@@ -66,6 +66,7 @@ import v4.std.ingest_batch { IngestBatch }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.qualified_name {
   QualifiedName,
+  qualified_name_projection_gated,
   qualified_name_from_node
 }
 import v4.std.text { String }
@@ -380,7 +381,7 @@ fn validate_then_compile(
 }
 
 
-fn ingest_batch_admit_entries(
+fn module_batch_admit_entries(
   nodes: FreeMonoid<Node>,
   acc: Outcome<FreeMonoid<Entry>>
 ) -> Outcome<FreeMonoid<Entry>> {
@@ -394,7 +395,7 @@ fn ingest_batch_admit_entries(
             Rejected { diagnostics: r } =>
               Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
             Accepted { value: name, diagnostics: nd } =>
-              ingest_batch_admit_entries(
+              module_batch_admit_entries(
                 nodes: rest,
                 acc: Accepted {
                   value: Cons {
@@ -410,56 +411,32 @@ fn ingest_batch_admit_entries(
 }
 
 
-fn ingest_batch_catalog_entries(
-  batch: IngestBatch
+fn module_batch_catalog_entries(
+  batch: ModuleBatch
 ) -> Outcome<FreeMonoid<Entry>> {
-  ingest_batch_admit_entries(
+  module_batch_admit_entries(
     nodes: batch.entries,
     acc: outcome_accepted(value: Empty)
   )
 }
 
 
+fn compile_with_batch_projection_gated_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: qualified_name_projection_gated,
+    at: port_locus(port: compile_stage_locus_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
 fn compile_with_batch(
   root: QualifiedName,
-  batch: IngestBatch,
+  batch: ModuleBatch,
   imports: FreeMonoid<Import>,
   target: TargetModel
 ) -> Outcome<Validated<CompileOutput>> {
-  let lm = dag_language_model_wave1()
-  bind_outcome(
-    o: ingest_batch_catalog_entries(batch: batch),
-    f: fn(entries) {
-      match catalog_from_entries(entries: entries) {
-        Violates { diagnostic: d } => outcome_rejected(d: d)
-        Holds { value: catalog } =>
-          match catalog_entry_for_name(catalog: catalog, name: root) {
-            Violates { diagnostic: d } => outcome_rejected(d: d)
-            Holds { value: entry } =>
-              bind_outcome(
-                o: resolve_with_admission(
-                  lm: lm,
-                  catalog: catalog,
-                  admission: Admission {
-                    subject: ResolutionSubject {
-                      name: root,
-                      tree: entry.root
-                    },
-                    imports: imports
-                  }
-                ),
-                f: fn(resolved) {
-                  validate_then_compile(
-                    source: resolved,
-                    lenses: [],
-                    mode: TranslateTo { target: target }
-                  )
-                }
-              )
-          }
-      }
-    }
-  )
+  outcome_rejected(compile_with_batch_projection_gated_diagnostic())
 }
 
 

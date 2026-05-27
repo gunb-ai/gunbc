@@ -1553,7 +1553,7 @@ operator code-examples gate.
 
 ---
 
-### T-35 — virtual catalog loader + IngestBatch (filesystem-free ingest)  [SCHEDULED]
+### T-35 — virtual module-loader + ModuleBatch (filesystem-free ingest)  [SCHEDULED]
 
 **Operator-ratified 2026-05-26.** Eliminates filesystem I/O from the
 compile path by replacing file reads with a caller-supplied batch of
@@ -1569,15 +1569,15 @@ Sequencing). T-35 workers must not proceed without both gates.
 
 **Scope — two pieces (ingest side only):**
 
-1. **Virtual catalog loader.** The catalog-admission stage (T-28-B) is
-   replaced with a caller-supplied `IngestBatch` (**post-normalize** `.dag`
+1. **Virtual module-loader.** The module-admission stage (T-28-B) is
+   replaced with a caller-supplied `ModuleBatch` (**post-normalize** `.dag`
    Nodes, identified by their declared `QualifiedName`). "Post-normalize"
    means each Node has passed through `normalize(parse_tree: …)` — the
    stage immediately before today's `compile_ingest_staging` resolve gate.
    The live `compile_ingest_staging` path still calls single-tree
    `resolve(tree: normalized, lm: lm)` until this T-35 work wires catalog
    admission into a new `compile_with_batch` entry point. Callers are
-   responsible for normalizing their source before `ingest_batch_insert` and for
+   responsible for normalizing their source before `batch_insert` and for
    supplying the `FreeMonoid<Import>` admission list for the selected root;
    until a canonical import projection from `Node` is modeled, that explicit
    argument is the sole import authority for this entry point.
@@ -1591,14 +1591,14 @@ Sequencing). T-35 workers must not proceed without both gates.
    `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
    from 03_resolve.dag before the virtual loader can replace it.`
 
-2. **IngestBatch carrier.** An ordered-entry carrier in
-   `src/v4/std/ingest_batch.dag`:
-   `IngestBatch { entries: FreeMonoid<Node> }` with exported operations
-   `ingest_batch_insert(batch: IngestBatch, node: Node)`,
-   `ingest_batch_delete(batch: IngestBatch, qname: QualifiedName)`;
+2. **ModuleBatch carrier.** An ordered-entry carrier in
+   `src/v4/std/module_batch.dag`:
+   `ModuleBatch { entries: FreeMonoid<Node> }` with exported operations
+   `batch_insert(batch: ModuleBatch, node: Node)`,
+   `batch_delete(batch: ModuleBatch, qname: QualifiedName)`;
    `batch_lookup` is an internal fold helper (folds `entries` applying
    `qualified_name_from_node`, matching only `Accepted` qualified names) — not
-   exported from `ingest_batch.dag`, not a root-selection path (see Files
+   exported from `module_batch.dag`, not a root-selection path (see Files
    section). Each admitted Node carries its own `QualifiedName` via the
    `qualified_name_from_node` projection (T-QN-1); no external path key is
    required. Callers build the batch and invoke
@@ -1611,7 +1611,7 @@ Sequencing). T-35 workers must not proceed without both gates.
    batch enumerable so `compile_with_batch` can fold over entries. `batch_lookup`
    is a fold using `qualified_name_from_node` to match on the `Accepted` branch;
    `Rejected` entries are non-matches for lookup and remain admission failures.
-   `ingest_batch_insert` appends a Node; `ingest_batch_delete` filters by `QualifiedName`.
+   `batch_insert` appends a Node; `batch_delete` filters by `QualifiedName`.
    Name-uniqueness is not the batch's responsibility — it is enforced at
    admission time.
 
@@ -1619,8 +1619,8 @@ Sequencing). T-35 workers must not proceed without both gates.
    - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via the `Accepted` branch of `qualified_name_from_node`; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
    - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
    - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
-   - **Insert policy:** `ingest_batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
-   - **Delete policy:** `ingest_batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `ingest_batch_delete` to remove unprojectable Nodes; they must never call `ingest_batch_delete` expecting it to clean up entries that were never well-formed.
+   - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
+   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove unprojectable Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1634,15 +1634,23 @@ goes in T-23's scope. T-35 workers stop and escalate if they feel pressure
 to define a new agent output surface.
 
 **Files:**
-- `src/v4/std/ingest_batch.dag` — new file; `IngestBatch` carrier only.
+- `src/v4/std/module_batch.dag` — new file; `ModuleBatch` carrier only.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_batch` entry point.
-  **Signature:** `compile_with_batch(root: QualifiedName, batch: IngestBatch, imports: FreeMonoid<Import>, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
+  **Signature:** `compile_with_batch(root: QualifiedName, batch: ModuleBatch, imports: FreeMonoid<Import>, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
   The `root` parameter is the sole root-selection authority: the caller names
   which batch node is the compilation entry point by `QualifiedName`. The
   `imports` parameter is the sole import-admission authority for that selected
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
+  **Current execution gate:** because `qualified_name_from_node` is still the
+  T-8-gated projection stub and explicitly returns `Rejected`, the public
+  `compile_with_batch` terminal currently fails closed with
+  `qualified_name_projection_gated` before admission. The admission fold below
+  is modeled in the same file but is not the reachable public path until T-8
+  lands per-identifier symbol mapping. This is not a successful virtual-loader
+  execution receipt; it is the fail-closed boundary receipt preserving T-35's
+  locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
   `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
@@ -1694,7 +1702,7 @@ to define a new agent output surface.
 **Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
 - **T-QN-1** is the hard design prerequisite: `QualifiedName` and
   `qualified_name_from_node` must exist before T-35 workers can build a
-  `IngestBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
+  `ModuleBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
   replace it. T-35 workers cannot proceed without T-28-B.
@@ -1708,7 +1716,7 @@ to define a new agent output surface.
 
 **What this is NOT:**
 - Not a new language feature — no new `.dag` syntax.
-- Not a runtime evaluator — `IngestBatch` is compile-time, not runtime.
+- Not a runtime evaluator — `ModuleBatch` is compile-time, not runtime.
 - Not T-34 (runtime substrate).
 - Not T-23/AGENT-1 — T-35 does not define the agent output surface
   (InferenceResult, DiagnosticSet, apply_diff). Those live in T-23.
