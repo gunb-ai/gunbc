@@ -1,7 +1,7 @@
 // src/v4/test/claim/algebra_laws/field_patch_monoid.dag
 // Scope: TestClaim corpus for FieldPatch<T> right-biased optional-value patch monoid laws.
-// Owns: claim rows for compose_field_patch left/right identity, associativity; apply_field_patch
-//       behavior; field_patch_monoid witness identity and op consumption.
+// Owns: claim rows for compose_field_patch left/right identity, right-bias (later Override wins),
+//       associativity; apply_field_patch behavior; field_patch_monoid witness identity and op consumption.
 // Consumes: v4.std.patch v4.std.node v4.std.verification.
 // Status: T-4.16 follow-on behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
@@ -54,6 +54,9 @@ data witness_left_identity: Bool = apply_field_patch(base: false, patch: compose
 // Right identity: compose(Override{v}, Inherit) applies as Override{v}.
 data witness_right_identity: Bool = apply_field_patch(base: false, patch: compose_field_patch(left: Override { value: true }, right: Inherit)) == true
 
+// Right-bias: compose(Override{left}, Override{right}) applies as Override{right} (later layer wins).
+data witness_right_bias: Bool = apply_field_patch(base: true, patch: compose_field_patch(left: Override { value: true }, right: Override { value: false })) == false
+
 // Associativity: apply((a∘b)∘c, base) == apply(a∘(b∘c), base).
 // a=Override{true}, b=Override{false}, c=Inherit → both sides yield false from base=true.
 fn compose_assoc_lhs() -> Bool {
@@ -98,6 +101,15 @@ data claim_right_identity: TestClaim = CompilesClaim {
   label: "field_patch/compose: Inherit is right identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_right_identity),
+  expected_value: fp_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_right_bias: TestClaim = CompilesClaim {
+  label: "field_patch/compose: right Override wins over left Override (later layer)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fp_ok(b: witness_right_bias),
   expected_value: fp_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
