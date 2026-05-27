@@ -63,6 +63,43 @@ fn v4_compile_dag_declares_public_validate_then_compile() {
 }
 
 #[test]
+fn v4_compile_dag_declares_filesystem_free_batch_terminal() {
+    let module = parse_module(COMPILE_DAG, COMPILE_PATH);
+    assert!(
+        surface_declares_fn(&module, "compile_with_batch"),
+        "{COMPILE_PATH}: must declare compile_with_batch filesystem-free terminal"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "module_batch"], "ModuleBatch"),
+        "{COMPILE_PATH}: compile_with_batch must consume ModuleBatch carrier authority"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "compiler", "name_resolve"],
+            "resolve_with_admission"
+        ),
+        "{COMPILE_PATH}: compile_with_batch must route through resolve_with_admission"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "module_graph"],
+            "catalog_from_entries"
+        ),
+        "{COMPILE_PATH}: compile_with_batch must construct the admitted catalog through catalog_from_entries"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "qualified_name"],
+            "qualified_name_from_node"
+        ),
+        "{COMPILE_PATH}: compile_with_batch must project QualifiedName from each Node"
+    );
+}
+
+#[test]
 fn v4_compile_dag_declares_ratified_compile_core() {
     let module = parse_module(COMPILE_DAG, COMPILE_PATH);
     assert!(
