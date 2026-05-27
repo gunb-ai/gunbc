@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
-// Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding.
+// Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding, CppGramBuild1State.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.extdeps.cpp_abi.CppTargetProfile.
 // Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
@@ -887,62 +887,34 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
 type CppGramBuild1State
   = CppGramBuild1StateInit
-  | CppGramBuild1StateReady { head: CppConcreteSyntaxToken, tail: List<CppConcreteSyntaxToken> }
+  | CppGramBuild1StateReady { expr: GrammarExpr }
 
-data cpp_gram_build1_empty_unreachable: Symbol = cpp_gram_build1_empty_unreachable
-
-type CppGrammarSequenceBuild {
-  head: CppConcreteSyntaxToken
-  tail: List<CppConcreteSyntaxToken>
-}
-
-fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarSequenceBuild) -> GrammarExpr {
-  let terminal = cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: tokens.head))
-  fold_list(
-    xs: tokens.tail,
-    empty: terminal,
-    cons: fn(acc, token) {
-      Sequence {
-        left: acc,
-        right: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
-      }
-    }
-  )
-}
-
-fn cpp_mvp1_grammar_tokens() -> CppGrammarSequenceBuild {
+fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(
     xs: cpp_mvp1_concrete_tokens(),
     empty: CppGramBuild1StateInit,
     cons: fn(state, token) {
       match state {
         CppGramBuild1StateInit =>
-          CppGramBuild1StateReady { head: token, tail: Empty }
-        CppGramBuild1StateReady { head: h, tail: t } =>
           CppGramBuild1StateReady {
-            head: h,
-            tail: list_snoc_item(xs: t, item: token)
+            expr: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
+          }
+        CppGramBuild1StateReady { expr: acc } =>
+          CppGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
+            }
           }
       }
     }
   ) {
     CppGramBuild1StateInit =>
-      CppGrammarSequenceBuild {
-        head: CppFixedToken { token_class: cpp_gram_build1_empty_unreachable },
-        tail: Empty
-      }
-    CppGramBuild1StateReady { head: h, tail: t } => CppGrammarSequenceBuild {
-      head: h,
-      tail: t
-    }
+      cpp_grammar_terminal(token_class: cpp_token_ty_int)
+    CppGramBuild1StateReady { expr: result } => result
   }
-}
-
-fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
-  cpp_grammar_sequence_from_tokens(tokens: cpp_mvp1_grammar_tokens())
 }
 
 fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction {
