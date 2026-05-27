@@ -474,8 +474,7 @@ fn swift_float_width_node(width: SwiftFloatWidth) -> Node {
 }
 
 fn swift_overflow_node(overflow: SwiftIntegerOverflowSemantics) -> Node {
-  let _witness = overflow
-  swift_atom(id: swift_tag_trap_on_overflow)
+  swift_atom(id: overflow.tag)
 }
 
 fn swift_scalar_node(scalar: SwiftScalar) -> Node {
@@ -491,14 +490,10 @@ fn swift_scalar_node(scalar: SwiftScalar) -> Node {
 
 fn swift_nonnumeric_representation_node(facts: SwiftNonNumericPrimitiveFacts) -> Node {
   match facts {
-    SwiftBoolPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_bool_representation)
-    SwiftCharacterPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_character_extended_grapheme_cluster)
-    SwiftStringPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_string_unicode_text)
-    SwiftVoidPrimitiveFacts { representation: _ } =>
-      swift_atom(id: swift_tag_void_empty_tuple)
+    SwiftBoolPrimitiveFacts { representation } => swift_atom(id: representation.tag)
+    SwiftCharacterPrimitiveFacts { representation } => swift_atom(id: representation.tag)
+    SwiftStringPrimitiveFacts { representation } => swift_atom(id: representation.tag)
+    SwiftVoidPrimitiveFacts { representation } => swift_atom(id: representation.tag)
   }
 }
 
