@@ -71,9 +71,9 @@ type CompileOutput
   | EvalResult { value: Node }
 
 
-type CompileLens {
-  gate: fn(InferredTree) -> Outcome<Witness<Node>>
-}
+type CompileLens
+  = FactDensityCompileLens
+  | StaticCompileLens { outcome: Outcome<Witness<Node>> }
 
 
 // 🟢 coproduct dissolution
@@ -127,9 +127,7 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
 }
 
 
-data fact_density_lens: CompileLens = CompileLens {
-  gate: fact_density_hollow_alias_compile_gate
-}
+data fact_density_lens: CompileLens = FactDensityCompileLens
 
 
 fn always_required_lenses() -> List<CompileLens> {
@@ -142,6 +140,14 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 }
 
 
+fn run_compile_lens_gate(lens: CompileLens, inferred: InferredTree) -> Outcome<Witness<Node>> {
+  match lens {
+    FactDensityCompileLens => fact_density_hollow_alias_compile_gate(tree: inferred)
+    StaticCompileLens { outcome: outcome } => outcome
+  }
+}
+
+
 // Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
 // so introspect mode never blocks compilation. Full NonEmptyDiagnostics from Rejected flows
 // forward as advisory Accepted.diagnostics; Violates.diagnostic carries the head.
@@ -150,7 +156,7 @@ fn apply_compile_lens_introspect(
   lens: CompileLens,
   inferred: InferredTree
 ) -> Outcome<Witness<Node>> {
-  match lens.gate(tree: inferred) {
+  match run_compile_lens_gate(lens: lens, inferred: inferred) {
     Accepted { value: w, diagnostics: od } =>
       outcome_with_diagnostics(value: w, diagnostics: od)
     Rejected { diagnostics: d } =>
@@ -172,7 +178,7 @@ fn apply_compile_lens(
   mode: CompileLensMode
 ) -> Outcome<Witness<Node>> {
   match mode {
-    CompileLensEnforce => lens.gate(tree: inferred)
+    CompileLensEnforce => run_compile_lens_gate(lens: lens, inferred: inferred)
     CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
   }
 }

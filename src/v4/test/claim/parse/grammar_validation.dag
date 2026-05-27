@@ -19,6 +19,7 @@ import v4.compiler.parse {
   GrammarRoot,
   Nonterminal,
   Optional,
+  ParseSyncState,
   ParseTree,
   Sequence,
   Terminal,
