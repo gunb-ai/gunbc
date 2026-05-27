@@ -1,6 +1,6 @@
 // src/v4/compiler/03_name_resolve.dag
 //
-// Scope: Stage 3c — ModuleGraph admission for cross-file resolution.
+// Scope: Stage 3c — Catalog admission for cross-file resolution.
 // Owns: ResolutionSubject; Admission; namespace_for_subject; resolve_with_admission.
 // Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
 //           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
@@ -35,8 +35,8 @@ import v4.std.diagnostic {
   port_locus
 }
 import v4.std.module_graph {
-  ModuleGraph,
-  module_graph_entry_for_path
+  Catalog,
+  catalog_entry_for_name
 }
 import v4.std.node {
   Conj,
@@ -156,7 +156,7 @@ fn admit_named_exports(
 
 
 fn admit_import_entry(
-  graph: ModuleGraph,
+  catalog: Catalog,
   import_edge: Import,
   state: AdmissionState
 ) -> AdmissionState {
@@ -170,7 +170,7 @@ fn admit_import_entry(
             diagnostic: resolve_diagnostic(reason: resolve_import_not_visible)
           }
         ImportVisible =>
-          match module_graph_entry_for_path(graph: graph, path: import_edge.target) {
+          match catalog_entry_for_name(catalog: catalog, name: import_edge.target) {
             Holds { value: entry } =>
               admit_named_exports(
                 root: entry.root,
@@ -186,19 +186,19 @@ fn admit_import_entry(
 
 
 fn admit_imports(
-  graph: ModuleGraph,
+  catalog: Catalog,
   imports: FreeMonoid<Import>,
   state: AdmissionState
 ) -> AdmissionState {
-  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-import — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<Import>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-import — same v2 bootstrap limitation as std/module_graph.dag's Entry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<Import>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
   match imports {
     Empty => state
     Cons { head: import_edge, tail: rest } =>
       admit_imports(
-        graph: graph,
+        catalog: catalog,
         imports: rest,
         state: admit_import_entry(
-          graph: graph,
+          catalog: catalog,
           import_edge: import_edge,
           state: state
         )
@@ -209,12 +209,12 @@ fn admit_imports(
 
 fn namespace_for_subject(
   lm: DagLanguageModel,
-  graph: ModuleGraph,
+  catalog: Catalog,
   admission: Admission
 ) -> Outcome<Namespace> {
   let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
   match admit_imports(
-    graph: graph,
+    catalog: catalog,
     imports: admission.imports,
     state: admit_named_exports(
       root: admission.subject.tree,
@@ -238,12 +238,12 @@ fn namespace_for_subject(
 
 fn resolve_with_admission(
   lm: DagLanguageModel,
-  graph: ModuleGraph,
+  catalog: Catalog,
   admission: Admission
 ) -> Outcome<ResolvedTree> {
   match namespace_for_subject(
     lm: lm,
-    graph: graph,
+    catalog: catalog,
     admission: admission
   ) {
     Accepted { value: namespace, diagnostics: _ } =>

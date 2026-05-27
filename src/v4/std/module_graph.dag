@@ -1,6 +1,6 @@
 // src/v4/std/module_graph.dag
-// Scope: Module-tree carrier for cross-file binding (T-28).
-// Owns: ModuleGraph, ModuleEntry; entry lookup; validated graph constructor.
+// Scope: Module catalog carrier for cross-file binding (T-28).
+// Owns: Catalog, Entry; entry lookup; validated catalog constructor.
 // Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
@@ -24,69 +24,69 @@ import v4.std.qualified_name {
 import v4.std.witness { Holds, Violates, Witness }
 
 
-type ModuleEntry {
-  path: QualifiedName
+type Entry {
+  name: QualifiedName
   root: Node
 }
 
 
-// 🟡 feature:T-28-carrier-level-uniqueness — FreeMonoid<ModuleEntry> admits duplicate paths at carrier level; module_graph_from_entries is the canonical construction path that enforces path uniqueness — dissolve-on: substrate opaque-type or smart-constructor primitive enforces module_graph_from_entries as the sole construction path.
-type ModuleGraph {
-  entries: FreeMonoid<ModuleEntry>
+// 🟡 feature:T-28-carrier-level-uniqueness — FreeMonoid<Entry> admits duplicate names at carrier level; catalog_from_entries is the canonical construction path that enforces name uniqueness — dissolve-on: substrate opaque-type or smart-constructor primitive enforces catalog_from_entries as the sole construction path.
+type Catalog {
+  entries: FreeMonoid<Entry>
 }
 
 
-data module_graph_entry_not_found: Symbol = module_graph_entry_not_found
-data module_graph_duplicate_path: Symbol = module_graph_duplicate_path
+data catalog_entry_not_found: Symbol = catalog_entry_not_found
+data catalog_duplicate_name: Symbol = catalog_duplicate_name
 
 
-fn module_entry_not_found_diagnostic() -> Diagnostic {
+fn catalog_entry_not_found_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: module_graph_entry_not_found,
-    at: port_locus(port: module_graph_entry_not_found),
+    reason: catalog_entry_not_found,
+    at: port_locus(port: catalog_entry_not_found),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 
-fn module_graph_duplicate_path_diagnostic() -> Diagnostic {
+fn catalog_duplicate_name_diagnostic() -> Diagnostic {
   Diagnostic {
-    reason: module_graph_duplicate_path,
-    at: port_locus(port: module_graph_duplicate_path),
+    reason: catalog_duplicate_name,
+    at: port_locus(port: catalog_duplicate_name),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type ModuleEntryFindState
+type EntryFindState
   = EntryNotFound
-  | EntryFoundOnce { found: ModuleEntry }
+  | EntryFoundOnce { found: Entry }
   | EntryFoundDuplicate
 
 
-fn module_entry_find_state_to_witness(state: ModuleEntryFindState) -> Witness<ModuleEntry> {
+fn entry_find_state_to_witness(state: EntryFindState) -> Witness<Entry> {
   match state {
-    EntryNotFound => Violates { diagnostic: module_entry_not_found_diagnostic() }
+    EntryNotFound => Violates { diagnostic: catalog_entry_not_found_diagnostic() }
     EntryFoundOnce { found: entry } => Holds { value: entry }
-    EntryFoundDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
+    EntryFoundDuplicate => Violates { diagnostic: catalog_duplicate_name_diagnostic() }
   }
 }
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — v2 compiler cannot infer T=ModuleEntry from FreeMonoid<ModuleEntry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<ModuleEntry> until that limitation is lifted.
-fn module_graph_entry_for_path_fold(
-  entries: FreeMonoid<ModuleEntry>,
-  path: QualifiedName,
-  acc: ModuleEntryFindState
-) -> ModuleEntryFindState {
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-entry — bind TODO — v2 compiler cannot infer T=Entry from FreeMonoid<Entry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<Entry> until that limitation is lifted.
+fn catalog_entry_for_name_fold(
+  entries: FreeMonoid<Entry>,
+  name: QualifiedName,
+  acc: EntryFindState
+) -> EntryFindState {
   match entries {
     Empty => acc
     Cons { head: entry, tail: rest } =>
-      module_graph_entry_for_path_fold(
+      catalog_entry_for_name_fold(
         entries: rest,
-        path: path,
-        acc: if qualified_name_eq(a: entry.path, b: path) {
+        name: name,
+        acc: if qualified_name_eq(a: entry.name, b: name) {
           match acc {
             EntryNotFound => EntryFoundOnce { found: entry }
             EntryFoundOnce { found: _ } => EntryFoundDuplicate
@@ -100,14 +100,14 @@ fn module_graph_entry_for_path_fold(
 }
 
 
-fn module_graph_entry_for_path(
-  graph: ModuleGraph,
-  path: QualifiedName
-) -> Witness<ModuleEntry> {
-  module_entry_find_state_to_witness(
-    state: module_graph_entry_for_path_fold(
-      entries: graph.entries,
-      path: path,
+fn catalog_entry_for_name(
+  catalog: Catalog,
+  name: QualifiedName
+) -> Witness<Entry> {
+  entry_find_state_to_witness(
+    state: catalog_entry_for_name_fold(
+      entries: catalog.entries,
+      name: name,
       acc: EntryNotFound
     )
   )
@@ -115,28 +115,28 @@ fn module_graph_entry_for_path(
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-type ModuleGraphBuildState
-  = BuildValid { seen: FreeMonoid<ModuleEntry> }
+type CatalogBuildState
+  = BuildValid { seen: FreeMonoid<Entry> }
   | BuildDuplicate
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-moduleentry — bind TODO — same v2 bootstrap limitation as module_graph_entry_for_path_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<ModuleEntry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn module_graph_build_fold(
-  entries: FreeMonoid<ModuleEntry>,
-  acc: ModuleGraphBuildState
-) -> ModuleGraphBuildState {
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-entry — bind TODO — same v2 bootstrap limitation as catalog_entry_for_name_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<Entry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+fn catalog_build_fold(
+  entries: FreeMonoid<Entry>,
+  acc: CatalogBuildState
+) -> CatalogBuildState {
   match entries {
     Empty => acc
     Cons { head: entry, tail: rest } =>
       match acc {
         BuildDuplicate =>
-          module_graph_build_fold(entries: rest, acc: BuildDuplicate)
+          catalog_build_fold(entries: rest, acc: BuildDuplicate)
         BuildValid { seen: prior } =>
-          module_graph_build_fold(
+          catalog_build_fold(
             entries: rest,
-            acc: match module_graph_entry_for_path_fold(
+            acc: match catalog_entry_for_name_fold(
               entries: prior,
-              path: entry.path,
+              name: entry.name,
               acc: EntryNotFound
             ) {
               EntryNotFound => BuildValid { seen: Cons { head: entry, tail: prior } }
@@ -149,11 +149,11 @@ fn module_graph_build_fold(
 }
 
 
-fn module_graph_from_entries(
-  entries: FreeMonoid<ModuleEntry>
-) -> Witness<ModuleGraph> {
-  match module_graph_build_fold(entries: entries, acc: BuildValid { seen: Empty }) {
-    BuildValid { seen: _ } => Holds { value: ModuleGraph { entries: entries } }
-    BuildDuplicate => Violates { diagnostic: module_graph_duplicate_path_diagnostic() }
+fn catalog_from_entries(
+  entries: FreeMonoid<Entry>
+) -> Witness<Catalog> {
+  match catalog_build_fold(entries: entries, acc: BuildValid { seen: Empty }) {
+    BuildValid { seen: _ } => Holds { value: Catalog { entries: entries } }
+    BuildDuplicate => Violates { diagnostic: catalog_duplicate_name_diagnostic() }
   }
 }
