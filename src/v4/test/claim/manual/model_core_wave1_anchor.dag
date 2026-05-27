@@ -109,7 +109,7 @@ fn wave1_model_core_payload_contract_holds() -> Bool {
   (length(xs: core.primitives) == 1) &&
   (length(xs: core.inhabitance) == 1) &&
   (length(xs: core.laws) == 4) &&
-  (length(xs: core.partiality.operations) == 1) &&
+  (length(xs: core.partiality.operations) == 0) &&
   wave1_model_core_primitives_contract() &&
   wave1_model_core_inhabitance_contract() &&
   wave1_model_core_laws_contract()
