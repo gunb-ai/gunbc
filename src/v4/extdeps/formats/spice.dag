@@ -126,669 +126,71 @@ module v4.extdeps.formats.spice
 import v4.std.node { Symbol }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modeling notes (read before validating against the anchor)
-//
-// THE PROBE'S FINDING (stated up front so reviewers can verify).
-// SPICE3 is a flat component + connection-graph data format with no
-// control flow, no recursion-in-execution, no algebraic carrier. The
-// substrate's 6 type connectives + Conj/Disj surface express it
-// directly: a `SpiceNetlist` is a `Conj` of lists of `Conj`/`Disj`
-// statements. No 6th L1 behavior is required — components do not
-// COMPUTE, they DECLARE a topology that an external simulator solves.
-// No 7th type connective is required — every netlist element decomposes
-// into the existing connectives. The B2-OMNI O(N+M) claim is upheld for
-// this target: adding SPICE costs one file (this file), and that file
-// does not perturb the substrate. The substrate-design signal the probe
-// was authored to surface (a contortion in the connectives or the
-// behavior set) is ABSENT.
-//
-// PROBE LIMITS (honest framing — what this file does NOT validate).
-// The B2-OMNI claim covers the format DATA-MODEL. It does NOT validate:
-//   - that an external SPICE simulator can be DRIVEN from `emit`'s
-//     output (the "clear win" in the header — that requires invoking a
-//     simulator process; an `extdeps/posix.dag` consumer that
-//     coordinates with the emitted netlist is a separate boundary
-//     concern, not modeled here).
-//   - that SPICE's NUMERIC sub-grammar (suffix-units `1k`/`1u`/`100p`,
-//     scientific notation, parameter expressions) round-trips through
-//     parse/emit faithfully (the numeric sub-format is itself a Shape-B
-//     concern; `SpiceValue` here carries the lexeme verbatim — see
-//     `SpiceValue` below — so `parse∘emit` is identity on the lexical
-//     surface and the numeric semantics is the simulator's concern, not
-//     this file's. A future probe may model the SPICE numeric sub-
-//     grammar; that is not in T-4.10's scope.)
-//
-// FIDELITY SCOPE (PR #3168 codex REQUEST_CHANGES, 2026-05-16). Two
-// distinct deliverables for this file, EXPLICITLY DISTINGUISHED so the
-// authority claim and the coverage state do not contradict each other:
-//   (1) SHAPE DELIVERABLE — the substrate-design decisions the T-4.10
-//       probe tests: closed coproduct over SPICE3 element kinds with
-//       per-variant terminal slots (`Component`); typed sum for
-//       optional fields rather than `Option<NodeRef>` (`SubstrateSpec`);
-//       lexical-scope-preserving SUBCKT lift (`parent_scope: List<
-//       Symbol>`); `.END` owned by parse/emit discipline rather than
-//       as a data variant; subcircuit bodies type-enforced against
-//       control-card containment; well-formed-by-construction at the
-//       SHAPE layer. **This is COMPLETE for the T-4.10 probe scope.**
-//       The B2-OMNI O(N+M) substrate-validation claim rests on the
-//       SHAPE, not on coverage exhaustiveness.
-//   (2) SPEC-EXHAUSTIVE COVERAGE — full enumeration of every SPICE3F5
-//       element kind, `.MODEL` device kind, analysis/control directive,
-//       and per-variant grammar facts (instance parameters, transient
-//       source specs, etc.). **This is PARTIAL.** The YELLOW
-//       classifications + named triggers on `Component` / `ModelKind` /
-//       `Directive` track the gap to spec-exhaustive coverage; each
-//       missing-list is kept synchronized with the SPICE3F5 anchor
-//       (synchronization-discipline note repeated at each gap site).
-// What the file CLAIMS authority for: (1). What it DOES NOT yet
-// claim: (2). A valid SPICE3 deck using an omitted element/directive
-// kind cannot be represented in the current state — this is bounded,
-// documented, and the YELLOW triggers + missing-lists name exactly
-// what work closes the gap. **The "T-4.10 probe permits non-
-// exhaustive coverage" framing means the SHAPE deliverable did not
-// require concurrent spec-exhaustive coverage — it does NOT mean the
-// fidelity gap is excusable; the YELLOW triggers track that gap as
-// load-bearing follow-up, not as discretion to leave unfilled.** A
-// downstream consumer that needs spec-exhaustive coverage is the
-// trigger that schedules the per-variant sweeps named below.
-//
-// WHY NO `nodes: List<NodeRef>` INVENTORY FIELD (Practice 7).
-// SPICE does not DECLARE its nodes — they emerge from being referenced
-// by component terminals (Quarles 1993 §2: nodes are name-referenced,
-// not pre-declared; ground is the conventional Symbol whose spelling is
-// "0" — kernel-opaque per K-1, so this file never branches on the
-// spelling). A separate `nodes` field would be a parallel representation
-// of the projection `union over (component, terminal)` — INVARIANTS P2
-// single-authority violation, cost-of-change ≥ 2 (every component-
-// edit would force a parallel nodes-edit). The projection lives where
-// it is consumed; this file does not materialize it. NODE-STATE
-// directives (`.IC v(n) = ...`, `.NODESET v(n) = ...`) are first-class
-// `Directive` variants and DO appear — they are the "facts about a
-// node" the spec recognizes, separate from the node's existence (which
-// is just being referenced).
-//
-// WHY CLOSED `Component` COPRODUCT (P2 vs Practice 7 tension —
-// resolved). The SPICE3 element set is closed by the spec (a versioned
-// fact, per the anchor); each element-prefix character (R/C/L/V/I/D/Q/
-// M/X/K/T/…) carries a SPECIFIC structural shape (terminal count,
-// parameter schema). Two designs were attempted:
-//   (a) one record `Component { kind: Symbol, terminals: List<NodeRef>,
-//       parameters: List<Parameter> }` projected over a closed
-//       `ElementSpec` table (Practice 7). REJECTED: makes illegal
-//       arities REPRESENTABLE (a `Resistor` with 3 terminals is a legal
-//       Component value, rejected only by a check) — INVARIANTS P2
-//       (modeling-discipline.md Practice 2) forbids checked-rather-than-
-//       unrepresentable illegal states when the type system can express
-//       the constraint. The per-element terminal-count IS expressible:
-//       it is a fixed natural per kind.
-//   (b) closed `Component` coproduct, one variant per kind, each variant
-//       carrying NAMED terminal slots (P2). ADOPTED. Cost-of-change is
-//       still 1: adding a new SPICE element kind = adding ONE variant
-//       here. There is no PARALLEL representation forced elsewhere (no
-//       arity-table, no parameter-schema-table to keep in sync), so
-//       Practice 7's cost-of-change test is satisfied. The 5-pattern
-//       ledger on the type below explains why this is terminal: the
-//       variants are STRUCTURALLY heterogeneous (different named terminal
-//       slots; Diode/Bjt/Mosfet additionally carry model name-refs) —
-//       they are NOT `F<X>` over a separately-declared set (Practice-4
-//       parameterized-family pattern — pattern 5 — fails by inspection
-//       of the payloads).
-//   The tension was apparent, not real: Practice 7's bite is on parallel
-//   representations of a SECOND authority. The coproduct dissolution IS
-//   the authority — there is no second table the variants mirror.
-//
-// CLOSED-SET COVERAGE. The variants enumerated below cover the SPICE3
-// core element set (Quarles 1993 §11): R/C/L (passives), V/I
-// (independent sources), D/Q/M (semiconductor devices, model-referenced),
-// K (mutual inductance), X (subcircuit invocation). Twelve element
-// kinds are NOT enumerated in this initial cut — non-linear dependent
-// source (B), linear controlled sources (E/F/G/H), JFET (J), LTRA
-// lossy transmission line (O), switches (S/W), lossless transmission
-// line (T), URC distributed RC (U), MESFET (Z) — each tracked in the
-// `Component` 🟡 trigger's missing-list (the synchronization-
-// discipline section). THIS SUMMARY-LIST MUST STAY SYNCHRONIZED WITH
-// THE DETAILED MISSING-LIST IN THE COMPONENT HONESTY NOTE BELOW —
-// out-of-sync omission lists tell the next worker the coverage gap
-// is smaller than it actually is (PR #3168 codex review surfaced
-// this when the prior summary was missing `B`). Per FIDELITY SCOPE
-// above, this is the spec-exhaustive-coverage gap (deliverable (2)),
-// not the shape deliverable (1); the YELLOW trigger is the load-
-// bearing follow-up that closes (2), not discretion to leave
-// unfilled. The B2-OMNI finding stands on the shape decisions made
-// here; the substrate has been shown to model these element kinds
-// without contortion, and the same shape extends mechanically to the
-// missing kinds.
-//
-// SUBCIRCUIT NESTING + LEXICAL SCOPING. SPICE3F5 §3.4 permits nested
-// `.SUBCKT` definitions, and the names are LEXICALLY SCOPED to their
-// enclosing subcircuit. Two design questions:
-//   (i)  Recursive `SubcircuitDefinition` (with `subcircuits: List<
-//        SubcircuitDefinition>`) would model the nesting structurally
-//        but introduces a self-referential type that is NOT `Node` —
-//        node.dag A1 reserves recursion-via-type-self-reference for
-//        the substrate root, and adding a domain-carrier recursive
-//        type is a substrate-design call that exceeds worker authority.
-//   (ii) Flattening to a single top-level list with bare `Symbol`-keyed
-//        resolution ERASES the lexical scoping: a `.SUBCKT FOO` defined
-//        inside `.SUBCKT BAR` would collide with a top-level `.SUBCKT
-//        FOO` as competing authorities (P1 / P2 violation — PR #3168
-//        codex review surfaced this).
-// The current shape resolves both: nested `.SUBCKT name (...)` forms
-// are lifted to the top-level list by the parser BUT each
-// `SubcircuitDefinition` carries a `parent_scope: List<Symbol>`
-// (outermost-first, list-depth = nesting-depth) that preserves the
-// lexical-scope identity. Two same-named subcircuits in different
-// parents now have DISTINCT `(name, parent_scope)` identities at the
-// type layer; `SubcircuitCall` resolution is positional + walks up
-// the scope chain per SPICE3 §3.4 shadowing. See the
-// `SubcircuitDefinition` declaration's header for the full rationale.
-// `List<Symbol>` is the kernel-ambient flat carrier that captures the
-// scoping faithfully without introducing a recursive carrier type.
-//
-// EVERY COPRODUCT BELOW carries the full Practice-4 🟢/🟡/🔴
-// classification + the 5-pattern dissolution ledger (modeling-
-// discipline.md §4 — operator-ratified binding 2026-05-15; the doc
-// enumerates FIVE patterns, the fifth being Parameterized-family).
-// Records (`Conj` — `SpiceNetlist`, `ModelCard`, `Parameter`,
-// `SpiceValue`, `SubcircuitDefinition`) are not coproducts and carry no
-// ledger.
-
-
-// ─────────────────────────────────────────────────────────────────────
-// NamedNode — the `NodeRef.Named` variant's payload factored as a
-// REUSABLE carrier (PR #3168 codex review). A context that types a
-// field as `NamedNode` (rather than `NodeRef`) STRUCTURALLY EXCLUDES
-// the `Ground` variant of `NodeRef` — a `NamedNode` value is, by
-// type, not the `Ground` variant. This is what `SubcircuitPorts` and
-// other named-node-only carriers (`MutualInductance.l1` / `l2` —
-// inductor name references, not node references; intentionally
-// `Symbol` not `NamedNode`) exploit.
-//
-// WHAT NamedNode DOES AND DOES NOT ENFORCE (PR #3168 codex review on
-// commit 9a477536 — honest framing). NamedNode does NOT, at the type
-// layer, exclude a `Symbol` whose parser-translation is the
-// SPICE3-ground literal `"0"`. The kernel cannot observe Symbol
-// content (K-1 opaque), so a `NamedNode { name = Symbol(<the symbol
-// the parser would have mapped to Ground>) }` is, in principle,
-// constructible at the type layer. The "ground-token exclusion"
-// invariant is held by PARSER DISCIPLINE: the parser maps the deck
-// literal "0" to `NodeRef.Ground`, never to `NodeRef.Named
-// { node: NamedNode { name = Symbol("0") } }`. After parse, no
-// well-formed value contains a NamedNode whose Symbol is the "0"
-// literal; before parse, the Symbol-content is unobservable by
-// kernel/lens code.
-//   What's STRUCTURAL: a `NamedNode` value is not the `Ground`
-//   variant of `NodeRef`. Type-enforced.
-//   What's PARSER-DISCIPLINE: a `NamedNode`'s Symbol is not the
-//   parser's `"0"` literal. Held by the parse boundary; enforced
-//   by the parser's mapping rule, not by the type system.
-//   YELLOW DEBT: this gap dissolves when std/ provides a Symbol
-//   refinement substrate (a `Symbol` carrier whose content excludes
-//   a specific literal). With that, `NamedNode { name:
-//   NonZeroSymbol }` would push ground-token rejection into the
-//   type layer. The refinement substrate is std/-substrate-tier and
-//   not in T-4.10's scope; the current parser-discipline framing is
-//   the worker-tier scaffold.
 type NamedNode {
   name: Symbol
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// NodeRef — a reference to a SPICE node. A node is a connection point
-// between component terminals (Quarles 1993 §2). SPICE3 distinguishes
-// the global ground convention (node `0`, the simulator's universal
-// reference) from user-named nodes: ground is a SHARED simulator-level
-// fact, not just a Symbol that happens to spell "0". Lifting that
-// distinction into the type (PR #3168 codex review) makes "is this
-// node ground?" a STRUCTURAL fact rather than a Symbol-spelling
-// branch — preserving K-1's "kernel doesn't observe Symbol content"
-// discipline at the data-model layer (no `if name == "0"` branches
-// needed because there is no Symbol named "0" in well-formed data;
-// ground is the `Ground` variant). The parser maps the literal "0" in
-// the deck to `Ground`; the emitter maps `Ground` back to "0". `Symbol`
-// content never leaves the parse/emit boundary.
-//
-// The `Named` variant wraps the standalone `NamedNode` carrier (PR
-// #3168 codex review on commit c436bbfc) so contexts that structurally
-// exclude ground can reuse `NamedNode` directly.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every netlist consumer (well-formedness
-//      check, simulator-driver, emit) branches on ground-vs-named; a
-//      shared classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: `Ground` is nullary (a singleton fact:
-//      "this is the global reference"); `Named` wraps a `NamedNode`.
-//      Collapsing to `{ identity: Symbol }` makes the ground convention
-//      a spelling-sentinel ("0") that the kernel MUST read to recognize
-//      ground — the opaque-strings-attract-heuristics anti-pattern
-//      (node.dag K-1) and the M4 closed-sets-are-enums-not-strings
-//      violation.
-//   3. Algebraic form — N/A: ground-vs-named is the SPICE3 spec's own
-//      partition of the node-name space, not a richer std/ algebra.
-//   4. Dimensional — FAILS: a node-ref is EXACTLY ONE of ground/named;
-//      mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the variants are not `F<X>` over
-//      a declared set; `Ground` is nullary and `Named` wraps a
-//      `NamedNode` record — structurally heterogeneous, not a
-//      mechanical copy.
-// Terminal: the irreducible binary partition of the SPICE3 node-name
-// space (global ground vs user-named).
 type NodeRef
   = Ground
   | Named { node: NamedNode }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SpiceValue — a lexical-surface value as it appears in a SPICE deck.
-// SPICE values carry their own sub-grammar (decimal / scientific
-// notation / suffix units `T`/`G`/`Meg`/`K`/`m`/`u`/`n`/`p`/`f` /
-// parameter expressions). At the Shape-B netlist data-model layer this
-// file owns the netlist's STATEMENT shape — the numeric sub-grammar is
-// a separate format model (NOT in T-4.10's scope per "PROBE LIMITS"
-// above). The lexeme is carried verbatim so `parse ∘ emit` is identity
-// at the textual surface; numeric semantics is the simulator's concern.
-// This is the same composition discipline json.dag uses for its
-// arbitrary-precision number opt-in (RFC 8259 §6) — the format model
-// names the carrier, the numeric model interprets it.
 type SpiceValue {
   lexeme: String
 }
 
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SpiceVoltUnit
 
-// 🟡 needs-more-work — feature:spice-approx-voltage-consumer — dissolve-on: NodeVoltageBinding consumer projects through SpiceApproxVoltage (T-4 wave-2) · ledger: T-4
 type SpiceApproxVoltage {
   magnitude_lexeme: String
   unit: SpiceVoltUnit
 }
 
-// 🟡 needs-more-work — feature:spice-exact-voltage-gap — dissolve-on: std/ exact-real / Dimension substrate (T-3) · ledger: T-4
 type SpiceExactVoltageGap {}
 
 data spice_unit_volt: Symbol = spice_unit_volt
 data spice_exact_voltage_missing_carrier: Symbol = spice_exact_voltage_missing_carrier
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Parameter — a `name=value` pair (e.g., `L=2u`, `W=0.5u`, `AREA=2`).
-// Used by contexts that admit ONLY the name=value form (no bare
-// flags): `.MODEL` parameter sets (Quarles 1993 §11.3) and the
-// HSPICE-extension X-element `parameters` slot. Contexts that admit
-// BOTH bare flags and name=value (`Mosfet` / `Bjt` instance
-// modifiers, `.OPTIONS` directive — per PR #3168 openai-pro review
-// + ngspice §Simulator variables) use the dedicated `Modifier`
-// typed-sum carrier instead; see the `Modifier` declaration below
-// for that flag-vs-key-value distinction. The remaining variants
-// without any modifier slot (`Resistor`, `Capacitor`, `Inductor`,
-// `Diode`, `VoltageSource`, `CurrentSource`) are part of the same
-// follow-up that enumerates the missing-list (B, E, F, G, H, J, O,
-// S, T, U, W, Z) — see `Component`'s 🟡 trigger. `name` is a `Symbol`
-// (K-1-opaque); `value` is a `SpiceValue` (lexeme; sub-grammar
-// deferred per `SpiceValue`).
-//
-// PARAMETER-NAME SCHEMA AS PROJECTION (Practice 7). Which names are
-// valid for which context is a CONSUMER-SIDE check, not a parallel
-// field here — schema is a projection over the closed (context,
-// SPICE3 spec) axis. So `Parameter` (and `Modifier`) carries the
-// LEXICAL-SURFACE pairs losslessly; an invalid name is rejected
-// by the spec-projection check, not by the type system. A typed sub-
-// coproduct per element kind enumerating its valid parameter names is
-// the eventual 🟢 destination (tied to `Component`'s 🟡 trigger);
-// `List<Parameter>` is the intermediate scaffold consistent across
-// every variant that carries instance modifiers.
-//
-// FLAG-FORM INSTANCE MODIFIERS — handled by the dedicated `Modifier`
-// sum (declared below); see that declaration for the typed-sum
-// rationale. `Parameter` carries only `name=value` pairs and is used
-// for contexts where SPICE3 admits ONLY the `name=value` form
-// (`.MODEL` parameter sets and the HSPICE-extension X-element
-// `parameters` slot — neither accepts bare-flag modifiers).
-// `.OPTIONS` is NOT in this list because it admits BOTH forms (per
-// ngspice §Simulator Variables) and uses `Modifier` instead.
 type Parameter {
   name: Symbol
   value: SpiceValue
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Modifier — an instance-modifier carried by a component element
-// declaration. SPICE3 §11 spells some instance modifiers as BARE FLAGS
-// (`Q1 c b e m OFF` — no value associated with `OFF`) and others as
-// `name=value` (`AREA=2`). These are GENUINELY DISTINCT surface forms
-// with distinct semantics: `OFF` declares a flag-style state; `AREA=2`
-// passes a parameter value. PR #3168 codex review surfaced that an
-// earlier scaffold encoded bare flags as `Parameter { name = ..., value
-// = SpiceValue { lexeme = "" } }` and claimed `OFF` and `OFF=`
-// (parameter-with-empty-value) were "equivalent SPICE3 spellings" —
-// which they are NOT; the two surface forms have distinct grammar
-// rules and distinct semantic interpretations, and conflating them
-// loses the structural fact. The typed sum below makes the
-// distinction first-class.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every instance-modifier consumer
-//      (parameter-schema check, emit) dispatches on flag-vs-key-value;
-//      shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: `Flag` carries only a name; `KeyValue`
-//      carries a name AND a value. Collapsing to `{ name: Symbol,
-//      value?: SpiceValue }` makes "flag with a value" and "key-value
-//      missing a value" representable as the same illegal state — the
-//      conflation this declaration exists to forbid.
-//   3. Algebraic form — N/A: the flag-vs-key-value distinction is a
-//      SPICE3 spec partition, not an algebra carrier.
-//   4. Dimensional — FAILS: an instance modifier is EXACTLY ONE of
-//      Flag / KeyValue at the syntactic surface; mutually-exclusive.
-//   5. Parameterized family — FAILS: payloads are structurally
-//      distinct (one carries a `Symbol`, the other carries a
-//      `Symbol` + `SpiceValue` pair) — not `F<X>` over a declared set.
-// Terminal: the irreducible binary partition of SPICE3 instance-
-// modifier surface forms.
 type Modifier
   = Flag { name: Symbol }
   | KeyValue { name: Symbol, value: SpiceValue }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// IncludeCard — the payload of a SPICE3 `.INCLUDE` directive
-// (PR #3168 openai-pro review). `.INCLUDE filename` is legal in TWO
-// distinct positions in a SPICE3 deck:
-//   - at the top level (parsed as `Directive.Include`)
-//   - inside a `.SUBCKT/.ENDS` body (parsed as
-//     `SubcircuitStatement.StmtInclude` — SPICE3 §2.5 textual
-//     inclusion at position; §2.4 only bans control lines inside
-//     `.SUBCKT`, not includes)
-// The payload (the included file path) is IDENTICAL in both
-// positions — one SPICE concept, one carrier. Encoding it as
-// `{ path: String }` directly on both variants creates two parallel
-// authorities for the include-card payload (cost-of-change = 2 if
-// `.INCLUDE` ever gains quoting/section/library structure; modeling-
-// discipline.md P2 single-authority + M2 no-duplicate-type-
-// authorities). `IncludeCard` is the single carrier consumed by
-// both positions; the two variants differ only in WHERE the include
-// appears, not WHAT it carries.
 type IncludeCard {
   path: String
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SweepSourceKind — the closed set of independent-source kinds that
-// `.DC` can sweep (PR #3168 codex review on commit 324d26f7). SPICE3
-// §11.5.2 specifies `.DC SRCNAM VSTART VSTOP VINCR`, where SRCNAM is
-// the FULL SPICE name of the swept source (`V1` or `I1`); the
-// simulator disambiguates voltage-source vs current-source sweeps by
-// reading the leading character of SRCNAM. The kind set is closed at
-// two values per the SPICE3 spec; modeled here as a typed closed
-// enum so the dissolution discipline in `SweepSourceRef` below has a
-// proper carrier (not a `kind: Symbol` opaque-string proxy that would
-// violate M4 closed-sets-are-enums-not-strings).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every consumer of `.DC` source
-//      branches on V-vs-I uniformly; shared classifier.
-//   2. Variant-is-data — FAILS: collapsing to `{ name: Symbol }`
-//      reduces a closed two-way kind to an opaque-string proxy
-//      (M4 violation).
-//   3. Algebraic form — N/A: V-vs-I is the SPICE3 spec's enumeration
-//      of independent-source kinds, not an algebra carrier.
-//   4. Dimensional — FAILS: a sweep is EXACTLY ONE of voltage /
-//      current; mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: the two variants are bare
-//      nullary discriminants — no `F<X>` shape, no separately-
-//      declared source set to project over (the analogue of
-//      `AcSweepKind`'s ledger). The kind set IS the source set.
-// Terminal: the irreducible binary V-vs-I partition.
 type SweepSourceKind
   = Voltage
   | Current
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SweepSourceRef — a typed reference to an independent source for
-// `.DC` sweep (PR #3168 codex review). Carries kind + name as
-// separate fields rather than as parallel variants of a parameterized-
-// family coproduct (the prior `= VoltageSweepSource { name } |
-// CurrentSweepSource { name }` shape was Practice-4 pattern-2
-// variant-is-data — both variants had identical structural shape
-// `{ name: Symbol }`, differing only in their label; the codex
-// review on commit 324d26f7 surfaced this and the type is now the
-// Practice-4-dissolved form). Kind is a typed closed enum
-// (`SweepSourceKind`, declared above); name is the post-prefix
-// suffix (matching `Component.{VoltageSource|CurrentSource}.name`).
-//
-//   `.DC V1 0 5 0.1`  ⇒  Dc { source: SweepSourceRef { kind = Voltage, name = Symbol("1") }, ... }
-//   `.DC I1 0 1m 0.01` ⇒  Dc { source: SweepSourceRef { kind = Current, name = Symbol("1") }, ... }
-//
-// The reference's kind structurally constrains which Component
-// variants can satisfy it: a `SweepSourceRef { kind = Voltage }`
-// resolves only against `Component.VoltageSource` instances, etc.
-// Cross-kind aliasing of name-equal-but-kind-distinct sources is
-// preserved at the type layer because kind and name travel together
-// as a single record value. This is a Conj (record), not a Disj —
-// no Practice-4 ledger applies; `SweepSourceKind` carries the kind
-// closure separately with its own ledger.
 type SweepSourceRef {
   kind: SweepSourceKind
   name: Symbol
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// InductorRef — a typed reference to an inductor element (PR #3168
-// codex review). Used by `Component.MutualInductance` to identify
-// the two coupled inductors by name. SPICE3 §11.1 specifies the
-// `K` element as `Kxxxx Lyyyy Lzzzz value` where `Lyyyy`/`Lzzzz` are
-// FULL SPICE inductor names. After Component.name's post-prefix
-// discipline, a bare `Symbol` payload would only carry the suffix
-// (`Symbol("1")` for `L1`), losing the kind affirmation — analogous
-// to the V/I aliasing concern that motivates SweepSourceRef. Using
-// `InductorRef` makes "this names an Inductor specifically" a
-// positive type fact: the reference's type constrains which
-// Component variants can satisfy it (an `InductorRef` resolves only
-// against `Component.Inductor` instances). Single-variant record
-// because SPICE3's `K` element references inductors and only
-// inductors; a typed sum would add no information.
 type InductorRef {
   name: Symbol
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SubstrateSpec — the optional 4th terminal of a SPICE3 Q-card. The
-// SPICE3 BJT statement permits both
-//   `Qname COLLECTOR BASE EMITTER MODEL [params...]`             (3-term)
-//   `Qname COLLECTOR BASE EMITTER SUBSTRATE MODEL [params...]`   (4-term)
-// (Quarles 1993 §11.4). The two are distinct at the SYNTACTIC surface
-// — `parse ∘ emit` must preserve the choice — even though they map to
-// the same circuit topology when SUBSTRATE = node 0 (the simulator's
-// default ground substrate, semantically). Modeling this as
-// `Option<NodeRef>` is explicitly rejected by v4 discipline
-// (std/diagnostic.dag header — `Correction = Suggested(Node) |
-// Unavailable(NoCorrectionReason)`, NOT `Option<Node>`); the closed
-// two-variant typed sum is the P2-faithful shape.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every Bjt-consumer (parse round-trip,
-//      emit, simulator-driver) dispatches on the substrate-explicit-vs-
-//      implicit fact; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: `Implicit` is nullary; `Explicit`
-//      carries a `NodeRef`. Collapsing to `{ explicit: Bool, node?:
-//      NodeRef }` makes "explicit with no node" + "implicit with a
-//      node" representable — the inverse of P2.
-//   3. Algebraic form — N/A: the substrate-presence choice is a
-//      SPICE3 syntactic-surface fact, not an algebra carrier.
-//   4. Dimensional — FAILS: a Q-card either DOES or DOES NOT spell the
-//      substrate node; mutually-exclusive alternatives, never
-//      simultaneous coordinates.
-//   5. Parameterized family — FAILS: the two variants are not `F<X>`
-//      over a declared set; `Implicit` is nullary and `Explicit`
-//      carries a `NodeRef` — structurally distinct, not a mechanical
-//      copy of any source set.
-// Terminal: the irreducible binary syntactic-surface choice of the
-// SPICE3 BJT substrate slot.
 type SubstrateSpec
   = SubstrateImplicit
   | SubstrateExplicit { node: NodeRef }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Component — one element instance in a SPICE netlist. Coproduct over a
-// supported subset of the SPICE3 element kinds (Quarles 1993 §11). Each
-// variant carries NAMED terminal slots fixing its arity by construction
-// (P2 illegal states unrepresentable: a `Resistor` with three terminals
-// is not a representable value of this type). See modeling notes
-// "WHY CLOSED `Component` COPRODUCT" for the design rationale.
-//
-// NAME / KIND SINGLE-AUTHORITY (PR #3168 codex review). SPICE3 §11.1
-// encodes the element kind in the FIRST CHARACTER of the instance
-// name: `R1` is a Resistor, `M3` is a Mosfet, `X4` is a SubcircuitCall.
-// The kind prefix is RE-EXPRESSED structurally by the `Component`
-// variant. To avoid the kind/name MISMATCH risk (a `Capacitor` value
-// whose `name: Symbol` happens to spell "R1" — kind says one thing,
-// name says another), each variant's `name: Symbol` field carries the
-// POST-PREFIX portion of the SPICE3 instance name. The kind prefix is
-// IMPLICIT in the variant; emit prepends the variant's kind letter
-// (`R` / `C` / `L` / `V` / `I` / `D` / `Q` / `M` / `K` / `X`); parse
-// strips it. Examples:
-//   `R1` ⇒ `Resistor { name = Symbol("1"), ... }`
-//   `R_LOAD` ⇒ `Resistor { name = Symbol("_LOAD"), ... }`
-//   `M3_high` ⇒ `Mosfet { name = Symbol("3_high"), ... }`
-//   `X1` ⇒ `SubcircuitCall { name = Symbol("1"), ... }`
-// Under this discipline, no kind/name mismatch is REPRESENTABLE: the
-// variant IS the kind, full stop, and the `name` field cannot
-// contradict it because the kind prefix is no longer in `name` at
-// all. There is no second authority for parse/emit to enforce
-// (M3/P2 — single-authority + illegal-states-unrepresentable). The
-// `Symbol` payload remains K-1-opaque; the kernel never observes the
-// suffix's spelling.
-//
-// HONESTY NOTE (PR #3168 codex review). The 10 variants below are a
-// SUBSET of SPICE3 elements (FIDELITY SCOPE deliverable (2) gap;
-// header top), AND each enumerated variant carries only
-// the MANDATORY-positional facts for its element — not the full per-
-// element statement grammar (the optional parameters/source-spec
-// transient forms). These are two distinct coverage gaps tracked in
-// the dissolution trigger below:
-//   (a) ELEMENT-KIND COVERAGE — enumerated: R, C, L (passives);
-//       V, I (independent sources); D, Q, M (semiconductor devices);
-//       K (mutual inductance); X (subcircuit invocation). NOT yet
-//       enumerated: B (non-linear dependent source — SPICE3 `B N+
-//       N- <I=expr> <V=expr>`), E, F, G, H (linear controlled
-//       sources), J (JFET), O (LTRA lossy transmission line), S
-//       (voltage-controlled switch), T (lossless transmission line),
-//       U (URC uniform distributed RC line), W (current-controlled
-//       switch), Z (MESFET). Quarles 1993 SPICE3F5 §11. This list
-//       MUST stay synchronized with the SPICE3F5 anchor's element
-//       table — if a SPICE3 element is neither in `type Component`
-//       above nor in this missing-list, the 🟡 trigger could false-
-//       fire green while leaving a valid spec element unmodeled (the
-//       M3 / P1 fidelity failure mode codex review #3168 surfaced
-//       for the prior omission of Z, O, U; openai-pro #3168 review
-//       on commit e85920c2 surfaced the same shape for `B`).
-//   (b) PER-VARIANT GRAMMAR COVERAGE — each enumerated variant is a
-//       MANDATORY-FIELDS-ONLY shape; the spec's optional facts are
-//       not yet modeled:
-//         - Resistor / Capacitor / Inductor: optional `TC=...`
-//           temperature coefficients, `TEMP=...`, IC / initial-current
-//           for L; optional `.MODEL` reference (R/C/L can be model-
-//           referenced in SPICE3 §11.1).
-//         - Diode: optional `AREA`, `OFF`, `IC=Vd`.
-//         - Bjt: substrate-spec (optional 4th terminal) and instance
-//           modifiers (`AREA`/`OFF`/`IC=Vbe,Vce`) ADDRESSED — `Bjt`
-//           now carries `substrate: SubstrateSpec` (typed sum; see the
-//           `SubstrateSpec` declaration above for the 5-pattern ledger)
-//           and `modifiers: List<Modifier>` (the typed Flag/KeyValue
-//           sum — see `Modifier`'s declaration below for the flag-
-//           vs-key-value distinction; bare-flag `OFF` is `Flag {
-//           name = OFF }`, parameter `AREA=2` is `KeyValue { name =
-//           AREA, value = ... }`). The `modifiers` carrier is the
-//           lexical-surface scaffold; the typed parameter-name
-//           schema is the same per-element dissolution work as for
-//           `Mosfet`.
-//         - Mosfet: optional `L`/`W` (already in `modifiers`),
-//           `AD`/`AS`/`PD`/`PS`/`NRD`/`NRS`/`OFF`/`IC=Vds,Vgs,Vbs` —
-//           current `modifiers: List<Modifier>` admits these by
-//           lexeme but does not type-enforce their names.
-//         - VoltageSource / CurrentSource: SPICE3 §11.2 transient
-//           source spec — `DC`/`AC` magnitude+phase + `PULSE`/`SIN`/
-//           `EXP`/`PWL`/`SFFM` parameterized waveforms. The current
-//           `value: SpiceValue` slot carries only the DC magnitude
-//           lexeme.
-//         - MutualInductance: complete for the basic form (linear
-//           mutual inductance, no `.MODEL` reference); SPICE3 also
-//           supports nonlinear-core model-referenced form.
-//         - SubcircuitCall: complete by construction (the
-//           `connections: SubcircuitConnections` non-empty carrier +
-//           `parameters` list span the X-element syntax;
-//           `connections` mirrors `SubcircuitDefinition.ports`'s
-//           non-empty discipline at the call-site boundary per
-//           PR #3168 codex review).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
-// structural shape (one variant per SPICE3 element kind with named
-// terminal slots) is the right form; what makes it YELLOW is the two
-// coverage gaps enumerated above — the richer source (the full
-// SPICE3 §11 element grammar) exists in the spec but is not yet
-// modeled here.
-//   Named trigger: when (a) all SPICE3F5 elements named in the
-//   missing-list above (B, E, F, G, H, J, O, S, T, U, W, Z) are added
-//   as variants AND (b) each enumerated variant carries its
-//   full SPICE3 §11 statement grammar (optional parameters made
-//   structural rather than lexeme-only; transient source specs as
-//   typed sub-coproducts; optional terminals via per-variant named
-//   slots — NOT by `Option<NodeRef>` or sentinel value), the SUM
-//   reclassifies 🟢 GREEN. Tied to `ModelKind`'s 🟡 trigger below
-//   (the two dissolve as one sweep — same SPICE3 authority).
-// Five patterns attempted on the SUM (all FAIL to dissolve it):
-//   1. Fact placement — FAILS: every netlist consumer (well-formedness
-//      check, simulator-driver, emit) dispatches on ALL kinds (a
-//      netlist walker handles each element type uniformly); kind is a
-//      shared classifier, not a per-consumer scattered fact.
-//   2. Variant-is-data — FAILS: the variants carry STRUCTURALLY
-//      heterogeneous payloads — Resistor has `n_plus`/`n_minus`/`value`
-//      (2 terminals + a value); Mosfet has `drain`/`gate`/`source`/
-//      `body`/`model`/`parameters` (4 terminals + a model ref + a
-//      parameter list); MutualInductance has `l1`/`l2` (Symbol refs to
-//      other inductors) + a `coupling` value, not terminals at all.
-//      Collapsing to `{ kind, terminals?, value?, model?, params? }`
-//      makes illegal-shape combinations (a Mosfet with no `drain`, a
-//      Resistor carrying a model ref) representable — the inverse of
-//      P2.
-//   3. Algebraic form — N/A: a SPICE element is not an algebra carrier;
-//      no richer std/ algebraic source the variants trace to. The
-//      partition is the SPICE3 spec's own enumeration, not a
-//      composition of algebraic facts.
-//   4. Dimensional — FAILS: a component is EXACTLY ONE element kind
-//      (an R is not also a C); mutually-exclusive alternatives, never
-//      simultaneous coordinates.
-//   5. Parameterized family — FAILS: the variants are NOT `F<X>` over a
-//      declared set — their payloads are structurally distinct (2- vs
-//      3- vs 4-terminal slots, value-vs-model-vs-nary-parameters), not
-//      a mechanical copy of an enumerable source set. A `Component
-//      { kind: Symbol, terminals: List<NodeRef>, params: List<Parameter>
-//      }` projection over an `ElementSpec` table was attempted (see
-//      modeling notes design (a)) and rejected because it makes
-//      illegal arities representable — Practice-7 fails on the same
-//      structural-heterogeneity ground that Practice-2 (variant-is-
-//      data) does.
-// On dissolution (when the trigger fires) the SUM IS the closed SPICE3
-// element set as a coproduct with per-kind terminal-arity AND per-kind
-// statement-grammar enforced structurally; cost-of-change is 1 (per-
-// variant edit), no parallel representation forced elsewhere.
 type Component
   = Resistor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | Capacitor { name: Symbol, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
@@ -802,61 +204,6 @@ type Component
   | SubcircuitCall { name: Symbol, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ModelKind — the supported subset of `.MODEL` device kinds in SPICE3.
-// Each `.MODEL` card declares a NAMED parameter set for one of these
-// device types (Quarles 1993 §11.3 + §6); component instances reference
-// the model by name (`Diode.model`, `Bjt.model`, `Mosfet.model`).
-//
-// HONESTY NOTE (PR #3168 codex review): this enum is a SUBSET of the
-// SPICE3 `.MODEL` authority — the FIDELITY SCOPE deliverable (2)
-// gap (header top), not the SHAPE deliverable (1). The full SPICE3 set is R (resistor model),
-// C (capacitor model), URC (uniform RC line), LTRA (lossy transmission
-// line), SW (voltage-controlled switch), CSW (current-controlled
-// switch), D (diode), NPN, PNP, NJF (N-JFET), PJF (P-JFET), NMOS, PMOS,
-// NMF (N-MESFET), PMF (P-MESFET) — Quarles 1993 §6. The five variants
-// below match the five `Component` variants that carry a `model: Symbol`
-// slot in this initial cut (`Diode` / `Bjt`(N|P) / `Mosfet`(N|P)); the
-// classification reflects that incomplete coverage rather than papering
-// over it.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
-// structural shape (a closed enumeration of SPICE3 device kinds) is
-// terminal; what makes it YELLOW is its INCOMPLETE COVERAGE of the
-// closed SPICE3 authority — the richer source (the remaining ten
-// .MODEL kinds enumerated above) exists in the spec but is not yet
-// modeled here.
-//   Named trigger: when (a) `Component`'s 🟡 trigger fires (the full
-//   SPICE3 element set is enumerated — see Component above), AND
-//   (b) the model-referencing variants among them (every Component
-//   variant that carries a `model: Symbol` slot) have their
-//   corresponding `.MODEL` kind enumerated here — `ModelKind`
-//   reclassifies 🟢 GREEN. The two coverage gaps dissolve as one
-//   sweep because they share the SAME authority (the SPICE3 spec) and
-//   the same per-element work (a Component variant that references a
-//   model has a matching ModelKind, by construction of the spec).
-// Five patterns attempted on the SUM (all FAIL to dissolve it):
-//   1. Fact placement — FAILS: every `.MODEL`-consumer (parameter-
-//      schema checker, emitter) dispatches on the model kind to know
-//      which parameter names are valid; shared classifier, not
-//      scattered.
-//   2. Variant-is-data — FAILS: collapsing the closed kind set to a
-//      `{ name: Symbol }` field makes the kind opaque — the parameter-
-//      schema check loses its dispatch target and degenerates to a
-//      string match on the spelling (the M4 closed-sets-are-enums-not-
-//      strings violation; feedback_opaque_strings_attract_heuristics).
-//   3. Algebraic form — N/A: a device-model kind is not an algebra
-//      carrier; it is the SPICE3 spec's enumeration of device classes,
-//      not a composition of std/ algebraic facts.
-//   4. Dimensional — FAILS: a `.MODEL` card has EXACTLY ONE device
-//      kind; alternatives, never coordinates.
-//   5. Parameterized family — FAILS: the variants share no `F<X>`
-//      shape — they are bare nullary discriminants (the per-kind
-//      parameter schema lives at the `ModelCard.parameters` slot, NOT
-//      as variant payload; the schema is itself a separately
-//      enumerable concern the consuming check projects over). No
-//      mechanical copy of a source set; not a Practice-7 projection.
 type ModelKind
   = DiodeModel
   | BjtNpn
@@ -865,16 +212,6 @@ type ModelKind
   | MosfetPmos
 
 
-// ─────────────────────────────────────────────────────────────────────
-// ModelCard — a `.MODEL name kind ( param=value ... )` declaration. A
-// model card binds a NAME to a parameter set under a given device kind;
-// component instances reference the name (Quarles 1993 §6).
-//
-// `parameters` is the kind-specific parameter set — the schema (which
-// names are valid for which `ModelKind`) is a consumer-side check, not
-// a parallel field here (Practice 7: schema is a projection over the
-// kind set). This file does not enumerate per-kind schemas — that is a
-// SPICE3-spec lookup the consumer performs.
 type ModelCard {
   name: Symbol
   kind: ModelKind
@@ -882,216 +219,24 @@ type ModelCard {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// AcSweepKind — the sweep kind of an `.AC` analysis directive (Quarles
-// 1993 §11.5.1): linear, decade, or octave sweep.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟡 YELLOW (deferred-on-consumer).
-// FLIP rationale (rule-change attribution): per the operator-directed
-// modeling-discipline rule change in PR #3200 (merged 2026-05-16
-// 19:53:37Z), GREEN is consumer-INDEPENDENT — a coproduct is GREEN
-// ONLY IF no richer source exists. The merry-ibex-337-led
-// authoritative cross-PR Tier-1 audit identified AcSweepKind as
-// mis-GREEN: the three variants PROJECT OVER a namable 2D axis
-// `(spacing-law × ratio-base)`:
-//   - `Linear`  ⇒ spacing-law = arithmetic;   ratio-base = NA
-//   - `Decade`  ⇒ spacing-law = logarithmic;  ratio-base = base-10
-//   - `Octave`  ⇒ spacing-law = logarithmic;  ratio-base = base-2
-// A consumer that matches over the `{Linear | Decade | Octave}`
-// labels is doing structural decomposition in the wrong place —
-// the step-law derivation belongs at the meaning-consumer, not at
-// the foreign-label match.
-// Ledger — five patterns attempted (updated for the new classification):
-//   1. Fact placement — FAILS: the sweep kind is consumed uniformly by
-//      the analysis-driver and the emitter; shared, not scattered.
-//   2. Variant-is-data — FAILS: collapsing to `{ name: Symbol }`
-//      reduces the closed three-way kind to an opaque-string proxy
-//      (M4 violation).
-//   3. Algebraic form — N/A: a frequency-sweep kind is not an algebra
-//      carrier; it is the SPICE3 spec's enumeration.
-//   4. Dimensional — FAILS-AT-THIS-LAYER, but the 2D `(spacing-law ×
-//      ratio-base)` axis IS the richer source the YELLOW dissolution
-//      targets at the meaning-consumer; a coproduct value at this
-//      file's surface still carries EXACTLY ONE sweep kind.
-//   5. Parameterized family — SUCCEEDS at the meaning-consumer (the
-//      sweep-point generator) per PR #3200: the three variants are
-//      `F<X>` for X over the spacing-law × ratio-base axis-set.
-//      Stays in coproduct form at this file's surface because the
-//      decomposition is the consumer's obligation (see below), not
-//      a local-lookup at the netlist data-model layer.
-//   Named trigger: the first consumer of frequency-stepping semantics
-//   — concretely the AC-analysis sweep-point generator (the code
-//   that walks `fstart` → `fstop` emitting per-step frequencies for
-//   `.AC` simulation).
-//   Pre-assigned obligation: that consumer DERIVES the step law from
-//   the `(spacing-law, ratio-base)` axes — NOT a `match` over the
-//   `{Linear | Decade | Octave}` coproduct labels. A typed
-//   `(spacing-law: ArithSpacing | LogSpacing, ratio-base: …)`
-//   carrier (or its equivalent decomposition shape) is the
-//   structural form the consumer owes; this declaration's surface
-//   stays a coproduct because the netlist data layer (parse/emit
-//   round-trip) does not need the axis decomposition — the meaning-
-//   consumer does.
 type AcSweepKind
   = Linear
   | Decade
   | Octave
 
 
-// ─────────────────────────────────────────────────────────────────────
-// NodeVoltageBinding — one `V(node) = value` assignment inside a
-// `.IC` / `.NODESET` card (Quarles 1993 §11.5.4). Both directives
-// are VARIADIC at the SPICE3 card surface — a single `.IC` or
-// `.NODESET` may carry an arbitrary number of bindings:
-//   `.IC V(1)=5V V(out)=2.5V V(in)=0`
-//   `.NODESET V(out)=2.5V V(n3)=1.2V`
-// One card maps to one `Directive` value carrying `assignments:
-// List<NodeVoltageBinding>` — see `InitialCondition` / `NodeSet`
-// below. Modeling each binding as its own directive variant would
-// SILENTLY NORMALIZE one card into multiple directive facts, breaking
-// `parse ∘ emit` round-trip fidelity (the user wrote one card; emit
-// must produce one card).
 type NodeVoltageBinding {
   node: NodeRef
   value: SpiceValue
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// NodeVoltageBindings — the non-empty list of bindings carried by one
-// `.IC` or `.NODESET` card (PR #3168 codex review). SPICE3F5 §11.5.4
-// requires at least one `V(node)=value` binding per card; a card with
-// zero bindings is a syntactic dead-end (no information to inject).
-//
-// Modeled with the same head+tail discipline as `SubcircuitPorts` so
-// non-emptiness is STRUCTURALLY ENFORCED at the type layer rather than
-// as a well-formedness check — INVARIANTS P2 / modeling-discipline.md
-// Practice 2/6 (illegal states unrepresentable). A zero-binding
-// `NodeVoltageBindings` value is unconstructible because `first` is
-// mandatory; the type system rejects empty input.
-//
-// Same eventual dissolution as `SubcircuitPorts`: a generic
-// `NonEmptyList<T>` in std/ would absorb both head+tail records; the
-// inlined record is the worker-tier scaffold that does not require
-// that substrate addition.
 type NodeVoltageBindings {
   first: NodeVoltageBinding
   rest: List<NodeVoltageBinding>
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// Directive — a SPICE analysis or control statement (the dot-prefixed
-// cards; Quarles 1993 §11.5). Each variant carries the parameters the
-// spec requires for that directive.
-//
-// `.END` IS NOT A `Directive` VARIANT (PR #3168 codex review). `.END`
-// is the SPICE3 FILE TERMINATOR (Quarles 1993 §2.4): exactly one,
-// always last, never repeatable. Placing it as a `Directive` variant
-// + carrying it in a `directives: List<Directive>` admits illegal
-// states (zero `.End`s, multiple `.End`s, `.End` not in tail
-// position) — INVARIANTS P2 violation, the same shape modeling-
-// discipline.md Practice 2/6 forbid in `Component`. The file
-// terminator is owned by the parse/emit DISCIPLINE, not the data
-// model: parse success structurally requires exactly one trailing
-// `.END` (absence / duplication / mid-position is a Diagnostic);
-// emit always appends `.END` after the last directive. There is no
-// data shape it could correctly take here.
-//
-// HONESTY NOTE (PR #3168 codex review). The Directive coverage has
-// TWO distinct gaps tracked by the YELLOW trigger below, parallel to
-// `Component`'s structure — both gaps fall under the FIDELITY SCOPE
-// deliverable (2) (header top), not the SHAPE deliverable (1):
-//   (a) DIRECTIVE-KIND COVERAGE — enumerated: `.OP`, `.TRAN`, `.DC`,
-//       `.AC`, `.IC`, `.NODESET`, `.OPTIONS`, `.INCLUDE`. NOT yet
-//       enumerated: `.NOISE`, `.TF`, `.SENS`, `.DISTO`, `.FOUR`,
-//       `.PZ` (pole-zero), `.PRINT`, `.PLOT`, `.SAVE`, `.WIDTH`,
-//       `.LIB`. Quarles 1993 SPICE3F5 §11.5. This list MUST stay
-//       synchronized with the SPICE3F5 anchor's analysis/control card
-//       table — same synchronization discipline as `Component` above;
-//       a missing directive name lets the 🟡 trigger false-fire green
-//       (M3 / P1 failure mode codex review #3168 surfaced for the
-//       prior omission of `.PZ`).
-//   (b) PER-VARIANT GRAMMAR COVERAGE — each enumerated variant is a
-//       MANDATORY-FIELDS-ONLY shape; the spec's optional facts are
-//       not yet modeled:
-//         - Tran: optional `TSTART` (default 0), `TMAX` (default
-//           (TSTOP-TSTART)/50), and flag `UIC` (use initial
-//           conditions) — Quarles 1993 §11.5.7. Current shape is
-//           `{ tstep, tstop }` only.
-//         - Dc: optional second-source nested sweep
-//           `[SRC2 VSTART2 VSTOP2 VINCR2]` — Quarles 1993 §11.5.2.
-//           Current shape is single-source only.
-//         - InitialCondition / NodeSet: variadic per SPICE3 §11.5.4
-//           (`.IC V(n)=v V(n)=v ...`); ADDRESSED — both variants
-//           carry `assignments: List<NodeVoltageBinding>` (see
-//           `NodeVoltageBinding` declaration above). One `.IC` card
-//           maps to one `InitialCondition` value with N bindings;
-//           `parse ∘ emit` round-trip preserves single-card identity
-//           (no silent normalization into N directives). Fix landed
-//           per PR #3168 openai-pro review.
-//         - Options: bare flag + `name=value` mixed grammar
-//           ADDRESSED (PR #3168 openai-pro review). SPICE3 `.OPTIONS`
-//           admits BOTH bare option tokens (`.OPTIONS ACCT NOPAGE`)
-//           and `name=value` (`.OPTIONS METHOD=GEAR ABSTOL=1e-12`) in
-//           the same card; an earlier shape `parameters: List<
-//           Parameter>` only admitted the latter, making bare-option
-//           cards unrepresentable. `Options` now carries `modifiers:
-//           List<Modifier>` (the same Flag/KeyValue typed sum used by
-//           Mosfet/Bjt instance modifiers); bare options are `Flag`
-//           and `name=value` options are `KeyValue`. Anchor: ngspice
-//           manual §"Simulator variables (.OPTIONS)".
-//         - Ac / Op / Include: complete-for-mandatory-grammar at this
-//           layer. `.AC` is `.AC SWEEP N FSTART FSTOP` (4 mandatory
-//           fields, no optional); `.OP` is nullary; `.INCLUDE` carries
-//           one filename. Surfaced honestly so any spec re-read can
-//           flag a miss.
-//
-// `.End`'s absence from this SUM is NOT part of the YELLOW debt — by
-// construction it does not belong here at all (file-terminator note
-// above).
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟡 YELLOW (scaffold). The SUM's
-// structural shape (one variant per SPICE3 analysis/control directive
-// with named mandatory-parameter slots) is the right form; what makes
-// it YELLOW is the two coverage gaps above.
-//   Named trigger: when (a) all SPICE3F5 §11.5 directives from the
-//   missing-list are added as variants (each with its mandatory-
-//   parameter slots typed structurally, no `parameters: List<
-//   Parameter>` catch-all) AND (b) each enumerated variant carries
-//   its full SPICE3F5 §11.5 grammar (Tran's TSTART/TMAX/UIC; Dc's
-//   optional 2nd-source sweep, modeled either as an Implicit/Explicit
-//   typed sum like `SubstrateSpec` or as a nested-sweep variant), the
-//   SUM reclassifies 🟢 GREEN. Tied conceptually to `Component`'s 🟡
-//   trigger (same SPICE3 authority + same per-variant-grammar
-//   discipline), but a separate sweep because the directive set is
-//   disjoint from the element set.
-// Five patterns attempted on the SUM (all FAIL to dissolve it):
-//   1. Fact placement — FAILS: every netlist consumer (analysis-driver,
-//      emitter) dispatches on the directive kind to know what to do
-//      (run a transient analysis, set an initial condition, include a
-//      file); shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: the variants carry STRUCTURALLY
-//      heterogeneous payloads — `Tran` carries `tstep` + `tstop`;
-//      `Dc` carries a swept source + range; `Ac` carries a sweep kind
-//      + `n` + frequency range; `Op` is nullary; `Options` carries a
-//      parameter list. Collapsing to `{ kind, parameters: List<...> }`
-//      makes illegal-shape combinations (a `Tran` with no `tstep`)
-//      representable — the inverse of P2.
-//   3. Algebraic form — N/A: a SPICE directive is not an algebra
-//      carrier; it is the spec's enumeration of analysis + control
-//      commands.
-//   4. Dimensional — FAILS: a directive is EXACTLY ONE kind; mutually-
-//      exclusive alternatives.
-//   5. Parameterized family — FAILS: the variants are structurally
-//      heterogeneous (different field counts and shapes), not `F<X>`
-//      over a declared set; not a Practice-7 projection.
-// On dissolution (when the trigger fires) the SUM IS the closed
-// SPICE3 directive set as a coproduct with per-kind payload shape
-// enforced structurally; cost-of-change is 1 (per-variant edit), no
-// parallel representation forced elsewhere.
 type Directive
   = Op
   | Tran { tstep: SpiceValue, tstop: SpiceValue }
@@ -1103,150 +248,12 @@ type Directive
   | Include { card: IncludeCard }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SubcircuitStatement — what is legal INSIDE a `.SUBCKT/.ENDS` body
-// (PR #3168 codex review). SPICE3F5 §3.4 permits exactly three
-// statement kinds inside a subcircuit body:
-//   - Component instances (R/C/L/V/I/D/Q/M/K/X/...) — the topology.
-//   - `.MODEL` cards local to the subcircuit.
-//   - `.INCLUDE` directives — the ONLY directive legal inside a
-//     subcircuit; `.INCLUDE` is preprocessing-style (substitute the
-//     named file's contents at this position), not an analysis/
-//     control card. The earlier "all directives forbidden" framing was
-//     too coarse; it forbade `.INCLUDE` along with the genuinely-
-//     illegal analysis/control cards.
-// Nested `.SUBCKT/.ENDS` pairs are LIFTED to the top-level list with
-// `parent_scope` carrying lexical identity (modeling notes "SUBCIRCUIT
-// NESTING + LEXICAL SCOPING"); after lifting, a nested subcircuit
-// definition is NOT a `SubcircuitStatement` — it is its own top-level
-// `SubcircuitDefinition` value with a non-empty `parent_scope`.
-//
-// SubcircuitStatement is an ordered statement; a `body: List<
-// SubcircuitStatement>` preserves the original deck's interleaving of
-// component instances / `.MODEL` cards / `.INCLUDE` directives,
-// supporting `parse ∘ emit` round-trip identity at the textual surface.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every subcircuit-body consumer (well-
-//      formedness, emit, simulator-driver) dispatches on the statement
-//      kind to know what to do; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: payloads are structurally distinct
-//      (`StmtComponent` carries a `Component`; `StmtModel` carries a
-//      `ModelCard`; `StmtInclude` carries an `IncludeCard`).
-//      Collapsing to `{ kind, component?, model?, card? }` makes
-//      illegal-shape combinations representable (the inverse of P2).
-//   3. Algebraic form — N/A: the SPICE3 subcircuit-body legality is
-//      a spec partition, not a richer std/ algebra.
-//   4. Dimensional — FAILS: a subcircuit statement is EXACTLY ONE of
-//      Component / ModelCard / Include — mutually-exclusive
-//      alternatives.
-//   5. Parameterized family — FAILS: payloads are structurally
-//      distinct (one wraps `Component`, one wraps `ModelCard`, one
-//      wraps `IncludeCard`) — not `F<X>` over a separately-declared
-//      set.
-// Terminal: the closed three-way partition of legal-in-`.SUBCKT`
-// statements per SPICE3F5 §3.4. The set is closed (forbidden cards
-// are explicit in the spec); adding a fourth requires either a SPICE3
-// spec change (operator-tier) or evidence of a missed legal-in-SUBCKT
-// statement (would be a worker-tier addition with named justification).
 type SubcircuitStatement
   = StmtComponent { component: Component }
   | StmtModel { model: ModelCard }
   | StmtInclude { card: IncludeCard }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SubcircuitDefinition — a `.SUBCKT name (terminals) ... .ENDS`
-// declaration (Quarles 1993 §3.4). A subcircuit defines a NAMED
-// parameterized topology that `Component.SubcircuitCall` instances
-// invoke by name. The body is a single ordered list of
-// `SubcircuitStatement`s (the three legal-in-`.SUBCKT` statement kinds
-// per SPICE3F5 §3.4 — see `SubcircuitStatement` above for the closed
-// partition and the legality reasoning).
-//
-// PORTS EXCLUDE GROUND AND ARE NON-EMPTY (PR #3168 codex + openai-pro
-// reviews). The subcircuit port carrier (`ports: SubcircuitPorts` —
-// see the `SubcircuitPorts` declaration below) enforces TWO SPICE3
-// constraints structurally:
-//   (a) NO GROUND VARIANT — the carrier holds `NamedNode`s (the
-//       standalone non-ground node-identity carrier declared with
-//       `NodeRef`), not `NodeRef`s, so the `NodeRef.Ground` VARIANT
-//       is structurally not a legal port. Using `NamedNode` as the
-//       element type makes "port-is-the-Named-variant-not-Ground" a
-//       positive type fact. HONEST CAVEAT (PR #3168 codex review):
-//       this does NOT, at the type layer, exclude a Symbol whose
-//       parser-translation is the SPICE3-ground literal `"0"` — that
-//       ground-TOKEN rejection is PARSER DISCIPLINE (the parser
-//       never maps "0" through `NodeRef.Named`, only through
-//       `NodeRef.Ground`), not type-layer enforcement; see the
-//       `NamedNode` declaration above for the full YELLOW debt note.
-//       The parser-discipline guarantee is sound at the parse boundary
-//       (the only place ground-token data enters the model); the
-//       type-layer exclusion covers the `Ground` VARIANT specifically.
-//       Port names are LOCAL-scope identifiers the call-site connects
-//       to its own node-refs; ground is the simulator's universal
-//       reference and cannot be a formal parameter.
-//   (b) NON-EMPTY — `SubcircuitPorts` is a head+tail record
-//       (`{ first: NamedNode, rest: List<NamedNode> }`) so a zero-port
-//       subcircuit is STRUCTURALLY UNREPRESENTABLE. SPICE3F5 §2.4
-//       requires `.SUBCKT` external nodes to be present; a zero-port
-//       `.SUBCKT name` is a syntactic dead-end the type system now
-//       rejects rather than admits as a well-formedness check.
-// Both constraints are type-enforced, not check-enforced — INVARIANTS
-// P2 / modeling-discipline.md Practice 2/6 (illegal states
-// unrepresentable). Inside the subcircuit BODY, component terminals
-// are still `NodeRef` and CAN reference ground — `V(0)` is the
-// simulator's universal reference, accessible from any scope.
-//
-// PRIOR "NO `directives` FIELD" RATIONALE (PR #3168 earlier codex
-// review). The prior shape carried `directives: List<Directive>` here
-// and tracked the in-SUBCKT-prohibition as a "consumer-side well-
-// formedness check" — but INVARIANTS P2 / modeling-discipline.md
-// Practice 2/6 require illegal states UNREPRESENTABLE, not merely
-// checked. The current `body: List<SubcircuitStatement>` keeps that
-// type-enforcement (only the three legal-in-SUBCKT statement kinds
-// are representable; an `.OP` inside `.SUBCKT` is structurally
-// unrepresentable) AND correctly admits the legal-in-SUBCKT statement
-// `.INCLUDE` that the earlier "no directives" framing had over-
-// excluded. The prohibition remains type-enforced; the legal-set is
-// now SPICE3-faithful.
-//
-// NESTED `.SUBCKT` LEXICAL SCOPING (PR #3168 codex review). SPICE3F5
-// §3.4 admits nested `.SUBCKT` definitions where each name is LEXICALLY
-// SCOPED to its enclosing subcircuit: a `.SUBCKT FOO` defined inside
-// `.SUBCKT BAR` is a different definition from a `.SUBCKT FOO` defined
-// inside `.SUBCKT QUUX` or at the top level. The prior shape lifted
-// nested subcircuits to a flat top-level list with bare `Symbol`-keyed
-// resolution — which ERASED that scoping and made same-named local
-// definitions in different parents collide as competing authorities
-// (P1 modeling-faithfulness / P2 ambiguous representable states).
-// The current shape lifts to a flat list BUT preserves the lexical
-// scope structurally via `parent_scope: List<Symbol>` on each
-// `SubcircuitDefinition`:
-//   - `parent_scope = []` ⇒ defined at top-level.
-//   - `parent_scope = [BAR]` ⇒ defined inside `.SUBCKT BAR`.
-//   - `parent_scope = [BAZ, BAR]` ⇒ defined inside `.SUBCKT BAR`
-//     inside `.SUBCKT BAZ` (outermost-first, list-depth = nesting-
-//     depth).
-// Two `.SUBCKT FOO`s in different parents now have DISTINCT
-// `(name, parent_scope)` identities at the type layer — they are no
-// longer competing authorities. `SubcircuitCall.subcircuit` resolution
-// is positional: the call's containing list (the top-level
-// `SpiceNetlist.body` list wrapping it as `DeckComponent`, or its enclosing
-// `SubcircuitDefinition.body` list wrapping it as `StmtComponent`)
-// determines the call's enclosing scope; lookup walks up the scope
-// chain per
-// SPICE3 §3.4 shadowing rules (innermost first, then outward, then
-// top-level). This is consumer-side logic over the data model; the
-// data model preserves the facts the consumer needs.
-// This avoids introducing a recursive `SubcircuitDefinition` type
-// (which would parallel node.dag's A1 sole-recursive-type discipline
-// for a non-substrate domain carrier, and is a substrate-design call
-// that exceeds worker authority); `List<Symbol>` is the kernel-ambient
-// flat carrier that captures the scoping faithfully without that
-// commitment.
 type SubcircuitDefinition {
   name: Symbol
   parent_scope: List<Symbol>
@@ -1255,119 +262,18 @@ type SubcircuitDefinition {
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SubcircuitPorts — the non-empty list of formal port names declared
-// after `.SUBCKT name` (PR #3168 openai-pro review). SPICE3F5 §2.4
-// requires a subcircuit to declare at least one external node; a
-// `.SUBCKT name` with zero ports is a syntactic dead-end (no way to
-// connect the subcircuit from a call site).
-//
-// Modeled as a head+tail record so non-emptiness is STRUCTURALLY
-// ENFORCED at the type layer rather than as a well-formedness check —
-// INVARIANTS P2 / modeling-discipline.md Practice 2/6 (illegal states
-// unrepresentable). A zero-port `SubcircuitPorts` value is
-// unconstructible because `first` is mandatory; the type system
-// rejects empty input.
-//
-// Why a record instead of a typed sum (`OnePort | MultiPort`): the
-// head+tail record is the canonical std/ non-empty-list shape and
-// adds no enumeration overhead per arity bucket; consumers iterate
-// the conceptual sequence as `cons(first, rest)`. A non-empty-list
-// REFINEMENT type in std/ would be the eventual substrate dissolution
-// (a generic `NonEmptyList<T>` carrier), but that is std/-substrate-
-// tier and not in T-4.10's scope; the inlined head+tail record is the
-// honest scaffold and uses only the kernel-ambient `List` carrier.
-//
-// PORT-ELEMENT TYPE: `NamedNode` (PR #3168 codex review on commit
-// c436bbfc). The prior shape used `Symbol` as the element type, which
-// achieved ground-exclusion only by being LESS PERMISSIVE than
-// `NodeRef` (Symbol can't carry the `Ground` variant) — a guarantee
-// by absence rather than a positive type fact. Using the standalone
-// `NamedNode` carrier (declared above with `NodeRef`) makes
-// "subcircuit-port-element is a named node, not ground" a STRUCTURAL
-// type fact: a value of `NamedNode` is, by construction, not the
-// ground variant of `NodeRef`. Same Symbol payload at the bottom; the
-// difference is whether the type-level signal carries the engineering
-// invariant or relies on it being unreachable in a permissive parent
-// type.
 type SubcircuitPorts {
   first: NamedNode
   rest: List<NamedNode>
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SubcircuitConnections — the non-empty list of node-refs an
-// X-element (subcircuit call) connects to its target subcircuit's
-// formal ports (PR #3168 codex review). The call-site mirror of
-// `SubcircuitPorts`: SPICE3F5 §3.4's `X NAME N1 N2 ... SUBCKTNAME
-// [PARAMS]` form requires at least one connection node (matching the
-// callee subcircuit's non-empty port arity), and a well-formed call
-// has the SAME arity as the callee's `ports`. The arity-match
-// invariant is a consumer-side check (it requires resolving
-// `subcircuit: Symbol` against the SubcircuitDefinition table to
-// know the callee's port count); the non-emptiness invariant is
-// type-enforced HERE.
-//
-// Element type is `NodeRef` (not `NamedNode`) because the call site
-// CAN connect a callee port to global ground (the simulator's
-// universal reference) — e.g. `X1 in 0 out my_amp` is legal: the
-// middle port is connected to ground at the call site. (Callee
-// ports themselves cannot BE ground; that's `SubcircuitPorts`'s
-// `NamedNode` discipline at the SubcircuitDefinition side.)
-//
-// Same head+tail discipline + same eventual std/-substrate
-// dissolution as `SubcircuitPorts` and `NodeVoltageBindings`: a
-// generic `NonEmptyList<T>` carrier would absorb all three. The
-// inlined record is the worker-tier scaffold that does not require
-// that substrate addition.
 type SubcircuitConnections {
   first: NodeRef
   rest: List<NodeRef>
 }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// DeckStatement — one statement in the top-level deck body
-// (PR #3168 codex review). SPICE3 admits four statement kinds at the
-// top level — component instances, `.MODEL` cards, `.SUBCKT/.ENDS`
-// definitions, and analysis/control directives (including `.INCLUDE`)
-// — and a real deck INTERLEAVES them in source order (e.g. `.MODEL`
-// card → R1 element → `.INCLUDE foo.inc` → Q2 element). The prior
-// `SpiceNetlist` shape carried four PARALLEL lists (`components`,
-// `models`, `subcircuits`, `directives`) which silently DROPPED the
-// interleave order — a deck whose source order was `M-R-I-Q` would
-// re-emit as `R-Q | M | I` (some canonical bucket-ordered form),
-// breaking `parse ∘ emit` textual round-trip (P1 modeling-faithfulness
-// / P3 facts-flow-forward — the source-order fact existed at parse,
-// then dropped). The file already preserves ordered statements at the
-// subcircuit-body layer via `SubcircuitStatement`; this coproduct
-// applies the same discipline at the top level.
-//
-// Coproduct dissolution (Practice 4 / INVARIANTS P1 / modeling-
-// discipline.md §4) — classification: 🟢 GREEN (terminal). Ledger —
-// five patterns attempted:
-//   1. Fact placement — FAILS: every deck consumer (well-formedness
-//      check, emit, simulator-driver) dispatches on the statement
-//      kind; shared classifier, not scattered.
-//   2. Variant-is-data — FAILS: payloads are structurally distinct
-//      (`DeckComponent` carries a `Component`; `DeckModelCard`
-//      carries a `ModelCard`; `DeckSubcircuit` carries a
-//      `SubcircuitDefinition`; `DeckDirective` carries a
-//      `Directive`). Collapsing to a flat record makes illegal-shape
-//      combinations representable (the inverse of P2).
-//   3. Algebraic form — N/A: the SPICE3 top-level statement set is a
-//      spec partition, not a richer std/ algebra.
-//   4. Dimensional — FAILS: a deck statement is EXACTLY ONE of the
-//      four — mutually-exclusive alternatives.
-//   5. Parameterized family — FAILS: payloads are structurally
-//      distinct (one wraps `Component`, one wraps `ModelCard`, one
-//      wraps `SubcircuitDefinition`, one wraps `Directive`) — not
-//      `F<X>` over a separately-declared set.
-// Terminal: the closed four-way partition of SPICE3 top-level
-// statement kinds. A fifth kind would be a SPICE3 spec change
-// (operator-tier) or evidence of a missed legal-at-top-level
-// statement (worker-tier addition with named justification).
 type DeckStatement
   = DeckComponent { component: Component }
   | DeckModelCard { model: ModelCard }
@@ -1375,75 +281,6 @@ type DeckStatement
   | DeckDirective { directive: Directive }
 
 
-// ─────────────────────────────────────────────────────────────────────
-// SpiceNetlist — the top-level deck. The title is the first line of
-// any SPICE deck (Quarles 1993 §2); the spec treats it as a required
-// label, not a comment.
-//
-// `.END` IS NOT A FIELD HERE (PR #3168 codex review). The SPICE3
-// file terminator is a STRUCTURAL fact owned by parse/emit, not
-// netlist data: parse success structurally requires exactly one
-// trailing `.END` (absence / duplication / mid-position = Diagnostic);
-// emit always appends `.END` after the last statement. Carrying it as
-// a `Directive` variant in `body` or as a `terminator: End` field
-// would admit zero / multiple / misplaced terminators as representable
-// values — INVARIANTS P2. See the `Directive` declaration's header
-// note for the full rationale.
-//
-// SINGLE ORDERED BODY (PR #3168 codex review). The body is a single
-// `body: List<DeckStatement>` rather than four parallel lists for the
-// four statement kinds — this preserves the deck's source-order
-// interleaving of components / `.MODEL` cards / `.SUBCKT` definitions
-// / directives, matching the `SubcircuitStatement` discipline at the
-// subcircuit-body layer. A deck whose source order interleaves these
-// kinds round-trips through `parse ∘ emit` faithfully; the prior
-// parallel-list shape silently bucketed the statements and dropped
-// the order.
-//
-// LIFTED NESTED `.SUBCKT` POSITION — 🟡 YELLOW scaffold (PR #3168
-// cursor exploratory: tightening the named-trigger to mirror
-// `Component` / `Directive` YELLOW shape). Nested `.SUBCKT/.ENDS`
-// pairs are lifted to the top-level body (see "SUBCIRCUIT NESTING +
-// LEXICAL SCOPING" in the top-of-file modeling notes). A lifted
-// nested subcircuit appears in `body` as a `DeckSubcircuit` value
-// with non-empty `parent_scope`; the parser places it at a canonical
-// post-lifting position, and emit re-nests it inside the named parent
-// `.SUBCKT/.ENDS` pair using the `parent_scope` chain. The exact
-// within-parent position of a nested SUBCKT (i.e. which statement of
-// the parent's body it appeared BETWEEN) is NOT preserved by this
-// shape — only its parent identity is. This is a documented secondary
-// fidelity concession (top-level interleave preserved; within-parent
-// nested-SUBCKT position not preserved), favoring top-level
-// interleave fidelity (the reviewer's flagged concern) over within-
-// parent nesting position.
-//   Named trigger: when a consumer requires byte-exact `parse ∘ emit`
-//   round-trip of decks where a nested `.SUBCKT` is interleaved
-//   between sibling statements of its parent body (rather than
-//   appearing at the parent's start or end), this concession
-//   dissolves. The fix paths, in PREFERENCE ORDER (PR #3168 claude
-//   exploratory):
-//     **(b) PREFERRED** — admit `SubcircuitDefinition` as a
-//        `SubcircuitStatement` variant + relax the lifting discipline.
-//        Most faithful (within-parent position preserved by list
-//        position, no parallel ordering authority), but introduces
-//        a recursive carrier and is std/-substrate-tier per A1; this
-//        is the path that actually closes the YELLOW classification
-//        on the structural side.
-//     (a) FALLBACK — extend `SubcircuitDefinition` with
-//        `position_in_parent: Nat`-indexed positional metadata. A
-//        parallel ordering authority (INVARIANTS P2 trade-off) but
-//        worker-tier and substrate-neutral; usable while A1 is held.
-//     (c) PERMANENT — accept the concession and emit a lossless-
-//        but-not-byte-identical canonicalization. Cleanest if no
-//        consumer ever needs byte-exact nested-SUBCKT round-trip;
-//        the concession just stays YELLOW indefinitely.
-//   The current shape blocks none of these; the trigger is the first
-//   consumer asking for byte-exact nested-SUBCKT round-trip.
-//
-// Emptiness of `body` is not structurally ruled out — SPICE3 admits a
-// deck with only a title (semantically empty but syntactically legal).
-// Consumer-side checks (simulator-driver) enforce semantic non-
-// emptiness where applicable.
 type SpiceNetlist {
   title: String
   body: List<DeckStatement>
