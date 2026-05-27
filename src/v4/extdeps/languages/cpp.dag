@@ -908,25 +908,10 @@ fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarSequenceBuild) -> GrammarE
 }
 
 fn cpp_mvp1_grammar_tokens() -> CppGrammarSequenceBuild {
+  let tokens = cpp_mvp1_concrete_tokens()
   CppGrammarSequenceBuild {
-    head: CppFixedToken { token_class: cpp_token_ty_int },
-    tail: [
-      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_fn_add },
-      CppFixedToken { token_class: cpp_token_lparen },
-      CppFixedToken { token_class: cpp_token_ty_int },
-      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
-      CppFixedToken { token_class: cpp_token_comma },
-      CppFixedToken { token_class: cpp_token_ty_int },
-      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
-      CppFixedToken { token_class: cpp_token_rparen },
-      CppFixedToken { token_class: cpp_token_lbrace },
-      CppFixedToken { token_class: cpp_token_kw_return },
-      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_x },
-      CppFixedToken { token_class: cpp_token_plus },
-      CppBoundToken { token_class: cpp_token_ident, binding: cpp_binding_param_y },
-      CppFixedToken { token_class: cpp_token_semicolon },
-      CppFixedToken { token_class: cpp_token_rbrace }
-    ]
+    head: tokens.head,
+    tail: tokens.tail
   }
 }
 

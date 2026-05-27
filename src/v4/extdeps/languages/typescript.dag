@@ -511,29 +511,10 @@ fn ts_grammar_sequence_from_tokens(tokens: TsGrammarTokenSequence) -> GrammarExp
 }
 
 fn ts_mvp1_grammar_tokens() -> TsGrammarTokenSequence {
+  let tokens = ts_mvp1_concrete_tokens()
   TsGrammarTokenSequence {
-    head: TsFixedToken { token_class: ts_token_kw_function },
-    tail: [
-      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_fn_add },
-      TsFixedToken { token_class: ts_token_lparen },
-      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-      TsFixedToken { token_class: ts_token_colon },
-      TsFixedToken { token_class: ts_token_ty_number },
-      TsFixedToken { token_class: ts_token_comma },
-      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
-      TsFixedToken { token_class: ts_token_colon },
-      TsFixedToken { token_class: ts_token_ty_number },
-      TsFixedToken { token_class: ts_token_rparen },
-      TsFixedToken { token_class: ts_token_colon },
-      TsFixedToken { token_class: ts_token_ty_number },
-      TsFixedToken { token_class: ts_token_lbrace },
-      TsFixedToken { token_class: ts_token_kw_return },
-      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_x },
-      TsFixedToken { token_class: ts_token_plus },
-      TsBoundToken { token_class: ts_token_ident, binding: ts_binding_param_y },
-      TsFixedToken { token_class: ts_token_semicolon },
-      TsFixedToken { token_class: ts_token_rbrace }
-    ]
+    head: tokens.head,
+    tail: tokens.tail
   }
 }
 

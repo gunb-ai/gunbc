@@ -765,21 +765,10 @@ fn python_grammar_sequence_from_tokens(tokens: PythonGrammarSequenceBuild) -> Gr
 }
 
 fn python_mvp1_grammar_tokens() -> PythonGrammarSequenceBuild {
+  let tokens = python_mvp1_concrete_tokens()
   PythonGrammarSequenceBuild {
-    head: PythonFixedToken { token_class: python_token_kw_def },
-    tail: [
-      PythonBoundToken { token_class: python_token_ident, binding: python_binding_fn_add },
-      PythonFixedToken { token_class: python_token_lparen },
-      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_x },
-      PythonFixedToken { token_class: python_token_comma },
-      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_y },
-      PythonFixedToken { token_class: python_token_rparen },
-      PythonFixedToken { token_class: python_token_colon },
-      PythonFixedToken { token_class: python_token_kw_return },
-      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_x },
-      PythonFixedToken { token_class: python_token_plus },
-      PythonBoundToken { token_class: python_token_ident, binding: python_binding_param_y }
-    ]
+    head: tokens.head,
+    tail: tokens.tail
   }
 }
 

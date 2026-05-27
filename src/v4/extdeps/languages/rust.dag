@@ -1246,27 +1246,10 @@ fn rust_grammar_sequence_from_tokens(tokens: RustGrammarSequenceBuild) -> Gramma
 }
 
 fn rust_mvp1_grammar_tokens() -> RustGrammarSequenceBuild {
+  let tokens = rust_mvp1_concrete_tokens()
   RustGrammarSequenceBuild {
-    head: RustFixedToken { token_class: rust_token_kw_fn },
-    tail: [
-      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_fn_add },
-      RustFixedToken { token_class: rust_token_lparen },
-      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
-      RustFixedToken { token_class: rust_token_colon },
-      RustFixedToken { token_class: rust_token_ty_i32 },
-      RustFixedToken { token_class: rust_token_comma },
-      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
-      RustFixedToken { token_class: rust_token_colon },
-      RustFixedToken { token_class: rust_token_ty_i32 },
-      RustFixedToken { token_class: rust_token_rparen },
-      RustFixedToken { token_class: rust_token_arrow },
-      RustFixedToken { token_class: rust_token_ty_i32 },
-      RustFixedToken { token_class: rust_token_lbrace },
-      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_x },
-      RustFixedToken { token_class: rust_token_plus },
-      RustBoundToken { token_class: rust_token_ident, binding: rust_binding_param_y },
-      RustFixedToken { token_class: rust_token_rbrace }
-    ]
+    head: tokens.head,
+    tail: tokens.tail
   }
 }
 

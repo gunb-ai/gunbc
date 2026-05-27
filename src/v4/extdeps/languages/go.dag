@@ -1084,25 +1084,10 @@ fn go_grammar_sequence_from_tokens(tokens: GoGrammarSequenceBuild) -> GrammarExp
 }
 
 fn go_mvp1_grammar_tokens() -> GoGrammarSequenceBuild {
+  let tokens = go_mvp1_concrete_tokens()
   GoGrammarSequenceBuild {
-    head: GoFixedToken { token_class: go_token_kw_func },
-    tail: [
-      GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
-      GoFixedToken { token_class: go_token_lparen },
-      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
-      GoFixedToken { token_class: go_token_ty_int },
-      GoFixedToken { token_class: go_token_comma },
-      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
-      GoFixedToken { token_class: go_token_ty_int },
-      GoFixedToken { token_class: go_token_rparen },
-      GoFixedToken { token_class: go_token_ty_int },
-      GoFixedToken { token_class: go_token_lbrace },
-      GoFixedToken { token_class: go_token_kw_return },
-      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
-      GoFixedToken { token_class: go_token_plus },
-      GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
-      GoFixedToken { token_class: go_token_rbrace }
-    ]
+    head: tokens.head,
+    tail: tokens.tail
   }
 }
 
