@@ -242,7 +242,8 @@ fn wasm_mvp1_concrete_tokens() -> List<WasmConcreteSyntaxToken> {
     WasmFixedToken { token_class: wasm_token_local_idx_0 },
     WasmFixedToken { token_class: wasm_token_local_get },
     WasmFixedToken { token_class: wasm_token_local_idx_1 },
-    WasmFixedToken { token_class: wasm_token_i32_add }
+    WasmFixedToken { token_class: wasm_token_i32_add },
+    WasmFixedToken { token_class: wasm_token_rparen }
   ]
 }
 data wasm_mvp1_source_text: String = "(func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)"
@@ -716,7 +717,7 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_lex_rule(token_class: wasm_token_type_f32, text: "f32"),
       wasm_lex_rule(token_class: wasm_token_type_f64, text: "f64"),
       wasm_lex_rule(token_class: wasm_token_i32_const, text: "i32.const "),
-      wasm_lex_rule(token_class: wasm_token_i32_add, text: "i32.add)"),
+      wasm_lex_rule(token_class: wasm_token_i32_add, text: "i32.add"),
       wasm_lex_rule(token_class: wasm_token_i32_sub, text: "i32.sub"),
       wasm_lex_rule(token_class: wasm_token_i32_mul, text: "i32.mul"),
       wasm_lex_rule(token_class: wasm_token_i64_const, text: "i64.const "),
