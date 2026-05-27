@@ -10,11 +10,13 @@
 module v4.extdeps.languages.wasm
 
 import v4.compiler.parse {
+  Choice,
   Grammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
@@ -700,6 +702,8 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       wasm_lex_rule(token_class: wasm_token_lparen, text: "("),
+      wasm_lex_rule(token_class: wasm_token_rparen, text: ")"),
+      wasm_lex_rule(token_class: wasm_token_kw_module, text: "module "),
       wasm_lex_rule(token_class: wasm_token_kw_func, text: "func "),
       wasm_ident_lex_rule(),
       wasm_lex_rule(token_class: wasm_token_param_list, text: " (param i32 i32) "),
@@ -707,7 +711,26 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_lex_rule(token_class: wasm_token_local_get, text: "local.get "),
       wasm_lex_rule(token_class: wasm_token_local_idx_0, text: "0 "),
       wasm_lex_rule(token_class: wasm_token_local_idx_1, text: "1 "),
-      wasm_lex_rule(token_class: wasm_token_i32_add, text: "i32.add)")
+      wasm_lex_rule(token_class: wasm_token_type_i32, text: "i32"),
+      wasm_lex_rule(token_class: wasm_token_type_i64, text: "i64"),
+      wasm_lex_rule(token_class: wasm_token_type_f32, text: "f32"),
+      wasm_lex_rule(token_class: wasm_token_type_f64, text: "f64"),
+      wasm_lex_rule(token_class: wasm_token_i32_const, text: "i32.const "),
+      wasm_lex_rule(token_class: wasm_token_i32_add, text: "i32.add)"),
+      wasm_lex_rule(token_class: wasm_token_i32_sub, text: "i32.sub"),
+      wasm_lex_rule(token_class: wasm_token_i32_mul, text: "i32.mul"),
+      wasm_lex_rule(token_class: wasm_token_i64_const, text: "i64.const "),
+      wasm_lex_rule(token_class: wasm_token_i64_add, text: "i64.add"),
+      wasm_lex_rule(token_class: wasm_token_i64_sub, text: "i64.sub"),
+      wasm_lex_rule(token_class: wasm_token_i64_mul, text: "i64.mul"),
+      wasm_lex_rule(token_class: wasm_token_f32_const, text: "f32.const "),
+      wasm_lex_rule(token_class: wasm_token_f32_add, text: "f32.add"),
+      wasm_lex_rule(token_class: wasm_token_f32_sub, text: "f32.sub"),
+      wasm_lex_rule(token_class: wasm_token_f32_mul, text: "f32.mul"),
+      wasm_lex_rule(token_class: wasm_token_f64_const, text: "f64.const "),
+      wasm_lex_rule(token_class: wasm_token_f64_add, text: "f64.add"),
+      wasm_lex_rule(token_class: wasm_token_f64_sub, text: "f64.sub"),
+      wasm_lex_rule(token_class: wasm_token_f64_mul, text: "f64.mul")
     ]
   }
 }
@@ -855,6 +878,8 @@ fn wasm_wave1_grammar() -> Grammar {
 
 fn wasm_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   sym == wasm_token_lparen ||
+    sym == wasm_token_rparen ||
+    sym == wasm_token_kw_module ||
     sym == wasm_token_kw_func ||
     sym == wasm_token_ident ||
     sym == wasm_token_param_list ||
@@ -862,7 +887,26 @@ fn wasm_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     sym == wasm_token_local_get ||
     sym == wasm_token_local_idx_0 ||
     sym == wasm_token_local_idx_1 ||
-    sym == wasm_token_i32_add
+    sym == wasm_token_type_i32 ||
+    sym == wasm_token_type_i64 ||
+    sym == wasm_token_type_f32 ||
+    sym == wasm_token_type_f64 ||
+    sym == wasm_token_i32_const ||
+    sym == wasm_token_i32_add ||
+    sym == wasm_token_i32_sub ||
+    sym == wasm_token_i32_mul ||
+    sym == wasm_token_i64_const ||
+    sym == wasm_token_i64_add ||
+    sym == wasm_token_i64_sub ||
+    sym == wasm_token_i64_mul ||
+    sym == wasm_token_f32_const ||
+    sym == wasm_token_f32_add ||
+    sym == wasm_token_f32_sub ||
+    sym == wasm_token_f32_mul ||
+    sym == wasm_token_f64_const ||
+    sym == wasm_token_f64_add ||
+    sym == wasm_token_f64_sub ||
+    sym == wasm_token_f64_mul
 }
 
 fn wasm_integer_catalog_surface_symbol_step(
@@ -912,7 +956,15 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
       wasm_catalog_surface_symbol(sym: sym) ||
         wasm_wave1_lex_token_symbol(sym: sym) ||
         sym == wasm_surface_fn_item ||
+        sym == wasm_surface_module_item ||
+        sym == wasm_surface_value_type ||
+        sym == wasm_surface_numeric_const_instr ||
+        sym == wasm_surface_numeric_binop_instr ||
         sym == wasm_production_mvp1_fn_add ||
+        sym == wasm_production_module ||
+        sym == wasm_production_value_type ||
+        sym == wasm_production_numeric_const_instr ||
+        sym == wasm_production_numeric_binop_instr ||
         sym == wasm_mvp1_source_literal
     }
   }
