@@ -174,13 +174,7 @@ fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutco
   }
 }
 
-// InformationTheoretic: realization strictly > Ω(n) → gap.
-// Double-dominance: outer gate tests dominates(realization, ClassLinear) — true iff ≥ linear
-// (reflexive for ClassLinear); inner tests dominates(ClassLinear, realization) — true iff equal,
-// false iff strictly greater → gap. Avoids == in if-conditions: parser greedily parses
-// ClassLinear{...} as a struct literal when == appears, eating the if-body and leaving else dangling.
-// complexity_bound_class called twice (pure function; let-binding before if-else is also
-// rejected by the resolve-posture gate strict mode).
+// 🟡 parser-posture gated — strict-greater check uses double dominance until equality in if-conditions parses cleanly.
 fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
   if asymptotic_class_dominates(
     a: complexity_bound_class(b: realization),
@@ -275,4 +269,3 @@ fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) 
       }
   }
 }
-
