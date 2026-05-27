@@ -1809,7 +1809,8 @@ facts.
 
 `rustfmt.dag` established the pattern the sibling files follow:
 option coproducts → full config type → defaults data node →
-`*_layer` function for hierarchical override composition.
+`*ConfigPatch` (per-field `FieldPatch<T>` from `v4.std.patch`) →
+`*_layer(base, patch)` applying `apply_field_patch` per field.
 (Sibling files black.dag, gofmt.dag, prettier.dag, clang_format.dag,
 google_java_format.dag, swift_format.dag, ktfmt.dag, lean4_format.dag
 are already landed on main — see PRs #3650, #3651, #3652.)
