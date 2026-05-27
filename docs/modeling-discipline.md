@@ -504,9 +504,8 @@ A declaration is **hollow** when *all three* hold:
    about; **and**
 3. it carries **no coincidence evidence** — no cited row in
    [`docs/modeling/grounding-worked-examples.md`](modeling/grounding-worked-examples.md)
-   proving coincidence
-   entry proving `X` and `Y` coincide, cited from the file by at most a
-   one-line tag (Practice 9).
+   proving `X` and `Y` coincide, cited from the file by at most a one-line
+   tag (Practice 9).
 
 A hollow declaration **blocks review**. The fix is one of: invent the
 fact-bundle (now `X` carries ≥ 1 fact of its own), or supply the

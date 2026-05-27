@@ -47,7 +47,7 @@ Two models coincide when their canonical `Node` groundings are
 structurally equal under the B1-CANON contract:
 
 ```text
-content_hash = merkle_fold o canonical
+content_hash(node) = merkle_fold(canonical(node))
 ```
 
 Coincidence is mechanical structural equality, not a free-form judgment
