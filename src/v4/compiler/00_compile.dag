@@ -140,10 +140,10 @@ fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness
 }
 
 
-// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
-// T-23 migration stub: identical contract to v4.lens.application apply_lens when that module fills.
+// 🟡 gated — feature:T-23-lens-application-migration — bind src/v4/lens/application.dag TASKS.md T-23 — dissolve-on: delete local CompileLens type and apply_compile_lens compatibility stub when v4.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
+// T-23 migration stub: compile-orchestrator apply_lens surface until v4.lens.application adapts to InferredTree.
 // CompileLensEnforce and CompileLensIntrospect both call gate today; introspect demotion lands with application.dag.
-fn apply_compile_lens(
+fn apply_lens(
   lens: CompileLens,
   inferred: InferredTree,
   mode: CompileLensMode
@@ -152,6 +152,15 @@ fn apply_compile_lens(
     CompileLensEnforce => lens.gate(tree: inferred)
     CompileLensIntrospect => lens.gate(tree: inferred)
   }
+}
+
+
+fn apply_compile_lens(
+  lens: CompileLens,
+  inferred: InferredTree,
+  mode: CompileLensMode
+) -> Outcome<Witness<Node>> {
+  apply_lens(lens: lens, inferred: inferred, mode: mode)
 }
 
 
@@ -188,7 +197,7 @@ fn run_required_lens_gates(
           bind_outcome_accepted(
             od: od,
             inner: bind_outcome(
-              o: apply_compile_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
+              o: apply_lens(lens: lens, inferred: inferred, mode: CompileLensEnforce),
               f: fn(w) {
                 outcome_accepted(
                   value: append_lens_gate_witness(
