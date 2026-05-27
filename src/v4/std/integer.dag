@@ -112,7 +112,7 @@ type DecimalNonZeroMagnitude {
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type DecimalMagnitude
   = DecimalZero
-  | DecimalNonZero { lead: NonZeroDecimalDigit, tail: List<DecimalDigit> }
+  | DecimalNonZero { magnitude: DecimalNonZeroMagnitude }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerIntervalBound
@@ -357,9 +357,7 @@ fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
         integer_decimal_digit_edge(digit: D0)
       ]
     }
-    DecimalNonZero { lead, tail } => integer_decimal_nonzero_node(
-      magnitude: DecimalNonZeroMagnitude { lead: lead, tail: tail }
-    )
+    DecimalNonZero { magnitude } => integer_decimal_nonzero_node(magnitude: magnitude)
   }
 }
 
