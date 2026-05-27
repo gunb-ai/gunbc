@@ -26,6 +26,7 @@ data google_java_format_defaults: GoogleJavaFormatConfig = GoogleJavaFormatConfi
 }
 
 
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: GoogleJavaFormatConfigPatch projected from GoogleJavaFormatConfig field set.
 type GoogleJavaFormatConfigPatch {
   style: FieldPatch<GoogleJavaFormatStyle>
 }

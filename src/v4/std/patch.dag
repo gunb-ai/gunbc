@@ -1,19 +1,25 @@
 // src/v4/std/patch.dag
 // Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
-// Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid.
+// Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid, field_patch_inherit.
 // Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
-// Status: T-4.16 follow-on — formatter ConfigPatch monoid substrate.
+// Status: T-4.16 follow-on — scalar FieldPatch monoid landed; per-record *ConfigPatch projection is 🟡 below.
 // Anchor: https://en.wikipedia.org/wiki/Monoid (NixOS module system / Home Manager override/inherit pattern)
 
 module v4.std.patch
 
 import v4.std.algebra { Magma, Semigroup, Monoid }
 
+// 🟡 gated — feature:config-patch-record-projection — bind T-4.16 follow-on — dissolve-on-arrival: record-field map derives each formatter *ConfigPatch and *_layer from *Config without hand-maintained parallel field lists; forbidden: ConfigPatch mirrors that can drift when Config gains a field.
 // 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
 // FieldPatch<T> = 1 + T: Inherit = absent/identity, Override = present payload.
 type FieldPatch<T>
   = Override { value: T }
   | Inherit
+
+
+fn field_patch_inherit<T>() -> FieldPatch<T> {
+  Inherit
+}
 
 
 fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
