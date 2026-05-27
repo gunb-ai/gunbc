@@ -26,6 +26,8 @@ import v4.compiler.parse {
 }
 import v4.compiler.tokenize {
   CharClassPattern,
+  DelimitedPattern,
+  DigitChar,
   IdentContinueChar,
   IdentStartChar,
   KeywordPattern,
@@ -38,6 +40,7 @@ import v4.compiler.tokenize {
   OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
+  StringTextChar,
   TokenRule,
   TriviaRule,
   WhitespaceChar
@@ -926,6 +929,19 @@ fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+fn swift_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: KeywordPattern { text: text }
+  }
+}
+
+fn swift_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  }
+}
+
 fn swift_ident_lex_pattern() -> LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
@@ -940,21 +956,77 @@ fn swift_ident_lex_rule() -> LexRule {
   }
 }
 
+fn swift_int_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_int_literal,
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+  }
+}
+
+fn swift_string_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_string_literal,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "\"" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "\"" }
+    }
+  }
+}
+
 fn swift_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
+      swift_whitespace_trivia_rule(),
+      swift_string_literal_lex_rule(),
+      swift_int_literal_lex_rule(),
+      swift_ident_lex_rule(),
       swift_lex_rule(token_class: swift_token_kw_func, text: "func "),
       swift_lex_rule(token_class: swift_token_kw_return, text: "return "),
-      swift_ident_lex_rule(),
+      swift_keyword_lex_rule(token_class: swift_token_kw_let, text: "let"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_var, text: "var"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_if, text: "if"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_else, text: "else"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_while, text: "while"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_for, text: "for"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_in, text: "in"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_struct, text: "struct"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_class, text: "class"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_enum, text: "enum"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_protocol, text: "protocol"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_extension, text: "extension"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_import, text: "import"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_true, text: "true"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_false, text: "false"),
+      swift_lex_rule(token_class: swift_token_ty_int, text: "Int"),
       swift_lex_rule(token_class: swift_token_ty_int32, text: "Int32"),
+      swift_lex_rule(token_class: swift_token_ty_string, text: "String"),
+      swift_lex_rule(token_class: swift_token_ty_bool, text: "Bool"),
+      swift_lex_rule(token_class: swift_token_ty_double, text: "Double"),
+      swift_lex_rule(token_class: swift_token_ty_void, text: "Void"),
       swift_lex_rule(token_class: swift_token_plus, text: " + "),
+      swift_lex_rule(token_class: swift_token_minus, text: "-"),
+      swift_lex_rule(token_class: swift_token_star, text: "*"),
+      swift_lex_rule(token_class: swift_token_slash, text: "/"),
+      swift_lex_rule(token_class: swift_token_percent, text: "%"),
       swift_lex_rule(token_class: swift_token_arrow, text: " -> "),
+      swift_lex_rule(token_class: swift_token_equal, text: "="),
+      swift_lex_rule(token_class: swift_token_eq_eq, text: "=="),
+      swift_lex_rule(token_class: swift_token_bang_eq, text: "!="),
+      swift_lex_rule(token_class: swift_token_lt, text: "<"),
+      swift_lex_rule(token_class: swift_token_gt, text: ">"),
+      swift_lex_rule(token_class: swift_token_lte, text: "<="),
+      swift_lex_rule(token_class: swift_token_gte, text: ">="),
       swift_lex_rule(token_class: swift_token_lbrace, text: " { "),
       swift_lex_rule(token_class: swift_token_rbrace, text: " }"),
       swift_lex_rule(token_class: swift_token_lparen, text: "("),
       swift_lex_rule(token_class: swift_token_rparen, text: ") "),
+      swift_lex_rule(token_class: swift_token_lbracket, text: "["),
+      swift_lex_rule(token_class: swift_token_rbracket, text: "]"),
       swift_lex_rule(token_class: swift_token_comma, text: ", "),
-      swift_lex_rule(token_class: swift_token_colon, text: ": ")
+      swift_lex_rule(token_class: swift_token_colon, text: ": "),
+      swift_lex_rule(token_class: swift_token_dot, text: "."),
+      swift_lex_rule(token_class: swift_token_semicolon, text: ";")
     ]
   }
 }
