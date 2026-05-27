@@ -179,6 +179,26 @@ fn v4_translate_dag_dispatches_token_sequence_items() {
         surface_declares_fn(&module, "target_serialize_source_from_model_bounded"),
         "{TRANSLATE_PATH}: recursive nonterminal serialization must be explicitly bounded"
     );
+    assert!(
+        surface_declares_fn(&module, "target_translation_rules_budget"),
+        "{TRANSLATE_PATH}: serialize measure must derive translation_rules budget structurally"
+    );
+    assert!(
+        !TRANSLATE_DAG.contains("translate_default_serialize_fuel"),
+        "{TRANSLATE_PATH}: fixed serialize fuel constant must not remain"
+    );
+}
+
+#[test]
+fn v4_translate_dag_propagates_translation_rules_budget_as_outcome() {
+    assert!(
+        TRANSLATE_DAG.contains("fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int>"),
+        "{TRANSLATE_PATH}: translation_rules budget must be Outcome<Int> (fail-closed, not Rejected => 0)"
+    );
+    assert!(
+        TRANSLATE_DAG.contains("bind_outcome(\n    o: translate_serialize_measure"),
+        "{TRANSLATE_PATH}: target_serialize_source_from_model must bind structural measure before bounded walk"
+    );
 }
 
 #[test]
