@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/python.dag
 // Scope: Python 3.14 Reference primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonConcreteSyntaxToken, PythonGrammarRelationRow, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_ident, python_token_colon, python_token_lparen, python_token_rparen, python_token_comma, python_token_plus, python_production_mvp1_fn_add, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundle_from_singleton_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_grammar_terminal, PythonGrammarSequenceBuild, python_grammar_sequence_from_tokens, python_mvp1_grammar_tokens, python_grammar_sequence_from_token_classes, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_wave1_lex_rules, python_wave1_lex
+// Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonConcreteSyntaxToken, PythonGrammarRelationRow, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_ident, python_token_colon, python_token_lparen, python_token_rparen, python_token_comma, python_token_plus, python_production_mvp1_fn_add, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundle_from_singleton_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_grammar_terminal, python_gram_seq_fold, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_wave1_lex_rules, python_wave1_lex
 // Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
 // Status: T-4 python slice — Python Reference primitives (not CPython library types); int is honestly width-axis-omitted (unbounded — see C-PYINT below); ModelCore.primitives filled via fold; inhabitance/laws/effects/partiality empty (wave-2+); `python_model_core_wave1` itself is 🟡 E-6(b) consumer-less until PythonLanguageModel lands (wave-2). canonical-B bool decl-ref is 🟡 E-6(b) staging (mirrors rust slice).
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
@@ -64,7 +64,7 @@ import v4.std.target_model {
   target_model_edge_serialize_source
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, FreeMonoid, fold_list, fold_non_empty, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -722,47 +722,33 @@ fn python_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟢 grounded.
-type PythonGrammarSequenceBuild {
-  head: PythonConcreteSyntaxToken
-  tail: List<PythonConcreteSyntaxToken>
-}
-
-fn python_grammar_sequence_from_tokens(tokens: PythonGrammarSequenceBuild) -> GrammarExpr {
-  let terminal = python_grammar_terminal(token_class: python_concrete_token_class(token: tokens.head))
-  fold_list(
-    xs: tokens.tail,
-    empty: terminal,
-    cons: fn(acc, token) {
-      Sequence {
-        left: acc,
-        right: python_grammar_terminal(token_class: python_concrete_token_class(token: token))
-      }
-    }
-  )
-}
-
-fn python_mvp1_grammar_tokens() -> PythonGrammarSequenceBuild {
-  match python_mvp1_concrete_tokens() {
-    Cons { head: first_tok, tail: rest_toks } =>
-      fold_non_empty(
-        head: PythonGrammarSequenceBuild {
-          head: first_tok,
-          tail: Empty
-        },
-        tail: rest_toks,
-        cons: fn(acc, token) {
-          PythonGrammarSequenceBuild {
-            head: acc.head,
-            tail: list_snoc_item(xs: acc.tail, item: token)
-          }
+fn python_gram_seq_fold(tokens: FreeMonoid<PythonConcreteSyntaxToken>, acc: GrammarExpr) -> GrammarExpr {
+  match tokens {
+    Empty => acc
+    Cons { head: tok, tail: rest } =>
+      python_gram_seq_fold(
+        tokens: rest,
+        acc: Sequence {
+          left: acc,
+          right: python_grammar_terminal(token_class: python_concrete_token_class(token: tok))
         }
       )
   }
 }
 
 fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
-  python_grammar_sequence_from_tokens(tokens: python_mvp1_grammar_tokens())
+  match python_mvp1_concrete_tokens() {
+    Empty =>
+      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — python_mvp1_concrete_tokens() is always
+      // non-empty by construction; this branch is structurally unreachable.
+      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
+      python_grammar_terminal(token_class: python_token_kw_def)
+    Cons { head: first_tok, tail: rest_toks } =>
+      python_gram_seq_fold(
+        tokens: rest_toks,
+        acc: python_grammar_terminal(token_class: python_concrete_token_class(token: first_tok))
+      )
+  }
 }
 
 fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {

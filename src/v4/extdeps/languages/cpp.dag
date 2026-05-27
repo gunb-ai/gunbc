@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
-// Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding.
+// Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding, cpp_gram_seq_fold.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.extdeps.cpp_abi.CppTargetProfile.
 // Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
@@ -24,7 +24,7 @@ import v4.compiler.tokenize {
 }
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, FreeMonoid, fold_list, fold_non_empty, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Cons, Empty, FreeMonoid, fold_list, list_append, list_snoc_item }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
@@ -887,46 +887,33 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-type CppGrammarSequenceBuild {
-  head: CppConcreteSyntaxToken
-  tail: List<CppConcreteSyntaxToken>
-}
-
-fn cpp_grammar_sequence_from_tokens(tokens: CppGrammarSequenceBuild) -> GrammarExpr {
-  let terminal = cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: tokens.head))
-  fold_list(
-    xs: tokens.tail,
-    empty: terminal,
-    cons: fn(acc, token) {
-      Sequence {
-        left: acc,
-        right: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: token))
-      }
-    }
-  )
-}
-
-fn cpp_mvp1_grammar_tokens() -> CppGrammarSequenceBuild {
-  match cpp_mvp1_concrete_tokens() {
-    Cons { head: first_tok, tail: rest_toks } =>
-      fold_non_empty(
-        head: CppGrammarSequenceBuild {
-          head: first_tok,
-          tail: Empty
-        },
-        tail: rest_toks,
-        cons: fn(acc, token) {
-          CppGrammarSequenceBuild {
-            head: acc.head,
-            tail: list_snoc_item(xs: acc.tail, item: token)
-          }
+fn cpp_gram_seq_fold(tokens: FreeMonoid<CppConcreteSyntaxToken>, acc: GrammarExpr) -> GrammarExpr {
+  match tokens {
+    Empty => acc
+    Cons { head: tok, tail: rest } =>
+      cpp_gram_seq_fold(
+        tokens: rest,
+        acc: Sequence {
+          left: acc,
+          right: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: tok))
         }
       )
   }
 }
 
 fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
-  cpp_grammar_sequence_from_tokens(tokens: cpp_mvp1_grammar_tokens())
+  match cpp_mvp1_concrete_tokens() {
+    Empty =>
+      // 🟡 SL-T11-GRAMMAR-FROM-TOKEN-ROW dissolution — cpp_mvp1_concrete_tokens() is always
+      // non-empty by construction; this branch is structurally unreachable.
+      // dissolve-on: NonEmptyFreeMonoid<T> or compile-time non-empty guarantee in std/algebra.
+      cpp_grammar_terminal(token_class: cpp_token_ty_int)
+    Cons { head: first_tok, tail: rest_toks } =>
+      cpp_gram_seq_fold(
+        tokens: rest_toks,
+        acc: cpp_grammar_terminal(token_class: cpp_concrete_token_class(token: first_tok))
+      )
+  }
 }
 
 fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction {
