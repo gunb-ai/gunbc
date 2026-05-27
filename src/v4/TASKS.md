@@ -1202,7 +1202,7 @@ a semver / ordering lattice. Tombstoned here so the T-2# numbering stays
 stable; the original gap text is intentionally removed — it described a
 task that will not exist.
 
-### T-28 — std/ module-graph substrate  [SCHEDULED]
+### T-28 — std/ module-graph substrate  [MODELED]
 **Gap:** `03_resolve` cross-file binding needs a declared module catalog;
 no substrate existed before this lane. (This is the substrate side of the
 Theme-B "module-loading" dependency.)
