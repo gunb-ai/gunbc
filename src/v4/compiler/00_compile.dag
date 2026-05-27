@@ -29,7 +29,7 @@ import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.algebra { list_append }
+import v4.std.algebra { list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -194,7 +194,7 @@ fn append_lens_gate_witness(
     [LensGateWitness { witness: witness }],
     init: witnesses,
     f: fn(acc, item) {
-      list_push(acc, item)
+      list_snoc_item(xs: acc, item: item)
     }
   )
 }

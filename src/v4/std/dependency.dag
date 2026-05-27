@@ -6,7 +6,7 @@
 
 module v4.std.dependency
 
-import v4.std.algebra { list_append }
+import v4.std.algebra { list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -129,7 +129,7 @@ fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: Depen
   DependencyFoldState {
     current: acc.current,
     dependencies: append_dependency_views(
-      left: list_push(acc.dependencies, dependency_view_for_edge(parent: acc.current, edge: edge)),
+      left: list_snoc_item(xs: acc.dependencies, item: dependency_view_for_edge(parent: acc.current, edge: edge)),
       right: child_state.dependencies
     )
   }
