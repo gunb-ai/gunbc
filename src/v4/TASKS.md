@@ -1526,7 +1526,7 @@ These are complementary, not overlapping.
    `std/module_graph.dag`).
 
    **Path-keyed invariants (ratified 2026-05-26):**
-   - **`ModulePath` is a lookup key, not a Node identity authority.** Node identity within the compiler remains B1 `content_hash` (INVARIANTS §P2, `std/node.dag`). The path is an external boundary handle — the same role a filesystem path plays — not an alternative to the B1 merkle identity.
+   - **`ModulePath` is the declared module namespace identity, not a filesystem path.** It is the dotted name from the `module` declaration (e.g. `module v4.std.algebra` → `ModulePath` `v4.std.algebra`), not a file location. It is a lookup key and external boundary handle — not a Node identity authority; Node identity within the compiler remains B1 `content_hash` (INVARIANTS §P2, `std/node.dag`) — and not an alternative to the B1 merkle identity.
    - **Function (not bijection):** each `ModulePath` corresponds to at most one `Node` at admission time — enforced solely by `module_graph_from_entries`, not by the store. Distinct paths may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the store's.
    - **Fail-closed on missing:** `compile_with_store` returns `Rejected` with a module-admission diagnostic if a required `ModulePath` is absent from the store — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
    - **Insert policy (ratified 2026-05-26):** `store_insert` always appends — inserts never fail. Duplicate-path detection is deferred to `compile_with_store`, which returns `Rejected` via the existing `module_graph_from_entries` gate. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting the same `ModulePath` twice adds a second entry that causes admission to fail, not a silent overwrite.
@@ -1563,9 +1563,11 @@ to define a new agent output surface.
   lookup; the raw `AgentStore` is the write log, `ModuleGraph` is the
   unique-path map, and only `module_graph_from_entries` bridges the two.
 
-  **Scope of T-35's change:** `store.entries` replaces the `entries: Empty`
-  argument to `module_graph_from_entries` (currently in
-  `compile_ingest_staging`). The single call to `module_graph_from_entries`
+  **Scope of T-35's change:** `compile_with_store` is a new function that
+  introduces the `module_graph_from_entries(entries: store.entries)` call —
+  this call does not currently exist in the codebase (`compile_ingest_staging`
+  on main is a stub that returns `Rejected` with no module-graph construction).
+  The single call to `module_graph_from_entries`
   serves both purposes: (1) it admits the store (enforcing path uniqueness)
   and (2) it provides the root `CoreNode` via `module_graph_entry_for_path` on
   the resulting `ModuleGraph`. No other part of the ingest pipeline changes.
