@@ -24,7 +24,9 @@ import v4.compiler.parse {
 }
 import v4.compiler.tokenize {
   CharClassPattern,
+  ChoicePattern,
   DigitChar,
+  HexDigitChar,
   IdentContinueChar,
   IdentStartChar,
   LexPattern,
@@ -34,6 +36,7 @@ import v4.compiler.tokenize {
   LiteralPattern,
   ModeledLexRules,
   OneOrMorePattern,
+  OptionalPattern,
   RepeatPattern,
   SequencePattern,
   TokenRule,
@@ -705,10 +708,149 @@ fn wasm_ident_lex_rule() -> LexRule {
   }
 }
 
+fn wasm_lex_choice(left: LexPattern, right: LexPattern) -> LexPattern {
+  ChoicePattern { left: left, right: right }
+}
+
+fn wasm_lex_sequence(left: LexPattern, right: LexPattern) -> LexPattern {
+  SequencePattern { left: left, right: right }
+}
+
+fn wasm_optional_sign_lex_pattern() -> LexPattern {
+  OptionalPattern {
+    element: wasm_lex_choice(
+      left: LiteralPattern { text: "+" },
+      right: LiteralPattern { text: "-" }
+    )
+  }
+}
+
+fn wasm_digit_run_lex_pattern() -> LexPattern {
+  OneOrMorePattern {
+    element: wasm_lex_choice(
+      left: CharClassPattern { class: DigitChar },
+      right: wasm_lex_sequence(
+        left: LiteralPattern { text: "_" },
+        right: CharClassPattern { class: DigitChar }
+      )
+    )
+  }
+}
+
+fn wasm_hex_digit_run_lex_pattern() -> LexPattern {
+  OneOrMorePattern {
+    element: wasm_lex_choice(
+      left: CharClassPattern { class: HexDigitChar },
+      right: wasm_lex_sequence(
+        left: LiteralPattern { text: "_" },
+        right: CharClassPattern { class: HexDigitChar }
+      )
+    )
+  }
+}
+
+fn wasm_decimal_exponent_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_lex_choice(
+      left: LiteralPattern { text: "e" },
+      right: LiteralPattern { text: "E" }
+    ),
+    right: wasm_lex_sequence(
+      left: wasm_optional_sign_lex_pattern(),
+      right: wasm_digit_run_lex_pattern()
+    )
+  )
+}
+
+fn wasm_hex_exponent_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_lex_choice(
+      left: LiteralPattern { text: "p" },
+      right: LiteralPattern { text: "P" }
+    ),
+    right: wasm_lex_sequence(
+      left: wasm_optional_sign_lex_pattern(),
+      right: wasm_digit_run_lex_pattern()
+    )
+  )
+}
+
+fn wasm_decimal_number_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_optional_sign_lex_pattern(),
+    right: wasm_lex_sequence(
+      left: wasm_digit_run_lex_pattern(),
+      right: wasm_lex_sequence(
+        left: OptionalPattern {
+          element: wasm_lex_sequence(
+            left: LiteralPattern { text: "." },
+            right: RepeatPattern { element: CharClassPattern { class: DigitChar } }
+          )
+        },
+        right: OptionalPattern { element: wasm_decimal_exponent_lex_pattern() }
+      )
+    )
+  )
+}
+
+fn wasm_hex_number_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_optional_sign_lex_pattern(),
+    right: wasm_lex_sequence(
+      left: wasm_lex_choice(
+        left: LiteralPattern { text: "0x" },
+        right: LiteralPattern { text: "0X" }
+      ),
+      right: wasm_lex_sequence(
+        left: wasm_hex_digit_run_lex_pattern(),
+        right: wasm_lex_sequence(
+          left: OptionalPattern {
+            element: wasm_lex_sequence(
+              left: LiteralPattern { text: "." },
+              right: RepeatPattern { element: CharClassPattern { class: HexDigitChar } }
+            )
+          },
+          right: OptionalPattern { element: wasm_hex_exponent_lex_pattern() }
+        )
+      )
+    )
+  )
+}
+
+fn wasm_nan_payload_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: LiteralPattern { text: "nan:0x" },
+    right: wasm_hex_digit_run_lex_pattern()
+  )
+}
+
+fn wasm_float_special_lex_pattern() -> LexPattern {
+  wasm_lex_sequence(
+    left: wasm_optional_sign_lex_pattern(),
+    right: wasm_lex_choice(
+      left: LiteralPattern { text: "inf" },
+      right: wasm_lex_choice(
+        left: LiteralPattern { text: "nan" },
+        right: wasm_nan_payload_lex_pattern()
+      )
+    )
+  )
+}
+
+fn wasm_wat_numeric_literal_lex_pattern() -> LexPattern {
+  wasm_lex_choice(
+    left: wasm_float_special_lex_pattern(),
+    right: wasm_lex_choice(
+      left: wasm_hex_number_lex_pattern(),
+      right: wasm_decimal_number_lex_pattern()
+    )
+  )
+}
+
 fn wasm_numeric_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: wasm_token_numeric_literal,
-    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+    pattern: wasm_wat_numeric_literal_lex_pattern()
   }
 }
 
