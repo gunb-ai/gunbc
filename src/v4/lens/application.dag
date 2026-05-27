@@ -58,8 +58,10 @@ import v4.std.node {
 }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
-// Mechanical port (interface-freeze pin §4): bounded structural projection handles until
-// shared declaration/node identity substrate graduates.
+// 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
+// dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
+// node-containment evidence from the shared declaration/node identity substrate; forbidden:
+// marking SectionRef construction fully grounded while arbitrary paths can inhabit these handles.
 type DeclarationId {
   path: Path
 }
@@ -381,8 +383,8 @@ fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
-// 🟢 grounded — SectionRef projection authority. DeclarationScope resolves from the program root;
-// NodeScope first resolves the enclosing declaration and then the node path within that declaration.
+// 🟡 gated — feature:section-ref-identity-evidence — projection is real, but handle construction is
+// still a bounded bridge until DeclarationId proves declaration-ness and NodeId proves containment.
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
     DeclarationScope { declaration: declaration } =>
@@ -397,20 +399,12 @@ fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   }
 }
 
-type LensEnforcementVerdict<Projected> {
-  projected: Projected
-  violated: Bool
-}
-
-fn lens_enforcement_verdict<Output, Budget, Projected>(
+fn lens_enforcement_violated<Output, Budget, Projected>(
   enforcement: LensEnforcement<Output, Budget, Projected>,
   output: Output,
   budget: Budget
-) -> LensEnforcementVerdict<Projected> {
-  LensEnforcementVerdict {
-    projected: enforcement.project(output: output),
-    violated: enforcement.violates(output: output, declared: budget)
-  }
+) -> Bool {
+  enforcement.violates(output: output, declared: budget)
 }
 
 // Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
@@ -441,12 +435,11 @@ fn apply_lens_enforce<Output, Budget, Projected>(
       bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
-          let verdict = lens_enforcement_verdict(
+          if lens_enforcement_violated(
             enforcement: enforceable.enforcement,
             output: lens_output,
             budget: budget
-          )
-          if verdict.violated {
+          ) {
             outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
           } else {
             outcome_accepted(value: lens_output)

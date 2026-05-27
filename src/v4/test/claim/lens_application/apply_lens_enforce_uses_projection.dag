@@ -86,7 +86,7 @@ fn apply_lens_enforce_projection_claim_rhs() -> Bool {
 }
 
 data claim_apply_lens_enforce_uses_projection: TestClaim = EqualsClaim {
-  label: "lens_application/apply_lens_enforce_uses_projection: projected enforcement path accepts",
+  label: "lens_application/apply_lens_enforce_uses_projection: full-output enforcement path accepts",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_enforce_projection_claim_rhs(),
   rhs: true,
