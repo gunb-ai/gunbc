@@ -129,8 +129,10 @@ type EnforcedLensResult<Output, Projected> {
   projected: Projected
 }
 
-// 🟢 grounded — violation diagnostic input. Generic observed/declared facts
-// flow to the diagnostic boundary even though v4.std.diagnostic is reason/locus shaped today.
+// 🟡 gated — feature:lens-enforcement-diagnostic-detail — generic observed/declared facts
+// flow to the diagnostic boundary, but v4.std.diagnostic is reason/locus shaped today.
+// dissolve-on-arrival: Diagnostic detail payloads can carry Projected/Budget evidence;
+// forbidden: claiming projected/declared facts are consumed by plain Diagnostic.
 type LensEnforcementViolationInput<Projected, Budget> {
   at: Node
   projected: Projected
