@@ -40,6 +40,9 @@ import v4.std.model_core {
   EffectSignature,
   FailClosedAtBoundary,
   ModelCore,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
   PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
@@ -433,9 +436,6 @@ data rust_law_kind_float_ieee754_rounding: Symbol = rust_law_kind_float_ieee754_
 data rust_law_kind_float_nan_inf_carried_by_ieee754: Symbol = rust_law_kind_float_nan_inf_carried_by_ieee754
 data rust_law_kind_bool_bounded_lattice: Symbol = rust_law_kind_bool_bounded_lattice
 data rust_law_kind_bool_complement: Symbol = rust_law_kind_bool_complement
-data rust_law_field_subject: Symbol = rust_law_field_subject
-data rust_law_field_algebra: Symbol = rust_law_field_algebra
-data rust_law_field_kind: Symbol = rust_law_field_kind
 
 data rust_witness_checked_integer_arithmetic: Symbol = rust_witness_checked_integer_arithmetic
 data rust_witness_float_approximate_field: Symbol = rust_witness_float_approximate_field
@@ -1768,10 +1768,10 @@ fn rust_model_core_law_node(witness: Node, algebra: Node, key: RustModelCoreLawK
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      rust_named_edge(name: rust_law_field_subject, target: witness),
-      rust_named_edge(name: rust_law_field_algebra, target: algebra),
+      rust_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      rust_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
       rust_named_edge(
-        name: rust_law_field_kind,
+        name: model_core_wave1_law_field_kind,
         target: rust_inhabitant_atom(id: rust_law_kind_symbol(key: key))
       )
     ]
