@@ -111,6 +111,7 @@ data mvp_add_int_atom: Symbol = mvp_add_int_atom
 data mvp1_rust_grounding_miss: Symbol = mvp1_rust_grounding_miss
 data mvp1_emit_source_mismatch: Symbol = mvp1_emit_source_mismatch
 data mvp1_compile_source_mismatch: Symbol = mvp1_compile_source_mismatch
+data mvp1_serialize_unexpected_accept: Symbol = mvp1_serialize_unexpected_accept
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 
@@ -166,6 +167,27 @@ fn anchor_mvp1_serialize_rejects_missing_translation_rules() -> Outcome<TargetSo
     target: mvp1_rust_missing_translation_rules_target,
     emitted: mvp1_rust_emitted_root
   )
+}
+
+
+data mvp1_serialize_reject_receipt: Outcome<TargetSource> =
+  anchor_mvp1_serialize_rejects_missing_translation_rules()
+
+
+fn mvp1_serialize_reject_claim_outcome() -> Outcome<Node> {
+  match mvp1_serialize_reject_receipt {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: mvp1_serialize_unexpected_accept,
+            at: node_locus(node: mvp1_rust_emitted_root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+  }
 }
 
 
@@ -539,4 +561,27 @@ data claim_mvp1_serialize_rejects_missing_translation_rules: TestClaim = Diagnos
     }
   ),
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> =
+  TestClaimEvalSubject {
+    claim: claim_mvp1_serialize_rejects_missing_translation_rules,
+    context: infer_receipt_context(),
+    tree: mvp1_rust_inferred_tree,
+    input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  }
+
+
+data run_mvp1_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(
+    subject: subject_mvp1_serialize_rejects_missing_translation_rules,
+    claim_hash: claim_hash_placeholder,
+    interpretation_hash: interpretation_hash_placeholder
+  ),
+  verdict: run_test_claim_assert(
+    claim: claim_mvp1_serialize_rejects_missing_translation_rules,
+    actual: mvp1_serialize_reject_claim_outcome(),
+    at: mvp1_rust_emitted_root
+  )
 }
