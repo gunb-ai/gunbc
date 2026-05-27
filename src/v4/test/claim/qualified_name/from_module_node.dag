@@ -13,13 +13,14 @@ module v4.test.claim.qualified_name.from_module_node
 
 
 import v4.extdeps.languages.dag {
+  dag_token_ident,
   emit_module_header_emitted_node,
   qualified_name_from_module_node
 }
 import v4.std.algebra { Cons, Empty, fold_list_node }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
-import v4.std.qualified_name { QualifiedName }
+import v4.std.qualified_name { QualifiedName, qualified_name_eq }
 import v4.std.logic { Bool }
 import v4.std.verification {
   EqualsClaim,
@@ -57,6 +58,14 @@ fn fmn_outcome_accepted(out: Outcome<QualifiedName>) -> Bool {
   }
 }
 
+// TODO(T-22): test-local scaffolding — see from_node.dag qn_outcome_accepted for the canonical TODO.
+fn fmn_value_eq(out: Outcome<QualifiedName>, expected: QualifiedName) -> Bool {
+  match out {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: actual, diagnostics: _ } => qualified_name_eq(a: actual, b: expected)
+  }
+}
+
 
 // Module header node built via emit_module_header_emitted_node with a two-element QN fold_list_node.
 data fmn_qn_node: Node = fold_list_node(
@@ -69,11 +78,22 @@ data fmn_module_header_node: Node = emit_module_header_emitted_node(qualified_na
 // Node without dag_surface_module_header_qualified_name edge → Rejected.
 data fmn_bare_conj_node: Node = Node { kind: TypeNode { connective: Conj }, children: [] }
 
+// Module header whose QN fold_list_node contains dag_token_ident → Rejected by T-8 gate.
+data fmn_qn_gated_node: Node = fold_list_node(
+  xs: Cons { head: dag_token_ident, tail: Empty },
+  item_node: fn(sym) { fmn_sym_node(sym: sym) }
+)
+
+data fmn_module_header_gated_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_gated_node)
+
 
 data claim_from_module_node_accepted: TestClaim = EqualsClaim {
-  label: "qualified_name_from_module_node returns Accepted for a well-formed module header emitted node",
+  label: "qualified_name_from_module_node returns Accepted with [fmn_sym_a, fmn_sym_b] for a well-formed module header emitted node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: fmn_bool_atom(b: fmn_outcome_accepted(out: qualified_name_from_module_node(root: fmn_module_header_node))),
+  lhs: fmn_bool_atom(b: fmn_value_eq(
+    out: qualified_name_from_module_node(root: fmn_module_header_node),
+    expected: Cons { head: fmn_sym_a, tail: Cons { head: fmn_sym_b, tail: Empty } }
+  )),
   rhs: fmn_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
@@ -83,6 +103,15 @@ data claim_from_module_node_missing_edge_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_module_node returns Rejected when dag_surface_module_header_qualified_name edge is absent",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_outcome_accepted(out: qualified_name_from_module_node(root: fmn_bare_conj_node))),
+  rhs: fmn_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_from_module_node_t8_gated: TestClaim = EqualsClaim {
+  label: "qualified_name_from_module_node returns Rejected when QN segment is dag_token_ident (T-8 gate)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: fmn_bool_atom(b: fmn_outcome_accepted(out: qualified_name_from_module_node(root: fmn_module_header_gated_node))),
   rhs: fmn_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
