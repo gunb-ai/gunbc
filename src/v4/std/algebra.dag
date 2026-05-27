@@ -53,6 +53,7 @@ type Field<T> {
   commutative_ring: CommutativeRing<T>
   reciprocal: fn(T) -> T
 }
+// 🟡 needs-more-work — feature:field-reciprocal-partiality-declaration — field.reciprocal is carried as a fail-closed partiality declaration in v4.std.model_core.field_partiality_decl(); this file only exports the algebra carrier and inhabitance Node surface. dissolve-on: model_core wiring consumes the PartialOperationDecl carrier for reciprocal non-zero partiality without introducing an algebra -> model_core import.
 type ApproximateField<T> {
   add: fn(T, T) -> T
   zero: T
