@@ -62,7 +62,8 @@ import v4.std.diagnostic {
 import v4.std.module_graph {
   ModuleEntry,
   ModuleGraph,
-  ModulePath
+  ModulePath,
+  module_graph_from_entries
 }
 import v4.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v4.std.text { String }
@@ -484,11 +485,10 @@ fn agent_store_single_module_diagnostic() -> Diagnostic {
 fn agent_store_to_module_graph(
   entry: ModuleEntry
 ) -> Outcome<ModuleGraph> {
-  outcome_accepted(
-    value: ModuleGraph {
-      entries: Cons { head: entry, tail: Empty }
-    }
-  )
+  match module_graph_from_entries(entries: Cons { head: entry, tail: Empty }) {
+    Holds { value: graph } => outcome_accepted(value: graph)
+    Violates { diagnostic: d } => outcome_rejected(d: d)
+  }
 }
 
 
