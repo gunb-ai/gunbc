@@ -311,7 +311,7 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
                     Rejected { diagnostics: r } => Rejected { diagnostics: r }
                   }
                 Positional => acc
-              )
+              }
           }
         }
       ) {
