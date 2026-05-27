@@ -1225,7 +1225,7 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 gated — fold1 accumulator interim — scaffold:SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside rust_mvp1_concrete_tokens.
+// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside rust_mvp1_concrete_tokens.
 type RustGrammarTokenSequence {
   head: RustConcreteSyntaxToken
   tail: List<RustConcreteSyntaxToken>
