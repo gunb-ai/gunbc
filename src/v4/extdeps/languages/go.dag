@@ -235,6 +235,7 @@ data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
 data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
+data go_witness_complex_approximate_field: Symbol = go_witness_complex_approximate_field
 data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
 
 data go_token_kw_func: Symbol = go_token_kw_func
@@ -1016,6 +1017,26 @@ fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
   }
 }
 
+fn go_complex_algebra_witness_node(facts: GoComplexPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_complex_approximate_field,
+        target: go_inhabitant_atom(id: go_witness_complex_approximate_field)
+      ),
+      go_named_edge(
+        name: go_facts_field_component_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.component_ieee754_binary)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
 fn go_bool_algebra_witness_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1050,6 +1071,15 @@ fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabita
   }
 }
 
+fn go_complex_algebra_inhabitance(facts: GoComplexPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_complex_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_complex_algebra_witness_node(facts: facts)
+  }
+}
+
 fn go_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = go_bool_facts_node(facts: go_facts_bool)
   AlgebraInhabitanceDecl {
@@ -1079,6 +1109,16 @@ fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
+fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_complex_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
 fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
     go_bool_algebra_inhabitance()
@@ -1088,8 +1128,11 @@ fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   list_append(
     left: list_append(
-      left: go_integer_algebra_inhabitance_decls(),
-      right: go_float_algebra_inhabitance_decls()
+      left: list_append(
+        left: go_integer_algebra_inhabitance_decls(),
+        right: go_float_algebra_inhabitance_decls()
+      ),
+      right: go_complex_algebra_inhabitance_decls()
     ),
     right: go_bool_algebra_inhabitance_decls()
   )
