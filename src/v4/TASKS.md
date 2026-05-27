@@ -878,19 +878,29 @@ model shape to keep the probe "parallel."
 **Output**: ONE `.dag` program → multi-language multi-endpoint application
 **Operator framing 2026-05-15**: "consider pipeline emission i.e. 'backend program using react in the frontend (and say rust/C++ in the backend)' — i suggest we frontload this style of work — this is exactly what we keep deferring"
 
-**Deliverable**: a single .dag file declaring a TODO-app-class application that emits:
+**Deliverable**: a single .dag file declaring a `TaskManager` application — a small task-tracking service with multiple handlers and an explicit transport call — that emits:
 - Rust backend (+ optionally C++ backend variant)
 - React/TypeScript frontend
 - OpenAPI wire contract between backend and frontend
 - SQL DDL for persistence
 - Markdown docs
 
+**Demo program** (operator-ratified 2026-05-27): `TaskManager` with three operations declared in the single Node tree:
+- `create_task(title: String) -> Task` — POST /tasks
+- `update_status(id: TaskId, status: TaskStatus) -> Task` — PATCH /tasks/{id}
+- `list_tasks() -> FreeMonoid<Task>` — GET /tasks
+
+Where `Task = { id: TaskId, title: String, status: TaskStatus }` and `TaskStatus = Open | InProgress | Done`.
+
+The React frontend declares an explicit **transport call** via coordination.dag's `WireContract` — the contract binds to the canonical function via `CoordinationBind { bind: BindRef { identity: list_tasks }, effect: ... }`; the response type is derived from the bind's declared Arrow, not restated as a parallel field. This exercises the lego model: the Rust handler, the OpenAPI spec, and the React component are all separate `DeploymentUnit` fragments of the same Node; `WireContract { facts: WireContractFacts { from: react_endpoint, to: rust_endpoint, ... }, bind: CoordinationBind { ... } }` is the declared joint. No string operation name, no parallel `response_type` field — single authority through the bind reference.
+
 All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tree); coherence is structural, not test-checked.
 
-**Modeling decisions**:
-- How does the .dag file express endpoint partitioning (which fragment runs where)? (uses extdeps/coordination.dag's Endpoint + DeploymentUnit)
-- Wire contract derivation (does it auto-derive from shared types, or is it explicitly declared?)
-- Cross-target consistency: same domain types in Rust + TypeScript — tested via L5
+**Modeling decisions** (operator-ratified 2026-05-27):
+- Endpoint partitioning = `DeploymentUnit` is the single authority (coordination.dag) — each `DeploymentUnit { endpoints, wire_contracts }` is a fragment of the shared Node tree declaring where it runs. `TargetModel` is the emission target for a fragment, not the partition boundary; the two are orthogonal axes on the same Node.
+- Wire contract = **explicitly declared** via `coordination.dag` `WireContract` — not auto-derived from shared types; the declaration IS the machine-checkable proof that client and server agree on the type at the transport boundary
+- Cross-target consistency: same domain types (`Task`, `TaskStatus`) in Rust + TypeScript — tested via L5
+- `TaskId` grounding: opaque `Symbol`-backed identifier (not a numeric alias) — avoids hollow-alias trap at the domain level
 
 **Scope**: XL (extra-large — this is the visceral cash of the omni-emission thesis)
 
