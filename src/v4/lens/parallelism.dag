@@ -8,26 +8,13 @@
 module v4.lens.parallelism
 
 import v4.compiler.infer { InferredTree }
-import v4.std.algebra { bag_eq }
+import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.dependency {
-  BarrierBefore,
-  BindsTo,
-  BootstrapDependsOn,
   ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
+  DependencyKindClassifier,
   DependencyView,
-  EffectDependsOn,
-  GeneratedFrom,
-  ModelDependsOn,
-  ModuleDependsOn,
-  PlacementDependsOn,
-  ProjectionDependsOn,
-  PromotedBy,
-  ResourceDependsOn,
-  TypeDependsOn,
-  VerifiedBy,
+  classify_dependency_view,
   classified_dependency_view_eq
 }
 import v4.std.logic { Bool }
@@ -44,37 +31,34 @@ type ParallelismFact {
   dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
 }
 
-fn parallelism_relation_for_dependency(view: DependencyView) -> ParallelismRelation {
-  match view.kind {
-    Contains => DataDependent
-    BindsTo => DataDependent
-    DataDependsOn => DataDependent
-    EffectDependsOn => EffectCoupled
-    ResourceDependsOn => EffectCoupled
-    BarrierBefore => BarrierCoupled
-    TypeDependsOn => UnknownCoupling
-    ModuleDependsOn => UnknownCoupling
-    PlacementDependsOn => UnknownCoupling
-    ModelDependsOn => UnknownCoupling
-    ProjectionDependsOn => UnknownCoupling
-    GeneratedFrom => UnknownCoupling
-    VerifiedBy => UnknownCoupling
-    PromotedBy => UnknownCoupling
-    BootstrapDependsOn => UnknownCoupling
+fn parallelism_dependency_kind_classifier() -> DependencyKindClassifier<ParallelismRelation> {
+  DependencyKindClassifier {
+    contains: DataDependent,
+    binds_to: DataDependent,
+    type_depends_on: UnknownCoupling,
+    data_depends_on: DataDependent,
+    effect_depends_on: EffectCoupled,
+    resource_depends_on: EffectCoupled,
+    module_depends_on: UnknownCoupling,
+    barrier_before: BarrierCoupled,
+    placement_depends_on: UnknownCoupling,
+    model_depends_on: UnknownCoupling,
+    projection_depends_on: UnknownCoupling,
+    generated_from: UnknownCoupling,
+    verified_by: UnknownCoupling,
+    promoted_by: UnknownCoupling,
+    bootstrap_depends_on: UnknownCoupling
   }
 }
 
 fn parallelism_classify(view: DependencyView) -> ClassifiedDependencyView<ParallelismRelation> {
-  ClassifiedDependencyView {
-    dependency: view,
-    classification: parallelism_relation_for_dependency(view: view)
-  }
+  classify_dependency_view(classifier: parallelism_dependency_kind_classifier(), view: view)
 }
 
 fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> ParallelismFact {
   ParallelismFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
-      list_push(acc, parallelism_classify(view: view))
+      list_snoc_item(xs: acc, item: parallelism_classify(view: view))
     })
   }
 }
