@@ -267,6 +267,7 @@ data affected_set_boundary_pure_receipt_edge: Symbol = affected_set_boundary_pur
 data affected_set_dimension_not_read_receipt_edge: Symbol = affected_set_dimension_not_read_receipt_edge
 data affected_set_reason_boundary_path_unresolved: Symbol = affected_set_reason_boundary_path_unresolved
 data affected_set_reason_boundary_purity_unproven: Symbol = affected_set_reason_boundary_purity_unproven
+data affected_set_reason_changed_dimension_unresolved: Symbol = affected_set_reason_changed_dimension_unresolved
 data affected_set_reason_frontier_path_unresolved: Symbol = affected_set_reason_frontier_path_unresolved
 data affected_set_reason_frontier_ancestor_unresolved: Symbol = affected_set_reason_frontier_ancestor_unresolved
 
@@ -386,8 +387,8 @@ fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyV
     }
   } else if node_in_list(nodes: acc.frontier, needle: dependency.dependent) && (node_in_list(nodes: acc.frontier, needle: dependency.source) == false) {
     AffectedSetClosureAcc {
-      frontier: list_push(acc.frontier, dependency.source),
-      dependencies: list_push(acc.dependencies, dependency)
+      frontier: list_snoc_item(xs: acc.frontier, item: dependency.source),
+      dependencies: list_snoc_item(xs: acc.dependencies, item: dependency)
     }
   } else {
     acc
@@ -1033,10 +1034,7 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
 
 
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
-  ChangedDimensions {
-    first: affected_set_default_dimension,
-    rest: []
-  }
+  ChangedDimensionsUnknown { reason: affected_set_reason_changed_dimension_unresolved }
 }
 
 

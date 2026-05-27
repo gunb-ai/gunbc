@@ -10,10 +10,8 @@ import v4.lens.affected_set {
   ChangedSubgraphFrontier,
   DoesNotPropagate,
   EditDimension,
-  ExclusionKey,
   FailClosed,
   Propagates,
-  Rerun,
   affected_set_boundary_pure_receipt_edge,
   affected_set_default_dimension,
   affected_set_dimension_not_read_receipt_edge,
@@ -28,7 +26,6 @@ import v4.lens.affected_set_examples {
   affected_set_example_node
 }
 import v4.std.algebra { length }
-import v4.std.collection { empty_map, map_insert }
 import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
 import v4.std.node { Conj, Diff, Edge, Edit, Named, Node, Path, Symbol, TypeNode }
@@ -160,35 +157,22 @@ fn irt1_public_affected_set_fails_closed_without_purity_receipt() -> Bool {
   }
 }
 
-fn irt1_public_affected_set_changed_edit_stays_narrow() -> Bool {
+fn irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt() -> Bool {
   match affected_set(
     dag: affected_set_example_node,
     diff: Diff { edits: [irt1_public_changed_edit] }
   ) {
-    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
-      length(xs: boundary_exclusions) == 0
-    Holds { value: FailClosed { reason: _ } } => false
+    Holds { value: FailClosed { reason: _ } } => true
     _ => false
   }
 }
 
-fn irt1_public_affected_set_nonroot_keeps_context_dependency() -> Bool {
+fn irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt() -> Bool {
   match affected_set(
     dag: affected_set_root,
     diff: Diff { edits: [irt1_public_nonroot_changed_edit] }
   ) {
-    Holds { value: frontier } =>
-      frontier == ChangedSubgraphFrontier {
-        boundary_exclusions: [],
-        decisions: map_insert(
-          empty_map(),
-          ExclusionKey {
-            at: affected_set_claim_failure_node,
-            dimension: affected_set_default_dimension
-          },
-          Rerun
-        )
-      }
+    Holds { value: FailClosed { reason: _ } } => true
     _ => false
   }
 }
@@ -257,16 +241,16 @@ fn irt1_public_affected_set_unreceipted_boundary_fail_closed_claim_rhs() -> Node
   }
 }
 
-fn irt1_public_affected_set_changed_edit_stays_narrow_claim_rhs() -> Node {
-  if irt1_public_affected_set_changed_edit_stays_narrow() {
+fn irt1_public_affected_set_changed_edit_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_changed_edit_fails_closed_without_dimension_receipt() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
   }
 }
 
-fn irt1_public_affected_set_nonroot_context_dependency_claim_rhs() -> Node {
-  if irt1_public_affected_set_nonroot_keeps_context_dependency() {
+fn irt1_public_affected_set_nonroot_changed_edit_fail_closed_claim_rhs() -> Node {
+  if irt1_public_affected_set_nonroot_changed_edit_fails_closed_without_dimension_receipt() {
     affected_set_example_node
   } else {
     affected_set_claim_failure_node
@@ -329,19 +313,19 @@ data claim_irt1_public_affected_set_unreceipted_boundary_fail_closed: TestClaim 
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_irt1_public_affected_set_changed_edit_stays_narrow: TestClaim = EqualsClaim {
-  label: "lens_affected_set/irt1_public_changed_edit_stays_narrow: changed root edit avoids boundary exclusion",
+data claim_irt1_public_affected_set_changed_edit_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_changed_edit_fail_closed: changed root edit fails closed without dimension receipt",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: irt1_public_affected_set_changed_edit_stays_narrow_claim_rhs(),
+  rhs: irt1_public_affected_set_changed_edit_fail_closed_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_irt1_public_affected_set_nonroot_context_dependency: TestClaim = EqualsClaim {
-  label: "lens_affected_set/irt1_public_nonroot_context_dependency: non-root edit retains context dependency",
+data claim_irt1_public_affected_set_nonroot_changed_edit_fail_closed: TestClaim = EqualsClaim {
+  label: "lens_affected_set/irt1_public_nonroot_changed_edit_fail_closed: non-root edit fails closed without dimension receipt",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: affected_set_example_node,
-  rhs: irt1_public_affected_set_nonroot_context_dependency_claim_rhs(),
+  rhs: irt1_public_affected_set_nonroot_changed_edit_fail_closed_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
