@@ -1,0 +1,16 @@
+// src/v4/test/fixture/dag_ingest_round_trip_fixture.dag
+// Scope: T-36 self-referential `.dag` source fixture for ingest -> Node -> emit round-trip claim.
+// Owns: dag_ingest_round_trip_fixture_source, dag_ingest_round_trip_fixture_expected_source.
+// Status: fixture authority for src/v4/test/claim/round_trip/dag_ingest_round_trip.dag.
+
+module v4.test.fixture.dag_ingest_round_trip_fixture
+
+
+import v4.compiler.compile { Source }
+import v4.compiler.target_carriers { TargetSource }
+
+
+data dag_ingest_round_trip_fixture_source: Source = "module v4.test.fixture.dag_ingest_round_trip_subject import v4.std.node { Atom, Node, Symbol, TypeNode } import v4.std.verification { ManualAnchorAbsent, RoundTripClaim, TestClaim, TestClassification, Tier1, Integration, manual_claim_anchor } data fixture_round_trip_subject_symbol: Symbol = fixture_round_trip_subject_symbol data fixture_round_trip_subject_node: Node = Node { kind: TypeNode { connective: Atom { identity: fixture_round_trip_subject_symbol } }, children: [] } data fixture_round_trip_claim: TestClaim = RoundTripClaim { label: \"fixture round trip claim\", anchor: manual_claim_anchor(anchor: ManualAnchorAbsent), input: fixture_round_trip_subject_node, classification: TestClassification { tier: Tier1, layer: Integration } }"
+
+
+data dag_ingest_round_trip_fixture_expected_source: TargetSource = dag_ingest_round_trip_fixture_source
