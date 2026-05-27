@@ -25,10 +25,13 @@ import v4.extdeps.languages.dag {
   dag_language_model_wave1_void
 }
 import v4.std.algebra { Cons, Empty }
-import v4.std.collection { empty_map, map_insert }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.module_graph { ModuleGraph }
+import v4.std.module_graph {
+  ModuleGraph,
+  QualifiedRoot,
+  module_graph_from_roots
+}
 import v4.std.node {
   Atom,
   Bind,
@@ -50,6 +53,7 @@ import v4.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v4.std.witness { Holds, Violates, Witness }
 
 
 data anchor_decl_first: Symbol = anchor_decl_first
@@ -204,14 +208,16 @@ fn resolve_graph_imported_root() -> Node {
 }
 
 
-fn resolve_graph_single_import() -> ModuleGraph {
-  ModuleGraph {
-    roots: map_insert(
-      m: empty_map(),
-      key: Cons { head: anchor_imported_path_segment, tail: Empty },
-      value: resolve_graph_imported_root()
-    )
-  }
+fn resolve_graph_single_import() -> Witness<ModuleGraph> {
+  module_graph_from_roots(
+    roots: Cons {
+      head: QualifiedRoot {
+        name: Cons { head: anchor_imported_path_segment, tail: Empty },
+        root: resolve_graph_imported_root()
+      },
+      tail: Empty
+    }
+  )
 }
 
 
@@ -224,25 +230,29 @@ fn resolve_graph_imported_use_tree() -> Node {
 
 
 fn resolve_name_with_admission_imported_binding_accepts() -> Bool {
-  match resolve_name_with_admission(
-    lm: dag_language_model_surface_empty_prelude(),
-    graph: resolve_graph_single_import(),
-    admission: NameAdmission {
-      subject: NameSubject {
-        qualified_name: Empty,
-        tree: resolve_graph_imported_use_tree()
-      },
-      imports: Cons {
-        head: NameImport {
-          target: Cons { head: anchor_imported_path_segment, tail: Empty },
-          visibility: NameImportVisible
-        },
-        tail: Empty
+  match resolve_graph_single_import() {
+    Holds { value: graph } =>
+      match resolve_name_with_admission(
+        lm: dag_language_model_surface_empty_prelude(),
+        graph: graph,
+        admission: NameAdmission {
+          subject: NameSubject {
+            qualified_name: Empty,
+            tree: resolve_graph_imported_use_tree()
+          },
+          imports: Cons {
+            head: NameImport {
+              target: Cons { head: anchor_imported_path_segment, tail: Empty },
+              visibility: NameImportVisible
+            },
+            tail: Empty
+          }
+        }
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
       }
-    }
-  ) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
+    Violates { diagnostic: _ } => false
   }
 }
 

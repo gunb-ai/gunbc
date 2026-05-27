@@ -10,9 +10,10 @@ module v4.test.claim.module_graph.entry_lookup
 
 
 import v4.std.algebra { Cons, Empty }
-import v4.std.collection { empty_map, map_insert }
 import v4.std.module_graph {
   ModuleGraph,
+  QualifiedRoot,
+  module_graph_from_roots,
   module_graph_root_for_name
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
@@ -56,10 +57,13 @@ fn path_x() -> QualifiedName {
 fn path_y() -> QualifiedName {
   Cons { head: entry_seg_y, tail: Empty }
 }
-fn graph_unique_x() -> ModuleGraph {
-  ModuleGraph {
-    roots: map_insert(m: empty_map(), key: path_x(), value: entry_root_node())
-  }
+fn graph_unique_x() -> Witness<ModuleGraph> {
+  module_graph_from_roots(
+    roots: Cons {
+      head: QualifiedRoot { name: path_x(), root: entry_root_node() },
+      tail: Empty
+    }
+  )
 }
 
 
@@ -77,10 +81,18 @@ fn root_violates(w: Witness<Node>) -> Bool {
 }
 
 
-data witness_root_lookup_holds: Bool = root_holds(w: module_graph_root_for_name(graph: graph_unique_x(), name: path_x()))
+data witness_root_lookup_holds: Bool = match graph_unique_x() {
+  Holds { value: graph } =>
+    root_holds(w: module_graph_root_for_name(graph: graph, name: path_x()))
+  Violates { diagnostic: _ } => false
+}
 
 
-data witness_root_lookup_missing_violates: Bool = root_violates(w: module_graph_root_for_name(graph: graph_unique_x(), name: path_y()))
+data witness_root_lookup_missing_violates: Bool = match graph_unique_x() {
+  Holds { value: graph } =>
+    root_violates(w: module_graph_root_for_name(graph: graph, name: path_y()))
+  Violates { diagnostic: _ } => false
+}
 
 
 data claim_root_lookup_holds: TestClaim = CompilesClaim {
