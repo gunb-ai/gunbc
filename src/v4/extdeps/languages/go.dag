@@ -62,8 +62,10 @@ import v4.std.algebra {
   boolean_algebra_node,
   Empty,
   fold_list,
+  free_monoid_node,
   list_append,
   list_snoc_item,
+  semiring_node,
   ordered_ring_node
 }
 import v4.std.text { String }
@@ -233,10 +235,11 @@ data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
-data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
+data go_witness_signed_integer_ordered_ring: Symbol = go_witness_signed_integer_ordered_ring
+data go_witness_unsigned_integer_semiring: Symbol = go_witness_unsigned_integer_semiring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
-data go_witness_complex_approximate_field: Symbol = go_witness_complex_approximate_field
 data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
+data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
 
 data go_token_kw_func: Symbol = go_token_kw_func
 data go_token_kw_return: Symbol = go_token_kw_return
