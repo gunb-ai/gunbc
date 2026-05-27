@@ -1213,31 +1213,34 @@ Theme-B "module-loading" dependency.)
 Not a standalone task: the module-tree + ancestor-relation `Witness` land
 inside the T-8 resolver scope.
 
-### T-28-B — Extract module graph admission from `03_resolve.dag`  [SCHEDULED]
-**Gap:** `03_resolve.dag` currently exposes `resolve_with_graph` /
-`namespace_from_tree_and_graph`, so the K-1 resolver has a
-`ModuleGraph`-shaped cross-file surface even though it does not load files
-and the graph path remains gated. This keeps module admission policy in
-the resolver layer.
-**Disposition — SCHEDULED (T-28 follow-up, bundled with T-8).** Move
-graph-to-namespace projection into a separate module-resolution stage that
-consumes `std/module_graph.dag` and calls
-`compiler/03_resolve.resolve_with_namespace`. `03_resolve.dag` remains
-single-tree K-1 resolution only: `resolve(tree, lm)` and
-`resolve_with_namespace(tree, namespace)`.
-**Boundary:** the new stage receives the fully loaded `ModuleGraph` plus
-the subject `QualifiedName` / tree, enforces import / visibility / ambiguity
-rules, and produces the exact `Namespace` admitted for that subject module.
-It must not flat-fold `graph.entries`; module paths remain authoritative
-until admission is complete.
-As a follow-on after T-28-B extraction, dissolve `NameAdmissionState` in `03_name_resolve.dag` — its accepted/rejected coproduct can collapse into the `Outcome` accumulator of the new admission stage.
-**Move out of `03_resolve.dag`:** `ModuleGraph` import,
-`namespace_from_tree_and_graph`, `resolve_with_graph`, and header
-ownership / consume claims for `ModuleGraph`.
-**Dissolve gate:** once the external stage owns module admission and emits
-a `Namespace`, delete the T-28 graph gate from `03_resolve.dag`;
-cross-file resolution enters through the new stage, not through a third
-`Scope` arm or a resolver-local graph fold.
+### T-28-B — Extract module graph admission from `03_resolve.dag`  [PARTIAL]
+**Gap:** `03_resolve.dag` is now back to the single-tree K-1 resolver
+surface: `resolve(tree, lm)` and `resolve_with_namespace(tree, namespace)`.
+The remaining T-28-B work is to finish dissolving the extracted
+name-admission model into the eventual T-8 admission accumulator instead of
+keeping a local gate-state carrier.
+**Disposition — PARTIAL (T-28 follow-up, bundled with T-8).** Graph-to-
+namespace projection now lives in `compiler/03_name_resolve.dag`, consumes
+`std/module_graph.dag`, and calls
+`compiler/03_resolve.resolve_with_namespace`. Keep the stage outside
+`03_resolve.dag`; cross-file admission policy belongs at the name-resolution
+boundary, not in the single-tree resolver.
+**Boundary:** the stage receives the fully loaded `ModuleGraph` plus a
+`NameSubject { qualified_name, tree }`, enforces import / visibility /
+ambiguity rules, and produces the exact `Namespace` admitted for that
+subject module. It must use the `std/module_graph.dag` construction and
+lookup surfaces (`module_graph_from_roots`, `module_graph_root_for_name`)
+instead of reconstructing roots through a raw map fold.
+As a follow-on after T-28-B extraction, dissolve `NameAdmissionState` in
+`03_name_resolve.dag` — its accepted/rejected coproduct can collapse into
+the `Outcome` accumulator of the new admission stage.
+**Moved out of `03_resolve.dag`:** the `ModuleGraph` import, graph-to-
+namespace projection, graph-backed resolve entrypoint, and header ownership /
+consume claims for `ModuleGraph`.
+**Dissolve gate:** once the T-8 admission accumulator can carry the accepted
+namespace plus origin facts, delete the local name-admission gate-state
+carrier; cross-file resolution continues to enter through
+`03_name_resolve.dag`, not through a resolver-local graph fold.
 
 ### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
 **Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
