@@ -11,6 +11,9 @@ import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.algebra {
   bag_eq
 }
+import v4.compiler.target_carriers { LanguageModel, TargetModel }
+import v4.extdeps.languages.rust { rust_mvp1_target_model }
+import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -19,9 +22,7 @@ data v4_stage0_binary: Symbol = v4_stage0_binary
 data v4_stage1_binary: Symbol = v4_stage1_binary
 data v4_stage2_binary: Symbol = v4_stage2_binary
 data v2_pipeline: Symbol = v2_pipeline
-data v4_live_compiler_source_snapshot: Symbol = v4_live_compiler_source_snapshot
-data rust_target_model_projection_input: Symbol = rust_target_model_projection_input
-data runtime_model_projection_input: Symbol = runtime_model_projection_input
+data v4_live_compiler_source_snapshot_root: Symbol = v4_live_compiler_source_snapshot_root
 data v4_stage0_hash_pin: Symbol = v4_stage0_hash_pin
 data v4_stage1_hash_pin: Symbol = v4_stage1_hash_pin
 data v4_stage2_hash_pin: Symbol = v4_stage2_hash_pin
@@ -42,15 +43,21 @@ type BootstrapConstruct {
 }
 
 type SeedCapability {
-  language_model: Node
+  language_model: LanguageModel
   constructs: List<BootstrapConstruct>
   frozen_at: Symbol
 }
 
+type BootstrapSourceSnapshot {
+  root: Node
+  language_model: LanguageModel
+  content_hash: BootstrapHashPin
+}
+
 type BootstrapProjectionInputs {
-  snapshot: Symbol
-  target_model: Symbol
-  runtime_model: Symbol
+  snapshot: BootstrapSourceSnapshot
+  target_model: TargetModel
+  runtime_model: V4EvaluatorRuntime
 }
 
 type BootstrapFootprint {
@@ -75,9 +82,16 @@ type DiverseCompilationRun {
   output_hash: BootstrapHashPin
 }
 
+type IndependentCompilerPair {
+  primary: Symbol
+  secondary: Symbol
+  evidence: Symbol
+}
+
 type DiverseCompilationAgreement {
   primary: DiverseCompilationRun
   secondary: DiverseCompilationRun
+  independent_compilers: IndependentCompilerPair
   agreed_hash: BootstrapHashPin
 }
 
@@ -100,7 +114,7 @@ type FixptStage1Stage2 {
 
 type SeedHonestyDischarge {
   seed_honesty_axiom: Symbol
-  diverse_double_compilation: Witness<DiverseCompilationAgreement>
+  diverse_double_compilation: DiverseCompilationAgreement
 }
 
 // RULING-1: 🟢 pretty-much-done — canonical bootstrap chain.
@@ -132,8 +146,7 @@ data physical_machine_model_axiom: Symbol = physical_machine_model_axiom
 data physical_machine_executes_isa_as_modeled: Symbol = physical_machine_executes_isa_as_modeled
 data seed_honesty_axiom: Symbol = seed_honesty_axiom
 data independent_compiler_witness: Symbol = independent_compiler_witness
-data diverse_compile_primary_output: Symbol = diverse_compile_primary_output
-data diverse_compile_secondary_output: Symbol = diverse_compile_secondary_output
+data diverse_compile_fixed_point_output: Symbol = diverse_compile_fixed_point_output
 data bootstrap_workflow_file: Symbol = bootstrap_workflow_file
 
 fn bs_diagnostic(reason: Symbol) -> Diagnostic {
@@ -152,9 +165,16 @@ fn bootstrap_construct_eq(left: BootstrapConstruct, right: BootstrapConstruct) -
   left.identity == right.identity
 }
 
-fn seed_capability_language_model() -> Node {
+fn seed_capability_language_model() -> LanguageModel {
   Node {
     kind: TypeNode { connective: Atom { identity: bootstrap_seed_language_model_identity } },
+    children: []
+  }
+}
+
+fn bootstrap_source_snapshot_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: v4_live_compiler_source_snapshot_root } },
     children: []
   }
 }
@@ -196,20 +216,67 @@ fn bootstrap_convergence_ladder(plan: Outcome<BootstrapPlan>) -> Witness<Converg
   }
 }
 
+fn independent_compiler_pair_witness(
+  primary: Symbol,
+  secondary: Symbol,
+  evidence: Symbol
+) -> Witness<IndependentCompilerPair> {
+  if (primary != secondary) && (evidence == independent_compiler_witness) {
+    Holds { value: IndependentCompilerPair { primary: primary, secondary: secondary, evidence: evidence } }
+  } else {
+    Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+  }
+}
+
 fn diverse_compilation_agreement_witness(
   primary: DiverseCompilationRun,
   secondary: DiverseCompilationRun,
+  independent_compilers: Witness<IndependentCompilerPair>,
   agreed_hash: BootstrapHashPin
 ) -> Witness<DiverseCompilationAgreement> {
-  if (primary.source == secondary.source)
-       && (primary.output_hash.digest == secondary.output_hash.digest)
-       && (agreed_hash.digest == primary.output_hash.digest)
-       && (primary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
-       && (secondary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
-       && (agreed_hash.pin == pinned_v4_fixed_point_hash_pin) {
-    Holds { value: DiverseCompilationAgreement { primary: primary, secondary: secondary, agreed_hash: agreed_hash } }
-  } else {
-    Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+  match independent_compilers {
+    Holds { value: pair } =>
+      if (primary.compiler == pair.primary)
+           && (secondary.compiler == pair.secondary)
+           && (primary.source == secondary.source)
+           && (primary.output == secondary.output)
+           && (primary.output_hash.digest == secondary.output_hash.digest)
+           && (agreed_hash.digest == primary.output_hash.digest)
+           && (primary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
+           && (secondary.output_hash.pin == pinned_v4_fixed_point_hash_pin)
+           && (agreed_hash.pin == pinned_v4_fixed_point_hash_pin) {
+        Holds {
+          value: DiverseCompilationAgreement {
+            primary: primary,
+            secondary: secondary,
+            independent_compilers: pair,
+            agreed_hash: agreed_hash
+          }
+        }
+      } else {
+        Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bootstrap_seed_honesty_discharge_witness(
+  axiom: Symbol,
+  diverse_double_compilation: Witness<DiverseCompilationAgreement>
+) -> Witness<SeedHonestyDischarge> {
+  match diverse_double_compilation {
+    Holds { value: agreement } =>
+      if axiom == seed_honesty_axiom {
+        Holds {
+          value: SeedHonestyDischarge {
+            seed_honesty_axiom: axiom,
+            diverse_double_compilation: agreement
+          }
+        }
+      } else {
+        Violates { diagnostic: bs_diagnostic(reason: bootstrap_diverse_compilation_mismatch) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
 
@@ -239,9 +306,13 @@ data seed_capability: SeedCapability = SeedCapability {
 }
 
 data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectionInputs {
-  snapshot: v4_live_compiler_source_snapshot,
-  target_model: rust_target_model_projection_input,
-  runtime_model: runtime_model_projection_input
+  snapshot: BootstrapSourceSnapshot {
+    root: bootstrap_source_snapshot_root(),
+    language_model: seed_capability_language_model(),
+    content_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+  },
+  target_model: rust_mvp1_target_model(),
+  runtime_model: v4_evaluator_runtime_wave1()
 }
 
 data bootstrap_footprint_witness: Witness<BootstrapFootprint> = bootstrap_footprint(inputs: bootstrap_projection_inputs)
@@ -256,24 +327,29 @@ data bootstrap_physical_axiom: PhysicalExecutionAxiom = PhysicalExecutionAxiom {
   executes_as_modeled: physical_machine_executes_isa_as_modeled
 }
 
-data bootstrap_seed_honesty_discharge: SeedHonestyDischarge = SeedHonestyDischarge {
-  seed_honesty_axiom: seed_honesty_axiom,
+data bootstrap_seed_honesty_discharge: Witness<SeedHonestyDischarge> = bootstrap_seed_honesty_discharge_witness(
+  axiom: seed_honesty_axiom,
   diverse_double_compilation: diverse_compilation_agreement_witness(
     primary: DiverseCompilationRun {
       source: v4_dag_source,
       compiler: v2_pipeline,
-      output: diverse_compile_primary_output,
+      output: diverse_compile_fixed_point_output,
       output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
     },
     secondary: DiverseCompilationRun {
       source: v4_dag_source,
       compiler: independent_compiler_witness,
-      output: diverse_compile_secondary_output,
+      output: diverse_compile_fixed_point_output,
       output_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
     },
+    independent_compilers: independent_compiler_pair_witness(
+      primary: v2_pipeline,
+      secondary: independent_compiler_witness,
+      evidence: independent_compiler_witness
+    ),
     agreed_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
   )
-}
+)
 
 fn bootstrap_stage_output(plan: Outcome<BootstrapPlan>, s: Symbol) -> Bool {
   match plan {
