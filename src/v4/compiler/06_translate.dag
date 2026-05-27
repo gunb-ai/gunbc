@@ -343,6 +343,7 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   }
 }
 fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
+  // Token-sequence dispatch items may be inner-production nodes with positional edges.
   match parent.kind {
     TypeNode { connective: Conj } =>
       match fold(
