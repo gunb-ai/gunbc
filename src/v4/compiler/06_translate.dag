@@ -510,30 +510,6 @@ fn grammar_inverse_source_validated(
     }
   )
 }
-fn grammar_relation_row_to_source_bounded(
-  remaining: Int,
-  row: Node,
-  target: TargetModel,
-  emitted: Node
-) -> Outcome<TargetSource> {
-  if remaining <= 0 {
-    outcome_rejected(
-      translate_serialize_recursion_limit_exhausted_diagnostic(emitted: emitted)
-    )
-  } else {
-    bind_outcome(
-      o: grammar_relation_row_tokens_root(row: row),
-      f: fn(tokens_root) {
-        bind_outcome(
-          o: conj_positional_targets(parent: tokens_root),
-          f: fn(tokens) {
-            token_sequence_to_source_bounded(remaining - 1, tokens, target)
-          }
-        )
-      }
-    )
-  }
-}
 fn target_serialize_relation_row_from_model_bounded(
   remaining: Int,
   target: TargetModel,
