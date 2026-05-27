@@ -2,7 +2,7 @@
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* / java_wave2_* grammar/lex, java_language_model_wave2.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 method-add + wave-2 lex (all JLS §4.2 primitive-type keywords) and grammar (compilation unit, class/method/field declarations, block, return/local-var statements, additive/multiplicative expressions). `void` lex token for surface syntax; ModelCore.primitives still wave-1 catalog only. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 method-add + wave-2 lex/grammar (compilation unit, class/method/field, block, return/local-var, additive/multiplicative expressions). JLS §4.2 primitives in `primitive_type` (excludes `void` per §4.3); `void` lex token only (method `Result` is forward). canonical_symbols projects via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -19,6 +19,7 @@ import v4.compiler.parse {
   Repeat,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
@@ -34,7 +35,8 @@ import v4.compiler.tokenize {
   ModeledLexRules,
   RepeatPattern,
   SequencePattern,
-  TokenRule
+  TokenRule,
+  lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
@@ -245,6 +247,7 @@ data java_production_class_member_declaration: Symbol = java_production_class_me
 data java_production_method_declaration: Symbol = java_production_method_declaration
 data java_production_field_declaration: Symbol = java_production_field_declaration
 data java_production_primitive_type: Symbol = java_production_primitive_type
+data java_production_result: Symbol = java_production_result
 data java_production_type: Symbol = java_production_type
 data java_production_formal_parameter_list: Symbol = java_production_formal_parameter_list
 data java_production_block: Symbol = java_production_block
@@ -265,6 +268,7 @@ data java_surface_class_member_declaration: Symbol = java_surface_class_member_d
 data java_surface_method_declaration: Symbol = java_surface_method_declaration
 data java_surface_field_declaration: Symbol = java_surface_field_declaration
 data java_surface_primitive_type: Symbol = java_surface_primitive_type
+data java_surface_result: Symbol = java_surface_result
 data java_surface_type: Symbol = java_surface_type
 data java_surface_formal_parameter_list: Symbol = java_surface_formal_parameter_list
 data java_surface_block: Symbol = java_surface_block
@@ -1068,16 +1072,21 @@ fn java_grammar_primitive_type_expr() -> GrammarExpr {
               left: java_grammar_terminal(token_class: java_token_kw_double),
               right: java_grammar_choice(
                 left: java_grammar_terminal(token_class: java_token_kw_boolean),
-                right: java_grammar_choice(
-                  left: java_grammar_terminal(token_class: java_token_kw_char),
-                  right: java_grammar_terminal(token_class: java_token_kw_void)
-                )
+                right: java_grammar_terminal(token_class: java_token_kw_char)
               )
             )
           )
         )
       )
     )
+  )
+}
+
+// JLS §8.4 Result — `void` is a method return type only, not a §4.2 primitive type.
+fn java_grammar_result_expr() -> GrammarExpr {
+  java_grammar_choice(
+    left: java_grammar_nonterminal(production: java_production_primitive_type),
+    right: java_grammar_terminal(token_class: java_token_kw_void)
   )
 }
 
@@ -1180,7 +1189,7 @@ fn java_grammar_method_declaration_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: java_token_kw_static),
     right: java_grammar_sequence(
-      left: java_grammar_nonterminal(production: java_production_primitive_type),
+      left: java_grammar_nonterminal(production: java_production_result),
       right: java_grammar_sequence(
         left: java_grammar_terminal(token_class: java_token_ident),
         right: java_grammar_sequence(
@@ -1279,6 +1288,11 @@ fn java_wave2_grammar_root() -> GrammarRoot {
     expression: java_grammar_primitive_type_expr(),
     emitted: java_surface_primitive_type
   )
+  let result = java_grammar_production(
+    name: java_production_result,
+    expression: java_grammar_result_expr(),
+    emitted: java_surface_result
+  )
   let type = java_grammar_production(
     name: java_production_type,
     expression: java_grammar_type_expr(),
@@ -1345,6 +1359,7 @@ fn java_wave2_grammar_root() -> GrammarRoot {
       method_declaration,
       field_declaration,
       primitive_type,
+      result,
       type,
       formal_parameter_list,
       block,
@@ -1366,69 +1381,13 @@ fn java_wave2_grammar() -> Grammar {
   ModeledGrammar { root: java_wave2_grammar_root() }
 }
 
-fn java_wave2_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == java_token_kw_byte ||
-    sym == java_token_kw_short ||
-    sym == java_token_kw_long ||
-    sym == java_token_kw_float ||
-    sym == java_token_kw_double ||
-    sym == java_token_kw_boolean ||
-    sym == java_token_kw_char ||
-    sym == java_token_kw_void ||
-    sym == java_token_kw_class ||
-    sym == java_token_kw_public ||
-    sym == java_token_eq ||
-    sym == java_token_minus ||
-    sym == java_token_star
-}
-
-fn java_wave2_grammar_symbol(sym: Symbol) -> Bool {
-  sym == java_production_compilation_unit ||
-    sym == java_surface_compilation_unit ||
-    sym == java_production_class_declaration ||
-    sym == java_surface_class_declaration ||
-    sym == java_production_class_body ||
-    sym == java_surface_class_body ||
-    sym == java_production_class_member_declaration ||
-    sym == java_surface_class_member_declaration ||
-    sym == java_production_method_declaration ||
-    sym == java_surface_method_declaration ||
-    sym == java_production_field_declaration ||
-    sym == java_surface_field_declaration ||
-    sym == java_production_primitive_type ||
-    sym == java_surface_primitive_type ||
-    sym == java_production_type ||
-    sym == java_surface_type ||
-    sym == java_production_formal_parameter_list ||
-    sym == java_surface_formal_parameter_list ||
-    sym == java_production_block ||
-    sym == java_surface_block ||
-    sym == java_production_block_statement ||
-    sym == java_surface_block_statement ||
-    sym == java_production_statement ||
-    sym == java_surface_statement ||
-    sym == java_production_return_statement ||
-    sym == java_surface_return_statement ||
-    sym == java_production_local_variable_declaration ||
-    sym == java_surface_local_variable_declaration ||
-    sym == java_production_expression ||
-    sym == java_surface_expression ||
-    sym == java_production_additive_expression ||
-    sym == java_surface_additive_expression ||
-    sym == java_production_multiplicative_expression ||
-    sym == java_surface_multiplicative_expression ||
-    sym == java_production_primary_expression ||
-    sym == java_surface_primary_expression
-}
-
 fn java_language_model_wave2_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       java_catalog_surface_symbol(sym: sym) ||
         sym == java_surface_spelling_void ||
-        java_wave1_lex_token_symbol(sym: sym) ||
-        java_wave2_lex_token_symbol(sym: sym) ||
-        java_wave2_grammar_symbol(sym: sym) ||
+        lex_rule_set_token_class_member(rules: java_wave2_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: java_wave2_grammar(), sym: sym) ||
         sym == java_surface_method_item ||
         sym == java_production_mvp1_method_add ||
         sym == java_mvp1_source_literal
