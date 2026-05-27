@@ -1204,24 +1204,29 @@ fn canonical_propagation_receipt(
   edit_dimension: EditDimension,
   dependency: DependencyView
 ) -> PropagationReceipt {
-  if dependency_in_lens_frontier(dependency: dependency) {
-    Propagates
-  } else {
-    match find_child_by_name(root: dependency.usage_site, name: affected_set_dimension_not_read_receipt_edge) {
-      Accepted { value: receipt, diagnostics: _ } =>
-        if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
-          DoesNotPropagate {
-            proof: DimensionNotRead {
-              usage_site: dependency.usage_site,
-              changed_dimension: edit_dimension.dimension
+  match dependency.kind {
+    Contains =>
+      Propagates
+    _ =>
+      if dependency_in_lens_frontier(dependency: dependency) {
+        Propagates
+      } else {
+        match find_child_by_name(root: dependency.usage_site, name: affected_set_dimension_not_read_receipt_edge) {
+          Accepted { value: receipt, diagnostics: _ } =>
+            if receipt == affected_set_dimension_not_read_receipt_node(dimension: edit_dimension.dimension) {
+              DoesNotPropagate {
+                proof: DimensionNotRead {
+                  usage_site: dependency.usage_site,
+                  changed_dimension: edit_dimension.dimension
+                }
+              }
+            } else {
+              Propagates
             }
-          }
-        } else {
+          Rejected { diagnostics: _ } =>
           Propagates
         }
-      Rejected { diagnostics: _ } =>
-        Propagates
-    }
+      }
   }
 }
 
