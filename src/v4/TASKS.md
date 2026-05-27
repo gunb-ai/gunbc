@@ -1441,7 +1441,19 @@ imports from `v4.std.model_core`.
 
 ---
 
-### T-34 — std/runtime.dag + extdeps/runtimes/*.dag — runtime substrate  [SCHEDULED]
+### T-34 — std/runtime.dag + extdeps/runtimes/*.dag — runtime substrate  [DONE]
+**Status:** Landed across PRs #3522 (Option-C decomposition + abstract
+`std/runtime.dag` carriers), #3603 (concrete `v4_evaluator.dag` wave-1
+bundle + manual acceptance anchor), #3630 (T-33-Q10
+`EffectSignature`/`ResourceAccess` — dissolves T-34 forward-declaration
+debt). Post–T-33 wave-2 (#3677), `v4_evaluator_model_core_wave1()` binds
+the populated `wave1_model_core()` payload (anchor witness in
+`v4_evaluator_runtime_anchor.dag`). Wave-1 semantics remain fail-closed on
+deferred primitive/control paths; richer interpretation is T-22-owned
+(`feature:T-22-evaluator-semantics`). `compiler/05_eval.dag` consumes
+`V4EvaluatorRuntime` plus `v4_evaluator_interpretation_wave1()`; full
+`RuntimeTarget` bundle wiring remains a T-22 follow-on.
+
 **Operator-ratified 2026-05-21 (Option C).** The former `HostModel`
 umbrella is decomposed. Abstract runtime carriers live in
 `src/v4/std/runtime.dag`; concrete runtime fact-bundles live in
