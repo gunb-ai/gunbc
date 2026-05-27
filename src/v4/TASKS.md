@@ -1863,6 +1863,106 @@ formatter config by construction.
 
 ---
 
+### T-4.17 — Extended language set: full bidirectional ingest (Wave 2a + 2b)
+
+**Files**: `src/v4/extdeps/languages/{java,swift,kotlin,wasm,ecmascript}.dag`
+**Operator-ratified 2026-05-27.** All language files with a full `LanguageModel` /
+`PrimitiveFactBundle` structure must reach bidirectional ingest fidelity — not just the
+primary Shape-A 5. This task covers the five languages that have Wave-1 scalar
+fact-bundles on main but lack complete lex/grammar data for round-trip ingest:
+
+- `java.dag` — Java SE (JLS); has Wave-1 scalar bundles + partial wave1 grammar/lex.
+  Complete to full bidirectional ingest: lex rules covering all JLS surface tokens,
+  grammar productions for the core statement/expression/declaration forms, fail-closed
+  on unmodeled constructs.
+- `swift.dag` — Swift; has wave1_lex + wave1_grammar MVP1. Extend to full statement/
+  expression coverage. Declared-normalized for insignificant whitespace.
+- `kotlin.dag` — Kotlin spec; has Wave-1 scalar bundles. Add wave1 lex + grammar and
+  extend to full bidirectional ingest.
+- `wasm.dag` — WebAssembly binary/text format; has wave1_lex + wave1_grammar MVP1.
+  Extend to full module/instruction coverage.
+- **NEW: `ecmascript.dag`** — ECMAScript (ES2022; JavaScript without TypeScript
+  extensions). `typescript.dag` models the TypeScript surface; ECMAScript is the
+  base language — distinct fact-bundle, distinct surface spelling authority, distinct
+  grammar (no type annotations). Anchor: ECMA-262 specification.
+
+**Wave 2a (lex/grammar data):** `[needs T-6, T-7, T-4 Wave-1 for each language]`
+**Wave 2b (type deepening):** `[needs T-4 Wave-1 per language, T-33, T-2 Node constructors]`
+
+Both waves are in scope for this task; they may be dispatched per-language in parallel.
+
+**Scheduling note:** ECMAScript requires a new file; java/swift/kotlin/wasm extend
+existing files. All five can be dispatched in parallel once T-2 #3748 merges.
+
+---
+
+### T-4.18 — Probe language ingest completion: verilog, spice, llvm_ir, machine_code, ptx
+
+**Files**:
+- `src/v4/extdeps/languages/{verilog,llvm_ir,machine_code,ptx}.dag`
+- `src/v4/extdeps/formats/spice.dag`
+
+**Operator-ratified 2026-05-27.** The B2-OMNI stress probes (T-4.9–T-4.14) landed
+their structural carrier vocabularies, validating the falsification axes. This task
+elevates each from structural-carrier-only to **full bidirectional ingest** by adding
+lex/grammar data so the tokenize/parse pipeline can actually run on real source:
+
+- **verilog.dag** `[needs T-6, T-7]` — IEEE 1364-2005 lex rules + grammar productions.
+  The structural carriers are landed; add `LexRules` and `Grammar` data nodes.
+  Fail-closed on any concurrent/procedural form without a modeled grammar production.
+- **spice.dag** `[needs T-6, T-7]` — SPICE netlist lex rules + grammar. The format
+  model is landed in `extdeps/formats/`; add lex/grammar data so SPICE text round-trips
+  through the standard tokenize/parse pipeline. No control flow — every production is a
+  declaration or directive.
+- **llvm_ir.dag** `[needs T-6, T-7]` — LLVM IR textual format lex rules + grammar
+  (`.ll` file surface). SSA form; all constructs are already modeled as carriers.
+- **machine_code.dag** `[needs T-6, T-7, T-3 machine]` — assembly surface lex rules
+  + grammar parameterized by `Isa`. Disassembly = extreme fail-closed (most byte runs
+  are not valid instructions). One grammar data node per modeled ISA variant.
+- **ptx.dag** `[needs T-6, T-7]` — PTX ISA textual format lex + grammar. Parallel to
+  `llvm_ir.dag` treatment.
+
+Each language's wave can be dispatched independently once T-6/T-7 schema is confirmed
+(already verified on main).
+
+---
+
+### T-4.19 — English formal-subset language model
+
+**File**: `src/v4/extdeps/languages/english.dag`
+**Operator-ratified 2026-05-27 (reversal of T-4.11 framing).**
+
+**Prior position (T-4.11):** "English is NOT a language model — boundary-honesty probe
+only." That framing assumed arbitrary English prose as the target, which has no formal
+grammar and violates the no-engine thesis.
+
+**New scope:** Model a **formal/controlled subset** of English as a real `LanguageModel`
+with declared lex rules and grammar productions. Arbitrary prose still fails closed
+(consistent with T-4.11's boundary claim); the formal subset round-trips. This is the
+honest version: declare what IS in F (subject-verb-object structures, a bounded
+vocabulary for a target domain such as API documentation or structured command syntax),
+declare everything outside F as `Fail-closed`, emit the canonical form.
+
+**Anchor**: Controlled natural language literature (CNL) — e.g. Attempto Controlled
+English (ACE) or a narrower custom subset ratified in this file's header. The subset
+grammar must be declared, reviewable, and deterministic (no ambiguity in the grammar
+productions; ambiguous constructs → Diagnostic, never silent pick-one).
+
+**Deliverable**:
+- `english.dag` with `EnglishLanguageModel`, `EnglishLexRules`, `EnglishGrammar` data
+  nodes, `english_language_model_wave1()` function.
+- Wave 2a: lex rules + grammar productions for the declared formal subset.
+- Fail-closed on arbitrary prose (consistent with T-4.11 claim — the claim becomes a
+  positive test that OUT-OF-SUBSET prose produces a precise Diagnostic).
+
+**T-4.11 relationship**: T-4.11's `english_ingest_fail_closed.dag` claim becomes a
+conformance test for this model — not a refutation of it. Update T-4.11 brief to
+reflect that it tests the boundary of `english.dag`, not the absence of the file.
+
+**Deps**: `[needs T-6, T-7, T-4 Wave-1 pattern]`
+
+---
+
 ### T-31 — de-prose / de-templating backward sweep  [SCHEDULED]
 **Operator-confirmed 2026-05-17 (D2-reversal Phase-1 execution).** The
 no-prose and no-templating principles are operator-ratified, but they
