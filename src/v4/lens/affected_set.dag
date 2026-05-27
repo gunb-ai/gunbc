@@ -8,7 +8,7 @@ module v4.lens.affected_set
 
 
 import v4.std.collection { List, Map }
-import v4.std.algebra { contains }
+import v4.std.algebra { contains, count_where, list_append }
 import v4.compiler.infer { InferredTree }
 import v4.std.change {
   AffectedDependency,
@@ -23,7 +23,7 @@ import v4.std.change {
   ChangeSet,
   NodeChanged
 }
-import v4.std.dependency { DependencyKind, DependencyView, ProjectionDependsOn, VerifiedBy, dependency_lens }
+import v4.std.dependency { Contains, DependencyKind, DependencyView, EffectDependsOn, ProjectionDependsOn, VerifiedBy, dependency_lens }
 import v4.std.diagnostic {
   Diagnostic,
   Diagnostics,
@@ -37,7 +37,7 @@ import v4.std.diagnostic {
 }
 import v4.std.node { Diff, Edit, Hash, Node, Path, Symbol, content_hash }
 import v4.std.witness { Holds, Witness }
-import v4.lens.application { subterm_at, substitute_at }
+import v4.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
 
 
 // RULING-1: 🟢 pretty-much-done — node alias.
@@ -118,6 +118,12 @@ type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
+
+
+// 🟡 needs-more-work — feature:B5-boundary-purity-receipt-carrier — bind T-21/B-5 — dissolve-on: effect lens emits first-class per-boundary purity receipts instead of structural no-EffectDependsOn dependency evidence
+type BoundaryPurityReceipt
+  = BoundaryPureNoEffects { dependencies: List<DependencyView> }
+  | BoundaryPurityUnknown { reason: Symbol }
 
 
 // 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — bind T-21 — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
@@ -1000,11 +1006,31 @@ fn re_exec_frontier_from_diff(
 }
 
 
+fn dependency_is_effect_coupled(dependency: DependencyView) -> Bool {
+  dependency.kind == EffectDependsOn
+}
+
+
+fn canonical_boundary_purity_receipt(node: Node) -> BoundaryPurityReceipt {
+  let dependencies = dependency_lens(root: node)
+  if count_where(xs: dependencies, predicate: dependency_is_effect_coupled) == 0 {
+    BoundaryPureNoEffects { dependencies: dependencies }
+  } else {
+    BoundaryPurityUnknown { reason: affected_set_reason_boundary_purity_unproven }
+  }
+}
+
+
 fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
   match subterm_at(root: dag, p: path) {
     Accepted { value: current, diagnostics: _ } =>
       if content_hash(n: current) == content_hash(n: replacement) {
-        HashUnknown { reason: affected_set_reason_boundary_purity_unproven }
+        match canonical_boundary_purity_receipt(node: current) {
+          BoundaryPureNoEffects { dependencies: _ } =>
+            HashUnchangedPure { content_hash: content_hash(n: current) }
+          BoundaryPurityUnknown { reason: r } =>
+            HashUnknown { reason: r }
+        }
       } else {
         HashChanged
       }
@@ -1022,14 +1048,45 @@ fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimension
 }
 
 
+fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> List<DependencyView> {
+  match find_child_by_name(root: frame.ancestor, name: frame.step) {
+    Accepted { value: child, diagnostics: _ } =>
+      [
+        DependencyView {
+          source: frame.ancestor,
+          dependent: child,
+          kind: Contains,
+          usage_site: child
+        }
+      ]
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+
+fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> List<DependencyView> {
+  fold(frames, init: [], f: fn(acc, frame) {
+    list_append(
+      left: acc,
+      right: canonical_ancestor_frame_dependencies(frame: frame)
+    )
+  })
+}
+
+
+fn canonical_region_dependencies(walk: AncestorWalk) -> List<DependencyView> {
+  list_append(
+    left: canonical_ancestor_dependencies(frames: walk.frames),
+    right: dependency_lens(root: walk.current)
+  )
+}
+
+
 fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
-  match subterm_at(root: dag, p: edit_dimension.edit.at) {
-    Accepted { value: edit_locus, diagnostics: _ } =>
+  match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
+    Accepted { value: walk, diagnostics: _ } =>
       FrontierProduced {
-        dependencies: affected_set_closure(
-          dependencies: dependency_lens(root: dag),
-          edit_locus: edit_locus
-        ).dependencies
+        dependencies: canonical_region_dependencies(walk: walk)
       }
     Rejected { diagnostics: _ } =>
       FrontierUnknown { reason: affected_set_reason_frontier_path_unresolved }

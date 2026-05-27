@@ -8,10 +8,9 @@ module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt
 
 import v4.lens.affected_set {
   ChangedSubgraphFrontier,
-  DimensionNotRead,
-  Excluded,
   ExclusionKey,
   FailClosed,
+  Rerun,
   affected_set_default_dimension,
   affected_set,
   empty_affected_fold_acc,
@@ -71,12 +70,13 @@ fn irt1_public_affected_set_empty_diff_claim_holds() -> Bool {
   }
 }
 
-fn irt1_public_affected_set_fails_closed_without_purity_receipt() -> Bool {
+fn irt1_public_affected_set_prunes_structurally_pure_unchanged_boundary() -> Bool {
   match affected_set(
     dag: affected_set_example_node,
     diff: Diff { edits: [irt1_public_unchanged_edit] }
   ) {
-    Holds { value: FailClosed { reason: _ } } => true
+    Holds { value: ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: _ } } =>
+      length(xs: boundary_exclusions) == 1
     _ => false
   }
 }
@@ -107,13 +107,7 @@ fn irt1_public_affected_set_nonroot_keeps_context_dependency() -> Bool {
             at: affected_set_claim_failure_node,
             dimension: affected_set_default_dimension
           },
-          Excluded {
-            first: DimensionNotRead {
-              usage_site: affected_set_claim_failure_node,
-              changed_dimension: affected_set_default_dimension
-            },
-            rest: []
-          }
+          Rerun
         )
       }
     _ => false
@@ -123,7 +117,7 @@ fn irt1_public_affected_set_nonroot_keeps_context_dependency() -> Bool {
 fn irt1_empty_diff_frontier_receipt_claim_rhs() -> Node {
   if irt1_empty_diff_frontier_receipt_claim_holds()
     && irt1_public_affected_set_empty_diff_claim_holds()
-    && irt1_public_affected_set_fails_closed_without_purity_receipt()
+    && irt1_public_affected_set_prunes_structurally_pure_unchanged_boundary()
     && irt1_public_affected_set_changed_edit_stays_narrow()
     && irt1_public_affected_set_nonroot_keeps_context_dependency() {
     affected_set_example_node
