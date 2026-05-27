@@ -76,13 +76,14 @@ fn qualified_name_atom_sym(n: Node) -> Outcome<Symbol> {
 }
 
 
-// 🟡 gated — T-8 parse fidelity — feature: per-identifier-symbol-mapping — bind TASKS.md T-8 — dissolve-on: T-8 lands per-identifier hashing; until then each extracted segment carries dag_token_ident rather than the actual identifier symbol. Accepts a fold_list_node(symbols) Node — the caller obtains this by walking the dag_surface_module_header_qualified_name edge of an emitted module header node.
+// Accepts a fold_list_node(symbols) Node — the caller obtains this by walking the
+// dag_surface_module_header_qualified_name edge of an emitted module header node.
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
   match root.kind {
     TypeNode { connective: Conj } =>
       if count(root.children) == 0 {
         outcome_accepted(value: Empty)
-      } else {
+      } else if count(root.children) == 2 {
         match qualified_name_find_edge(name: fold_list_node_head, n: root) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
           Accepted { value: head_node, diagnostics: _ } =>
@@ -100,6 +101,12 @@ fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
                 }
             }
         }
+      } else {
+        outcome_rejected(Diagnostic {
+          reason: qualified_name_structure_invalid,
+          at: node_locus(node: root),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
       }
     _ => outcome_rejected(Diagnostic {
       reason: qualified_name_structure_invalid,

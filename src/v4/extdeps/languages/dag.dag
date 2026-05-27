@@ -63,9 +63,9 @@ import v4.std.target_model {
   grammar_relation_field_tokens
 }
 import v4.std.logic { Bool }
-import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.std.qualified_name { QualifiedName, qualified_name_find_edge, qualified_name_from_node }
+import v4.std.algebra { Empty, fold_list, for_all, list_append, list_snoc_item }
+import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+import v4.std.qualified_name { QualifiedName, qualified_name_find_edge, qualified_name_from_node, qualified_name_projection_gated }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
@@ -1780,11 +1780,25 @@ fn dag_language_model_wave1_modeled() -> DagLanguageModel {
 // edge to the fold_list_node sub-node, then delegating to qualified_name_from_node.
 // std/qualified_name.dag cannot import dag_surface_module_header_qualified_name (extdeps/ → std/ only),
 // so this wrapper lives here. T-35's compile_with_batch folds batch.entries calling this function.
-// 🟡 gated — T-8 parse fidelity — same constraint as qualified_name_from_node; segment symbols carry dag_token_ident until T-8 lands.
+// 🟡 gated — T-8 parse fidelity — dissolve-on: T-8 lands per-identifier hashing. Until then every
+// segment extracted from a real parse tree carries dag_token_ident (identifier identity unavailable);
+// this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName (P3).
 fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
   match qualified_name_find_edge(name: dag_surface_module_header_qualified_name, n: root) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
     Accepted { value: qn_node, diagnostics: _ } =>
-      qualified_name_from_node(root: qn_node)
+      match qualified_name_from_node(root: qn_node) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: qn, diagnostics: _ } =>
+          if for_all(xs: qn, predicate: fn(sym) { sym != dag_token_ident }) {
+            outcome_accepted(value: qn)
+          } else {
+            outcome_rejected(Diagnostic {
+              reason: qualified_name_projection_gated,
+              at: node_locus(node: root),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            })
+          }
+      }
   }
 }
