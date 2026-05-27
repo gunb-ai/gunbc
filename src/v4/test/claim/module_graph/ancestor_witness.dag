@@ -1,7 +1,7 @@
 // src/v4/test/claim/module_graph/ancestor_witness.dag
 // Scope: TestClaim corpus for module_ancestor_witness prefix-based ancestor relation.
 // Owns: claim rows for prefix-holds, equal-path-holds, and non-prefix-violates cases.
-// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.witness v4.std.verification.
+// Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
