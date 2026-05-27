@@ -1,7 +1,7 @@
 // src/v4/std/module_graph.dag
 // Scope: Module-tree carrier for cross-file binding (T-28).
 // Owns: ModuleGraph, ModuleEntry; entry lookup; validated graph constructor.
-// Consumes: std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
+// Consumes: std/algebra.dag, std/diagnostic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
