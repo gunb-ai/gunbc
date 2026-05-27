@@ -12,10 +12,10 @@ import v4.std.algebra { bag_eq, list_snoc_item }
 import v4.std.collection {
   List,
   Optional,
-  optional_diagnostic_absent,
-  optional_diagnostic_is_present,
-  optional_diagnostic_present,
-  optional_diagnostic_value
+  optional_absent,
+  optional_is_present,
+  optional_present,
+  optional_present_witness
 }
 import v4.std.dependency {
   BarrierBefore,
@@ -110,14 +110,14 @@ fn idempotency_verdict_unresolved(verdict: IdempotencyVerdict) -> Bool {
 }
 
 fn idempotency_first_law_violation_diagnostic(fact: IdempotencyFact) -> Optional<Diagnostic> {
-  fold(fact.dependencies, init: optional_diagnostic_absent(), f: fn(acc, dep) {
-    if optional_diagnostic_is_present(opt: acc) {
+  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
+    if optional_is_present(opt: acc) {
       acc
     } else {
       match dep.classification {
         AlgebraicIdempotenceProven { law: Violates { diagnostic: d } } =>
-          optional_diagnostic_present(diagnostic: d)
-        _ => optional_diagnostic_absent()
+          optional_present(value: d)
+        _ => optional_absent()
       }
     }
   })
@@ -140,8 +140,13 @@ fn idempotency_witness_diagnostic() -> Diagnostic {
 fn idempotency_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<IdempotencyFact> {
   let fact = idempotency_fact(tree: tree, dependencies: dependencies)
   let law_diagnostic = idempotency_first_law_violation_diagnostic(fact: fact)
-  if optional_diagnostic_is_present(opt: law_diagnostic) {
-    Violates { diagnostic: optional_diagnostic_value(opt: law_diagnostic) }
+  if optional_is_present(opt: law_diagnostic) {
+    match optional_present_witness(opt: law_diagnostic) {
+      Holds { value: d } =>
+        Violates { diagnostic: d }
+      Violates { diagnostic: d } =>
+        Violates { diagnostic: d }
+    }
   } else if idempotency_fact_unresolved(fact: fact) {
     Violates { diagnostic: idempotency_witness_diagnostic() }
   } else {

@@ -12,10 +12,10 @@ import v4.std.algebra { bag_eq, list_snoc_item, non_empty }
 import v4.std.collection {
   List,
   Optional,
-  optional_diagnostic_absent,
-  optional_diagnostic_is_present,
-  optional_diagnostic_present,
-  optional_diagnostic_value
+  optional_absent,
+  optional_is_present,
+  optional_present,
+  optional_present_witness
 }
 import v4.std.dependency {
   ClassifiedDependencyView,
@@ -76,13 +76,13 @@ fn effect_first_upstream_diagnostic(
   tree: InferredTree,
   fact: EffectFact
 ) -> Optional<Diagnostic> {
-  fold(fact.dependencies, init: optional_diagnostic_absent(), f: fn(acc, dep) {
-    if optional_diagnostic_is_present(opt: acc) {
+  fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
+    if optional_is_present(opt: acc) {
       acc
     } else {
       match effect_usage_facts_witness(tree: tree, source: dep.dependency.source) {
-        Violates { diagnostic: d } => optional_diagnostic_present(diagnostic: d)
-        Holds { value: _ } => optional_diagnostic_absent()
+        Violates { diagnostic: d } => optional_present(value: d)
+        Holds { value: _ } => optional_absent()
       }
     }
   })
@@ -104,8 +104,13 @@ fn effect_witness_diagnostic() -> Diagnostic {
 fn effect_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
   let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
-  if optional_diagnostic_is_present(opt: upstream) {
-    Violates { diagnostic: optional_diagnostic_value(opt: upstream) }
+  if optional_is_present(opt: upstream) {
+    match optional_present_witness(opt: upstream) {
+      Holds { value: d } =>
+        Violates { diagnostic: d }
+      Violates { diagnostic: d } =>
+        Violates { diagnostic: d }
+    }
   } else if effect_signature_deferred_unresolved(fact: fact) {
     Violates { diagnostic: effect_witness_diagnostic() }
   } else {
