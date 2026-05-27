@@ -1,11 +1,11 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands;
-//       compile_with_store filesystem-free ingest over agent-supplied single-module source.
+//       compile_with_store filesystem-free ingest over agent-supplied module entries.
 // Owns: CoreNode, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
 //       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
-//       compile_with_store, agent_store_to_module_graph, agent_module_source_to_entry,
+//       compile_with_store, agent_store_to_module_graph,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
@@ -41,8 +41,8 @@ import v4.extdeps.languages.dag {
   dag_surface_import_decl
 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.agent { AgentModuleSource, AgentStore }
-import v4.std.algebra { Cons, Empty, list_append }
+import v4.std.agent { AgentStore }
+import v4.std.algebra { Empty, list_append }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -63,6 +63,7 @@ import v4.std.module_graph {
   ModuleEntry,
   ModuleGraph,
   ModulePath,
+  module_graph_entry_for_path,
   module_graph_from_entries
 }
 import v4.std.node { Atom, Edge, Node, NodeFold, Symbol, TypeNode, fold_node }
@@ -407,44 +408,6 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
 }
 
 
-// 🟡 module-header path bridge: feature:T-35-agent-entry-path-bridge.
-// Owner/lane: T-7 parse tree construction + T-8 normalize/module admission.
-// Dissolve-on: parse/normalize preserves the source module header as a typed
-// ModulePath; then this function validates that header against AgentStore.entry
-// or constructs ModuleEntry from the parsed header and drops the bridge path.
-fn agent_module_source_to_entry(
-  module_source: AgentModuleSource,
-  path: ModulePath,
-  lm: DagLanguageModel
-) -> Outcome<ModuleEntry> {
-  bind_outcome(
-    o: tokenize(
-      text: module_source.source,
-      file: module_source.file,
-      rules: lm.lex
-    ),
-    f: fn(token_stream) {
-      bind_outcome(
-        o: parse(tokens: token_stream, grammar: lm.grammar),
-        f: fn(parse_tree) {
-          bind_outcome(
-            o: normalize(parse_tree: parse_tree),
-            f: fn(normalized) {
-              outcome_accepted(
-                value: ModuleEntry {
-                  path: path,
-                  root: normalized
-                }
-              )
-            }
-          )
-        }
-      )
-    }
-  )
-}
-
-
 // 🟡 predicate dissolution gate for node_is_dag_import_surface and
 // node_contains_dag_import_surface: feature:T-35-agent-import-surface-predicate.
 // Owner/lane: T-8/T-28-B module admission + dag.dag import query.
@@ -482,39 +445,37 @@ fn agent_store_single_module_diagnostic() -> Diagnostic {
 }
 
 
-fn agent_store_to_module_graph(
-  entry: ModuleEntry
-) -> Outcome<ModuleGraph> {
-  match module_graph_from_entries(entries: Cons { head: entry, tail: Empty }) {
+fn agent_store_to_module_graph(store: AgentStore) -> Outcome<ModuleGraph> {
+  match module_graph_from_entries(entries: store.entries) {
     Holds { value: graph } => outcome_accepted(value: graph)
     Violates { diagnostic: d } => outcome_rejected(d: d)
   }
 }
 
 
-fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetSource> {
+fn compile_with_store(
+  store: AgentStore,
+  entry: ModulePath,
+  target: TargetModel
+) -> Outcome<TargetSource> {
   let lm = dag_language_model_wave1()
   bind_outcome(
-    o: agent_module_source_to_entry(
-      module_source: store.module,
-      path: store.entry,
-      lm: lm
-    ),
-    f: fn(entry) {
-      if node_contains_dag_import_surface(n: entry.root) {
-        outcome_rejected(d: agent_store_single_module_diagnostic())
-      } else {
-        bind_outcome(
-          o: agent_store_to_module_graph(entry: entry),
-          f: fn(graph) {
+    o: agent_store_to_module_graph(store: store),
+    f: fn(graph) {
+      match module_graph_entry_for_path(graph: graph, path: entry) {
+        Violates { diagnostic: d } => outcome_rejected(d: d)
+        Holds { value: root_entry } =>
+          if node_contains_dag_import_surface(n: root_entry.root) {
+            outcome_rejected(d: agent_store_single_module_diagnostic())
+          } else {
             bind_outcome(
               o: resolve_module_with_admission(
                 lm: lm,
                 graph: graph,
                 admission: ModuleAdmission {
                   subject: ModuleSubject {
-                    path: store.entry,
-                    tree: entry.root
+                    path: entry,
+                    tree: root_entry.root
                   },
                   imports: Empty
                 }
@@ -542,7 +503,6 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
               }
             )
           }
-        )
       }
     }
   )
