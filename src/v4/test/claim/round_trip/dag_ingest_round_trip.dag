@@ -1,31 +1,16 @@
 // src/v4/test/claim/round_trip/dag_ingest_round_trip.dag
-// Scope: T-36 omni ingest round-trip claim: `.dag` source fixture -> Node -> emitted source.
+// Scope: T-36 omni ingest round-trip claim: `.dag` TestClaim fixture source -> Node -> source.
 // Owns: test_dag_ingest_round_trip_bit_identical.
-// Consumes: compiler/00_compile.dag, extdeps/languages/dag.dag, test/fixture/dag_ingest_round_trip_fixture.dag, std/verification.dag.
-// Status: T-36 EqualsClaim over bit-identical source; Outcome<TargetSource> is projected to Node only at the TestClaim boundary.
+// Consumes: test/fixture/dag_ingest_round_trip_fixture.dag, std/node.dag, std/verification.dag.
+// Status: T-36 RoundTripClaim over a committed self-referential TestClaim fixture; execution belongs to the T-22 runner.
 
 module v4.test.claim.round_trip.dag_ingest_round_trip
 
 
-import v4.compiler.compile { compile_ingest_staging }
-import v4.compiler.target_carriers { TargetModel, TargetSource }
-import v4.extdeps.languages.dag { dag_language_model_wave1 }
-import v4.std.collection { empty_map }
-import v4.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  diagnostics_singleton,
-  node_locus
-}
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, Conj }
 import v4.std.verification {
-  EqualsClaim,
   ManualAnchorAbsent,
+  RoundTripClaim,
   TestClaim,
   TestClassification,
   Tier1,
@@ -38,11 +23,10 @@ import v4.test.fixture.dag_ingest_round_trip_fixture {
 }
 
 
-data dag_ingest_round_trip_source_identity: Symbol = dag_ingest_round_trip_source_identity
-data dag_ingest_round_trip_output_identity: Symbol = dag_ingest_round_trip_output_identity
-data dag_ingest_round_trip_target_bundle: Symbol = dag_ingest_round_trip_target_bundle
-data dag_ingest_round_trip_poison_authority: TargetSource = "dag_ingest_round_trip_authority_source_text_fallback_forbidden"
-data dag_ingest_round_trip_source_mismatch: Symbol = dag_ingest_round_trip_source_mismatch
+data dag_ingest_round_trip_fixture_source_symbol: Symbol = dag_ingest_round_trip_fixture_source_symbol
+data dag_ingest_round_trip_fixture_expected_symbol: Symbol = dag_ingest_round_trip_fixture_expected_symbol
+data dag_ingest_round_trip_source_field: Symbol = dag_ingest_round_trip_source_field
+data dag_ingest_round_trip_expected_field: Symbol = dag_ingest_round_trip_expected_field
 
 
 fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
@@ -53,71 +37,24 @@ fn dag_ingest_round_trip_atom(s: Symbol) -> Node {
 }
 
 
-data dag_ingest_round_trip_source_node: Node = dag_ingest_round_trip_atom(s: dag_ingest_round_trip_source_identity)
-
-
-data dag_ingest_round_trip_mismatch_node: Node = dag_ingest_round_trip_atom(s: dag_ingest_round_trip_output_identity)
-
-
-fn dag_ingest_round_trip_target_model() -> TargetModel {
-  let lm = dag_language_model_wave1()
-  TargetModel {
-    bundle: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_target_bundle),
-    lex: lm.lex,
-    binding_spellings: empty_map(),
-    authority_source_text: dag_ingest_round_trip_poison_authority
-  }
+data dag_ingest_round_trip_fixture_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: dag_ingest_round_trip_source_field },
+      target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_fixture_source_symbol)
+    },
+    Edge {
+      label: Named { name: dag_ingest_round_trip_expected_field },
+      target: dag_ingest_round_trip_atom(s: dag_ingest_round_trip_fixture_expected_symbol)
+    }
+  ]
 }
 
 
-data dag_ingest_round_trip_receipt: Outcome<TargetSource> = compile_ingest_staging(
-  source: dag_ingest_round_trip_fixture_source,
-  target: dag_ingest_round_trip_target_model()
-)
-
-
-fn dag_ingest_round_trip_output_node() -> Node {
-  match dag_ingest_round_trip_receipt {
-    Accepted { value: emitted, diagnostics: d } =>
-      if (emitted == dag_ingest_round_trip_fixture_expected_source) && (d == None) {
-        dag_ingest_round_trip_source_node
-      } else {
-        dag_ingest_round_trip_mismatch_node
-      }
-    Rejected { diagnostics: _ } =>
-      dag_ingest_round_trip_mismatch_node
-  }
-}
-
-
-fn dag_ingest_round_trip_projection_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: dag_ingest_round_trip_source_mismatch,
-    at: node_locus(node: dag_ingest_round_trip_source_node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-
-fn dag_ingest_round_trip_projected_outcome() -> Outcome<Node> {
-  match dag_ingest_round_trip_receipt {
-    Accepted { value: emitted, diagnostics: d } =>
-      if (emitted == dag_ingest_round_trip_fixture_expected_source) && (d == None) {
-        Accepted { value: dag_ingest_round_trip_source_node, diagnostics: None }
-      } else {
-        Rejected {
-          diagnostics: diagnostics_singleton(d: dag_ingest_round_trip_projection_diagnostic())
-        }
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-
-data test_dag_ingest_round_trip_bit_identical: TestClaim = EqualsClaim {
+data test_dag_ingest_round_trip_bit_identical: TestClaim = RoundTripClaim {
   label: "round_trip/dag_ingest: TestClaim fixture ingests to Node and emits bit-identical source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: dag_ingest_round_trip_source_node,
-  rhs: dag_ingest_round_trip_output_node(),
+  input: dag_ingest_round_trip_fixture_input,
   classification: TestClassification { tier: Tier1, layer: Integration }
 }
