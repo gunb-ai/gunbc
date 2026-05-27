@@ -9,17 +9,18 @@
 module v4.std.qualified_name
 
 
-import v4.std.algebra { Cons, Empty, FreeMonoid, zip_eq }
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node_head, fold_list_node_tail, zip_eq }
 import v4.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
   Outcome,
   Unavailable,
   node_locus,
+  outcome_accepted,
   outcome_rejected
 }
 import v4.std.logic { Bool }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
 
 
 type QualifiedName = FreeMonoid<Symbol>
@@ -37,11 +38,58 @@ fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
 }
 
 
-// 🟡 gated — T-8 parse fidelity — feature: per-identifier-symbol-mapping — bind TASKS.md T-8 — dissolve-on: T-8 lands per-identifier hashing so each dag_token_ident terminal in the module_header child carries its actual symbol identity, enabling segment extraction; forbidden: relying on this function before T-8 (always returns Rejected until T-8 lands; see 00_compile.dag T-8 gate comment).
+fn qualified_name_find_edge(name: Symbol, n: Node) -> Outcome<Node> {
+  fold(
+    n.children,
+    init: outcome_rejected(Diagnostic {
+      reason: qualified_name_projection_gated,
+      at: node_locus(node: n),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }),
+    f: fn(acc, e) {
+      match acc {
+        Accepted { value: _, diagnostics: _ } => acc
+        Rejected { diagnostics: _ } =>
+          match e.label {
+            Named { name: ename } =>
+              if ename == name { outcome_accepted(value: e.target) } else { acc }
+            _ => acc
+          }
+      }
+    }
+  )
+}
+
+
+fn qualified_name_atom_sym(n: Node) -> Outcome<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: sym } } => outcome_accepted(value: sym)
+    _ => outcome_rejected(Diagnostic {
+      reason: qualified_name_projection_gated,
+      at: node_locus(node: n),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+  }
+}
+
+
+// 🟡 gated — T-8 parse fidelity — feature: per-identifier-symbol-mapping — bind TASKS.md T-8 — dissolve-on: T-8 lands per-identifier hashing; until then each extracted segment carries dag_token_ident rather than the actual identifier symbol. Accepts a fold_list_node(symbols) Node — the caller obtains this by walking the dag_surface_module_header_qualified_name edge of an emitted module header node.
 fn qualified_name_from_node(root: Node) -> Outcome<QualifiedName> {
-  outcome_rejected(Diagnostic {
-    reason: qualified_name_projection_gated,
-    at: node_locus(node: root),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  })
+  match qualified_name_find_edge(name: fold_list_node_head, n: root) {
+    Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
+    Accepted { value: head_node, diagnostics: _ } =>
+      match qualified_name_atom_sym(n: head_node) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: sym, diagnostics: _ } =>
+          match qualified_name_find_edge(name: fold_list_node_tail, n: root) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: tail_node, diagnostics: _ } =>
+              match qualified_name_from_node(root: tail_node) {
+                Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                Accepted { value: tail_qn, diagnostics: _ } =>
+                  outcome_accepted(value: Cons { head: sym, tail: tail_qn })
+              }
+          }
+      }
+  }
 }
