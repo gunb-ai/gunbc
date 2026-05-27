@@ -109,6 +109,16 @@ A function walks a modeled structure, projects a property from a variant shape, 
 
 **Receipt:** Practice 10 in `docs/modeling-discipline.md` names the derived-operations registry and the dissolution findings (`walker`, `traverse`, `predicate`, `carrier`, `emit/template`, `nominalization`, and coproduct dissolution). It is the review rubric for deciding whether a local helper is real logic or a duplicated derivation.
 
+### Problem shape: Nickname (type name mismatches concept)
+
+**A type's name must be what the type is — not a convenient label for something else.** A type named `FooBar` is the composition of `Foo` and `Bar`; a type named `NodePath` is `Node` composed with `Path`. If the name does not reflect the actual structure, the type is a nickname — and nicknames are modeling violations.
+
+In the compiler especially, nicknames compound: consumers read the name and build mental models from it; if the name lies, every consumer inherits the lie. The deficiency is in the name, not the code.
+
+**Solution shape:** Rename to reflect what the type actually is. If the concept has no precise name yet, find one — DFS `std/` for the right carrier (MODELING.md M9) before coining a new one. If the type is a composition of two existing concepts, the name should say so.
+
+**Canonical example (ratified 2026-05-27):** `ModulePath` was `FreeMonoid<ModulePathSegment>` where `ModulePathSegment = { name: Symbol }` — a qualified identifier sequence (`[v4, std, algebra]`), not a path through any graph. The `Path` concept in `std/node.dag` is `{ steps: List<Symbol> }` — a route through Node edges. `ModulePath` was a nickname for `QualifiedName`; renamed accordingly. `ModulePathSegment` was a nickname for `Symbol`; deleted.
+
 ### Procedure: substrate-fact introduction (decision procedure for new modeling)
 
 **When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.

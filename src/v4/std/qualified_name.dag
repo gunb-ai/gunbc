@@ -1,9 +1,10 @@
 // src/v4/std/qualified_name.dag
-// Scope: QualifiedName carrier for dotted/scope-qualified identifiers.
+// Scope: Qualified names as a projection over symbol sequences.
 // Anchor: INVARIANTS.md P1 "Model names must reflect what they are" (T-QN-1).
-// Owns: QualifiedName, qualified_name_singleton, qualified_name_from_node, qualified_name_eq, qualified_name_is_prefix_of.
-// Consumes: std/algebra.dag (FreeMonoid, canonical list predicates), std/logic.dag (Bool), std/node.dag (Node, Symbol).
-// Status: T-QN-1 modeled; equality/prefix helpers consumed by std/module_graph.dag.
+// Owns: QualifiedName, qualified_name_singleton, qualified_name_eq, qualified_name_is_prefix_of, qualified_name_from_node.
+// Consumes: std/algebra.dag, std/logic.dag, std/node.dag.
+// Status: T-QN-1 modeled; T-28 support carrier; consumed by std/module_graph.dag, compiler/03_module_resolve.dag.
+// Anchor: https://en.wikipedia.org/wiki/Qualified_name
 
 module v4.std.qualified_name
 
@@ -21,15 +22,6 @@ fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
 }
 
 
-fn qualified_name_from_node(n: Node) -> QualifiedName? {
-  match n.kind {
-    TypeNode { connective: Atom { identity: sym } } =>
-      Some { value: qualified_name_singleton(sym: sym) }
-    _ => None
-  }
-}
-
-
 fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
 }
@@ -37,4 +29,13 @@ fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
 
 fn qualified_name_is_prefix_of(prefix: QualifiedName, name: QualifiedName) -> Bool {
   is_prefix_of(prefix: prefix, xs: name, eq: fn(a, b) { a == b })
+}
+
+
+fn qualified_name_from_node(n: Node) -> QualifiedName? {
+  match n.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      Some { value: qualified_name_singleton(sym: sym) }
+    _ => None
+  }
 }
