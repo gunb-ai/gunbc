@@ -93,6 +93,7 @@ data black_defaults: BlackConfig = BlackConfig {
 }
 
 
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: BlackConfigPatch projected from BlackConfig field set.
 type BlackConfigPatch {
   line_length: FieldPatch<Int>
   target_version: FieldPatch<BlackTargetVersionPolicy>
