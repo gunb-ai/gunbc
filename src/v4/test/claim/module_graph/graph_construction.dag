@@ -1,6 +1,6 @@
 // src/v4/test/claim/module_graph/graph_construction.dag
-// Scope: TestClaim corpus for module_graph_from_entries validated constructor.
-// Owns: claim rows for unique-path construction success and duplicate-path rejection.
+// Scope: TestClaim corpus for catalog_from_entries validated constructor.
+// Owns: claim rows for unique-name construction success and duplicate-name rejection.
 // Consumes: v4.std.module_graph v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
@@ -11,9 +11,9 @@ module v4.test.claim.module_graph.graph_construction
 
 import v4.std.algebra { Cons, Empty, FreeMonoid }
 import v4.std.module_graph {
-  ModuleEntry,
-  ModuleGraph,
-  module_graph_from_entries
+  Catalog,
+  Entry,
+  catalog_from_entries
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.qualified_name { QualifiedName }
@@ -50,31 +50,31 @@ fn build_claim_input(ok: Bool) -> Node {
 }
 
 
-fn build_path_x() -> QualifiedName {
+fn build_name_x() -> QualifiedName {
   Cons { head: build_seg_x, tail: Empty }
 }
-fn build_path_y() -> QualifiedName {
+fn build_name_y() -> QualifiedName {
   Cons { head: build_seg_y, tail: Empty }
 }
-fn build_entry_x() -> ModuleEntry { ModuleEntry { path: build_path_x(), root: build_root_node() } }
-fn build_entry_y() -> ModuleEntry { ModuleEntry { path: build_path_y(), root: build_root_node() } }
+fn build_entry_x() -> Entry { Entry { name: build_name_x(), root: build_root_node() } }
+fn build_entry_y() -> Entry { Entry { name: build_name_y(), root: build_root_node() } }
 
 
-fn build_entries_unique() -> FreeMonoid<ModuleEntry> {
+fn build_entries_unique() -> FreeMonoid<Entry> {
   Cons { head: build_entry_x(), tail: Cons { head: build_entry_y(), tail: Empty } }
 }
-fn build_entries_duplicate() -> FreeMonoid<ModuleEntry> {
+fn build_entries_duplicate() -> FreeMonoid<Entry> {
   Cons { head: build_entry_x(), tail: Cons { head: build_entry_x(), tail: Empty } }
 }
 
 
-fn graph_holds(w: Witness<ModuleGraph>) -> Bool {
+fn catalog_holds(w: Witness<Catalog>) -> Bool {
   match w {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
 }
-fn graph_violates(w: Witness<ModuleGraph>) -> Bool {
+fn catalog_violates(w: Witness<Catalog>) -> Bool {
   match w {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
@@ -82,25 +82,25 @@ fn graph_violates(w: Witness<ModuleGraph>) -> Bool {
 }
 
 
-data witness_graph_from_unique_holds: Bool = graph_holds(w: module_graph_from_entries(entries: build_entries_unique()))
+data witness_catalog_from_unique_holds: Bool = catalog_holds(w: catalog_from_entries(entries: build_entries_unique()))
 
 
-data witness_graph_from_duplicate_violates: Bool = graph_violates(w: module_graph_from_entries(entries: build_entries_duplicate()))
+data witness_catalog_from_duplicate_violates: Bool = catalog_violates(w: catalog_from_entries(entries: build_entries_duplicate()))
 
 
-data claim_graph_from_unique_holds: TestClaim = CompilesClaim {
-  label: "module_graph/from_entries: unique-path entries return Holds",
+data claim_catalog_from_unique_holds: TestClaim = CompilesClaim {
+  label: "catalog/from_entries: unique-name entries return Holds",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: build_claim_input(ok: witness_graph_from_unique_holds),
+  input: build_claim_input(ok: witness_catalog_from_unique_holds),
   expected_value: build_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 
-data claim_graph_from_duplicate_violates: TestClaim = CompilesClaim {
-  label: "module_graph/from_entries: duplicate-path entries return Violates",
+data claim_catalog_from_duplicate_violates: TestClaim = CompilesClaim {
+  label: "catalog/from_entries: duplicate-name entries return Violates",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: build_claim_input(ok: witness_graph_from_duplicate_violates),
+  input: build_claim_input(ok: witness_catalog_from_duplicate_violates),
   expected_value: build_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
