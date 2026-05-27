@@ -1519,12 +1519,13 @@ to `QualifiedName`, add the projection.
    owns that symbol.
 
    **`qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName>`**
-   in `extdeps/languages/dag.dag`. T-35 caller-facing entry point: `root` is a
+   in `extdeps/languages/dag.dag`. Extdeps/ entry point for callers that hold a
    module header Node produced by `emit_module_header_emitted_node`. Looks up
    the `dag_surface_module_header_qualified_name` edge from `root` and delegates
-   to `qualified_name_from_node`. T-35's `compile_with_batch` folds
-   `batch.entries` calling this function. `extdeps/` may import `std/`, so the
-   layering invariant is preserved.
+   to `qualified_name_from_node`. `extdeps/` may import `std/`, so the
+   layering invariant is preserved. `std/module_batch.dag` and
+   `compiler/00_compile.dag` both call `qualified_name_from_node` directly
+   (batch entries are fold_list_node Nodes, not header Nodes).
 
    Once this two-function surface exists, `Entry { name: QualifiedName, root: Node }`
    is a denormalized pair — name is projectable from root on the `Accepted`
@@ -1575,7 +1576,7 @@ T-23 owns the non-text AGENT-SURFACE contract (lens reads, `apply_diff`,
 structured output). These are complementary, not overlapping.
 
 **On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
-`QualifiedName`, `qualified_name_from_node`, and `qualified_name_from_module_node` are available and this spec
+`QualifiedName` and `qualified_name_from_node` are available and this spec
 applies. T-35 dispatch additionally requires operator code examples (see
 Sequencing). T-35 workers must not proceed without both gates.
 
@@ -1664,7 +1665,7 @@ to define a new agent output surface.
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_module_node`. For `Accepted { value: name, ... }`, the fold
+  `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
   `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
   diagnostics and the overall admission returns `Rejected` before catalog
@@ -1692,11 +1693,11 @@ to define a new agent output surface.
   `🟡 gate: dissolve-on Change 2 (std/catalog.dag dissolution) — the
   FreeMonoid<Entry> bridge and catalog_from_entries call are
   temporary scaffolding; once Change 2 lands, admission folds over
-  FreeMonoid<Node> via qualified_name_from_module_node without the Entry bridge while
+  FreeMonoid<Node> via qualified_name_from_node without the Entry bridge while
   still preserving the projection `Rejected` branch.`
 
   **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
-  (a `FreeMonoid<Node>`) with a `qualified_name_from_module_node` projection step that
+  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step that
   either builds the `FreeMonoid<Entry>` that `catalog_from_entries` expects or
   returns `Rejected` with the projection diagnostics. The live
   `compile_ingest_staging` path does not call `catalog_from_entries` today; it
@@ -1712,8 +1713,8 @@ to define a new agent output surface.
   as `validate_then_compile`; T-35 workers must not redefine it.
 
 **Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
-- **T-QN-1** is the hard design prerequisite: `QualifiedName`,
-  `qualified_name_from_node`, and `qualified_name_from_module_node` must exist before T-35 workers can build a
+- **T-QN-1** is the hard design prerequisite: `QualifiedName` and
+  `qualified_name_from_node` must exist before T-35 workers can build a
   `ModuleBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
