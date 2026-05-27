@@ -34,8 +34,7 @@
 //     identity (via `parent_scope`) but NOT their original within-
 //     parent positional offset — a documented secondary fidelity
 //     concession tracked as 🟡 YELLOW debt with a named consumer
-//     trigger (see the LIFTED NESTED `.SUBCKT` POSITION YELLOW note
-//     in the SpiceNetlist declaration's header). INSTANCE-MODIFIER
+//     trigger: byte-exact nested-SUBCKT round-trip consumers. INSTANCE-MODIFIER
 //     FLAG-VS-KEYVALUE FIDELITY (PR #3168 codex review on commit
 //     9a477536 — the prior "equally-valid SPICE3 spellings" framing
 //     was overstated and is retracted). Instance modifiers are now
@@ -59,8 +58,7 @@
 //     modifier byte-exact round-trip (Flag vs KeyValue
 //     distinguished structurally)", not "byte-exact deck round-trip"
 //     (which still excludes lifted-nested-SUBCKT within-parent
-//     position — see the LIFTED NESTED `.SUBCKT` POSITION YELLOW note
-//     in SpiceNetlist's header for the residual concession). The original scaffold Owns line read
+//     position). The original scaffold Owns line read
 //     `{components, nodes, models, directives}`; the `nodes` field
 //     is dropped per Practice 7 (the set of referenced nodes is a
 //     projection over component terminals — a parallel `nodes:
@@ -72,8 +70,7 @@
 //     is a first-class deck statement (`DeckSubcircuit` variant),
 //     replacing the prior bucketed `subcircuits` field; nested
 //     definitions are lifted to top-level with `parent_scope` carrying
-//     lexical identity. See the modeling-notes section below for the
-//     full reasoning.
+//     lexical identity.
 //   - parse(String) -> Result<SpiceNetlist, Diagnostic>      (declared
 //     signature; the parse body is pipeline-stage work — T-6/T-7 — and
 //     does not live in this format-model file, matching the sibling
