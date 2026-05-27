@@ -110,6 +110,15 @@ data qn_tail_to_atom_node: Node = Node {
   ]
 }
 
+// Malformed head target: head edge points to a Conj list-spine instead of an Atom segment → Rejected
+data qn_head_to_conj_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Named { name: fold_list_node_head }, target: qn_empty_conj_node },
+    Edge { label: Named { name: fold_list_node_tail }, target: qn_empty_conj_node }
+  ]
+}
+
 // Duplicate head edges (no tail edge) → Rejected; second head must not silently replace first
 data qn_double_head_node: Node = Node {
   kind: TypeNode { connective: Conj },
@@ -193,6 +202,15 @@ data claim_from_node_tail_to_atom_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected when fold_list_node_tail points to bare Atom instead of Conj list-spine",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: qn_bool_atom(b: qn_outcome_accepted(out: qualified_name_from_node(root: qn_tail_to_atom_node))),
+  rhs: qn_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_from_node_head_to_conj_rejected: TestClaim = EqualsClaim {
+  label: "qualified_name_from_node returns Rejected when fold_list_node_head points to Conj list-spine instead of Atom segment",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: qn_bool_atom(b: qn_outcome_accepted(out: qualified_name_from_node(root: qn_head_to_conj_node))),
   rhs: qn_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
