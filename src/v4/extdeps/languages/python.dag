@@ -67,7 +67,7 @@ import v4.std.target_model {
   target_model_edge_serialize_source
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -744,7 +744,13 @@ fn python_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside python_mvp1_concrete_tokens.
+// 🟡
+type PythonGramBuild1State
+  = PythonGramBuild1StateInit
+  | PythonGramBuild1StateReady { head: PythonConcreteSyntaxToken, tail: List<PythonConcreteSyntaxToken> }
+
+data python_gram_build1_empty_unreachable: Symbol = python_gram_build1_empty_unreachable
+
 type PythonGrammarSequenceBuild {
   head: PythonConcreteSyntaxToken
   tail: List<PythonConcreteSyntaxToken>
@@ -765,10 +771,29 @@ fn python_grammar_sequence_from_tokens(tokens: PythonGrammarSequenceBuild) -> Gr
 }
 
 fn python_mvp1_grammar_tokens() -> PythonGrammarSequenceBuild {
-  match python_mvp1_concrete_tokens() {
-    Cons { head, tail } => PythonGrammarSequenceBuild {
-      head: head,
-      tail: tail
+  match fold_list(
+    xs: python_mvp1_concrete_tokens(),
+    empty: PythonGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        PythonGramBuild1StateInit =>
+          PythonGramBuild1StateReady { head: token, tail: Empty }
+        PythonGramBuild1StateReady { head: h, tail: t } =>
+          PythonGramBuild1StateReady {
+            head: h,
+            tail: list_snoc_item(xs: t, item: token)
+          }
+      }
+    }
+  ) {
+    PythonGramBuild1StateInit =>
+      PythonGrammarSequenceBuild {
+        head: PythonFixedToken { token_class: python_gram_build1_empty_unreachable },
+        tail: Empty
+      }
+    PythonGramBuild1StateReady { head: h, tail: t } => PythonGrammarSequenceBuild {
+      head: h,
+      tail: t
     }
   }
 }

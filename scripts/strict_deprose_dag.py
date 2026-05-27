@@ -275,18 +275,18 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
         out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
-        out["TsGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+        out["TsGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/rust.dag":
-        out["RustGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+        out["RustGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/python.dag":
         out["PythonConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
-        out["PythonGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+        out["PythonGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/go.dag":
         out["GoConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
-        out["GoGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+        out["GoGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/cpp.dag":
         out["CppConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
-        out["CppGrammarSequenceBuild"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+        out["CppGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/swift.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (

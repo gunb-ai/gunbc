@@ -84,7 +84,6 @@ import v4.std.node {
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
-  Cons,
   approximate_field_node,
   boolean_algebra_node,
   fold_list,
@@ -1226,7 +1225,13 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside rust_mvp1_concrete_tokens.
+// 🟡
+type RustGramBuild1State
+  = RustGramBuild1StateInit
+  | RustGramBuild1StateReady { head: RustConcreteSyntaxToken, tail: List<RustConcreteSyntaxToken> }
+
+data rust_gram_build1_empty_unreachable: Symbol = rust_gram_build1_empty_unreachable
+
 type RustGrammarSequenceBuild {
   head: RustConcreteSyntaxToken
   tail: List<RustConcreteSyntaxToken>
@@ -1247,10 +1252,29 @@ fn rust_grammar_sequence_from_tokens(tokens: RustGrammarSequenceBuild) -> Gramma
 }
 
 fn rust_mvp1_grammar_tokens() -> RustGrammarSequenceBuild {
-  match rust_mvp1_concrete_tokens() {
-    Cons { head, tail } => RustGrammarSequenceBuild {
-      head: head,
-      tail: tail
+  match fold_list(
+    xs: rust_mvp1_concrete_tokens(),
+    empty: RustGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        RustGramBuild1StateInit =>
+          RustGramBuild1StateReady { head: token, tail: Empty }
+        RustGramBuild1StateReady { head: h, tail: t } =>
+          RustGramBuild1StateReady {
+            head: h,
+            tail: list_snoc_item(xs: t, item: token)
+          }
+      }
+    }
+  ) {
+    RustGramBuild1StateInit =>
+      RustGrammarSequenceBuild {
+        head: RustFixedToken { token_class: rust_gram_build1_empty_unreachable },
+        tail: Empty
+      }
+    RustGramBuild1StateReady { head: h, tail: t } => RustGrammarSequenceBuild {
+      head: h,
+      tail: t
     }
   }
 }

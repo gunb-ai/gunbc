@@ -55,7 +55,7 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -1063,7 +1063,13 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside go_mvp1_concrete_tokens.
+// 🟡
+type GoGramBuild1State
+  = GoGramBuild1StateInit
+  | GoGramBuild1StateReady { head: GoConcreteSyntaxToken, tail: List<GoConcreteSyntaxToken> }
+
+data go_gram_build1_empty_unreachable: Symbol = go_gram_build1_empty_unreachable
+
 type GoGrammarSequenceBuild {
   head: GoConcreteSyntaxToken
   tail: List<GoConcreteSyntaxToken>
@@ -1084,10 +1090,29 @@ fn go_grammar_sequence_from_tokens(tokens: GoGrammarSequenceBuild) -> GrammarExp
 }
 
 fn go_mvp1_grammar_tokens() -> GoGrammarSequenceBuild {
-  match go_mvp1_concrete_tokens() {
-    Cons { head, tail } => GoGrammarSequenceBuild {
-      head: head,
-      tail: tail
+  match fold_list(
+    xs: go_mvp1_concrete_tokens(),
+    empty: GoGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        GoGramBuild1StateInit =>
+          GoGramBuild1StateReady { head: token, tail: Empty }
+        GoGramBuild1StateReady { head: h, tail: t } =>
+          GoGramBuild1StateReady {
+            head: h,
+            tail: list_snoc_item(xs: t, item: token)
+          }
+      }
+    }
+  ) {
+    GoGramBuild1StateInit =>
+      GoGrammarSequenceBuild {
+        head: GoFixedToken { token_class: go_gram_build1_empty_unreachable },
+        tail: Empty
+      }
+    GoGramBuild1StateReady { head: h, tail: t } => GoGrammarSequenceBuild {
+      head: h,
+      tail: t
     }
   }
 }

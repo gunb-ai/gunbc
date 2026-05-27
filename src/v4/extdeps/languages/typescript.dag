@@ -75,7 +75,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
 import v4.std.text { String }
 
 // 🟢 grounded.
@@ -464,7 +464,13 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-// 🟢 grounded.
+// 🟢
+type TsGramBuild1State
+  = TsGramBuild1StateInit
+  | TsGramBuild1StateReady { head: TsConcreteSyntaxToken, tail: List<TsConcreteSyntaxToken> }
+
+data ts_gram_build1_empty_unreachable: Symbol = ts_gram_build1_empty_unreachable
+
 type TsGrammarTokenSequence {
   head: TsConcreteSyntaxToken
   tail: List<TsConcreteSyntaxToken>
@@ -485,10 +491,29 @@ fn ts_grammar_sequence_from_tokens(tokens: TsGrammarTokenSequence) -> GrammarExp
 }
 
 fn ts_mvp1_grammar_tokens() -> TsGrammarTokenSequence {
-  match ts_mvp1_concrete_tokens() {
-    Cons { head, tail } => TsGrammarTokenSequence {
-      head: head,
-      tail: tail
+  match fold_list(
+    xs: ts_mvp1_concrete_tokens(),
+    empty: TsGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        TsGramBuild1StateInit =>
+          TsGramBuild1StateReady { head: token, tail: Empty }
+        TsGramBuild1StateReady { head: h, tail: t } =>
+          TsGramBuild1StateReady {
+            head: h,
+            tail: list_snoc_item(xs: t, item: token)
+          }
+      }
+    }
+  ) {
+    TsGramBuild1StateInit =>
+      TsGrammarTokenSequence {
+        head: TsFixedToken { token_class: ts_gram_build1_empty_unreachable },
+        tail: Empty
+      }
+    TsGramBuild1StateReady { head: h, tail: t } => TsGrammarTokenSequence {
+      head: h,
+      tail: t
     }
   }
 }
