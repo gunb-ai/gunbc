@@ -17,8 +17,9 @@ import v4.std.diagnostic {
   WholeFile
 }
 import v4.std.algebra {
-  field_field_reciprocal,
-  field_reciprocal_nonzero_precondition
+  field_reciprocal_nonzero_precondition_node,
+  field_reciprocal_operation,
+  field_reciprocal_operation_node
 }
 import v4.std.logic {
   BoolPrimitiveFacts,
@@ -119,9 +120,9 @@ fn field_partiality_decl() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
       PartialOperationDecl {
-        operation: Node { kind: TypeNode { connective: Atom { identity: field_field_reciprocal } }, children: [] },
-        precondition: Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [] },
-        discharge: FailClosedAtBoundary { reason: field_field_reciprocal }
+        operation: field_reciprocal_operation_node(),
+        precondition: field_reciprocal_nonzero_precondition_node(),
+        discharge: FailClosedAtBoundary { reason: field_reciprocal_operation }
       }
     ]
   }
@@ -265,15 +266,7 @@ fn wave1_model_core() -> ModelCore {
       model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
     ],
     effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl {
-      operations: [
-        PartialOperationDecl {
-          operation: Node { kind: TypeNode { connective: Atom { identity: field_field_reciprocal } }, children: [] },
-          precondition: Node { kind: TypeNode { connective: Atom { identity: field_reciprocal_nonzero_precondition } }, children: [] },
-          discharge: FailClosedAtBoundary { reason: field_field_reciprocal }
-        }
-      ]
-    }
+    partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
 
