@@ -1,7 +1,6 @@
 // src/v4/compiler/05_emit.dag
-// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate + T-11 Shape-A specialization table.
-// Owns: ShapeAEmitTarget, EmitTargetSpecialization, serialize_source_for_emitted,
-//       shape_a_emit_specializations, serialize_target, emit.
+// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
+// Owns: serialize_source_for_emitted, serialize_target, emit.
 // Consumes: compiler/04_infer.dag, compiler/06_translate.dag, compiler/07_target_carriers.dag,
 //           extdeps/languages/{rust,python,go,cpp,typescript}.dag, std/diagnostic.dag.
 // Status: T-11 — emit = serialize_target ∘ translate; serialize delegates to
@@ -27,37 +26,6 @@ import v4.std.diagnostic {
 }
 import v4.std.collection { List }
 import v4.std.node { Node }
-import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.languages.python { python_mvp1_target_model }
-import v4.extdeps.languages.go { go_mvp1_target_model }
-import v4.extdeps.languages.cpp { cpp_mvp1_target_model }
-import v4.extdeps.languages.typescript { ts_mvp1_target_model }
-
-// 🟡 gated — Shape-A target-set bridge (Practice 7/P5) — feature:t11-target-model-row-projection — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — dissolve-on-arrival: derive this roster from target-model rows / target spec registry and delete ShapeAEmitTarget plus the hand-authored shape_a_emit_specializations target arms; forbidden: adding post-Shape-A targets here without the registry projection.
-type ShapeAEmitTarget
-  = ShapeARust
-  | ShapeAPython
-  | ShapeAGo
-  | ShapeACpp
-  | ShapeATypeScript
-
-type EmitTargetSpecialization {
-  target: ShapeAEmitTarget
-  target_model: TargetModel
-}
-
-fn shape_a_emit_specializations(cpp_target_profile: Node) -> List<EmitTargetSpecialization> {
-  [
-    EmitTargetSpecialization { target: ShapeARust, target_model: rust_mvp1_target_model() },
-    EmitTargetSpecialization { target: ShapeAPython, target_model: python_mvp1_target_model() },
-    EmitTargetSpecialization { target: ShapeAGo, target_model: go_mvp1_target_model() },
-    EmitTargetSpecialization {
-      target: ShapeACpp,
-      target_model: cpp_mvp1_target_model(target_profile: cpp_target_profile)
-    },
-    EmitTargetSpecialization { target: ShapeATypeScript, target_model: ts_mvp1_target_model() }
-  ]
-}
 
 fn serialize_source_for_emitted(
   emitted: TargetNodeTree,
