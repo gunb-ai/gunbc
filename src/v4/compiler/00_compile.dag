@@ -5,8 +5,8 @@
 // Owns: CoreNode, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
 //       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
 //       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
-//       AgentStoreLoadState, AgentModuleSourceLookup, compile_with_store,
-//       agent_store_to_module_graph, agent_module_source_to_entry,
+//       AgentStoreLoadState, compile_with_store, agent_store_to_module_graph,
+//       agent_module_source_to_entry,
 //       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
 //       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
 //       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
@@ -27,8 +27,6 @@ import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
 import v4.compiler.module_resolve {
   ModuleAdmission,
-  ModuleImport,
-  ModuleImportVisible,
   ModuleSubject,
   resolve_module_with_admission
 }
@@ -61,10 +59,8 @@ import v4.std.diagnostic {
 import v4.std.module_graph {
   ModuleEntry,
   ModuleGraph,
-  ModulePath,
   module_graph_entry_for_path,
-  module_graph_from_entries,
-  module_path_eq
+  module_graph_from_entries
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v4.std.text { String }
@@ -408,14 +404,10 @@ fn compile_ingest_staging(source: Source, target: TargetModel) -> Outcome<Target
 }
 
 
+// 🟡 gated — feature:T-35-agent-store-load-outcome-fold — internal fold state mirrors Outcome while carrying accepted ModuleEntry accumulation; dissolve-on: generic Outcome fold/traverse can carry the accepted accumulator directly for FreeMonoid<AgentModuleSource>.
 type AgentStoreLoadState
   = AgentStoreLoadAccepted { entries: List<ModuleEntry> }
   | AgentStoreLoadRejected { diagnostics: NonEmptyDiagnostics }
-
-
-type AgentModuleSourceLookup
-  = AgentModuleSourceMissing
-  | AgentModuleSourceFound { source: AgentModuleSource }
 
 
 fn agent_store_load_state_to_outcome(state: AgentStoreLoadState) -> Outcome<List<ModuleEntry>> {
@@ -455,77 +447,6 @@ fn agent_module_source_to_entry(
       )
     }
   )
-}
-
-
-fn agent_module_source_lookup_to_outcome(
-  lookup: AgentModuleSourceLookup
-) -> Outcome<AgentModuleSource> {
-  match lookup {
-    AgentModuleSourceMissing =>
-      outcome_rejected(
-        d: compile_agent_store_entry_missing_diagnostic(
-          at: port_locus(port: compile_agent_store_entry_missing)
-        )
-      )
-    AgentModuleSourceFound { source } => outcome_accepted(value: source)
-  }
-}
-
-
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-agentmodulesource — same v2 bootstrap limitation as std/module_graph.dag's ModuleEntry folds; hand-rolls Empty/Cons lookup over FreeMonoid<AgentModuleSource>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
-fn agent_store_source_for_path_fold(
-  modules: FreeMonoid<AgentModuleSource>,
-  path: ModulePath,
-  lookup: AgentModuleSourceLookup
-) -> AgentModuleSourceLookup {
-  match modules {
-    Empty => lookup
-    Cons { head: module_source, tail: rest } =>
-      match lookup {
-        AgentModuleSourceFound { source: found } =>
-          AgentModuleSourceFound { source: found }
-        AgentModuleSourceMissing =>
-          agent_store_source_for_path_fold(
-            modules: rest,
-            path: path,
-            lookup: if module_path_eq(a: module_source.path, b: path) {
-              AgentModuleSourceFound { source: module_source }
-            } else {
-              AgentModuleSourceMissing
-            }
-          )
-      }
-  }
-}
-
-
-fn agent_store_source_for_path(
-  store: AgentStore,
-  path: ModulePath
-) -> Outcome<AgentModuleSource> {
-  agent_module_source_lookup_to_outcome(
-    lookup: agent_store_source_for_path_fold(
-      modules: store.modules,
-      path: path,
-      lookup: AgentModuleSourceMissing
-    )
-  )
-}
-
-
-fn module_imports_from_paths(paths: FreeMonoid<ModulePath>) -> FreeMonoid<ModuleImport> {
-  match paths {
-    Empty => Empty
-    Cons { head: path, tail: rest } =>
-      Cons {
-        head: ModuleImport {
-          target: path,
-          visibility: ModuleImportVisible
-        },
-        tail: module_imports_from_paths(paths: rest)
-      }
-  }
 }
 
 
@@ -605,53 +526,48 @@ fn compile_with_store(store: AgentStore, target: TargetModel) -> Outcome<TargetS
   bind_outcome(
     o: agent_store_to_module_graph(store: store, lm: lm),
     f: fn(graph) {
-      bind_outcome(
-        o: agent_store_source_for_path(store: store, path: store.entry),
-        f: fn(entry_source) {
-          match module_graph_entry_for_path(graph: graph, path: store.entry) {
-            Holds { value: entry } =>
+      match module_graph_entry_for_path(graph: graph, path: store.entry) {
+        Holds { value: entry } =>
+          bind_outcome(
+            o: resolve_module_with_admission(
+              lm: lm,
+              graph: graph,
+              admission: ModuleAdmission {
+                subject: ModuleSubject {
+                  path: store.entry,
+                  tree: entry.root
+                },
+                imports: Empty
+              }
+            ),
+            f: fn(resolved) {
               bind_outcome(
-                o: resolve_module_with_admission(
-                  lm: lm,
-                  graph: graph,
-                  admission: ModuleAdmission {
-                    subject: ModuleSubject {
-                      path: store.entry,
-                      tree: entry.root
-                    },
-                    imports: module_imports_from_paths(paths: entry_source.imports)
-                  }
+                o: compile(
+                  source: resolved,
+                  mode: TranslateTo { target: target }
                 ),
-                f: fn(resolved) {
-                  bind_outcome(
-                    o: compile(
-                      source: resolved,
-                      mode: TranslateTo { target: target }
-                    ),
-                    f: fn(compile_out) {
-                      match compile_out {
-                        TranslateResult { source: target_source } =>
-                          outcome_accepted(target_source)
-                        EvalResult { value: _ } =>
-                          outcome_rejected(
-                            compile_eval_not_realized_diagnostic(
-                              at: port_locus(port: compile_stage_locus_port)
-                            )
-                          )
-                      }
-                    }
-                  )
+                f: fn(compile_out) {
+                  match compile_out {
+                    TranslateResult { source: target_source } =>
+                      outcome_accepted(target_source)
+                    EvalResult { value: _ } =>
+                      outcome_rejected(
+                        compile_eval_not_realized_diagnostic(
+                          at: port_locus(port: compile_stage_locus_port)
+                        )
+                      )
+                  }
                 }
               )
-            Violates { diagnostic: _ } =>
-              outcome_rejected(
-                d: compile_agent_store_entry_missing_diagnostic(
-                  at: port_locus(port: compile_agent_store_entry_missing)
-                )
-              )
-          }
-        }
-      )
+            }
+          )
+        Violates { diagnostic: _ } =>
+          outcome_rejected(
+            d: compile_agent_store_entry_missing_diagnostic(
+              at: port_locus(port: compile_agent_store_entry_missing)
+            )
+          )
+      }
     }
   )
 }

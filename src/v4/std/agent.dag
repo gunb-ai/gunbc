@@ -15,7 +15,6 @@ import v4.std.text { String }
 
 type AgentModuleSource {
   path: ModulePath
-  imports: FreeMonoid<ModulePath>
   file: Symbol
   source: String
 }
