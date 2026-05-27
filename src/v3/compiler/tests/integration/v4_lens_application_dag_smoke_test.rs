@@ -69,6 +69,19 @@ fn surface_declares_type_sum(
     })
 }
 
+fn type_sum_has_variant(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    type_name: &str,
+    variant_name: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::TypeSum { name, variants, .. } if name == type_name => {
+            variants.iter().any(|variant| variant.name == variant_name)
+        }
+        _ => false,
+    })
+}
+
 // P5 receipt: smoke-test expansion for Finding #2 (CompileLensIntrospect advisory semantics).
 // Verifies the .dag shape of lens/application.dag structural claims added in this PR.
 // Deferral: retired when .dag-native assertions replace Rust smoke tests.
@@ -145,12 +158,12 @@ fn v4_std_report_dag_advisory_carrier_shape() {
         "{REPORT_PATH}: advisory→diagnostic reason seam"
     );
     assert!(
-        REPORT_DAG.contains("SynthesisGapDecisionTree"),
-        "{REPORT_PATH}: DecisionTree gap reason variant"
+        type_sum_has_variant(&module, "ReportReason", "SynthesisGapDecisionTree"),
+        "{REPORT_PATH}: ReportReason must declare SynthesisGapDecisionTree arm"
     );
     assert!(
-        REPORT_DAG.contains("SynthesisGapInformationTheoretic"),
-        "{REPORT_PATH}: InformationTheoretic gap reason variant"
+        type_sum_has_variant(&module, "ReportReason", "SynthesisGapInformationTheoretic"),
+        "{REPORT_PATH}: ReportReason must declare SynthesisGapInformationTheoretic arm"
     );
 }
 
