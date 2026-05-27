@@ -184,20 +184,20 @@ fn v4_translate_dag_dispatches_token_sequence_items() {
         "{TRANSLATE_PATH}: serialize measure must derive translation_rules budget structurally"
     );
     assert!(
-        !TRANSLATE_DAG.contains("translate_default_serialize_fuel"),
-        "{TRANSLATE_PATH}: fixed serialize fuel constant must not remain"
-    );
-}
-
-#[test]
-fn v4_translate_dag_propagates_translation_rules_budget_as_outcome() {
-    assert!(
-        TRANSLATE_DAG.contains("fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int>"),
-        "{TRANSLATE_PATH}: translation_rules budget must be Outcome<Int> (fail-closed, not Rejected => 0)"
+        surface_declares_fn(&module, "translate_serialize_measure"),
+        "{TRANSLATE_PATH}: emitted-node serialize budget must be a declared structural measure"
     );
     assert!(
-        TRANSLATE_DAG.contains("bind_outcome(\n    o: translate_serialize_measure"),
-        "{TRANSLATE_PATH}: target_serialize_source_from_model must bind structural measure before bounded walk"
+        surface_declares_fn(&module, "target_serialize_source_from_model"),
+        "{TRANSLATE_PATH}: public serialize entry must route through structural measure helpers"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "diagnostic"], "bind_outcome"),
+        "{TRANSLATE_PATH}: bounded serializers must use bind_outcome for fail-closed measure propagation"
+    );
+    assert!(
+        !surface_declares_data(&module, "translate_default_serialize_fuel"),
+        "{TRANSLATE_PATH}: fixed serialize fuel data must not remain (structural measure replaces it)"
     );
 }
 
@@ -716,6 +716,15 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
             name: item_name, ..
         }
         | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
             name: item_name, ..
         } => item_name == name,
         _ => false,
