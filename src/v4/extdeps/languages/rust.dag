@@ -84,6 +84,7 @@ import v4.std.node {
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
+  Cons,
   approximate_field_node,
   boolean_algebra_node,
   fold_list,
@@ -1246,10 +1247,11 @@ fn rust_grammar_sequence_from_tokens(tokens: RustGrammarSequenceBuild) -> Gramma
 }
 
 fn rust_mvp1_grammar_tokens() -> RustGrammarSequenceBuild {
-  let tokens = rust_mvp1_concrete_tokens()
-  RustGrammarSequenceBuild {
-    head: tokens.head,
-    tail: tokens.tail
+  match rust_mvp1_concrete_tokens() {
+    Cons { head, tail } => RustGrammarSequenceBuild {
+      head: head,
+      tail: tail
+    }
   }
 }
 
