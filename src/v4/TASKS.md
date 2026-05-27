@@ -1482,6 +1482,59 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 
+### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [SCHEDULED]
+
+**Operator-ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
+where `ModulePathSegment = { name: Symbol }` is structurally a nickname for
+`FreeMonoid<Symbol>`. The wrapper adds nothing and the name is misleading —
+"path" implies graph traversal (cf. `Path { steps: List<Symbol> }` already in
+`std/node.dag`, which is the graph-traversal concept). Drop the wrapper, rename
+to `QualifiedName`, add the projection.
+
+**Scope — two pieces:**
+
+1. **`QualifiedName = FreeMonoid<Symbol>`.** The declared identifier of a code
+   unit — the dotted name from its `module` declaration (e.g. `module
+   v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`). Not a graph path,
+   not a filesystem path. Declare in `std/node.dag` or a thin new
+   `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
+   all callers to `QualifiedName`.
+
+2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.** Extracts
+   the declared name from a Node's `module_header` child. The name is already in
+   the parse tree (`dag_surface_module_header` → `dag_production_qualified_name`);
+   this function makes it accessible without an external key. Once this exists,
+   `ModuleEntry { path: QualifiedName, root: Node }` is a denormalized pair —
+   path is projectable from root. Callers that carry the pair can simplify to
+   `FreeMonoid<Node>`.
+
+**Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
+Model names must reflect what they are. A type named `FooBar` must be a
+structural composition or projection of `Foo` and `Bar` — not a convenient
+label for something else. Nicknaming is a modeling violation. `ModulePath` →
+`QualifiedName` is the canonical example: `Path` in `std/node.dag` is the
+graph-traversal concept; the declared module identifier is not a path.
+Enforcement via lens (forthcoming).
+
+**Files:**
+- `std/node.dag` or `std/qualified_name.dag` — `QualifiedName` type +
+  `qualified_name_from_node`.
+- Any caller of `ModulePath`/`ModulePathSegment` — migrate to `QualifiedName`.
+- `INVARIANTS.md` §P1 — naming invariant entry.
+
+**Dependencies:** none — `qualified_name_from_node` only reads Node structure
+already defined in `std/node.dag`.
+
+**Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
+`FreeMonoid<Node>` + `qualified_name_from_node`, `ModuleEntry`, `ModuleGraph`,
+and `std/module_graph.dag` dissolve. Change 2 may be bundled with T-35 or land
+immediately after.
+
+**Sequencing.** Prerequisite for T-35. Dispatch is independent of T-35's
+operator code-examples gate.
+
+---
+
 ### T-35 — virtual module-loader + AgentStore (filesystem-free ingest)  [SCHEDULED]
 
 **Operator-ratified 2026-05-26.** Eliminates filesystem I/O from the
@@ -1491,45 +1544,49 @@ over — T-35 owns the no-filesystem entry point; T-23 owns the non-text
 AGENT-SURFACE contract (lens reads, `apply_diff`, structured output).
 These are complementary, not overlapping.
 
+**On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
+`QualifiedName` and `qualified_name_from_node` are available and this spec
+applies. T-35 dispatch additionally requires operator code examples (see
+Sequencing). T-35 workers must not proceed without both gates.
+
 **Scope — two pieces (ingest side only):**
 
 1. **Virtual module-loader.** The module-admission stage (T-28-B) is
-   replaced with an agent-supplied `AgentStore` (pre-parsed `.dag` AST,
-   keyed by `ModulePath`). The stage reads from the store rather than the
-   filesystem. Agents write to the store; the compiler reads from it. No
-   filesystem I/O anywhere in the compile path.
+   replaced with an agent-supplied `AgentStore` (pre-parsed `.dag` AST nodes,
+   identified by their declared `QualifiedName`). The stage reads from the
+   store rather than the filesystem. Agents write to the store; the compiler
+   reads from it. No filesystem I/O anywhere in the compile path.
    `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
    from 03_resolve.dag before the virtual loader can replace it.`
 
 2. **AgentStore carrier.** A mutable, ordered-entry carrier in
    `src/v4/std/agent.dag`:
-   `AgentStore { entries: FreeMonoid<ModuleEntry> }` with exported operations
-   `store_insert`, `store_delete`; `store_lookup` is an internal fold helper
-   — not exported from `agent.dag`, not part of the agent write surface, not
-   a root-selection path (see Files section). The store is the
-   agent's write surface; the virtual module-loader is the compiler's read
-   surface. Agents populate the store and invoke `compile_with_store` —
-   the filesystem-free entry point alongside existing
+   `AgentStore { entries: FreeMonoid<Node> }` with exported operations
+   `store_insert(store, node: Node)`, `store_delete(store, qname: QualifiedName)`;
+   `store_lookup` is an internal fold helper (folds `entries` applying
+   `qualified_name_from_node` to match) — not exported from `agent.dag`, not
+   part of the agent write surface, not a root-selection path (see Files
+   section). Each Node carries its own `QualifiedName` via the
+   `qualified_name_from_node` projection (T-QN-1); no external path key is
+   required. The store is the agent's write surface; the virtual module-loader
+   is the compiler's read surface. Agents populate the store and invoke
+   `compile_with_store` — the filesystem-free entry point alongside existing
    `compile_ingest_staging` in `00_compile.dag`.
 
-   **Why `FreeMonoid<ModuleEntry>`, not `Map<ModulePath, Node>`:**
+   **Why `FreeMonoid<Node>`, not `Map<QualifiedName, Node>`:**
    `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
-   Witness<V> }` — unenumerable by construction. `module_graph_from_entries`
-   (in `std/module_graph.dag`) takes `FreeMonoid<ModuleEntry>` directly.
-   Using `FreeMonoid<ModuleEntry>` as AgentStore's internal representation
-   means `store.entries` is passable straight to `module_graph_from_entries`
-   with no bridge. `store_lookup` is a fold over the monoid to find a
-   matching path; `store_insert` appends a `ModuleEntry`; `store_delete`
-   filters. Path-uniqueness is not the store's responsibility — it is
-   enforced by `module_graph_from_entries` at admission time (returning
-   `Violates` on duplicate paths, per the existing gate in
-   `std/module_graph.dag`).
+   Witness<V> }` — unenumerable by construction. Using `FreeMonoid<Node>` as
+   AgentStore's internal representation keeps the store enumerable and lets
+   `compile_with_store` fold over entries. `store_lookup` is a fold using
+   `qualified_name_from_node` to match; `store_insert` appends a Node;
+   `store_delete` filters by `QualifiedName`. Name-uniqueness is not the
+   store's responsibility — it is enforced at admission time.
 
-   **Path-keyed invariants (ratified 2026-05-26):**
-   - **`ModulePath` is the declared module namespace identity, not a filesystem path.** It is the dotted name from the `module` declaration (e.g. `module v4.std.algebra` → `ModulePath` `v4.std.algebra`), not a file location. It is a lookup key and external boundary handle — not a Node identity authority; Node identity within the compiler remains B1 `content_hash` (INVARIANTS §P2, `std/node.dag`) — and not an alternative to the B1 merkle identity.
-   - **Function (not bijection):** each `ModulePath` corresponds to at most one `Node` at admission time — enforced solely by `module_graph_from_entries`, not by the store. Distinct paths may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the store's.
-   - **Fail-closed on missing:** `compile_with_store` returns `Rejected` with a module-admission diagnostic if a required `ModulePath` is absent from the store — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
-   - **Insert policy (ratified 2026-05-26):** `store_insert` always appends — inserts never fail. Duplicate-path detection is deferred to `compile_with_store`, which returns `Rejected` via the existing `module_graph_from_entries` gate. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting the same `ModulePath` twice adds a second entry that causes admission to fail, not a silent overwrite.
+   **Node-keyed invariants (ratified 2026-05-27):**
+   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via `qualified_name_from_node`. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a store feature.
+   - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at compile_with_store admission, not by the store. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the store's.
+   - **Fail-closed on missing:** `compile_with_store` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the store — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
+   - **Insert policy:** `store_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_store` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1545,41 +1602,42 @@ to define a new agent output surface.
 **Files:**
 - `src/v4/std/agent.dag` — new file; `AgentStore` carrier only.
 - `src/v4/compiler/00_compile.dag` — add `compile_with_store` entry point.
-  **Signature:** `compile_with_store(root: ModulePath, store: AgentStore, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
+  **Signature:** `compile_with_store(root: QualifiedName, store: AgentStore, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
   The `root` parameter is the sole root-selection authority: the caller names
-  which store entry is the compilation entry point. `compile_with_store` runs
-  admission first: `module_graph_from_entries(entries: store.entries)` →
-  `Holds { value: graph }` (fail-closed: `Violates` on duplicate paths). On
-  `Holds`, the root `CoreNode` is retrieved from the admitted graph via
-  `module_graph_entry_for_path(graph: graph, path: root)` → `Holds { value:
-  entry }` (fail-closed: `Violates` if the root path is absent from the
-  admitted graph, using `module_graph_entry_not_found` as the diagnostic
-  reason). `entry.root` is the `CoreNode` that enters the compile pipeline.
-  `module_graph_entry_for_path` is defined in `std/module_graph.dag` and is the
-  only declared root-selection surface — workers must not substitute raw
-  `store_lookup` on the unadmitted store, a first-entry convention, or any
+  which store node is the compilation entry point by `QualifiedName`. 
+  `compile_with_store` runs admission first: it folds `store.entries` applying
+  `qualified_name_from_node` to build `FreeMonoid<ModuleEntry>`, then calls
+  `module_graph_from_entries` → `Holds { value: graph }` (fail-closed:
+  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
+  retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
+  `Holds { value: entry }` (fail-closed: `Violates` if absent, using
+  `module_graph_entry_not_found` as the diagnostic reason). `entry.root` is
+  the `CoreNode` that enters the compile pipeline. Workers must not substitute
+  raw `store_lookup` on the unadmitted store, a first-entry convention, or any
   other secondary mechanism. This satisfies INVARIANTS P2 boundary discipline:
   the root `CoreNode` is selected exclusively from an admission-witnessed
-  lookup; the raw `AgentStore` is the write log, `ModuleGraph` is the
-  unique-path map, and only `module_graph_from_entries` bridges the two.
+  lookup.
+  `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
+  FreeMonoid<ModuleEntry> bridge and module_graph_from_entries call are
+  temporary scaffolding; once Change 2 lands, admission folds directly over
+  FreeMonoid<Node> via qualified_name_from_node without the ModuleEntry bridge.`
 
-  **Scope of T-35's change:** `store.entries` replaces the `entries: Empty`
-  argument to `module_graph_from_entries` (currently in
-  `compile_ingest_staging`). The single call to `module_graph_from_entries`
-  serves both purposes: (1) it admits the store (enforcing path uniqueness)
-  and (2) it provides the root `CoreNode` via `module_graph_entry_for_path` on
-  the resulting `ModuleGraph`. No other part of the ingest pipeline changes.
-  `module_graph_from_entries` in `std/module_graph.dag` remains the canonical
-  `ModuleGraph` construction path and admission authority — T-35 does NOT
-  bypass it or replace `ModuleGraph` with a parallel lookup. `compile_with_store`
-  then routes through `validate_then_compile` — the sole public compile terminal
-  in `00_compile.dag` — with an empty caller-lenses list; the always-required
+  **Scope of T-35's change:** `store.entries` (a `FreeMonoid<Node>`) replaces
+  the `entries: Empty` argument to `module_graph_from_entries` (currently in
+  `compile_ingest_staging`), with a `qualified_name_from_node` projection step
+  to build the `FreeMonoid<ModuleEntry>` the existing admission gate expects.
+  No other part of the ingest pipeline changes. `compile_with_store` routes
+  through `validate_then_compile` — the sole public compile terminal in
+  `00_compile.dag` — with an empty caller-lenses list; the always-required
   lens gates (fact-density) run on agent-supplied code via
   `always_required_lenses()`. T-35 does NOT implement or modify the infer/emit
   pipeline. Output type is `Outcome<Validated<CompileOutput>>`, the same carrier
   as `validate_then_compile`; T-35 workers must not redefine it.
 
-**Dependencies — `[needs T-28-B]`. Execution prerequisites: T-9, T-10.**
+**Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
+- **T-QN-1** is the hard design prerequisite: `QualifiedName` and
+  `qualified_name_from_node` must exist before T-35 workers can write the
+  store or compile_with_store. T-35 workers cannot proceed without T-QN-1.
 - **T-28-B** is the hard implementation prerequisite: the module-admission
   stage must be extracted from `03_resolve.dag` before the virtual loader can
   replace it. T-35 workers cannot proceed without T-28-B.
@@ -1598,8 +1656,10 @@ to define a new agent output surface.
 - Not T-23/AGENT-1 — T-35 does not define the agent output surface
   (InferenceResult, DiagnosticSet, apply_diff). Those live in T-23.
 
-**Sequencing.** Post-M3. Dispatch after T-28-B confirms merged.
-Unblocks: IDE integration; automated `.dag` authoring agent workflows.
+**Sequencing.** Post-M3. Dispatch after T-QN-1 lands AND T-28-B merges AND
+operator code-examples gate clears. All three are required; none is
+sufficient alone. Unblocks: IDE integration; automated `.dag` authoring agent
+workflows.
 
 ---
 
