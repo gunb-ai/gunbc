@@ -30,29 +30,21 @@ fn batch_insert(batch: ModuleBatch, node: Node) -> ModuleBatch {
 }
 
 
-fn batch_delete_keep_node(node: Node, qname: QualifiedName) -> FreeMonoid<Node> {
-  match qualified_name_from_node(root: node) {
-    Accepted { value: name, diagnostics: _ } =>
-      if qualified_name_eq(a: name, b: qname) {
-        Empty
-      } else {
-        Cons { head: node, tail: Empty }
-      }
-    Rejected { diagnostics: _ } =>
-      Cons { head: node, tail: Empty }
-  }
-}
-
-
 fn batch_delete(batch: ModuleBatch, qname: QualifiedName) -> ModuleBatch {
   ModuleBatch {
     entries: fold_list_right(
       xs: batch.entries,
       empty: Empty,
       snoc: fn(acc, node) {
-        match batch_delete_keep_node(node: node, qname: qname) {
-          Empty => acc
-          Cons { head: kept, tail: _ } => Cons { head: kept, tail: acc }
+        match qualified_name_from_node(root: node) {
+          Accepted { value: name, diagnostics: _ } =>
+            if qualified_name_eq(a: name, b: qname) {
+              acc
+            } else {
+              Cons { head: node, tail: acc }
+            }
+          Rejected { diagnostics: _ } =>
+            Cons { head: node, tail: acc }
         }
       }
     )

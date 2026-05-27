@@ -42,9 +42,11 @@ import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Locus,
   NonEmptyDiagnostics,
+  None,
   Outcome,
   Some,
   port_locus,
@@ -52,11 +54,13 @@ import v4.std.diagnostic {
   Unavailable,
   bind_outcome,
   bind_outcome_accepted,
+  diagnostics_merge,
   diagnostics_singleton,
   non_empty_diagnostics_append,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics
+  outcome_with_diagnostics,
+  rejected_with_pending
 }
 import v4.std.module_batch { ModuleBatch }
 import v4.std.module_graph {
@@ -121,7 +125,10 @@ type Validated<T> {
 
 // 🟡 gated — feature:T-35-entry-bridge — folds ModuleBatch.entries into std/module_graph.dag Entry rows while Change 2 still requires Catalog construction from FreeMonoid<Entry>; dissolve-on: std/module_graph.dag admits FreeMonoid<Node> directly through qualified_name_from_node.
 type BatchAdmissionState
-  = BatchAdmissionAccepted { entries: FreeMonoid<Entry> }
+  = BatchAdmissionAccepted {
+      entries: FreeMonoid<Entry>,
+      diagnostics: Diagnostics
+    }
   | BatchAdmissionRejected { diagnostics: NonEmptyDiagnostics }
 
 
@@ -395,24 +402,29 @@ fn batch_admission_add_projection(
   match state {
     BatchAdmissionRejected { diagnostics: prior } =>
       match qualified_name_from_node(root: node) {
-        Accepted { value: _, diagnostics: _ } =>
-          BatchAdmissionRejected { diagnostics: prior }
+        Accepted { value: _, diagnostics: od } =>
+          BatchAdmissionRejected {
+            diagnostics: rejected_with_pending(pending: od, rejected: prior)
+          }
         Rejected { diagnostics: r } =>
           BatchAdmissionRejected {
             diagnostics: non_empty_diagnostics_append(a: prior, b: r)
           }
       }
-    BatchAdmissionAccepted { entries: prior } =>
+    BatchAdmissionAccepted { entries: prior, diagnostics: pending } =>
       match qualified_name_from_node(root: node) {
-        Accepted { value: name, diagnostics: _ } =>
+        Accepted { value: name, diagnostics: od } =>
           BatchAdmissionAccepted {
             entries: list_snoc_item(
               xs: prior,
               item: Entry { name: name, root: node }
-            )
+            ),
+            diagnostics: diagnostics_merge(outer: pending, inner: od)
           }
         Rejected { diagnostics: r } =>
-          BatchAdmissionRejected { diagnostics: r }
+          BatchAdmissionRejected {
+            diagnostics: rejected_with_pending(pending: pending, rejected: r)
+          }
       }
   }
 }
@@ -437,9 +449,10 @@ fn batch_entries_for_admission_fold(
 fn batch_entries_for_admission(batch: ModuleBatch) -> Outcome<FreeMonoid<Entry>> {
   match batch_entries_for_admission_fold(
     nodes: batch.entries,
-    state: BatchAdmissionAccepted { entries: Empty }
+    state: BatchAdmissionAccepted { entries: Empty, diagnostics: None }
   ) {
-    BatchAdmissionAccepted { entries } => outcome_accepted(value: entries)
+    BatchAdmissionAccepted { entries, diagnostics } =>
+      outcome_with_diagnostics(value: entries, diagnostics: diagnostics)
     BatchAdmissionRejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
