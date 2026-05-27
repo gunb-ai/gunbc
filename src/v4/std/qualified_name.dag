@@ -1,7 +1,7 @@
 // src/v4/std/qualified_name.dag
 // Scope: Qualified names as a projection over symbol sequences.
 // Owns: QualifiedName, qualified_name_eq, qualified_name_is_prefix_of.
-// Consumes: std/algebra.dag, std/node.dag.
+// Consumes: std/algebra.dag, std/logic.dag, std/node.dag.
 // Status: T-28 support carrier; consumed by std/module_graph.dag.
 // Anchor: https://en.wikipedia.org/wiki/Qualified_name
 
