@@ -87,7 +87,16 @@ fn qualified_name_find_edge(name: Symbol, n: Node) -> Outcome<Node> {
 
 fn qualified_name_atom_sym(n: Node) -> Outcome<Symbol> {
   match n.kind {
-    TypeNode { connective: Atom { identity: sym } } => outcome_accepted(value: sym)
+    TypeNode { connective: Atom { identity: sym } } =>
+      if count(n.children) == 0 {
+        outcome_accepted(value: sym)
+      } else {
+        outcome_rejected(Diagnostic {
+          reason: qualified_name_structure_invalid,
+          at: node_locus(node: n),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        })
+      }
     _ => outcome_rejected(Diagnostic {
       reason: qualified_name_structure_invalid,
       at: node_locus(node: n),
