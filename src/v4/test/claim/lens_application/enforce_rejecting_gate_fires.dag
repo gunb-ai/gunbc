@@ -57,9 +57,7 @@ fn enforce_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data enforce_rejecting_lens: CompileLens = CompileLens {
-  gate: enforce_rejecting_gate
-}
+data enforce_rejecting_lens: CompileLens = CompileLens { gate: enforce_rejecting_gate }
 
 fn enforce_rejecting_gate_fires_claim_holds() -> Bool {
   match apply_compile_lens(lens: enforce_rejecting_lens, inferred: enforce_reject_tree(), mode: CompileLensEnforce) {

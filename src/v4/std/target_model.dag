@@ -20,5 +20,7 @@ data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
 data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
+data concrete_syntax_token_kind_fixed: Symbol = concrete_syntax_token_kind_fixed
+data concrete_syntax_token_kind_bound: Symbol = concrete_syntax_token_kind_bound
 data serialize_source_field_source_text: Symbol = serialize_source_field_source_text
 data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar

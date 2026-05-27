@@ -1483,6 +1483,208 @@ carriers (option C)" + §"Ratified Q1 supersession — option C runtime split".
 
 ---
 
+### T-QN-1 — QualifiedName infrastructure (Change 1, prerequisite for T-35)  [SCHEDULED]
+
+**Operator-ratified 2026-05-27.** `ModulePath = FreeMonoid<ModulePathSegment>`
+where `ModulePathSegment = { name: Symbol }` is structurally a nickname for
+`FreeMonoid<Symbol>`. The wrapper adds nothing and the name is misleading —
+"path" implies graph traversal (cf. `Path { steps: List<Symbol> }` already in
+`std/node.dag`, which is the graph-traversal concept). Drop the wrapper, rename
+to `QualifiedName`, add the projection.
+
+**Scope — two pieces:**
+
+1. **`QualifiedName = FreeMonoid<Symbol>`.** The declared identifier of a code
+   unit — the dotted name from its `module` declaration (e.g. `module
+   v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`). Not a graph path,
+   not a filesystem path. Declare in `std/node.dag` or a thin new
+   `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
+   all callers to `QualifiedName`.
+
+2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.** Extracts
+   the declared name from a Node's `module_header` child. The name is already in
+   the parse tree (`dag_surface_module_header` → `dag_production_qualified_name`);
+   this function makes it accessible without an external key. Once this exists,
+   `ModuleEntry { path: QualifiedName, root: Node }` is a denormalized pair —
+   path is projectable from root. Callers that carry the pair can simplify to
+   `FreeMonoid<Node>`.
+
+**Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
+Model names must reflect what they are. A type named `FooBar` must be a
+structural composition or projection of `Foo` and `Bar` — not a convenient
+label for something else. Nicknaming is a modeling violation. `ModulePath` →
+`QualifiedName` is the canonical example: `Path` in `std/node.dag` is the
+graph-traversal concept; the declared module identifier is not a path.
+Enforcement via lens (forthcoming).
+
+**Files:**
+- `std/node.dag` or `std/qualified_name.dag` — `QualifiedName` type +
+  `qualified_name_from_node`.
+- `extdeps/languages/dag.dag` — **read reference only.** `qualified_name_from_node`
+  reads the parse-tree structure produced by `dag_surface_module_header` →
+  `dag_production_qualified_name`. Workers must consult this file to know the
+  exact child layout a module-declaration Node presents. No changes to this file.
+- Any caller of `ModulePath`/`ModulePathSegment` — migrate to `QualifiedName`.
+- `INVARIANTS.md` §P1 — naming invariant entry.
+
+**Dependencies:** The module-header parse-tree surface (`dag_surface_module_header`
+/ `dag_production_qualified_name`) in `extdeps/languages/dag.dag` is the
+structural authority `qualified_name_from_node` reads from. This surface already
+exists in the codebase — no prerequisite task is needed. Workers must read
+`extdeps/languages/dag.dag` to understand the Node child layout before
+implementing `qualified_name_from_node`; they may not assume a fixed child
+index or invent a traversal not grounded in that grammar declaration.
+
+**Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
+`FreeMonoid<Node>` + `qualified_name_from_node`, `ModuleEntry`, `ModuleGraph`,
+and `std/module_graph.dag` dissolve. Change 2 may be bundled with T-35 or land
+immediately after.
+
+**Sequencing.** Prerequisite for T-35. Dispatch is independent of T-35's
+operator code-examples gate.
+
+---
+
+### T-35 — virtual module-loader + ModuleBatch (filesystem-free ingest)  [SCHEDULED]
+
+**Operator-ratified 2026-05-26.** Eliminates filesystem I/O from the
+compile path by replacing file reads with a caller-supplied batch of
+pre-parsed module Nodes. This is the **ingest-side** infrastructure that
+T-23/AGENT-1 composes over — T-35 owns the no-filesystem entry point;
+T-23 owns the non-text AGENT-SURFACE contract (lens reads, `apply_diff`,
+structured output). These are complementary, not overlapping.
+
+**On hold pending T-QN-1** (QualifiedName infrastructure). Once T-QN-1 lands,
+`QualifiedName` and `qualified_name_from_node` are available and this spec
+applies. T-35 dispatch additionally requires operator code examples (see
+Sequencing). T-35 workers must not proceed without both gates.
+
+**Scope — two pieces (ingest side only):**
+
+1. **Virtual module-loader.** The module-admission stage (T-28-B) is
+   replaced with a caller-supplied `ModuleBatch` (**post-normalize** `.dag`
+   Nodes, identified by their declared `QualifiedName`). "Post-normalize"
+   means each Node has passed through `normalize(parse_tree: …)` — the
+   same stage at which `compile_ingest_staging` calls `module_graph_from_entries`
+   today. Callers are responsible for normalizing their source before
+   `batch_insert`; `compile_with_batch` does NOT re-normalize. After admission
+   the selected root Node is resolved via `resolve_with_graph` (cross-file
+   names resolved against the admitted module graph), then the resulting
+   `CoreNode` enters `validate_then_compile`. The stage contract is:
+   batch-in = post-normalize Node; compile-in = post-resolve CoreNode.
+   The batch is read by the compiler; callers write to it. No filesystem
+   I/O anywhere in the compile path.
+   `🟡 gate: dissolve-on T-28-B — module-admission stage must be extracted
+   from 03_resolve.dag before the virtual loader can replace it.`
+
+2. **ModuleBatch carrier.** An ordered-entry carrier in
+   `src/v4/std/module_batch.dag`:
+   `ModuleBatch { entries: FreeMonoid<Node> }` with exported operations
+   `batch_insert(batch: ModuleBatch, node: Node)`,
+   `batch_delete(batch: ModuleBatch, qname: QualifiedName)`;
+   `batch_lookup` is an internal fold helper (folds `entries` applying
+   `qualified_name_from_node` to match) — not exported from `module_batch.dag`,
+   not a root-selection path (see Files section). Each Node carries its own
+   `QualifiedName` via the `qualified_name_from_node` projection (T-QN-1); no
+   external path key is required. Callers build the batch and invoke
+   `compile_with_batch` — the filesystem-free entry point alongside existing
+   `compile_ingest_staging` in `00_compile.dag`.
+
+   **Why `FreeMonoid<Node>`, not `Map<QualifiedName, Node>`:**
+   `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
+   Witness<V> }` — unenumerable by construction. `FreeMonoid<Node>` keeps the
+   batch enumerable so `compile_with_batch` can fold over entries. `batch_lookup`
+   is a fold using `qualified_name_from_node` to match; `batch_insert` appends
+   a Node; `batch_delete` filters by `QualifiedName`. Name-uniqueness is not
+   the batch's responsibility — it is enforced at admission time.
+
+   **Node-keyed invariants (ratified 2026-05-27):**
+   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via `qualified_name_from_node`. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
+   - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
+   - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
+   - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
+
+**Authority boundary — what T-35 does NOT own:**
+The non-text AGENT-SURFACE (structured compiler output — lens reads,
+`apply_diff`, and any structured result or diagnostic carrier types) belongs
+to T-23/AGENT-1, which already declares this authority (see T-23 entry
+above and `lens/application.dag` header mark; "no new file, no new
+authority"). T-35 does not coin new output-type names — those names are
+T-23/AGENT-1's to introduce when it lands. A worker dispatched from T-35
+must not define new output types or a structured output mode — that work
+goes in T-23's scope. T-35 workers stop and escalate if they feel pressure
+to define a new agent output surface.
+
+**Files:**
+- `src/v4/std/module_batch.dag` — new file; `ModuleBatch` carrier only.
+- `src/v4/compiler/00_compile.dag` — add `compile_with_batch` entry point.
+  **Signature:** `compile_with_batch(root: QualifiedName, batch: ModuleBatch, target: TargetModel) -> Outcome<Validated<CompileOutput>>`.
+  The `root` parameter is the sole root-selection authority: the caller names
+  which batch node is the compilation entry point by `QualifiedName`.
+  `compile_with_batch` runs admission first: it folds `batch.entries` applying
+  `qualified_name_from_node` to build `FreeMonoid<ModuleEntry>`, then calls
+  `module_graph_from_entries` → `Holds { value: graph }` (fail-closed:
+  `Violates` on duplicate qualified names). On `Holds`, the root `CoreNode` is
+  retrieved via `module_graph_entry_for_path(graph: graph, path: root)` →
+  `Holds { value: entry }` (fail-closed: `Violates` if absent, using
+  `module_graph_entry_not_found` as the diagnostic reason). `entry.root` is
+  the **post-normalize Node** admitted from the batch — it is then resolved:
+  `resolve_with_graph(tree: entry.root, lm: dag_language_model_wave1(), graph:
+  graph)` produces the `CoreNode` (post-resolve) that enters
+  `validate_then_compile`. Workers must not skip `resolve_with_graph`, not
+  substitute raw `batch_lookup` on the unadmitted batch, not use a first-entry
+  convention, nor any other secondary mechanism. This satisfies INVARIANTS P2
+  boundary discipline: the `CoreNode` reaching `validate_then_compile` is
+  produced by a complete normalize → graph-admission → resolve chain, matching
+  the live `compile_ingest_staging` pipeline exactly.
+  `🟡 gate: dissolve-on Change 2 (std/module_graph.dag dissolution) — the
+  FreeMonoid<ModuleEntry> bridge and module_graph_from_entries call are
+  temporary scaffolding; once Change 2 lands, admission folds directly over
+  FreeMonoid<Node> via qualified_name_from_node without the ModuleEntry bridge.`
+
+  **Scope of T-35's change:** `batch.entries` (a `FreeMonoid<Node>`) replaces
+  the `entries: Empty` argument to `module_graph_from_entries` (currently in
+  `compile_ingest_staging`), with a `qualified_name_from_node` projection step
+  to build the `FreeMonoid<ModuleEntry>` the existing admission gate expects.
+  No other part of the ingest pipeline changes. `compile_with_batch` routes
+  through `validate_then_compile` — the sole public compile terminal in
+  `00_compile.dag` — passing `mode: TranslateTo { target: target }` (the
+  `target: TargetModel` parameter wraps directly into `CompileMode`) with an
+  empty caller-lenses list; the always-required
+  lens gates (fact-density) run on caller-supplied code via
+  `always_required_lenses()`. T-35 does NOT implement or modify the infer/emit
+  pipeline. Output type is `Outcome<Validated<CompileOutput>>`, the same carrier
+  as `validate_then_compile`; T-35 workers must not redefine it.
+
+**Dependencies — `[needs T-28-B, T-QN-1]`. Execution prerequisites: T-9, T-10.**
+- **T-QN-1** is the hard design prerequisite: `QualifiedName` and
+  `qualified_name_from_node` must exist before T-35 workers can build a
+  `ModuleBatch` or call `compile_with_batch`. T-35 workers cannot proceed without T-QN-1.
+- **T-28-B** is the hard implementation prerequisite: the module-admission
+  stage must be extracted from `03_resolve.dag` before the virtual loader can
+  replace it. T-35 workers cannot proceed without T-28-B.
+- **T-9 and T-10** are execution prerequisites, not implementation
+  prerequisites: `compile_with_batch` routes through `validate_then_compile`,
+  so its output is stub/Diagnostic-only until T-9
+  (infer) and T-10 (emit) are complete. T-35 workers do NOT implement
+  infer/emit — they wire the batch into the existing orchestrator. Workers
+  must not expand scope into T-9/T-10 territory even if the pipeline is
+  incomplete at dispatch time.
+
+**What this is NOT:**
+- Not a new language feature — no new `.dag` syntax.
+- Not a runtime evaluator — `ModuleBatch` is compile-time, not runtime.
+- Not T-34 (runtime substrate).
+- Not T-23/AGENT-1 — T-35 does not define the agent output surface
+  (InferenceResult, DiagnosticSet, apply_diff). Those live in T-23.
+
+**Sequencing.** Post-M3. Dispatch after T-QN-1 lands AND T-28-B merges AND
+operator code-examples gate clears. All three are required; none is
+sufficient alone. Unblocks: IDE integration; automated `.dag` authoring agent
+workflows.
+
+---
+
 ### T-4.15 — extdeps/protocols/{rest,graphql,grpc}.dag — transport substrate  [SCHEDULED]
 **Operator-ratified 2026-05-20 (PR #3437, P4 — "Glue derivation is
 composed homomorphism, orthogonal to the compiler").** Transport

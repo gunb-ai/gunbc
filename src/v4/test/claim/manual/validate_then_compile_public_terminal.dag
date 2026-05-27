@@ -83,9 +83,7 @@ fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
 }
 
 
-data rejecting_lens: CompileLens = CompileLens {
-  gate: always_reject_lens_gate
-}
+data rejecting_lens: CompileLens = CompileLens { gate: always_reject_lens_gate }
 
 
 fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -93,9 +91,7 @@ fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
 }
 
 
-data grounding_sanity_lens: CompileLens = CompileLens {
-  gate: grounding_sanity_gate
-}
+data grounding_sanity_lens: CompileLens = CompileLens { gate: grounding_sanity_gate }
 
 
 fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutput>> {
@@ -194,4 +190,3 @@ fn claim_rejecting_lens_blocks_passes() -> Node {
     }
   }
 }
-
