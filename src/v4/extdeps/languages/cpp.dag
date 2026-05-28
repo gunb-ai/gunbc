@@ -2,7 +2,7 @@
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
 // Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding, CppGramBuild1State.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.extdeps.cpp_abi.CppTargetProfile.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed → ordered_ring_node with representable-result witness + ModelCore partiality (rust checked-arithmetic pairing), unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
+// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
@@ -522,6 +522,52 @@ fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFa
   )
 }
 
+// Anchor: ISO/IEC 14882:2020 [conv.prom] / [expr.arith.conv] — char and short
+// promote before usual arithmetic, so they stay in primitive facts only (no T,T→T algebra closure).
+fn cpp_signed_integer_algebra_inhabitance_facts_catalog(
+  target_profile: Node
+) -> List<CppIntegerPrimitiveFacts> {
+  [
+    cpp_signed_integer_facts(
+      spelling: Int,
+      surface_spelling: cpp_surface_spelling_int,
+      target_profile: target_profile
+    ),
+    cpp_signed_integer_facts(
+      spelling: LongInt,
+      surface_spelling: cpp_surface_spelling_long_int,
+      target_profile: target_profile
+    ),
+    cpp_signed_integer_facts(
+      spelling: LongLongInt,
+      surface_spelling: cpp_surface_spelling_long_long_int,
+      target_profile: target_profile
+    )
+  ]
+}
+
+fn cpp_unsigned_integer_algebra_inhabitance_facts_catalog(
+  target_profile: Node
+) -> List<CppIntegerPrimitiveFacts> {
+  [
+    cpp_unsigned_integer_facts(
+      spelling: UnsignedInt,
+      surface_spelling: cpp_surface_spelling_unsigned_int,
+      target_profile: target_profile
+    ),
+    cpp_unsigned_integer_facts(
+      spelling: UnsignedLongInt,
+      surface_spelling: cpp_surface_spelling_unsigned_long_int,
+      target_profile: target_profile
+    ),
+    cpp_unsigned_integer_facts(
+      spelling: UnsignedLongLongInt,
+      surface_spelling: cpp_surface_spelling_unsigned_long_long_int,
+      target_profile: target_profile
+    )
+  ]
+}
+
 fn cpp_character_facts_catalog(target_profile: Node) -> List<CppCharacterPrimitiveFacts> {
   let char_width_fact = cpp_width_selection_node(
     spelling: cpp_atom(id: cpp_surface_spelling_char),
@@ -877,7 +923,7 @@ fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabita
 
 fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
   fold_list(
-    xs: cpp_signed_integer_facts_catalog(target_profile: target_profile),
+    xs: cpp_signed_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
     empty: Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: cpp_signed_integer_algebra_inhabitance(facts: facts))
@@ -887,7 +933,7 @@ fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<Al
 
 fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
   fold_list(
-    xs: cpp_unsigned_integer_facts_catalog(target_profile: target_profile),
+    xs: cpp_unsigned_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
     empty: Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: cpp_unsigned_integer_algebra_inhabitance(facts: facts))
