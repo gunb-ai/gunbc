@@ -102,7 +102,7 @@ fn tcc_cache_eval_context() -> EvalContext {
 fn tcc_cache_stub_claim() -> TestClaim {
   CompilesClaim {
     label: "manual/test_claim_cache: digest sensitivity scaffold",
-    anchor: ManualAnchorAbsent,
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     classification: TestClassification { tier: Tier1, layer: Unit },
     input: tcc_cache_pass_node(),
     expected_value: tcc_cache_pass_node()
@@ -139,7 +139,7 @@ fn tcc_cache_facts_diagnostic_digest_differs() -> Bool {
 fn tcc_cache_diagnostic_claim(expected_reason: Symbol) -> TestClaim {
   DiagnosticClaim {
     label: "manual/test_claim_cache: diagnostic claim hash scaffold",
-    anchor: ManualAnchorAbsent,
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     classification: TestClassification { tier: Tier1, layer: Unit },
     input: tcc_cache_root(),
     expected_rejection: diagnostics_singleton(
@@ -178,7 +178,7 @@ fn tcc_cache_sensitivity_claim_input(ok: Bool) -> Node {
 
 data claim_test_claim_cache_facts_diagnostic_digest_differs: TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: same root, distinct facts diagnostics yield distinct interpretation_hash",
-  anchor: ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_facts_diagnostic_digest_differs()),
   expected_value: tcc_cache_pass_node()
@@ -186,7 +186,7 @@ data claim_test_claim_cache_facts_diagnostic_digest_differs: TestClaim = Compile
 
 data claim_test_claim_cache_evaluator_input_digest_differs: TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: Node evaluator_input content_hash participates in interpretation_hash",
-  anchor: ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_evaluator_input_digest_differs()),
   expected_value: tcc_cache_pass_node()
@@ -194,7 +194,7 @@ data claim_test_claim_cache_evaluator_input_digest_differs: TestClaim = Compiles
 
 data claim_test_claim_cache_diagnostic_reason_claim_hash_differs: TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: DiagnosticClaim expected reason participates in claim_hash",
-  anchor: ManualAnchorAbsent,
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_reason_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()

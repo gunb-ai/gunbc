@@ -94,7 +94,6 @@ import v4.std.diagnostic {
   absorb_outcome_diagnostics,
   append_outcome_value,
   bind_outcome,
-  diagnostic_evaluation_nodes,
   diagnostics_eq,
   diagnostics_singleton,
   non_empty_diagnostics_eq,
@@ -133,10 +132,11 @@ type EvalContext {
 }
 
 
-// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; evaluator_pin is the IRT-4 boundary for non-Node carriers (Node-backed rows hash content_hash(evaluator_input) at digest time).
+// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; evaluator_input_digest is derived from evaluator_input at construction (never an independent authority).
 type TestClaimTypedInput<T> {
   evaluator_input: T
   evaluator_pin: Symbol
+  evaluator_input_digest: Hash
 }
 
 
@@ -201,15 +201,8 @@ data test_claim_cache_int_succ_tag: Symbol = test_claim_cache_int_succ_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin
-  }
-}
-
-
-fn test_claim_typed_input_pinned<T>(evaluator_input: T, evaluator_pin: Symbol) -> TestClaimTypedInput<T> {
-  TestClaimTypedInput {
-    evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin
+    evaluator_pin: evaluator_pin,
+    evaluator_input_digest: content_hash(n: evaluator_input)
   }
 }
 
@@ -441,38 +434,27 @@ fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
 }
 
 
-fn test_claim_evaluator_pin_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
-  test_claim_symbol_digest(sym: input.evaluator_pin)
+fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
+  hash_combine(
+    a: test_claim_symbol_digest(sym: input.evaluator_pin),
+    b: input.evaluator_input_digest
+  )
 }
 
 
-fn test_claim_evaluator_node_digest(input: TestClaimTypedInput<Node>) -> Hash {
+fn test_claim_cache_interpretation_hash<T>(subject: TestClaimEvalSubject<T>) -> Hash {
   hash_combine(
-    a: test_claim_symbol_digest(sym: input.evaluator_pin),
-    b: content_hash(n: input.evaluator_input)
+    a: inferred_tree_digest(tree: subject.tree),
+    b: hash_combine(
+      a: test_claim_interpretation_pin_digest(context: subject.context),
+      b: test_claim_evaluator_digest(input: subject.input)
+    )
   )
 }
 
 
 fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> Hash {
-  hash_combine(
-    a: inferred_tree_digest(tree: subject.tree),
-    b: hash_combine(
-      a: test_claim_interpretation_pin_digest(context: subject.context),
-      b: test_claim_evaluator_node_digest(input: subject.input)
-    )
-  )
-}
-
-
-fn test_claim_cache_interpretation_hash_pinned<T>(subject: TestClaimEvalSubject<T>) -> Hash {
-  hash_combine(
-    a: inferred_tree_digest(tree: subject.tree),
-    b: hash_combine(
-      a: test_claim_interpretation_pin_digest(context: subject.context),
-      b: test_claim_evaluator_pin_digest(input: subject.input)
-    )
-  )
+  test_claim_cache_interpretation_hash(subject: subject)
 }
 
 
@@ -492,7 +474,7 @@ fn test_claim_cache_receipt_pinned<T>(subject: TestClaimEvalSubject<T>) -> TestC
     key: TestClaimCacheKey {
       eval_subject: subject,
       claim_hash: test_claim_claim_hash_digest(c: subject.claim),
-      interpretation_hash: test_claim_cache_interpretation_hash_pinned(subject: subject)
+      interpretation_hash: test_claim_cache_interpretation_hash(subject: subject)
     }
   }
 }
