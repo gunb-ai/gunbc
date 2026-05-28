@@ -1,10 +1,8 @@
 // src/v4/extdeps/languages/english.dag
 // Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms.
-// Consumes: std/node.dag (Symbol); std/grammar.dag; std/lexing.dag; std/collection.dag; std/model_core.dag; extdeps/languages/fidelity.dag.
-// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.  Wave-1 word rule accepts any identifier; vocabulary bounding is deferred to wave-2 (no UnknownVocabulary disposition declared until a closed vocabulary exists).
+// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
 // Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
-// Ledger: CP-3229-GREEN-TERMINAL.
-// 🟡
+// 🟡 feature:english-wave2-vocabulary — dissolve-on: closed vocabulary declared; english_token_word catch-all replaced with per-word keyword rules or typed word set.
 
 module v4.extdeps.languages.english
 
@@ -55,26 +53,15 @@ import v4.std.model_core {
 import v4.std.node { Symbol }
 
 
-// ---------------------------------------------------------------------------
-// Layer 0 — Structural carriers
-// ---------------------------------------------------------------------------
-
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Determiner forms modeled in the formal subset.
-// Wave-1 grammar mandates an article on every NP; NoDeterminer has no
-// production and is therefore not an arm here (same rule as sentence
-// forms — don't add arms before grammar authority exists).
-// DefiniteArticle ↔ english_token_definite_article ("the")
-// IndefiniteArticle ↔ english_token_indefinite_article ("a", "an")
-// Each arm maps to a distinct lex token class so parse→FormalNounPhrase
-// can populate the field from declared authority without guessing.
+// NoDeterminer absent: wave-1 grammar mandates an article on every NP.
+// DefiniteArticle ↔ english_token_definite_article; IndefiniteArticle ↔ english_token_indefinite_article.
 type Determiner
   = DefiniteArticle
   | IndefiniteArticle
 
 
 // 🟢 grounded.
-// Wave-1 NP: mandatory article + head noun (bare-NP not in wave-1 subset).
 type FormalNounPhrase {
   determiner: Determiner
   head: Symbol
@@ -82,18 +69,13 @@ type FormalNounPhrase {
 
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Each arm carries the shape that is valid for that sentence form.
-// Adverbial and intransitive forms are declared FailClosed for wave-1;
-// they are not arms here because there are no grammar productions for
-// them yet — modeling them as arms before the grammar exists would
-// misrepresent the subset boundary (M1 / P1 modeling faithfulness).
+// Adverbial/intransitive absent: no grammar productions for those forms in wave-1.
 type FormalSentence
   = SvoSentence   { subject: FormalNounPhrase, verb: Symbol, object: FormalNounPhrase }
   | CopulaSentence { subject: FormalNounPhrase, copula: Symbol, complement: FormalNounPhrase }
 
 
 // 🟢 grounded.
-// Top-level English LanguageModel fact-bundle: identity + grammar substrate.
 type EnglishLanguageModel {
   language_identity: Symbol
   core: ModelCore
@@ -103,31 +85,21 @@ type EnglishLanguageModel {
 
 
 // 🟢 grounded.
-// Lex rules fact-bundle for the formal subset.
 type EnglishLexRules {
   rules: LexRules
 }
 
 
 // 🟢 grounded.
-// Grammar productions fact-bundle for the formal subset.
 type EnglishGrammar {
   grammar: ParseGrammar
 }
 
 
-// ---------------------------------------------------------------------------
-// Layer 0b — Fidelity disposition
-// ---------------------------------------------------------------------------
-
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Arms declare only features with a clear wave-1 disposition.
-// Features deferred (no valid disposition in wave-1):
-//   UnknownVocabulary — word rule accepts any identifier; neither Modeled
-//     nor FailClosed is honest.  Deferred to wave-2 closed vocabulary.
-//   NounSpelling / VerbSpelling — no spelling-specific lex/grammar authority
-//     beyond the generic word rule; spelling is covered by FormalSubsetSvo /
-//     FormalSubsetCopula.  No distinct disposition to declare.
+// UnknownVocabulary / NounSpelling / VerbSpelling absent: wave-1 word rule
+// accepts any identifier — no valid disposition to declare until a closed
+// vocabulary exists (wave-2 gate above).
 type EnglishFidelityFeature
   = FormalSubsetSvo
   | FormalSubsetCopula
@@ -153,15 +125,7 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
 }
 
 
-// ---------------------------------------------------------------------------
-// Layer 1 — Token class symbols
-// ---------------------------------------------------------------------------
-
-// Wave-1 token classes.
-// Noun and verb are lexically identical (ident pattern); role is determined by
-// grammar position, so both map to english_token_word.
-// Definite ("the") and indefinite ("a", "an") articles are distinct lex classes
-// so Determiner arms have declared lex authority (no guessing at parse time).
+// Noun and verb are lexically identical; role is determined by grammar position.
 data english_token_word: Symbol = english_token_word
 data english_token_definite_article: Symbol = english_token_definite_article
 data english_token_indefinite_article: Symbol = english_token_indefinite_article
@@ -180,10 +144,6 @@ data english_surface_article: Symbol = english_surface_article
 data english_language_identity: Symbol = english_language_identity
 
 
-// ---------------------------------------------------------------------------
-// Layer 2a — Lex rules
-// ---------------------------------------------------------------------------
-
 fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
@@ -195,9 +155,7 @@ fn english_word_pattern() -> LexPattern {
   }
 }
 
-// Lex rule ordering follows std/lexing.dag §46 maximal-munch convention:
-// equal-length ties prefer the LATER rule, so the generic word catch-all
-// comes FIRST and keyword rules come AFTER — keywords win ties over word.
+// word first (catch-all); keywords after — later rule wins equal-length tie (std/lexing.dag §46).
 fn english_wave1_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
@@ -215,10 +173,6 @@ fn english_wave1_lex() -> LexRules {
 }
 
 
-// ---------------------------------------------------------------------------
-// Layer 2b — Grammar productions (SVO wave-1 probe + copula sentence)
-// ---------------------------------------------------------------------------
-
 fn english_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
@@ -227,9 +181,6 @@ fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExp
   Sequence { left: left, right: right }
 }
 
-// article_expr → definite_article | indefinite_article
-// Both Determiner arms have distinct token classes; Choice here gives the
-// grammar authority to populate either arm without guessing.
 fn english_article_expr() -> GrammarExpr {
   Choice {
     left: english_grammar_terminal(token_class: english_token_definite_article),
@@ -241,10 +192,6 @@ fn english_article_nonterminal() -> GrammarExpr {
   Nonterminal { production: english_production_article }
 }
 
-// svo_sentence → article word word article word period
-// Positions: [subj-det] [subj-head] [verb] [obj-det] [obj-head] [.]
-// Article positions reference the article nonterminal so FormalProduction
-// can mirror the grammar without creating a parallel terminal authority.
 fn english_svo_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
@@ -264,8 +211,6 @@ fn english_svo_sentence_expr() -> GrammarExpr {
   )
 }
 
-// copula_sentence → article word copula article word period
-// e.g. "the function is a handler."
 fn english_copula_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
     left: english_article_nonterminal(),
@@ -286,9 +231,6 @@ fn english_copula_sentence_expr() -> GrammarExpr {
 }
 
 fn english_wave1_grammar() -> ParseGrammar {
-  // article → definite_article | indefinite_article
-  // Declared as a proper nonterminal so FormalProduction rhs can reference
-  // it directly — no silent narrowing to a representative terminal.
   let article = GrammarProduction {
     name: english_production_article,
     expression: english_article_expr(),
@@ -304,8 +246,6 @@ fn english_wave1_grammar() -> ParseGrammar {
     expression: english_copula_sentence_expr(),
     emitted: grammar_atom(identity: english_surface_copula)
   }
-  // Top-level start production: sentence → svo_sentence | copula_sentence.
-  // Single start symbol ensures both arms are reachable from the grammar root.
   let sentence = GrammarProduction {
     name: english_production_sentence,
     expression: Choice {
@@ -324,10 +264,6 @@ fn english_wave1_grammar() -> ParseGrammar {
 }
 
 
-// ---------------------------------------------------------------------------
-// Layer 3 — ModelCore wave-1
-// ---------------------------------------------------------------------------
-
 fn english_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: [],
@@ -338,10 +274,6 @@ fn english_model_core_wave1() -> ModelCore {
   }
 }
 
-
-// ---------------------------------------------------------------------------
-// Layer 4 — Top-level wave-1 factory
-// ---------------------------------------------------------------------------
 
 fn english_language_model_wave1() -> EnglishLanguageModel {
   EnglishLanguageModel {
@@ -365,10 +297,6 @@ fn english_grammar_wave1() -> EnglishGrammar {
 }
 
 
-// ---------------------------------------------------------------------------
-// Layer 5 — Ingest schema + probe
-// ---------------------------------------------------------------------------
-
 fn english_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: english_wave1_lex(),
@@ -376,9 +304,6 @@ fn english_ingest_grammar_schema() -> GrammarSchema {
   }
 }
 
-// article → definite_article | indefinite_article
-// Two separate FormalProductions cover the two alternatives; the grammar
-// Choice and these formal productions share the same single authority.
 fn english_article_formal_production_definite() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: english_production_article),
@@ -421,12 +346,6 @@ fn english_copula_formal_production() -> FormalProduction {
   }
 }
 
-// Probe: "the function is a handler." tokenizes as:
-//   definite_article("the") word("function") copula("is")
-//   indefinite_article("a") word("handler") period(".")
-// which matches copula_sentence_expr exactly.
-// Out-of-subset prose must produce a Diagnostic, never a fabricated parse
-// (T-4.11 conformance claim).
 fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: english_ingest_grammar_schema(),
