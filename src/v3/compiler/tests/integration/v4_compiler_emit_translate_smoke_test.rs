@@ -556,6 +556,9 @@ fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
         "wasm_production_i64_numeric_literal",
         "wasm_production_f32_numeric_literal",
         "wasm_production_f64_numeric_literal",
+        "wasm_production_localidx",
+        "wasm_surface_localidx",
+        "wasm_localidx_validation_u32_range",
     ] {
         assert!(
             surface_declares_data(&module, required),
