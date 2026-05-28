@@ -1477,6 +1477,34 @@ fn kotlin_decimal_digit_or_separator_pattern() -> LexPattern {
   }
 }
 
+fn kotlin_nonzero_decimal_digit_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "1" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "2" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "3" },
+        right: ChoicePattern {
+          left: LiteralPattern { text: "4" },
+          right: ChoicePattern {
+            left: LiteralPattern { text: "5" },
+            right: ChoicePattern {
+              left: LiteralPattern { text: "6" },
+              right: ChoicePattern {
+                left: LiteralPattern { text: "7" },
+                right: ChoicePattern {
+                  left: LiteralPattern { text: "8" },
+                  right: LiteralPattern { text: "9" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 fn kotlin_binary_digit_or_separator_pattern() -> LexPattern {
   ChoicePattern {
     left: LiteralPattern { text: "0" },
@@ -1488,11 +1516,17 @@ fn kotlin_binary_digit_or_separator_pattern() -> LexPattern {
 }
 
 fn kotlin_decimal_literal_pattern() -> LexPattern {
-  SequencePattern {
-    left: CharClassPattern { class: DigitChar },
-    right: SequencePattern {
-      left: RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
+  ChoicePattern {
+    left: SequencePattern {
+      left: LiteralPattern { text: "0" },
       right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+    },
+    right: SequencePattern {
+      left: kotlin_nonzero_decimal_digit_pattern(),
+      right: SequencePattern {
+        left: RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
+        right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+      }
     }
   }
 }
