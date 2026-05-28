@@ -62,6 +62,8 @@ This section is the single source of truth for v4-scaffold-vs-questionnaire stat
 
 **Verdict**: v4 scaffold PASSES the questionnaire's scaffold-completeness bar. Every promise has an owner + task; zero unresolved OPERATOR-DECISION-REQUIRED; the 4 gaps found are closed. What remains is *implementation* (the 28 XL tasks) under an already-complete substrate allocation — not missing structure.
 
+**Implementation dispatch (2026-05-28):** per-promise PROVEN/GAP progress for ship interrogation is not duplicated in this file. Live T-15 close predicates, two-lane dispatch, and operator queue are authoritative in `src/v4/TASKS.md` **Close-status** under T-15 (single ledger — no parallel status doc).
+
 ---
 
 ## §1. The dimension promises
