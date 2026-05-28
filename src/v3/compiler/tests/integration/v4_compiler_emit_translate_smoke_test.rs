@@ -58,6 +58,19 @@ const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
+const MVP1_PYTHON_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_python_add_translate.dag");
+const MVP1_PYTHON_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_python_add_translate.dag";
+const MVP1_GO_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_go_add_translate.dag");
+const MVP1_GO_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_go_add_translate.dag";
+const MVP1_CPP_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_cpp_add_translate.dag");
+const MVP1_CPP_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_cpp_add_translate.dag";
+const MVP1_TYPESCRIPT_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_typescript_add_translate.dag");
+const MVP1_TYPESCRIPT_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -782,6 +795,46 @@ fn v4_mvp1_rust_add_claim_imports_translate_and_emit() {
         import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
         "{MVP1_CLAIM_PATH}: claim must import emit stage"
     );
+}
+
+#[test]
+fn v4_mvp1_python_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_go_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_GO_CLAIM_DAG, MVP1_GO_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_cpp_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_CPP_CLAIM_DAG, MVP1_CPP_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_typescript_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_shape_a_add_claims_import_compile_inferred() {
+    for (source, path) in [
+        (MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH),
+        (MVP1_GO_CLAIM_DAG, MVP1_GO_CLAIM_PATH),
+        (MVP1_CPP_CLAIM_DAG, MVP1_CPP_CLAIM_PATH),
+        (MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH),
+    ] {
+        let module = parse_module(source, path);
+        assert!(
+            import_includes_name(&module, &["v4", "compiler", "compile"], "compile_inferred"),
+            "{path}: grammar-inverse claim must import compile_inferred"
+        );
+        assert!(
+            import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
+            "{path}: grammar-inverse claim must import emit stage"
+        );
+    }
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {
