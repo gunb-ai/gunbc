@@ -11,7 +11,6 @@ module v4.extdeps.languages.python
 
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.grammar {
-<<<<<<< HEAD
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -30,15 +29,7 @@ import v4.std.grammar {
   Terminal,
   grammar_carries_symbol,
   grammar_empty_sync_tokens,
-  grammar_production_to_node
-=======
-  FormalGrammarSymbol,
-  FormalNonterminal,
-  FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
   formal_production_to_node
->>>>>>> origin/main
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -944,7 +935,6 @@ fn python_mvp1_serialize_source_node() -> Node {
   }
 }
 
-<<<<<<< HEAD
 // --- FormalProduction authority (flat rhs) + GrammarExpr operational shim (parse.dag) ---
 
 fn python_formal_sym_terminal(symbol: Symbol) -> FormalGrammarSymbol {
@@ -1086,49 +1076,26 @@ fn python_formal_productions_to_grammar_production(
   }
 }
 
+fn python_formal_production_mvp1_fn_add() -> FormalProduction {
+  python_formal_authority_prod(
+    lhs: python_production_mvp1_fn_add,
+    rhs: python_formal_mvp1_fn_add_rhs()
+  )
+}
+
 fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: python_production_mvp1_fn_add,
     expression: python_formal_productions_to_grammar_expr(
-      prods: [
-        python_formal_authority_prod(
-          lhs: python_production_mvp1_fn_add,
-          rhs: python_formal_mvp1_fn_add_rhs()
-        )
-      ]
+      prods: [python_formal_production_mvp1_fn_add()]
     ),
     emitted: python_mvp1_emitted_add_fn_node()
-=======
-fn python_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence {
-    terminal: FormalTerminal { identity: token_class }
-  }
-}
-
-fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
-  fold_list(
-    xs: python_mvp1_concrete_tokens(),
-    empty: Empty,
-    cons: fn(acc, token) {
-      list_snoc_item(
-        xs: acc,
-        item: python_formal_terminal_symbol(token_class: python_concrete_token_class(token: token))
-      )
-    }
-  )
-}
-
-fn python_grammar_production_mvp1_fn_add() -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: python_production_mvp1_fn_add },
-    rhs: python_formal_rhs_from_token_classes()
->>>>>>> origin/main
   }
 }
 
 fn python_mvp1_grammar_relation_row() -> PythonGrammarRelationRow {
   PythonGrammarRelationRow {
-    production: python_grammar_production_mvp1_fn_add(),
+    production: python_formal_production_mvp1_fn_add(),
     emitted: python_mvp1_emitted_add_fn_node(),
     tokens: python_mvp1_concrete_tokens()
   }

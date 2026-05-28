@@ -423,21 +423,16 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         "{PYTHON_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
     );
     assert!(
-<<<<<<< HEAD
-        surface_declares_type(&module, "PythonLanguageModel"),
-        "{PYTHON_LANGUAGE_PATH}: must declare the LanguageModel carrier"
+        surface_declares_fn(&module, "python_formal_mvp1_fn_add_rhs"),
+        "{PYTHON_LANGUAGE_PATH}: must build MVP-1 grammar production RHS as a flat formal-symbol list"
     );
     assert!(
-        surface_declares_fn(&module, "python_language_model_wave1"),
-        "{PYTHON_LANGUAGE_PATH}: must expose wave-1 LanguageModel with lex/grammar data"
+        surface_declares_fn(&module, "python_formal_productions_to_grammar_expr"),
+        "{PYTHON_LANGUAGE_PATH}: must derive GrammarExpr from FormalProduction authority (operational parse shim)"
     );
     assert!(
-        surface_declares_fn(&module, "python_wave1_grammar"),
-        "{PYTHON_LANGUAGE_PATH}: must expose ModeledGrammar for bidirectional ingest"
-    );
-=======
-        surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
-        "{PYTHON_LANGUAGE_PATH}: must build grammar production RHS as a flat formal-symbol list"
+        surface_declares_fn(&module, "python_formal_production_mvp1_fn_add"),
+        "{PYTHON_LANGUAGE_PATH}: must expose FormalProduction authority for MVP-1 relation rows"
     );
     for name in [
         "python_formal_nonterminal_node",
@@ -452,6 +447,18 @@ fn v4_python_language_model_declares_t11_translation_rules() {
             "{PYTHON_LANGUAGE_PATH}: Python must not mirror std FormalProduction projection helper `{name}`"
         );
     }
+    assert!(
+        surface_declares_type(&module, "PythonLanguageModel"),
+        "{PYTHON_LANGUAGE_PATH}: must declare the LanguageModel carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_language_model_wave1"),
+        "{PYTHON_LANGUAGE_PATH}: must expose wave-1 LanguageModel with lex/grammar data"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_wave1_grammar"),
+        "{PYTHON_LANGUAGE_PATH}: must expose ModeledGrammar for bidirectional ingest"
+    );
 }
 
 #[test]
@@ -504,7 +511,6 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
             "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must not declare faithful algebra inhabitance for deferred complex/singleton facts via `{name}`"
         );
     }
->>>>>>> origin/main
 }
 
 #[test]
