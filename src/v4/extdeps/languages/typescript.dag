@@ -78,13 +78,13 @@ import v4.std.node {
 import v4.std.logic { Bool }
 import v4.std.algebra {
   BooleanAlgebra,
-  approximate_field_node,
-  boolean_algebra_node,
+  approximate_field_type_node,
+  boolean_algebra_type_node,
   Empty,
   fold_list,
   list_append,
   list_snoc_item,
-  ordered_ring_node
+  ordered_ring_type_node
 }
 import v4.std.text { String }
 
@@ -952,7 +952,7 @@ fn ts_bool_algebra_witness_node() -> Node {
 fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = ts_number_inhabitant_node(id: ts_inhabitant_number, facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: approximate_field_node(inhabitant: inhabitant),
+    algebra: approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ts_number_algebra_witness_node(facts: facts)
   }
@@ -961,7 +961,7 @@ fn ts_number_algebra_inhabitance(facts: TsNumberPrimitiveFacts) -> AlgebraInhabi
 fn ts_bigint_algebra_inhabitance(facts: TsBigIntPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = ts_bigint_inhabitant_node(id: ts_inhabitant_bigint, facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
+    algebra: ordered_ring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ts_bigint_algebra_witness_node(facts: facts)
   }
@@ -970,7 +970,7 @@ fn ts_bigint_algebra_inhabitance(facts: TsBigIntPrimitiveFacts) -> AlgebraInhabi
 fn ts_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = ts_inhabitant_boolean_node()
   AlgebraInhabitanceDecl {
-    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: ts_bool_algebra_witness_node()
   }
