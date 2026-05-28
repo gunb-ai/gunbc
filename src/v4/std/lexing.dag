@@ -1,10 +1,9 @@
 // src/v4/std/lexing.dag
 // Scope: canonical lexing types — Token, Lexeme, LexPattern, LexRule, LexRuleSet.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Status: substrate home. Simplified placeholder shapes: LexPattern here is {text:String} (incumbent in
-//         v4.compiler.tokenize:33-44 is 11-variant coproduct); LexRule is one record (incumbent: TokenRule|TriviaRule);
-//         Token omits file/start/end spans. 🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when the
-//         richer incumbent shapes relocate here (replacing these placeholders) and v4.compiler.tokenize imports from v4.std.lexing.
+// Status: substrate home. LexPattern is a simplified placeholder (see 🟡 below); incumbent structural
+//         forms remain in v4.compiler.tokenize (LexPattern 11-variant coproduct:33-44, LexRule sum, Token+spans).
+//         🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when richer shapes relocate here.
 
 
 module v4.std.lexing
@@ -17,14 +16,15 @@ import v4.std.text { String }
 
 type Lexeme = String
 
+// 🟡 feature:std-lexing-regex-substrate — {text:String} placeholder; structural carrier is the 11-variant LexPattern coproduct in v4.compiler.tokenize:33-44; do not retire T-6 LexPattern until a proper algebraic carrier lands here.
 type LexPattern {
   text: String
 }
 
-type LexRule {
-  pattern: LexPattern
-  token_class: Symbol
-}
+// 🟡 coproduct dissolution — mirrors T-6 TokenRule|TriviaRule shape (v4.compiler.tokenize:48-50).
+type LexRule
+  = TokenRule { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule { pattern: LexPattern }
 
 type LexRuleSet {
   rules: List<LexRule>
@@ -33,4 +33,7 @@ type LexRuleSet {
 type Token {
   class: Symbol
   lexeme: Lexeme
+  file: Symbol
+  start: Int
+  end: Int
 }
