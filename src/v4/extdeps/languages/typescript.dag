@@ -1292,6 +1292,7 @@ type TsStringPrimitiveFacts {
   surface_spelling: Symbol
   encoding: Symbol
   std_projection: Symbol
+  code_unit_inhabitant: Symbol
 }
 
 data ts_surface_spelling_string: Symbol = ts_surface_spelling_string
@@ -1300,12 +1301,14 @@ data ts_std_projection_string: Symbol = ts_std_projection_string
 
 data ts_inhabitant_string: Symbol = ts_inhabitant_string
 data ts_inhabitant_field_string: Symbol = ts_inhabitant_field_string
+data ts_inhabitant_utf16_code_unit: Symbol = ts_inhabitant_utf16_code_unit
 data ts_witness_string_free_monoid: Symbol = ts_witness_string_free_monoid
 
 data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
   surface_spelling: ts_surface_spelling_string,
   encoding: ts_repr_string_utf16_code_unit_sequence,
-  std_projection: ts_std_projection_string
+  std_projection: ts_std_projection_string,
+  code_unit_inhabitant: ts_inhabitant_utf16_code_unit
 }
 
 fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
@@ -1364,8 +1367,9 @@ fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
 
 fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = ts_string_inhabitant_node(id: ts_inhabitant_string, facts: facts)
+  let code_unit = ts_inhabitant_atom(id: facts.code_unit_inhabitant)
   AlgebraInhabitanceDecl {
-    algebra: free_monoid_type_node(inhabitant: inhabitant),
+    algebra: free_monoid_type_node(inhabitant: code_unit),
     inhabitant: inhabitant,
     witness: ts_string_algebra_witness_node(facts: facts)
   }
@@ -1387,12 +1391,12 @@ fn ts_model_core_inhabitance_decls_wave2b() -> List<AlgebraInhabitanceDecl> {
 fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<Symbol, Node> {
   let m0 = empty_map()
   let m1 = map_insert(
-    map: m0,
+    m: m0,
     key: primitive_fact_axis_surface_spelling,
     value: ts_inhabitant_atom(id: facts.surface_spelling)
   )
   let m2 = map_insert(
-    map: m1,
+    m: m1,
     key: primitive_fact_axis_encoding,
     value: ts_inhabitant_atom(id: facts.encoding)
   )
