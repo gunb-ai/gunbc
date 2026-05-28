@@ -11,6 +11,25 @@ module v4.extdeps.languages.verilog
 
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v4.std.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
 
 
 
@@ -773,4 +792,113 @@ type VerilogModule
 type VerilogCost {
   gate_cost: Nat
   area_cost: Nat
+}
+
+
+data verilog_token_kw_module: Symbol = verilog_token_kw_module
+data verilog_token_kw_endmodule: Symbol = verilog_token_kw_endmodule
+data verilog_token_ident: Symbol = verilog_token_ident
+data verilog_token_semicolon: Symbol = verilog_token_semicolon
+data verilog_production_source_text_module: Symbol = verilog_production_source_text_module
+data verilog_surface_module_decl: Symbol = verilog_surface_module_decl
+
+
+fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn verilog_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn verilog_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+
+fn verilog_identifier_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+
+fn verilog_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        verilog_lex_token(token_class: verilog_token_ident, pattern: verilog_identifier_pattern()),
+        verilog_lex_token(token_class: verilog_token_kw_module, pattern: KeywordPattern { text: "module" }),
+        verilog_lex_token(token_class: verilog_token_kw_endmodule, pattern: KeywordPattern { text: "endmodule" }),
+        verilog_lex_token(token_class: verilog_token_semicolon, pattern: LiteralPattern { text: ";" })
+      ]
+    }
+  }
+}
+
+
+fn verilog_source_text_module_expr() -> GrammarExpr {
+  verilog_grammar_sequence(
+    left: verilog_grammar_terminal(token_class: verilog_token_kw_module),
+    right: verilog_grammar_sequence(
+      left: verilog_grammar_terminal(token_class: verilog_token_ident),
+      right: verilog_grammar_sequence(
+        left: verilog_grammar_terminal(token_class: verilog_token_semicolon),
+        right: verilog_grammar_terminal(token_class: verilog_token_kw_endmodule)
+      )
+    )
+  )
+}
+
+
+fn verilog_wave1_grammar() -> ParseGrammar {
+  let start = GrammarProduction {
+    name: verilog_production_source_text_module,
+    expression: verilog_source_text_module_expr(),
+    emitted: grammar_atom(identity: verilog_surface_module_decl)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: verilog_production_source_text_module,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn verilog_source_text_module_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: verilog_production_source_text_module),
+    rhs: [
+      grammar_formal_terminal(identity: verilog_token_kw_module),
+      grammar_formal_terminal(identity: verilog_token_ident),
+      grammar_formal_terminal(identity: verilog_token_semicolon),
+      grammar_formal_terminal(identity: verilog_token_kw_endmodule)
+    ]
+  }
+}
+
+
+fn verilog_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: verilog_wave1_lex(),
+    grammar: verilog_wave1_grammar()
+  }
+}
+
+
+fn verilog_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: verilog_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "module m; endmodule",
+      production: verilog_source_text_module_formal_production(),
+      expected_parse_surface: grammar_atom(identity: verilog_surface_module_decl)
+    }
+  }
 }
