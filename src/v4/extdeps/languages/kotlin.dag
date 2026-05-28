@@ -43,7 +43,6 @@ import v4.std.lexing {
   StringTextChar,
   TokenRule,
   TriviaRule,
-  WhitespaceChar,
   lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -1710,46 +1709,89 @@ fn kotlin_grammar_call_expr() -> GrammarExpr {
   )
 }
 
-fn kotlin_grammar_binary_operator_expr() -> GrammarExpr {
+fn kotlin_grammar_equality_operator_expr() -> GrammarExpr {
   kotlin_grammar_choice(
-    left: kotlin_grammar_terminal(token_class: kotlin_token_plus),
+    left: kotlin_grammar_terminal(token_class: kotlin_token_eq_eq),
+    right: kotlin_grammar_terminal(token_class: kotlin_token_bang_eq)
+  )
+}
+
+fn kotlin_grammar_comparison_operator_expr() -> GrammarExpr {
+  kotlin_grammar_choice(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_lt),
     right: kotlin_grammar_choice(
-      left: kotlin_grammar_terminal(token_class: kotlin_token_minus),
+      left: kotlin_grammar_terminal(token_class: kotlin_token_gt),
       right: kotlin_grammar_choice(
-        left: kotlin_grammar_terminal(token_class: kotlin_token_star),
-        right: kotlin_grammar_choice(
-          left: kotlin_grammar_terminal(token_class: kotlin_token_slash),
-          right: kotlin_grammar_choice(
-            left: kotlin_grammar_terminal(token_class: kotlin_token_percent),
-            right: kotlin_grammar_choice(
-              left: kotlin_grammar_terminal(token_class: kotlin_token_eq_eq),
-              right: kotlin_grammar_choice(
-                left: kotlin_grammar_terminal(token_class: kotlin_token_bang_eq),
-                right: kotlin_grammar_choice(
-                  left: kotlin_grammar_terminal(token_class: kotlin_token_lt),
-                  right: kotlin_grammar_choice(
-                    left: kotlin_grammar_terminal(token_class: kotlin_token_gt),
-                    right: kotlin_grammar_choice(
-                      left: kotlin_grammar_terminal(token_class: kotlin_token_lt_eq),
-                      right: kotlin_grammar_terminal(token_class: kotlin_token_gt_eq)
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
+        left: kotlin_grammar_terminal(token_class: kotlin_token_lt_eq),
+        right: kotlin_grammar_terminal(token_class: kotlin_token_gt_eq)
       )
     )
   )
 }
 
+fn kotlin_grammar_additive_operator_expr() -> GrammarExpr {
+  kotlin_grammar_choice(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_plus),
+    right: kotlin_grammar_terminal(token_class: kotlin_token_minus)
+  )
+}
+
+fn kotlin_grammar_multiplicative_operator_expr() -> GrammarExpr {
+  kotlin_grammar_choice(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_star),
+    right: kotlin_grammar_choice(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_slash),
+      right: kotlin_grammar_terminal(token_class: kotlin_token_percent)
+    )
+  )
+}
+
 fn kotlin_grammar_binary_expr() -> GrammarExpr {
+  kotlin_grammar_nonterminal(production: kotlin_production_equality_expr)
+}
+
+fn kotlin_grammar_equality_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_nonterminal(production: kotlin_production_comparison_expr),
+    right: kotlin_grammar_repeat(
+      element: kotlin_grammar_sequence(
+        left: kotlin_grammar_equality_operator_expr(),
+        right: kotlin_grammar_nonterminal(production: kotlin_production_comparison_expr)
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_comparison_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_nonterminal(production: kotlin_production_additive_expr),
+    right: kotlin_grammar_repeat(
+      element: kotlin_grammar_sequence(
+        left: kotlin_grammar_comparison_operator_expr(),
+        right: kotlin_grammar_nonterminal(production: kotlin_production_additive_expr)
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_additive_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_nonterminal(production: kotlin_production_multiplicative_expr),
+    right: kotlin_grammar_repeat(
+      element: kotlin_grammar_sequence(
+        left: kotlin_grammar_additive_operator_expr(),
+        right: kotlin_grammar_nonterminal(production: kotlin_production_multiplicative_expr)
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_multiplicative_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: kotlin_production_call_expr),
     right: kotlin_grammar_repeat(
       element: kotlin_grammar_sequence(
-        left: kotlin_grammar_binary_operator_expr(),
+        left: kotlin_grammar_multiplicative_operator_expr(),
         right: kotlin_grammar_nonterminal(production: kotlin_production_call_expr)
       )
     )
@@ -1855,7 +1897,10 @@ fn kotlin_grammar_stmt_expr() -> GrammarExpr {
 }
 
 fn kotlin_grammar_stmt_separator_expr() -> GrammarExpr {
-  kotlin_grammar_terminal(token_class: kotlin_token_semicolon)
+  kotlin_grammar_choice(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_semicolon),
+    right: kotlin_grammar_terminal(token_class: kotlin_token_nl)
+  )
 }
 
 fn kotlin_grammar_stmt_tail_expr() -> GrammarExpr {
@@ -1928,6 +1973,10 @@ fn kotlin_wave1_grammar_root() -> GrammarRoot {
   let while_stmt = kotlin_grammar_production_while_stmt()
   let expr = kotlin_grammar_production_expr()
   let binary_expr = kotlin_grammar_production_binary_expr()
+  let equality_expr = kotlin_grammar_production_equality_expr()
+  let comparison_expr = kotlin_grammar_production_comparison_expr()
+  let additive_expr = kotlin_grammar_production_additive_expr()
+  let multiplicative_expr = kotlin_grammar_production_multiplicative_expr()
   let call_expr = kotlin_grammar_production_call_expr()
   let primary_expr = kotlin_grammar_production_primary_expr()
   GrammarRoot {
@@ -1946,6 +1995,10 @@ fn kotlin_wave1_grammar_root() -> GrammarRoot {
       while_stmt,
       expr,
       binary_expr,
+      equality_expr,
+      comparison_expr,
+      additive_expr,
+      multiplicative_expr,
       call_expr,
       primary_expr
     ],
