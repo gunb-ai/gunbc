@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/wasm.dag
 // Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).
-// Owns: WasmIntWidth, WasmFloatWidth, WasmScalar, WasmIntegerPrimitiveFacts, WasmFloatPrimitiveFacts, WasmLanguageModel, WasmConcreteSyntaxToken, WasmGrammarRelationRow, wasm_language_model_surface_id, wasm_std_projection_i32, wasm_std_projection_i64, wasm_std_projection_f32, wasm_std_projection_f64, wasm_surface_spelling_i32, wasm_surface_spelling_i64, wasm_surface_spelling_f32, wasm_surface_spelling_f64, wasm_ieee754_binary32, wasm_ieee754_binary64, wasm_repr_sign_agnostic_modular, wasm_repr_modular_wrap, wasm_inhabitant_i32, wasm_inhabitant_i64, wasm_inhabitant_f32, wasm_inhabitant_f64, wasm_inhabitant_field_i32, wasm_inhabitant_field_i64, wasm_inhabitant_field_f32, wasm_inhabitant_field_f64, wasm_facts_field_surface_spelling, wasm_facts_field_width, wasm_facts_field_std_projection, wasm_facts_field_scalar_classifier, wasm_facts_field_ieee754_binary, wasm_scalar_field_classifier, wasm_scalar_field_width, wasm_tag_sign_agnostic_modular, wasm_tag_bits32, wasm_tag_bits64, wasm_tag_modular_wrap, wasm_tag_scalar_int, wasm_tag_scalar_float, wasm_inhabitant_field_atom, wasm_inhabitant_field_facts, wasm_token_lparen, wasm_token_kw_func, wasm_token_ident, wasm_token_param_list, wasm_token_result, wasm_token_local_get, wasm_token_local_idx_0, wasm_token_local_idx_1, wasm_token_i32_add, wasm_production_mvp1_fn_add, wasm_surface_fn_item, wasm_surface_type_i32, wasm_surface_bin_add, wasm_binding_fn_add, wasm_relation_rule_mvp1_fn_add, wasm_mvp1_source_literal, wasm_mvp1_source_text_field, wasm_mvp1_source_grammar_field, wasm_mvp1_concrete_tokens, wasm_mvp1_source_text, wasm_facts_i32, wasm_facts_i64, wasm_facts_f32, wasm_facts_f64, wasm_integer_facts_catalog, wasm_float_facts_catalog, wasm_inhabitant_atom, wasm_int_width_node, wasm_float_width_node, wasm_scalar_node, wasm_integer_facts_node, wasm_float_facts_node, wasm_integer_inhabitant_node, wasm_float_inhabitant_node, wasm_inhabitant_i32_node, wasm_inhabitant_i64_node, wasm_inhabitant_f32_node, wasm_inhabitant_f64_node, wasm_named_edge, wasm_declared_inhabitants_root, wasm_mvp1_selection_policy_node, wasm_mvp1_emitted_add_fn_node, wasm_mvp1_source_text_authority, wasm_concrete_token_class, wasm_concrete_token_node, wasm_mvp1_positional_token_edge, wasm_mvp1_positional_edges_from_token_classes, wasm_mvp1_serialize_source_prefix_edges, wasm_mvp1_serialize_source_children, wasm_mvp1_serialize_source_node, wasm_grammar_terminal, wasm_grammar_sequence_fold_step, wasm_grammar_sequence_from_token_classes, wasm_mvp1_grammar_relation_row, wasm_relation_token_edges, wasm_grammar_relation_row_node, wasm_mvp1_translation_rules_node, wasm_mvp1_target_model_node, wasm_mvp1_binding_spellings, wasm_mvp1_target_model, wasm_lex_rule, wasm_dollar_ident_lex_pattern, wasm_ident_lex_rule, wasm_wave1_lex_rules, wasm_wave1_lex, wasm_grammar_atom, wasm_grammar_production_mvp1_fn_add, wasm_wave1_grammar_root, wasm_wave1_grammar, wasm_wave1_lex_token_symbol, wasm_integer_catalog_surface_symbol_step, wasm_float_catalog_surface_symbol_step, wasm_integer_catalog_surface_symbol, wasm_float_catalog_surface_symbol, wasm_catalog_surface_symbol, wasm_language_model_canonical_symbols, wasm_integer_spec_facts, wasm_float_spec_facts, wasm_primitive_bundle_from_integer_facts, wasm_primitive_bundle_from_float_facts, wasm_primitive_bundles_from_integer_catalog, wasm_primitive_bundles_from_float_catalog, wasm_wave1_primitive_fact_bundles, wasm_model_core_wave1, wasm_language_model_wave1
+// Owns: WasmIntWidth, WasmFloatWidth, WasmScalar, WasmIntegerPrimitiveFacts, WasmFloatPrimitiveFacts, WasmLanguageModel, WasmConcreteSyntaxToken, WasmGrammarRelationRow, wasm_language_model_surface_id, wasm_std_projection_i32, wasm_std_projection_i64, wasm_std_projection_f32, wasm_std_projection_f64, wasm_surface_spelling_i32, wasm_surface_spelling_i64, wasm_surface_spelling_f32, wasm_surface_spelling_f64, wasm_ieee754_binary32, wasm_ieee754_binary64, wasm_repr_sign_agnostic_modular, wasm_repr_modular_wrap, wasm_inhabitant_i32, wasm_inhabitant_i64, wasm_inhabitant_f32, wasm_inhabitant_f64, wasm_inhabitant_field_i32, wasm_inhabitant_field_i64, wasm_inhabitant_field_f32, wasm_inhabitant_field_f64, wasm_facts_field_surface_spelling, wasm_facts_field_width, wasm_facts_field_std_projection, wasm_facts_field_scalar_classifier, wasm_facts_field_ieee754_binary, wasm_scalar_field_classifier, wasm_scalar_field_width, wasm_tag_sign_agnostic_modular, wasm_tag_bits32, wasm_tag_bits64, wasm_tag_modular_wrap, wasm_tag_scalar_int, wasm_tag_scalar_float, wasm_inhabitant_field_atom, wasm_inhabitant_field_facts, wasm_token_lparen, wasm_token_kw_func, wasm_token_ident, wasm_token_param_list, wasm_token_result, wasm_token_local_get, wasm_token_local_idx_0, wasm_token_local_idx_1, wasm_token_i32_add, wasm_production_mvp1_fn_add, wasm_surface_fn_item, wasm_surface_type_i32, wasm_surface_bin_add, wasm_binding_fn_add, wasm_relation_rule_mvp1_fn_add, wasm_mvp1_source_literal, wasm_mvp1_source_text_field, wasm_mvp1_source_grammar_field, wasm_mvp1_concrete_tokens, wasm_mvp1_source_text, wasm_facts_i32, wasm_facts_i64, wasm_facts_f32, wasm_facts_f64, wasm_integer_facts_catalog, wasm_float_facts_catalog, wasm_inhabitant_atom, wasm_int_width_node, wasm_float_width_node, wasm_scalar_node, wasm_integer_facts_node, wasm_float_facts_node, wasm_integer_inhabitant_node, wasm_float_inhabitant_node, wasm_inhabitant_i32_node, wasm_inhabitant_i64_node, wasm_inhabitant_f32_node, wasm_inhabitant_f64_node, wasm_named_edge, wasm_declared_inhabitants_root, wasm_mvp1_selection_policy_node, wasm_mvp1_emitted_add_fn_node, wasm_mvp1_source_text_authority, wasm_concrete_token_class, wasm_concrete_token_node, wasm_mvp1_positional_token_edge, wasm_mvp1_positional_edges_from_token_classes, wasm_mvp1_serialize_source_prefix_edges, wasm_mvp1_serialize_source_children, wasm_mvp1_serialize_source_node, wasm_grammar_terminal, wasm_grammar_sequence_fold_step, wasm_grammar_sequence_from_token_classes, wasm_mvp1_grammar_relation_row, wasm_relation_token_edges, wasm_grammar_relation_row_node, wasm_mvp1_translation_rules_node, wasm_mvp1_target_model_node, wasm_mvp1_binding_spellings, wasm_mvp1_target_model, wasm_lex_rule, wasm_dollar_ident_lex_pattern, wasm_ident_lex_rule, wasm_wave1_lex_rules, wasm_wave1_lex, wasm_grammar_atom, wasm_grammar_production_mvp1_fn_add, wasm_wave1_grammar_root, wasm_wave1_grammar, wasm_wave1_lex_token_symbol, wasm_integer_catalog_surface_symbol_step, wasm_float_catalog_surface_symbol_step, wasm_integer_catalog_surface_symbol, wasm_float_catalog_surface_symbol, wasm_catalog_surface_symbol, wasm_language_model_canonical_symbols, wasm_integer_spec_facts, wasm_float_spec_facts, wasm_primitive_bundle_from_integer_facts, wasm_primitive_bundle_from_float_facts, wasm_primitive_bundles_from_integer_catalog, wasm_primitive_bundles_from_float_catalog, wasm_wave1_primitive_fact_bundles, wasm_model_core_wave1, wasm_language_model_wave1, wasm_token_kw_module, wasm_token_kw_export, wasm_token_kw_call, wasm_token_kw_block, wasm_token_kw_loop, wasm_token_kw_if, wasm_token_kw_end, wasm_token_kw_return, wasm_token_kw_local_set, wasm_token_kw_local_tee, wasm_token_i32_add_instr, wasm_token_i32_sub, wasm_token_i32_mul, wasm_token_i32_const, wasm_token_i64_add, wasm_token_i64_sub, wasm_token_i64_mul, wasm_token_i64_const, wasm_token_f32_add, wasm_token_f32_mul, wasm_token_f64_add, wasm_token_f64_mul, wasm_token_i32_load, wasm_token_i32_store, wasm_token_rparen, wasm_token_string_lit, wasm_token_nat_lit, wasm_binding_export_name, wasm_production_wave2_module, wasm_production_wave2_func, wasm_production_wave2_export, wasm_production_wave2_func_ref, wasm_surface_module_item, wasm_surface_export_item, wasm_surface_func_ref, wasm_relation_rule_wave2_module, wasm_wave2_source_literal, wasm_wave2_source_text, wasm_wave2_string_lit_lex_rule, wasm_wave2_nat_lit_lex_rule, wasm_wave2_lex_rules, wasm_wave2_lex, wasm_wave2_grammar_term, wasm_wave2_grammar_nonterm, wasm_wave2_grammar_seq, wasm_grammar_production_wave2_func, wasm_grammar_production_wave2_func_ref, wasm_grammar_production_wave2_export, wasm_grammar_production_wave2_module, wasm_wave2_grammar_root, wasm_wave2_grammar, wasm_wave2_lex_token_symbol, wasm_language_model_canonical_symbols_wave2, wasm_wave2_binding_spellings, wasm_language_model_wave2
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
+// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-3; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition). Wave 2a: module wrapper, export clause, core numeric/control/memory instruction lex rules and grammar productions added (T-4.17).
 // Anchor: https://webassembly.github.io/spec/core/types.html#number-types
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
@@ -875,6 +875,332 @@ fn wasm_language_model_wave1() -> WasmLanguageModel {
     grammar: wasm_wave1_grammar(),
     language_identity: wasm_language_model_surface_id,
     canonical_symbols: wasm_language_model_canonical_symbols(),
+    core: wasm_model_core_wave1()
+  }
+}
+
+// ── Wave 2a: module/instruction lex/grammar data ─────────────────────────────
+// Anchor: https://webassembly.github.io/spec/core/text/index.html
+// Status: 🟡 Wave 2a — module wrapper, export clause, core numeric instructions,
+//         control (block/loop/if/end/call/return), local.set/tee, memory load/store.
+//         Wave 2b (type deepening) gated on T-2 Node constructors.
+
+// ── Token class symbols ───────────────────────────────────────────────────────
+
+data wasm_token_kw_module: Symbol = wasm_token_kw_module
+data wasm_token_kw_export: Symbol = wasm_token_kw_export
+data wasm_token_kw_call: Symbol = wasm_token_kw_call
+data wasm_token_kw_block: Symbol = wasm_token_kw_block
+data wasm_token_kw_loop: Symbol = wasm_token_kw_loop
+data wasm_token_kw_if: Symbol = wasm_token_kw_if
+data wasm_token_kw_end: Symbol = wasm_token_kw_end
+data wasm_token_kw_return: Symbol = wasm_token_kw_return
+data wasm_token_kw_local_set: Symbol = wasm_token_kw_local_set
+data wasm_token_kw_local_tee: Symbol = wasm_token_kw_local_tee
+data wasm_token_i32_add_instr: Symbol = wasm_token_i32_add_instr
+data wasm_token_i32_sub: Symbol = wasm_token_i32_sub
+data wasm_token_i32_mul: Symbol = wasm_token_i32_mul
+data wasm_token_i32_const: Symbol = wasm_token_i32_const
+data wasm_token_i64_add: Symbol = wasm_token_i64_add
+data wasm_token_i64_sub: Symbol = wasm_token_i64_sub
+data wasm_token_i64_mul: Symbol = wasm_token_i64_mul
+data wasm_token_i64_const: Symbol = wasm_token_i64_const
+data wasm_token_f32_add: Symbol = wasm_token_f32_add
+data wasm_token_f32_mul: Symbol = wasm_token_f32_mul
+data wasm_token_f64_add: Symbol = wasm_token_f64_add
+data wasm_token_f64_mul: Symbol = wasm_token_f64_mul
+data wasm_token_i32_load: Symbol = wasm_token_i32_load
+data wasm_token_i32_store: Symbol = wasm_token_i32_store
+data wasm_token_rparen: Symbol = wasm_token_rparen
+data wasm_token_string_lit: Symbol = wasm_token_string_lit
+data wasm_token_nat_lit: Symbol = wasm_token_nat_lit
+
+// ── Binding, production, and surface symbols ──────────────────────────────────
+
+data wasm_binding_export_name: Symbol = wasm_binding_export_name
+
+data wasm_production_wave2_module: Symbol = wasm_production_wave2_module
+data wasm_production_wave2_func: Symbol = wasm_production_wave2_func
+data wasm_production_wave2_export: Symbol = wasm_production_wave2_export
+data wasm_production_wave2_func_ref: Symbol = wasm_production_wave2_func_ref
+
+data wasm_surface_module_item: Symbol = wasm_surface_module_item
+data wasm_surface_export_item: Symbol = wasm_surface_export_item
+data wasm_surface_func_ref: Symbol = wasm_surface_func_ref
+
+data wasm_relation_rule_wave2_module: Symbol = wasm_relation_rule_wave2_module
+data wasm_wave2_source_literal: Symbol = wasm_wave2_source_literal
+
+// Authority source text — WAT module with one exported add function.
+// Anchor: WebAssembly Core Spec §6.6.7 (text format modules).
+data wasm_wave2_source_text: String = "(module (func $add (param i32 i32) (result i32) local.get 0 local.get 1 i32.add) (export \"add\" (func $add)))"
+
+// ── Wave 2a lex rules ─────────────────────────────────────────────────────────
+
+fn wasm_wave2_string_lit_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: wasm_token_string_lit,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "\"" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "\"" }
+    }
+  }
+}
+
+fn wasm_wave2_nat_lit_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: wasm_token_nat_lit,
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+  }
+}
+
+fn wasm_wave2_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      wasm_lex_rule(token_class: wasm_token_lparen, text: "("),
+      wasm_lex_rule(token_class: wasm_token_kw_module, text: "module "),
+      wasm_lex_rule(token_class: wasm_token_kw_export, text: "export "),
+      wasm_lex_rule(token_class: wasm_token_kw_func, text: "func "),
+      wasm_lex_rule(token_class: wasm_token_kw_call, text: "call "),
+      wasm_lex_rule(token_class: wasm_token_kw_block, text: "block"),
+      wasm_lex_rule(token_class: wasm_token_kw_loop, text: "loop"),
+      wasm_lex_rule(token_class: wasm_token_kw_if, text: "if"),
+      wasm_lex_rule(token_class: wasm_token_kw_end, text: "end"),
+      wasm_lex_rule(token_class: wasm_token_kw_return, text: "return"),
+      wasm_lex_rule(token_class: wasm_token_kw_local_set, text: "local.set "),
+      wasm_lex_rule(token_class: wasm_token_kw_local_tee, text: "local.tee "),
+      wasm_lex_rule(token_class: wasm_token_local_get, text: "local.get "),
+      wasm_lex_rule(token_class: wasm_token_i32_add_instr, text: "i32.add"),
+      wasm_lex_rule(token_class: wasm_token_i32_sub, text: "i32.sub"),
+      wasm_lex_rule(token_class: wasm_token_i32_mul, text: "i32.mul"),
+      wasm_lex_rule(token_class: wasm_token_i32_const, text: "i32.const "),
+      wasm_lex_rule(token_class: wasm_token_i64_add, text: "i64.add"),
+      wasm_lex_rule(token_class: wasm_token_i64_sub, text: "i64.sub"),
+      wasm_lex_rule(token_class: wasm_token_i64_mul, text: "i64.mul"),
+      wasm_lex_rule(token_class: wasm_token_i64_const, text: "i64.const "),
+      wasm_lex_rule(token_class: wasm_token_f32_add, text: "f32.add"),
+      wasm_lex_rule(token_class: wasm_token_f32_mul, text: "f32.mul"),
+      wasm_lex_rule(token_class: wasm_token_f64_add, text: "f64.add"),
+      wasm_lex_rule(token_class: wasm_token_f64_mul, text: "f64.mul"),
+      wasm_lex_rule(token_class: wasm_token_i32_load, text: "i32.load"),
+      wasm_lex_rule(token_class: wasm_token_i32_store, text: "i32.store"),
+      wasm_lex_rule(token_class: wasm_token_rparen, text: ")"),
+      wasm_wave2_string_lit_lex_rule(),
+      wasm_wave2_nat_lit_lex_rule(),
+      wasm_lex_rule(token_class: wasm_token_param_list, text: " (param i32 i32) "),
+      wasm_lex_rule(token_class: wasm_token_result, text: "(result i32) "),
+      wasm_lex_rule(token_class: wasm_token_local_idx_0, text: "0 "),
+      wasm_lex_rule(token_class: wasm_token_local_idx_1, text: "1 "),
+      wasm_ident_lex_rule()
+    ]
+  }
+}
+
+fn wasm_wave2_lex() -> LexRules {
+  ModeledLexRules { root: wasm_wave2_lex_rules() }
+}
+
+// ── Wave 2a grammar productions ───────────────────────────────────────────────
+
+fn wasm_wave2_grammar_term(tc: Symbol) -> GrammarExpr {
+  Terminal { token_class: tc }
+}
+
+fn wasm_wave2_grammar_nonterm(name: Symbol) -> GrammarExpr {
+  Nonterminal { production: name }
+}
+
+fn wasm_wave2_grammar_seq(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+// (func $ident (param i32 i32) (result i32) local.get 0 local.get 1 i32.add)
+fn wasm_grammar_production_wave2_func() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_wave2_func,
+    expression: wasm_wave2_grammar_seq(
+      left: wasm_wave2_grammar_term(tc: wasm_token_lparen),
+      right: wasm_wave2_grammar_seq(
+        left: wasm_wave2_grammar_term(tc: wasm_token_kw_func),
+        right: wasm_wave2_grammar_seq(
+          left: wasm_wave2_grammar_term(tc: wasm_token_ident),
+          right: wasm_wave2_grammar_seq(
+            left: wasm_wave2_grammar_term(tc: wasm_token_param_list),
+            right: wasm_wave2_grammar_seq(
+              left: wasm_wave2_grammar_term(tc: wasm_token_result),
+              right: wasm_wave2_grammar_seq(
+                left: wasm_wave2_grammar_term(tc: wasm_token_local_get),
+                right: wasm_wave2_grammar_seq(
+                  left: wasm_wave2_grammar_term(tc: wasm_token_local_idx_0),
+                  right: wasm_wave2_grammar_seq(
+                    left: wasm_wave2_grammar_term(tc: wasm_token_local_get),
+                    right: wasm_wave2_grammar_seq(
+                      left: wasm_wave2_grammar_term(tc: wasm_token_local_idx_1),
+                      right: wasm_wave2_grammar_seq(
+                        left: wasm_wave2_grammar_term(tc: wasm_token_i32_add_instr),
+                        right: wasm_wave2_grammar_term(tc: wasm_token_rparen)
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_fn_item)
+  }
+}
+
+// (func $ident)
+fn wasm_grammar_production_wave2_func_ref() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_wave2_func_ref,
+    expression: wasm_wave2_grammar_seq(
+      left: wasm_wave2_grammar_term(tc: wasm_token_lparen),
+      right: wasm_wave2_grammar_seq(
+        left: wasm_wave2_grammar_term(tc: wasm_token_kw_func),
+        right: wasm_wave2_grammar_seq(
+          left: wasm_wave2_grammar_term(tc: wasm_token_ident),
+          right: wasm_wave2_grammar_term(tc: wasm_token_rparen)
+        )
+      )
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_func_ref)
+  }
+}
+
+// (export "name" (func $ident))
+fn wasm_grammar_production_wave2_export() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_wave2_export,
+    expression: wasm_wave2_grammar_seq(
+      left: wasm_wave2_grammar_term(tc: wasm_token_lparen),
+      right: wasm_wave2_grammar_seq(
+        left: wasm_wave2_grammar_term(tc: wasm_token_kw_export),
+        right: wasm_wave2_grammar_seq(
+          left: wasm_wave2_grammar_term(tc: wasm_token_string_lit),
+          right: wasm_wave2_grammar_seq(
+            left: wasm_wave2_grammar_nonterm(name: wasm_production_wave2_func_ref),
+            right: wasm_wave2_grammar_term(tc: wasm_token_rparen)
+          )
+        )
+      )
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_export_item)
+  }
+}
+
+// (module func_def export_clause)
+fn wasm_grammar_production_wave2_module() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_wave2_module,
+    expression: wasm_wave2_grammar_seq(
+      left: wasm_wave2_grammar_term(tc: wasm_token_lparen),
+      right: wasm_wave2_grammar_seq(
+        left: wasm_wave2_grammar_term(tc: wasm_token_kw_module),
+        right: wasm_wave2_grammar_seq(
+          left: wasm_wave2_grammar_nonterm(name: wasm_production_wave2_func),
+          right: wasm_wave2_grammar_seq(
+            left: wasm_wave2_grammar_nonterm(name: wasm_production_wave2_export),
+            right: wasm_wave2_grammar_term(tc: wasm_token_rparen)
+          )
+        )
+      )
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_module_item)
+  }
+}
+
+fn wasm_wave2_grammar_root() -> GrammarRoot {
+  let module_prod = wasm_grammar_production_wave2_module()
+  let func_prod = wasm_grammar_production_wave2_func()
+  let export_prod = wasm_grammar_production_wave2_export()
+  let func_ref_prod = wasm_grammar_production_wave2_func_ref()
+  GrammarRoot {
+    start: wasm_production_wave2_module,
+    productions: [module_prod, func_prod, export_prod, func_ref_prod],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn wasm_wave2_grammar() -> Grammar {
+  ModeledGrammar { root: wasm_wave2_grammar_root() }
+}
+
+// ── Wave 2a canonical symbol set ─────────────────────────────────────────────
+
+fn wasm_wave2_lex_token_symbol(sym: Symbol) -> Bool {
+  wasm_wave1_lex_token_symbol(sym: sym) ||
+    sym == wasm_token_kw_module ||
+    sym == wasm_token_kw_export ||
+    sym == wasm_token_kw_call ||
+    sym == wasm_token_kw_block ||
+    sym == wasm_token_kw_loop ||
+    sym == wasm_token_kw_if ||
+    sym == wasm_token_kw_end ||
+    sym == wasm_token_kw_return ||
+    sym == wasm_token_kw_local_set ||
+    sym == wasm_token_kw_local_tee ||
+    sym == wasm_token_i32_add_instr ||
+    sym == wasm_token_i32_sub ||
+    sym == wasm_token_i32_mul ||
+    sym == wasm_token_i32_const ||
+    sym == wasm_token_i64_add ||
+    sym == wasm_token_i64_sub ||
+    sym == wasm_token_i64_mul ||
+    sym == wasm_token_i64_const ||
+    sym == wasm_token_f32_add ||
+    sym == wasm_token_f32_mul ||
+    sym == wasm_token_f64_add ||
+    sym == wasm_token_f64_mul ||
+    sym == wasm_token_i32_load ||
+    sym == wasm_token_i32_store ||
+    sym == wasm_token_rparen ||
+    sym == wasm_token_string_lit ||
+    sym == wasm_token_nat_lit
+}
+
+fn wasm_language_model_canonical_symbols_wave2() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      wasm_catalog_surface_symbol(sym: sym) ||
+        wasm_wave2_lex_token_symbol(sym: sym) ||
+        sym == wasm_surface_fn_item ||
+        sym == wasm_surface_module_item ||
+        sym == wasm_surface_export_item ||
+        sym == wasm_surface_func_ref ||
+        sym == wasm_production_mvp1_fn_add ||
+        sym == wasm_production_wave2_module ||
+        sym == wasm_production_wave2_func ||
+        sym == wasm_production_wave2_export ||
+        sym == wasm_production_wave2_func_ref ||
+        sym == wasm_mvp1_source_literal ||
+        sym == wasm_wave2_source_literal
+    }
+  }
+}
+
+// ── Wave 2a binding spellings ─────────────────────────────────────────────────
+
+fn wasm_wave2_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), wasm_binding_fn_add, "$add"),
+    wasm_binding_export_name,
+    "\"add\""
+  )
+}
+
+// ── Wave 2a language model assembly ──────────────────────────────────────────
+
+fn wasm_language_model_wave2() -> WasmLanguageModel {
+  WasmLanguageModel {
+    lex: wasm_wave2_lex(),
+    grammar: wasm_wave2_grammar(),
+    language_identity: wasm_language_model_surface_id,
+    canonical_symbols: wasm_language_model_canonical_symbols_wave2(),
     core: wasm_model_core_wave1()
   }
 }
