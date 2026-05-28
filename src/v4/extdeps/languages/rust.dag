@@ -2276,6 +2276,14 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
       lhs: rust_production_block,
       rhs: [
         rust_formal_terminal(token_class: rust_token_lbrace),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_terminal(token_class: rust_token_rbrace)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_block,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_lbrace),
         rust_formal_nonterminal(production: rust_production_stmts),
         rust_formal_terminal(token_class: rust_token_rbrace)
       ]
@@ -2384,29 +2392,14 @@ fn rust_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol)
   production.lhs.identity == lhs
 }
 
-type RustFormalLhsSearchState
-  = RustFormalLhsSearchPending
-  | RustFormalLhsSearchFound
-
 fn rust_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  match fold_list(
+  fold_list(
     xs: productions,
-    empty: RustFormalLhsSearchPending,
-    cons: fn(state, production) {
-      match state {
-        RustFormalLhsSearchFound => RustFormalLhsSearchFound
-        RustFormalLhsSearchPending =>
-          if rust_formal_production_matches_lhs(production: production, lhs: lhs) {
-            RustFormalLhsSearchFound
-          } else {
-            RustFormalLhsSearchPending
-          }
-      }
+    empty: false,
+    cons: fn(found, production) {
+      found || rust_formal_production_matches_lhs(production: production, lhs: lhs)
     }
-  ) {
-    RustFormalLhsSearchFound => true
-    RustFormalLhsSearchPending => false
-  }
+  )
 }
 
 // Operational parse scaffold (GrammarExpr); dissolves when CP-1b converges FormalGrammar ↔ ParseGrammar.
