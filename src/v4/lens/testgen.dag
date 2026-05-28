@@ -1458,6 +1458,7 @@ fn testgen_algebra_law_generator_from_nat_obligation(
     f: fn(anchor) {
       Accepted {
         value: Generator {
+          kind: TestClaimEqualsClaimVariant,
           classification: TestClassification { tier: Tier1, layer: Unit },
           anchor: manual_claim_anchor(anchor: anchor),
           slot: AlgebraLaw {

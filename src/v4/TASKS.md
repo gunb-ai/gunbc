@@ -145,7 +145,7 @@ Substrate / extdeps fan-out:
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
   T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; header Consumes: std/node.dag; std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
   T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
-  T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-1, T-3 std/verification.dag; boundary-honesty probe — TestClaim/AssertKind bind after verification.dag fill, not parallel to Wave-A2 scaffold]
+  T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-4.19 (english.dag), T-3 std/verification.dag; conformance test for english.dag boundary — out-of-subset prose → Diagnostic, never fabricated parse]
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
   T-4.13 extdeps/languages/machine_code.dag  [needs T-3 machine + T-4 LanguageModel shape; B2-OMNI probe — bottom of stack; disassembly = extreme fail-closed]
   T-4.14 extdeps/languages/ptx.dag       [needs T-1, T-2; B2-OMNI + IN-B probe — SIMT data-parallel vs the 5 behaviors]
@@ -647,6 +647,14 @@ usage sites come from `tree.facts.lookup`, not row payload (Practice 11).
 `structural_resolution` also exports `at(tree: InferredTree)` for registry/dry-run
 entry (wires `dependency_lens(root: tree.root)` internally).
 
+**Classifier algebra:** `std/dependency.dag` owns
+`DependencyKindClassifier<C>` plus `classify_dependency_view` as the single
+`DependencyKind` dispatch point. Parallelism, ownership, idempotency,
+unused-parameters, and structural-resolution supply classifier data rows rather
+than per-lens `match view.kind` duplication. `effect.dag` is intentionally
+excluded: `EffectClassification` remains B3 signature-deferred, so deriving it
+from `DependencyKind` would re-author the effect fact in the wrong place.
+
 **Modeling decisions per lens** (see file headers).
 
 ---
@@ -846,10 +854,10 @@ model shape to keep the probe "parallel."
 - **Scope**: M-L. **Status**: LANDED via PR #3168 (`src/v4/extdeps/formats/spice.dag`); any pre-D2-reversal / pre-Practice-10-A1 fact-bundle rework stays gated by the A1-invariant decision and is not Wave-0 fill for this already-landed probe.
 
 #### T-4.11: `test/claim/boundary/english_ingest_fail_closed.dag`
-- **Framing (operator-ratified fork)**: English is **NOT a language model** (no formal grammar). It is a **boundary-honesty probe**, not `extdeps/languages/english.dag`.
-- **Sequencing**: TestClaims here use `std/verification.dag`'s closed `TestClaim` / `AssertKind` vocabulary — that file is T-3 Wave-A2 substrate, still a scaffold until filled. T-4.11 is sequenced **behind** `verification.dag` (same graph edge as T-19 testgen): do not treat English as consuming an unfilled verification scaffold in parallel; wait for the T-3 authority, then bind claims.
-- **Stress axis**: the C5 lossless-core boundary at its extreme, and the no-engine thesis made visible.
-- **Clear win**: (a) Shape B emit — `.dag` → English docs (≈ T-16's existing Markdown artifact, no new substrate); (b) the honest win — `ingest(English prose)` → a precise Diagnostic, **never a fabricated parse**. The architecture refusing to lie *is* the demonstrable result.
+- **Framing (updated — see T-4.19 reversal, operator-ratified 2026-05-27)**: This task is now a **conformance test for `english.dag`**, not a refutation of it. T-4.19 adds `extdeps/languages/english.dag` (formal/controlled subset). T-4.11's claim tests the **boundary** of that model: arbitrary prose outside the declared formal subset must produce a precise Diagnostic, never a fabricated parse.
+- **Sequencing**: TestClaims here use `std/verification.dag`'s closed `TestClaim` / `AssertKind` vocabulary — that file is T-3 Wave-A2 substrate, still a scaffold until filled. T-4.11 is sequenced **behind** `verification.dag` (same graph edge as T-19 testgen) and **behind T-4.19** (english.dag must exist before its boundary can be tested).
+- **Stress axis**: the C5 lossless-core boundary at its extreme, and the no-engine thesis made visible — fail-closed on out-of-subset prose is the positive evidence the model doesn't guess.
+- **Clear win**: `ingest(out-of-subset English prose)` → a precise Diagnostic, **never a fabricated parse**. The architecture refusing to lie *is* the demonstrable result.
 - **Scope**: M (diagnostic + compile-boundary substrate exists; **TestClaim schema lands with T-3 verification** — the probe's claim instances follow).
 
 #### T-4.12: `extdeps/languages/llvm_ir.dag`
@@ -878,19 +886,26 @@ model shape to keep the probe "parallel."
 **Output**: ONE `.dag` program → multi-language multi-endpoint application
 **Operator framing 2026-05-15**: "consider pipeline emission i.e. 'backend program using react in the frontend (and say rust/C++ in the backend)' — i suggest we frontload this style of work — this is exactly what we keep deferring"
 
-**Deliverable**: a single .dag file declaring a TODO-app-class application that emits:
-- Rust backend (+ optionally C++ backend variant)
-- React/TypeScript frontend
-- OpenAPI wire contract between backend and frontend
-- SQL DDL for persistence
-- Markdown docs
+**Deliverable**: a single .dag file declaring a `TaskManager` application — a small task-tracking service with multiple handlers and an explicit transport call — that emits:
+- Shape A (runtime `DeploymentUnit` fragments): Rust backend (+ optionally C++ variant), React/TypeScript frontend
+- Shape B (derived projections from the Node tree): OpenAPI spec (derived from `WireContract`), SQL DDL (derived from data model), Markdown docs
+
+**Demo program** (operator-ratified 2026-05-27): `TaskManager` with three operations declared in the single Node tree:
+- `create_task(title: String) -> Task` — POST /tasks
+- `update_status(id: TaskId, status: TaskStatus) -> Task` — PATCH /tasks/{id}
+- `list_tasks() -> FreeMonoid<Task>` — GET /tasks
+
+Where `Task = { id: TaskId, title: String, status: TaskStatus }` and `TaskStatus = Open | InProgress | Done`.
+
+The React frontend declares an explicit **transport call** via coordination.dag's `WireContract` — the contract binds to the canonical function via `CoordinationBind { bind: BindRef { identity: list_tasks }, effect: ... }`; the response type is derived from the bind's declared Arrow, not restated as a parallel field. This exercises the lego model: the Rust backend and React component are the two `DeploymentUnit` fragments; `WireContract { facts: WireContractFacts { from: react_endpoint, to: rust_endpoint, ... }, bind: CoordinationBind { ... } }` is the declared joint between them. The OpenAPI spec is NOT a `DeploymentUnit` member — it is a Shape-B projection emitted FROM the `WireContract` node (same pattern as SQL DDL emitted from the data model). No string operation name, no parallel `response_type` field — single authority through the bind reference.
 
 All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tree); coherence is structural, not test-checked.
 
-**Modeling decisions**:
-- How does the .dag file express endpoint partitioning (which fragment runs where)? (uses extdeps/coordination.dag's Endpoint + DeploymentUnit)
-- Wire contract derivation (does it auto-derive from shared types, or is it explicitly declared?)
-- Cross-target consistency: same domain types in Rust + TypeScript — tested via L5
+**Modeling decisions** (operator-ratified 2026-05-27):
+- Endpoint partitioning = `DeploymentUnit` is the single authority (coordination.dag) — each `DeploymentUnit { endpoints, wire_contracts }` is a fragment of the shared Node tree declaring where it runs. `TargetModel` is the emission target for a fragment, not the partition boundary; the two are orthogonal axes on the same Node.
+- Wire contract = **explicitly declared** via `coordination.dag` `WireContract` — not auto-derived from shared types; the declaration IS the machine-checkable proof that client and server agree on the type at the transport boundary
+- Cross-target consistency: same domain types (`Task`, `TaskStatus`) in Rust + TypeScript — tested via L5
+- `TaskId` grounding: opaque `Symbol`-backed identifier (not a numeric alias) — avoids hollow-alias trap at the domain level
 
 **Scope**: XL (extra-large — this is the visceral cash of the omni-emission thesis)
 
@@ -1233,22 +1248,18 @@ until admission is complete. As a follow-on, dissolve `AdmissionState` in
 `Outcome` accumulator of the admission stage once generic `Outcome`
 fold/traverse can carry the accumulator directly.
 
-### T-29 — extdeps C++ ABI / target data-model  [SCHEDULED]
-**Gap:** `cpp.dag`'s fact-bundle grounding of `int`/`long`/… into the
-`std/` numeric vocabulary is undefined without an ABI data-model — C++
-integer widths are implementation-defined (LP64 / ILP32 / …), so the
-width fact is not a constant of the language but of the target ABI.
-**Disposition — SCHEDULED (operator ruling 2026-05-17; no fork).** Schedule
-an `extdeps` ABI / target-data-model slice that the `cpp.dag` fact-bundles
-parameterize over (LP64 / ILP32 / …). Low-dependency — it needs only T-3's
-machine / width vocabulary, otherwise a leaf — but it is **NOT parallel
-fill**: T-29 is a **side-branch feeder of T-4** (a hard prerequisite of
-T-4's cpp slice — the cpp fact-bundle cannot ground implementation-defined
-integer widths without it; hence the `T-4 [needs … T-29]` edge). It is a
-**watch item** — schedulable the instant T-3's `machine` lands, and it
-*should* be scheduled then, because if it slips the `{P1-KEYSTONE, T-30,
-T-29, T-25-core} → T-4 → T-9` side branch goes critical. Low-dependency
-≠ low-priority.
+### T-29 — extdeps C++ ABI / target data-model  [DONE]
+**Status:** Landed across PRs #3277, #3535, #3628.
+`src/v4/extdeps/cpp_abi.dag` owns: `CppMachineWidth{8,16,32,64}`,
+`CppIntegerWidth` (coproduct), `CppCoreIntegerWidthModel` (named-field record),
+`CppPlainCharSignedness`, `CppWcharTSignedness`, `CppDataModelFamily`
+(ILP32/LP64/LLP64/ILP64), `CppAbiModel`, `CppTargetDataModel`,
+`CppTargetProfile`, plus four concrete data-model aliases
+(`CppILP32DataModel`, `CppLP64DataModel`, `CppLLP64DataModel`, `CppILP64DataModel`).
+`cpp.dag` imports `CppTargetProfile`; C++ integer widths are ABI-width-parametric
+through `CppTargetProfile` width-selection witnesses. Testcase
+`test/claim/manual/cpp_scalar_grounding_anchor.dag` anchors the ABI-width compile
+paths. The `T-4 [needs … T-29]` dependency edge is now satisfied.
 
 ### T-30 — std/ structural fact-density / hollow-alias gate  [ENFORCEMENT GATE LANDED]
 **Status:** Substrate landed **PR #3359**. Enforcement gate landed (operator-ratified mechanism 2026-05-25): structural `fact_density_hollow_alias_gate: Node -> Outcome<Witness<Node>>` in `src/v4/lens/fact_density.dag`, with the temporary compile-local `InferredTree -> Outcome<Witness<Node>>` adapter `fact_density_hollow_alias_compile_gate` and `CompileLens` row `fact_density_lens` owned by `src/v4/compiler/00_compile.dag` until T-23 dissolves the local lens stub. `validate_then_compile` runs `run_required_lens_gates_on_subtree`, so the required gate is applied to the inferred root and every child node. Six TestClaims in `src/v4/test/claim/lens_fact_density/` — `hollow_alias_compile_lens_rejects`, `fact_bundle_compile_lens_passes`, `hollow_alias_blocked_in_run_gates`, `hollow_alias_blocked_via_always_required_lenses`, `hollow_alias_vtc_empty_lenses_rejected`, `hollow_alias_nested_rejected` — scaffold gate through `apply_compile_lens` / `run_required_lens_gates` / `always_required_lenses()` / `validate_then_compile` with empty caller-lenses and nested hollow-alias rejection (compile-only until T-22 execution). `carrier_spec_fact`, `SourceSpecReadFact`, kernel-ambient exemption remain substrate authority. Hand-Rust bootstrap mirror at `src/v3/compiler/src/v4_hollow_alias_gate.rs` (P5(b) interim; dissolves when generated `.dag` checker runs during bootstrap).
@@ -1430,7 +1441,19 @@ imports from `v4.std.model_core`.
 
 ---
 
-### T-34 — std/runtime.dag + extdeps/runtimes/*.dag — runtime substrate  [SCHEDULED]
+### T-34 — std/runtime.dag + extdeps/runtimes/*.dag — runtime substrate  [DONE]
+**Status:** Landed across PRs #3522 (Option-C decomposition + abstract
+`std/runtime.dag` carriers), #3603 (concrete `v4_evaluator.dag` wave-1
+bundle + manual acceptance anchor), #3630 (T-33-Q10
+`EffectSignature`/`ResourceAccess` — dissolves T-34 forward-declaration
+debt). Post–T-33 wave-2 (#3677), `v4_evaluator_model_core_wave1()` binds
+the populated `wave1_model_core()` payload (anchor witness in
+`v4_evaluator_runtime_anchor.dag`). Wave-1 semantics remain fail-closed on
+deferred primitive/control paths; richer interpretation is T-22-owned
+(`feature:T-22-evaluator-semantics`). `compiler/05_eval.dag` consumes
+`V4EvaluatorRuntime` plus `v4_evaluator_interpretation_wave1()`; full
+`RuntimeTarget` bundle wiring remains a T-22 follow-on.
+
 **Operator-ratified 2026-05-21 (Option C).** The former `HostModel`
 umbrella is decomposed. Abstract runtime carriers live in
 `src/v4/std/runtime.dag`; concrete runtime fact-bundles live in
@@ -1632,6 +1655,14 @@ to define a new agent output surface.
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
+  **Current execution gate:** because `qualified_name_from_node` is still the
+  T-8-gated projection stub and explicitly returns `Rejected`, the public
+  `compile_with_batch` terminal currently fails closed with
+  `qualified_name_projection_gated` before admission. The admission fold below
+  is modeled in the same file but is not the reachable public path until T-8
+  lands per-identifier symbol mapping. This is not a successful virtual-loader
+  execution receipt; it is the fail-closed boundary receipt preserving T-35's
+  locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
   `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
@@ -1857,6 +1888,108 @@ languages already modeled in `extdeps/languages/`: Rust, Python, Go,
 TypeScript, C++, Java, Swift, Kotlin, Lean. PTX/LLVM IR/machine code/
 Verilog/WASM do not have standard formatters — those targets carry no
 formatter config by construction.
+
+---
+
+### T-4.17 — Extended language set: full bidirectional ingest (Wave 2a + 2b)
+
+**Files**: `src/v4/extdeps/languages/{java,swift,kotlin,wasm,ecmascript}.dag`
+**Operator-ratified 2026-05-27.** All language files with a full `LanguageModel` /
+`PrimitiveFactBundle` structure must reach bidirectional ingest fidelity — not just the
+primary Shape-A 5. This task covers the five languages that have Wave-1 scalar
+fact-bundles on main but lack complete lex/grammar data for round-trip ingest:
+
+- `java.dag` — Java SE (JLS); has Wave-1 scalar bundles + partial wave1 grammar/lex.
+  Complete to full bidirectional ingest: lex rules covering all JLS surface tokens,
+  grammar productions for the core statement/expression/declaration forms, fail-closed
+  on unmodeled constructs.
+- `swift.dag` — Swift; has wave1_lex + wave1_grammar MVP1. Extend to full statement/
+  expression coverage. Declared-normalized for insignificant whitespace.
+- `kotlin.dag` — Kotlin spec; has Wave-1 scalar bundles. Add wave1 lex + grammar and
+  extend to full bidirectional ingest.
+- `wasm.dag` — WebAssembly binary/text format; has wave1_lex + wave1_grammar MVP1.
+  Extend to full module/instruction coverage.
+- **NEW: `ecmascript.dag`** — ECMAScript (ES2022; JavaScript without TypeScript
+  extensions). `typescript.dag` models the TypeScript surface; ECMAScript is the
+  base language — distinct fact-bundle, distinct surface spelling authority, distinct
+  grammar (no type annotations). Anchor: ECMA-262 specification.
+
+**Wave 2a (lex/grammar data):**
+- java/swift/kotlin/wasm (extending existing landed files): `[needs T-6, T-7, T-4 Wave-1 for that language]` — T-4 feeder gates (P1-KEYSTONE, T-30, T-25-core, T-33, T-19, T-21) were satisfied when those files were originally authored through T-4.
+- **ecmascript.dag** (new file): `[needs T-3, P1-KEYSTONE, T-30, T-25-core, T-33, T-19, T-21, T-6, T-7]` — same canonical T-4 feeder gates as any new LanguageModel authority.
+
+**Wave 2b (type deepening):** `[needs T-4 Wave-1 per language, T-33, T-2 Node constructors]`
+
+Both waves are in scope for this task; they may be dispatched per-language in parallel.
+
+**Scheduling note:** ECMAScript requires a new file and carries the full T-4 canonical gate set; java/swift/kotlin/wasm extend existing files (T-4 gates transitively satisfied). All five can be dispatched once T-2 #3748 merges (and T-4 feeder gates for ecmascript.dag are confirmed clear).
+
+---
+
+### T-4.18 — Probe language ingest completion: verilog, spice, llvm_ir, machine_code, ptx
+
+**Files**:
+- `src/v4/extdeps/languages/{verilog,llvm_ir,machine_code,ptx}.dag`
+- `src/v4/extdeps/formats/spice.dag`
+
+**Operator-ratified 2026-05-27.** The B2-OMNI stress probes (T-4.9–T-4.14) landed
+their structural carrier vocabularies, validating the falsification axes. This task
+elevates each from structural-carrier-only to **full bidirectional ingest** by adding
+lex/grammar data so the tokenize/parse pipeline can actually run on real source:
+
+- **verilog.dag** `[needs T-6, T-7]` — IEEE 1364-2005 lex rules + grammar productions.
+  The structural carriers are landed; add `LexRules` and `Grammar` data nodes.
+  Fail-closed on any concurrent/procedural form without a modeled grammar production.
+- **spice.dag** `[needs T-6, T-7]` — SPICE netlist lex rules + grammar. The format
+  model is landed in `extdeps/formats/`; add lex/grammar data so SPICE text round-trips
+  through the standard tokenize/parse pipeline. No control flow — every production is a
+  declaration or directive.
+- **llvm_ir.dag** `[needs T-6, T-7]` — LLVM IR textual format lex rules + grammar
+  (`.ll` file surface). SSA form; all constructs are already modeled as carriers.
+- **machine_code.dag** `[needs T-6, T-7, T-3 machine]` — assembly surface lex rules
+  + grammar parameterized by `Isa`. Disassembly = extreme fail-closed (most byte runs
+  are not valid instructions). One grammar data node per modeled ISA variant.
+- **ptx.dag** `[needs T-6, T-7]` — PTX ISA textual format lex + grammar. Parallel to
+  `llvm_ir.dag` treatment.
+
+Each language's wave can be dispatched independently once T-6/T-7 schema is confirmed
+(already verified on main).
+
+---
+
+### T-4.19 — English formal-subset language model
+
+**File**: `src/v4/extdeps/languages/english.dag`
+**Operator-ratified 2026-05-27 (reversal of T-4.11 framing).**
+
+**Prior position (T-4.11):** "English is NOT a language model — boundary-honesty probe
+only." That framing assumed arbitrary English prose as the target, which has no formal
+grammar and violates the no-engine thesis.
+
+**New scope:** Model a **formal/controlled subset** of English as a real `LanguageModel`
+with declared lex rules and grammar productions. Arbitrary prose still fails closed
+(consistent with T-4.11's boundary claim); the formal subset round-trips. This is the
+honest version: declare what IS in F (subject-verb-object structures, a bounded
+vocabulary for a target domain such as API documentation or structured command syntax),
+declare everything outside F as `Fail-closed`, emit the canonical form.
+
+**Anchor**: Controlled natural language literature (CNL) — e.g. Attempto Controlled
+English (ACE) or a narrower custom subset ratified in this file's header. The subset
+grammar must be declared, reviewable, and deterministic (no ambiguity in the grammar
+productions; ambiguous constructs → Diagnostic, never silent pick-one).
+
+**Deliverable**:
+- `english.dag` with `EnglishLanguageModel`, `EnglishLexRules`, `EnglishGrammar` data
+  nodes, `english_language_model_wave1()` function.
+- Wave 2a: lex rules + grammar productions for the declared formal subset.
+- Fail-closed on arbitrary prose (consistent with T-4.11 claim — the claim becomes a
+  positive test that OUT-OF-SUBSET prose produces a precise Diagnostic).
+
+**T-4.11 relationship**: T-4.11's `english_ingest_fail_closed.dag` claim becomes a
+conformance test for this model — not a refutation of it. Update T-4.11 brief to
+reflect that it tests the boundary of `english.dag`, not the absence of the file.
+
+**Deps**: `[needs T-3, P1-KEYSTONE, T-30, T-25-core, T-33, T-19, T-21, T-6, T-7]` — english.dag is a new LanguageModel authority; it carries the same canonical T-4 feeder gate set as any other new language model file.
 
 ---
 

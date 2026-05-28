@@ -13,20 +13,12 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-//! land in the same PR. **This PR expansion (+0 census paths):** interim ratchet rows for
-//! `v4_translate_dag_dispatches_token_sequence_items`,
-//! `v4_rust_language_model_declares_t11_translation_rules`,
-//! `v4_java_language_model_declares_t11_translation_rules`,
-//! `v4_python_language_model_declares_t11_translation_rules`,
-//! `v4_go_language_model_declares_t11_translation_rules`,
-//! `v4_cpp_language_model_declares_t11_translation_rules`,
-//! `v4_typescript_language_model_declares_t11_translation_rules`,
-//! `v4_swift_language_model_declares_t11_translation_rules`,
-//! `v4_wasm_language_model_declares_t11_translation_rules`, and
-//! `v4_dag_language_model_declares_surface_emit_rows` in INVARIANTS.md.
-//! **This PR (+0 paths):** same-file T-11 ratchet expansion for `05_emit.dag` and
-//! Python/Go/C++ grammar-relation target models; interim ratchet row restored in
-//! INVARIANTS.md §SG-0 (no new Rust test path).
+//! land in the same PR. **This PR (+0 census paths):** structural serialize-measure ratchet
+//! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
+//! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
+//! `run_mvp1_serialize_rejects_missing_translation_rules` in `mvp1_rust_add_translate.dag`
+//! (not host `str::contains` probes). See INVARIANTS.md row
+//! `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt and T-PB-B deferral lane.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -178,6 +170,26 @@ fn v4_translate_dag_dispatches_token_sequence_items() {
     assert!(
         surface_declares_fn(&module, "target_serialize_source_from_model_bounded"),
         "{TRANSLATE_PATH}: recursive nonterminal serialization must be explicitly bounded"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_translation_rules_budget"),
+        "{TRANSLATE_PATH}: serialize measure must derive translation_rules budget structurally"
+    );
+    assert!(
+        surface_declares_fn(&module, "translate_serialize_measure"),
+        "{TRANSLATE_PATH}: emitted-node serialize budget must be a declared structural measure"
+    );
+    assert!(
+        surface_declares_fn(&module, "target_serialize_source_from_model"),
+        "{TRANSLATE_PATH}: public serialize entry must route through structural measure helpers"
+    );
+    assert!(
+        import_includes_name(&module, &["v4", "std", "diagnostic"], "bind_outcome"),
+        "{TRANSLATE_PATH}: bounded serializers must use bind_outcome for fail-closed measure propagation"
+    );
+    assert!(
+        !surface_declares_data(&module, "translate_default_serialize_fuel"),
+        "{TRANSLATE_PATH}: fixed serialize fuel data must not remain (structural measure replaces it)"
     );
 }
 
@@ -696,6 +708,15 @@ fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name:
             name: item_name, ..
         }
         | SurfaceItem::FnExternalBody {
+            name: item_name, ..
+        } => item_name == name,
+        _ => false,
+    })
+}
+
+fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Data {
             name: item_name, ..
         } => item_name == name,
         _ => false,
