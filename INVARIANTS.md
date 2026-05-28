@@ -276,6 +276,14 @@ An import edge pointing opposite to this order (`extdeps/ → compiler/`, `std/ 
 
 **Receipt / audit hook:** T-PB-B and PB-Runtime consume this through `src/v3/compiler/src/test_runner.rs` (`evaluate_execute_command_host_outcome` and shared command parsing). The structural move is: **one audit** of the execute path against (a)–(e) when touching host spawns, then **refactor into a typed decision/result model** if the audit is not obvious; ad hoc string heuristics at the same seam without an audit are a smell. (Historical work-stream provenance: PR and review threads, not this file — see `docs/review-findings/`.)
 
+### Problem shape: Task-scope drift — out-of-brief CI modification (operator-ratified 2026-05-28)
+
+A PR's brief assigns a bounded scope (language fill, extdeps/ substrate, refactor sweep). While working, the worker finds an unrelated CI issue — a `/tmp` reference that should be `${RUNNER_TEMP}`, a stale runner spec, a cache-key rename — and includes the fix in the same commit. The CI change may be correct in isolation, but it undermines the single-authority contract for CI configuration: `dsl/gunbc/ci_github_actions_workflow.dag` is the data model; `.github/workflows/ci.yml` is its emitted output (T-24). Bundling incidental CI edits into unrelated PRs bypasses that authority chain and makes the history unreadable.
+
+**Solution shape:** Workers do not modify `.github/workflows/ci.yml` or `dsl/gunbc/ci_github_actions_workflow.dag` unless those files are explicitly listed in their task brief. Authorized exceptions: (a) the task brief names CI files explicitly; (b) a binary/toolchain rename operation that must update cache-key paths throughout (the rename scope includes CI); (c) T-24 (emit ci.yml from the ci.dag data model); (d) T-38 dissolution PRs with named CI step targets. Any real CI issue found outside a worker's brief becomes a separate work item — not a bundled fix. Once T-24 lands, ci.yml is a generated file and must never be hand-edited.
+
+**Receipt:** A GrammarExpr→FormalProduction refactor PR included a `/tmp` → `${RUNNER_TEMP}` fix (cleaned up before merge). A Wasm Wave 2a language fill PR bundled the same class of fix (stripped before merge, 2026-05-28). The binary-rename PR (#3826) is the ratified exception: renaming `v2-compiler` → `gunbc` spans CI cache paths by definition.
+
 ### Related rules (home-of-record here)
 
 - **Host-process boundary discipline** — P2 subsection [above](#p2-host-process-boundary) (T-PB-B / PB-Runtime; PB-Runtime landing in `test_runner` ExecuteCommand)
