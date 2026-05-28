@@ -110,6 +110,7 @@ data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
 data eval_mvp2_interpretation_pin: Symbol = eval_mvp2_interpretation_pin
+data eval_mvp2_interpretation_semantics_tag: Symbol = eval_mvp2_interpretation_semantics_tag
 data eval_mvp2_evaluator_pin: Symbol = eval_mvp2_evaluator_pin
 fn eval_mvp2_byte() -> Byte {
   Byte { bits: [true] }
@@ -367,9 +368,10 @@ data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
 
 
 fn eval_mvp2_context() -> EvalContext {
-  eval_context_registered(
+  eval_context_with_semantics(
     runtime_identity: eval_mvp2_interpretation_pin,
-    interpretation: eval_mvp2_interpretation_algebra()
+    interpretation: eval_mvp2_interpretation_algebra(),
+    semantics_digest: test_claim_symbol_digest(sym: eval_mvp2_interpretation_semantics_tag)
   )
 }
 

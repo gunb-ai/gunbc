@@ -90,6 +90,7 @@ data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_sy
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
 data infer_receipt_interpretation_pin: Symbol = infer_receipt_interpretation_pin
+data infer_receipt_interpretation_semantics_tag: Symbol = infer_receipt_interpretation_semantics_tag
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
 // 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
@@ -238,9 +239,10 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 
 fn infer_receipt_context() -> EvalContext {
-  eval_context_registered(
+  eval_context_with_semantics(
     runtime_identity: infer_receipt_interpretation_pin,
-    interpretation: infer_receipt_interpretation()
+    interpretation: infer_receipt_interpretation(),
+    semantics_digest: test_claim_symbol_digest(sym: infer_receipt_interpretation_semantics_tag)
   )
 }
 
