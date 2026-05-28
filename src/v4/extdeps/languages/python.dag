@@ -2,25 +2,20 @@
 // Scope: Python 3.14 Reference primitive fact-bundles + T-11 MVP-1 grammar-data target model.
 // Owns: PythonSingletonKind, PythonScalar, PythonCost, PythonConcreteSyntaxToken, PythonGrammarRelationRow, PythonIntegerPrimitiveFacts, PythonFloatPrimitiveFacts, PythonComplexPrimitiveFacts, PythonBoolPrimitiveFacts, PythonSingletonPrimitiveFacts, python_surface_spelling_int, python_surface_spelling_float, python_surface_spelling_complex, python_surface_spelling_bool, python_surface_spelling_none, python_surface_spelling_notimplemented, python_surface_spelling_ellipsis, python_std_projection_int, python_std_projection_float, python_std_projection_complex, python_std_projection_bool, python_std_projection_none, python_std_projection_notimplemented, python_std_projection_ellipsis, python_repr_int_arbitrary_precision, python_repr_float_machine_double_precision, python_repr_complex_pair_machine_double_precision, python_repr_bool_int_subtype, python_repr_singleton_sole_inhabitant, python_facts_field_surface_spelling, python_facts_field_encoding, python_facts_field_machine_representation, python_facts_field_component_machine_representation, python_facts_field_std_projection, python_facts_field_singleton_kind, python_inhabitant_int, python_inhabitant_float, python_inhabitant_field_atom, python_inhabitant_field_facts, python_inhabitant_field_int, python_inhabitant_field_float, python_witness_int_ordered_ring_arbitrary_precision, python_witness_float_approximate_field, python_witness_bool_boolean_algebra, python_tag_singleton_none, python_tag_singleton_notimplemented, python_tag_singleton_ellipsis, python_token_kw_def, python_token_kw_return, python_token_ident, python_token_colon, python_token_lparen, python_token_rparen, python_token_comma, python_token_plus, python_production_mvp1_fn_add, python_binding_fn_add, python_binding_param_x, python_binding_param_y, python_relation_rule_mvp1_fn_add, python_mvp1_source_literal, python_mvp1_source_text_field, python_mvp1_source_grammar_field, python_mvp1_source_text, python_mvp1_concrete_tokens, python_facts_int, python_facts_float, python_facts_complex, python_facts_bool, python_facts_none, python_facts_notimplemented, python_facts_ellipsis, python_integer_facts_catalog, python_float_facts_catalog, python_complex_facts_catalog, python_bool_facts_catalog, python_singleton_facts_catalog, py_bool_grounding, python_inhabitant_atom, python_named_edge, python_singleton_kind_tag, python_integer_facts_node, python_float_facts_node, python_complex_facts_node, python_bool_facts_node, python_singleton_facts_node, python_integer_spec_facts, python_float_spec_facts, python_complex_spec_facts, python_bool_spec_facts, python_singleton_spec_facts, python_primitive_bundle_from_integer_facts, python_primitive_bundle_from_float_facts, python_primitive_bundle_from_complex_facts, python_primitive_bundle_from_bool_facts, python_primitive_bundles_from_integer_catalog, python_primitive_bundles_from_float_catalog, python_primitive_bundles_from_complex_catalog, python_primitive_bundles_from_bool_catalog, python_primitive_bundles_from_singleton_catalog, python_wave1_primitive_fact_bundles, python_integer_algebra_witness_node, python_float_algebra_witness_node, python_bool_algebra_witness_node, python_integer_algebra_inhabitance, python_float_algebra_inhabitance, python_bool_algebra_inhabitance, python_integer_algebra_inhabitance_decls, python_float_algebra_inhabitance_decls, python_bool_algebra_inhabitance_decls, python_model_core_inhabitance_decls, python_model_core_wave1, python_inhabitant_node, python_int_inhabitant_node, python_float_inhabitant_node, python_declared_inhabitants_root, python_mvp1_selection_policy_node, python_mvp1_emitted_add_fn_node, python_concrete_token_class, python_concrete_token_node, python_positional_token_edge, python_positional_edges_from_token_classes, python_mvp1_serialize_source_children, python_mvp1_serialize_source_node, python_grammar_terminal, PythonGramBuild1State, python_grammar_sequence_from_token_classes, python_grammar_production_mvp1_fn_add, python_mvp1_grammar_relation_row, python_relation_token_edges, python_grammar_relation_row_node, python_mvp1_translation_rules_node, python_mvp1_target_model_node, python_mvp1_binding_spellings, python_mvp1_target_model, python_lex_rule, python_wave1_lex_rules, python_wave1_lex
 // Consumes: v4.std.model_core (ModelCore + axis symbols), v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 python slice + T-4.17 wave-2a lex/grammar — Python Reference primitives; ModelCore inhabitance for int/float/bool; complex inhabitance deferred; laws/effects/partiality empty (wave-2b); indentation modeled via layout literals in lex rules (PEP 8 four-space suite); canonical_symbols via catalog surface spellings + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 python slice + T-4.17 wave-2a lex/grammar — Python Reference primitives; ModelCore inhabitance for int/float/bool; complex inhabitance deferred; laws/effects/partiality empty (wave-2b); 🟡 gated feature:T-6-token-layout-trivia-policy — layout/newline/indent spacing baked into LiteralPattern.text until std supplies NEWLINE/INDENT/DEDENT stack; canonical_symbols via catalog + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
 // 🟡
 
 module v4.extdeps.languages.python
 
-<<<<<<< HEAD
 import v4.std.grammar {
-  GrammarProduction,
-=======
-import v4.compiler.parse {
-  Choice,
-  Grammar,
->>>>>>> b5814146f (WIP: T-4.17 Wave 2a: python lex/grammar data fill (deps T-6/T-7/T-4; cpp/java)
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Choice,
   Nonterminal,
   Optional,
   Repeat,
@@ -30,16 +25,12 @@ import v4.compiler.parse {
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
-<<<<<<< HEAD
 import v4.std.lexing {
-=======
-import v4.compiler.tokenize {
   CharClassPattern,
   DigitChar,
   IdentContinueChar,
   IdentStartChar,
   LexPattern,
->>>>>>> b5814146f (WIP: T-4.17 Wave 2a: python lex/grammar data fill (deps T-6/T-7/T-4; cpp/java)
   LexRule,
   LexRuleSet,
   LexRules,
@@ -48,19 +39,11 @@ import v4.compiler.tokenize {
   OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
-  Token,
   TokenRule,
-  lex_rule_set_token_class_member,
-  tokenize
+  lex_rule_set_token_class_member
 }
-<<<<<<< HEAD
 import v4.std.target_model { TargetModel }
-import v4.std.collection { List, Map, empty_map, map_insert }
-=======
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
-import v4.compiler.target_carriers { TargetModel }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
->>>>>>> b5814146f (WIP: T-4.17 Wave 2a: python lex/grammar data fill (deps T-6/T-7/T-4; cpp/java)
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -140,7 +123,7 @@ type PythonGrammarRelationRow {
 
 type PythonLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
@@ -1081,7 +1064,9 @@ fn python_int_literal_lex_rule() -> LexRule {
   }
 }
 
-// Layout whitespace is baked into LiteralPattern.text (PEP 8 four-space suites).
+// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
+// LiteralPattern.text below (e.g. "def " not "def"). Dissolves when T-6 supplies
+// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
 fn python_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -1220,8 +1205,10 @@ fn python_grammar_stmt_expr() -> GrammarExpr {
 }
 
 fn python_grammar_suite_expr() -> GrammarExpr {
-  python_grammar_repeat(
-    element: python_grammar_nonterminal(production: python_production_stmt)
+  let stmt = python_grammar_nonterminal(production: python_production_stmt)
+  python_grammar_sequence(
+    left: stmt,
+    right: python_grammar_repeat(element: stmt)
   )
 }
 
@@ -1309,7 +1296,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn python_wave1_grammar() -> Grammar {
+fn python_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: python_wave1_grammar_root() }
 }
 
@@ -1340,18 +1327,6 @@ fn python_language_model_canonical_symbols() -> Set<Symbol> {
         sym == python_production_mvp1_fn_add ||
         sym == python_mvp1_source_literal
     }
-  }
-}
-
-fn python_mvp1_parse_tokens() -> Outcome<List<Token>> {
-  match tokenize(
-    text: python_mvp1_source_text,
-    file: python_mvp1_parse_fixture_file,
-    rules: python_wave1_lex()
-  ) {
-    Accepted { value: stream, diagnostics: diags } =>
-      Accepted { value: stream.tokens, diagnostics: diags }
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
   }
 }
 
