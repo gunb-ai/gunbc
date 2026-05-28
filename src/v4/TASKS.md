@@ -66,7 +66,10 @@ fidelity claim, needs only T-10). Both must be complete before T-15.
           theorem class; Coq is the deferred second-prover probe.
           PROOF-1 is realized when the lens framework composes with
           that model (composition, not a new subsystem).
+        [also needs T-37 + T-38 + T-20-fill — see "Bootstrap execution convergence" below]
 ```
+
+**T-15 dispatch ledger** (worker / PR / blocker): `docs/audit/t15-per-task-dispatch-ledger.md` — maintained by the T-15 close owner; not a second task authority.
 
 ### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33, T-19, T-21} → T-4 → T-9` (watch item)
 
@@ -164,7 +167,7 @@ Substrate / extdeps fan-out:
    "Out of scope for the initial single-target compiler.")
 
 Test + bootstrap substrate (schedule early — every later task benefits):
-  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
+  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3 — DISPATCHABLE: all deps done; no dispatch issued 2026-05-28]
         Produces TestClaim corpus from substrate; manual TestClaims in
         test/claim/manual/ serve as anti-regression contract until
         T-19 implementation lands. Every later task benefits from
@@ -181,12 +184,19 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Structural authority that replaces scripts/detect-affected-
         components.sh. Consumed by T-24 (ci) + eval (skip pure
         unchanged subgraphs).
-  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23]
+  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23 — T-21 (#3747) + T-23 (#3702) + T-10 done; T-20-fill remaining — prep/skeleton can start; cannot close until T-20-fill authored]
         CI pipeline AS DATA; .github/workflows/ci.yml derived. Closes
         v3's gate-#98 gap (hand-authored CI YAML). Consumes T-21 for
         job selection — the shell bridge dissolves once both land.
         Consumes T-10/T-23 for lens verdict via `run_required_lens_gates`
         (T-24 schedules; T-10 owns the orchestrator gate surface).
+
+Bootstrap execution gap (gate T-15 close — no workers dispatched 2026-05-28):
+  T-37  v2 DAG artifact serializer fix   [schedulable now — pure v2 Rust; gates T-15 bridge dissolution]
+        Blocks scripts/v4-bootstrap-resolve-posture-gate.sh dissolution;
+        T-15 cannot close while the bridge passes on SIGTERM.
+  T-38  TestClaim execution harness      [needs T-22 runnable; T-34 done #3770; gates T-15 "claim suite passes"]
+        Claims compile only today; no CI step invokes T-22 eval on the corpus.
 
 Interpreter + lens dimensions (each needs T-9):
   T-22  compiler/05_eval.dag             [needs T-9, T-34]
@@ -257,6 +267,34 @@ Close-the-loop + late substrate:
    ruled orthogonal to v4;
    see T-27 tombstone.)
 ```
+
+### Bootstrap execution convergence — additional T-15 gates (2026-05-28)
+
+The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
+T-15 to close. Three gaps had no workers and gate the close condition (dispatch
+ledger: `docs/audit/t15-per-task-dispatch-ledger.md`):
+
+**T-37 → bridge dissolution.** `scripts/v4-bootstrap-resolve-posture-gate.sh`
+passes CI on SIGTERM (exit 143/124) whenever v2 `--target dag` OOM-kills before
+writing output. The bridge's own dissolution condition is "v4 emit reaches
+`compiled:` without SIGTERM." Until T-37 lands, T-15 cannot close — CI trivially
+passes through the bridge regardless of serializer state.
+Root cause and fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
+
+**T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
+checkable. `src/v4/test/claim/manual/*.dag` claims compile and type-check only;
+`scripts/check-v4-host-eval-receipt.py` string-matches emitted Rust, does not
+execute claims. Script header names the dissolution condition. T-34 (runtime
+substrate) done (#3770). T-22 (eval interpreter) substantially authored. CI
+wiring — a step that invokes T-22 eval on the claim corpus and surfaces
+`TestClaimRun` witness vs Violates — is the gap.
+
+**T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` scaffold
+is on `main`; the full step sequence (seed→stage0→stage1→fixed-point assertion)
+is not authored. T-15 consumes the completed file for fixed-point validation;
+T-24 consumes it for bootstrap CI interaction.
+
+---
 
 ## Task definitions
 
