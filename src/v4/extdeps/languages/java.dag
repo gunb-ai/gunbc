@@ -1178,16 +1178,17 @@ fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
   )
 }
 
-// JLS §14.2 Statement — wave-2 subset: ReturnStatement | LocalVariableDeclarationStatement.
+// JLS §14.2 Statement — wave-2 subset: ReturnStatement only.
 fn java_grammar_statement_expr() -> GrammarExpr {
-  java_grammar_choice(
-    left: java_grammar_nonterminal(production: java_production_return_statement),
-    right: java_grammar_nonterminal(production: java_production_local_variable_declaration)
-  )
+  java_grammar_nonterminal(production: java_production_return_statement)
 }
 
+// JLS §14.2 BlockStatement — LocalVariableDeclarationStatement | Statement.
 fn java_grammar_block_statement_expr() -> GrammarExpr {
-  java_grammar_nonterminal(production: java_production_statement)
+  java_grammar_choice(
+    left: java_grammar_nonterminal(production: java_production_local_variable_declaration),
+    right: java_grammar_nonterminal(production: java_production_statement)
+  )
 }
 
 fn java_grammar_block_expr() -> GrammarExpr {
@@ -1233,8 +1234,15 @@ fn java_grammar_class_member_declaration_expr() -> GrammarExpr {
   )
 }
 
+// JLS §8.1.7 ClassBody — `{` ClassMemberDeclaration* `}`.
 fn java_grammar_class_body_expr() -> GrammarExpr {
-  java_grammar_repeat(element: java_grammar_nonterminal(production: java_production_class_member_declaration))
+  java_grammar_sequence(
+    left: java_grammar_terminal(token_class: java_token_lbrace),
+    right: java_grammar_sequence(
+      left: java_grammar_repeat(element: java_grammar_nonterminal(production: java_production_class_member_declaration)),
+      right: java_grammar_terminal(token_class: java_token_rbrace)
+    )
+  )
 }
 
 fn java_grammar_class_declaration_expr() -> GrammarExpr {
@@ -1244,13 +1252,7 @@ fn java_grammar_class_declaration_expr() -> GrammarExpr {
       left: java_grammar_terminal(token_class: java_token_kw_class),
       right: java_grammar_sequence(
         left: java_grammar_terminal(token_class: java_token_ident),
-        right: java_grammar_sequence(
-          left: java_grammar_terminal(token_class: java_token_lbrace),
-          right: java_grammar_sequence(
-            left: java_grammar_nonterminal(production: java_production_class_body),
-            right: java_grammar_terminal(token_class: java_token_rbrace)
-          )
-        )
+        right: java_grammar_nonterminal(production: java_production_class_body)
       )
     )
   )
