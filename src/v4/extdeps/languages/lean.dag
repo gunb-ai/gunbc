@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Status: T-4.17 wave-2b inhabitance — AlgebraInhabitanceDecl fill (Signed→OrderedRing, Unsigned→Semiring, Bool→BooleanAlgebra); wave-2a lex/grammar — FormalProduction flat rhs authority + GrammarSchemaProbe (token-sequence only; #3796 pattern); wave-1 scalar fact-bundles + MVP-1 `def`+`termination_by`; ParseGrammar nested GrammarExpr is CP-1b interim; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 wave-2b inhabitance — AlgebraInhabitanceDecl fill (Signed→CommutativeRing, Unsigned→Semiring, Bool→BooleanAlgebra); wave-2a lex/grammar — FormalProduction flat rhs authority + GrammarSchemaProbe (token-sequence only; #3796 pattern); wave-1 scalar fact-bundles + MVP-1 `def`+`termination_by`; ParseGrammar nested GrammarExpr is CP-1b interim; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 
 module v4.extdeps.languages.lean
 
@@ -422,6 +422,7 @@ data lean_witness_unsigned_integer_semiring: Symbol = lean_witness_unsigned_inte
 data lean_witness_bool_boolean_algebra: Symbol = lean_witness_bool_boolean_algebra
 data lean_witness_field_representation: Symbol = lean_witness_field_representation
 data lean_witness_field_signedness: Symbol = lean_witness_field_signedness
+data lean_witness_field_width: Symbol = lean_witness_field_width
 
 // Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/
 // 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
@@ -797,7 +798,7 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 
-fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind) -> Node {
+fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Node {
   let witness_tag = match kind {
     Signed => lean_witness_signed_integer_commutative_ring
     Unsigned => lean_witness_unsigned_integer_semiring
@@ -816,6 +817,10 @@ fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKin
       lean_named_edge(
         name: lean_witness_field_signedness,
         target: lean_int_kind_node(kind: kind)
+      ),
+      lean_named_edge(
+        name: lean_witness_field_width,
+        target: lean_int_width_node(width: width)
       )
     ]
   }
@@ -837,7 +842,7 @@ fn lean_bool_algebra_witness_node() -> Node {
   }
 }
 
-fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind) -> AlgebraInhabitanceDecl {
+fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> AlgebraInhabitanceDecl {
   let inhabitant = lean_primitive_facts_node(facts: facts)
   // Lean fixed-precision integers wrap on overflow (two's-complement modular arithmetic
   // for signed, unsigned modular for unsigned). Wrapping breaks order-compatibility
@@ -851,7 +856,7 @@ fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind
   AlgebraInhabitanceDecl {
     algebra: algebra,
     inhabitant: inhabitant,
-    witness: lean_integer_algebra_witness_node(facts: facts, kind: kind)
+    witness: lean_integer_algebra_witness_node(facts: facts, kind: kind, width: width)
   }
 }
 
@@ -869,10 +874,10 @@ fn lean_integer_algebra_inhabitance_step(
   facts: LeanPrimitiveFacts
 ) -> List<AlgebraInhabitanceDecl> {
   match facts.scalar {
-    IntScalar { kind, width: _ } =>
+    IntScalar { kind, width } =>
       list_snoc_item(
         xs: acc,
-        item: lean_integer_algebra_inhabitance(facts: facts, kind: kind)
+        item: lean_integer_algebra_inhabitance(facts: facts, kind: kind, width: width)
       )
     BoolScalar => acc
   }
