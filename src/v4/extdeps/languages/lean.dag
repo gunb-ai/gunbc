@@ -6,11 +6,7 @@ module v4.extdeps.languages.lean
 
 import v4.std.grammar {
   FormalGrammarSymbol,
-  FormalNonterminal,
-  FormalNonterminalOccurrence,
   FormalProduction,
-  FormalTerminal,
-  FormalTerminalOccurrence,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -604,12 +600,54 @@ fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 
-fn lean_formal_symbol_token_class(sym: FormalGrammarSymbol) -> Symbol {
-  match sym {
-    FormalTerminalOccurrence { terminal: FormalTerminal { identity: c } } => c
-    FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: c } } => c
+// MVP uses position-distinct literal token classes (not ident+binding) so token-sequence
+// probes match the fixture without claiming parse-stage binding projection.
+
+
+fn lean_mvp1_formal_token_classes() -> List<Symbol> {
+  [
+    lean_token_kw_def,
+    lean_token_name_dec,
+    lean_token_lparen,
+    lean_token_name_n,
+    lean_token_colon,
+    lean_token_type_int32,
+    lean_token_rparen,
+    lean_token_colon,
+    lean_token_type_int32,
+    lean_token_assign,
+    lean_token_name_n,
+    lean_token_minus,
+    lean_token_numeric_literal,
+    lean_token_kw_termination_by,
+    lean_token_name_n
+  ]
+}
+
+
+fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: classes,
+    empty: Empty,
+    cons: fn(acc, token_class) {
+      list_snoc_item(
+        xs: acc,
+        item: grammar_formal_terminal(identity: token_class)
+      )
+    }
+  )
+}
+
+
+fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: lean_production_mvp1_def_dec),
+    rhs: lean_formal_rhs_from_token_classes(classes: lean_mvp1_formal_token_classes())
   }
 }
+
+
+data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
 
 
 type LeanGramBuildState
@@ -617,22 +655,22 @@ type LeanGramBuildState
   | LeanGramBuildReady { expr: GrammarExpr }
 
 
-// CP-1b interim: fold FormalProduction.rhs into nested GrammarExpr for parse.dag only.
-fn lean_grammar_expr_from_formal_rhs(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — parse sequence derived from same token-class spine as FormalProduction.rhs.
+fn lean_grammar_sequence_from_token_classes(classes: List<Symbol>) -> GrammarExpr {
   match fold_list(
-    xs: rhs,
+    xs: classes,
     empty: LeanGramBuildInit,
-    cons: fn(state, sym) {
+    cons: fn(state, token_class) {
       match state {
         LeanGramBuildInit =>
           LeanGramBuildReady {
-            expr: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: sym))
+            expr: lean_grammar_terminal(token_class: token_class)
           }
         LeanGramBuildReady { expr: acc } =>
           LeanGramBuildReady {
             expr: Sequence {
               left: acc,
-              right: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: sym))
+              right: lean_grammar_terminal(token_class: token_class)
             }
           }
       }
@@ -645,40 +683,8 @@ fn lean_grammar_expr_from_formal_rhs(rhs: List<FormalGrammarSymbol>) -> GrammarE
 }
 
 
-// MVP uses position-distinct literal token classes (not ident+binding) so token-sequence
-// probes match the fixture without claiming parse-stage binding projection.
-
-
-fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
-  FormalProduction {
-    lhs: grammar_formal_nonterminal(identity: lean_production_mvp1_def_dec),
-    rhs: [
-      grammar_formal_terminal(identity: lean_token_kw_def),
-      grammar_formal_terminal(identity: lean_token_name_dec),
-      grammar_formal_terminal(identity: lean_token_lparen),
-      grammar_formal_terminal(identity: lean_token_name_n),
-      grammar_formal_terminal(identity: lean_token_colon),
-      grammar_formal_terminal(identity: lean_token_type_int32),
-      grammar_formal_terminal(identity: lean_token_rparen),
-      grammar_formal_terminal(identity: lean_token_colon),
-      grammar_formal_terminal(identity: lean_token_type_int32),
-      grammar_formal_terminal(identity: lean_token_assign),
-      grammar_formal_terminal(identity: lean_token_name_n),
-      grammar_formal_terminal(identity: lean_token_minus),
-      grammar_formal_terminal(identity: lean_token_numeric_literal),
-      grammar_formal_terminal(identity: lean_token_kw_termination_by),
-      grammar_formal_terminal(identity: lean_token_name_n)
-    ]
-  }
-}
-
-
-data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
-
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — derived from FormalProduction.rhs.
 fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
-  lean_grammar_expr_from_formal_rhs(rhs: lean_mvp1_def_dec_formal_production().rhs)
+  lean_grammar_sequence_from_token_classes(classes: lean_mvp1_formal_token_classes())
 }
 
 
