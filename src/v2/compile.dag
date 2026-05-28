@@ -207,8 +207,9 @@ type DagCollectAcc {
 }
 
 // Provisional collect/emit identity until v4 content_hash (see DagNodeId 🟡 gate).
-// Peel Resolved so inference back-links share one table slot; anchor with structural
-// fingerprint plus compact span+ident (omit file path — keys were OOM on large graphs).
+// Peel Resolved so inference back-links share one table slot. Authored nodes key on
+// structural fingerprint only (span suffix left millions of unique keys on v4).
+// Synthetic 0..0 spans keep fingerprint@loc disambiguation (fail-closed scaffold).
 fn dag_node_key(node: Node) -> String {
   match node.inferred {
     Some { value: Resolved { node: target } } => dag_node_key(node: target)
@@ -217,13 +218,17 @@ fn dag_node_key(node: Node) -> String {
 }
 
 fn dag_node_provisional_key(node: Node) -> String {
-  concat(
-    dag_node_fingerprint(node: node), "@",
-    to_string(i: node.span.start), "..", to_string(i: node.span.end),
-    match node.ident {
-      Some { value: id } => concat(":", to_string(i: id))
-      None => ""
-    })
+  let fp = dag_node_fingerprint(node: node)
+  if node.span.start == 0 && node.span.end == 0 {
+    concat(
+      fp, "@0..0",
+      match node.ident {
+        Some { value: id } => concat(":", to_string(i: id))
+        None => ""
+      })
+  } else {
+    fp
+  }
 }
 
 fn inferred_fingerprint(value: InferredNode?) -> String {
@@ -391,24 +396,11 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
 
 fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let key = dag_node_key(node: node)
-  let fp = dag_node_fingerprint(node: node)
   match map_get(acc.seen, key) {
-    Some { value: prior } =>
-      if prior == fp {
-        acc
-      } else if node.span.start == 0 && node.span.end == 0 {
-        DagCollectAcc {
-          seen: acc.seen,
-          order: acc.order,
-          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
-        }
-      } else {
-        // Same provisional key, different fingerprint — distinct nodes at one span; keep first.
-        acc
-      }
+    Some { value: _ } => acc
     None => {
       let acc1 = DagCollectAcc {
-        seen: map_insert(acc.seen, key, fp),
+        seen: map_insert(acc.seen, key, ""),
         order: list_push(acc.order, node),
         collision_errors: acc.collision_errors
       }
