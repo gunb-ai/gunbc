@@ -879,16 +879,25 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     dag_formal_production(
       lhs: dag_production_postfix_expr,
       rhs: [
-        dag_formal_terminal(token_class: dag_token_dot),
-        dag_formal_terminal(token_class: dag_token_ident)
+        dag_formal_nonterminal(production: dag_production_primary_expr),
+        dag_formal_nonterminal(production: dag_production_postfix_expr_repeat_suffix)
       ]
     ),
     dag_formal_production(lhs: dag_production_postfix_expr_repeat_suffix, rhs: []),
     dag_formal_production(
-      lhs: dag_production_postfix_expr,
+      lhs: dag_production_postfix_expr_repeat_suffix,
       rhs: [
         dag_formal_terminal(token_class: dag_token_dot),
         dag_formal_terminal(token_class: dag_token_ident),
+        dag_formal_nonterminal(production: dag_production_postfix_expr_repeat_suffix)
+      ]
+    ),
+    dag_formal_production(
+      lhs: dag_production_postfix_expr_repeat_suffix,
+      rhs: [
+        dag_formal_terminal(token_class: dag_token_dot),
+        dag_formal_terminal(token_class: dag_token_ident),
+        dag_formal_nonterminal(production: dag_production_postfix_call_suffix),
         dag_formal_nonterminal(production: dag_production_postfix_expr_repeat_suffix)
       ]
     ),
@@ -942,23 +951,6 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       lhs: dag_production_comma_arg_list_suffix,
       rhs: [
         dag_formal_terminal(token_class: dag_token_comma)
-      ]
-    ),
-    dag_formal_production(
-      lhs: dag_production_postfix_expr,
-      rhs: [
-        dag_formal_nonterminal(production: dag_production_primary_expr),
-        dag_formal_terminal(token_class: dag_token_dot),
-        dag_formal_terminal(token_class: dag_token_ident)
-      ]
-    ),
-    dag_formal_production(
-      lhs: dag_production_postfix_expr,
-      rhs: [
-        dag_formal_nonterminal(production: dag_production_primary_expr),
-        dag_formal_terminal(token_class: dag_token_dot),
-        dag_formal_terminal(token_class: dag_token_ident),
-        dag_formal_nonterminal(production: dag_production_postfix_call_suffix)
       ]
     ),
     dag_formal_production(
@@ -1140,17 +1132,22 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       ]
     ),
     dag_formal_production(
-      lhs: dag_production_match_expr_arms,
+      lhs: dag_production_match_expr,
       rhs: [
-        dag_formal_nonterminal(production: dag_production_match_arm)
+        dag_formal_terminal(token_class: dag_token_kw_match),
+        dag_formal_nonterminal(production: dag_production_binary_expr),
+        dag_formal_terminal(token_class: dag_token_lbrace),
+        dag_formal_terminal(token_class: dag_token_rbrace)
       ]
     ),
-    dag_formal_production(lhs: dag_production_match_expr_arms_repeat_suffix, rhs: []),
     dag_formal_production(
-      lhs: dag_production_match_expr_arms,
+      lhs: dag_production_match_expr,
       rhs: [
+        dag_formal_terminal(token_class: dag_token_kw_match),
+        dag_formal_nonterminal(production: dag_production_binary_expr),
+        dag_formal_terminal(token_class: dag_token_lbrace),
         dag_formal_nonterminal(production: dag_production_match_arm),
-        dag_formal_nonterminal(production: dag_production_match_expr_arms_repeat_suffix)
+        dag_formal_terminal(token_class: dag_token_rbrace)
       ]
     ),
     dag_formal_production(
@@ -1431,13 +1428,13 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     dag_formal_production(
       lhs: dag_production_type_alias_rhs,
       rhs: [
-        dag_formal_terminal(token_class: dag_token_pipe),
-        dag_formal_nonterminal(production: dag_production_type_variant)
+        dag_formal_nonterminal(production: dag_production_type_variant),
+        dag_formal_nonterminal(production: dag_production_type_alias_rhs_repeat_suffix)
       ]
     ),
     dag_formal_production(lhs: dag_production_type_alias_rhs_repeat_suffix, rhs: []),
     dag_formal_production(
-      lhs: dag_production_type_alias_rhs,
+      lhs: dag_production_type_alias_rhs_repeat_suffix,
       rhs: [
         dag_formal_terminal(token_class: dag_token_pipe),
         dag_formal_nonterminal(production: dag_production_type_variant),
@@ -1581,7 +1578,17 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
     dag_formal_production(
       lhs: dag_production_module,
       rhs: [
-        dag_formal_nonterminal(production: dag_production_top_level_item)
+        dag_formal_nonterminal(production: dag_production_module_header),
+        dag_formal_nonterminal(production: dag_production_top_level_item),
+        dag_formal_nonterminal(production: dag_production_module_repeat_suffix)
+      ]
+    ),
+    dag_formal_production(lhs: dag_production_module_repeat_suffix, rhs: []),
+    dag_formal_production(
+      lhs: dag_production_module_repeat_suffix,
+      rhs: [
+        dag_formal_nonterminal(production: dag_production_top_level_item),
+        dag_formal_nonterminal(production: dag_production_module_repeat_suffix)
       ]
     ),
     dag_formal_production(lhs: dag_production_binary_expr, rhs: [dag_formal_nonterminal(production: dag_production_unary_expr)]),
