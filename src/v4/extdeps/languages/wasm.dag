@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/wasm.dag
 // Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
+// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
 // Anchor: https://webassembly.github.io/spec/core/types.html#number-types
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
@@ -47,10 +47,19 @@ import v4.std.lexing {
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
   ModelCore,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
   primitive_fact_axis_encoding,
   primitive_fact_axis_overflow_disposition,
   primitive_fact_axis_signedness,
@@ -88,7 +97,17 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool }
-import v4.std.algebra { Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  approximate_field_node,
+  approximate_field_type_node,
+  commutative_semiring_node,
+  commutative_semiring_type_node,
+  Cons,
+  Empty,
+  fold_list,
+  list_append,
+  list_snoc_item
+}
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
@@ -1740,22 +1759,397 @@ fn wasm_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn wasm_model_core_wave1() -> ModelCore {
-  ModelCore {
-    primitives: wasm_wave1_primitive_fact_bundles(),
-    inhabitance: [],
-    laws: [],
-    effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+// Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
+// 🟡 needs-more-work — feature:wasm-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for wasm_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+type WasmModelCoreLawKey
+  = WasmLawIntegerAddAssociativeModular
+  | WasmLawIntegerAddCommutativeModular
+  | WasmLawIntegerMulAssociativeModular
+  | WasmLawIntegerMulCommutativeModular
+  | WasmLawIntegerDistributiveModular
+  | WasmLawIntegerModularWrap
+  | WasmLawFloatIeee754Rounding
+  | WasmLawFloatNanInfCarriedByIeee754
+
+data wasm_law_kind_integer_add_associative_modular: Symbol = wasm_law_kind_integer_add_associative_modular
+data wasm_law_kind_integer_add_commutative_modular: Symbol = wasm_law_kind_integer_add_commutative_modular
+data wasm_law_kind_integer_mul_associative_modular: Symbol = wasm_law_kind_integer_mul_associative_modular
+data wasm_law_kind_integer_mul_commutative_modular: Symbol = wasm_law_kind_integer_mul_commutative_modular
+data wasm_law_kind_integer_distributive_modular: Symbol = wasm_law_kind_integer_distributive_modular
+data wasm_law_kind_integer_modular_wrap: Symbol = wasm_law_kind_integer_modular_wrap
+data wasm_law_kind_float_ieee754_rounding: Symbol = wasm_law_kind_float_ieee754_rounding
+data wasm_law_kind_float_nan_inf_carried_by_ieee754: Symbol = wasm_law_kind_float_nan_inf_carried_by_ieee754
+
+data wasm_witness_integer_commutative_semiring_modular: Symbol = wasm_witness_integer_commutative_semiring_modular
+data wasm_witness_float_approximate_field: Symbol = wasm_witness_float_approximate_field
+
+data wasm_effect_signature_pure_value: Symbol = wasm_effect_signature_pure_value
+data wasm_op_integer_add: Symbol = wasm_op_integer_add
+data wasm_op_integer_sub: Symbol = wasm_op_integer_sub
+data wasm_op_integer_mul: Symbol = wasm_op_integer_mul
+data wasm_op_integer_div_s: Symbol = wasm_op_integer_div_s
+data wasm_op_integer_div_u: Symbol = wasm_op_integer_div_u
+data wasm_op_integer_rem_s: Symbol = wasm_op_integer_rem_s
+data wasm_op_integer_rem_u: Symbol = wasm_op_integer_rem_u
+data wasm_op_integer_and: Symbol = wasm_op_integer_and
+data wasm_op_integer_or: Symbol = wasm_op_integer_or
+data wasm_op_integer_xor: Symbol = wasm_op_integer_xor
+data wasm_op_integer_shl: Symbol = wasm_op_integer_shl
+data wasm_op_integer_shr_s: Symbol = wasm_op_integer_shr_s
+data wasm_op_integer_shr_u: Symbol = wasm_op_integer_shr_u
+data wasm_op_integer_rotl: Symbol = wasm_op_integer_rotl
+data wasm_op_integer_rotr: Symbol = wasm_op_integer_rotr
+data wasm_op_float_add: Symbol = wasm_op_float_add
+data wasm_op_float_sub: Symbol = wasm_op_float_sub
+data wasm_op_float_mul: Symbol = wasm_op_float_mul
+data wasm_op_float_div: Symbol = wasm_op_float_div
+data wasm_op_float_min: Symbol = wasm_op_float_min
+data wasm_op_float_max: Symbol = wasm_op_float_max
+data wasm_op_float_copysign: Symbol = wasm_op_float_copysign
+
+data wasm_partial_integer_divide_by_zero: Symbol = wasm_partial_integer_divide_by_zero
+data wasm_partial_integer_remainder_by_zero: Symbol = wasm_partial_integer_remainder_by_zero
+data wasm_precondition_integer_divisor_nonzero: Symbol = wasm_precondition_integer_divisor_nonzero
+
+fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: wasm_witness_integer_commutative_semiring_modular,
+        target: wasm_inhabitant_atom(id: wasm_witness_integer_commutative_semiring_modular)
+      ),
+      wasm_named_edge(
+        name: wasm_facts_field_surface_spelling,
+        target: wasm_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      wasm_named_edge(
+        name: wasm_facts_field_width,
+        target: wasm_int_width_node(width: facts.width)
+      ),
+      wasm_named_edge(
+        name: wasm_facts_field_std_projection,
+        target: wasm_inhabitant_atom(id: facts.std_projection)
+      ),
+      wasm_named_edge(
+        name: primitive_fact_axis_signedness,
+        target: wasm_inhabitant_atom(id: wasm_tag_sign_agnostic_modular)
+      ),
+      wasm_named_edge(
+        name: primitive_fact_axis_overflow_disposition,
+        target: wasm_inhabitant_atom(id: wasm_tag_modular_wrap)
+      )
+    ]
   }
 }
 
-fn wasm_language_model_wave1() -> WasmLanguageModel {
+fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(
+        name: wasm_witness_float_approximate_field,
+        target: wasm_inhabitant_atom(id: wasm_witness_float_approximate_field)
+      ),
+      wasm_named_edge(
+        name: wasm_facts_field_ieee754_binary,
+        target: wasm_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      wasm_named_edge(
+        name: wasm_facts_field_std_projection,
+        target: wasm_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn wasm_integer_algebra_inhabitance(facts: WasmIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = wasm_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: commutative_semiring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: wasm_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn wasm_float_algebra_inhabitance(facts: WasmFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = wasm_float_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: wasm_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn wasm_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: wasm_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: wasm_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn wasm_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: wasm_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: wasm_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn wasm_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: wasm_integer_algebra_inhabitance_decls(),
+    right: wasm_float_algebra_inhabitance_decls()
+  )
+}
+
+fn wasm_law_kind_symbol(key: WasmModelCoreLawKey) -> Symbol {
+  match key {
+    WasmLawIntegerAddAssociativeModular => wasm_law_kind_integer_add_associative_modular
+    WasmLawIntegerAddCommutativeModular => wasm_law_kind_integer_add_commutative_modular
+    WasmLawIntegerMulAssociativeModular => wasm_law_kind_integer_mul_associative_modular
+    WasmLawIntegerMulCommutativeModular => wasm_law_kind_integer_mul_commutative_modular
+    WasmLawIntegerDistributiveModular => wasm_law_kind_integer_distributive_modular
+    WasmLawIntegerModularWrap => wasm_law_kind_integer_modular_wrap
+    WasmLawFloatIeee754Rounding => wasm_law_kind_float_ieee754_rounding
+    WasmLawFloatNanInfCarriedByIeee754 => wasm_law_kind_float_nan_inf_carried_by_ieee754
+  }
+}
+
+fn wasm_model_core_law_node(witness: Node, algebra: Node, key: WasmModelCoreLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      wasm_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      wasm_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      wasm_named_edge(
+        name: model_core_wave1_law_field_kind,
+        target: wasm_inhabitant_atom(id: wasm_law_kind_symbol(key: key))
+      )
+    ]
+  }
+}
+
+fn wasm_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: law
+  }
+}
+
+fn wasm_integer_law_obligations(facts: WasmIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = wasm_integer_algebra_witness_node(facts: facts)
+  let inhabitant = wasm_integer_facts_node(facts: facts)
+  let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
+  [
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawIntegerAddAssociativeModular
+      )
+    ),
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawIntegerAddCommutativeModular
+      )
+    ),
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawIntegerMulAssociativeModular
+      )
+    ),
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawIntegerMulCommutativeModular
+      )
+    ),
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawIntegerDistributiveModular
+      )
+    ),
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawIntegerModularWrap
+      )
+    )
+  ]
+}
+
+fn wasm_float_law_obligations(facts: WasmFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = wasm_float_algebra_witness_node(facts: facts)
+  let inhabitant = wasm_float_facts_node(facts: facts)
+  let algebra = approximate_field_type_node(inhabitant: inhabitant)
+  [
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawFloatIeee754Rounding
+      )
+    ),
+    wasm_model_core_law_obligation(
+      witness: witness,
+      law: wasm_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: WasmLawFloatNanInfCarriedByIeee754
+      )
+    )
+  ]
+}
+
+fn wasm_integer_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: wasm_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(left: acc, right: wasm_integer_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn wasm_float_algebra_laws() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: wasm_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_append(left: acc, right: wasm_float_law_obligations(facts: facts))
+    }
+  )
+}
+
+fn wasm_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  list_append(
+    left: wasm_integer_algebra_laws(),
+    right: wasm_float_algebra_laws()
+  )
+}
+
+fn wasm_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: wasm_inhabitant_atom(id: operation),
+    effect_signature: EffectSignature {
+      signature: wasm_inhabitant_atom(id: wasm_effect_signature_pure_value)
+    }
+  }
+}
+
+fn wasm_effect_semantics_wave2b() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      wasm_pure_operation(operation: wasm_op_integer_add),
+      wasm_pure_operation(operation: wasm_op_integer_sub),
+      wasm_pure_operation(operation: wasm_op_integer_mul),
+      wasm_pure_operation(operation: wasm_op_integer_div_s),
+      wasm_pure_operation(operation: wasm_op_integer_div_u),
+      wasm_pure_operation(operation: wasm_op_integer_rem_s),
+      wasm_pure_operation(operation: wasm_op_integer_rem_u),
+      wasm_pure_operation(operation: wasm_op_integer_and),
+      wasm_pure_operation(operation: wasm_op_integer_or),
+      wasm_pure_operation(operation: wasm_op_integer_xor),
+      wasm_pure_operation(operation: wasm_op_integer_shl),
+      wasm_pure_operation(operation: wasm_op_integer_shr_s),
+      wasm_pure_operation(operation: wasm_op_integer_shr_u),
+      wasm_pure_operation(operation: wasm_op_integer_rotl),
+      wasm_pure_operation(operation: wasm_op_integer_rotr),
+      wasm_pure_operation(operation: wasm_op_float_add),
+      wasm_pure_operation(operation: wasm_op_float_sub),
+      wasm_pure_operation(operation: wasm_op_float_mul),
+      wasm_pure_operation(operation: wasm_op_float_div),
+      wasm_pure_operation(operation: wasm_op_float_min),
+      wasm_pure_operation(operation: wasm_op_float_max),
+      wasm_pure_operation(operation: wasm_op_float_copysign)
+    ]
+  }
+}
+
+fn wasm_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: wasm_inhabitant_atom(id: operation),
+    precondition: wasm_inhabitant_atom(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      wasm_fail_closed_partial_operation(
+        operation: wasm_op_integer_div_s,
+        precondition: wasm_precondition_integer_divisor_nonzero,
+        reason: wasm_partial_integer_divide_by_zero
+      ),
+      wasm_fail_closed_partial_operation(
+        operation: wasm_op_integer_div_u,
+        precondition: wasm_precondition_integer_divisor_nonzero,
+        reason: wasm_partial_integer_divide_by_zero
+      ),
+      wasm_fail_closed_partial_operation(
+        operation: wasm_op_integer_rem_s,
+        precondition: wasm_precondition_integer_divisor_nonzero,
+        reason: wasm_partial_integer_remainder_by_zero
+      ),
+      wasm_fail_closed_partial_operation(
+        operation: wasm_op_integer_rem_u,
+        precondition: wasm_precondition_integer_divisor_nonzero,
+        reason: wasm_partial_integer_remainder_by_zero
+      )
+    ]
+  }
+}
+
+fn wasm_model_core_wave2b() -> ModelCore {
+  ModelCore {
+    primitives: wasm_wave1_primitive_fact_bundles(),
+    inhabitance: wasm_model_core_inhabitance_decls(),
+    laws: wasm_model_core_law_obligations(),
+    effects: wasm_effect_semantics_wave2b(),
+    partiality: wasm_partiality_semantics_wave2b()
+  }
+}
+
+fn wasm_model_core_wave1() -> ModelCore {
+  wasm_model_core_wave2b()
+}
+
+fn wasm_language_model_wave2b() -> WasmLanguageModel {
   WasmLanguageModel {
     lex: wasm_wave1_lex(),
     grammar: wasm_wave1_grammar(),
     language_identity: wasm_language_model_surface_id,
     canonical_symbols: wasm_language_model_canonical_symbols(),
-    core: wasm_model_core_wave1()
+    core: wasm_model_core_wave2b()
   }
+}
+
+fn wasm_language_model_wave1() -> WasmLanguageModel {
+  wasm_language_model_wave2b()
 }
