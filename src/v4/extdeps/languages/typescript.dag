@@ -9,6 +9,8 @@
 module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
   Choice,
   FormalGrammarSymbol,
   FormalNonterminal,
@@ -1134,11 +1136,8 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(rules: ts_wave2a_lex_rules(), token_class: sym)
 }
 
-fn ts_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
-}
 
-fn ts_formal_nonterminal(production: Symbol) -> FormalGrammarSymbol {
+fn grammar_formal_nonterminal_occurrence(production: Symbol) -> FormalGrammarSymbol {
   FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
 }
 
@@ -1156,7 +1155,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<Formal
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: ts_formal_terminal(token_class: ts_concrete_token_class(token: token))
+        item: grammar_formal_terminal(token_class: ts_concrete_token_class(token: token))
       )
     }
   )
@@ -1171,61 +1170,61 @@ fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
 
 fn ts_wave2a_formal_productions() -> List<FormalProduction> {
   [
-    ts_formal_production(lhs: ts_production_wave2a_type_number, rhs: [ts_formal_terminal(token_class: ts_token_ty_number)]),
-    ts_formal_production(lhs: ts_production_wave2a_type_string, rhs: [ts_formal_terminal(token_class: ts_token_ty_string)]),
-    ts_formal_production(lhs: ts_production_wave2a_type_boolean, rhs: [ts_formal_terminal(token_class: ts_token_ty_boolean)]),
-    ts_formal_production(lhs: ts_production_wave2a_type_void, rhs: [ts_formal_terminal(token_class: ts_token_ty_void)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_number, rhs: [grammar_formal_terminal(token_class: ts_token_ty_number)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_string, rhs: [grammar_formal_terminal(token_class: ts_token_ty_string)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_boolean, rhs: [grammar_formal_terminal(token_class: ts_token_ty_boolean)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_void, rhs: [grammar_formal_terminal(token_class: ts_token_ty_void)]),
     ts_formal_production(
       lhs: ts_production_wave2a_type_annotation,
-      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_number)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_type_number)]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_type_annotation,
-      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_string)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_type_string)]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_type_annotation,
-      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_boolean)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_type_boolean)]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_type_annotation,
-      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_void)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_type_void)]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_let_decl,
       rhs: [
-        ts_formal_terminal(token_class: ts_token_kw_let),
-        ts_formal_terminal(token_class: ts_token_ident),
-        ts_formal_terminal(token_class: ts_token_colon),
-        ts_formal_nonterminal(production: ts_production_wave2a_type_annotation),
-        ts_formal_terminal(token_class: ts_token_eq),
-        ts_formal_terminal(token_class: ts_token_ident),
-        ts_formal_terminal(token_class: ts_token_semicolon)
+        grammar_formal_terminal(token_class: ts_token_kw_let),
+        grammar_formal_terminal(token_class: ts_token_ident),
+        grammar_formal_terminal(token_class: ts_token_colon),
+        grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_type_annotation),
+        grammar_formal_terminal(token_class: ts_token_eq),
+        grammar_formal_terminal(token_class: ts_token_ident),
+        grammar_formal_terminal(token_class: ts_token_semicolon)
       ]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_const_decl,
       rhs: [
-        ts_formal_terminal(token_class: ts_token_kw_const),
-        ts_formal_terminal(token_class: ts_token_ident),
-        ts_formal_terminal(token_class: ts_token_colon),
-        ts_formal_nonterminal(production: ts_production_wave2a_type_annotation),
-        ts_formal_terminal(token_class: ts_token_eq),
-        ts_formal_terminal(token_class: ts_token_ident),
-        ts_formal_terminal(token_class: ts_token_semicolon)
+        grammar_formal_terminal(token_class: ts_token_kw_const),
+        grammar_formal_terminal(token_class: ts_token_ident),
+        grammar_formal_terminal(token_class: ts_token_colon),
+        grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_type_annotation),
+        grammar_formal_terminal(token_class: ts_token_eq),
+        grammar_formal_terminal(token_class: ts_token_ident),
+        grammar_formal_terminal(token_class: ts_token_semicolon)
       ]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_item,
-      rhs: [ts_formal_nonterminal(production: ts_production_mvp1_fn_add)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_mvp1_fn_add)]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_item,
-      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_let_decl)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_let_decl)]
     ),
     ts_formal_production(
       lhs: ts_production_wave2a_item,
-      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_const_decl)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: ts_production_wave2a_const_decl)]
     ),
     ts_formal_production_mvp1_fn_add()
   ]

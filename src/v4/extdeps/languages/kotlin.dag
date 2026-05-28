@@ -6,6 +6,8 @@
 module v4.extdeps.languages.kotlin
 
 import v4.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
   Choice,
   FormalGrammarSymbol,
   FormalNonterminal,
@@ -1655,11 +1657,8 @@ fn kotlin_wave1_lex() -> LexRules {
   ModeledLexRules { root: kotlin_wave1_lex_rules() }
 }
 
-fn kotlin_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
-}
 
-fn kotlin_formal_nonterminal(production: Symbol) -> FormalGrammarSymbol {
+fn grammar_formal_nonterminal_occurrence(production: Symbol) -> FormalGrammarSymbol {
   FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
 }
 
@@ -1677,7 +1676,7 @@ fn kotlin_formal_rhs_from_tokens(tokens: List<KotlinConcreteSyntaxToken>) -> Lis
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: kotlin_formal_terminal(token_class: kotlin_concrete_token_class(token: token))
+        item: grammar_formal_terminal(token_class: kotlin_concrete_token_class(token: token))
       )
     }
   )
@@ -1693,468 +1692,468 @@ fn kotlin_formal_production_mvp1_fn_add() -> FormalProduction {
 // Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn kotlin_wave1_formal_productions() -> List<FormalProduction> {
   [
-    kotlin_formal_production(lhs: kotlin_production_type_expr, rhs: [kotlin_formal_terminal(token_class: kotlin_token_ident)]),
+    kotlin_formal_production(lhs: kotlin_production_type_expr, rhs: [grammar_formal_terminal(token_class: kotlin_token_ident)]),
     kotlin_formal_production(
       lhs: kotlin_production_typed_param,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_colon),
-        kotlin_formal_nonterminal(production: kotlin_production_type_expr)
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_type_expr)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_param_list, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_param_list,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_typed_param)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_typed_param)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_param_list,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_typed_param),
-        kotlin_formal_terminal(token_class: kotlin_token_comma),
-        kotlin_formal_nonterminal(production: kotlin_production_typed_param),
-        kotlin_formal_nonterminal(production: kotlin_production_param_list_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_typed_param),
+        grammar_formal_terminal(token_class: kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_typed_param),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_param_list_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_param_list_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_param_list_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_comma),
-        kotlin_formal_nonterminal(production: kotlin_production_typed_param),
-        kotlin_formal_nonterminal(production: kotlin_production_param_list_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_typed_param),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_param_list_suffix)
       ]
     ),
-    kotlin_formal_production(lhs: kotlin_production_primary_expr, rhs: [kotlin_formal_terminal(token_class: kotlin_token_ident)]),
+    kotlin_formal_production(lhs: kotlin_production_primary_expr, rhs: [grammar_formal_terminal(token_class: kotlin_token_ident)]),
     kotlin_formal_production(
       lhs: kotlin_production_primary_expr,
-      rhs: [kotlin_formal_terminal(token_class: kotlin_token_int_literal)]
+      rhs: [grammar_formal_terminal(token_class: kotlin_token_int_literal)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_primary_expr,
-      rhs: [kotlin_formal_terminal(token_class: kotlin_token_string_literal)]
+      rhs: [grammar_formal_terminal(token_class: kotlin_token_string_literal)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_primary_expr,
-      rhs: [kotlin_formal_terminal(token_class: kotlin_token_kw_true)]
+      rhs: [grammar_formal_terminal(token_class: kotlin_token_kw_true)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_primary_expr,
-      rhs: [kotlin_formal_terminal(token_class: kotlin_token_kw_false)]
+      rhs: [grammar_formal_terminal(token_class: kotlin_token_kw_false)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_primary_expr,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen)
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_terminal(token_class: kotlin_token_rparen)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_expr_list, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_expr_list,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_expr_list,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_comma),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_expr_list_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_terminal(token_class: kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr_list_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_expr_list_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_expr_list_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_comma),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_expr_list_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_comma),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr_list_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_call_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_primary_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_primary_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_call_expr,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_primary_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr_list),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_call_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_primary_expr),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr_list),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_call_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_call_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_call_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr_list),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_call_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr_list),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_call_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_multiplicative_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_call_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_call_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_multiplicative_expr,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_call_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_multiplicative_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_multiplicative_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_star),
-        kotlin_formal_nonterminal(production: kotlin_production_call_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_star),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_multiplicative_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_slash),
-        kotlin_formal_nonterminal(production: kotlin_production_call_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_slash),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_multiplicative_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_percent),
-        kotlin_formal_nonterminal(production: kotlin_production_call_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_percent),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_call_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_additive_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_multiplicative_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_additive_expr,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_additive_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_additive_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_plus),
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_plus),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_additive_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_minus),
-        kotlin_formal_nonterminal(production: kotlin_production_multiplicative_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_minus),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_multiplicative_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_comparison_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_additive_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_comparison_expr,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_additive_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_comparison_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_comparison_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_lt),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_lt),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_comparison_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_gt),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_gt),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_comparison_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_lt_eq),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_lt_eq),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_comparison_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_gt_eq),
-        kotlin_formal_nonterminal(production: kotlin_production_additive_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_gt_eq),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_additive_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_equality_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_comparison_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_equality_expr,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_equality_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_equality_suffix)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_equality_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_equality_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_eq_eq),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_equality_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_eq_eq),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_equality_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_equality_suffix,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_bang_eq),
-        kotlin_formal_nonterminal(production: kotlin_production_comparison_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_equality_suffix)
+        grammar_formal_terminal(token_class: kotlin_token_bang_eq),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_comparison_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_equality_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_binary_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_equality_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_equality_expr)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_expr,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_binary_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_binary_expr)]
     ),
-    kotlin_formal_production(lhs: kotlin_production_return_stmt, rhs: [kotlin_formal_terminal(token_class: kotlin_token_kw_return)]),
+    kotlin_formal_production(lhs: kotlin_production_return_stmt, rhs: [grammar_formal_terminal(token_class: kotlin_token_kw_return)]),
     kotlin_formal_production(
       lhs: kotlin_production_return_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_return),
-        kotlin_formal_nonterminal(production: kotlin_production_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_return),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_val),
-        kotlin_formal_terminal(token_class: kotlin_token_ident)
+        grammar_formal_terminal(token_class: kotlin_token_kw_val),
+        grammar_formal_terminal(token_class: kotlin_token_ident)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_var),
-        kotlin_formal_terminal(token_class: kotlin_token_ident)
+        grammar_formal_terminal(token_class: kotlin_token_kw_var),
+        grammar_formal_terminal(token_class: kotlin_token_ident)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_val),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_colon),
-        kotlin_formal_nonterminal(production: kotlin_production_type_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_val),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_type_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_var),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_colon),
-        kotlin_formal_nonterminal(production: kotlin_production_type_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_var),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_type_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_val),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_equal),
-        kotlin_formal_nonterminal(production: kotlin_production_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_val),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_var),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_equal),
-        kotlin_formal_nonterminal(production: kotlin_production_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_var),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_val),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_colon),
-        kotlin_formal_nonterminal(production: kotlin_production_type_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_equal),
-        kotlin_formal_nonterminal(production: kotlin_production_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_val),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_type_expr),
+        grammar_formal_terminal(token_class: kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_value_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_var),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_colon),
-        kotlin_formal_nonterminal(production: kotlin_production_type_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_equal),
-        kotlin_formal_nonterminal(production: kotlin_production_expr)
+        grammar_formal_terminal(token_class: kotlin_token_kw_var),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_type_expr),
+        grammar_formal_terminal(token_class: kotlin_token_equal),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_if_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_if),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_block)
+        grammar_formal_terminal(token_class: kotlin_token_kw_if),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_if_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_if),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_block),
-        kotlin_formal_terminal(token_class: kotlin_token_kw_else),
-        kotlin_formal_nonterminal(production: kotlin_production_block)
+        grammar_formal_terminal(token_class: kotlin_token_kw_if),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block),
+        grammar_formal_terminal(token_class: kotlin_token_kw_else),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_if_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_if),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_block),
-        kotlin_formal_terminal(token_class: kotlin_token_kw_else),
-        kotlin_formal_nonterminal(production: kotlin_production_if_stmt)
+        grammar_formal_terminal(token_class: kotlin_token_kw_if),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block),
+        grammar_formal_terminal(token_class: kotlin_token_kw_else),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_if_stmt)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_while_stmt,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_while),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_expr),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_block)
+        grammar_formal_terminal(token_class: kotlin_token_kw_while),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_expr),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_return_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_return_stmt)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_value_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_value_stmt)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_if_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_if_stmt)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_while_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_while_stmt)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt,
-      rhs: [kotlin_formal_nonterminal(production: kotlin_production_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: kotlin_production_expr)]
     ),
     kotlin_formal_production(lhs: kotlin_production_stmt_list, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_stmt_list,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_stmt),
-        kotlin_formal_nonterminal(production: kotlin_production_stmt_tail_suffix),
-        kotlin_formal_nonterminal(production: kotlin_production_stmt_sep_opt)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt_tail_suffix),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt_sep_opt)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_stmt_tail_suffix, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_stmt_tail_suffix,
       rhs: [
-        kotlin_formal_nonterminal(production: kotlin_production_stmt_tail),
-        kotlin_formal_nonterminal(production: kotlin_production_stmt_tail_suffix)
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt_tail),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt_tail_suffix)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt_tail,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_semicolon),
-        kotlin_formal_nonterminal(production: kotlin_production_stmt)
+        grammar_formal_terminal(token_class: kotlin_token_semicolon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt_tail,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_nl),
-        kotlin_formal_nonterminal(production: kotlin_production_stmt)
+        grammar_formal_terminal(token_class: kotlin_token_nl),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt)
       ]
     ),
     kotlin_formal_production(lhs: kotlin_production_stmt_sep_opt, rhs: []),
     kotlin_formal_production(
       lhs: kotlin_production_stmt_sep_opt,
-      rhs: [kotlin_formal_terminal(token_class: kotlin_token_semicolon)]
+      rhs: [grammar_formal_terminal(token_class: kotlin_token_semicolon)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_stmt_sep_opt,
-      rhs: [kotlin_formal_terminal(token_class: kotlin_token_nl)]
+      rhs: [grammar_formal_terminal(token_class: kotlin_token_nl)]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_block,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_lbrace),
-        kotlin_formal_nonterminal(production: kotlin_production_stmt_list),
-        kotlin_formal_terminal(token_class: kotlin_token_rbrace)
+        grammar_formal_terminal(token_class: kotlin_token_lbrace),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_stmt_list),
+        grammar_formal_terminal(token_class: kotlin_token_rbrace)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_fn_decl,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_fun),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_param_list),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_nonterminal(production: kotlin_production_block)
+        grammar_formal_terminal(token_class: kotlin_token_kw_fun),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_param_list),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block)
       ]
     ),
     kotlin_formal_production(
       lhs: kotlin_production_fn_decl,
       rhs: [
-        kotlin_formal_terminal(token_class: kotlin_token_kw_fun),
-        kotlin_formal_terminal(token_class: kotlin_token_ident),
-        kotlin_formal_terminal(token_class: kotlin_token_lparen),
-        kotlin_formal_nonterminal(production: kotlin_production_param_list),
-        kotlin_formal_terminal(token_class: kotlin_token_rparen),
-        kotlin_formal_terminal(token_class: kotlin_token_colon),
-        kotlin_formal_nonterminal(production: kotlin_production_type_expr),
-        kotlin_formal_nonterminal(production: kotlin_production_block)
+        grammar_formal_terminal(token_class: kotlin_token_kw_fun),
+        grammar_formal_terminal(token_class: kotlin_token_ident),
+        grammar_formal_terminal(token_class: kotlin_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_param_list),
+        grammar_formal_terminal(token_class: kotlin_token_rparen),
+        grammar_formal_terminal(token_class: kotlin_token_colon),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_type_expr),
+        grammar_formal_nonterminal_occurrence(production: kotlin_production_block)
       ]
     ),
     kotlin_formal_production_mvp1_fn_add()

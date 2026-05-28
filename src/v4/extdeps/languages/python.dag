@@ -10,6 +10,8 @@
 module v4.extdeps.languages.python
 
 import v4.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
   FormalGrammarSymbol,
   FormalNonterminal,
   FormalProduction,
@@ -861,7 +863,7 @@ fn python_mvp1_serialize_source_node() -> Node {
   }
 }
 
-fn python_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
+fn grammar_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
   FormalTerminalOccurrence {
     terminal: FormalTerminal { identity: token_class }
   }
@@ -874,7 +876,7 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: python_formal_terminal_symbol(token_class: python_concrete_token_class(token: token))
+        item: grammar_formal_terminal(token_class: python_concrete_token_class(token: token))
       )
     }
   )

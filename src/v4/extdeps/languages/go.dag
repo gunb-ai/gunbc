@@ -6,6 +6,8 @@
 module v4.extdeps.languages.go
 
 import v4.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
   FormalGrammarSymbol,
   FormalNonterminal,
   FormalProduction,
@@ -1342,16 +1344,13 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
-fn go_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
-}
 
 fn go_formal_rhs_from_tokens(tokens: List<GoConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: go_formal_terminal(token_class: go_concrete_token_class(token: token)))
+      list_snoc_item(xs: acc, item: grammar_formal_terminal(token_class: go_concrete_token_class(token: token)))
     }
   )
 }

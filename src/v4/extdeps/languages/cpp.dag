@@ -6,6 +6,8 @@
 module v4.extdeps.languages.cpp
 
 import v4.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
   FormalGrammarSymbol,
   FormalNonterminal,
   FormalNonterminalOccurrence,
@@ -1129,9 +1131,6 @@ fn cpp_mvp1_serialize_source_node() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: cpp_mvp1_serialize_source_children() }
 }
 
-fn cpp_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
-}
 
 fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -1140,7 +1139,7 @@ fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<Form
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: cpp_formal_terminal(token_class: cpp_concrete_token_class(token: token))
+        item: grammar_formal_terminal(token_class: cpp_concrete_token_class(token: token))
       )
     }
   )

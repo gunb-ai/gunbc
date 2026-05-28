@@ -6,6 +6,8 @@
 module v4.extdeps.languages.java
 
 import v4.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_nonterminal_occurrence,
   Choice,
   FormalGrammarSymbol,
   FormalNonterminal,
@@ -1029,11 +1031,8 @@ fn java_grammar_atom(id: Symbol) -> Node {
   java_inhabitant_atom(id: id)
 }
 
-fn java_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
-}
 
-fn java_formal_nonterminal(production: Symbol) -> FormalGrammarSymbol {
+fn grammar_formal_nonterminal_occurrence(production: Symbol) -> FormalGrammarSymbol {
   FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
 }
 
@@ -1051,7 +1050,7 @@ fn java_formal_rhs_from_tokens(tokens: List<JavaConcreteSyntaxToken>) -> List<Fo
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: java_formal_terminal(token_class: java_concrete_token_class(token: token))
+        item: grammar_formal_terminal(token_class: java_concrete_token_class(token: token))
       )
     }
   )
@@ -1115,253 +1114,253 @@ fn java_wave2_lex() -> LexRules {
 // Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn java_wave2_formal_productions() -> List<FormalProduction> {
   [
-    java_formal_production(lhs: java_production_compilation_unit, rhs: [java_formal_nonterminal(production: java_production_class_declaration)]),
+    java_formal_production(lhs: java_production_compilation_unit, rhs: [grammar_formal_nonterminal_occurrence(production: java_production_class_declaration)]),
     java_formal_production(
       lhs: java_production_class_declaration,
       rhs: [
-        java_formal_terminal(token_class: java_token_kw_public),
-        java_formal_terminal(token_class: java_token_kw_class),
-        java_formal_terminal(token_class: java_token_ident),
-        java_formal_nonterminal(production: java_production_class_body)
+        grammar_formal_terminal(token_class: java_token_kw_public),
+        grammar_formal_terminal(token_class: java_token_kw_class),
+        grammar_formal_terminal(token_class: java_token_ident),
+        grammar_formal_nonterminal_occurrence(production: java_production_class_body)
       ]
     ),
     java_formal_production(
       lhs: java_production_class_member_declaration,
-      rhs: [java_formal_nonterminal(production: java_production_method_declaration)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_method_declaration)]
     ),
     java_formal_production(
       lhs: java_production_class_member_declaration,
-      rhs: [java_formal_nonterminal(production: java_production_field_declaration)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_field_declaration)]
     ),
     java_formal_production(
       lhs: java_production_class_body_declaration,
-      rhs: [java_formal_nonterminal(production: java_production_class_member_declaration)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_class_member_declaration)]
     ),
     java_formal_production(
       lhs: java_production_class_body,
       rhs: [
-        java_formal_terminal(token_class: java_token_lbrace),
-        java_formal_terminal(token_class: java_token_rbrace)
+        grammar_formal_terminal(token_class: java_token_lbrace),
+        grammar_formal_terminal(token_class: java_token_rbrace)
       ]
     ),
     java_formal_production(
       lhs: java_production_class_body,
       rhs: [
-        java_formal_terminal(token_class: java_token_lbrace),
-        java_formal_nonterminal(production: java_production_class_body_declaration),
-        java_formal_nonterminal(production: java_production_class_body_declaration_suffix),
-        java_formal_terminal(token_class: java_token_rbrace)
+        grammar_formal_terminal(token_class: java_token_lbrace),
+        grammar_formal_nonterminal_occurrence(production: java_production_class_body_declaration),
+        grammar_formal_nonterminal_occurrence(production: java_production_class_body_declaration_suffix),
+        grammar_formal_terminal(token_class: java_token_rbrace)
       ]
     ),
     java_formal_production(lhs: java_production_class_body_declaration_suffix, rhs: []),
     java_formal_production(
       lhs: java_production_class_body_declaration_suffix,
       rhs: [
-        java_formal_nonterminal(production: java_production_class_body_declaration),
-        java_formal_nonterminal(production: java_production_class_body_declaration_suffix)
+        grammar_formal_nonterminal_occurrence(production: java_production_class_body_declaration),
+        grammar_formal_nonterminal_occurrence(production: java_production_class_body_declaration_suffix)
       ]
     ),
     java_formal_production(
       lhs: java_production_method_header,
       rhs: [
-        java_formal_terminal(token_class: java_token_kw_static),
-        java_formal_nonterminal(production: java_production_result),
-        java_formal_nonterminal(production: java_production_method_declarator)
+        grammar_formal_terminal(token_class: java_token_kw_static),
+        grammar_formal_nonterminal_occurrence(production: java_production_result),
+        grammar_formal_nonterminal_occurrence(production: java_production_method_declarator)
       ]
     ),
-    java_formal_production(lhs: java_production_method_body, rhs: [java_formal_nonterminal(production: java_production_block)]),
+    java_formal_production(lhs: java_production_method_body, rhs: [grammar_formal_nonterminal_occurrence(production: java_production_block)]),
     java_formal_production(
       lhs: java_production_method_declaration,
       rhs: [
-        java_formal_nonterminal(production: java_production_method_header),
-        java_formal_nonterminal(production: java_production_method_body)
+        grammar_formal_nonterminal_occurrence(production: java_production_method_header),
+        grammar_formal_nonterminal_occurrence(production: java_production_method_body)
       ]
     ),
     java_formal_production(
       lhs: java_production_field_declaration,
       rhs: [
-        java_formal_terminal(token_class: java_token_kw_static),
-        java_formal_nonterminal(production: java_production_type),
-        java_formal_terminal(token_class: java_token_ident),
-        java_formal_terminal(token_class: java_token_semicolon)
+        grammar_formal_terminal(token_class: java_token_kw_static),
+        grammar_formal_nonterminal_occurrence(production: java_production_type),
+        grammar_formal_terminal(token_class: java_token_ident),
+        grammar_formal_terminal(token_class: java_token_semicolon)
       ]
     ),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_byte)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_short)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_int)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_long)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_float)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_double)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_boolean)]),
-    java_formal_production(lhs: java_production_primitive_type, rhs: [java_formal_terminal(token_class: java_token_kw_char)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_byte)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_short)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_int)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_long)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_float)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_double)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_boolean)]),
+    java_formal_production(lhs: java_production_primitive_type, rhs: [grammar_formal_terminal(token_class: java_token_kw_char)]),
     java_formal_production(
       lhs: java_production_result,
-      rhs: [java_formal_nonterminal(production: java_production_primitive_type)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_primitive_type)]
     ),
-    java_formal_production(lhs: java_production_result, rhs: [java_formal_terminal(token_class: java_token_kw_void)]),
-    java_formal_production(lhs: java_production_type, rhs: [java_formal_nonterminal(production: java_production_primitive_type)]),
+    java_formal_production(lhs: java_production_result, rhs: [grammar_formal_terminal(token_class: java_token_kw_void)]),
+    java_formal_production(lhs: java_production_type, rhs: [grammar_formal_nonterminal_occurrence(production: java_production_primitive_type)]),
     java_formal_production(
       lhs: java_production_formal_parameter,
       rhs: [
-        java_formal_nonterminal(production: java_production_type),
-        java_formal_terminal(token_class: java_token_ident)
+        grammar_formal_nonterminal_occurrence(production: java_production_type),
+        grammar_formal_terminal(token_class: java_token_ident)
       ]
     ),
     java_formal_production(
       lhs: java_production_formal_parameter_list,
-      rhs: [java_formal_nonterminal(production: java_production_formal_parameter)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter)]
     ),
     java_formal_production(
       lhs: java_production_formal_parameter_list,
       rhs: [
-        java_formal_nonterminal(production: java_production_formal_parameter),
-        java_formal_terminal(token_class: java_token_comma),
-        java_formal_nonterminal(production: java_production_formal_parameter),
-        java_formal_nonterminal(production: java_production_formal_parameter_list_suffix)
+        grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter),
+        grammar_formal_terminal(token_class: java_token_comma),
+        grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter),
+        grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter_list_suffix)
       ]
     ),
     java_formal_production(lhs: java_production_formal_parameter_list_suffix, rhs: []),
     java_formal_production(
       lhs: java_production_formal_parameter_list_suffix,
       rhs: [
-        java_formal_terminal(token_class: java_token_comma),
-        java_formal_nonterminal(production: java_production_formal_parameter),
-        java_formal_nonterminal(production: java_production_formal_parameter_list_suffix)
+        grammar_formal_terminal(token_class: java_token_comma),
+        grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter),
+        grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter_list_suffix)
       ]
     ),
     java_formal_production(
       lhs: java_production_method_declarator,
       rhs: [
-        java_formal_terminal(token_class: java_token_ident),
-        java_formal_terminal(token_class: java_token_lparen),
-        java_formal_terminal(token_class: java_token_rparen)
+        grammar_formal_terminal(token_class: java_token_ident),
+        grammar_formal_terminal(token_class: java_token_lparen),
+        grammar_formal_terminal(token_class: java_token_rparen)
       ]
     ),
     java_formal_production(
       lhs: java_production_method_declarator,
       rhs: [
-        java_formal_terminal(token_class: java_token_ident),
-        java_formal_terminal(token_class: java_token_lparen),
-        java_formal_nonterminal(production: java_production_formal_parameter_list),
-        java_formal_terminal(token_class: java_token_rparen)
+        grammar_formal_terminal(token_class: java_token_ident),
+        grammar_formal_terminal(token_class: java_token_lparen),
+        grammar_formal_nonterminal_occurrence(production: java_production_formal_parameter_list),
+        grammar_formal_terminal(token_class: java_token_rparen)
       ]
     ),
-    java_formal_production(lhs: java_production_primary_expression, rhs: [java_formal_terminal(token_class: java_token_ident)]),
+    java_formal_production(lhs: java_production_primary_expression, rhs: [grammar_formal_terminal(token_class: java_token_ident)]),
     java_formal_production(
       lhs: java_production_multiplicative_expression,
-      rhs: [java_formal_nonterminal(production: java_production_primary_expression)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_primary_expression)]
     ),
     java_formal_production(
       lhs: java_production_multiplicative_expression,
       rhs: [
-        java_formal_nonterminal(production: java_production_primary_expression),
-        java_formal_nonterminal(production: java_production_multiplicative_suffix)
+        grammar_formal_nonterminal_occurrence(production: java_production_primary_expression),
+        grammar_formal_nonterminal_occurrence(production: java_production_multiplicative_suffix)
       ]
     ),
     java_formal_production(lhs: java_production_multiplicative_suffix, rhs: []),
     java_formal_production(
       lhs: java_production_multiplicative_suffix,
       rhs: [
-        java_formal_terminal(token_class: java_token_star),
-        java_formal_nonterminal(production: java_production_primary_expression),
-        java_formal_nonterminal(production: java_production_multiplicative_suffix)
+        grammar_formal_terminal(token_class: java_token_star),
+        grammar_formal_nonterminal_occurrence(production: java_production_primary_expression),
+        grammar_formal_nonterminal_occurrence(production: java_production_multiplicative_suffix)
       ]
     ),
     java_formal_production(
       lhs: java_production_additive_expression,
-      rhs: [java_formal_nonterminal(production: java_production_multiplicative_expression)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_multiplicative_expression)]
     ),
     java_formal_production(
       lhs: java_production_additive_expression,
       rhs: [
-        java_formal_nonterminal(production: java_production_multiplicative_expression),
-        java_formal_nonterminal(production: java_production_additive_suffix)
+        grammar_formal_nonterminal_occurrence(production: java_production_multiplicative_expression),
+        grammar_formal_nonterminal_occurrence(production: java_production_additive_suffix)
       ]
     ),
     java_formal_production(lhs: java_production_additive_suffix, rhs: []),
     java_formal_production(
       lhs: java_production_additive_suffix,
       rhs: [
-        java_formal_terminal(token_class: java_token_plus),
-        java_formal_nonterminal(production: java_production_multiplicative_expression),
-        java_formal_nonterminal(production: java_production_additive_suffix)
+        grammar_formal_terminal(token_class: java_token_plus),
+        grammar_formal_nonterminal_occurrence(production: java_production_multiplicative_expression),
+        grammar_formal_nonterminal_occurrence(production: java_production_additive_suffix)
       ]
     ),
     java_formal_production(
       lhs: java_production_additive_suffix,
       rhs: [
-        java_formal_terminal(token_class: java_token_minus),
-        java_formal_nonterminal(production: java_production_multiplicative_expression),
-        java_formal_nonterminal(production: java_production_additive_suffix)
+        grammar_formal_terminal(token_class: java_token_minus),
+        grammar_formal_nonterminal_occurrence(production: java_production_multiplicative_expression),
+        grammar_formal_nonterminal_occurrence(production: java_production_additive_suffix)
       ]
     ),
     java_formal_production(
       lhs: java_production_expression,
-      rhs: [java_formal_nonterminal(production: java_production_additive_expression)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_additive_expression)]
     ),
     java_formal_production(
       lhs: java_production_return_statement,
       rhs: [
-        java_formal_terminal(token_class: java_token_kw_return),
-        java_formal_terminal(token_class: java_token_semicolon)
+        grammar_formal_terminal(token_class: java_token_kw_return),
+        grammar_formal_terminal(token_class: java_token_semicolon)
       ]
     ),
     java_formal_production(
       lhs: java_production_return_statement,
       rhs: [
-        java_formal_terminal(token_class: java_token_kw_return),
-        java_formal_nonterminal(production: java_production_expression),
-        java_formal_terminal(token_class: java_token_semicolon)
+        grammar_formal_terminal(token_class: java_token_kw_return),
+        grammar_formal_nonterminal_occurrence(production: java_production_expression),
+        grammar_formal_terminal(token_class: java_token_semicolon)
       ]
     ),
     java_formal_production(
       lhs: java_production_local_variable_declaration,
       rhs: [
-        java_formal_nonterminal(production: java_production_type),
-        java_formal_terminal(token_class: java_token_ident)
+        grammar_formal_nonterminal_occurrence(production: java_production_type),
+        grammar_formal_terminal(token_class: java_token_ident)
       ]
     ),
     java_formal_production(
       lhs: java_production_local_variable_declaration_statement,
       rhs: [
-        java_formal_nonterminal(production: java_production_local_variable_declaration),
-        java_formal_terminal(token_class: java_token_semicolon)
+        grammar_formal_nonterminal_occurrence(production: java_production_local_variable_declaration),
+        grammar_formal_terminal(token_class: java_token_semicolon)
       ]
     ),
     java_formal_production(
       lhs: java_production_statement,
-      rhs: [java_formal_nonterminal(production: java_production_return_statement)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_return_statement)]
     ),
     java_formal_production(
       lhs: java_production_block_statement,
-      rhs: [java_formal_nonterminal(production: java_production_local_variable_declaration_statement)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_local_variable_declaration_statement)]
     ),
     java_formal_production(
       lhs: java_production_block_statement,
-      rhs: [java_formal_nonterminal(production: java_production_statement)]
+      rhs: [grammar_formal_nonterminal_occurrence(production: java_production_statement)]
     ),
     java_formal_production(
       lhs: java_production_block,
       rhs: [
-        java_formal_terminal(token_class: java_token_lbrace),
-        java_formal_terminal(token_class: java_token_rbrace)
+        grammar_formal_terminal(token_class: java_token_lbrace),
+        grammar_formal_terminal(token_class: java_token_rbrace)
       ]
     ),
     java_formal_production(
       lhs: java_production_block,
       rhs: [
-        java_formal_terminal(token_class: java_token_lbrace),
-        java_formal_nonterminal(production: java_production_block_statement),
-        java_formal_nonterminal(production: java_production_block_statement_suffix),
-        java_formal_terminal(token_class: java_token_rbrace)
+        grammar_formal_terminal(token_class: java_token_lbrace),
+        grammar_formal_nonterminal_occurrence(production: java_production_block_statement),
+        grammar_formal_nonterminal_occurrence(production: java_production_block_statement_suffix),
+        grammar_formal_terminal(token_class: java_token_rbrace)
       ]
     ),
     java_formal_production(lhs: java_production_block_statement_suffix, rhs: []),
     java_formal_production(
       lhs: java_production_block_statement_suffix,
       rhs: [
-        java_formal_nonterminal(production: java_production_block_statement),
-        java_formal_nonterminal(production: java_production_block_statement_suffix)
+        grammar_formal_nonterminal_occurrence(production: java_production_block_statement),
+        grammar_formal_nonterminal_occurrence(production: java_production_block_statement_suffix)
       ]
     ),
     java_formal_production_mvp1_method_add()
