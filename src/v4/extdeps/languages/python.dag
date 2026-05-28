@@ -1165,45 +1165,36 @@ fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol
   }
 }
 
-fn python_formal_lhs_identity(prod: FormalProduction) -> Symbol {
-  prod.lhs.identity
-}
-
 fn python_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
   Empty
 }
 
-fn python_formal_alternatives_for_lhs(
-  authority: List<FormalProduction>,
-  lhs: Symbol
+fn python_formal_rhs_alternatives_from_productions(
+  prods: List<FormalProduction>
 ) -> List<List<FormalGrammarSymbol>> {
   fold_list(
-    xs: authority,
+    xs: prods,
     empty: python_formal_rhs_alternatives_accum_empty(),
     cons: fn(acc, prod) {
-      if python_formal_lhs_identity(prod: prod) == lhs {
-        list_snoc_item(xs: acc, item: prod.rhs)
-      } else {
-        acc
-      }
+      list_snoc_item(xs: acc, item: prod.rhs)
     }
   )
 }
 
-fn python_formal_lhs_to_grammar_expr(authority: List<FormalProduction>, lhs: Symbol) -> GrammarExpr {
+fn python_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> GrammarExpr {
   python_formal_alternatives_to_choice_expr(
-    alts: python_formal_alternatives_for_lhs(authority: authority, lhs: lhs)
+    alts: python_formal_rhs_alternatives_from_productions(prods: prods)
   )
 }
 
-fn python_formal_lhs_to_grammar_production(
-  authority: List<FormalProduction>,
-  lhs: Symbol,
+fn python_formal_productions_to_grammar_production(
+  name: Symbol,
+  prods: List<FormalProduction>,
   emitted: Symbol
 ) -> GrammarProduction {
   GrammarProduction {
-    name: lhs,
-    expression: python_formal_lhs_to_grammar_expr(authority: authority, lhs: lhs),
+    name: name,
+    expression: python_formal_productions_to_grammar_expr(prods: prods),
     emitted: python_grammar_atom(id: emitted)
   }
 }
@@ -1211,9 +1202,13 @@ fn python_formal_lhs_to_grammar_production(
 fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: python_production_mvp1_fn_add,
-    expression: python_formal_lhs_to_grammar_expr(
-      authority: python_wave1_formal_production_authority(),
-      lhs: python_production_mvp1_fn_add
+    expression: python_formal_productions_to_grammar_expr(
+      prods: [
+        python_formal_authority_prod(
+          lhs: python_production_mvp1_fn_add,
+          slots: python_formal_mvp1_fn_add_slots()
+        )
+      ]
     ),
     emitted: python_mvp1_emitted_add_fn_node()
   }
@@ -1406,64 +1401,178 @@ fn python_grammar_atom(id: Symbol) -> Node {
 }
 
 fn python_wave1_grammar_root() -> GrammarRoot {
-  let authority = python_wave1_formal_production_authority()
   GrammarRoot {
     start: python_production_fn_def,
     productions: [
       python_grammar_production_mvp1_fn_add(),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_fn_def,
+      python_formal_productions_to_grammar_production(
+        name: python_production_fn_def,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_fn_def,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_kw_def),
+              python_formal_slot_terminal(symbol: python_token_ident),
+              python_formal_slot_terminal(symbol: python_token_lparen),
+              python_formal_slot_terminal(symbol: python_token_ident),
+              python_formal_slot_terminal(symbol: python_token_rparen_suite_indent),
+              python_formal_slot_nonterminal(symbol: python_production_suite)
+            ]
+          )
+        ],
         emitted: python_surface_fn_item
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_suite,
+      python_formal_productions_to_grammar_production(
+        name: python_production_suite,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_suite,
+            slots: [python_formal_slot_nonterminal(symbol: python_production_stmt)]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_suite,
+            slots: [
+              python_formal_slot_nonterminal(symbol: python_production_stmt),
+              python_formal_slot_nonterminal(symbol: python_production_suite)
+            ]
+          )
+        ],
         emitted: python_surface_suite
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_stmt,
+      python_formal_productions_to_grammar_production(
+        name: python_production_stmt,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_stmt,
+            slots: [python_formal_slot_nonterminal(symbol: python_production_assign_stmt)]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_stmt,
+            slots: [python_formal_slot_nonterminal(symbol: python_production_if_stmt)]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_stmt,
+            slots: [python_formal_slot_nonterminal(symbol: python_production_return_stmt)]
+          )
+        ],
         emitted: python_surface_stmt
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_assign_stmt,
+      python_formal_productions_to_grammar_production(
+        name: python_production_assign_stmt,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_assign_stmt,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_ident),
+              python_formal_slot_terminal(symbol: python_token_equal),
+              python_formal_slot_nonterminal(symbol: python_production_additive)
+            ]
+          )
+        ],
         emitted: python_surface_assign_stmt
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_if_stmt,
+      python_formal_productions_to_grammar_production(
+        name: python_production_if_stmt,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_if_stmt,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_newline_if_stmt),
+              python_formal_slot_nonterminal(symbol: python_production_comparison),
+              python_formal_slot_terminal(symbol: python_token_colon_if_suite_indent),
+              python_formal_slot_nonterminal(symbol: python_production_return_stmt)
+            ]
+          )
+        ],
         emitted: python_surface_if_stmt
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_return_stmt,
+      python_formal_productions_to_grammar_production(
+        name: python_production_return_stmt,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_return_stmt,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_newline_return_inner),
+              python_formal_slot_nonterminal(symbol: python_production_primary)
+            ]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_return_stmt,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_newline_return_outer),
+              python_formal_slot_nonterminal(symbol: python_production_primary)
+            ]
+          )
+        ],
         emitted: python_surface_return_stmt
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_comparison,
+      python_formal_productions_to_grammar_production(
+        name: python_production_comparison,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_comparison,
+            slots: [
+              python_formal_slot_nonterminal(symbol: python_production_additive),
+              python_formal_slot_nonterminal(symbol: python_production_comparison_tail)
+            ]
+          )
+        ],
         emitted: python_surface_comparison
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_comparison_tail,
+      python_formal_productions_to_grammar_production(
+        name: python_production_comparison_tail,
+        prods: [
+          python_formal_authority_prod(lhs: python_production_comparison_tail, slots: Empty),
+          python_formal_authority_prod(
+            lhs: python_production_comparison_tail,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_greater),
+              python_formal_slot_nonterminal(symbol: python_production_additive)
+            ]
+          )
+        ],
         emitted: python_surface_comparison_tail
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_additive,
+      python_formal_productions_to_grammar_production(
+        name: python_production_additive,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_additive,
+            slots: [
+              python_formal_slot_nonterminal(symbol: python_production_primary),
+              python_formal_slot_nonterminal(symbol: python_production_additive_tail)
+            ]
+          )
+        ],
         emitted: python_surface_additive
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_additive_tail,
+      python_formal_productions_to_grammar_production(
+        name: python_production_additive_tail,
+        prods: [
+          python_formal_authority_prod(lhs: python_production_additive_tail, slots: Empty),
+          python_formal_authority_prod(
+            lhs: python_production_additive_tail,
+            slots: [
+              python_formal_slot_terminal(symbol: python_token_plus),
+              python_formal_slot_nonterminal(symbol: python_production_primary),
+              python_formal_slot_nonterminal(symbol: python_production_additive_tail)
+            ]
+          )
+        ],
         emitted: python_surface_additive_tail
       ),
-      python_formal_lhs_to_grammar_production(
-        authority: authority,
-        lhs: python_production_primary,
+      python_formal_productions_to_grammar_production(
+        name: python_production_primary,
+        prods: [
+          python_formal_authority_prod(
+            lhs: python_production_primary,
+            slots: [python_formal_slot_terminal(symbol: python_token_ident)]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_primary,
+            slots: [python_formal_slot_terminal(symbol: python_token_int_literal)]
+          )
+        ],
         emitted: python_surface_primary
       )
     ],
