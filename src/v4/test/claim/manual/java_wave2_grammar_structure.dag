@@ -11,6 +11,7 @@ import v4.extdeps.languages.java {
   java_language_model_wave2,
   java_production_block_statement,
   java_production_class_body,
+  java_production_class_body_declaration,
   java_production_formal_parameter_list,
   java_production_method_declarator,
   java_production_result,
@@ -30,6 +31,7 @@ fn java_wave2_grammar_structure_satisfied(lm: JavaLanguageModel) -> Bool {
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_method_declarator) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_formal_parameter_list) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_class_body) &&
+    grammar_carries_symbol(grammar: lm.grammar, sym: java_production_class_body_declaration) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_block_statement) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_statement) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_return_statement) &&

@@ -2,7 +2,7 @@
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
 // Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* / java_wave2_* grammar/lex, java_language_model_wave2.
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.4 MethodDeclarator/FormalParameterList, §14.17 optional return Expression). canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.1.7 ClassBodyDeclaration, §8.4 MethodDeclarator/FormalParameterList, §14.17 optional return Expression). canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. inhabitance: [] (Wave 2b). bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 
 module v4.extdeps.languages.java
@@ -243,6 +243,7 @@ data java_production_mvp1_method_add: Symbol = java_production_mvp1_method_add
 data java_production_compilation_unit: Symbol = java_production_compilation_unit
 data java_production_class_declaration: Symbol = java_production_class_declaration
 data java_production_class_body: Symbol = java_production_class_body
+data java_production_class_body_declaration: Symbol = java_production_class_body_declaration
 data java_production_class_member_declaration: Symbol = java_production_class_member_declaration
 data java_production_method_declaration: Symbol = java_production_method_declaration
 data java_production_field_declaration: Symbol = java_production_field_declaration
@@ -266,6 +267,7 @@ data java_surface_method_item: Symbol = java_surface_method_item
 data java_surface_compilation_unit: Symbol = java_surface_compilation_unit
 data java_surface_class_declaration: Symbol = java_surface_class_declaration
 data java_surface_class_body: Symbol = java_surface_class_body
+data java_surface_class_body_declaration: Symbol = java_surface_class_body_declaration
 data java_surface_class_member_declaration: Symbol = java_surface_class_member_declaration
 data java_surface_method_declaration: Symbol = java_surface_method_declaration
 data java_surface_field_declaration: Symbol = java_surface_field_declaration
@@ -1242,12 +1244,17 @@ fn java_grammar_class_member_declaration_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.1.7 ClassBody — `{` ClassMemberDeclaration* `}`.
+// JLS §8.1.7 ClassBodyDeclaration — wave-2 subset: ClassMemberDeclaration only.
+fn java_grammar_class_body_declaration_expr() -> GrammarExpr {
+  java_grammar_nonterminal(production: java_production_class_member_declaration)
+}
+
+// JLS §8.1.7 ClassBody — `{` ClassBodyDeclaration* `}`.
 fn java_grammar_class_body_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: java_token_lbrace),
     right: java_grammar_sequence(
-      left: java_grammar_repeat(element: java_grammar_nonterminal(production: java_production_class_member_declaration)),
+      left: java_grammar_repeat(element: java_grammar_nonterminal(production: java_production_class_body_declaration)),
       right: java_grammar_terminal(token_class: java_token_rbrace)
     )
   )
@@ -1286,15 +1293,20 @@ fn java_wave2_grammar_root() -> GrammarRoot {
     expression: java_grammar_class_declaration_expr(),
     emitted: java_surface_class_declaration
   )
-  let class_body = java_grammar_production(
-    name: java_production_class_body,
-    expression: java_grammar_class_body_expr(),
-    emitted: java_surface_class_body
-  )
   let class_member_declaration = java_grammar_production(
     name: java_production_class_member_declaration,
     expression: java_grammar_class_member_declaration_expr(),
     emitted: java_surface_class_member_declaration
+  )
+  let class_body_declaration = java_grammar_production(
+    name: java_production_class_body_declaration,
+    expression: java_grammar_class_body_declaration_expr(),
+    emitted: java_surface_class_body_declaration
+  )
+  let class_body = java_grammar_production(
+    name: java_production_class_body,
+    expression: java_grammar_class_body_expr(),
+    emitted: java_surface_class_body
   )
   let method_declaration = java_grammar_production(
     name: java_production_method_declaration,
@@ -1387,8 +1399,9 @@ fn java_wave2_grammar_root() -> GrammarRoot {
     productions: [
       compilation_unit,
       class_declaration,
-      class_body,
       class_member_declaration,
+      class_body_declaration,
+      class_body,
       method_declaration,
       field_declaration,
       primitive_type,
