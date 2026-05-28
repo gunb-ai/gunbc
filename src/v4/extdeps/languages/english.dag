@@ -62,14 +62,20 @@ import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 // Determiner forms modeled in the formal subset.
+// Wave-1 grammar mandates an article on every NP; NoDeterminer has no
+// production and is therefore not an arm here (same rule as sentence
+// forms — don't add arms before grammar authority exists).
+// DefiniteArticle ↔ english_token_definite_article ("the")
+// IndefiniteArticle ↔ english_token_indefinite_article ("a", "an")
+// Each arm maps to a distinct lex token class so parse→FormalNounPhrase
+// can populate the field from declared authority without guessing.
 type Determiner
   = DefiniteArticle
   | IndefiniteArticle
-  | NoDeterminer
 
 
 // 🟢 grounded.
-// A noun phrase in the formal subset: optional determiner + head noun.
+// Wave-1 NP: mandatory article + head noun (bare-NP not in wave-1 subset).
 type FormalNounPhrase {
   determiner: Determiner
   head: Symbol
@@ -156,9 +162,14 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
 // Layer 1 — Token class symbols
 // ---------------------------------------------------------------------------
 
-data english_token_article: Symbol = english_token_article
-data english_token_noun: Symbol = english_token_noun
-data english_token_verb: Symbol = english_token_verb
+// Wave-1 token classes.
+// Noun and verb are lexically identical (ident pattern); role is determined by
+// grammar position, so both map to english_token_word.
+// Definite ("the") and indefinite ("a", "an") articles are distinct lex classes
+// so Determiner arms have declared lex authority (no guessing at parse time).
+data english_token_word: Symbol = english_token_word
+data english_token_definite_article: Symbol = english_token_definite_article
+data english_token_indefinite_article: Symbol = english_token_indefinite_article
 data english_token_copula: Symbol = english_token_copula
 data english_token_period: Symbol = english_token_period
 
@@ -180,25 +191,27 @@ fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-fn english_noun_pattern() -> LexPattern {
+fn english_word_pattern() -> LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
+// Lex rule ordering follows std/lexing.dag §46 maximal-munch convention:
+// equal-length ties prefer the LATER rule, so the generic word catch-all
+// comes FIRST and keyword rules come AFTER — keywords win ties over word.
 fn english_wave1_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        english_lex_token(token_class: english_token_copula, pattern: KeywordPattern { text: "is" }),
-        english_lex_token(token_class: english_token_article, pattern: KeywordPattern { text: "the" }),
-        english_lex_token(token_class: english_token_article, pattern: KeywordPattern { text: "a" }),
-        english_lex_token(token_class: english_token_article, pattern: KeywordPattern { text: "an" }),
-        english_lex_token(token_class: english_token_noun, pattern: english_noun_pattern()),
-        english_lex_token(token_class: english_token_verb, pattern: english_noun_pattern()),
-        english_lex_token(token_class: english_token_period, pattern: LiteralPattern { text: "." })
+        english_lex_token(token_class: english_token_word, pattern: english_word_pattern()),
+        english_lex_token(token_class: english_token_period, pattern: LiteralPattern { text: "." }),
+        english_lex_token(token_class: english_token_indefinite_article, pattern: KeywordPattern { text: "a" }),
+        english_lex_token(token_class: english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
+        english_lex_token(token_class: english_token_definite_article, pattern: KeywordPattern { text: "the" }),
+        english_lex_token(token_class: english_token_copula, pattern: KeywordPattern { text: "is" })
       ]
     }
   }
