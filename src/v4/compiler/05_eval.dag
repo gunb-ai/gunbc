@@ -142,7 +142,7 @@ type Inputs {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_registered / eval_context_with_semantics.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
 type EvalContext {
   cache_authority: InterpretationCacheAuthority
 }
@@ -163,15 +163,12 @@ fn eval_context_with_semantics(
 }
 
 
-// Closed registry: v4_evaluator_runtime_id <-> v4_evaluator_interpretation_wave1 only.
-fn eval_context_registered(runtime_identity: Symbol, interpretation: InterpretationAlgebra) -> EvalContext {
+// Closed registry entry: v4_evaluator_runtime_id <-> v4_evaluator_interpretation_wave1 only.
+fn eval_context_v4_evaluator_wave1() -> EvalContext {
   eval_context_with_semantics(
-    runtime_identity: runtime_identity,
-    interpretation: interpretation,
-    semantics_digest: interpretation_registry_semantics_digest(
-      runtime_identity: runtime_identity,
-      interpretation: interpretation
-    )
+    runtime_identity: v4_evaluator_runtime_id,
+    interpretation: v4_evaluator_interpretation_wave1(),
+    semantics_digest: test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
   )
 }
 
@@ -278,6 +275,7 @@ data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equa
 data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
 data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
 data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
+data test_claim_cache_interpretation_cache_ineligible_tag: Symbol = test_claim_cache_interpretation_cache_ineligible_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -535,7 +533,11 @@ fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
     runtime_identity: authority.runtime_identity,
     interpretation: authority.interpretation
   )
-  if registry_witness == authority.semantics_digest {
+  if registry_witness == authority.semantics_digest
+    && registry_witness
+      != test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
+    && registry_witness
+      != test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag) {
     combine_hash(
       a: test_claim_symbol_digest(sym: authority.runtime_identity),
       b: authority.semantics_digest
@@ -549,7 +551,7 @@ fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
       b: authority.semantics_digest
     )
   } else {
-    test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag)
   }
 }
 
