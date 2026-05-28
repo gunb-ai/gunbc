@@ -586,6 +586,39 @@ fn v4_swift_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_wasm_language_model_declares_wave2b_algebra_inhabitance() {
+    let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "AlgebraInhabitanceDecl"
+        ),
+        "{WASM_LANGUAGE_PATH}: Wasm Wave 2b must consume ModelCore algebra inhabitance rows"
+    );
+    for name in ["commutative_semiring_node", "approximate_field_node"] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "algebra"], name),
+            "{WASM_LANGUAGE_PATH}: Wasm Wave 2b must use grounded std.algebra Node constructor `{name}`"
+        );
+    }
+    for name in [
+        "wasm_integer_algebra_witness_node",
+        "wasm_float_algebra_witness_node",
+        "wasm_integer_algebra_inhabitance",
+        "wasm_float_algebra_inhabitance",
+        "wasm_model_core_inhabitance_decls",
+        "wasm_model_core_wave2b",
+        "wasm_language_model_wave2b",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{WASM_LANGUAGE_PATH}: Wasm Wave 2b must declare `{name}`"
+        );
+    }
+}
+
+#[test]
 fn v4_wasm_language_model_declares_t11_translation_rules() {
     let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
     assert!(
