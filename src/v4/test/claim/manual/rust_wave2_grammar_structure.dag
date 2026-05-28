@@ -27,12 +27,20 @@ import v4.std.lexing { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
 
 fn rust_wave2_grammar_structure_satisfied(lm: RustLanguageModel) -> Bool {
-  let formal = rust_wave2_formal_productions()
   lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_let) &&
     lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_else) &&
-    rust_formal_production_list_has_lhs(productions: formal, lhs: rust_production_fn_item) &&
-    rust_formal_production_list_has_lhs(productions: formal, lhs: rust_production_if_expr) &&
-    rust_formal_production_list_has_lhs(productions: formal, lhs: rust_production_type) &&
+    rust_formal_production_list_has_lhs(
+      productions: rust_wave2_formal_productions(),
+      lhs: rust_production_fn_item
+    ) &&
+    rust_formal_production_list_has_lhs(
+      productions: rust_wave2_formal_productions(),
+      lhs: rust_production_if_expr
+    ) &&
+    rust_formal_production_list_has_lhs(
+      productions: rust_wave2_formal_productions(),
+      lhs: rust_production_type
+    ) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_fn_item) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_typed_param) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_param_list) &&
