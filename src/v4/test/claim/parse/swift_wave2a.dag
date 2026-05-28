@@ -28,7 +28,7 @@ data swift_wave2a_file: Symbol = swift_wave2a_file
 data swift_wave2a_bool_true: Symbol = swift_wave2a_bool_true
 data swift_wave2a_bool_false: Symbol = swift_wave2a_bool_false
 
-data swift_wave2a_non_mvp_source: String = "func choose(x: Int) -> Int { let y = x + 1; if y > 0 { return y; }; return 0; }"
+data swift_wave2a_non_mvp_source: String = "func choose(x: Int) -> Int { let y = x + 1\nif y > 0 { return y }\nreturn 0 }"
 
 fn swift_wave2a_bool_atom(b: Bool) -> Node {
   match b {
