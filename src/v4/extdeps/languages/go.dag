@@ -254,8 +254,6 @@ data go_surface_spelling_string: Symbol = go_surface_spelling_string
 
 data go_language_model_surface_id: Symbol = go_language_model_surface_id
 data go_surface_fn_item: Symbol = go_surface_fn_item
-data go_surface_type_int: Symbol = go_surface_type_int
-data go_surface_bin_add: Symbol = go_surface_bin_add
 
 data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
