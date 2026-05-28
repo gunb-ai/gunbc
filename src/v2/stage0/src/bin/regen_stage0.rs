@@ -82,8 +82,21 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_std_core.rs",
 ];
 
-const HAND_MAINTAINED_STAGE0_FILES: &[&str] =
-    &["cli_run.rs", "rest_transport_facts.rs", "v2_interpreter.rs"];
+const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
+    "cli_run.rs",
+    "rest_transport_facts.rs",
+    "v2_compiler_dag_collect.rs",
+    "v2_interpreter.rs",
+];
+
+const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v2_compiler_dag_collect::{
+    collect_dag_nodes, dag_collect_from_module, dag_collect_insert, dag_collect_inferred,
+    dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
+    dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
+    dag_node_is_resolved_identity_shell, dag_node_key,
+};
+
+"#;
 
 const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
 
@@ -170,6 +183,7 @@ fn run() -> Result<(), String> {
     let emitted = compile_stage0(&workspace)?;
     write_emitted_crate(&fresh_dir, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))?;
+    patch_bootstrap_dag_collect(&fresh_dir.join("src"))?;
     patch_cargo_toml_for_generated_crate(&fresh_dir)?;
     rustfmt_generated_crate(&fresh_dir)?;
     assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))?;
@@ -430,6 +444,67 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
         }
     }
     Ok(())
+}
+
+/// Delegate DAG collect + identity-key helpers to hand-maintained bootstrap module.
+fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
+    let lib_path = src_dir.join("lib.rs");
+    let mut lib_text = fs::read_to_string(&lib_path)
+        .map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    if !lib_text.contains("pub mod v2_compiler_dag_collect;") {
+        lib_text = lib_text.replace(
+            "pub mod v2_compiler_compile;\n",
+            "pub mod v2_compiler_compile;\npub mod v2_compiler_dag_collect;\n",
+        );
+        fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
+    }
+
+    let compile_path = src_dir.join("v2_compiler_compile.rs");
+    let mut text = fs::read_to_string(&compile_path)
+        .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
+    if text.contains("pub use crate::v2_compiler_dag_collect") {
+        return Ok(());
+    }
+
+    let identity_start = "pub fn dag_node_is_resolved_identity_shell";
+    let inferred_start = "pub fn inferred_fingerprint";
+    let fingerprint_start = "pub fn dag_node_fingerprint";
+    let collision_start = "pub fn dag_node_key_collision_error";
+    let collect_start = "pub fn dag_collect_nodes_list";
+    let build_key_start = "pub fn build_dag_key_to_id";
+
+    text = strip_between(&text, identity_start, inferred_start)?;
+    text = strip_between(&text, fingerprint_start, collision_start)?;
+    text = strip_between(&text, collect_start, build_key_start)?;
+
+    let insert_after = "}\n\npub fn inferred_fingerprint";
+    if !text.contains(insert_after) {
+        return Err(format!(
+            "patch_bootstrap_dag_collect: could not find DagCollectAcc anchor in {}",
+            compile_path.display()
+        ));
+    }
+    text = text.replace(
+        insert_after,
+        &format!("}}\n\n{BOOTSTRAP_DAG_COLLECT_USE}pub fn inferred_fingerprint"),
+    );
+    fs::write(&compile_path, text)
+        .map_err(|e| format!("write {}: {e}", compile_path.display()))
+}
+
+fn strip_between(text: &str, start_marker: &str, end_marker: &str) -> Result<String, String> {
+    let start_idx = text
+        .find(start_marker)
+        .ok_or_else(|| format!("strip_between: missing start `{start_marker}`"))?;
+    let end_idx = text
+        .find(end_marker)
+        .ok_or_else(|| format!("strip_between: missing end `{end_marker}`"))?;
+    if end_idx <= start_idx {
+        return Err(format!(
+            "strip_between: `{end_marker}` must follow `{start_marker}`"
+        ));
+    }
+    Ok(format!("{}{}", &text[..start_idx], &text[end_idx..]))
 }
 
 fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {

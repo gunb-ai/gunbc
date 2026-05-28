@@ -7,7 +7,6 @@ use crate::v2_std_core::module_imports;
 use crate::v2_rt;
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::Resolved;
-use crate::v2_std_core::MatchPattern;
 use crate::v2_std_core::{InferredNode, MatchPattern, Node, ResolvedGraph, TypedModule};
 use std::rc::Rc;
 
