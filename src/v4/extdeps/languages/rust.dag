@@ -5,14 +5,9 @@
 
 module v4.extdeps.languages.rust
 
-<<<<<<< HEAD
 import v4.std.grammar {
-  ParseGrammar,
-=======
-import v4.compiler.parse {
   Choice,
-  Grammar,
->>>>>>> ecbd4d856 (WIP: T-4.17 Wave 2a: rust lex/grammar data fill (deps T-6/T-7/T-4; cpp/java e)
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -2398,7 +2393,7 @@ fn rust_wave2_grammar_root() -> GrammarRoot {
   }
 }
 
-fn rust_wave2_grammar() -> Grammar {
+fn rust_wave2_grammar() -> ParseGrammar {
   ModeledGrammar { root: rust_wave2_grammar_root() }
 }
 
