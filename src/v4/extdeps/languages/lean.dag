@@ -660,7 +660,7 @@ fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
 }
 
 
-data lean_mvp1_def_dec_formal_production: FormalProduction = lean_mvp1_def_dec_formal_production()
+data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
 
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — derived from FormalProduction.rhs.
