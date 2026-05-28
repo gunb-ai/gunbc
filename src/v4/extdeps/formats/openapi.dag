@@ -122,8 +122,6 @@ type OpenApiSchema {
 
 
 // Anchor: https://spec.openapis.org/oas/v3.1.0#path-item-object
-// OAS 3.1 §4.8.9 admits exactly these 8 HTTP methods; CONNECT (RFC 9110 §9.3.6 — tunnel
-// semantics) is excluded structurally by not appearing as a coproduct arm.
 // 🟢 coproduct dissolution — T-4.6-P4-OpenApiHttpMethod.
 type OpenApiAdmittedHttpMethod
   = OpenApiGet
@@ -135,10 +133,6 @@ type OpenApiAdmittedHttpMethod
   | OpenApiPatch
   | OpenApiTrace
 
-
-// One-way projection to std.network.HttpMethod; anchored to RFC 9110 method identity.
-// (Not a bridge table — no two-sided row type; single authority for OAS-admitted methods
-//  remains OpenApiAdmittedHttpMethod.)
 fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> HttpMethod {
   match method {
     OpenApiGet     => GET
