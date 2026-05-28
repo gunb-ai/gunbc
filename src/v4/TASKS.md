@@ -1511,12 +1511,16 @@ to `QualifiedName`, add the projection.
 
 **Scope — two pieces:**
 
-1. **`QualifiedName = FreeMonoid<Symbol>`.** The declared identifier of a code
-   unit — the dotted name from its `module` declaration (e.g. `module
-   v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`). Not a graph path,
-   not a filesystem path. Declare in `std/node.dag` or a thin new
-   `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
-   all callers to `QualifiedName`.
+1. **`QualifiedName` — declared identifier of a code unit.** The dotted name from
+   its `module` declaration (e.g. `module v4.std.algebra` → `QualifiedName`
+   `[v4, std, algebra]`). Not a graph path, not a filesystem path. Declare in
+   `std/qualified_name.dag`. **Modeled as:** `QnEmpty | QnCons { head: Symbol,
+   tail: QualifiedName }` (standalone recursive coproduct — the intended alias
+   `FreeMonoid<Symbol>` is blocked by a v2 bootstrap limitation: the compiler
+   cannot resolve generic type alias constructors at definition site; tracked
+   under feature:free-monoid-qualified-name-alias, dissolves when the v2 bootstrap
+   is fixed). Delete `ModulePath` and `ModulePathSegment`; migrate all callers to
+   `QualifiedName`.
 
 2. **Two-function surface (std/ primitive + extdeps/ entry point).**
 
@@ -1524,7 +1528,7 @@ to `QualifiedName`, add the projection.
    `std/qualified_name.dag`. Primitive: `root` is the `fold_list_node`
    sub-node already resolved by the caller. Walks the `fold_list_node_head` /
    `fold_list_node_tail` edge spine and collects the symbol sequence into
-   `FreeMonoid<Symbol>`. Returns `Rejected` (fail-closed) for any non-Conj root
+   `QualifiedName` (`QnEmpty | QnCons`). Returns `Rejected` (fail-closed) for any non-Conj root
    or malformed structure. `std/` cannot import `extdeps/`; the
    `dag_surface_module_header_qualified_name` edge name lives in
    `extdeps/languages/dag.dag`, so the edge lookup belongs in the layer that
