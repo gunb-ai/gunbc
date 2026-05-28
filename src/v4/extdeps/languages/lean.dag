@@ -5,7 +5,12 @@
 module v4.extdeps.languages.lean
 
 import v4.std.grammar {
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
   FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -599,8 +604,31 @@ fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 }
 
 
-fn lean_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
-  Sequence { left: left, right: right }
+fn lean_formal_symbol_token_class(sym: FormalGrammarSymbol) -> Symbol {
+  match sym {
+    FormalTerminalOccurrence { terminal: FormalTerminal { identity: c } } => c
+    FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: c } } => c
+  }
+}
+
+
+// CP-1b interim: fold FormalProduction.rhs into nested GrammarExpr for parse.dag only.
+fn lean_grammar_expr_from_formal_rhs(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
+  match rhs {
+    Cons { head: first, tail: rest } =>
+      fold_list(
+        xs: rest,
+        empty: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: first)),
+        cons: fn(acc, sym) {
+          Sequence {
+            left: acc,
+            right: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: sym))
+          }
+        }
+      )
+    Empty =>
+      lean_grammar_terminal(token_class: lean_token_kw_def)
+  }
 }
 
 
@@ -635,54 +663,9 @@ fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
 data lean_mvp1_def_dec_formal_production: FormalProduction = lean_mvp1_def_dec_formal_production()
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — nested GrammarExpr for
-// v4.compiler.parse only; FormalProduction flat rhs is grammar authority.
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — derived from FormalProduction.rhs.
 fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
-  lean_grammar_sequence(
-    left: lean_grammar_sequence(
-      left: lean_grammar_sequence(
-        left: lean_grammar_sequence(
-          left: lean_grammar_sequence(
-            left: lean_grammar_sequence(
-              left: lean_grammar_sequence(
-                left: lean_grammar_terminal(token_class: lean_token_kw_def),
-                right: lean_grammar_terminal(token_class: lean_token_name_dec)
-              ),
-              right: lean_grammar_sequence(
-                left: lean_grammar_terminal(token_class: lean_token_lparen),
-                right: lean_grammar_terminal(token_class: lean_token_name_n)
-              )
-            ),
-            right: lean_grammar_sequence(
-              left: lean_grammar_terminal(token_class: lean_token_colon),
-              right: lean_grammar_terminal(token_class: lean_token_type_int32)
-            )
-          ),
-          right: lean_grammar_sequence(
-            left: lean_grammar_terminal(token_class: lean_token_rparen),
-            right: lean_grammar_sequence(
-              left: lean_grammar_terminal(token_class: lean_token_colon),
-              right: lean_grammar_terminal(token_class: lean_token_type_int32)
-            )
-          )
-        ),
-        right: lean_grammar_sequence(
-          left: lean_grammar_terminal(token_class: lean_token_assign),
-          right: lean_grammar_sequence(
-            left: lean_grammar_terminal(token_class: lean_token_name_n),
-            right: lean_grammar_terminal(token_class: lean_token_minus)
-          )
-        )
-      ),
-      right: lean_grammar_sequence(
-        left: lean_grammar_terminal(token_class: lean_token_numeric_literal),
-        right: lean_grammar_sequence(
-          left: lean_grammar_terminal(token_class: lean_token_kw_termination_by),
-          right: lean_grammar_terminal(token_class: lean_token_name_n)
-        )
-      )
-    )
-  )
+  lean_grammar_expr_from_formal_rhs(rhs: lean_mvp1_def_dec_formal_production().rhs)
 }
 
 
