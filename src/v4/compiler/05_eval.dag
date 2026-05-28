@@ -274,9 +274,7 @@ fn correction_verdict_digest(c: Correction) -> Hash {
 }
 
 
-// Interim: `scalar_int_hash` caps at `scalar_int_materialization_cap()` (256); all |i| above cap
-// collapse to one digest, so distinct ByteRange offsets past the cap can collide in interpretation_hash.
-// Acceptable while cache receipts are not cache-validating authority (T22-EVAL-CACHE-HASHES gate).
+// Injective via `scalar_int_hash` Peano succ-chain (distinct offsets/chars → distinct digests).
 fn int_cache_digest(i: Int) -> Hash {
   scalar_int_hash(i: i)
 }
