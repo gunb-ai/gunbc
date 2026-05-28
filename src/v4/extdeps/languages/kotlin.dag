@@ -1,6 +1,10 @@
 // src/v4/extdeps/languages/kotlin.dag
 // Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles, wave-1 lex/grammar/MVP.
+<<<<<<< HEAD
 // Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar (wave-1 productions declared as `FormalProduction` flat rhs — `kotlin_wave1_formal_productions`; `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence) + wave-2b inhabitance (int/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
+=======
+// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar + wave-2b inhabitance (int/long/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; byte/short stay in primitive facts only (arithmetic widens to Int — not T,T→T algebra-closed); char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
+>>>>>>> 29a83d314 (WIP: T-4.17 Wave 2b: kotlin type deepening + AlgebraInhabitanceDecl fill (dep)
 // Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html — syntax/lex/grammar: https://kotlinlang.org/spec/syntax-and-grammar.html
 
 module v4.extdeps.languages.kotlin
@@ -337,6 +341,13 @@ data kotlin_facts_nothing: KotlinNonNumericPrimitiveFacts = KotlinNonNumericPrim
 data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
   kotlin_facts_byte,
   kotlin_facts_short,
+  kotlin_facts_int,
+  kotlin_facts_long
+]
+
+// Anchor: Kotlin stdlib — Byte/Short arithmetic widens to Int (not closed at Byte/Short);
+// https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte/
+data kotlin_integer_algebra_inhabitance_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
   kotlin_facts_int,
   kotlin_facts_long
 ]
@@ -953,7 +964,7 @@ fn kotlin_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
 
 fn kotlin_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
-    xs: kotlin_integer_facts_catalog,
+    xs: kotlin_integer_algebra_inhabitance_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: kotlin_integer_algebra_inhabitance(facts: facts))

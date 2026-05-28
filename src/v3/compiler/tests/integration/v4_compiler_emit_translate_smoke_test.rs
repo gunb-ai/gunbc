@@ -545,6 +545,10 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
             "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare `{name}`"
         );
     }
+    assert!(
+        surface_declares_data(&module, "kotlin_integer_algebra_inhabitance_facts_catalog"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must split algebra-closed integer inhabitance from full primitive catalog (Byte/Short widen to Int)"
+    );
     for name in [
         "kotlin_char_algebra_witness_node",
         "kotlin_string_algebra_witness_node",
