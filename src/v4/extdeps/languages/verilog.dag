@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/verilog.dag
 // Scope: IEEE 1364-2005 Verilog structural carriers.
-// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantRangeExpression, ConstantSelect, ConstantPrimary, ConstantFunctionCall, ConstantSystemFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost, verilog_token_kw_module, verilog_token_kw_endmodule, verilog_token_ident, verilog_token_semicolon, verilog_production_source_text_module, verilog_surface_module_decl, verilog_lex_token, verilog_grammar_terminal, verilog_grammar_sequence, verilog_identifier_pattern, verilog_wave1_lex, verilog_source_text_module_expr, verilog_wave1_grammar, verilog_ingest_grammar_schema
+// Owns: PortDirection, NonTriregNetKind, NetType, EdgeTrigger, ProceduralAssignKind, ConstantUnaryOperator, ConstantBinaryOperator, ConstantRangeExpression, ConstantSelect, ConstantPrimary, ConstantFunctionCall, ConstantSystemFunctionCall, ConstantConcatenation, ConstantMultipleConcatenation, ConstantExpression, VectorRange, PackingShape, NetVectoredPacking, Signedness, DriveStrengthClause, ChargeStrengthClause, DelayClause, AttributeInstanceClause, VectorednessClause, UnpackedDimensionsClause, VariableInitializerClause, NetDeclaration, NetAssignmentDeclarator, NetIdentifierDeclarator, VariableDeclaration, VariableDeclarator, OutputPortAnsiNetTypeKind, OutputPortAnsiVariableTypeKind, NonAnsiPort, AnsiNetPortType, AnsiPortDeclaration, AnsiHeaderPort, AnsiOutputPortDeclarator, ParameterTypeKind, ParameterAssignment, ParameterDeclaration, SensitivityItem, NetAssignment, ContinuousAssign, AlwaysBlock, AlwaysBlockSensitivity, InitialBlock, PortConnectionActual, OrderedPortConnection, NamedPortConnection, PortConnections, ParameterOverrideActual, NamedParameterOverride, ParameterOverrides, InstanceRangeClause, ModuleInstance, ModuleInstantiation, DefparamAssignment, DefparamDeclaration, GenerateRegion, LoopGenerateConstruct, ConditionalGenerateConstruct, SpecifyBlock, LifetimeClause, FunctionReturnTypeClause, TaskDeclaration, FunctionDeclaration, EventDeclarator, EventDeclaration, GenvarDeclaration, LocalParameterDeclaration, PrimitiveGateKind, GateInstantiation, UdpInstanceName, UdpInstance, UdpInstantiation, UdpDefinition, SpecparamAssignment, SpecparamDeclaration, AnsiModuleItem, NonAnsiModuleItem, ModuleParameterPortList, ModuleKeyword, VerilogModule, VerilogCost, verilog_token_kw_module, verilog_token_kw_endmodule, verilog_token_ident, verilog_token_semicolon, verilog_production_source_text_module, verilog_surface_module_decl, verilog_t4_18_probe_ingest_fixture_module_m_endmodule, verilog_t4_18_probe_ingest_consumer_parse_testclaim_receipt, verilog_lex_token, verilog_grammar_terminal, verilog_grammar_sequence, verilog_identifier_pattern, verilog_wave1_lex, verilog_source_text_module_expr, verilog_wave1_grammar, verilog_ingest_grammar_schema
 // Consumes: std/node.dag; std/nat.dag (Nat).
 // Status: import v4.std.node Symbol; v4.std.nat Nat.
 // Anchor: https://standards.ieee.org/ieee/1364/3641/
@@ -802,6 +802,8 @@ data verilog_token_ident: Symbol = verilog_token_ident
 data verilog_token_semicolon: Symbol = verilog_token_semicolon
 data verilog_production_source_text_module: Symbol = verilog_production_source_text_module
 data verilog_surface_module_decl: Symbol = verilog_surface_module_decl
+data verilog_t4_18_probe_ingest_fixture_module_m_endmodule: Symbol = verilog_t4_18_probe_ingest_fixture_module_m_endmodule
+data verilog_t4_18_probe_ingest_consumer_parse_testclaim_receipt: Symbol = verilog_t4_18_probe_ingest_consumer_parse_testclaim_receipt
 
 
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
@@ -832,7 +834,6 @@ fn verilog_wave1_lex() -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        // Keywords intentionally follow ident: std.lexing LexRuleSet ties prefer the later rule.
         verilog_lex_token(token_class: verilog_token_ident, pattern: verilog_identifier_pattern()),
         verilog_lex_token(token_class: verilog_token_kw_module, pattern: KeywordPattern { text: "module" }),
         verilog_lex_token(token_class: verilog_token_kw_endmodule, pattern: KeywordPattern { text: "endmodule" }),
@@ -873,7 +874,6 @@ fn verilog_wave1_grammar() -> ParseGrammar {
 }
 
 
-// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for `module m; endmodule`; forbidden: reporting Verilog ingest completion without that fixture consumer.
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: verilog_wave1_lex(),

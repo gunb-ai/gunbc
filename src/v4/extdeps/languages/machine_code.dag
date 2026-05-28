@@ -538,14 +538,18 @@ fn machine_code_model_core_wave1() -> ModelCore {
 data machine_code_token_x86_64_nop: Symbol = machine_code_token_x86_64_nop
 data machine_code_production_x86_64_nop: Symbol = machine_code_production_x86_64_nop
 data machine_code_surface_x86_64_nop_instruction: Symbol = machine_code_surface_x86_64_nop_instruction
+data machine_code_t4_18_probe_ingest_fixture_x86_64_nop: Symbol = machine_code_t4_18_probe_ingest_fixture_x86_64_nop
 
 data machine_code_token_aarch64_nop: Symbol = machine_code_token_aarch64_nop
 data machine_code_production_aarch64_nop: Symbol = machine_code_production_aarch64_nop
 data machine_code_surface_aarch64_nop_instruction: Symbol = machine_code_surface_aarch64_nop_instruction
+data machine_code_t4_18_probe_ingest_fixture_aarch64_nop: Symbol = machine_code_t4_18_probe_ingest_fixture_aarch64_nop
 
 data machine_code_token_riscv64_nop: Symbol = machine_code_token_riscv64_nop
 data machine_code_production_riscv64_nop: Symbol = machine_code_production_riscv64_nop
 data machine_code_surface_riscv64_nop_instruction: Symbol = machine_code_surface_riscv64_nop_instruction
+data machine_code_t4_18_probe_ingest_fixture_riscv64_nop: Symbol = machine_code_t4_18_probe_ingest_fixture_riscv64_nop
+data machine_code_t4_18_probe_ingest_consumer_parse_testclaim_receipt: Symbol = machine_code_t4_18_probe_ingest_consumer_parse_testclaim_receipt
 
 
 fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
@@ -604,7 +608,6 @@ fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
 }
 
 
-// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for x86_64 `nop`; forbidden: reporting x86_64 machine-code ingest completion without that fixture consumer.
 fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_x86_64_wave1_lex(),
@@ -627,7 +630,6 @@ fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
 }
 
 
-// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for AArch64 `nop`; forbidden: reporting AArch64 machine-code ingest completion without that fixture consumer.
 fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_aarch64_wave1_lex(),
@@ -650,7 +652,6 @@ fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
 }
 
 
-// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for RISC-V `nop`; forbidden: reporting RISC-V machine-code ingest completion without that fixture consumer.
 fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_riscv64_wave1_lex(),
