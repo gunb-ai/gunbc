@@ -21,15 +21,19 @@ import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
+  KeywordPattern,
   LexRule,
   LexRuleSet,
   LexRules,
   LexPattern,
   LiteralPattern,
   ModeledLexRules,
+  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
   TokenRule,
+  TriviaRule,
+  WhitespaceChar,
   lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -1420,6 +1424,16 @@ fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
+fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
+}
+
+fn go_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  }
+}
+
 // 🟡 gated — feature:go-unicode-identifier-lexing — Go spec identifiers are
 // Unicode-letter/digit based. Wave 2a deliberately accepts only the shared
 // identifier classes and rejects outside-subset identifiers via lexer no-match;
@@ -1448,16 +1462,17 @@ fn go_ident_lex_rule() -> LexRule {
 fn go_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      go_lex_rule(token_class: go_token_kw_func, text: "func "),
+      go_whitespace_trivia_rule(),
       go_ident_lex_rule(),
+      go_keyword_lex_rule(token_class: go_token_kw_func, text: "func"),
       go_lex_rule(token_class: go_token_lparen, text: "("),
-      go_lex_rule(token_class: go_token_ty_int, text: " int"),
-      go_lex_rule(token_class: go_token_comma, text: ", "),
+      go_lex_rule(token_class: go_token_ty_int, text: "int"),
+      go_lex_rule(token_class: go_token_comma, text: ","),
       go_lex_rule(token_class: go_token_rparen, text: ")"),
-      go_lex_rule(token_class: go_token_lbrace, text: " { "),
-      go_lex_rule(token_class: go_token_kw_return, text: "return "),
-      go_lex_rule(token_class: go_token_plus, text: " + "),
-      go_lex_rule(token_class: go_token_rbrace, text: " }")
+      go_lex_rule(token_class: go_token_lbrace, text: "{"),
+      go_keyword_lex_rule(token_class: go_token_kw_return, text: "return"),
+      go_lex_rule(token_class: go_token_plus, text: "+"),
+      go_lex_rule(token_class: go_token_rbrace, text: "}")
     ]
   }
 }
