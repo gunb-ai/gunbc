@@ -387,6 +387,24 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         "{PYTHON_LANGUAGE_PATH}: Python TargetModel must consume the shared translation-rules edge"
     );
     assert!(
+        import_includes_name(&module, &["v4", "std", "grammar"], "FormalProduction"),
+        "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume canonical FormalProduction"
+    );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grammar"],
+            "formal_production_to_node"
+        ),
+        "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume the shared FormalProduction Node projection"
+    );
+    for name in ["GrammarExpr", "Sequence", "Terminal"] {
+        assert!(
+            !import_includes_name(&module, &["v4", "std", "grammar"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python grammar rows must not import legacy nested GrammarExpr helper `{name}`"
+        );
+    }
+    assert!(
         import_includes_name(&module, &["v4", "std", "algebra"], "Empty"),
         "{PYTHON_LANGUAGE_PATH}: Python T-11 folds must import Empty from v4.std.algebra"
     );
@@ -402,6 +420,75 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         surface_declares_fn(&module, "python_mvp1_target_model"),
         "{PYTHON_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
     );
+    assert!(
+        surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
+        "{PYTHON_LANGUAGE_PATH}: must build grammar production RHS as a flat formal-symbol list"
+    );
+    for name in [
+        "python_formal_nonterminal_node",
+        "python_formal_terminal_node",
+        "python_formal_grammar_symbol_node",
+        "python_formal_rhs_edges",
+        "python_formal_production_node",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python must not mirror std FormalProduction projection helper `{name}`"
+        );
+    }
+}
+
+#[test]
+fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
+    let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "AlgebraInhabitanceDecl"
+        ),
+        "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must consume ModelCore algebra inhabitance rows"
+    );
+    for name in [
+        "ordered_ring_node",
+        "approximate_field_node",
+        "boolean_algebra_node",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "algebra"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must use grounded std.algebra Node constructor `{name}`"
+        );
+    }
+    for name in [
+        "python_integer_algebra_witness_node",
+        "python_float_algebra_witness_node",
+        "python_bool_algebra_witness_node",
+        "python_integer_algebra_inhabitance",
+        "python_float_algebra_inhabitance",
+        "python_bool_algebra_inhabitance",
+        "python_model_core_inhabitance_decls",
+        "python_model_core_wave1",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must declare `{name}`"
+        );
+    }
+    for name in [
+        "python_complex_algebra_witness_node",
+        "python_singleton_algebra_witness_node",
+        "python_complex_algebra_inhabitance",
+        "python_singleton_algebra_inhabitance",
+        "python_complex_algebra_inhabitance_decls",
+        "python_singleton_algebra_inhabitance_decls",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must not declare faithful algebra inhabitance for deferred complex/singleton facts via `{name}`"
+        );
+    }
 }
 
 #[test]
@@ -769,15 +856,23 @@ fn assert_imports_shared_token_kinds(
 }
 
 fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Fn {
-            name: item_name, ..
-        }
-        | SurfaceItem::FnExternalBody {
-            name: item_name, ..
-        } => item_name == name,
-        _ => false,
-    })
+    surface_fn_count(module, name) > 0
+}
+
+fn surface_fn_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> usize {
+    module
+        .items
+        .iter()
+        .filter(|item| match item {
+            SurfaceItem::Fn {
+                name: item_name, ..
+            }
+            | SurfaceItem::FnExternalBody {
+                name: item_name, ..
+            } => item_name == name,
+            _ => false,
+        })
+        .count()
 }
 
 fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {

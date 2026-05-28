@@ -9,7 +9,7 @@ import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Set }
 import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
+import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
 import v4.std.text { String }
 
 // "What is a terminal symbol?"
@@ -149,6 +149,12 @@ data grammar_production_emitted_node_projection: Symbol = grammar_production_emi
 data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
 data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
 data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
+data formal_terminal_identity_node_projection: Symbol = formal_terminal_identity_node_projection
+data formal_nonterminal_identity_node_projection: Symbol = formal_nonterminal_identity_node_projection
+data formal_symbol_terminal_node_projection: Symbol = formal_symbol_terminal_node_projection
+data formal_symbol_nonterminal_node_projection: Symbol = formal_symbol_nonterminal_node_projection
+data formal_production_lhs_node_projection: Symbol = formal_production_lhs_node_projection
+data formal_production_rhs_node_projection: Symbol = formal_production_rhs_node_projection
 
 
 fn grammar_atom(identity: Symbol) -> Node {
@@ -199,6 +205,89 @@ fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
 fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
   FormalNonterminalOccurrence {
     nonterminal: FormalNonterminal { identity: identity }
+  }
+}
+
+
+fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: formal_terminal_identity_node_projection, target: grammar_atom(identity: terminal.identity))
+    ]
+  }
+}
+
+
+fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: formal_nonterminal_identity_node_projection, target: grammar_atom(identity: nonterminal.identity))
+    ]
+  }
+}
+
+
+fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
+  match symbol {
+    FormalTerminalOccurrence { terminal: terminal } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: formal_symbol_terminal_node_projection, target: formal_terminal_to_node(terminal: terminal))
+        ]
+      }
+    FormalNonterminalOccurrence { nonterminal: nonterminal } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: formal_symbol_nonterminal_node_projection, target: formal_nonterminal_to_node(nonterminal: nonterminal))
+        ]
+      }
+  }
+}
+
+
+fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
+  fold_list(
+    xs: symbols,
+    empty: Empty,
+    cons: fn(acc, symbol) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge { label: Positional, target: formal_grammar_symbol_to_node(symbol: symbol) }
+      )
+    }
+  )
+}
+
+
+fn formal_production_to_node(production: FormalProduction) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: formal_production_lhs_node_projection, target: formal_nonterminal_to_node(nonterminal: production.lhs)),
+      grammar_named_edge(
+        name: formal_production_rhs_node_projection,
+        target: Node {
+          kind: TypeNode {
+            connective: Conj
+          },
+          children: formal_rhs_to_edges(symbols: production.rhs)
+        }
+      )
+    ]
   }
 }
 
