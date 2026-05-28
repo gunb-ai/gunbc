@@ -1169,13 +1169,17 @@ fn python_formal_lhs_identity(prod: FormalProduction) -> Symbol {
   prod.lhs.identity
 }
 
+fn python_formal_rhs_alternatives_accum_empty() -> List<List<FormalGrammarSymbol>> {
+  Empty
+}
+
 fn python_formal_alternatives_for_lhs(
   authority: List<FormalProduction>,
   lhs: Symbol
 ) -> List<List<FormalGrammarSymbol>> {
   fold_list(
     xs: authority,
-    empty: Empty,
+    empty: python_formal_rhs_alternatives_accum_empty(),
     cons: fn(acc, prod) {
       if python_formal_lhs_identity(prod: prod) == lhs {
         list_snoc_item(xs: acc, item: prod.rhs)
