@@ -11,7 +11,7 @@
 # Dissolve-on-arrival: delete this script and the paired CI step when the modeled runner
 #   executes `src/v4/test/claim/manual/*.dag` in CI and emits structured TestClaimRun
 #   verdicts directly from .dag/workflow-as-data, with no shell-owned artifact inspection.
-# Exit condition: removal when that runner is green on main CI for 14 consecutive days.
+# Exit condition: same PR as the modeled runner replacement; no soak-window parallel gate.
 #
 # This is still a structural bridge: full emitted Rust execution remains owned by
 # the M1 rust emit path until src/v4 emits cargo-clean Rust, and TestClaim verdict
