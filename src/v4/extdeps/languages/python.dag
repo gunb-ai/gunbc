@@ -12,8 +12,8 @@ module v4.extdeps.languages.python
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
   FormalGrammarSymbol,
-  FormalNonterminal,
   FormalProduction,
   FormalTerminal,
   FormalTerminalOccurrence,
@@ -877,15 +877,8 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-fn python_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: lhs },
-    rhs: rhs
-  }
-}
-
 fn python_formal_production_mvp1_fn_add() -> FormalProduction {
-  python_formal_production(
+  grammar_formal_production(
     lhs: python_production_mvp1_fn_add,
     rhs: python_formal_rhs_from_token_classes()
   )

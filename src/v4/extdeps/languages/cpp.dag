@@ -8,8 +8,8 @@ module v4.extdeps.languages.cpp
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
   FormalGrammarSymbol,
-  FormalNonterminal,
   FormalNonterminalOccurrence,
   FormalProduction,
   FormalTerminal,
@@ -1145,15 +1145,8 @@ fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<Form
   )
 }
 
-fn cpp_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: lhs },
-    rhs: rhs
-  }
-}
-
 fn cpp_formal_production_mvp1_fn_add() -> FormalProduction {
-  cpp_formal_production(
+  grammar_formal_production(
     lhs: cpp_production_mvp1_fn_add,
     rhs: cpp_formal_rhs_from_tokens(tokens: cpp_mvp1_concrete_tokens())
   )
