@@ -15,6 +15,7 @@
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
 #   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when compile or rustc fails
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
+#   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: 4)
 
 set -euo pipefail
 
