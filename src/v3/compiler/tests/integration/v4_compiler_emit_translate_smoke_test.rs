@@ -405,6 +405,44 @@ fn v4_python_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
+    let module = parse_module(PYTHON_LANGUAGE_DAG, PYTHON_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "AlgebraInhabitanceDecl"
+        ),
+        "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must consume ModelCore algebra inhabitance rows"
+    );
+    for name in [
+        "ordered_ring_node",
+        "approximate_field_node",
+        "boolean_algebra_node",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "algebra"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must use grounded std.algebra Node constructor `{name}`"
+        );
+    }
+    for name in [
+        "python_integer_algebra_witness_node",
+        "python_float_algebra_witness_node",
+        "python_bool_algebra_witness_node",
+        "python_integer_algebra_inhabitance",
+        "python_float_algebra_inhabitance",
+        "python_bool_algebra_inhabitance",
+        "python_model_core_inhabitance_decls",
+        "python_model_core_wave1",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must declare `{name}`"
+        );
+    }
+}
+
+#[test]
 fn v4_go_language_model_declares_t11_translation_rules() {
     let module = parse_module(GO_LANGUAGE_DAG, GO_LANGUAGE_PATH);
     assert!(
