@@ -33,7 +33,6 @@ import v4.std.lexing {
   SequencePattern,
   TokenRule,
   TriviaRule,
-  WhitespaceChar,
   lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -161,7 +160,6 @@ type GoConcreteSyntaxToken
 
 type GoGrammarRelationRow {
   production: GrammarProduction
-  emitted: Node
   tokens: List<GoConcreteSyntaxToken>
 }
 
@@ -1225,6 +1223,7 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
+      go_named_edge(name: go_surface_fn_item, target: go_inhabitant_atom(id: go_surface_fn_item)),
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
@@ -1331,14 +1330,13 @@ fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: go_production_mvp1_fn_add,
     expression: go_grammar_sequence_from_token_classes(),
-    emitted: go_grammar_atom(id: go_surface_fn_item)
+    emitted: go_mvp1_emitted_add_fn_node()
   }
 }
 
 fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
   GoGrammarRelationRow {
     production: go_grammar_production_mvp1_fn_add(),
-    emitted: go_mvp1_emitted_add_fn_node(),
     tokens: go_mvp1_concrete_tokens()
   }
 }
@@ -1358,7 +1356,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
-      go_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      go_named_edge(name: grammar_relation_field_emitted, target: row.production.emitted),
       go_named_edge(
         name: grammar_relation_field_tokens,
         target: Node { kind: TypeNode { connective: Conj }, children: go_relation_token_edges(tokens: row.tokens) }
@@ -1418,8 +1416,13 @@ fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
+  // 🟡 gated — feature:go-semicolon-insertion-layout — Go newlines can insert
+  // semicolons after line-final identifiers, literals, break/continue/fallthrough/
+  // return, and selected delimiters. Wave 2a accepts only the horizontal-space
+  // MVP subset; newline layout fails closed until std.lexing carries Go layout.
+  // dissolve-on: Go semicolon-insertion layout facts drive trivia/tokenization.
   TriviaRule {
-    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+    pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
   }
 }
 
