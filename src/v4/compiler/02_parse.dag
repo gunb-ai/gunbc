@@ -26,7 +26,6 @@ import v4.std.grammar {
   GrammarRoot,
   ModeledGrammar,
   Nonterminal,
-  Optional,
   ParseTree,
   Repeat,
   Sequence,
