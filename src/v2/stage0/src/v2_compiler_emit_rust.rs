@@ -17463,7 +17463,7 @@ pub fn emit_main_mod_uses(
 }
 
 pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"gunbc\", about = \"A causal compiler: write .dag, get Rust/Python/Go.\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
 }
 
 pub fn emit_subcommand_enum(
