@@ -1,6 +1,5 @@
 // src/v4/std/patch.dag
 // Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
-// Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid, field_patch_inherit.
 // Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
 // Status: T-4.16 follow-on — scalar FieldPatch monoid landed; per-record *ConfigPatch projection is 🟡 below.
 // Anchor: https://en.wikipedia.org/wiki/Monoid

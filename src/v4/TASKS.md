@@ -271,13 +271,16 @@ T-15 to close. Two gaps gate the close condition (T-37 landed; live dispatch: T-
 
 **T-37 → serializer fix LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). Dissolution trigger (b) met — emit no longer OOM-masks failure on probe. **P5 bridge removal still open:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and `.github/workflows/ci.yml:249` remain until script + paired CI step are deleted per script header (14 consecutive main-CI days). Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
-**T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
-checkable. `src/v4/test/claim/manual/*.dag` claims compile and type-check only;
-`scripts/check-v4-host-eval-receipt.py` string-matches emitted Rust, does not
-execute claims. Script header names the dissolution condition. T-34 (runtime
-substrate) done (#3770). T-22 (eval interpreter) substantially authored. CI
-wiring — a step that invokes T-22 eval on the claim corpus and surfaces
-`TestClaimRun` witness vs Violates — is the gap.
+**T-38 → claim-suite structural bridge.** The CI gate
+`scripts/v4-testclaim-corpus-gate.sh` now compiles `src/v4` to emitted Rust and
+the modeled `.dag` artifact, verifies every `src/v4/test/claim/manual/*.dag`
+module is present, and pins the T-22 `TestClaimRun` surface including the
+`eval_runtime_mvp` run row. It also preserves the prior generated-Rust MVP
+receipt inside the structural corpus bridge so eval dispatch / runtime fold /
+five-byte witness regressions remain fail-closed until modeled verdict execution
+replaces shell-owned checks. This does **not** close T-38's runner bar. The
+remaining close condition is still modeled runner execution with structured
+`TestClaimRun` verdicts in CI.
 
 **T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
 sequence IS authored (header: "Status: filled — compiler-of-record is the
@@ -809,7 +812,7 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
-**Close-status (2026-05-28, post-merge batch on `main@32d94517c`):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix landed (royal-carp-716 probe PASS; v4 `--target dag` without SIGTERM; ~40MB `dag-artifact.json`). **P5 bridge removal still OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header). Predicate **3 PARTIAL**; **4 PARTIAL** (`bootstrap_footprint` landed [#3788](https://github.com/gunb-ai/gunbc/pull/3788); `bootstrap-content-hash-pins` + T22-EVAL-CACHE-HASHES remain); **5 PAPER-ONLY** (T-38). **Landed:** [#3786](https://github.com/gunb-ai/gunbc/pull/3786) Close-status line, [#3788](https://github.com/gunb-ai/gunbc/pull/3788) T-20-fill footprint, [#3789](https://github.com/gunb-ai/gunbc/pull/3789) T-19, [#3791](https://github.com/gunb-ai/gunbc/pull/3791) T-37. **Operator queue:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3787](https://github.com/gunb-ai/gunbc/pull/3787) T-33. **Lane A:** T-38 (claim-suite CI wiring). Prior T-37 fail: crisp-raven-567 exit 124 on `main@c65b9bdc5`.
+**Close-status (2026-05-28, `main@92b74271d`):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix on `main` (royal-carp-716 probe PASS; v4 `--target dag` without SIGTERM). **P5 bridge removal still OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header). Predicate **3 PARTIAL** (T-4 feeder: T-33 on `main` [#3787](https://github.com/gunb-ai/gunbc/pull/3787); P1-KEYSTONE [#3752](https://github.com/gunb-ai/gunbc/pull/3752) still open); **4 PARTIAL** (`bootstrap_footprint` [#3788](https://github.com/gunb-ai/gunbc/pull/3788); T22-EVAL-CACHE-HASHES [#3794](https://github.com/gunb-ai/gunbc/pull/3794)); **5 PAPER-ONLY** (T-38 [#3803](https://github.com/gunb-ai/gunbc/pull/3803)). **Landed this batch:** [#3787](https://github.com/gunb-ai/gunbc/pull/3787) T-33 `model_core` [DONE], [#3793](https://github.com/gunb-ai/gunbc/pull/3793) Close-status refresh. **Operator queue:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3803](https://github.com/gunb-ai/gunbc/pull/3803) T-38, [#3794](https://github.com/gunb-ai/gunbc/pull/3794) T22-EVAL-CACHE-HASHES, [#3807](https://github.com/gunb-ai/gunbc/pull/3807) std/lexing+grammar step 1. **Lane A:** T-38 → [#3803](https://github.com/gunb-ai/gunbc/pull/3803).
 
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
@@ -2264,29 +2267,29 @@ bridge script, update CI).
 
 **File**: CI integration in `src/v4/workflow/ci.dag` (T-24) or `src/v4/workflow/bootstrap.dag` (T-20) — owned by whichever fill PR wires T-22 eval into the CI step sequence
 **Why this is a T-15 gate**: T-15's close condition includes "TestClaim suite passes."
-That condition is not checkable today. `src/v4/test/claim/manual/*.dag` (38+
-files) compile and type-check against `std/verification.dag` shape — they are NOT
-evaluated. `scripts/check-v4-host-eval-receipt.py` is a string-match bridge over
-emitted Rust source; it does not invoke the evaluator or verify `AssertKind`
-verdicts.
-
-**Dissolution condition** (from script header verbatim): "delete when the modeled
-T-22 runner executes `eval_runtime_mvp.dag` on main CI and reports the same
-`RuntimeValue` witness through `TestClaimRun` or workflow-as-data, with no
-scripts-owned generated-Rust receipt standing between the claim and the gate."
+That condition was previously not checkable: `src/v4/test/claim/manual/*.dag`
+(38+ files) compiled and type-checked against `std/verification.dag` shape, while
+the deleted `scripts/check-v4-host-eval-receipt.py` string-matched emitted Rust
+source instead of binding the corpus to modeled `TestClaimRun` rows.
 
 **Current state (2026-05-28)**:
 - T-34 (runtime substrate — `std/runtime.dag + extdeps/runtimes/*.dag`) done (#3770)
 - T-22 (`compiler/05_eval.dag` — the interpreter) substantially authored at 1121 lines; open scaffold gates are feature-flagged on B1 `content_hash` and not independently dispatchable
-- Gap: no CI step invokes T-22 eval on the claim corpus; no `TestClaimRun` report surfaces in CI output; the bridge script is the only receipt
+- CI has a fail-closed T-22 manual corpus structural bridge
+  (`scripts/v4-testclaim-corpus-gate.sh`) that compiles both `--target rust` and
+  `--target dag`, verifies all manual modules plus their `TestClaimRun` rows are
+  present, and keeps zero-diagnostic rust emission plus the legacy generated-Rust
+  MVP receipt fail-closed.
+- Gap: no CI step invokes T-22 eval on the claim corpus; no structured
+  `TestClaimRun` verdict report surfaces in CI output.
 
 **Scope**: the CI-wiring half is the bottleneck. T-22 authoring is substantially
 done. T-38 closes when:
 1. A CI step runs T-22 eval over `src/v4/test/claim/manual/*.dag` (the corpus)
-2. Results surface as `TestClaimRun` verdict or equivalent workflow-as-data output
-3. `scripts/check-v4-host-eval-receipt.py` is deleted (its dissolution condition holds)
+2. Results surface as `TestClaimRun` verdicts or equivalent workflow-as-data output
+3. `scripts/v4-testclaim-corpus-gate.sh` is deleted because structured runner output replaces shell-owned artifact inspection
 
-**Dependencies**: `[needs T-22 runnable end-to-end; T-34 done #3770]`
+**Dependencies**: `[T-22 modeled TestClaimRun surface; T-34 done #3770; emitted-Rust runtime execution continues under M1]`
 T-22's open scaffold gates (`feature:T22-EVAL-CACHE-HASHES`) are gated on B1
 `content_hash`, which is a T-15 era concern — the claim corpus evaluation itself
 does not require them. T-38 can dispatch against T-22's current surface without
