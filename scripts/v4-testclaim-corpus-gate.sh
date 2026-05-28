@@ -104,54 +104,290 @@ require_file() {
   fi
 }
 
-require_contains() {
-  local path="$1"
-  local needle="$2"
-  local label="$3"
-  if ! grep -F "$needle" "$path" >/dev/null; then
-    echo "error: $path missing ${label}: $needle" >&2
-    exit 1
-  fi
-}
-
 check_generated_rust_receipt() {
   local eval_rs="${rust_out}/src/v4_compiler_eval.rs"
   local fixture_rs="${rust_out}/src/v4_test_claim_manual_eval_runtime_mvp.rs"
   require_file "$eval_rs"
   require_file "$fixture_rs"
 
-  require_contains "$eval_rs" "pub fn eval(tree: Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: Rc<Inputs>) -> Rc<Outcome>" "eval entrypoint"
-  require_contains "$eval_rs" "well_formed(tree.root.clone())" "eval tree well_formed check"
-  require_contains "$eval_rs" "well_formed(inputs.root.clone())" "eval input well_formed check"
-  require_contains "$eval_rs" "eval_runtime_node(inputs.root.clone(), tree.clone(), interpretation, empty_evaluation_environment(), eval_runtime())" "eval runtime dispatch"
-  require_contains "$eval_rs" "fold_node(node, Rc::new(NodeFold" "runtime node fold"
-  require_contains "$eval_rs" "init: Rc::new(|n0| eval_fold_init" "runtime fold init"
-  require_contains "$eval_rs" "step: Rc::new(|acc, e, child| eval_fold_step" "runtime fold step"
-  require_contains "$eval_rs" "eval_fold_state_value(folded)" "runtime fold result"
-  require_contains "$eval_rs" "interpretation_behavior_dispatch(interpretation.clone(), behavior)" "runtime behavior dispatch"
-  require_contains "$eval_rs" "RuntimeBehaviorInterpreter::ValueRuntimeInterpreter" "Value interpreter dispatch"
-  require_contains "$eval_rs" "RuntimeBehaviorInterpreter::TransformRuntimeInterpreter" "Transform interpreter dispatch"
-  require_contains "$eval_rs" "RuntimeBehaviorInterpreter::BranchRuntimeInterpreter" "Branch interpreter dispatch"
-  require_contains "$eval_rs" "RuntimeBehaviorInterpreter::LoopRuntimeInterpreter" "Loop interpreter dispatch"
-  require_contains "$eval_rs" "RuntimeBehaviorInterpreter::BindRuntimeInterpreter" "Bind interpreter dispatch"
-  require_contains "$eval_rs" "eval_accept_runtime_value_with_facts" "runtime value acceptance"
+  python3 - "$eval_rs" "$fixture_rs" <<'PY'
+from __future__ import annotations
 
-  require_contains "$fixture_rs" "behavior: Behavior::Value" "MVP literal Value behavior"
-  require_contains "$fixture_rs" "EdgeLabel::Named" "MVP non-runtime literal type edge"
-  require_contains "$fixture_rs" "behavior: Behavior::Transform" "MVP root Transform behavior"
-  require_contains "$fixture_rs" "eval_mvp2_literal_node(eval_mvp2_left_symbol())" "MVP left runtime child"
-  require_contains "$fixture_rs" "eval_mvp2_literal_node(eval_mvp2_right_symbol())" "MVP right runtime child"
-  require_contains "$fixture_rs" "allocate_literal: Rc::new(eval_mvp2_allocate_literal)" "MVP InterpretationAlgebra literal interpreter"
-  require_contains "$fixture_rs" "call_primitive: Rc::new(eval_mvp2_call_primitive)" "MVP InterpretationAlgebra transform interpreter"
-  require_contains "$fixture_rs" "if eval_mvp2_args_are_two_literals(args)" "MVP transform fail-closed predicate"
-  require_contains "$fixture_rs" "value: eval_mvp2_five_value()" "MVP five-byte accepted value"
-  require_contains "$fixture_rs" "eval(eval_mvp2_inferred_tree(), eval_mvp2_interpretation_algebra(), Rc::new(Inputs" "MVP eval invocation"
-  require_contains "$fixture_rs" "root: eval_mvp2_add_subgraph()" "MVP eval input root"
-  require_contains "$fixture_rs" "match (*eval_mvp2_actual()).clone()" "MVP witness evaluates actual"
-  require_contains "$fixture_rs" "Outcome::Accepted { ref value, diagnostics: None" "MVP witness requires accepted value"
-  require_contains "$fixture_rs" "RuntimeValue::RuntimePrimitive" "MVP witness requires RuntimePrimitive"
-  require_contains "$fixture_rs" "p.primitive_type.clone() == eval_mvp2_i64_node()" "MVP witness primitive type"
-  require_contains "$fixture_rs" "p.bytes.clone().len() as i64) == 5" "MVP witness five-byte result"
+import sys
+from pathlib import Path
+
+
+class ReceiptError(Exception):
+    pass
+
+
+def generated_function(source: str, name: str, path: Path) -> str:
+    marker = f"pub fn {name}("
+    start = source.find(marker)
+    if start == -1:
+        raise ReceiptError(f"{path}: generated function not found: {name}")
+    brace = source.find("{", start)
+    if brace == -1:
+        raise ReceiptError(f"{path}: generated function has no body: {name}")
+
+    depth = 0
+    in_line_comment = False
+    in_block_comment = False
+    in_string = False
+    in_char = False
+    escaped = False
+    for index in range(brace, len(source)):
+        ch = source[index]
+        nxt = source[index + 1] if index + 1 < len(source) else ""
+
+        if in_line_comment:
+            if ch == "\n":
+                in_line_comment = False
+            continue
+        if in_block_comment:
+            if ch == "*" and nxt == "/":
+                in_block_comment = False
+            continue
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if in_char:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == "'":
+                in_char = False
+            continue
+
+        if ch == "/" and nxt == "/":
+            in_line_comment = True
+            continue
+        if ch == "/" and nxt == "*":
+            in_block_comment = True
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "'":
+            in_char = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : index + 1]
+
+    raise ReceiptError(f"{path}: unterminated generated function: {name}")
+
+
+def require(source: str, needle: str, path: Path, label: str) -> None:
+    if needle not in source:
+        raise ReceiptError(f"{path}: missing {label}: {needle}")
+
+
+def require_order(source: str, needles: list[str], path: Path, label: str) -> None:
+    offset = 0
+    for needle in needles:
+        found = source.find(needle, offset)
+        if found == -1:
+            raise ReceiptError(f"{path}: missing ordered {label}: {needle}")
+        offset = found + len(needle)
+
+
+def check_generated_eval(eval_rs: Path) -> None:
+    source = eval_rs.read_text()
+    require_order(
+        generated_function(source, "eval", eval_rs),
+        [
+            "pub fn eval(tree: Rc<InferredTree>, interpretation: Rc<InterpretationAlgebra>, inputs: Rc<Inputs>) -> Rc<Outcome>",
+            "well_formed(tree.root.clone())",
+            "well_formed(inputs.root.clone())",
+            "eval_runtime_node(inputs.root.clone(), tree.clone(), interpretation, empty_evaluation_environment(), eval_runtime())",
+        ],
+        eval_rs,
+        "compiled eval(tree, interpretation, inputs) dispatch",
+    )
+    require_order(
+        generated_function(source, "eval_runtime_node", eval_rs),
+        [
+            "fold_node(node, Rc::new(NodeFold",
+            "init: Rc::new(|n0| eval_fold_init",
+            "step: Rc::new(|acc, e, child| eval_fold_step",
+            "eval_fold_state_value(folded)",
+        ],
+        eval_rs,
+        "compiled runtime-node fold",
+    )
+    require_order(
+        generated_function(source, "eval_fold_init", eval_rs),
+        [
+            "structural: eval_structural_node_for_eval",
+            "child_values: Rc::new(Outcome::Accepted",
+            "value: if ((node.children.clone().len() as i64) == 0)",
+            "eval_interpret_node",
+            "outcome_rejected",
+            "eval_rejected_pending_children",
+        ],
+        eval_rs,
+        "compiled leaf evaluation posture",
+    )
+    require_order(
+        generated_function(source, "eval_fold_step", eval_rs),
+        [
+            "eval_edge_is_runtime_argument(edge)",
+            "eval_append_child_value",
+            "eval_absorb_child_diagnostics",
+            "eval_maybe_complete_node",
+        ],
+        eval_rs,
+        "compiled child value accumulation",
+    )
+    require_order(
+        generated_function(source, "eval_computation_node", eval_rs),
+        [
+            "interpretation_behavior_dispatch(interpretation.clone(), behavior)",
+            "RuntimeBehaviorInterpreter::ValueRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::TransformRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::BranchRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::LoopRuntimeInterpreter",
+            "RuntimeBehaviorInterpreter::BindRuntimeInterpreter",
+            "environment",
+            "runtime",
+            "eval_accept_runtime_value_with_facts",
+        ],
+        eval_rs,
+        "compiled behavior dispatch through runtime-owned InterpretationAlgebra",
+    )
+    require_order(
+        generated_function(source, "eval_branch_node", eval_rs),
+        [
+            "eval_first_runtime_argument",
+            "(branch.choose_branch)",
+            "eval_runtime_node(chosen.clone(), tree.clone(), interpretation.clone(), environment.clone(), runtime.clone())",
+        ],
+        eval_rs,
+        "compiled Branch interpreter chooses and resumes through selected subgraph",
+    )
+    require_order(
+        generated_function(source, "eval_bind_node", eval_rs),
+        [
+            "eval_bind_key",
+            "eval_bind_value_argument",
+            "(bind.bind_value)",
+            "eval_bind_body",
+            "eval_runtime_node(body.clone(), tree.clone(), interpretation.clone(), bound_environment.clone(), runtime.clone())",
+        ],
+        eval_rs,
+        "compiled Bind interpreter extends environment and resumes through body",
+    )
+
+
+def check_generated_fixture(fixture_rs: Path) -> None:
+    source = fixture_rs.read_text()
+
+    literal_body = generated_function(source, "eval_mvp2_literal_node", fixture_rs)
+    require(literal_body, "behavior: Behavior::Value", fixture_rs, "literal Value node")
+    require(literal_body, "EdgeLabel::Named", fixture_rs, "non-runtime literal type edge")
+
+    root_body = generated_function(source, "eval_mvp2_add_subgraph", fixture_rs)
+    require(root_body, "behavior: Behavior::Transform", fixture_rs, "root Transform node")
+    require(root_body, "eval_mvp2_literal_node(eval_mvp2_left_symbol())", fixture_rs, "left child")
+    require(root_body, "eval_mvp2_literal_node(eval_mvp2_right_symbol())", fixture_rs, "right child")
+    if root_body.count("EdgeLabel::Positional") != 2:
+        raise ReceiptError(f"{fixture_rs}: root Transform must have exactly two positional runtime children")
+
+    two_body = generated_function(source, "eval_mvp2_two_value", fixture_rs)
+    if two_body.count("eval_mvp2_byte()") != 2:
+        raise ReceiptError(f"{fixture_rs}: two-value fixture must carry exactly two bytes")
+
+    five_body = generated_function(source, "eval_mvp2_five_value", fixture_rs)
+    if five_body.count("eval_mvp2_byte()") != 5:
+        raise ReceiptError(f"{fixture_rs}: five-value fixture must carry exactly five bytes")
+
+    require_order(
+        generated_function(source, "eval_mvp2_allocate_literal", fixture_rs),
+        ["Outcome::Accepted", "value: eval_mvp2_two_value()", "diagnostics: None"],
+        fixture_rs,
+        "compiled literal interpreter returns two-byte RuntimeValue",
+    )
+    require_order(
+        generated_function(source, "eval_mvp2_arg_is_two_literal", fixture_rs),
+        [
+            "RuntimeValue::RuntimePrimitive",
+            "p.primitive_type.clone() == eval_mvp2_i64_node()",
+            "p.bytes.clone().len() as i64) == 2",
+        ],
+        fixture_rs,
+        "compiled two-byte argument predicate",
+    )
+    require_order(
+        generated_function(source, "eval_mvp2_args_are_two_literals", fixture_rs),
+        [
+            "args.clone().len() as i64) == 2",
+            "eval_mvp2_arg_is_two_literal(left.clone())",
+            "eval_mvp2_arg_is_two_literal(right.clone())",
+        ],
+        fixture_rs,
+        "compiled two-argument predicate",
+    )
+    require_order(
+        generated_function(source, "eval_mvp2_call_primitive", fixture_rs),
+        [
+            "if eval_mvp2_args_are_two_literals(args)",
+            "Outcome::Accepted",
+            "value: eval_mvp2_five_value()",
+            "diagnostics: None",
+            "Outcome::Rejected",
+        ],
+        fixture_rs,
+        "compiled transform interpreter fails closed and accepts five",
+    )
+    require_order(
+        generated_function(source, "eval_mvp2_interpretation_algebra", fixture_rs),
+        [
+            "allocate_literal: Rc::new(eval_mvp2_allocate_literal)",
+            "call_primitive: Rc::new(eval_mvp2_call_primitive)",
+        ],
+        fixture_rs,
+        "compiled InterpretationAlgebra binds fixture interpreters",
+    )
+    require_order(
+        generated_function(source, "eval_mvp2_actual", fixture_rs),
+        [
+            "eval(eval_mvp2_inferred_tree(), eval_mvp2_interpretation_algebra(), Rc::new(Inputs",
+            "root: eval_mvp2_add_subgraph()",
+        ],
+        fixture_rs,
+        "compiled eval(tree, interpretation, inputs) invocation",
+    )
+    require_order(
+        generated_function(source, "witness_eval_mvp2_add_accepts_five", fixture_rs),
+        [
+            "match (*eval_mvp2_actual()).clone()",
+            "Outcome::Accepted { ref value, diagnostics: None",
+            "RuntimeValue::RuntimePrimitive",
+            "p.primitive_type.clone() == eval_mvp2_i64_node()",
+            "p.bytes.clone().len() as i64) == 5",
+            "_ => false",
+        ],
+        fixture_rs,
+        "compiled witness asserts Accepted RuntimePrimitive with five bytes",
+    )
+
+
+try:
+    check_generated_eval(Path(sys.argv[1]))
+    check_generated_fixture(Path(sys.argv[2]))
+except ReceiptError as err:
+    raise SystemExit(f"error: {err}") from err
+PY
 }
 
 check_generated_rust_receipt
