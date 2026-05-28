@@ -217,17 +217,21 @@ fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExp
   Sequence { left: left, right: right }
 }
 
-// svo_sentence → noun verb article noun period
+// svo_sentence → article noun verb article noun period
+// Subject NP carries an article, consistent with FormalNounPhrase.determiner.
 fn english_svo_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
-    left: english_grammar_terminal(token_class: english_token_noun),
+    left: english_grammar_terminal(token_class: english_token_article),
     right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: english_token_verb),
+      left: english_grammar_terminal(token_class: english_token_noun),
       right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: english_token_article),
+        left: english_grammar_terminal(token_class: english_token_verb),
         right: english_grammar_sequence(
-          left: english_grammar_terminal(token_class: english_token_noun),
-          right: english_grammar_terminal(token_class: english_token_period)
+          left: english_grammar_terminal(token_class: english_token_article),
+          right: english_grammar_sequence(
+            left: english_grammar_terminal(token_class: english_token_noun),
+            right: english_grammar_terminal(token_class: english_token_period)
+          )
         )
       )
     )
@@ -342,6 +346,7 @@ fn english_svo_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: english_production_svo_sentence),
     rhs: [
+      grammar_formal_terminal(identity: english_token_article),
       grammar_formal_terminal(identity: english_token_noun),
       grammar_formal_terminal(identity: english_token_verb),
       grammar_formal_terminal(identity: english_token_article),
