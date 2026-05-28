@@ -5,6 +5,13 @@
 # artifact, then verifies that the manual claim corpus is in the compile closure
 # and that the T-22 TestClaimRun surface is present in the artifact.
 #
+# 🟡 gated — feature:t38-testclaim-corpus-ci-gate — scaffold:TASKS T-38 / INVARIANTS §P5
+# Owner lane: T-22/T-38 evaluation harness closeout; operator-authorized CI receipt only.
+# Dissolve-on-arrival: delete this script and the paired CI step when the modeled runner
+#   executes `src/v4/test/claim/manual/*.dag` in CI and emits structured TestClaimRun
+#   verdicts directly from .dag/workflow-as-data, with no shell-owned artifact inspection.
+# Exit condition: removal when that runner is green on main CI for 14 consecutive days.
+#
 # This intentionally avoids generated-Rust source-shape matching. It is still a
 # structural gate: full emitted Rust execution remains owned by the M1 rust emit
 # path until src/v4 emits cargo-clean Rust.
