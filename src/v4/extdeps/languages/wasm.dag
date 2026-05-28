@@ -1759,7 +1759,7 @@ fn wasm_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-// 🟡 coproduct dissolution · SL-T4-WAVE2B-WASM-LAW-KEY.
+// 🟡 coproduct dissolution — SL-T4-WAVE2B-WASM-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for wasm_model_core_law_node kind edge — owner:T-4 wasm language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
 type WasmModelCoreLawKey
   = WasmLawIntegerAddAssociativeModular
   | WasmLawIntegerAddCommutativeModular

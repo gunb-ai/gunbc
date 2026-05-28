@@ -440,6 +440,15 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
             "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
             "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
         )
+    if type_name == "WasmModelCoreLawKey":
+        return (
+            "// 🟡 coproduct dissolution — SL-T4-WAVE2B-WASM-LAW-KEY — "
+            "feature:model-core-law-expression-carrier — "
+            "scaffold:T-4-wave-2b · law-kind coproduct for wasm_model_core_law_node kind edge — "
+            "owner:T-4 wasm language model lane — "
+            "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
+            "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
+        )
     return f"// {emoji} coproduct dissolution · {ref}."
 
 
