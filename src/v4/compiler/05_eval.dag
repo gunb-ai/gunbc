@@ -130,11 +130,10 @@ type EvalContext {
 }
 
 
-// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; evaluator_pin / evaluator_subgraph carry IRT-4 boundaries for non-Node evaluator_input.
+// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; evaluator_pin is the IRT-4 boundary for non-Node carriers (Node-backed rows hash content_hash(evaluator_input) at digest time).
 type TestClaimTypedInput<T> {
   evaluator_input: T
   evaluator_pin: Symbol
-  evaluator_subgraph: Optional<Node>
 }
 
 
