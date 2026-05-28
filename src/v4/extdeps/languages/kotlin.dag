@@ -26,6 +26,7 @@ import v4.std.lexing {
   ChoicePattern,
   DelimitedPattern,
   DigitChar,
+  HexDigitChar,
   IdentContinueChar,
   IdentStartChar,
   KeywordPattern,
@@ -36,6 +37,7 @@ import v4.std.lexing {
   LiteralPattern,
   ModeledLexRules,
   OneOrMorePattern,
+  OptionalPattern,
   RepeatPattern,
   SequencePattern,
   StringTextChar,
@@ -369,6 +371,7 @@ data kotlin_token_comma: Symbol = kotlin_token_comma
 data kotlin_token_colon: Symbol = kotlin_token_colon
 data kotlin_token_dot: Symbol = kotlin_token_dot
 data kotlin_token_semicolon: Symbol = kotlin_token_semicolon
+data kotlin_token_nl: Symbol = kotlin_token_nl
 
 data kotlin_production_mvp1_fn_add: Symbol = kotlin_production_mvp1_fn_add
 data kotlin_production_fn_decl: Symbol = kotlin_production_fn_decl
@@ -383,6 +386,10 @@ data kotlin_production_if_stmt: Symbol = kotlin_production_if_stmt
 data kotlin_production_while_stmt: Symbol = kotlin_production_while_stmt
 data kotlin_production_expr: Symbol = kotlin_production_expr
 data kotlin_production_binary_expr: Symbol = kotlin_production_binary_expr
+data kotlin_production_equality_expr: Symbol = kotlin_production_equality_expr
+data kotlin_production_comparison_expr: Symbol = kotlin_production_comparison_expr
+data kotlin_production_additive_expr: Symbol = kotlin_production_additive_expr
+data kotlin_production_multiplicative_expr: Symbol = kotlin_production_multiplicative_expr
 data kotlin_production_call_expr: Symbol = kotlin_production_call_expr
 data kotlin_production_primary_expr: Symbol = kotlin_production_primary_expr
 
@@ -398,6 +405,10 @@ data kotlin_surface_if_stmt: Symbol = kotlin_surface_if_stmt
 data kotlin_surface_while_stmt: Symbol = kotlin_surface_while_stmt
 data kotlin_surface_expr: Symbol = kotlin_surface_expr
 data kotlin_surface_binary_expr: Symbol = kotlin_surface_binary_expr
+data kotlin_surface_equality_expr: Symbol = kotlin_surface_equality_expr
+data kotlin_surface_comparison_expr: Symbol = kotlin_surface_comparison_expr
+data kotlin_surface_additive_expr: Symbol = kotlin_surface_additive_expr
+data kotlin_surface_multiplicative_expr: Symbol = kotlin_surface_multiplicative_expr
 data kotlin_surface_call_expr: Symbol = kotlin_surface_call_expr
 data kotlin_surface_primary_expr: Symbol = kotlin_surface_primary_expr
 data kotlin_binding_fn_add: Symbol = kotlin_binding_fn_add
@@ -1229,6 +1240,38 @@ fn kotlin_grammar_production_binary_expr() -> GrammarProduction {
   }
 }
 
+fn kotlin_grammar_production_equality_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_equality_expr,
+    expression: kotlin_grammar_equality_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_equality_expr)
+  }
+}
+
+fn kotlin_grammar_production_comparison_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_comparison_expr,
+    expression: kotlin_grammar_comparison_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_comparison_expr)
+  }
+}
+
+fn kotlin_grammar_production_additive_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_additive_expr,
+    expression: kotlin_grammar_additive_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_additive_expr)
+  }
+}
+
+fn kotlin_grammar_production_multiplicative_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_multiplicative_expr,
+    expression: kotlin_grammar_multiplicative_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_multiplicative_expr)
+  }
+}
+
 fn kotlin_grammar_production_call_expr() -> GrammarProduction {
   GrammarProduction {
     name: kotlin_production_call_expr,
@@ -1367,7 +1410,25 @@ fn kotlin_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
 
 fn kotlin_whitespace_trivia_rule() -> LexRule {
   TriviaRule {
-    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+    pattern: OneOrMorePattern {
+      element: ChoicePattern {
+        left: LiteralPattern { text: " " },
+        right: LiteralPattern { text: "\t" }
+      }
+    }
+  }
+}
+
+fn kotlin_newline_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: kotlin_token_nl,
+    pattern: ChoicePattern {
+      left: LiteralPattern { text: "\r\n" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "\n" },
+        right: LiteralPattern { text: "\r" }
+      }
+    }
   }
 }
 
@@ -1385,10 +1446,103 @@ fn kotlin_ident_lex_rule() -> LexRule {
   }
 }
 
+fn kotlin_int_suffix_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "UL" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "uL" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "Ul" },
+        right: ChoicePattern {
+          left: LiteralPattern { text: "ul" },
+          right: ChoicePattern {
+            left: LiteralPattern { text: "U" },
+            right: ChoicePattern {
+              left: LiteralPattern { text: "u" },
+              right: ChoicePattern {
+                left: LiteralPattern { text: "L" },
+                right: LiteralPattern { text: "l" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn kotlin_decimal_digit_or_separator_pattern() -> LexPattern {
+  ChoicePattern {
+    left: CharClassPattern { class: DigitChar },
+    right: LiteralPattern { text: "_" }
+  }
+}
+
+fn kotlin_binary_digit_or_separator_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "0" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "1" },
+      right: LiteralPattern { text: "_" }
+    }
+  }
+}
+
+fn kotlin_decimal_literal_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: DigitChar },
+    right: SequencePattern {
+      left: RepeatPattern { element: kotlin_decimal_digit_or_separator_pattern() },
+      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+    }
+  }
+}
+
+fn kotlin_hex_literal_pattern() -> LexPattern {
+  SequencePattern {
+    left: ChoicePattern {
+      left: LiteralPattern { text: "0x" },
+      right: LiteralPattern { text: "0X" }
+    },
+    right: SequencePattern {
+      left: OneOrMorePattern {
+        element: ChoicePattern {
+          left: CharClassPattern { class: HexDigitChar },
+          right: LiteralPattern { text: "_" }
+        }
+      },
+      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+    }
+  }
+}
+
+fn kotlin_binary_literal_pattern() -> LexPattern {
+  SequencePattern {
+    left: ChoicePattern {
+      left: LiteralPattern { text: "0b" },
+      right: LiteralPattern { text: "0B" }
+    },
+    right: SequencePattern {
+      left: OneOrMorePattern { element: kotlin_binary_digit_or_separator_pattern() },
+      right: OptionalPattern { element: kotlin_int_suffix_pattern() }
+    }
+  }
+}
+
+fn kotlin_int_literal_pattern() -> LexPattern {
+  ChoicePattern {
+    left: kotlin_hex_literal_pattern(),
+    right: ChoicePattern {
+      left: kotlin_binary_literal_pattern(),
+      right: kotlin_decimal_literal_pattern()
+    }
+  }
+}
+
 fn kotlin_int_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: kotlin_token_int_literal,
-    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+    pattern: kotlin_int_literal_pattern()
   }
 }
 
@@ -1407,6 +1561,7 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
       kotlin_whitespace_trivia_rule(),
+      kotlin_newline_lex_rule(),
       kotlin_string_literal_lex_rule(),
       kotlin_int_literal_lex_rule(),
       kotlin_ident_lex_rule(),
