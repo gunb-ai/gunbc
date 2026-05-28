@@ -5,13 +5,17 @@
 
 module v4.workflow.bootstrap
 
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, content_hash }
 import v4.std.algebra {
   bag_eq
 }
 import v4.compiler.target_carriers { LanguageModel, TargetModel }
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
+import v4.extdeps.runtimes.v4_evaluator {
+  V4EvaluatorRuntime,
+  v4_evaluator_runtime_id,
+  v4_evaluator_runtime_wave1
+}
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -140,6 +144,10 @@ data bootstrap_construct_source_language_subset: Symbol = bootstrap_construct_so
 data bootstrap_construct_target_model_subset: Symbol = bootstrap_construct_target_model_subset
 data bootstrap_construct_runtime_model_subset: Symbol = bootstrap_construct_runtime_model_subset
 data bootstrap_construct_lowering_subset: Symbol = bootstrap_construct_lowering_subset
+data bootstrap_projection_snapshot_root_edge: Symbol = bootstrap_projection_snapshot_root_edge
+data bootstrap_projection_snapshot_language_model_edge: Symbol = bootstrap_projection_snapshot_language_model_edge
+data bootstrap_projection_target_bundle_edge: Symbol = bootstrap_projection_target_bundle_edge
+data bootstrap_projection_runtime_identity_edge: Symbol = bootstrap_projection_runtime_identity_edge
 data physical_machine_model_axiom: Symbol = physical_machine_model_axiom
 data physical_machine_executes_isa_as_modeled: Symbol = physical_machine_executes_isa_as_modeled
 data seed_honesty_axiom: Symbol = seed_honesty_axiom
@@ -185,9 +193,66 @@ fn bootstrap_constructs_eq(left: List<BootstrapConstruct>, right: List<Bootstrap
   bag_eq(xs: left, ys: right, eq: bootstrap_construct_eq)
 }
 
-// 🟡 needs-more-work — feature:t21-bootstrap-footprint-fold — scaffold:T-32 Phase 1 · dissolve-on: T-21 affected-set/content-hash fold can read the projection input closure and return Holds with the concrete footprint.
+fn bootstrap_projection_runtime_identity_node(runtime: V4EvaluatorRuntime) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: runtime.runtime_identity } },
+    children: []
+  }
+}
+
+fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: bootstrap_projection_snapshot_root_edge },
+        target: inputs.snapshot.root
+      },
+      Edge {
+        label: Named { name: bootstrap_projection_snapshot_language_model_edge },
+        target: inputs.snapshot.language_model
+      },
+      Edge {
+        label: Named { name: bootstrap_projection_target_bundle_edge },
+        target: inputs.target_model.bundle
+      },
+      Edge {
+        label: Named { name: bootstrap_projection_runtime_identity_edge },
+        target: bootstrap_projection_runtime_identity_node(runtime: inputs.runtime_model)
+      }
+    ]
+  }
+}
+
+fn bootstrap_footprint_constructs() -> List<BootstrapConstruct> {
+  [
+    BootstrapConstruct { identity: bootstrap_construct_source_language_subset },
+    BootstrapConstruct { identity: bootstrap_construct_target_model_subset },
+    BootstrapConstruct { identity: bootstrap_construct_runtime_model_subset },
+    BootstrapConstruct { identity: bootstrap_construct_lowering_subset }
+  ]
+}
+
+fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
+  (inputs.snapshot.root == bootstrap_source_snapshot_root())
+    && (inputs.snapshot.language_model == seed_capability_language_model())
+    && (inputs.target_model == rust_mvp1_target_model())
+    && (inputs.runtime_model.runtime_identity == v4_evaluator_runtime_id)
+}
+
+// Phase-1 footprint fold: content_hash over the projection-input closure (T-21 B1); constructs are the four frozen-submodel subset carriers until a deeper snapshot walk lands.
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
-  Violates { diagnostic: bs_diagnostic(reason: bootstrap_footprint_not_realized) }
+  let _closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
+  if bootstrap_projection_inputs_well_formed(inputs: inputs) {
+    Holds {
+      value: BootstrapFootprint {
+        inputs: inputs,
+        constructs: bootstrap_footprint_constructs()
+      }
+    }
+  } else {
+    Violates { diagnostic: bs_diagnostic(reason: bootstrap_footprint_not_realized) }
+  }
 }
 
 fn bootstrap_seed_capability_matches_footprint(
