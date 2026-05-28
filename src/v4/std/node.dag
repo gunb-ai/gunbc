@@ -433,9 +433,11 @@ data canonical_tag_scalar_int_one: Symbol = canonical_tag_scalar_int_one
 data canonical_tag_scalar_int_neg: Symbol = canonical_tag_scalar_int_neg
 data canonical_tag_scalar_int_pos: Symbol = canonical_tag_scalar_int_pos
 data canonical_tag_scalar_int_succ: Symbol = canonical_tag_scalar_int_succ
+data canonical_tag_byte_offset_zero: Symbol = canonical_tag_byte_offset_zero
+data canonical_tag_byte_offset_byte: Symbol = canonical_tag_byte_offset_byte
 
 
-// Injective Peano succ-chain on |i| (ArithmeticSubtract OneStep); distinct i yield distinct digests.
+// Char codes and byte limbs only (0..255): Peano succ-chain is O(|i|) and bounded here.
 fn scalar_int_hash_nonneg_digits(i: Int) -> Hash {
   if i == 0 {
     atom_identity_hash(s: canonical_tag_scalar_int_zero)
@@ -468,6 +470,39 @@ fn scalar_int_hash(i: Int) -> Hash {
     )
   } else {
     scalar_int_hash_nonneg(i: i)
+  }
+}
+
+
+fn byte_offset_byte_digest(b: Int) -> Hash {
+  combine_hash(
+    a: atom_identity_hash(s: canonical_tag_byte_offset_byte),
+    b: scalar_int_hash_nonneg_digits(i: b)
+  )
+}
+
+
+// O(log |i|) base-256 little-endian digest for source byte offsets (not Peano on |i|).
+fn byte_offset_cache_digest_nonneg(i: Int) -> Hash {
+  if i == 0 {
+    atom_identity_hash(s: canonical_tag_byte_offset_zero)
+  } else {
+    combine_hash(
+      a: byte_offset_byte_digest(b: i - (i / 256) * 256),
+      b: byte_offset_cache_digest_nonneg(i: i / 256)
+    )
+  }
+}
+
+
+fn byte_offset_cache_digest(i: Int) -> Hash {
+  if i < 0 {
+    combine_hash(
+      a: atom_identity_hash(s: canonical_tag_scalar_int_neg),
+      b: byte_offset_cache_digest_nonneg(i: 0 - i)
+    )
+  } else {
+    byte_offset_cache_digest_nonneg(i: i)
   }
 }
 

@@ -65,7 +65,7 @@ import v4.std.node {
   bag_hash_digest,
   combine_hash,
   content_hash,
-  scalar_int_hash,
+  byte_offset_cache_digest,
   fold_node,
   is_positional,
   well_formed
@@ -143,20 +143,27 @@ type Inputs {
 }
 
 
-// RULING-1: pretty-much-done — explicit runtime interpretation authority; cache_authority witnesses the algebra until Node-projectable content_hash lands.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_registered.
 type EvalContext {
-  interpretation: InterpretationAlgebra
   cache_authority: InterpretationCacheAuthority
 }
 
 
 fn eval_context_registered(runtime_identity: Symbol, interpretation: InterpretationAlgebra) -> EvalContext {
   EvalContext {
-    interpretation: interpretation,
     cache_authority: Registered {
       runtime_identity: runtime_identity,
       interpretation: interpretation
     }
+  }
+}
+
+
+fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
+  match context.cache_authority {
+    Registered { interpretation: interpretation, runtime_identity: _ } => interpretation
+    NonCacheable { reason: _ } =>
+      v4_evaluator_interpretation_wave1()
   }
 }
 
@@ -296,9 +303,9 @@ fn correction_verdict_digest(c: Correction) -> Hash {
 }
 
 
-// Injective via `scalar_int_hash` Peano succ-chain (distinct offsets/chars → distinct digests).
-fn int_cache_digest(i: Int) -> Hash {
-  scalar_int_hash(i: i)
+// ByteRange offsets use O(log |i|) base-256 `byte_offset_cache_digest` (not Peano on |i|).
+fn byte_range_offset_cache_digest(i: Int) -> Hash {
+  byte_offset_cache_digest(i: i)
 }
 
 
@@ -310,9 +317,9 @@ fn extent_cache_digest(e: Extent) -> Hash {
       combine_hash(
         a: combine_hash(
           a: test_claim_symbol_digest(sym: test_claim_cache_extent_byte_range_tag),
-          b: int_cache_digest(i: sa)
+          b: byte_range_offset_cache_digest(i: sa)
         ),
-        b: int_cache_digest(i: ea)
+        b: byte_range_offset_cache_digest(i: ea)
       )
   }
 }
@@ -494,12 +501,8 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 
 fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
   match context.cache_authority {
-    Registered { runtime_identity: id, interpretation: expected } =>
-      if context.interpretation == expected {
-        test_claim_symbol_digest(sym: id)
-      } else {
-        test_claim_symbol_digest(sym: test_claim_cache_interpretation_authority_mismatch_tag)
-      }
+    Registered { runtime_identity: id, interpretation: _ } =>
+      test_claim_symbol_digest(sym: id)
     NonCacheable { reason: reason } =>
       test_claim_symbol_digest(sym: reason)
   }
@@ -1430,7 +1433,7 @@ fn run_test_claim(
 ) -> TestClaimRun<Node, RuntimeValue> {
   let actual = eval(
     tree: subject.tree,
-    interpretation: subject.context.interpretation,
+    interpretation: eval_context_interpretation(context: subject.context),
     inputs: Inputs { root: subject.input.evaluator_input }
   )
   let at = test_claim_input(c: subject.claim)
@@ -1441,7 +1444,7 @@ fn run_test_claim(
         run_test_claim_runtime_assert(
           claim: subject.claim,
           tree: subject.tree,
-          interpretation: subject.context.interpretation,
+          interpretation: eval_context_interpretation(context: subject.context),
           actual: actual,
           at: at
         )
