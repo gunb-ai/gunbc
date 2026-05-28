@@ -8,7 +8,7 @@ module v4.compiler.normalize
 
 
 import v4.std.algebra { list_snoc_item }
-import v4.compiler.parse { ParseTree }
+import v4.std.grammar { ParseTree }
 import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_fn,
   dag_c3_surface_sugar_operation,

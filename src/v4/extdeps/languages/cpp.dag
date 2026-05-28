@@ -5,14 +5,14 @@
 
 module v4.extdeps.languages.cpp
 
-import v4.compiler.parse {
+import v4.std.grammar {
   GrammarExpr,
   GrammarProduction,
   Sequence,
   Terminal,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   LexRule,
   LexRuleSet,
   LexRules,

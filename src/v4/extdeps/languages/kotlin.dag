@@ -5,7 +5,7 @@
 
 module v4.extdeps.languages.kotlin
 
-import v4.compiler.parse {
+import v4.std.grammar {
   Grammar,
   GrammarExpr,
   GrammarProduction,
@@ -16,7 +16,7 @@ import v4.compiler.parse {
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,

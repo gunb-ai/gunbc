@@ -52,7 +52,7 @@ import v4.std.node {
   fold_node,
   well_formed
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   LexRules,
   LexRule,
   LexPattern,

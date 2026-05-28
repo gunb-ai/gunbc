@@ -8,7 +8,7 @@ module v4.extdeps.languages.dag
 
 
 import v4.std.collection { List, Set }
-import v4.compiler.parse {
+import v4.std.grammar {
   Grammar,
   GrammarExpr,
   GrammarProduction,
@@ -23,7 +23,7 @@ import v4.compiler.parse {
   VoidGrammar,
   grammar_carries_symbol
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,

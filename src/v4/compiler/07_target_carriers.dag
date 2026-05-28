@@ -7,7 +7,7 @@
 module v4.compiler.target_carriers
 
 
-import v4.compiler.tokenize { LexRules, VoidLexRules }
+import v4.std.lexing { LexRules, VoidLexRules }
 import v4.std.collection { Map, empty_map }
 import v4.std.node { Node, Symbol }
 import v4.std.text { String }

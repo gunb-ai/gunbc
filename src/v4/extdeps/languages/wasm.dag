@@ -9,7 +9,7 @@
 
 module v4.extdeps.languages.wasm
 
-import v4.compiler.parse {
+import v4.std.grammar {
   Choice,
   Grammar,
   GrammarExpr,
@@ -24,7 +24,7 @@ import v4.compiler.parse {
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   CharClassPattern,
   ChoicePattern,
   DigitChar,

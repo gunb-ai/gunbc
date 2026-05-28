@@ -9,14 +9,14 @@
 
 module v4.extdeps.languages.python
 
-import v4.compiler.parse {
+import v4.std.grammar {
   GrammarProduction,
   GrammarExpr,
   Sequence,
   Terminal,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   LexRule,
   LexRuleSet,
   LexRules,

@@ -16,7 +16,7 @@ import v4.compiler.compile {
   compile_ingest_staging
 }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
-import v4.compiler.tokenize { VoidLexRules }
+import v4.std.lexing { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   InferredFacts,
