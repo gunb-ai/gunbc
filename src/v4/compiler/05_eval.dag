@@ -117,6 +117,7 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_wave1
 }
+import v4.workflow.ci { CiPipeline, ci_pipeline_cache_digest }
 
 
 // RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
@@ -203,6 +204,18 @@ fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> 
     evaluator_input: evaluator_input,
     evaluator_pin: evaluator_pin,
     evaluator_input_digest: content_hash(n: evaluator_input)
+  }
+}
+
+
+fn test_claim_typed_input_ci_pipeline(
+  evaluator_input: CiPipeline,
+  evaluator_pin: Symbol
+) -> TestClaimTypedInput<CiPipeline> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin,
+    evaluator_input_digest: ci_pipeline_cache_digest(p: evaluator_input)
   }
 }
 

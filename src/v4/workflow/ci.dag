@@ -302,6 +302,17 @@ data ci_cache_cmd_bootstrap_compile_tag: Symbol = ci_cache_cmd_bootstrap_compile
 data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
 data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
 data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
+data ci_cache_jobs_empty_tag: Symbol = ci_cache_jobs_empty_tag
+data ci_cache_gates_empty_tag: Symbol = ci_cache_gates_empty_tag
+data ci_cache_lens_complexity_tag: Symbol = ci_cache_lens_complexity_tag
+data ci_cache_lens_cost_tag: Symbol = ci_cache_lens_cost_tag
+data ci_cache_lens_parallelism_tag: Symbol = ci_cache_lens_parallelism_tag
+data ci_cache_lens_effect_enum_tag: Symbol = ci_cache_lens_effect_enum_tag
+data ci_cache_lens_idempotency_tag: Symbol = ci_cache_lens_idempotency_tag
+data ci_cache_lens_provenance_tag: Symbol = ci_cache_lens_provenance_tag
+data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
+data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
+data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
 
 
 fn ci_symbol_digest(sym: Symbol) -> Hash {
@@ -326,6 +337,21 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 }
 
 
+fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
+  match lens {
+    Complexity => ci_symbol_digest(sym: ci_cache_lens_complexity_tag)
+    Cost => ci_symbol_digest(sym: ci_cache_lens_cost_tag)
+    Parallelism => ci_symbol_digest(sym: ci_cache_lens_parallelism_tag)
+    EffectEnumeration => ci_symbol_digest(sym: ci_cache_lens_effect_enum_tag)
+    Idempotency => ci_symbol_digest(sym: ci_cache_lens_idempotency_tag)
+    Provenance => ci_symbol_digest(sym: ci_cache_lens_provenance_tag)
+    UnusedParameters => ci_symbol_digest(sym: ci_cache_lens_unused_params_tag)
+    StructuralResolution => ci_symbol_digest(sym: ci_cache_lens_structural_resolution_tag)
+    TableDecisionTree => ci_symbol_digest(sym: ci_cache_lens_table_decision_tree_tag)
+  }
+}
+
+
 fn ci_command_cache_digest(c: CiCommand) -> Hash {
   match c {
     LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
@@ -337,7 +363,7 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
         xs: lenses,
         empty: ci_symbol_digest(sym: ci_cache_cmd_lens_ci_tag),
         cons: fn(acc, lens) {
-          hash_combine(a: acc, b: ci_symbol_digest(sym: lens))
+          hash_combine(a: acc, b: ci_lens_id_cache_digest(lens: lens))
         }
       )
     BootstrapStageCompile { produces: produces } =>
@@ -358,7 +384,7 @@ fn ci_job_cache_digest(j: CiJob) -> Hash {
     ),
     b: fold_list(
       xs: j.needs,
-      empty: ci_symbol_digest(sym: j.id),
+      empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
       cons: fn(acc, need) {
         hash_combine(a: acc, b: ci_symbol_digest(sym: need))
       }
@@ -383,14 +409,14 @@ fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
   hash_combine(
     a: fold_list(
       xs: p.jobs,
-      empty: ci_symbol_digest(sym: ci_cache_cmd_lint_tag),
+      empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
       cons: fn(acc, job) {
         hash_combine(a: acc, b: ci_job_cache_digest(j: job))
       }
     ),
     b: fold_list(
       xs: p.gates,
-      empty: ci_symbol_digest(sym: ci_cache_gate_policy_always_tag),
+      empty: ci_symbol_digest(sym: ci_cache_gates_empty_tag),
       cons: fn(acc, gate) {
         hash_combine(a: acc, b: ci_gate_cache_digest(g: gate))
       }
