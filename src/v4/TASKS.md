@@ -186,9 +186,11 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         (T-24 schedules; T-10 owns the orchestrator gate surface).
 
 Bootstrap execution gap (gate T-15 close — 2026-05-28; live dispatch snapshot: T-15 Close-status below):
-  T-37  v2 DAG artifact serializer fix   [DONE — #3791 on `main`; bridge dissolved]
-        `scripts/v4-bootstrap-resolve-posture-gate.sh` dissolution condition met
-        (royal-carp-716 probe PASS; `--target dag` without SIGTERM).
+  T-37  v2 DAG artifact serializer fix   [DONE — #3791 on `main`]
+        Serializer fix landed; dissolution trigger (b) met on probe
+        (royal-carp-716 PASS; `--target dag` without SIGTERM). P5 bridge removal
+        still open: `scripts/v4-bootstrap-resolve-posture-gate.sh` +
+        `.github/workflows/ci.yml:249` until script + CI step deleted per header.
   T-38  TestClaim execution harness      [needs T-22 runnable; T-34 done #3770; gates T-15 "claim suite passes"]
         Claims compile only today; no CI step invokes T-22 eval on the corpus.
 
@@ -267,7 +269,7 @@ Close-the-loop + late substrate:
 The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
 T-15 to close. Two gaps gate the close condition (T-37 landed; live dispatch: T-15 Close-status):
 
-**T-37 → bridge dissolution — LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). `scripts/v4-bootstrap-resolve-posture-gate.sh` dissolution condition met — bridge no longer masks compile failure. Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
+**T-37 → serializer fix LANDED ([#3791](https://github.com/gunb-ai/gunbc/pull/3791)).** v2 `--target dag` completes without SIGTERM on `main` (probe royal-carp-716 EXIT:0; `dag_node_key` Resolved-peel + stage0 Rc). Dissolution trigger (b) met — emit no longer OOM-masks failure on probe. **P5 bridge removal still open:** `scripts/v4-bootstrap-resolve-posture-gate.sh` and `.github/workflows/ci.yml:249` remain until script + paired CI step are deleted per script header (14 consecutive main-CI days). Root cause + fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
 **T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
 checkable. `src/v4/test/claim/manual/*.dag` claims compile and type-check only;
@@ -543,8 +545,8 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
   T-8 closeout PR #3436).
 - **CI emit-wall bridge (tracked):** when Ubicloud SIGTERMs v2 emit after a clean resolve,
   `scripts/v4-bootstrap-resolve-posture-gate.sh` is the sole bridge authority (structured receipt +
-  `V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1`); dissolves when a typed resolve-only compiler gate
-  lands or emit reaches `compiled:` on standard-8 without host SIGTERM.
+  `V4_BOOTSTRAP_ALLOW_RESOLVE_POSTURE_BRIDGE=1`); trigger (b) met on main post-#3791;
+  P5 removal of script + `ci.yml:249` step still pending per script header.
 
 **Reference**:
 - v2: `src/v2/03_normalize.dag`, `src/v2/03_resolve.dag`
@@ -774,7 +776,7 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
-**Close-status (2026-05-28, post-merge batch on `main@32d94517c`):** predicates **1–2 CLOSABLE** — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) landed; `scripts/v4-bootstrap-resolve-posture-gate.sh` **dissolved** (royal-carp-716 probe PASS; v4 `--target dag` without SIGTERM; ~40MB `dag-artifact.json`). Predicate **3 PARTIAL**; **4 PARTIAL** (`bootstrap_footprint` landed [#3788](https://github.com/gunb-ai/gunbc/pull/3788); `bootstrap-content-hash-pins` + T22-EVAL-CACHE-HASHES remain); **5 PAPER-ONLY** (T-38). **Landed:** [#3786](https://github.com/gunb-ai/gunbc/pull/3786) Close-status line, [#3788](https://github.com/gunb-ai/gunbc/pull/3788) T-20-fill footprint, [#3789](https://github.com/gunb-ai/gunbc/pull/3789) T-19, [#3791](https://github.com/gunb-ai/gunbc/pull/3791) T-37. **Operator queue:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3787](https://github.com/gunb-ai/gunbc/pull/3787) T-33. **Lane A:** T-38 (claim-suite CI wiring). Prior T-37 fail: crisp-raven-567 exit 124 on `main@c65b9bdc5`.
+**Close-status (2026-05-28, post-merge batch on `main@32d94517c`):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix landed (royal-carp-716 probe PASS; v4 `--target dag` without SIGTERM; ~40MB `dag-artifact.json`). **P5 bridge removal still OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header). Predicate **3 PARTIAL**; **4 PARTIAL** (`bootstrap_footprint` landed [#3788](https://github.com/gunb-ai/gunbc/pull/3788); `bootstrap-content-hash-pins` + T22-EVAL-CACHE-HASHES remain); **5 PAPER-ONLY** (T-38). **Landed:** [#3786](https://github.com/gunb-ai/gunbc/pull/3786) Close-status line, [#3788](https://github.com/gunb-ai/gunbc/pull/3788) T-20-fill footprint, [#3789](https://github.com/gunb-ai/gunbc/pull/3789) T-19, [#3791](https://github.com/gunb-ai/gunbc/pull/3791) T-37. **Operator queue:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3787](https://github.com/gunb-ai/gunbc/pull/3787) T-33. **Lane A:** T-38 (claim-suite CI wiring). Prior T-37 fail: crisp-raven-567 exit 124 on `main@c65b9bdc5`.
 
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
@@ -2222,7 +2224,7 @@ bridge script, update CI).
 
 **Dependencies**: `[schedulable now — work is in src/v2/compile.dag; no T-## prerequisite]`
 
-**Dissolution**: LANDED on `main` via #3791 — `v4 emit reaches 'compiled:' without SIGTERM` (royal-carp-716 probe). Resolve-posture bridge script removal from CI is the follow-up bookkeeping item named in the script header.
+**Dissolution**: Serializer fix LANDED on `main` via #3791 — trigger (b) met on royal-carp-716 probe (`v4 emit` without SIGTERM). **P5 receipt still open:** delete `scripts/v4-bootstrap-resolve-posture-gate.sh` and the paired `ci.yml:249` step per script header after 14 consecutive main-CI days.
 
 **Reference**: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md` — full reproduction, scope checks, design proposal
 
