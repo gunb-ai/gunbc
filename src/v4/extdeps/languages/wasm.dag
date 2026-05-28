@@ -2122,11 +2122,6 @@ fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
         reason: wasm_partial_integer_remainder_by_zero
       ),
       wasm_fail_closed_partial_operation(
-        operation: wasm_op_integer_rem_s,
-        precondition: wasm_precondition_signed_quotient_not_min_over_negative_one,
-        reason: wasm_partial_signed_quotient_overflow
-      ),
-      wasm_fail_closed_partial_operation(
         operation: wasm_op_integer_rem_u,
         precondition: wasm_precondition_integer_divisor_nonzero,
         reason: wasm_partial_integer_remainder_by_zero
