@@ -26,6 +26,7 @@ import v4.compiler.translate {
   translate_target_bundle_malformed
 }
 import v4.extdeps.languages.cpp {
+  CppIntegerPrimitiveFacts,
   Int,
   cpp_atom,
   cpp_inhabitant_int,
