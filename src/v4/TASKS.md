@@ -492,6 +492,22 @@ conceptual `(Source, LanguageModel)` spelling.
 - merged: `src/v4/compiler/01_tokenize.dag` (B2-OMNI, E0 contract)
 - v3 L2.5 design: `docs/r3-path-b-tokenize-parse-brief-set.md` PB-2
 
+#### T-6.1: LexRule token-class query dissolution
+
+**Owner/lane:** T-6 std lexing substrate follow-up.
+
+**Missing primitive:** substrate-derived `LexRule` token-class projection plus
+`TokenRule` discriminant query in `src/v4/std/lexing.dag`.
+
+**Interim surface:** `lex_rule_token_class_member` / `lex_rule_set_token_class_member`
+are allowed only as the shared std query while language slices need canonical symbol
+membership and no derived `LexRule` projection exists.
+
+**Dissolve-on-arrival:** the first PR that lands the projection/query primitive
+must delete the hand-written `LexRule` arm match in `lex_rule_token_class_member`
+and make `lex_rule_set_token_class_member` consume the substrate query in the same
+commit train. No extdeps/compiler-local duplicate predicate may be added meanwhile.
+
 ---
 
 ### T-7: compiler/02_parse.dag
@@ -514,6 +530,23 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 **Reference**:
 - merged: `src/v4/compiler/02_parse.dag` (B2-OMNI, G0 contract)
 - v3 L2.5 design: `docs/r3-path-b-tokenize-parse-brief-set.md` PB-3
+
+#### T-7.1: GrammarExpr node projection dissolution
+
+**Owner/lane:** T-7 std grammar substrate follow-up.
+
+**Missing primitive:** substrate-derived `GrammarExpr` fold/projection to canonical
+`Node` edges in `src/v4/std/grammar.dag`.
+
+**Interim surface:** `grammar_expr_to_node` is allowed only as the shared std
+projection used by `grammar_to_node` and symbol-membership checks while no
+substrate fold exists for `GrammarExpr`.
+
+**Dissolve-on-arrival:** the first PR that lands the `GrammarExpr` fold/projection
+primitive must delete the recursive hand-written coproduct walker in
+`grammar_expr_to_node` and route `grammar_to_node` through the substrate projection
+in the same commit train. No compiler/extdeps-local `GrammarExpr` re-encoder may
+be added meanwhile.
 
 ---
 

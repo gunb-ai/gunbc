@@ -176,7 +176,7 @@ fn grammar_empty_node() -> Node {
 }
 
 
-// 🟡 gated — walker-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: grammar-expr-node-projection — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived GrammarExpr fold/projection to Node replaces this recursive coproduct walker; forbidden: duplicating GrammarExpr arm re-encoders outside this std projection.
+// 🟡 gated — walker-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:grammar-expr-node-projection — bound task: src/v4/TASKS.md §T-7.1 (owner/lane: T-7 std grammar substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived GrammarExpr fold/projection to canonical Node edges deletes this recursive coproduct walker and routes grammar_to_node through that projection in the same commit train; forbidden: duplicating GrammarExpr arm re-encoders outside this std projection.
 fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   match expr {
     Terminal { token_class: token_class } =>

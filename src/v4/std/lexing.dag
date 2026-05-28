@@ -73,7 +73,7 @@ type TokenStream {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: lex-rule-token-class-query — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived LexRule token_class projection + TokenRule discriminant query; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:lex-rule-token-class-query — bound task: src/v4/TASKS.md §T-6.1 (owner/lane: T-6 std lexing substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived LexRule token_class projection + TokenRule discriminant query deletes this hand-written arm match and routes lex_rule_set_token_class_member through that query in the same commit train; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
