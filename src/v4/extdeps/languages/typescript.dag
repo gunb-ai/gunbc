@@ -11,9 +11,9 @@ module v4.extdeps.languages.typescript
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
   Choice,
   FormalGrammarSymbol,
-  FormalNonterminal,
   FormalNonterminalOccurrence,
   FormalProduction,
   FormalTerminal,
@@ -1138,13 +1138,6 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
 
 
 
-fn ts_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: lhs },
-    rhs: rhs
-  }
-}
-
 fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1159,7 +1152,7 @@ fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<Formal
 }
 
 fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
-  ts_formal_production(
+  grammar_formal_production(
     lhs: ts_production_mvp1_fn_add,
     rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_concrete_tokens())
   )
@@ -1167,27 +1160,27 @@ fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
 
 fn ts_wave2a_formal_productions() -> List<FormalProduction> {
   [
-    ts_formal_production(lhs: ts_production_wave2a_type_number, rhs: [grammar_formal_terminal(identity: ts_token_ty_number)]),
-    ts_formal_production(lhs: ts_production_wave2a_type_string, rhs: [grammar_formal_terminal(identity: ts_token_ty_string)]),
-    ts_formal_production(lhs: ts_production_wave2a_type_boolean, rhs: [grammar_formal_terminal(identity: ts_token_ty_boolean)]),
-    ts_formal_production(lhs: ts_production_wave2a_type_void, rhs: [grammar_formal_terminal(identity: ts_token_ty_void)]),
-    ts_formal_production(
+    grammar_formal_production(lhs: ts_production_wave2a_type_number, rhs: [grammar_formal_terminal(identity: ts_token_ty_number)]),
+    grammar_formal_production(lhs: ts_production_wave2a_type_string, rhs: [grammar_formal_terminal(identity: ts_token_ty_string)]),
+    grammar_formal_production(lhs: ts_production_wave2a_type_boolean, rhs: [grammar_formal_terminal(identity: ts_token_ty_boolean)]),
+    grammar_formal_production(lhs: ts_production_wave2a_type_void, rhs: [grammar_formal_terminal(identity: ts_token_ty_void)]),
+    grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_number)]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_string)]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_boolean)]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_type_annotation,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_type_void)]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_let_decl,
       rhs: [
         grammar_formal_terminal(identity: ts_token_kw_let),
@@ -1199,7 +1192,7 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ts_token_semicolon)
       ]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_const_decl,
       rhs: [
         grammar_formal_terminal(identity: ts_token_kw_const),
@@ -1211,15 +1204,15 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ts_token_semicolon)
       ]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_item,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_mvp1_fn_add)]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_item,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_let_decl)]
     ),
-    ts_formal_production(
+    grammar_formal_production(
       lhs: ts_production_wave2a_item,
       rhs: [grammar_formal_nonterminal_occurrence(identity: ts_production_wave2a_const_decl)]
     ),

@@ -19,9 +19,13 @@ import v4.std.grammar {
   Choice,
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
   FormalGrammarSymbol,
+<<<<<<< HEAD
   FormalNonterminal,
   FormalNonterminalOccurrence,
+=======
+>>>>>>> origin/main
   FormalProduction,
   FormalTerminal,
   FormalTerminalOccurrence,
@@ -954,6 +958,7 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
+<<<<<<< HEAD
 fn python_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
   FormalProduction {
     lhs: FormalNonterminal { identity: lhs },
@@ -1085,8 +1090,10 @@ fn python_formal_productions_to_grammar_production(
   }
 }
 
+=======
+>>>>>>> origin/main
 fn python_formal_production_mvp1_fn_add() -> FormalProduction {
-  python_formal_production(
+  grammar_formal_production(
     lhs: python_production_mvp1_fn_add,
     rhs: python_formal_rhs_from_token_classes()
   )
