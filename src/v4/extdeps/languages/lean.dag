@@ -612,22 +612,35 @@ fn lean_formal_symbol_token_class(sym: FormalGrammarSymbol) -> Symbol {
 }
 
 
+type LeanGramBuildState
+  = LeanGramBuildInit
+  | LeanGramBuildReady { expr: GrammarExpr }
+
+
 // CP-1b interim: fold FormalProduction.rhs into nested GrammarExpr for parse.dag only.
 fn lean_grammar_expr_from_formal_rhs(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
-  match rhs {
-    Cons { head: first, tail: rest } =>
-      fold_list(
-        xs: rest,
-        empty: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: first)),
-        cons: fn(acc, sym) {
-          Sequence {
-            left: acc,
-            right: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: sym))
+  match fold_list(
+    xs: rhs,
+    empty: LeanGramBuildInit,
+    cons: fn(state, sym) {
+      match state {
+        LeanGramBuildInit =>
+          LeanGramBuildReady {
+            expr: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: sym))
           }
-        }
-      )
-    Empty =>
+        LeanGramBuildReady { expr: acc } =>
+          LeanGramBuildReady {
+            expr: Sequence {
+              left: acc,
+              right: lean_grammar_terminal(token_class: lean_formal_symbol_token_class(sym: sym))
+            }
+          }
+      }
+    }
+  ) {
+    LeanGramBuildInit =>
       lean_grammar_terminal(token_class: lean_token_kw_def)
+    LeanGramBuildReady { expr: result } => result
   }
 }
 
