@@ -2366,6 +2366,11 @@ fn swift_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
         operation: swift_op_uint_mul,
         precondition: swift_precondition_no_overflow,
         reason: swift_partial_uint_mul_overflow
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_float_compare,
+        precondition: swift_precondition_neither_arg_nan,
+        reason: swift_partial_float_compare_nan
       )
     ]
   }
