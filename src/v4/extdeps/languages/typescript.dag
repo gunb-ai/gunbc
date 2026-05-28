@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
-// Owns: TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsBooleanPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, TsConcreteSyntaxToken, TsGrammarRelationRow, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_std_projection_bool, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_surface_spelling_boolean, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_repr_boolean_ecma_boolean, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_boolean, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_boolean, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_witness_number_approximate_field, ts_witness_bigint_ordered_ring, ts_witness_bool_boolean_algebra, ts_token_kw_function, ts_token_kw_return, ts_token_ident, ts_token_ty_number, ts_token_plus, ts_token_lbrace, ts_token_rbrace, ts_token_lparen, ts_token_rparen, ts_token_comma, ts_token_colon, ts_token_semicolon, ts_token_kw_let, ts_token_kw_const, ts_token_ty_string, ts_token_ty_boolean, ts_token_ty_void, ts_token_eq, ts_token_minus, ts_token_star, ts_token_num_lit, ts_production_mvp1_fn_add, ts_production_wave2a_type_annotation, ts_production_wave2a_let_decl, ts_production_wave2a_const_decl, ts_production_wave2a_item, ts_surface_fn_item, ts_surface_type_number, ts_surface_bin_add, ts_surface_type_string, ts_surface_type_boolean, ts_surface_type_void, ts_surface_type_annotation, ts_surface_let_decl, ts_surface_const_decl, ts_surface_item, ts_binding_fn_add, ts_binding_param_x, ts_binding_param_y, ts_relation_rule_mvp1_fn_add, ts_mvp1_source_literal, ts_mvp1_source_text_field, ts_mvp1_source_grammar_field, ts_mvp1_concrete_tokens, ts_mvp1_source_text, ts_facts_number, ts_facts_bigint, ts_facts_boolean, ts_bool_grounding, ts_numeric_facts_catalog, ts_inhabitant_atom, ts_named_edge, ts_number_arithmetic_semantics_node, ts_number_bitwise_semantics_node, ts_bigint_operation_semantics_node, ts_bool_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_bool_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_bool_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_inhabitant_boolean_node, ts_declared_inhabitants_root, ts_mvp1_selection_policy_node, ts_mvp1_emitted_add_fn_node, ts_mvp1_source_text_authority, ts_concrete_token_class, ts_concrete_token_node, ts_mvp1_positional_token_edge, ts_mvp1_positional_edges_from_token_classes, ts_mvp1_serialize_source_prefix_edges, ts_mvp1_serialize_source_children, ts_mvp1_serialize_source_node, ts_grammar_terminal, TsGramBuild1State, ts_grammar_sequence_from_token_classes, ts_mvp1_grammar_relation_row, ts_relation_token_edges, ts_grammar_relation_row_node, ts_mvp1_translation_rules_node, ts_mvp1_target_model_node, ts_mvp1_binding_spellings, ts_mvp1_target_model, ts_wave1_target_model, ts_lex_rule, ts_ident_lex_pattern, ts_ident_lex_rule, ts_wave1_lex_rules, ts_wave1_lex, ts_grammar_atom, ts_grammar_production_mvp1_fn_add, ts_wave1_grammar_root, ts_wave1_grammar, ts_wave1_lex_token_symbol, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_number_spec_facts, ts_bigint_spec_facts, ts_bool_spec_facts, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundle_from_bool_facts, ts_primitive_bundles_from_catalog_step, ts_numeric_primitive_fact_bundles, ts_wave1_primitive_fact_bundles, ts_number_algebra_witness_node, ts_bigint_algebra_witness_node, ts_bool_algebra_witness_node, ts_number_algebra_inhabitance, ts_bigint_algebra_inhabitance, ts_bool_algebra_inhabitance, ts_numeric_algebra_inhabitance_step, ts_numeric_algebra_inhabitance_decls, ts_bool_algebra_inhabitance_decls, ts_model_core_inhabitance_decls, ts_model_core_wave1, ts_language_model_wave1, ts_num_lit_lex_pattern, ts_num_lit_lex_rule, ts_wave2a_lex_rules, ts_wave2a_lex, ts_wave2a_lex_token_symbol, ts_grammar_production_wave2a_type_annotation, ts_grammar_production_wave2a_let_decl, ts_grammar_production_wave2a_const_decl, ts_grammar_production_wave2a_item, ts_wave2a_grammar_root, ts_wave2a_grammar, ts_language_model_canonical_symbols_wave2a, ts_language_model_wave2a
+// Owns: TsNumberPrimitiveFacts, TsBigIntPrimitiveFacts, TsBooleanPrimitiveFacts, TsEcma262NumericPrimitiveFactsUnion, TsLanguageModel, TsConcreteSyntaxToken, TsGrammarRelationRow, ts_language_model_surface_id, ts_std_projection_float64, ts_std_projection_bigint, ts_std_projection_bool, ts_surface_spelling_number, ts_surface_spelling_bigint, ts_surface_spelling_boolean, ts_ieee754_binary64, ts_repr_bigint_exact_unbounded, ts_repr_boolean_ecma_boolean, ts_inhabitant_number, ts_inhabitant_bigint, ts_inhabitant_boolean, ts_inhabitant_field_number, ts_inhabitant_field_bigint, ts_inhabitant_field_boolean, ts_inhabitant_field_atom, ts_inhabitant_field_facts, ts_facts_field_surface_spelling, ts_facts_field_arithmetic_semantics, ts_facts_field_bitwise_semantics, ts_facts_field_operation_semantics, ts_facts_field_width, ts_facts_field_ieee754_binary, ts_facts_field_std_projection, ts_facts_field_encoding, ts_tag_bits64, ts_tag_number_ieee754_binary64, ts_tag_number_bitwise_int32_uint32, ts_tag_bigint_exact_unbounded, ts_witness_number_approximate_field, ts_witness_bigint_ordered_ring, ts_witness_bool_boolean_algebra, ts_token_kw_function, ts_token_kw_return, ts_token_ident, ts_token_ty_number, ts_token_plus, ts_token_lbrace, ts_token_rbrace, ts_token_lparen, ts_token_rparen, ts_token_comma, ts_token_colon, ts_token_semicolon, ts_token_kw_let, ts_token_kw_const, ts_token_ty_string, ts_token_ty_boolean, ts_token_ty_void, ts_token_eq, ts_token_minus, ts_token_star, ts_token_num_lit, ts_production_mvp1_fn_add, ts_production_wave2a_type_annotation, ts_production_wave2a_type_number, ts_production_wave2a_type_string, ts_production_wave2a_type_boolean, ts_production_wave2a_type_void, ts_production_wave2a_let_decl, ts_production_wave2a_const_decl, ts_production_wave2a_item, ts_surface_fn_item, ts_surface_type_number, ts_surface_bin_add, ts_surface_type_string, ts_surface_type_boolean, ts_surface_type_void, ts_surface_type_annotation, ts_surface_let_decl, ts_surface_const_decl, ts_surface_item, ts_binding_fn_add, ts_binding_param_x, ts_binding_param_y, ts_relation_rule_mvp1_fn_add, ts_mvp1_source_literal, ts_mvp1_source_text_field, ts_mvp1_source_grammar_field, ts_mvp1_concrete_tokens, ts_mvp1_source_text, ts_facts_number, ts_facts_bigint, ts_facts_boolean, ts_bool_grounding, ts_numeric_facts_catalog, ts_inhabitant_atom, ts_named_edge, ts_number_arithmetic_semantics_node, ts_number_bitwise_semantics_node, ts_bigint_operation_semantics_node, ts_bool_operation_semantics_node, ts_number_facts_node, ts_bigint_facts_node, ts_bool_facts_node, ts_number_inhabitant_node, ts_bigint_inhabitant_node, ts_bool_inhabitant_node, ts_inhabitant_number_node, ts_inhabitant_bigint_node, ts_inhabitant_boolean_node, ts_declared_inhabitants_root, ts_mvp1_selection_policy_node, ts_mvp1_emitted_add_fn_node, ts_mvp1_source_text_authority, ts_concrete_token_class, ts_concrete_token_node, ts_mvp1_positional_token_edge, ts_mvp1_positional_edges_from_token_classes, ts_mvp1_serialize_source_prefix_edges, ts_mvp1_serialize_source_children, ts_mvp1_serialize_source_node, ts_grammar_terminal, TsGramBuild1State, ts_grammar_sequence_from_token_classes, ts_mvp1_grammar_relation_row, ts_relation_token_edges, ts_grammar_relation_row_node, ts_mvp1_translation_rules_node, ts_mvp1_target_model_node, ts_mvp1_binding_spellings, ts_mvp1_target_model, ts_wave1_target_model, ts_lex_rule, ts_ident_lex_pattern, ts_ident_lex_rule, ts_wave1_lex_rules, ts_wave1_lex, ts_grammar_atom, ts_grammar_production_mvp1_fn_add, ts_wave1_grammar_root, ts_wave1_grammar, ts_wave1_lex_token_symbol, ts_catalog_surface_symbol_step, ts_catalog_surface_symbol, ts_language_model_canonical_symbols, ts_number_spec_facts, ts_bigint_spec_facts, ts_bool_spec_facts, ts_primitive_bundle_from_number_facts, ts_primitive_bundle_from_bigint_facts, ts_primitive_bundle_from_bool_facts, ts_primitive_bundles_from_catalog_step, ts_numeric_primitive_fact_bundles, ts_wave1_primitive_fact_bundles, ts_number_algebra_witness_node, ts_bigint_algebra_witness_node, ts_bool_algebra_witness_node, ts_number_algebra_inhabitance, ts_bigint_algebra_inhabitance, ts_bool_algebra_inhabitance, ts_numeric_algebra_inhabitance_step, ts_numeric_algebra_inhabitance_decls, ts_bool_algebra_inhabitance_decls, ts_model_core_inhabitance_decls, ts_model_core_wave1, ts_language_model_wave1, ts_num_lit_lex_pattern, ts_num_lit_lex_rule, ts_wave2a_lex_rules, ts_wave2a_lex, ts_wave2a_lex_token_symbol, ts_grammar_production_wave2a_type_number, ts_grammar_production_wave2a_type_string, ts_grammar_production_wave2a_type_boolean, ts_grammar_production_wave2a_type_void, ts_grammar_production_wave2a_type_annotation, ts_grammar_production_wave2a_let_decl, ts_grammar_production_wave2a_const_decl, ts_grammar_production_wave2a_item, ts_wave2a_grammar_root, ts_wave2a_grammar, ts_language_model_canonical_symbols_wave2a, ts_language_model_wave2a
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
@@ -209,6 +209,10 @@ data ts_token_num_lit: Symbol = ts_token_num_lit
 data ts_production_mvp1_fn_add: Symbol = ts_production_mvp1_fn_add
 
 data ts_production_wave2a_type_annotation: Symbol = ts_production_wave2a_type_annotation
+data ts_production_wave2a_type_number: Symbol = ts_production_wave2a_type_number
+data ts_production_wave2a_type_string: Symbol = ts_production_wave2a_type_string
+data ts_production_wave2a_type_boolean: Symbol = ts_production_wave2a_type_boolean
+data ts_production_wave2a_type_void: Symbol = ts_production_wave2a_type_void
 data ts_production_wave2a_let_decl: Symbol = ts_production_wave2a_let_decl
 data ts_production_wave2a_const_decl: Symbol = ts_production_wave2a_const_decl
 data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
@@ -1115,16 +1119,48 @@ fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(rules: ts_wave2a_lex_rules(), token_class: sym)
 }
 
+fn ts_grammar_production_wave2a_type_number() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_number,
+    expression: Terminal { token_class: ts_token_ty_number },
+    emitted: ts_grammar_atom(id: ts_surface_type_number)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_string() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_string,
+    expression: Terminal { token_class: ts_token_ty_string },
+    emitted: ts_grammar_atom(id: ts_surface_type_string)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_boolean() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_boolean,
+    expression: Terminal { token_class: ts_token_ty_boolean },
+    emitted: ts_grammar_atom(id: ts_surface_type_boolean)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_void() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_void,
+    expression: Terminal { token_class: ts_token_ty_void },
+    emitted: ts_grammar_atom(id: ts_surface_type_void)
+  }
+}
+
 fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_wave2a_type_annotation,
     expression: Choice {
-      left: Terminal { token_class: ts_token_ty_number },
+      left: Nonterminal { production: ts_production_wave2a_type_number },
       right: Choice {
-        left: Terminal { token_class: ts_token_ty_string },
+        left: Nonterminal { production: ts_production_wave2a_type_string },
         right: Choice {
-          left: Terminal { token_class: ts_token_ty_boolean },
-          right: Terminal { token_class: ts_token_ty_void }
+          left: Nonterminal { production: ts_production_wave2a_type_boolean },
+          right: Nonterminal { production: ts_production_wave2a_type_void }
         }
       }
     },
@@ -1200,13 +1236,17 @@ fn ts_grammar_production_wave2a_item() -> GrammarProduction {
 
 fn ts_wave2a_grammar_root() -> GrammarRoot {
   let mvp1 = ts_grammar_production_mvp1_fn_add()
+  let ty_num = ts_grammar_production_wave2a_type_number()
+  let ty_str = ts_grammar_production_wave2a_type_string()
+  let ty_bool = ts_grammar_production_wave2a_type_boolean()
+  let ty_void = ts_grammar_production_wave2a_type_void()
   let type_annot = ts_grammar_production_wave2a_type_annotation()
   let let_decl = ts_grammar_production_wave2a_let_decl()
   let const_decl = ts_grammar_production_wave2a_const_decl()
   let item = ts_grammar_production_wave2a_item()
   GrammarRoot {
     start: ts_production_wave2a_item,
-    productions: [mvp1, type_annot, let_decl, const_decl, item],
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, type_annot, let_decl, const_decl, item],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
@@ -1223,9 +1263,17 @@ fn ts_language_model_canonical_symbols_wave2a() -> Set<Symbol> {
         sym == ts_surface_fn_item ||
         sym == ts_surface_let_decl ||
         sym == ts_surface_const_decl ||
+        sym == ts_surface_type_number ||
+        sym == ts_surface_type_string ||
+        sym == ts_surface_type_boolean ||
+        sym == ts_surface_type_void ||
         sym == ts_surface_type_annotation ||
         sym == ts_surface_item ||
         sym == ts_production_mvp1_fn_add ||
+        sym == ts_production_wave2a_type_number ||
+        sym == ts_production_wave2a_type_string ||
+        sym == ts_production_wave2a_type_boolean ||
+        sym == ts_production_wave2a_type_void ||
         sym == ts_production_wave2a_type_annotation ||
         sym == ts_production_wave2a_let_decl ||
         sym == ts_production_wave2a_const_decl ||
