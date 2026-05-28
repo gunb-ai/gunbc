@@ -12,8 +12,28 @@ module v4.extdeps.languages.ptx
 
 
 
+import v4.compiler.parse { Grammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.compiler.tokenize {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
 import v4.std.nat { Nat }
 import v4.std.cardinality { PositiveUpperBoundedNat }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
 
 
 
@@ -143,4 +163,98 @@ type ThreadCoord {
 type PtxCost {
   instruction_cost: Nat
   occupancy_cost: Nat
+}
+
+
+data ptx_token_kw_entry: Symbol = ptx_token_kw_entry
+data ptx_token_ident: Symbol = ptx_token_ident
+data ptx_token_lparen: Symbol = ptx_token_lparen
+data ptx_token_rparen: Symbol = ptx_token_rparen
+data ptx_token_lbrace: Symbol = ptx_token_lbrace
+data ptx_token_rbrace: Symbol = ptx_token_rbrace
+data ptx_production_entry_kernel: Symbol = ptx_production_entry_kernel
+data ptx_surface_entry_kernel: Symbol = ptx_surface_entry_kernel
+
+
+fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn ptx_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn ptx_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+
+fn ptx_identifier_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+
+fn ptx_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        ptx_lex_token(token_class: ptx_token_ident, pattern: ptx_identifier_pattern()),
+        ptx_lex_token(token_class: ptx_token_kw_entry, pattern: KeywordPattern { text: ".entry" }),
+        ptx_lex_token(token_class: ptx_token_lparen, pattern: LiteralPattern { text: "(" }),
+        ptx_lex_token(token_class: ptx_token_rparen, pattern: LiteralPattern { text: ")" }),
+        ptx_lex_token(token_class: ptx_token_lbrace, pattern: LiteralPattern { text: "{" }),
+        ptx_lex_token(token_class: ptx_token_rbrace, pattern: LiteralPattern { text: "}" })
+      ]
+    }
+  }
+}
+
+
+fn ptx_entry_kernel_expr() -> GrammarExpr {
+  ptx_grammar_sequence(
+    left: ptx_grammar_terminal(token_class: ptx_token_kw_entry),
+    right: ptx_grammar_sequence(
+      left: ptx_grammar_terminal(token_class: ptx_token_ident),
+      right: ptx_grammar_sequence(
+        left: ptx_grammar_terminal(token_class: ptx_token_lparen),
+        right: ptx_grammar_sequence(
+          left: ptx_grammar_terminal(token_class: ptx_token_rparen),
+          right: ptx_grammar_sequence(
+            left: ptx_grammar_terminal(token_class: ptx_token_lbrace),
+            right: ptx_grammar_terminal(token_class: ptx_token_rbrace)
+          )
+        )
+      )
+    )
+  )
+}
+
+
+fn ptx_wave1_grammar() -> Grammar {
+  let start = GrammarProduction {
+    name: ptx_production_entry_kernel,
+    expression: ptx_entry_kernel_expr(),
+    emitted: Node { kind: TypeNode { connective: Atom { identity: ptx_surface_entry_kernel } }, children: [] }
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ptx_production_entry_kernel,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn ptx_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: ptx_wave1_lex(),
+    grammar: ptx_wave1_grammar()
+  }
 }

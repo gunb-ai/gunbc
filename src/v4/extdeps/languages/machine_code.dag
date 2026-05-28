@@ -5,6 +5,20 @@
 module v4.extdeps.languages.machine_code
 
 
+import v4.compiler.parse { Grammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.compiler.tokenize {
+  CharClassPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
 import v4.std.algebra { fold_list, list_snoc_item }
 import v4.std.collection { List, Map }
 import v4.std.machine { Byte }
@@ -517,5 +531,56 @@ fn machine_code_model_core_wave1() -> ModelCore {
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+
+data machine_code_token_x86_64_nop: Symbol = machine_code_token_x86_64_nop
+data machine_code_production_x86_64_nop: Symbol = machine_code_production_x86_64_nop
+data machine_code_surface_x86_64_nop_instruction: Symbol = machine_code_surface_x86_64_nop_instruction
+
+
+fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn machine_code_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn machine_code_x86_64_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        machine_code_lex_token(token_class: machine_code_token_x86_64_nop, pattern: LiteralPattern { text: "nop" })
+      ]
+    }
+  }
+}
+
+
+fn machine_code_x86_64_wave1_grammar() -> Grammar {
+  let start = GrammarProduction {
+    name: machine_code_production_x86_64_nop,
+    expression: machine_code_grammar_terminal(token_class: machine_code_token_x86_64_nop),
+    emitted: Node { kind: TypeNode { connective: Atom { identity: machine_code_surface_x86_64_nop_instruction } }, children: [] }
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: machine_code_production_x86_64_nop,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: machine_code_x86_64_wave1_lex(),
+    grammar: machine_code_x86_64_wave1_grammar()
   }
 }

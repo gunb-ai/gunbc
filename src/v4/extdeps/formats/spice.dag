@@ -239,6 +239,7 @@ type SpiceIoContract {
 
 data spice_token_component_name: Symbol = spice_token_component_name
 data spice_token_node_name: Symbol = spice_token_node_name
+data spice_token_node_name_rhs: Symbol = spice_token_node_name_rhs
 data spice_token_value: Symbol = spice_token_value
 data spice_production_resistor_statement: Symbol = spice_production_resistor_statement
 data spice_surface_resistor_statement: Symbol = spice_surface_resistor_statement
@@ -267,19 +268,15 @@ fn spice_word_pattern() -> LexPattern {
 }
 
 
-fn spice_value_pattern() -> LexPattern {
-  OneOrMorePattern { element: CharClassPattern { class: IdentContinueChar } }
-}
-
-
 fn spice_wave1_lex() -> LexRules {
   ModeledLexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
-        spice_lex_token(token_class: spice_token_component_name, pattern: spice_word_pattern()),
-        spice_lex_token(token_class: spice_token_node_name, pattern: spice_word_pattern()),
-        spice_lex_token(token_class: spice_token_value, pattern: spice_value_pattern())
+        spice_lex_token(token_class: spice_token_component_name, pattern: LiteralPattern { text: "R1" }),
+        spice_lex_token(token_class: spice_token_node_name, pattern: LiteralPattern { text: "n1" }),
+        spice_lex_token(token_class: spice_token_node_name_rhs, pattern: LiteralPattern { text: "n2" }),
+        spice_lex_token(token_class: spice_token_value, pattern: LiteralPattern { text: "1k" })
       ]
     }
   }
@@ -292,7 +289,7 @@ fn spice_resistor_statement_expr() -> GrammarExpr {
     right: spice_grammar_sequence(
       left: spice_grammar_terminal(token_class: spice_token_node_name),
       right: spice_grammar_sequence(
-        left: spice_grammar_terminal(token_class: spice_token_node_name),
+        left: spice_grammar_terminal(token_class: spice_token_node_name_rhs),
         right: spice_grammar_terminal(token_class: spice_token_value)
       )
     )
