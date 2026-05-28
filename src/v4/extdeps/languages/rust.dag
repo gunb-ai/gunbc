@@ -385,6 +385,8 @@ data rust_production_expr_stmt: Symbol = rust_production_expr_stmt
 data rust_production_let_stmt: Symbol = rust_production_let_stmt
 data rust_production_if_expr: Symbol = rust_production_if_expr
 data rust_production_return_expr: Symbol = rust_production_return_expr
+data rust_production_expr_without_block: Symbol = rust_production_expr_without_block
+data rust_production_expr_with_block: Symbol = rust_production_expr_with_block
 data rust_production_expr: Symbol = rust_production_expr
 data rust_production_comparison_expr: Symbol = rust_production_comparison_expr
 data rust_production_additive_expr: Symbol = rust_production_additive_expr
@@ -400,6 +402,8 @@ data rust_surface_expr_stmt: Symbol = rust_surface_expr_stmt
 data rust_surface_let_stmt: Symbol = rust_surface_let_stmt
 data rust_surface_if_expr: Symbol = rust_surface_if_expr
 data rust_surface_return_expr: Symbol = rust_surface_return_expr
+data rust_surface_expr_without_block: Symbol = rust_surface_expr_without_block
+data rust_surface_expr_with_block: Symbol = rust_surface_expr_with_block
 data rust_surface_expr: Symbol = rust_surface_expr
 data rust_surface_comparison_expr: Symbol = rust_surface_comparison_expr
 data rust_surface_additive_expr: Symbol = rust_surface_additive_expr
@@ -2220,17 +2224,38 @@ fn rust_grammar_comparison_expr() -> GrammarExpr {
   )
 }
 
-fn rust_grammar_expr_expr() -> GrammarExpr {
+// Rust Reference §17.9.1: ExpressionWithoutBlock vs ExpressionWithBlock.
+fn rust_grammar_expr_without_block() -> GrammarExpr {
   rust_grammar_choice(
     left: rust_grammar_nonterminal(production: rust_production_return_expr),
     right: rust_grammar_nonterminal(production: rust_production_comparison_expr)
   )
 }
 
+fn rust_grammar_expr_with_block() -> GrammarExpr {
+  rust_grammar_nonterminal(production: rust_production_if_expr)
+}
+
+fn rust_grammar_expr_expr() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_nonterminal(production: rust_production_expr_with_block),
+    right: rust_grammar_nonterminal(production: rust_production_expr_without_block)
+  )
+}
+
+// Rust Reference ExpressionStatement: ExpressionWithoutBlock `;` | ExpressionWithBlock `;`?.
 fn rust_grammar_expr_stmt_expr() -> GrammarExpr {
-  rust_grammar_sequence(
-    left: rust_grammar_nonterminal(production: rust_production_comparison_expr),
-    right: rust_grammar_terminal(token_class: rust_token_semicolon)
+  rust_grammar_choice(
+    left: rust_grammar_sequence(
+      left: rust_grammar_nonterminal(production: rust_production_expr_without_block),
+      right: rust_grammar_terminal(token_class: rust_token_semicolon)
+    ),
+    right: rust_grammar_sequence(
+      left: rust_grammar_nonterminal(production: rust_production_expr_with_block),
+      right: rust_grammar_optional(
+        element: rust_grammar_terminal(token_class: rust_token_semicolon)
+      )
+    )
   )
 }
 
@@ -2238,7 +2263,7 @@ fn rust_grammar_return_expr() -> GrammarExpr {
   rust_grammar_sequence(
     left: rust_grammar_terminal(token_class: rust_token_kw_return),
     right: rust_grammar_optional(
-      element: rust_grammar_nonterminal(production: rust_production_expr)
+      element: rust_grammar_nonterminal(production: rust_production_comparison_expr)
     )
   )
 }
@@ -2251,7 +2276,7 @@ fn rust_grammar_let_stmt_expr() -> GrammarExpr {
       right: rust_grammar_sequence(
         left: rust_grammar_terminal(token_class: rust_token_equal),
         right: rust_grammar_sequence(
-          left: rust_grammar_nonterminal(production: rust_production_expr),
+          left: rust_grammar_nonterminal(production: rust_production_expr_without_block),
           right: rust_grammar_terminal(token_class: rust_token_semicolon)
         )
       )
@@ -2263,20 +2288,17 @@ fn rust_grammar_if_expr() -> GrammarExpr {
   rust_grammar_sequence(
     left: rust_grammar_terminal(token_class: rust_token_kw_if),
     right: rust_grammar_sequence(
-      left: rust_grammar_nonterminal(production: rust_production_expr),
+      left: rust_grammar_nonterminal(production: rust_production_comparison_expr),
       right: rust_grammar_nonterminal(production: rust_production_block)
     )
   )
 }
 
-// Rust Reference §17.11: Statement+ then optional tail ExpressionWithoutBlock (no semicolon).
+// Rust Reference §17.11: let + ExpressionStatement forms, then optional tail Expression.
 fn rust_grammar_stmt_expr() -> GrammarExpr {
   rust_grammar_choice(
     left: rust_grammar_nonterminal(production: rust_production_let_stmt),
-    right: rust_grammar_choice(
-      left: rust_grammar_nonterminal(production: rust_production_if_expr),
-      right: rust_grammar_nonterminal(production: rust_production_expr_stmt)
-    )
+    right: rust_grammar_nonterminal(production: rust_production_expr_stmt)
   )
 }
 
@@ -2369,6 +2391,16 @@ fn rust_wave2_grammar_root() -> GrammarRoot {
     expression: rust_grammar_return_expr(),
     emitted: rust_surface_return_expr
   )
+  let expr_without_block = rust_grammar_production(
+    name: rust_production_expr_without_block,
+    expression: rust_grammar_expr_without_block(),
+    emitted: rust_surface_expr_without_block
+  )
+  let expr_with_block = rust_grammar_production(
+    name: rust_production_expr_with_block,
+    expression: rust_grammar_expr_with_block(),
+    emitted: rust_surface_expr_with_block
+  )
   let expr = rust_grammar_production(
     name: rust_production_expr,
     expression: rust_grammar_expr_expr(),
@@ -2403,6 +2435,8 @@ fn rust_wave2_grammar_root() -> GrammarRoot {
       let_stmt,
       if_expr,
       return_expr,
+      expr_without_block,
+      expr_with_block,
       expr,
       comparison_expr,
       additive_expr,
