@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/v4-testclaim-corpus-gate.sh
 #
-# T-22 manual TestClaim corpus structural gate. Compiles src/v4 to emitted Rust
+# T-22 manual TestClaim corpus structural bridge. Compiles src/v4 to emitted Rust
 # and the modeled .dag artifact, then verifies that the manual claim corpus is in
 # the compile closure and that the T-22 TestClaimRun surface is present in the
 # artifact.
@@ -14,7 +14,7 @@
 # Exit condition: removal when that runner is green on main CI for 14 consecutive days.
 #
 # This intentionally avoids generated-Rust source-shape matching. It is still a
-# structural gate: full emitted Rust execution remains owned by the M1 rust emit
+# structural bridge: full emitted Rust execution remains owned by the M1 rust emit
 # path until src/v4 emits cargo-clean Rust.
 #
 # Env:
@@ -159,4 +159,4 @@ require_node "v4.test.claim.manual.eval_runtime_mvp"
 require_node "claim_eval_mvp2_test_claim_route"
 require_node "run_eval_mvp2_test_claim_route"
 
-echo "T-22 TestClaim corpus structural gate OK: ${#manual_files[@]} manual .dag files compiled; ${#run_rows[@]} TestClaimRun rows present; rust emit clean."
+echo "T-22 TestClaim corpus structural bridge PASS: ${#manual_files[@]} manual .dag files compiled; ${#run_rows[@]} TestClaimRun rows present; rust emit clean; no TestClaim verdicts evaluated."

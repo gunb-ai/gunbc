@@ -2246,7 +2246,7 @@ source instead of binding the corpus to modeled `TestClaimRun` rows.
 **Current state (2026-05-28)**:
 - T-34 (runtime substrate — `std/runtime.dag + extdeps/runtimes/*.dag`) done (#3770)
 - T-22 (`compiler/05_eval.dag` — the interpreter) substantially authored at 1121 lines; open scaffold gates are feature-flagged on B1 `content_hash` and not independently dispatchable
-- CI has a fail-closed T-22 manual corpus structural gate
+- CI has a fail-closed T-22 manual corpus structural bridge
   (`scripts/v4-testclaim-corpus-gate.sh`) that compiles both `--target rust` and
   `--target dag`, verifies all manual modules plus their `TestClaimRun` rows are
   present, and keeps zero-diagnostic rust emission fail-closed.

@@ -509,7 +509,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "T-22 TestClaim corpus structural gate — manual .dag corpus" },
+          name: Some { value: "T-22 TestClaim corpus structural bridge — manual .dag corpus" },
           id: none,
           run: "bash scripts/v4-testclaim-corpus-gate.sh",
           shell: Bash,
@@ -614,7 +614,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "v4 receipt (bootstrap gate runs in ci job)" },
           id: none,
-          run: "echo \"::notice::v4 bootstrap viability + T-22 TestClaim corpus structural gate ran inside the ci job when v4 is affected.\"\n",
+          run: "echo \"::notice::v4 bootstrap viability + T-22 TestClaim corpus structural bridge ran inside the ci job when v4 is affected; TestClaim verdict execution remains a T-38 follow-up.\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
