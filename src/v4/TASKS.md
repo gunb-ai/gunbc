@@ -275,9 +275,11 @@ T-15 to close. Two gaps gate the close condition (T-37 landed; live dispatch: T-
 `scripts/v4-testclaim-corpus-gate.sh` now compiles `src/v4` to emitted Rust and
 the modeled `.dag` artifact, verifies every `src/v4/test/claim/manual/*.dag`
 module is present, and pins the T-22 `TestClaimRun` surface including the
-`eval_runtime_mvp` run row. This dissolves the prior generated-Rust source-shape
-receipt into a structural corpus bridge; it does **not** close T-38's runner bar.
-The remaining close condition is still modeled runner execution with structured
+`eval_runtime_mvp` run row. It also preserves the prior generated-Rust MVP
+receipt inside the structural corpus bridge so eval dispatch / runtime fold /
+five-byte witness regressions remain fail-closed until modeled verdict execution
+replaces shell-owned checks. This does **not** close T-38's runner bar. The
+remaining close condition is still modeled runner execution with structured
 `TestClaimRun` verdicts in CI.
 
 **T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
@@ -2243,7 +2245,8 @@ source instead of binding the corpus to modeled `TestClaimRun` rows.
 - CI has a fail-closed T-22 manual corpus structural bridge
   (`scripts/v4-testclaim-corpus-gate.sh`) that compiles both `--target rust` and
   `--target dag`, verifies all manual modules plus their `TestClaimRun` rows are
-  present, and keeps zero-diagnostic rust emission fail-closed.
+  present, and keeps zero-diagnostic rust emission plus the legacy generated-Rust
+  MVP receipt fail-closed.
 - Gap: no CI step invokes T-22 eval on the claim corpus; no structured
   `TestClaimRun` verdict report surfaces in CI output.
 
