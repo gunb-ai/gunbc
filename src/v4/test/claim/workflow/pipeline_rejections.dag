@@ -55,6 +55,7 @@ import v4.std.runtime {
   EnvironmentBindingKey,
   EvaluationEnvironment,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   LoopInterpreter,
   RuntimeValue,
   TransformInterpreter,
