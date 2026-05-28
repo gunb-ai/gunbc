@@ -541,10 +541,14 @@ fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
         "wasm_token_local_get",
         "wasm_token_int_numeric_literal",
         "wasm_token_float_numeric_literal",
+        "wasm_production_i32_numeric_literal",
+        "wasm_production_i64_numeric_literal",
+        "wasm_production_f32_numeric_literal",
+        "wasm_production_f64_numeric_literal",
     ] {
         assert!(
             surface_declares_data(&module, required),
-            "{WASM_LANGUAGE_PATH}: WAT lex boundary must expose atomic token `{required}`"
+            "{WASM_LANGUAGE_PATH}: WAT lex/grammar boundary must expose `{required}`"
         );
     }
     for stale_literal in [
