@@ -281,6 +281,7 @@ data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_r
 data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
 data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
 data test_claim_cache_interpretation_cache_ineligible_tag: Symbol = test_claim_cache_interpretation_cache_ineligible_tag
+data test_claim_cache_interpretation_registered_tag: Symbol = test_claim_cache_interpretation_registered_tag
 data test_claim_cache_witness_holds_tag: Symbol = test_claim_cache_witness_holds_tag
 data test_claim_cache_witness_violates_tag: Symbol = test_claim_cache_witness_violates_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
@@ -552,7 +553,19 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 }
 
 
-fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
+// P2/P3: interpretation cache key component is a coproduct — not a bare Hash sentinel.
+type InterpretationCacheDigestAuthority
+  = InterpretationCacheRegistered {
+      runtime_identity: Symbol,
+      semantics_witness: Hash
+    }
+  | InterpretationCacheIneligible {
+      runtime_identity: Symbol,
+      registry_witness: Hash
+    }
+
+
+fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
   let authority = context.cache_authority
   let registry_witness = interpretation_registry_semantics_digest(
     runtime_identity: authority.runtime_identity,
@@ -563,13 +576,51 @@ fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
   if registry_witness == authority.semantics_digest
     && registry_witness != registry_unbound
     && registry_witness != registry_mismatch {
-    combine_hash(
-      a: test_claim_symbol_digest(sym: authority.runtime_identity),
-      b: registry_witness
-    )
+    InterpretationCacheRegistered {
+      runtime_identity: authority.runtime_identity,
+      semantics_witness: registry_witness
+    }
   } else {
-    test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag)
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness
+    }
   }
+}
+
+
+fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAuthority) -> Hash {
+  match auth {
+    InterpretationCacheRegistered {
+      runtime_identity: runtime_identity,
+      semantics_witness: semantics_witness
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_interpretation_registered_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: runtime_identity),
+          b: semantics_witness
+        )
+      )
+    InterpretationCacheIneligible {
+      runtime_identity: runtime_identity,
+      registry_witness: registry_witness
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: runtime_identity),
+          b: registry_witness
+        )
+      )
+  }
+}
+
+
+fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
+  interpretation_cache_digest_authority_hash(
+    auth: test_claim_interpretation_cache_digest_authority(context: context)
+  )
 }
 
 

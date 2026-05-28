@@ -436,41 +436,24 @@ data canonical_tag_scalar_int_succ: Symbol = canonical_tag_scalar_int_succ
 data canonical_tag_byte_offset_zero: Symbol = canonical_tag_byte_offset_zero
 data canonical_tag_byte_offset_byte: Symbol = canonical_tag_byte_offset_byte
 data canonical_tag_byte_offset_neg: Symbol = canonical_tag_byte_offset_neg
+data canonical_tag_byte_limb_out_of_range: Symbol = canonical_tag_byte_limb_out_of_range
 
 
-// Byte limbs only (0..255): Peano succ-chain is O(|i|); internal to byte_offset_byte_digest.
-fn byte_limb_hash_peano_digest(i: Int) -> Hash {
-  if i == 0 {
+// Byte limb 0..255 only: fail-closed before Peano recursion (P4 bounded substrate).
+fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
+  if limb < 0 || limb > 255 {
+    atom_identity_hash(s: canonical_tag_byte_limb_out_of_range)
+  } else if limb == 0 {
     atom_identity_hash(s: canonical_tag_scalar_int_zero)
   } else {
-    if i == 1 {
+    if limb == 1 {
       atom_identity_hash(s: canonical_tag_scalar_int_one)
     } else {
       combine_hash(
         a: atom_identity_hash(s: canonical_tag_scalar_int_succ),
-        b: byte_limb_hash_peano_digest(i: i - 1)
+        b: byte_limb_hash_peano_digest(limb: limb - 1)
       )
     }
-  }
-}
-
-
-fn scalar_int_hash_nonneg(i: Int) -> Hash {
-  combine_hash(
-    a: atom_identity_hash(s: canonical_tag_scalar_int_pos),
-    b: byte_limb_hash_peano_digest(i: i)
-  )
-}
-
-
-fn scalar_int_hash(i: Int) -> Hash {
-  if i < 0 {
-    combine_hash(
-      a: atom_identity_hash(s: canonical_tag_scalar_int_neg),
-      b: scalar_int_hash_nonneg(i: 0 - i)
-    )
-  } else {
-    scalar_int_hash_nonneg(i: i)
   }
 }
 

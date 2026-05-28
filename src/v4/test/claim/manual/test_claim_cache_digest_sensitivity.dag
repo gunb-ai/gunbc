@@ -8,8 +8,11 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   eval_context_v4_evaluator_wave1,
+  eval_context_with_semantics,
+  eval_default_interpretation,
   test_claim_cache_interpretation_hash_node,
   test_claim_claim_hash_digest,
+  test_claim_interpretation_cache_digest,
   test_claim_no_correction_ambiguous_intent_tag,
   test_claim_typed_input_node
 }
@@ -54,6 +57,8 @@ data tcc_cache_pass_sym: Symbol = tcc_cache_pass_sym
 data tcc_cache_fail_sym: Symbol = tcc_cache_fail_sym
 data tcc_cache_tail_diag_b: Symbol = tcc_cache_tail_diag_b
 data tcc_cache_tail_diag_c: Symbol = tcc_cache_tail_diag_c
+data tcc_cache_ineligible_pin_a: Symbol = tcc_cache_ineligible_pin_a
+data tcc_cache_ineligible_pin_b: Symbol = tcc_cache_ineligible_pin_b
 
 fn tcc_cache_pass_node() -> Node {
   Node {
@@ -193,6 +198,22 @@ fn tcc_cache_evaluator_input_digest_differs() -> Bool {
     subject: tcc_cache_subject(tree: tree, evaluator_input: tcc_cache_eval_node_b())
   )
   hash_a != hash_b
+}
+
+fn tcc_cache_ineligible_interpretation_digest_differs() -> Bool {
+  let digest_a = test_claim_interpretation_cache_digest(
+    context: eval_context_with_semantics(
+      runtime_identity: tcc_cache_ineligible_pin_a,
+      interpretation: eval_default_interpretation()
+    )
+  )
+  let digest_b = test_claim_interpretation_cache_digest(
+    context: eval_context_with_semantics(
+      runtime_identity: tcc_cache_ineligible_pin_b,
+      interpretation: eval_default_interpretation()
+    )
+  )
+  digest_a != digest_b
 }
 
 fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnostic>) -> TestClaim {
@@ -362,5 +383,13 @@ data claim_test_claim_cache_locus_variant_domain: TestClaim = CompilesClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_locus_variant_domain_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_ineligible_interpretation_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: cache-ineligible interpretations separate by runtime_identity",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_ineligible_interpretation_digest_differs()),
   expected_value: tcc_cache_pass_node()
 }
