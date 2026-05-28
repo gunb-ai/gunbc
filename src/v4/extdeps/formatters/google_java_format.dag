@@ -5,6 +5,8 @@
 
 module v4.extdeps.formatters.google_java_format
 
+import v4.std.patch { FieldPatch, apply_field_patch }
+
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoogleJavaFormatStyle
@@ -22,7 +24,14 @@ data google_java_format_defaults: GoogleJavaFormatConfig = GoogleJavaFormatConfi
 }
 
 
-// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: GoogleJavaFormatConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering.
-fn google_java_format_layer(base: GoogleJavaFormatConfig, outer: GoogleJavaFormatConfig) -> GoogleJavaFormatConfig {
-  outer
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: GoogleJavaFormatConfigPatch projected from GoogleJavaFormatConfig field set.
+type GoogleJavaFormatConfigPatch {
+  style: FieldPatch<GoogleJavaFormatStyle>
+}
+
+
+fn google_java_format_layer(base: GoogleJavaFormatConfig, patch: GoogleJavaFormatConfigPatch) -> GoogleJavaFormatConfig {
+  GoogleJavaFormatConfig {
+    style: apply_field_patch(base: base.style, patch: patch.style),
+  }
 }

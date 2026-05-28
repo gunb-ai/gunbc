@@ -14,7 +14,7 @@ import v4.std.catalog {
   catalog_from_entries
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.qualified_name { QualifiedName }
+import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.verification {
   CompilesClaim,
@@ -49,10 +49,10 @@ fn build_claim_input(ok: Bool) -> Node {
 
 
 fn build_name_x() -> QualifiedName {
-  Cons { head: build_seg_x, tail: Empty }
+  QnCons { head: build_seg_x, tail: QnEmpty }
 }
 fn build_name_y() -> QualifiedName {
-  Cons { head: build_seg_y, tail: Empty }
+  QnCons { head: build_seg_y, tail: QnEmpty }
 }
 fn build_entry_x() -> Entry { Entry { name: build_name_x(), root: build_root_node() } }
 fn build_entry_y() -> Entry { Entry { name: build_name_y(), root: build_root_node() } }

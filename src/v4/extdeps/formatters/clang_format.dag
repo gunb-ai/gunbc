@@ -5,6 +5,8 @@
 
 module v4.extdeps.formatters.clang_format
 
+import v4.std.patch { FieldPatch, apply_field_patch }
+
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatStyle
@@ -1027,7 +1029,398 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
 }
 
 
-// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: ClangFormatConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering.
-fn clang_format_layer(base: ClangFormatConfig, outer: ClangFormatConfig) -> ClangFormatConfig {
-  outer
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: ClangFormatConfigPatch projected from ClangFormatConfig field set.
+type ClangFormatConfigPatch {
+  access_modifier_offset: FieldPatch<Int>
+  align_after_open_bracket: FieldPatch<Bool>
+  align_array_of_structures: FieldPatch<ClangFormatArrayInitializerAlignmentStyle>
+  align_consecutive_assignments: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_consecutive_bit_fields: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_consecutive_declarations: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_consecutive_macros: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_consecutive_short_case_statements: FieldPatch<ClangFormatShortCaseStatementsAlignmentStyle>
+  align_consecutive_table_gen_breaking_dag_arg_colons: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_consecutive_table_gen_cond_operator_colons: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_consecutive_table_gen_definition_colons: FieldPatch<ClangFormatAlignConsecutiveStyle>
+  align_escaped_newlines: FieldPatch<ClangFormatEscapedNewlineAlignmentStyle>
+  align_operands: FieldPatch<ClangFormatOperandAlignmentStyle>
+  align_trailing_comments: FieldPatch<ClangFormatTrailingCommentsAlignmentStyle>
+  allow_all_arguments_on_next_line: FieldPatch<Bool>
+  allow_all_constructor_initializers_on_next_line: FieldPatch<Bool>
+  allow_all_parameters_of_declaration_on_next_line: FieldPatch<Bool>
+  allow_break_before_noexcept_specifier: FieldPatch<ClangFormatBreakBeforeNoexceptSpecifierStyle>
+  allow_break_before_qt_property: FieldPatch<Bool>
+  allow_short_blocks_on_a_single_line: FieldPatch<ClangFormatShortBlockStyle>
+  allow_short_case_expression_on_a_single_line: FieldPatch<Bool>
+  allow_short_case_labels_on_a_single_line: FieldPatch<Bool>
+  allow_short_compound_requirement_on_a_single_line: FieldPatch<Bool>
+  allow_short_enums_on_a_single_line: FieldPatch<Bool>
+  allow_short_functions_on_a_single_line: FieldPatch<ClangFormatShortFunctionStyle>
+  allow_short_if_statements_on_a_single_line: FieldPatch<ClangFormatShortIfStyle>
+  allow_short_lambdas_on_a_single_line: FieldPatch<ClangFormatShortLambdaStyle>
+  allow_short_loops_on_a_single_line: FieldPatch<Bool>
+  allow_short_namespaces_on_a_single_line: FieldPatch<Bool>
+  allow_short_record_on_a_single_line: FieldPatch<ClangFormatShortRecordStyle>
+  always_break_after_definition_return_type: FieldPatch<ClangFormatDefinitionReturnTypeBreakingStyle>
+  always_break_after_return_type: FieldPatch<ClangFormatReturnTypeBreakingStyle>
+  always_break_before_multiline_strings: FieldPatch<Bool>
+  always_break_template_declarations: FieldPatch<ClangFormatBreakTemplateDeclarationsStyle>
+  based_on_style: FieldPatch<ClangFormatStyle>
+  bin_pack_arguments: FieldPatch<Bool>
+  bin_pack_long_braced_list: FieldPatch<Bool>
+  bin_pack_parameters: FieldPatch<ClangFormatBinPackParametersStyle>
+  bit_field_colon_spacing: FieldPatch<ClangFormatBitFieldColonSpacingStyle>
+  braced_initializer_indent_width: FieldPatch<Int>
+  brace_wrapping: FieldPatch<ClangFormatBraceWrappingFlags>
+  break_adjacent_string_literals: FieldPatch<Bool>
+  break_after_attributes: FieldPatch<ClangFormatAttributeBreakingStyle>
+  break_after_java_field_annotations: FieldPatch<Bool>
+  break_after_open_bracket_braced_list: FieldPatch<Bool>
+  break_after_open_bracket_function: FieldPatch<Bool>
+  break_after_open_bracket_if: FieldPatch<Bool>
+  break_after_open_bracket_loop: FieldPatch<Bool>
+  break_after_open_bracket_switch: FieldPatch<Bool>
+  break_after_return_type: FieldPatch<ClangFormatReturnTypeBreakingStyle>
+  break_arrays: FieldPatch<Bool>
+  break_before_binary_operators: FieldPatch<ClangFormatBinaryOperatorStyle>
+  break_before_braces: FieldPatch<ClangFormatBraceBreakingStyle>
+  break_before_close_bracket_braced_list: FieldPatch<Bool>
+  break_before_close_bracket_function: FieldPatch<Bool>
+  break_before_close_bracket_if: FieldPatch<Bool>
+  break_before_close_bracket_loop: FieldPatch<Bool>
+  break_before_close_bracket_switch: FieldPatch<Bool>
+  break_before_concept_declarations: FieldPatch<ClangFormatBreakBeforeConceptDeclarationsStyle>
+  break_before_inline_asm_colon: FieldPatch<ClangFormatBreakBeforeInlineASMColonStyle>
+  break_before_return_type: FieldPatch<ClangFormatBreakBeforeReturnTypeStyle>
+  break_before_template_closer: FieldPatch<Bool>
+  break_before_ternary_operators: FieldPatch<Bool>
+  break_binary_operations: FieldPatch<ClangFormatBreakBinaryOperationsOptions>
+  break_constructor_initializers: FieldPatch<ClangFormatBreakConstructorInitializersStyle>
+  break_function_declaration_parameters: FieldPatch<Bool>
+  break_function_definition_parameters: FieldPatch<Bool>
+  break_inheritance_list: FieldPatch<ClangFormatBreakInheritanceListStyle>
+  break_string_literals: FieldPatch<Bool>
+  break_template_declarations: FieldPatch<ClangFormatBreakTemplateDeclarationsStyle>
+  column_limit: FieldPatch<Int>
+  comment_pragmas: FieldPatch<String>
+  compact_namespaces: FieldPatch<Bool>
+  constructor_initializer_all_on_one_line_or_one_per_line: FieldPatch<Bool>
+  constructor_initializer_indent_width: FieldPatch<Int>
+  continuation_indent_width: FieldPatch<Int>
+  cpp11_braced_list_style: FieldPatch<ClangFormatBracedListStyle>
+  derive_line_ending: FieldPatch<Bool>
+  derive_pointer_alignment: FieldPatch<Bool>
+  disable_format: FieldPatch<Bool>
+  empty_line_after_access_modifier: FieldPatch<ClangFormatEmptyLineAfterAccessModifierStyle>
+  empty_line_before_access_modifier: FieldPatch<ClangFormatEmptyLineBeforeAccessModifierStyle>
+  enum_trailing_comma: FieldPatch<ClangFormatEnumTrailingCommaStyle>
+  experimental_auto_detect_bin_packing: FieldPatch<Bool>
+  fix_namespace_comments: FieldPatch<Bool>
+  include_blocks: FieldPatch<ClangFormatIncludeBlocksStyle>
+  include_is_main_regex: FieldPatch<String>
+  include_is_main_source_regex: FieldPatch<String>
+  indent_access_modifiers: FieldPatch<Bool>
+  indent_case_blocks: FieldPatch<Bool>
+  indent_case_labels: FieldPatch<Bool>
+  indent_export_block: FieldPatch<Bool>
+  indent_extern_block: FieldPatch<ClangFormatIndentExternBlockStyle>
+  indent_goto_labels: FieldPatch<ClangFormatIndentGotoLabelStyle>
+  indent_pp_directives: FieldPatch<ClangFormatPPDirectiveIndentStyle>
+  indent_requires_clause: FieldPatch<Bool>
+  indent_width: FieldPatch<Int>
+  indent_wrapped_function_names: FieldPatch<Bool>
+  insert_braces: FieldPatch<Bool>
+  insert_newline_at_eof: FieldPatch<Bool>
+  insert_trailing_commas: FieldPatch<ClangFormatTrailingCommaStyle>
+  integer_literal_separator: FieldPatch<ClangFormatIntegerLiteralSeparatorStyle>
+  java_script_quotes: FieldPatch<ClangFormatJavaScriptQuoteStyle>
+  java_script_wrap_imports: FieldPatch<Bool>
+  keep_empty_lines: FieldPatch<ClangFormatKeepEmptyLinesStyle>
+  keep_empty_lines_at_eof: FieldPatch<Bool>
+  keep_empty_lines_at_the_start_of_blocks: FieldPatch<Bool>
+  keep_form_feed: FieldPatch<Bool>
+  lambda_body_indentation: FieldPatch<ClangFormatLambdaBodyIndentationKind>
+  language: FieldPatch<ClangFormatLanguageKind>
+  line_ending: FieldPatch<ClangFormatLineEndingStyle>
+  macro_block_begin: FieldPatch<String>
+  macro_block_end: FieldPatch<String>
+  main_include_char: FieldPatch<ClangFormatMainIncludeCharDiscriminator>
+  max_empty_lines_to_keep: FieldPatch<Int>
+  namespace_indentation: FieldPatch<ClangFormatNamespaceIndentationKind>
+  numeric_literal_case: FieldPatch<ClangFormatNumericLiteralCaseStyle>
+  obj_c_bin_pack_protocol_list: FieldPatch<ClangFormatBinPackStyle>
+  obj_c_block_indent_width: FieldPatch<Int>
+  obj_c_break_before_nested_block_param: FieldPatch<Bool>
+  obj_c_space_after_method_declaration_prefix: FieldPatch<Bool>
+  obj_c_space_after_property: FieldPatch<Bool>
+  obj_c_space_before_protocol_list: FieldPatch<Bool>
+  one_line_format_off_regex: FieldPatch<String>
+  pack_arguments: FieldPatch<ClangFormatPackArgumentsStyle>
+  pack_constructor_initializers: FieldPatch<ClangFormatPackConstructorInitializersStyle>
+  pack_parameters: FieldPatch<ClangFormatBinPackParametersStyle>
+  penalty_break_assignment: FieldPatch<Int>
+  penalty_break_before_first_call_parameter: FieldPatch<Int>
+  penalty_break_before_member_access: FieldPatch<Int>
+  penalty_break_comment: FieldPatch<Int>
+  penalty_break_first_less_less: FieldPatch<Int>
+  penalty_break_open_parenthesis: FieldPatch<Int>
+  penalty_break_scope_resolution: FieldPatch<Int>
+  penalty_break_string: FieldPatch<Int>
+  penalty_break_template_declaration: FieldPatch<Int>
+  penalty_excess_character: FieldPatch<Int>
+  penalty_indented_whitespace: FieldPatch<Int>
+  penalty_return_type_on_its_own_line: FieldPatch<Int>
+  pointer_alignment: FieldPatch<ClangFormatPointerAlignmentStyle>
+  pp_indent_width: FieldPatch<Int>
+  qualifier_alignment: FieldPatch<ClangFormatQualifierAlignmentStyle>
+  qualifier_order: FieldPatch<List<String>>
+  reference_alignment: FieldPatch<ClangFormatReferenceAlignmentStyle>
+  reflow_comments: FieldPatch<ClangFormatReflowCommentsStyle>
+  remove_braces_llvm: FieldPatch<Bool>
+  remove_empty_lines_in_unwrapped_lines: FieldPatch<Bool>
+  remove_parentheses: FieldPatch<ClangFormatRemoveParenthesesStyle>
+  remove_semicolon: FieldPatch<Bool>
+  requires_clause_position: FieldPatch<ClangFormatRequiresClausePositionStyle>
+  requires_expression_indentation: FieldPatch<ClangFormatRequiresExpressionIndentationKind>
+  separate_definition_blocks: FieldPatch<ClangFormatSeparateDefinitionStyle>
+  short_namespace_lines: FieldPatch<Int>
+  skip_macro_definition_body: FieldPatch<Bool>
+  sort_includes: FieldPatch<ClangFormatSortIncludesOptions>
+  sort_java_static_import: FieldPatch<ClangFormatSortJavaStaticImportOptions>
+  sort_using_declarations: FieldPatch<ClangFormatSortUsingDeclarationsOptions>
+  space_after_c_style_cast: FieldPatch<Bool>
+  space_after_logical_not: FieldPatch<Bool>
+  space_after_operator_keyword: FieldPatch<Bool>
+  space_after_template_keyword: FieldPatch<Bool>
+  space_around_pointer_qualifiers: FieldPatch<ClangFormatSpaceAroundPointerQualifiersStyle>
+  space_before_assignment_operators: FieldPatch<Bool>
+  space_before_case_colon: FieldPatch<Bool>
+  space_before_cpp11_braced_list: FieldPatch<Bool>
+  space_before_ctor_initializer_colon: FieldPatch<Bool>
+  space_before_enum_underlying_type_colon: FieldPatch<Bool>
+  space_before_inheritance_colon: FieldPatch<Bool>
+  space_before_json_colon: FieldPatch<Bool>
+  space_before_parens: FieldPatch<ClangFormatSpaceBeforeParensStyle>
+  space_before_parens_options: FieldPatch<ClangFormatSpaceBeforeParensCustom>
+  space_before_range_based_for_loop_colon: FieldPatch<Bool>
+  space_before_square_brackets: FieldPatch<Bool>
+  space_in_empty_block: FieldPatch<Bool>
+  space_in_empty_braces: FieldPatch<ClangFormatSpaceInEmptyBracesStyle>
+  space_in_empty_parentheses: FieldPatch<Bool>
+  spaces_before_trailing_comments: FieldPatch<Int>
+  spaces_in_angles: FieldPatch<ClangFormatSpacesInAnglesStyle>
+  spaces_in_conditional_statement: FieldPatch<Bool>
+  spaces_in_container_literals: FieldPatch<Bool>
+  spaces_in_c_style_cast_parentheses: FieldPatch<Bool>
+  spaces_in_line_comment_prefix: FieldPatch<ClangFormatSpacesInLineComment>
+  spaces_in_parens: FieldPatch<ClangFormatSpacesInParensStyle>
+  spaces_in_parens_options: FieldPatch<ClangFormatSpacesInParensCustom>
+  spaces_in_parentheses: FieldPatch<Bool>
+  spaces_in_square_brackets: FieldPatch<Bool>
+  standard: FieldPatch<ClangFormatLanguageStandard>
+  table_gen_break_inside_dag_arg: FieldPatch<ClangFormatDAGArgStyle>
+  tab_width: FieldPatch<Int>
+  use_crlf: FieldPatch<Bool>
+  use_tab: FieldPatch<ClangFormatUseTabStyle>
+  verilog_break_between_instance_ports: FieldPatch<Bool>
+  wrap_namespace_body_with_empty_lines: FieldPatch<ClangFormatWrapNamespaceBodyWithEmptyLinesStyle>
+}
+
+
+fn clang_format_layer(base: ClangFormatConfig, patch: ClangFormatConfigPatch) -> ClangFormatConfig {
+  ClangFormatConfig {
+    access_modifier_offset: apply_field_patch(base: base.access_modifier_offset, patch: patch.access_modifier_offset),
+    align_after_open_bracket: apply_field_patch(base: base.align_after_open_bracket, patch: patch.align_after_open_bracket),
+    align_array_of_structures: apply_field_patch(base: base.align_array_of_structures, patch: patch.align_array_of_structures),
+    align_consecutive_assignments: apply_field_patch(base: base.align_consecutive_assignments, patch: patch.align_consecutive_assignments),
+    align_consecutive_bit_fields: apply_field_patch(base: base.align_consecutive_bit_fields, patch: patch.align_consecutive_bit_fields),
+    align_consecutive_declarations: apply_field_patch(base: base.align_consecutive_declarations, patch: patch.align_consecutive_declarations),
+    align_consecutive_macros: apply_field_patch(base: base.align_consecutive_macros, patch: patch.align_consecutive_macros),
+    align_consecutive_short_case_statements: apply_field_patch(base: base.align_consecutive_short_case_statements, patch: patch.align_consecutive_short_case_statements),
+    align_consecutive_table_gen_breaking_dag_arg_colons: apply_field_patch(base: base.align_consecutive_table_gen_breaking_dag_arg_colons, patch: patch.align_consecutive_table_gen_breaking_dag_arg_colons),
+    align_consecutive_table_gen_cond_operator_colons: apply_field_patch(base: base.align_consecutive_table_gen_cond_operator_colons, patch: patch.align_consecutive_table_gen_cond_operator_colons),
+    align_consecutive_table_gen_definition_colons: apply_field_patch(base: base.align_consecutive_table_gen_definition_colons, patch: patch.align_consecutive_table_gen_definition_colons),
+    align_escaped_newlines: apply_field_patch(base: base.align_escaped_newlines, patch: patch.align_escaped_newlines),
+    align_operands: apply_field_patch(base: base.align_operands, patch: patch.align_operands),
+    align_trailing_comments: apply_field_patch(base: base.align_trailing_comments, patch: patch.align_trailing_comments),
+    allow_all_arguments_on_next_line: apply_field_patch(base: base.allow_all_arguments_on_next_line, patch: patch.allow_all_arguments_on_next_line),
+    allow_all_constructor_initializers_on_next_line: apply_field_patch(base: base.allow_all_constructor_initializers_on_next_line, patch: patch.allow_all_constructor_initializers_on_next_line),
+    allow_all_parameters_of_declaration_on_next_line: apply_field_patch(base: base.allow_all_parameters_of_declaration_on_next_line, patch: patch.allow_all_parameters_of_declaration_on_next_line),
+    allow_break_before_noexcept_specifier: apply_field_patch(base: base.allow_break_before_noexcept_specifier, patch: patch.allow_break_before_noexcept_specifier),
+    allow_break_before_qt_property: apply_field_patch(base: base.allow_break_before_qt_property, patch: patch.allow_break_before_qt_property),
+    allow_short_blocks_on_a_single_line: apply_field_patch(base: base.allow_short_blocks_on_a_single_line, patch: patch.allow_short_blocks_on_a_single_line),
+    allow_short_case_expression_on_a_single_line: apply_field_patch(base: base.allow_short_case_expression_on_a_single_line, patch: patch.allow_short_case_expression_on_a_single_line),
+    allow_short_case_labels_on_a_single_line: apply_field_patch(base: base.allow_short_case_labels_on_a_single_line, patch: patch.allow_short_case_labels_on_a_single_line),
+    allow_short_compound_requirement_on_a_single_line: apply_field_patch(base: base.allow_short_compound_requirement_on_a_single_line, patch: patch.allow_short_compound_requirement_on_a_single_line),
+    allow_short_enums_on_a_single_line: apply_field_patch(base: base.allow_short_enums_on_a_single_line, patch: patch.allow_short_enums_on_a_single_line),
+    allow_short_functions_on_a_single_line: apply_field_patch(base: base.allow_short_functions_on_a_single_line, patch: patch.allow_short_functions_on_a_single_line),
+    allow_short_if_statements_on_a_single_line: apply_field_patch(base: base.allow_short_if_statements_on_a_single_line, patch: patch.allow_short_if_statements_on_a_single_line),
+    allow_short_lambdas_on_a_single_line: apply_field_patch(base: base.allow_short_lambdas_on_a_single_line, patch: patch.allow_short_lambdas_on_a_single_line),
+    allow_short_loops_on_a_single_line: apply_field_patch(base: base.allow_short_loops_on_a_single_line, patch: patch.allow_short_loops_on_a_single_line),
+    allow_short_namespaces_on_a_single_line: apply_field_patch(base: base.allow_short_namespaces_on_a_single_line, patch: patch.allow_short_namespaces_on_a_single_line),
+    allow_short_record_on_a_single_line: apply_field_patch(base: base.allow_short_record_on_a_single_line, patch: patch.allow_short_record_on_a_single_line),
+    always_break_after_definition_return_type: apply_field_patch(base: base.always_break_after_definition_return_type, patch: patch.always_break_after_definition_return_type),
+    always_break_after_return_type: apply_field_patch(base: base.always_break_after_return_type, patch: patch.always_break_after_return_type),
+    always_break_before_multiline_strings: apply_field_patch(base: base.always_break_before_multiline_strings, patch: patch.always_break_before_multiline_strings),
+    always_break_template_declarations: apply_field_patch(base: base.always_break_template_declarations, patch: patch.always_break_template_declarations),
+    based_on_style: apply_field_patch(base: base.based_on_style, patch: patch.based_on_style),
+    bin_pack_arguments: apply_field_patch(base: base.bin_pack_arguments, patch: patch.bin_pack_arguments),
+    bin_pack_long_braced_list: apply_field_patch(base: base.bin_pack_long_braced_list, patch: patch.bin_pack_long_braced_list),
+    bin_pack_parameters: apply_field_patch(base: base.bin_pack_parameters, patch: patch.bin_pack_parameters),
+    bit_field_colon_spacing: apply_field_patch(base: base.bit_field_colon_spacing, patch: patch.bit_field_colon_spacing),
+    braced_initializer_indent_width: apply_field_patch(base: base.braced_initializer_indent_width, patch: patch.braced_initializer_indent_width),
+    brace_wrapping: apply_field_patch(base: base.brace_wrapping, patch: patch.brace_wrapping),
+    break_adjacent_string_literals: apply_field_patch(base: base.break_adjacent_string_literals, patch: patch.break_adjacent_string_literals),
+    break_after_attributes: apply_field_patch(base: base.break_after_attributes, patch: patch.break_after_attributes),
+    break_after_java_field_annotations: apply_field_patch(base: base.break_after_java_field_annotations, patch: patch.break_after_java_field_annotations),
+    break_after_open_bracket_braced_list: apply_field_patch(base: base.break_after_open_bracket_braced_list, patch: patch.break_after_open_bracket_braced_list),
+    break_after_open_bracket_function: apply_field_patch(base: base.break_after_open_bracket_function, patch: patch.break_after_open_bracket_function),
+    break_after_open_bracket_if: apply_field_patch(base: base.break_after_open_bracket_if, patch: patch.break_after_open_bracket_if),
+    break_after_open_bracket_loop: apply_field_patch(base: base.break_after_open_bracket_loop, patch: patch.break_after_open_bracket_loop),
+    break_after_open_bracket_switch: apply_field_patch(base: base.break_after_open_bracket_switch, patch: patch.break_after_open_bracket_switch),
+    break_after_return_type: apply_field_patch(base: base.break_after_return_type, patch: patch.break_after_return_type),
+    break_arrays: apply_field_patch(base: base.break_arrays, patch: patch.break_arrays),
+    break_before_binary_operators: apply_field_patch(base: base.break_before_binary_operators, patch: patch.break_before_binary_operators),
+    break_before_braces: apply_field_patch(base: base.break_before_braces, patch: patch.break_before_braces),
+    break_before_close_bracket_braced_list: apply_field_patch(base: base.break_before_close_bracket_braced_list, patch: patch.break_before_close_bracket_braced_list),
+    break_before_close_bracket_function: apply_field_patch(base: base.break_before_close_bracket_function, patch: patch.break_before_close_bracket_function),
+    break_before_close_bracket_if: apply_field_patch(base: base.break_before_close_bracket_if, patch: patch.break_before_close_bracket_if),
+    break_before_close_bracket_loop: apply_field_patch(base: base.break_before_close_bracket_loop, patch: patch.break_before_close_bracket_loop),
+    break_before_close_bracket_switch: apply_field_patch(base: base.break_before_close_bracket_switch, patch: patch.break_before_close_bracket_switch),
+    break_before_concept_declarations: apply_field_patch(base: base.break_before_concept_declarations, patch: patch.break_before_concept_declarations),
+    break_before_inline_asm_colon: apply_field_patch(base: base.break_before_inline_asm_colon, patch: patch.break_before_inline_asm_colon),
+    break_before_return_type: apply_field_patch(base: base.break_before_return_type, patch: patch.break_before_return_type),
+    break_before_template_closer: apply_field_patch(base: base.break_before_template_closer, patch: patch.break_before_template_closer),
+    break_before_ternary_operators: apply_field_patch(base: base.break_before_ternary_operators, patch: patch.break_before_ternary_operators),
+    break_binary_operations: apply_field_patch(base: base.break_binary_operations, patch: patch.break_binary_operations),
+    break_constructor_initializers: apply_field_patch(base: base.break_constructor_initializers, patch: patch.break_constructor_initializers),
+    break_function_declaration_parameters: apply_field_patch(base: base.break_function_declaration_parameters, patch: patch.break_function_declaration_parameters),
+    break_function_definition_parameters: apply_field_patch(base: base.break_function_definition_parameters, patch: patch.break_function_definition_parameters),
+    break_inheritance_list: apply_field_patch(base: base.break_inheritance_list, patch: patch.break_inheritance_list),
+    break_string_literals: apply_field_patch(base: base.break_string_literals, patch: patch.break_string_literals),
+    break_template_declarations: apply_field_patch(base: base.break_template_declarations, patch: patch.break_template_declarations),
+    column_limit: apply_field_patch(base: base.column_limit, patch: patch.column_limit),
+    comment_pragmas: apply_field_patch(base: base.comment_pragmas, patch: patch.comment_pragmas),
+    compact_namespaces: apply_field_patch(base: base.compact_namespaces, patch: patch.compact_namespaces),
+    constructor_initializer_all_on_one_line_or_one_per_line: apply_field_patch(base: base.constructor_initializer_all_on_one_line_or_one_per_line, patch: patch.constructor_initializer_all_on_one_line_or_one_per_line),
+    constructor_initializer_indent_width: apply_field_patch(base: base.constructor_initializer_indent_width, patch: patch.constructor_initializer_indent_width),
+    continuation_indent_width: apply_field_patch(base: base.continuation_indent_width, patch: patch.continuation_indent_width),
+    cpp11_braced_list_style: apply_field_patch(base: base.cpp11_braced_list_style, patch: patch.cpp11_braced_list_style),
+    derive_line_ending: apply_field_patch(base: base.derive_line_ending, patch: patch.derive_line_ending),
+    derive_pointer_alignment: apply_field_patch(base: base.derive_pointer_alignment, patch: patch.derive_pointer_alignment),
+    disable_format: apply_field_patch(base: base.disable_format, patch: patch.disable_format),
+    empty_line_after_access_modifier: apply_field_patch(base: base.empty_line_after_access_modifier, patch: patch.empty_line_after_access_modifier),
+    empty_line_before_access_modifier: apply_field_patch(base: base.empty_line_before_access_modifier, patch: patch.empty_line_before_access_modifier),
+    enum_trailing_comma: apply_field_patch(base: base.enum_trailing_comma, patch: patch.enum_trailing_comma),
+    experimental_auto_detect_bin_packing: apply_field_patch(base: base.experimental_auto_detect_bin_packing, patch: patch.experimental_auto_detect_bin_packing),
+    fix_namespace_comments: apply_field_patch(base: base.fix_namespace_comments, patch: patch.fix_namespace_comments),
+    include_blocks: apply_field_patch(base: base.include_blocks, patch: patch.include_blocks),
+    include_is_main_regex: apply_field_patch(base: base.include_is_main_regex, patch: patch.include_is_main_regex),
+    include_is_main_source_regex: apply_field_patch(base: base.include_is_main_source_regex, patch: patch.include_is_main_source_regex),
+    indent_access_modifiers: apply_field_patch(base: base.indent_access_modifiers, patch: patch.indent_access_modifiers),
+    indent_case_blocks: apply_field_patch(base: base.indent_case_blocks, patch: patch.indent_case_blocks),
+    indent_case_labels: apply_field_patch(base: base.indent_case_labels, patch: patch.indent_case_labels),
+    indent_export_block: apply_field_patch(base: base.indent_export_block, patch: patch.indent_export_block),
+    indent_extern_block: apply_field_patch(base: base.indent_extern_block, patch: patch.indent_extern_block),
+    indent_goto_labels: apply_field_patch(base: base.indent_goto_labels, patch: patch.indent_goto_labels),
+    indent_pp_directives: apply_field_patch(base: base.indent_pp_directives, patch: patch.indent_pp_directives),
+    indent_requires_clause: apply_field_patch(base: base.indent_requires_clause, patch: patch.indent_requires_clause),
+    indent_width: apply_field_patch(base: base.indent_width, patch: patch.indent_width),
+    indent_wrapped_function_names: apply_field_patch(base: base.indent_wrapped_function_names, patch: patch.indent_wrapped_function_names),
+    insert_braces: apply_field_patch(base: base.insert_braces, patch: patch.insert_braces),
+    insert_newline_at_eof: apply_field_patch(base: base.insert_newline_at_eof, patch: patch.insert_newline_at_eof),
+    insert_trailing_commas: apply_field_patch(base: base.insert_trailing_commas, patch: patch.insert_trailing_commas),
+    integer_literal_separator: apply_field_patch(base: base.integer_literal_separator, patch: patch.integer_literal_separator),
+    java_script_quotes: apply_field_patch(base: base.java_script_quotes, patch: patch.java_script_quotes),
+    java_script_wrap_imports: apply_field_patch(base: base.java_script_wrap_imports, patch: patch.java_script_wrap_imports),
+    keep_empty_lines: apply_field_patch(base: base.keep_empty_lines, patch: patch.keep_empty_lines),
+    keep_empty_lines_at_eof: apply_field_patch(base: base.keep_empty_lines_at_eof, patch: patch.keep_empty_lines_at_eof),
+    keep_empty_lines_at_the_start_of_blocks: apply_field_patch(base: base.keep_empty_lines_at_the_start_of_blocks, patch: patch.keep_empty_lines_at_the_start_of_blocks),
+    keep_form_feed: apply_field_patch(base: base.keep_form_feed, patch: patch.keep_form_feed),
+    lambda_body_indentation: apply_field_patch(base: base.lambda_body_indentation, patch: patch.lambda_body_indentation),
+    language: apply_field_patch(base: base.language, patch: patch.language),
+    line_ending: apply_field_patch(base: base.line_ending, patch: patch.line_ending),
+    macro_block_begin: apply_field_patch(base: base.macro_block_begin, patch: patch.macro_block_begin),
+    macro_block_end: apply_field_patch(base: base.macro_block_end, patch: patch.macro_block_end),
+    main_include_char: apply_field_patch(base: base.main_include_char, patch: patch.main_include_char),
+    max_empty_lines_to_keep: apply_field_patch(base: base.max_empty_lines_to_keep, patch: patch.max_empty_lines_to_keep),
+    namespace_indentation: apply_field_patch(base: base.namespace_indentation, patch: patch.namespace_indentation),
+    numeric_literal_case: apply_field_patch(base: base.numeric_literal_case, patch: patch.numeric_literal_case),
+    obj_c_bin_pack_protocol_list: apply_field_patch(base: base.obj_c_bin_pack_protocol_list, patch: patch.obj_c_bin_pack_protocol_list),
+    obj_c_block_indent_width: apply_field_patch(base: base.obj_c_block_indent_width, patch: patch.obj_c_block_indent_width),
+    obj_c_break_before_nested_block_param: apply_field_patch(base: base.obj_c_break_before_nested_block_param, patch: patch.obj_c_break_before_nested_block_param),
+    obj_c_space_after_method_declaration_prefix: apply_field_patch(base: base.obj_c_space_after_method_declaration_prefix, patch: patch.obj_c_space_after_method_declaration_prefix),
+    obj_c_space_after_property: apply_field_patch(base: base.obj_c_space_after_property, patch: patch.obj_c_space_after_property),
+    obj_c_space_before_protocol_list: apply_field_patch(base: base.obj_c_space_before_protocol_list, patch: patch.obj_c_space_before_protocol_list),
+    one_line_format_off_regex: apply_field_patch(base: base.one_line_format_off_regex, patch: patch.one_line_format_off_regex),
+    pack_arguments: apply_field_patch(base: base.pack_arguments, patch: patch.pack_arguments),
+    pack_constructor_initializers: apply_field_patch(base: base.pack_constructor_initializers, patch: patch.pack_constructor_initializers),
+    pack_parameters: apply_field_patch(base: base.pack_parameters, patch: patch.pack_parameters),
+    penalty_break_assignment: apply_field_patch(base: base.penalty_break_assignment, patch: patch.penalty_break_assignment),
+    penalty_break_before_first_call_parameter: apply_field_patch(base: base.penalty_break_before_first_call_parameter, patch: patch.penalty_break_before_first_call_parameter),
+    penalty_break_before_member_access: apply_field_patch(base: base.penalty_break_before_member_access, patch: patch.penalty_break_before_member_access),
+    penalty_break_comment: apply_field_patch(base: base.penalty_break_comment, patch: patch.penalty_break_comment),
+    penalty_break_first_less_less: apply_field_patch(base: base.penalty_break_first_less_less, patch: patch.penalty_break_first_less_less),
+    penalty_break_open_parenthesis: apply_field_patch(base: base.penalty_break_open_parenthesis, patch: patch.penalty_break_open_parenthesis),
+    penalty_break_scope_resolution: apply_field_patch(base: base.penalty_break_scope_resolution, patch: patch.penalty_break_scope_resolution),
+    penalty_break_string: apply_field_patch(base: base.penalty_break_string, patch: patch.penalty_break_string),
+    penalty_break_template_declaration: apply_field_patch(base: base.penalty_break_template_declaration, patch: patch.penalty_break_template_declaration),
+    penalty_excess_character: apply_field_patch(base: base.penalty_excess_character, patch: patch.penalty_excess_character),
+    penalty_indented_whitespace: apply_field_patch(base: base.penalty_indented_whitespace, patch: patch.penalty_indented_whitespace),
+    penalty_return_type_on_its_own_line: apply_field_patch(base: base.penalty_return_type_on_its_own_line, patch: patch.penalty_return_type_on_its_own_line),
+    pointer_alignment: apply_field_patch(base: base.pointer_alignment, patch: patch.pointer_alignment),
+    pp_indent_width: apply_field_patch(base: base.pp_indent_width, patch: patch.pp_indent_width),
+    qualifier_alignment: apply_field_patch(base: base.qualifier_alignment, patch: patch.qualifier_alignment),
+    qualifier_order: apply_field_patch(base: base.qualifier_order, patch: patch.qualifier_order),
+    reference_alignment: apply_field_patch(base: base.reference_alignment, patch: patch.reference_alignment),
+    reflow_comments: apply_field_patch(base: base.reflow_comments, patch: patch.reflow_comments),
+    remove_braces_llvm: apply_field_patch(base: base.remove_braces_llvm, patch: patch.remove_braces_llvm),
+    remove_empty_lines_in_unwrapped_lines: apply_field_patch(base: base.remove_empty_lines_in_unwrapped_lines, patch: patch.remove_empty_lines_in_unwrapped_lines),
+    remove_parentheses: apply_field_patch(base: base.remove_parentheses, patch: patch.remove_parentheses),
+    remove_semicolon: apply_field_patch(base: base.remove_semicolon, patch: patch.remove_semicolon),
+    requires_clause_position: apply_field_patch(base: base.requires_clause_position, patch: patch.requires_clause_position),
+    requires_expression_indentation: apply_field_patch(base: base.requires_expression_indentation, patch: patch.requires_expression_indentation),
+    separate_definition_blocks: apply_field_patch(base: base.separate_definition_blocks, patch: patch.separate_definition_blocks),
+    short_namespace_lines: apply_field_patch(base: base.short_namespace_lines, patch: patch.short_namespace_lines),
+    skip_macro_definition_body: apply_field_patch(base: base.skip_macro_definition_body, patch: patch.skip_macro_definition_body),
+    sort_includes: apply_field_patch(base: base.sort_includes, patch: patch.sort_includes),
+    sort_java_static_import: apply_field_patch(base: base.sort_java_static_import, patch: patch.sort_java_static_import),
+    sort_using_declarations: apply_field_patch(base: base.sort_using_declarations, patch: patch.sort_using_declarations),
+    space_after_c_style_cast: apply_field_patch(base: base.space_after_c_style_cast, patch: patch.space_after_c_style_cast),
+    space_after_logical_not: apply_field_patch(base: base.space_after_logical_not, patch: patch.space_after_logical_not),
+    space_after_operator_keyword: apply_field_patch(base: base.space_after_operator_keyword, patch: patch.space_after_operator_keyword),
+    space_after_template_keyword: apply_field_patch(base: base.space_after_template_keyword, patch: patch.space_after_template_keyword),
+    space_around_pointer_qualifiers: apply_field_patch(base: base.space_around_pointer_qualifiers, patch: patch.space_around_pointer_qualifiers),
+    space_before_assignment_operators: apply_field_patch(base: base.space_before_assignment_operators, patch: patch.space_before_assignment_operators),
+    space_before_case_colon: apply_field_patch(base: base.space_before_case_colon, patch: patch.space_before_case_colon),
+    space_before_cpp11_braced_list: apply_field_patch(base: base.space_before_cpp11_braced_list, patch: patch.space_before_cpp11_braced_list),
+    space_before_ctor_initializer_colon: apply_field_patch(base: base.space_before_ctor_initializer_colon, patch: patch.space_before_ctor_initializer_colon),
+    space_before_enum_underlying_type_colon: apply_field_patch(base: base.space_before_enum_underlying_type_colon, patch: patch.space_before_enum_underlying_type_colon),
+    space_before_inheritance_colon: apply_field_patch(base: base.space_before_inheritance_colon, patch: patch.space_before_inheritance_colon),
+    space_before_json_colon: apply_field_patch(base: base.space_before_json_colon, patch: patch.space_before_json_colon),
+    space_before_parens: apply_field_patch(base: base.space_before_parens, patch: patch.space_before_parens),
+    space_before_parens_options: apply_field_patch(base: base.space_before_parens_options, patch: patch.space_before_parens_options),
+    space_before_range_based_for_loop_colon: apply_field_patch(base: base.space_before_range_based_for_loop_colon, patch: patch.space_before_range_based_for_loop_colon),
+    space_before_square_brackets: apply_field_patch(base: base.space_before_square_brackets, patch: patch.space_before_square_brackets),
+    space_in_empty_block: apply_field_patch(base: base.space_in_empty_block, patch: patch.space_in_empty_block),
+    space_in_empty_braces: apply_field_patch(base: base.space_in_empty_braces, patch: patch.space_in_empty_braces),
+    space_in_empty_parentheses: apply_field_patch(base: base.space_in_empty_parentheses, patch: patch.space_in_empty_parentheses),
+    spaces_before_trailing_comments: apply_field_patch(base: base.spaces_before_trailing_comments, patch: patch.spaces_before_trailing_comments),
+    spaces_in_angles: apply_field_patch(base: base.spaces_in_angles, patch: patch.spaces_in_angles),
+    spaces_in_conditional_statement: apply_field_patch(base: base.spaces_in_conditional_statement, patch: patch.spaces_in_conditional_statement),
+    spaces_in_container_literals: apply_field_patch(base: base.spaces_in_container_literals, patch: patch.spaces_in_container_literals),
+    spaces_in_c_style_cast_parentheses: apply_field_patch(base: base.spaces_in_c_style_cast_parentheses, patch: patch.spaces_in_c_style_cast_parentheses),
+    spaces_in_line_comment_prefix: apply_field_patch(base: base.spaces_in_line_comment_prefix, patch: patch.spaces_in_line_comment_prefix),
+    spaces_in_parens: apply_field_patch(base: base.spaces_in_parens, patch: patch.spaces_in_parens),
+    spaces_in_parens_options: apply_field_patch(base: base.spaces_in_parens_options, patch: patch.spaces_in_parens_options),
+    spaces_in_parentheses: apply_field_patch(base: base.spaces_in_parentheses, patch: patch.spaces_in_parentheses),
+    spaces_in_square_brackets: apply_field_patch(base: base.spaces_in_square_brackets, patch: patch.spaces_in_square_brackets),
+    standard: apply_field_patch(base: base.standard, patch: patch.standard),
+    table_gen_break_inside_dag_arg: apply_field_patch(base: base.table_gen_break_inside_dag_arg, patch: patch.table_gen_break_inside_dag_arg),
+    tab_width: apply_field_patch(base: base.tab_width, patch: patch.tab_width),
+    use_crlf: apply_field_patch(base: base.use_crlf, patch: patch.use_crlf),
+    use_tab: apply_field_patch(base: base.use_tab, patch: patch.use_tab),
+    verilog_break_between_instance_ports: apply_field_patch(base: base.verilog_break_between_instance_ports, patch: patch.verilog_break_between_instance_ports),
+    wrap_namespace_body_with_empty_lines: apply_field_patch(base: base.wrap_namespace_body_with_empty_lines, patch: patch.wrap_namespace_body_with_empty_lines),
+  }
 }

@@ -1512,23 +1512,41 @@ to `QualifiedName`, add the projection.
 
 **Scope — two pieces:**
 
-1. **`QualifiedName = FreeMonoid<Symbol>`.** The declared identifier of a code
-   unit — the dotted name from its `module` declaration (e.g. `module
-   v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`). Not a graph path,
-   not a filesystem path. Declare in `std/node.dag` or a thin new
-   `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
-   all callers to `QualifiedName`.
+1. **`QualifiedName` — declared identifier of a code unit.** The dotted name from
+   its `module` declaration (e.g. `module v4.std.algebra` → `QualifiedName`
+   `[v4, std, algebra]`). Not a graph path, not a filesystem path. Declare in
+   `std/qualified_name.dag`. **Modeled as:** `QnEmpty | QnCons { head: Symbol,
+   tail: QualifiedName }` (standalone recursive coproduct — the intended alias
+   `FreeMonoid<Symbol>` is blocked by a v2 bootstrap limitation: the compiler
+   cannot resolve generic type alias constructors at definition site; tracked
+   under feature:free-monoid-qualified-name-alias, dissolves when the v2 bootstrap
+   is fixed). Delete `ModulePath` and `ModulePathSegment`; migrate all callers to
+   `QualifiedName`.
 
-2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.**
-   Extracts the declared name from a Node's `module_header` child, or returns
-   `Rejected` with diagnostics when the projection is unavailable. The name is
-   already in the parse tree (`dag_surface_module_header` →
-   `dag_production_qualified_name`); this function makes it accessible without
-   an external key while preserving fail-closed projection failures. Once this
-   exists, `Entry { name: QualifiedName, root: Node }` is a denormalized pair —
-   name is projectable from root on the `Accepted` branch. Callers that carry
-   the pair can simplify to `FreeMonoid<Node>` only when they thread the
-   `Rejected` branch to their admission boundary.
+2. **Two-function surface (std/ primitive + extdeps/ entry point).**
+
+   **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`** in
+   `std/qualified_name.dag`. Primitive: `root` is the `fold_list_node`
+   sub-node already resolved by the caller. Walks the `fold_list_node_head` /
+   `fold_list_node_tail` edge spine and collects the symbol sequence into
+   `QualifiedName` (`QnEmpty | QnCons`). Returns `Rejected` (fail-closed) for any non-Conj root
+   or malformed structure. `std/` cannot import `extdeps/`; the
+   `dag_surface_module_header_qualified_name` edge name lives in
+   `extdeps/languages/dag.dag`, so the edge lookup belongs in the layer that
+   owns that symbol.
+
+   **`qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName>`**
+   in `extdeps/languages/dag.dag`. Extdeps/ entry point for callers that hold a
+   module header Node produced by `emit_module_header_emitted_node`. Looks up
+   the `dag_surface_module_header_qualified_name` edge from `root` and delegates
+   to `qualified_name_from_node`. `extdeps/` may import `std/`, so the
+   layering invariant is preserved.
+
+   Once this two-function surface exists, `Entry { name: QualifiedName, root: Node }`
+   is a denormalized pair — name is projectable from root on the `Accepted`
+   branch via `qualified_name_from_module_node`. Callers that carry the pair can
+   simplify to `FreeMonoid<Node>` only when they thread the `Rejected` branch to
+   their admission boundary.
 
 **Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
@@ -1539,22 +1557,19 @@ graph-traversal concept; the declared module identifier is not a path.
 Enforcement via lens (forthcoming).
 
 **Files:**
-- `std/node.dag` or `std/qualified_name.dag` — `QualifiedName` type +
-  `qualified_name_from_node`.
-- `extdeps/languages/dag.dag` — **read reference only.** `qualified_name_from_node`
-  reads the parse-tree structure produced by `dag_surface_module_header` →
-  `dag_production_qualified_name`. Workers must consult this file to know the
-  exact child layout a module-declaration Node presents. No changes to this file.
+- `std/qualified_name.dag` — `QualifiedName` type + `qualified_name_from_node` primitive.
+- `extdeps/languages/dag.dag` — `qualified_name_from_module_node` entry point.
+  Workers must read this file to understand the Node child layout a
+  module-declaration Node presents (`emit_module_header_emitted_node`). The
+  `dag_surface_module_header_qualified_name` edge symbol is the structural
+  authority here.
 - Any caller of `ModulePath`/`ModulePathSegment` — migrate to `QualifiedName`.
 - `INVARIANTS.md` §P1 — naming invariant entry.
 
-**Dependencies:** The module-header parse-tree surface (`dag_surface_module_header`
-/ `dag_production_qualified_name`) in `extdeps/languages/dag.dag` is the
-structural authority `qualified_name_from_node` reads from. This surface already
-exists in the codebase — no prerequisite task is needed. Workers must read
-`extdeps/languages/dag.dag` to understand the Node child layout before
-implementing `qualified_name_from_node`; they may not assume a fixed child
-index or invent a traversal not grounded in that grammar declaration.
+**Dependencies:** The module-header parse-tree surface
+(`dag_surface_module_header_qualified_name`) in `extdeps/languages/dag.dag` is
+the structural authority `qualified_name_from_module_node` reads from. This
+surface already exists in the codebase — no prerequisite task is needed.
 
 **Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
@@ -1610,11 +1625,18 @@ Sequencing). T-35 workers must not proceed without both gates.
    `batch_insert(batch: ModuleBatch, node: Node)`,
    `batch_delete(batch: ModuleBatch, qname: QualifiedName)`;
    `batch_lookup` is an internal fold helper (folds `entries` applying
-   `qualified_name_from_node`, matching only `Accepted` qualified names) — not
-   exported from `module_batch.dag`, not a root-selection path (see Files
-   section). Each admitted Node carries its own `QualifiedName` via the
-   `qualified_name_from_node` projection (T-QN-1); no external path key is
-   required. Callers build the batch and invoke
+   `qualified_name_from_node` (the std/ primitive), matching only `Accepted`
+   qualified names) — not exported from `module_batch.dag`, not a root-selection
+   path (see Files section). Each admitted Node carries its own `QualifiedName`
+   via the `qualified_name_from_node` projection (T-QN-1) at the std/ layer, or
+   via `qualified_name_from_module_node` (extdeps/languages/dag.dag) at the
+   compiler/ admission layer; no external path key is required.
+   **Layering note:** `std/module_batch.dag` cannot import `extdeps/`, so
+   `batch_lookup` and `batch_delete` call `qualified_name_from_node` (std/); for
+   post-normalize module Nodes this always returns `Rejected` (non-fold_list_node
+   roots). The compiler/ admission layer (`compile_with_batch`) calls
+   `qualified_name_from_module_node` on each batch entry instead. T-35 workers
+   must account for this barrier — functional projection is at the compiler/ layer. Callers build the batch and invoke
    `compile_with_batch` — the filesystem-free entry point alongside existing
    `compile_ingest_staging` in `00_compile.dag`.
 
@@ -1622,18 +1644,20 @@ Sequencing). T-35 workers must not proceed without both gates.
    `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
    Witness<V> }` — unenumerable by construction. `FreeMonoid<Node>` keeps the
    batch enumerable so `compile_with_batch` can fold over entries. `batch_lookup`
-   is a fold using `qualified_name_from_node` to match on the `Accepted` branch;
-   `Rejected` entries are non-matches for lookup and remain admission failures.
+   is a fold using `qualified_name_from_node` (std/ layer; see Layering note above
+   for the compiler/-layer path via `qualified_name_from_module_node`) to match on
+   the `Accepted` branch; `Rejected` entries are non-matches for lookup and remain
+   admission failures.
    `batch_insert` appends a Node; `batch_delete` filters by `QualifiedName`.
    Name-uniqueness is not the batch's responsibility — it is enforced at
    admission time.
 
    **Node-keyed invariants (ratified 2026-05-27):**
-   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via the `Accepted` branch of `qualified_name_from_node`; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
+   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable via `qualified_name_from_node` (std/ primitive, T-QN-1) at the std/ layer or via `qualified_name_from_module_node` (extdeps/languages/dag.dag) at the compiler/ admission layer; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
    - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
    - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
    - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
-   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove unprojectable Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
+   - **Delete policy:** `batch_delete` in `std/module_batch.dag` folds over `entries` applying `qualified_name_from_node` (the std/ primitive). **Layering barrier:** `module_batch.dag` cannot import `extdeps/` and therefore cannot call `qualified_name_from_module_node`; `qualified_name_from_node` always returns `Rejected` for post-normalize module Nodes (which are not fold_list_node sub-nodes). Per the non-match policy, `Rejected` entries are **kept, not dropped** — so `batch_delete` does not functionally delete real post-normalize module Nodes by `QualifiedName`. T-35 workers must address this barrier (e.g., move delete to a compiler/-layer helper or redesign the batch structure); they must not ship `batch_delete` expecting it to work on well-formed module Nodes without resolving this gap.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1656,16 +1680,19 @@ to define a new agent output surface.
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
-  **Current execution gate:** because `qualified_name_from_node` is still the
-  T-8-gated projection stub and explicitly returns `Rejected`, the public
-  `compile_with_batch` terminal currently fails closed with
-  `qualified_name_projection_gated` before admission. The admission fold below
-  is modeled in the same file but is not the reachable public path until T-8
-  lands per-identifier symbol mapping. This is not a successful virtual-loader
+  **Current execution gate:** `qualified_name_from_node` (T-QN-1) is now the
+  real structural walker; the T-8 segment-identity gate moved to
+  `qualified_name_from_module_node` in `extdeps/languages/dag.dag`. However,
+  `compile_with_batch` itself is currently the stub: it returns
+  `compile_with_batch_projection_gated_diagnostic()` unconditionally
+  (`src/v4/compiler/00_compile.dag:439`). The admission fold below is modeled
+  in the same file but is not the reachable public path until T-8 lands
+  per-identifier symbol mapping. This is not a successful virtual-loader
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
+  `qualified_name_from_module_node` (extdeps/languages/dag.dag; compiler/ can
+  import extdeps/). For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
   `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
   diagnostics and the overall admission returns `Rejected` before catalog
@@ -1841,7 +1868,8 @@ facts.
 
 `rustfmt.dag` established the pattern the sibling files follow:
 option coproducts → full config type → defaults data node →
-`*_layer` function for hierarchical override composition.
+`*ConfigPatch` (per-field `FieldPatch<T>` from `v4.std.patch`) →
+`*_layer(base, patch)` applying `apply_field_patch` per field.
 (Sibling files black.dag, gofmt.dag, prettier.dag, clang_format.dag,
 google_java_format.dag, swift_format.dag, ktfmt.dag, lean4_format.dag
 are already landed on main — see PRs #3650, #3651, #3652.)
@@ -1850,12 +1878,15 @@ are already landed on main — see PRs #3650, #3651, #3652.)
 - Each formatter file is **pure config substrate** — no dependency on
   `std/node.dag` or any compiler module. This keeps the formatter layer
   independent of the compiler pipeline and usable as a standalone fact bundle.
-- **Hierarchical override**: `*_layer(base: Config, outer: Config) ->
-  Config` where outer wins unconditionally. Layering is
-  `fold(layers, init: *_defaults, f: *_layer)`. Field-granularity patch
-  types (per-field `Override/Inherit` coproduct) are 🟡 gated —
-  feature: `formatter-config-patch` — dissolve when consumers need
-  partial override without full-config specification.
+- **Hierarchical override (per-field patches):** `*_layer(base: Config,
+  patch: *ConfigPatch) -> Config` rebuilds the config by applying
+  `apply_field_patch` on each field. Patches compose with right-biased
+  `compose_field_patch` / `field_patch_monoid` from `v4.std.patch`
+  (`Override { value }` replaces; `Inherit` defers to base). Layering is
+  `fold(layers, init: *_defaults, f: *_layer)` with one patch per layer.
+  The prior full-config `*_layer(base, outer) { outer }` scaffold and
+  `feature:formatter-config-patch` gate are dissolved in the T-4.16 follow-on.
+- **ConfigPatch record projection (interim mirrors):** `feature:config-patch-record-projection` in `v4.std.patch` — formatter `*ConfigPatch` records and `*_layer` bodies are hand mirrors until record-field projection derives them from `*Config`; owner **T-4.16 follow-on** (same lane as formatter-config-patch dissolution); consumers carry `consumer:config-patch-record-projection` tags until projection lands.
 - **Real options, not abstract axes**: each file models the actual
   formatter's documented option space (e.g., `rustfmt.toml` flags, not
   a synthetic `IndentWidth` abstraction shared across languages). A
