@@ -421,7 +421,10 @@ data subject_mvp1_ts_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaim
   claim: claim_mvp1_ts_emit_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_ts_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_ts_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_ts_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
@@ -443,7 +446,10 @@ data subject_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node>
   claim: claim_mvp1_ts_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_ts_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_ts_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_ts_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
@@ -480,7 +486,10 @@ data subject_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaimEvalS
   claim: claim_mvp1_ts_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
   tree: mvp1_ts_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_ts_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_ts_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 

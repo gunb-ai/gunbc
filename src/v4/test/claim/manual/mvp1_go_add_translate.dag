@@ -450,16 +450,15 @@ data subject_mvp1_go_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaim
   claim: claim_mvp1_go_emit_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_go_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_go_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_go_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
 data run_mvp1_go_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_go_emit_add_fn_accepts,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_go_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_go_emit_add_fn_accepts,
     actual: mvp1_go_emit_claim_outcome(),
@@ -472,16 +471,15 @@ data subject_mvp1_go_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node>
   claim: claim_mvp1_go_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_go_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_go_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_go_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
 data run_mvp1_go_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_go_compile_inferred_add_fn_accepts,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_go_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_go_compile_inferred_add_fn_accepts,
     actual: mvp1_go_compile_inferred_claim_outcome(),
@@ -509,16 +507,15 @@ data subject_mvp1_go_serialize_rejects_missing_translation_rules: TestClaimEvalS
   claim: claim_mvp1_go_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
   tree: mvp1_go_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_go_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_go_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
 data run_mvp1_go_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_go_serialize_rejects_missing_translation_rules,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_go_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_go_serialize_rejects_missing_translation_rules,
     actual: mvp1_go_serialize_reject_claim_outcome(),

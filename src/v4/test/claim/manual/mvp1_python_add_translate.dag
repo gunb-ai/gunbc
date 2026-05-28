@@ -440,11 +440,7 @@ data subject_mvp1_python_serialize_rejects_missing_translation_rules: TestClaimE
 
 
 data run_mvp1_python_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_python_serialize_rejects_missing_translation_rules,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_python_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_python_serialize_rejects_missing_translation_rules,
     actual: mvp1_python_serialize_reject_claim_outcome(),
