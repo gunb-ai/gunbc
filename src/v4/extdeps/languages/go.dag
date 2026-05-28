@@ -1318,6 +1318,7 @@ fn go_formal_production_mvp1_fn_add() -> FormalProduction {
   }
 }
 
+// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: src/v4/TASKS.md §T-7.1 / T-4.17 grammar-as-data migration — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
 type GoGramBuild1State
   = GoGramBuild1StateInit
   | GoGramBuild1StateReady { expr: GrammarExpr }
@@ -1442,11 +1443,11 @@ fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
-  // 🟡 gated — feature:go-semicolon-insertion-layout — Go newlines can insert
+  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: src/v4/TASKS.md §T-11 Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
   // semicolons after line-final identifiers, literals, break/continue/fallthrough/
   // return, and selected delimiters. Wave 2a accepts only the horizontal-space
   // MVP subset; newline layout fails closed until std.lexing carries Go layout.
-  // dissolve-on: Go semicolon-insertion layout facts drive trivia/tokenization.
+  // dissolve-on: T-6/T-11 TokenLayout/TriviaPolicy carries Go semicolon-insertion layout facts.
   TriviaRule {
     pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
   }
