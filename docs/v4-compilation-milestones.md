@@ -48,14 +48,15 @@ distinguish them because only one produces an executable:
 
 **Current CI state:** the "v2 → v4 bootstrap compile (fail-closed full)" step uses
 `--target dag`. It is a structural check, not a compilation to a running binary.
-The manual TestClaim corpus is now covered by the T-22 corpus gate
-(`scripts/v4-testclaim-corpus-gate.sh`, step "T-22 TestClaim corpus gate —
-manual .dag corpus"). That step compiles `src/v4` with `--target dag`, verifies
-zero v2 diagnostics, checks that every `src/v4/test/claim/manual/*.dag` module is
-present in the modeled artifact, and pins the modeled `TestClaimRun` surface
-including the `eval_runtime_mvp` run row. What has **not** been done in CI is:
-compiling full emitted Rust with `rustc`/`cargo` to produce a runnable
-`v4-stage0` binary.
+The manual TestClaim corpus is now covered by the T-22 corpus structural gate
+(`scripts/v4-testclaim-corpus-gate.sh`, step "T-22 TestClaim corpus structural
+gate — manual .dag corpus"). That step compiles `src/v4` with both `--target
+rust` and `--target dag`, verifies zero v2 diagnostics, checks that every
+`src/v4/test/claim/manual/*.dag` module is present in the modeled artifact, and
+pins the modeled `TestClaimRun` surface including the `eval_runtime_mvp` run row.
+It does not execute the TestClaim runner or prove verdicts. What has **not** been
+done in CI is: compiling full emitted Rust with `rustc`/`cargo` to produce a
+runnable `v4-stage0` binary.
 
 ---
 

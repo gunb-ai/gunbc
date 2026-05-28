@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/v4-testclaim-corpus-gate.sh
 #
-# T-22 manual TestClaim corpus gate. Compiles src/v4 to the modeled .dag
-# artifact, then verifies that the manual claim corpus is in the compile closure
-# and that the T-22 TestClaimRun surface is present in the artifact.
+# T-22 manual TestClaim corpus structural gate. Compiles src/v4 to emitted Rust
+# and the modeled .dag artifact, then verifies that the manual claim corpus is in
+# the compile closure and that the T-22 TestClaimRun surface is present in the
+# artifact.
 #
 # 🟡 gated — feature:t38-testclaim-corpus-ci-gate — scaffold:TASKS T-38 / INVARIANTS §P5
 # Owner lane: T-22/T-38 evaluation harness closeout; operator-authorized CI receipt only.
@@ -18,8 +19,10 @@
 #
 # Env:
 #   V2_COMPILER             - v2-compiler binary (default: target/release/v2-compiler)
-#   V4_TESTCLAIM_OUT        - artifact output dir (default: $RUNNER_TEMP/v4-testclaim-corpus or /tmp)
-#   V4_TESTCLAIM_LOG        - compiler log path (default: ${OUT}.log)
+#   V4_TESTCLAIM_OUT        - dag artifact output dir (default: $RUNNER_TEMP/v4-testclaim-corpus or /tmp)
+#   V4_TESTCLAIM_LOG        - dag compiler log path (default: ${OUT}.log)
+#   V4_TESTCLAIM_RUST_OUT   - rust emit output dir (default: ${OUT}-rust)
+#   V4_TESTCLAIM_RUST_LOG   - rust emit compiler log path (default: ${RUST_OUT}.log)
 #   V4_TESTCLAIM_TIMEOUT_SECS - optional timeout (CI default: 240)
 
 set -euo pipefail
@@ -54,34 +57,47 @@ run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-$$}"
 tmp_root="${RUNNER_TEMP:-/tmp}"
 out="${V4_TESTCLAIM_OUT:-${tmp_root}/v4-testclaim-corpus-${run_suffix}}"
 log="${V4_TESTCLAIM_LOG:-${out}.log}"
-rm -rf "$out"
-mkdir -p "$out" "$(dirname "$log")"
+rust_out="${V4_TESTCLAIM_RUST_OUT:-${out}-rust}"
+rust_log="${V4_TESTCLAIM_RUST_LOG:-${rust_out}.log}"
+rm -rf "$out" "$rust_out"
+mkdir -p "$out" "$rust_out" "$(dirname "$log")" "$(dirname "$rust_log")"
 
 compile_timeout="${V4_TESTCLAIM_TIMEOUT_SECS:-}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "$compile_timeout" ]]; then
   compile_timeout=240
 fi
 
+run_compile() {
+  local target="$1"
+  local output_dir="$2"
+  local output_log="$3"
+
+  set +e
+  if [[ -n "$compile_timeout" ]]; then
+    timeout --preserve-status "$compile_timeout" \
+      "$bin" compile --source-root src/v4 --output-dir "$output_dir" --target "$target" 2>&1 | tee "$output_log"
+  else
+    "$bin" compile --source-root src/v4 --output-dir "$output_dir" --target "$target" 2>&1 | tee "$output_log"
+  fi
+  status=${PIPESTATUS[0]}
+  set -e
+
+  if [[ "$status" -ne 0 ]]; then
+    echo "error: v4 TestClaim corpus compile --target ${target} exited $status (log: $output_log)" >&2
+    exit "$status"
+  fi
+
+  if ! grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$output_log" >/dev/null; then
+    echo "error: v4 TestClaim corpus compile --target ${target} did not emit a clean compiled receipt" >&2
+    exit 1
+  fi
+}
+
+echo "=== T-22: compile src/v4 manual TestClaim corpus (--target rust) ==="
+run_compile rust "$rust_out" "$rust_log"
+
 echo "=== T-22: compile src/v4 manual TestClaim corpus (--target dag) ==="
-set +e
-if [[ -n "$compile_timeout" ]]; then
-  timeout --preserve-status "$compile_timeout" \
-    "$bin" compile --source-root src/v4 --output-dir "$out" --target dag 2>&1 | tee "$log"
-else
-  "$bin" compile --source-root src/v4 --output-dir "$out" --target dag 2>&1 | tee "$log"
-fi
-status=${PIPESTATUS[0]}
-set -e
-
-if [[ "$status" -ne 0 ]]; then
-  echo "error: v4 TestClaim corpus compile exited $status (log: $log)" >&2
-  exit "$status"
-fi
-
-if ! grep -E '^compiled: [0-9]+ files emitted, 0 diagnostics$' "$log" >/dev/null; then
-  echo "error: v4 TestClaim corpus compile did not emit a clean compiled receipt" >&2
-  exit 1
-fi
+run_compile dag "$out" "$log"
 
 artifact="${out}/dag-artifact.json"
 if [[ ! -s "$artifact" ]]; then
@@ -143,4 +159,4 @@ require_node "v4.test.claim.manual.eval_runtime_mvp"
 require_node "claim_eval_mvp2_test_claim_route"
 require_node "run_eval_mvp2_test_claim_route"
 
-echo "T-22 TestClaim corpus gate OK: ${#manual_files[@]} manual .dag files compiled; ${#run_rows[@]} TestClaimRun rows present."
+echo "T-22 TestClaim corpus structural gate OK: ${#manual_files[@]} manual .dag files compiled; ${#run_rows[@]} TestClaimRun rows present; rust emit clean."

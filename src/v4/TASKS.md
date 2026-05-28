@@ -274,12 +274,14 @@ writing output. The bridge's own dissolution condition is "v4 emit reaches
 passes through the bridge regardless of serializer state on `main`.
 Root cause and fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
-**T-38 → claim-suite close.** The CI gate `scripts/v4-testclaim-corpus-gate.sh`
-now compiles `src/v4` to the modeled `.dag` artifact, verifies every
-`src/v4/test/claim/manual/*.dag` module is present, and pins the T-22
-`TestClaimRun` surface including the `eval_runtime_mvp` run row. The prior
-generated-Rust source-shape receipt is dissolved. Full emitted-Rust runtime
-execution remains owned by the M1 rust emit/link path.
+**T-38 → claim-suite structural bridge.** The CI gate
+`scripts/v4-testclaim-corpus-gate.sh` now compiles `src/v4` to emitted Rust and
+the modeled `.dag` artifact, verifies every `src/v4/test/claim/manual/*.dag`
+module is present, and pins the T-22 `TestClaimRun` surface including the
+`eval_runtime_mvp` run row. This dissolves the prior generated-Rust source-shape
+receipt into a structural corpus bridge; it does **not** close T-38's runner bar.
+The remaining close condition is still modeled runner execution with structured
+`TestClaimRun` verdicts in CI.
 
 **T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
 sequence IS authored (header: "Status: filled — compiler-of-record is the
@@ -2244,15 +2246,18 @@ source instead of binding the corpus to modeled `TestClaimRun` rows.
 **Current state (2026-05-28)**:
 - T-34 (runtime substrate — `std/runtime.dag + extdeps/runtimes/*.dag`) done (#3770)
 - T-22 (`compiler/05_eval.dag` — the interpreter) substantially authored at 1121 lines; open scaffold gates are feature-flagged on B1 `content_hash` and not independently dispatchable
-- CI has a fail-closed T-22 manual corpus gate (`scripts/v4-testclaim-corpus-gate.sh`)
-  that compiles the modeled artifact and verifies all manual modules plus their
-  `TestClaimRun` rows are present.
+- CI has a fail-closed T-22 manual corpus structural gate
+  (`scripts/v4-testclaim-corpus-gate.sh`) that compiles both `--target rust` and
+  `--target dag`, verifies all manual modules plus their `TestClaimRun` rows are
+  present, and keeps zero-diagnostic rust emission fail-closed.
+- Gap: no CI step invokes T-22 eval on the claim corpus; no structured
+  `TestClaimRun` verdict report surfaces in CI output.
 
 **Scope**: the CI-wiring half is the bottleneck. T-22 authoring is substantially
 done. T-38 closes when:
-1. A CI step compiles `src/v4/test/claim/manual/*.dag` through the modeled T-22 corpus surface
-2. Results surface as `TestClaimRun` rows in the modeled artifact, including the `eval_runtime_mvp` run row
-3. The generated-Rust receipt script is deleted
+1. A CI step runs T-22 eval over `src/v4/test/claim/manual/*.dag` (the corpus)
+2. Results surface as `TestClaimRun` verdicts or equivalent workflow-as-data output
+3. `scripts/v4-testclaim-corpus-gate.sh` is deleted because structured runner output replaces shell-owned artifact inspection
 
 **Dependencies**: `[T-22 modeled TestClaimRun surface; T-34 done #3770; emitted-Rust runtime execution continues under M1]`
 T-22's open scaffold gates (`feature:T22-EVAL-CACHE-HASHES`) are gated on B1
