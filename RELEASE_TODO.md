@@ -4,6 +4,10 @@ Tracking all cleanup, migration, and infrastructure work needed before
 the public release. Sections are ordered roughly by dependency; items
 within a section are independent unless noted.
 
+**Retirement:** delete this file after `v0.1.0` public release tags and the
+public repo is live. Migrate any post-launch residuals to `ROADMAP.md` or the
+issue tracker by that point — this file is not a permanent backlog.
+
 ---
 
 ## 0. Merge gate (do first)
@@ -56,14 +60,20 @@ self-hosted runners, GitHub Apps, Actions.
 
 ## 2. Public/private repo split
 
-**Goal:** `gunb-ai/gunbc` stays private (internal). New `gunb-ai/gunbc` (or
-`gunbc`) is the public-facing repo seeded with a clean squash snapshot.
+**Goal:** `gunb-ai/gunbc` stays private (internal). A new public-facing repo
+is seeded with a clean squash snapshot. GitHub does not allow two repos with
+the same owner/name, so pick one topology and stick to it.
 
 ### One-time setup
 
-- [ ] Create public repo — decide on name:
-  - `gunb-ai/gunbc` (make current repo private, create new public one) — cleanest
-  - `gunb-ai/gunbc-public` — keeps both visible under the org
+- [ ] Create public repo — decide on name (mutually exclusive options):
+  - **Option A — rename internal, reclaim slug:** rename current `gunb-ai/gunbc`
+    → `gunb-ai/gunbc-internal` (or `gunbc-dev`), then create new public
+    `gunb-ai/gunbc` — cleanest public URL, but requires updating all internal
+    CI remote references
+  - **Option B — keep slug, add suffix:** keep current `gunb-ai/gunbc` (private)
+    and create public `gunb-ai/gunbc-public` — no CI changes needed, but public
+    URL has a `-public` suffix
 - [ ] Write `scripts/publish-snapshot.sh` — the sync script:
   ```bash
   # Creates a clean export commit and force-pushes to public repo
@@ -212,9 +222,12 @@ find src/v2 src/v4 dsl -name "*.dag" | xargs \
 ```
 
 **IMPORTANT — preserve load-bearing markers before running:**
-- Lines matching `🟡 feature:` are dissolution triggers; **do not strip** (especially in `src/v4/`)
-- WHY-comments (non-obvious invariants, workarounds per CODING.md) must be kept
-- The sed above is a first-pass draft; do a manual review before committing the result
+- `🟡 feature:` lines — dissolution triggers (especially `src/v4/`)
+- `🟢` / `🔴` lines — coproduct classification tags (required model marks)
+- `// Anchor:` lines — structural anchors referenced elsewhere
+- File-path/header comments — module identity lines at the top of each file
+- WHY-comments (non-obvious invariants, workarounds per CODING.md)
+The sed above is a **first-pass draft only** — do not run it without an allowlist-preserving wrapper or a post-run audit. Preferred: strip prose manually file-by-file, keeping the above intact.
 
 ---
 
