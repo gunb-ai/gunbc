@@ -7,7 +7,8 @@ module v4.test.claim.manual.test_claim_cache_digest_sensitivity
 import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
-  eval_context_registered,
+  eval_context_with_semantics,
+  test_claim_symbol_digest,
   test_claim_cache_interpretation_hash_node,
   test_claim_claim_hash_digest,
   test_claim_no_correction_ambiguous_intent_tag,
@@ -49,6 +50,7 @@ data tcc_cache_facts_diag_b: Symbol = tcc_cache_facts_diag_b
 data tcc_cache_expected_diag_a: Symbol = tcc_cache_expected_diag_a
 data tcc_cache_expected_diag_b: Symbol = tcc_cache_expected_diag_b
 data tcc_cache_interpretation_pin: Symbol = tcc_cache_interpretation_pin
+data tcc_cache_interpretation_semantics_tag: Symbol = tcc_cache_interpretation_semantics_tag
 data tcc_cache_evaluator_pin: Symbol = tcc_cache_evaluator_pin
 data tcc_cache_pass_sym: Symbol = tcc_cache_pass_sym
 data tcc_cache_fail_sym: Symbol = tcc_cache_fail_sym
@@ -101,9 +103,10 @@ fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
 }
 
 fn tcc_cache_eval_context() -> EvalContext {
-  eval_context_registered(
+  eval_context_with_semantics(
     runtime_identity: tcc_cache_interpretation_pin,
-    interpretation: v4_evaluator_interpretation_wave1()
+    interpretation: v4_evaluator_interpretation_wave1(),
+    semantics_digest: test_claim_symbol_digest(sym: tcc_cache_interpretation_semantics_tag)
   )
 }
 

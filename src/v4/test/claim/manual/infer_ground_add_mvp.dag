@@ -11,7 +11,8 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  eval_context_registered,
+  eval_context_with_semantics,
+  test_claim_symbol_digest,
   test_claim_cache_receipt,
   test_claim_typed_input_node
 }

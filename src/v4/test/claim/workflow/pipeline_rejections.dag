@@ -11,7 +11,8 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   aggregate_verdicts,
-  eval_context_registered,
+  eval_context_with_semantics,
+  test_claim_symbol_digest,
   eval_diagnostic,
   eval_rejected_roundtrip_deferred
 }
@@ -173,6 +174,7 @@ data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 data pipeline_interpretation_pin: Symbol = pipeline_interpretation_pin
+data pipeline_interpretation_semantics_tag: Symbol = pipeline_interpretation_semantics_tag
 
 
 fn pipeline_symbol_node(s: Symbol) -> Node {
@@ -292,9 +294,10 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 
 
 fn pipeline_claim_context() -> EvalContext {
-  eval_context_registered(
+  eval_context_with_semantics(
     runtime_identity: pipeline_interpretation_pin,
-    interpretation: pipeline_interpretation()
+    interpretation: pipeline_interpretation(),
+    semantics_digest: test_claim_symbol_digest(sym: pipeline_interpretation_semantics_tag)
   )
 }
 

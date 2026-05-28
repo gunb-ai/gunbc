@@ -123,14 +123,16 @@ import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
   v4_evaluator_interpretation_wave1,
+  v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1
 }
 
 
-// P2/P3: single registered (runtime_identity, InterpretationAlgebra) pair — no parallel pin; NonCacheable lands with a real producer.
+// P2/P3: registered triple — runtime_identity plus semantics_digest witness for InterpretationAlgebra.
 type InterpretationCacheAuthority {
   runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra
+  interpretation: InterpretationAlgebra,
+  semantics_digest: Hash
 }
 
 
@@ -146,12 +148,46 @@ type EvalContext {
 }
 
 
-fn eval_context_registered(runtime_identity: Symbol, interpretation: InterpretationAlgebra) -> EvalContext {
+fn eval_context_with_semantics(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  semantics_digest: Hash
+) -> EvalContext {
   EvalContext {
     cache_authority: InterpretationCacheAuthority {
       runtime_identity: runtime_identity,
-      interpretation: interpretation
+      interpretation: interpretation,
+      semantics_digest: semantics_digest
     }
+  }
+}
+
+
+// Closed registry: v4_evaluator_runtime_id <-> v4_evaluator_interpretation_wave1 only.
+fn eval_context_registered(runtime_identity: Symbol, interpretation: InterpretationAlgebra) -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: runtime_identity,
+    interpretation: interpretation,
+    semantics_digest: interpretation_registry_semantics_digest(
+      runtime_identity: runtime_identity,
+      interpretation: interpretation
+    )
+  )
+}
+
+
+fn interpretation_registry_semantics_digest(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra
+) -> Hash {
+  if runtime_identity == v4_evaluator_runtime_id {
+    if interpretation == v4_evaluator_interpretation_wave1() {
+      test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
+    } else {
+      test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
+    }
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
   }
 }
 
@@ -240,6 +276,8 @@ data test_claim_cache_variant_compiles_tag: Symbol = test_claim_cache_variant_co
 data test_claim_cache_variant_diagnostic_tag: Symbol = test_claim_cache_variant_diagnostic_tag
 data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equals_tag
 data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
+data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
+data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -492,7 +530,19 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 
 
 fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
-  test_claim_symbol_digest(sym: context.cache_authority.runtime_identity)
+  let authority = context.cache_authority
+  let witness = interpretation_registry_semantics_digest(
+    runtime_identity: authority.runtime_identity,
+    interpretation: authority.interpretation
+  )
+  combine_hash(
+    a: test_claim_symbol_digest(sym: authority.runtime_identity),
+    b: if authority.semantics_digest == witness {
+      authority.semantics_digest
+    } else {
+      test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
+    }
+  )
 }
 
 
