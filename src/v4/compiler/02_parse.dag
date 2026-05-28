@@ -516,8 +516,8 @@ fn parse_nonterminal_from_table(
   prod_name: Symbol
 ) -> ParseExprResult {
   match grammar_lookup_production(root: root, name: prod_name) {
-    Violates { diagnostic: _ } =>
-      ParseExprRejected { diagnostics: [] }
+    Violates { diagnostic: d } =>
+      ParseExprRejected { diagnostics: [d] }
     Holds { value: production } =>
       let key = ParsePositionKey {
         position: parse_current_position(all_tokens: all_tokens, tokens: tokens),
@@ -1119,8 +1119,8 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
         Violates { diagnostic: d } =>
           Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
-    Violates { diagnostic: _ } =>
-      Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
   }
 }
 
