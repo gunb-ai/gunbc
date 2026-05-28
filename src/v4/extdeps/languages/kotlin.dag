@@ -1,10 +1,6 @@
 // src/v4/extdeps/languages/kotlin.dag
 // Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles, wave-1 lex/grammar/MVP.
-<<<<<<< HEAD
-// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar (wave-1 productions declared as `FormalProduction` flat rhs — `kotlin_wave1_formal_productions`; `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence) + wave-2b inhabitance (int/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
-=======
-// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar + wave-2b inhabitance (int/long/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; byte/short stay in primitive facts only (arithmetic widens to Int — not T,T→T algebra-closed); char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
->>>>>>> 29a83d314 (WIP: T-4.17 Wave 2b: kotlin type deepening + AlgebraInhabitanceDecl fill (dep)
+// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar (wave-1 productions declared as `FormalProduction` flat rhs — `kotlin_wave1_formal_productions`; `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence) + wave-2b inhabitance (int/long/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; byte/short stay in `KotlinIntegerPrimitiveFacts` only — `KotlinOrderedRingIntegerFacts` excludes Bits8/Bits16 at the type level (stdlib arithmetic widens sub-Int built-ins to Int); char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
 // Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html — syntax/lex/grammar: https://kotlinlang.org/spec/syntax-and-grammar.html
 
 module v4.extdeps.languages.kotlin
@@ -159,6 +155,19 @@ type KotlinScalar
 type KotlinIntegerPrimitiveFacts {
   surface_spelling: Symbol
   width: KotlinIntWidth
+  overflow: KotlinIntegerOverflowUnspecified
+  representation: KotlinRuntimeRepresentation
+}
+
+// Anchor: Kotlin stdlib — Byte/Short arithmetic widens to Int (not closed at Byte/Short);
+// https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte/
+type KotlinOrderedRingIntWidth
+  = Bits32
+  | Bits64
+
+type KotlinOrderedRingIntegerFacts {
+  surface_spelling: Symbol
+  width: KotlinOrderedRingIntWidth
   overflow: KotlinIntegerOverflowUnspecified
   representation: KotlinRuntimeRepresentation
 }
@@ -345,11 +354,23 @@ data kotlin_integer_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
   kotlin_facts_long
 ]
 
-// Anchor: Kotlin stdlib — Byte/Short arithmetic widens to Int (not closed at Byte/Short);
-// https://kotlinlang.org/api/core/kotlin-stdlib/kotlin/-byte/
-data kotlin_integer_algebra_inhabitance_facts_catalog: List<KotlinIntegerPrimitiveFacts> = [
-  kotlin_facts_int,
-  kotlin_facts_long
+data kotlin_ordered_ring_facts_int: KotlinOrderedRingIntegerFacts = KotlinOrderedRingIntegerFacts {
+  surface_spelling: kotlin_surface_spelling_int,
+  width: Bits32,
+  overflow: kotlin_integer_overflow_unspecified,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_ordered_ring_facts_long: KotlinOrderedRingIntegerFacts = KotlinOrderedRingIntegerFacts {
+  surface_spelling: kotlin_surface_spelling_long,
+  width: Bits64,
+  overflow: kotlin_integer_overflow_unspecified,
+  representation: kotlin_platform_specific_runtime_representation,
+}
+
+data kotlin_integer_algebra_inhabitance_facts_catalog: List<KotlinOrderedRingIntegerFacts> = [
+  kotlin_ordered_ring_facts_int,
+  kotlin_ordered_ring_facts_long
 ]
 
 data kotlin_float_facts_catalog: List<KotlinFloatPrimitiveFacts> = [
@@ -877,7 +898,31 @@ fn kotlin_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-fn kotlin_integer_algebra_witness_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
+fn kotlin_ordered_ring_int_width_to_int_width(width: KotlinOrderedRingIntWidth) -> KotlinIntWidth {
+  match width {
+    Bits32 => Bits32
+    Bits64 => Bits64
+  }
+}
+
+fn kotlin_ordered_ring_integer_to_primitive_facts(
+  facts: KotlinOrderedRingIntegerFacts
+) -> KotlinIntegerPrimitiveFacts {
+  KotlinIntegerPrimitiveFacts {
+    surface_spelling: facts.surface_spelling,
+    width: kotlin_ordered_ring_int_width_to_int_width(width: facts.width),
+    overflow: facts.overflow,
+    representation: facts.representation
+  }
+}
+
+fn kotlin_ordered_ring_integer_facts_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
+  kotlin_integer_facts_node(
+    facts: kotlin_ordered_ring_integer_to_primitive_facts(facts: facts)
+  )
+}
+
+fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -935,8 +980,8 @@ fn kotlin_bool_algebra_witness_node() -> Node {
   }
 }
 
-fn kotlin_integer_algebra_inhabitance(facts: KotlinIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = kotlin_integer_facts_node(facts: facts)
+fn kotlin_integer_algebra_inhabitance(facts: KotlinOrderedRingIntegerFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = kotlin_ordered_ring_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
     algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,

@@ -546,6 +546,19 @@ fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
         );
     }
     assert!(
+        surface_declares_type(&module, "KotlinOrderedRingIntegerFacts"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare algebra-closed integer inhabitance carrier `KotlinOrderedRingIntegerFacts`"
+    );
+    assert!(
+        surface_declares_type(&module, "KotlinOrderedRingIntWidth"),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare algebra-closed integer width coproduct `KotlinOrderedRingIntWidth`"
+    );
+    assert_eq!(
+        surface_fn_first_param_named_type(&module, "kotlin_integer_algebra_inhabitance"),
+        Some("KotlinOrderedRingIntegerFacts".to_string()),
+        "{KOTLIN_LANGUAGE_PATH}: `kotlin_integer_algebra_inhabitance` must accept only `KotlinOrderedRingIntegerFacts` (Byte/Short excluded at API level)"
+    );
+    assert!(
         surface_declares_data(&module, "kotlin_integer_algebra_inhabitance_facts_catalog"),
         "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must split algebra-closed integer inhabitance from full primitive catalog (Byte/Short widen to Int)"
     );
@@ -993,6 +1006,23 @@ fn surface_fn_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &s
             _ => false,
         })
         .count()
+}
+
+fn surface_fn_first_param_named_type(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    fn_name: &str,
+) -> Option<String> {
+    module.items.iter().find_map(|item| match item {
+        SurfaceItem::Fn { name, params, .. } | SurfaceItem::FnExternalBody { name, params, .. }
+            if name == fn_name =>
+        {
+            params.first().and_then(|param| match &param.ty {
+                SurfaceType::Named { name, .. } => Some(name.clone()),
+                _ => None,
+            })
+        }
+        _ => None,
+    })
 }
 
 fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
