@@ -165,11 +165,7 @@ Substrate / extdeps fan-out:
    "Out of scope for the initial single-target compiler.")
 
 Test + bootstrap substrate (schedule early — every later task benefits):
-  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3 — DISPATCHABLE: all deps done; no dispatch issued 2026-05-28]
-        Produces TestClaim corpus from substrate; manual TestClaims in
-        test/claim/manual/ serve as anti-regression contract until
-        T-19 implementation lands. Every later task benefits from
-        testgen-derived test coverage instead of hand-authoring.
+  T-19  lens/testgen.dag                 [DONE]
   T-20  workflow/bootstrap.dag           [needs T-1; grows incrementally]
         Bootstrap orchestration AS DATA (seed-once → self-host →
         fixed-point). v2 interprets it. Scaffold-early (the parse-
@@ -189,10 +185,10 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Consumes T-10/T-23 for lens verdict via `run_required_lens_gates`
         (T-24 schedules; T-10 owns the orchestrator gate surface).
 
-Bootstrap execution gap (gate T-15 close — no workers dispatched 2026-05-28):
-  T-37  v2 DAG artifact serializer fix   [schedulable now — pure v2 Rust; gates T-15 bridge dissolution]
-        Blocks scripts/v4-bootstrap-resolve-posture-gate.sh dissolution;
-        T-15 cannot close while the bridge passes on SIGTERM.
+Bootstrap execution gap (gate T-15 close — 2026-05-28; live dispatch snapshot: T-15 Close-status below):
+  T-37  v2 DAG artifact serializer fix   [#3791 merge queue — probe PASS royal-carp-716; gates T-15 bridge dissolution on merge]
+        Blocks scripts/v4-bootstrap-resolve-posture-gate.sh dissolution until #3791 lands;
+        T-15 cannot close while the bridge passes on SIGTERM (fix not on `main` yet).
   T-38  TestClaim execution harness      [needs T-22 runnable; T-34 done #3770; gates T-15 "claim suite passes"]
         Claims compile only today; no CI step invokes T-22 eval on the corpus.
 
@@ -269,13 +265,13 @@ Close-the-loop + late substrate:
 ### Bootstrap execution convergence — additional T-15 gates (2026-05-28)
 
 The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
-T-15 to close. Three gaps have no workers and gate the close condition:
+T-15 to close. Three gaps gate the close condition (live dispatch: T-15 Close-status):
 
 **T-37 → bridge dissolution.** `scripts/v4-bootstrap-resolve-posture-gate.sh`
 passes CI on SIGTERM (exit 143/124) whenever v2 `--target dag` OOM-kills before
 writing output. The bridge's own dissolution condition is "v4 emit reaches
-`compiled:` without SIGTERM." Until T-37 lands, T-15 cannot close — CI trivially
-passes through the bridge regardless of serializer state.
+`compiled:` without SIGTERM." Until [#3791](https://github.com/gunb-ai/gunbc/pull/3791) merges (probe PASS royal-carp-716), T-15 cannot close — CI trivially
+passes through the bridge regardless of serializer state on `main`.
 Root cause and fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
 **T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
@@ -288,15 +284,15 @@ wiring — a step that invokes T-22 eval on the claim corpus and surfaces
 
 **T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
 sequence IS authored (header: "Status: filled — compiler-of-record is the
-self-hosting structural fact; structural gate only"). Two scaffold placeholders
-remain before T-15 can consume it as a real fixed-point proof:
-(1) `bootstrap_footprint` (line 190) returns `Violates` pending
-`feature:t21-bootstrap-footprint-fold` — dissolves when T-21's affected-set/
-content-hash fold reads the projection input closure; T-21 merged (#3747), so
-this scaffold is now dispatchable.
-(2) `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
+self-hosting structural fact; structural gate only"). `bootstrap_footprint`
+filled (#3788): B1 `closure_hash` over projection closure + fail-closed
+`Witness` gate; manual anchor receipt in
+`src/v4/test/claim/manual/bootstrap_footprint_anchor.dag`. One scaffold
+placeholder remains before T-15 can consume it as a real fixed-point proof:
+`bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
 aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
-No dispatch against either placeholder today.
+Construct-list snapshot walk is separately tracked on `bootstrap_footprint_constructs`
+(🟡 `feature:bootstrap-footprint-constructs-walk`, owner T-32 §).
 
 ---
 
@@ -783,6 +779,8 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
+**Close-status (2026-05-28, post-#3783; T-37 probe PASS royal-carp-716):** predicates 1–2 moving toward **CLOSABLE** on [#3791](https://github.com/gunb-ai/gunbc/pull/3791) merge; 3 **PARTIAL**; 4–5 **PAPER-ONLY** (predicate 4 partial after #3788 + T22-EVAL-CACHE-HASHES). **T-37 (royal-carp-716):** probe **PASS** EXIT:0 in 88s; `dag-artifact.json` ~40MB — O(n²)→O(n) stage0 Rc + Resolved-peel in `dag_node_key`. `scripts/v4-bootstrap-resolve-posture-gate.sh` dissolves when #3791 lands (`--target dag` completes without SIGTERM). Prior fail: crisp-raven-567 exit 124 on `main@c65b9bdc5`. Lane A: T-38 / T-20-fill ([#3788](https://github.com/gunb-ai/gunbc/pull/3788) in operator queue). Side branch `T-4 → T-9`: T-29 / T-30 / T-25-core / T-21 landed; **P1-KEYSTONE** [#3752](https://github.com/gunb-ai/gunbc/pull/3752); **T-19** [#3789](https://github.com/gunb-ai/gunbc/pull/3789); **T-33** [#3787](https://github.com/gunb-ai/gunbc/pull/3787).
+
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
 **File**: 7 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models; `sql.dag` added 2026-05-17 — Theme-A #4 fork (a))
@@ -981,7 +979,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
-### T-19: lens/testgen.dag — producer of TestClaim corpus from substrate
+### T-19: lens/testgen.dag — producer of TestClaim corpus from substrate  [DONE]
+**Status:** Landed on main (#3636). Filed by nimble-bee-438.
 
 **File**: `src/v4/lens/testgen.dag` (operator-ratified 2026-05-15: testgen as substrate fold; scheduled early — parallel fill — so the test corpus exists before the compiler stages need it)
 **Why early**: per operator "i want testgen to be working fairly early — for the compiler itself". Scheduling it early (parallel fill, deps clear after T-3) means T-6+ tasks consume testgen-derived TestClaims rather than hand-authoring.
@@ -1004,8 +1003,6 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Bootstrap pragma** (per operator: "manual authoring is fine as well"):
 - After T-1 (`std/node.dag`) lands: hand-author 5-10 TestClaims in `test/claim/manual/` covering type-construction for the 6 connectives + 5 behaviors. Validates schema + shape immediately.
 - After T-2 (`std/algebra.dag`) lands: hand-author algebra-law TestClaims for at least Magma/Monoid.
-- After T-19 implementation: testgen produces same set programmatically; manual claims become regression anchors.
-
 **Phase-1.5 scaffolding — forward dissolution (INVARIANTS P2)**:
 - **`manual_anchor_manifest.dag` — P2 join (single authority):** `ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
 - **`TestClaimCoproductVariant` — 🟡 `feature:testclaim-coproduct-reflection` gate (coproduct-exhaustiveness):** the current generated `DiagnosticExhaustiveness` slice needs a typed `omitted_variant` key, but v4 cannot yet project the arm-key set directly from the canonical `TestClaim` coproduct. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** land the T-19 coproduct-reflection primitive/consumer that reads the `TestClaim` variant set structurally and emits per-arm generated TestClaims. **Dissolve-on-arrival:** in that same follow-up, delete `TestClaimCoproductVariant`, make `GeneratedCoproductExhaustiveness` consume the reflected arm key, and keep the generated corpus witness proving every reflected arm schedules/emits from the canonical `TestClaim` type.

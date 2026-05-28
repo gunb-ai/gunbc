@@ -206,15 +206,52 @@ type DagCollectAcc {
   collision_errors: List<ErrorNode>
 }
 
+// Single-step insert payload so the None arm can use fold(init: acc, …) and the
+// Rust emitter can Rc::try_unwrap the accumulator (owned fold — stage0 bootstrap).
+type DagCollectPending {
+  anchor: Node
+  key: String
+  fp: String
+}
+
 // Provisional location key until v4 content_hash (see DagNodeId 🟡 gate). Collection
 // fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
 fn dag_node_key(node: Node) -> String {
+  let anchor = dag_node_collection_anchor(node: node)
   concat(
-    node.span.file, ":", to_string(i: node.span.start), "..", to_string(i: node.span.end),
-    match node.ident {
+    anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+    match anchor.ident {
       Some { value: id } => concat(":", to_string(i: id))
       None => ""
     })
+}
+
+// Resolved on expression nodes is ordinary type inference (ExprVar, calls, etc.).
+// Only NoExprData identity shells (type/import back-links) share the declaration anchor.
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// dissolve-on: DagNode exposes a modeled identity-shell fact (or anchor walk is structurally
+// total on shells) so collection does not match expr_data × InferredNode here;
+// forbidden: permanent cross-pass is_* over Node storage shape outside canonical query surface.
+fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
+  match node.expr_data {
+    NoExprData =>
+      match node.inferred {
+        Some { value: Resolved { node: _ } } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn dag_node_collection_anchor(node: Node) -> Node {
+  if dag_node_is_resolved_identity_shell(node: node) {
+    match node.inferred {
+      Some { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
+      _ => node
+    }
+  } else {
+    node
+  }
 }
 
 fn inferred_fingerprint(value: InferredNode?) -> String {
@@ -265,12 +302,8 @@ fn dag_node_surface_fingerprint(node: Node) -> String {
     param_names)
 }
 
-// Canonical fingerprint: peel Resolved chains so back-links share one identity.
 fn dag_node_fingerprint(node: Node) -> String {
-  match node.inferred {
-    Some { value: Resolved { node: target } } => dag_node_fingerprint(node: target)
-    _ => dag_node_surface_fingerprint(node: node)
-  }
+  dag_node_surface_fingerprint(node: dag_node_collection_anchor(node: node))
 }
 
 fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
@@ -381,29 +414,37 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
 }
 
 fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
-  let key = dag_node_key(node: node)
-  let fp = dag_node_fingerprint(node: node)
+  let anchor = dag_node_collection_anchor(node: node)
+  let key = dag_node_key(node: anchor)
+  let fp = dag_node_fingerprint(node: anchor)
   match map_get(acc.seen, key) {
     Some { value: prior } =>
       if prior == fp {
         acc
-      } else if node.span.start == 0 && node.span.end == 0 {
+      } else if anchor.span.start == 0 && anchor.span.end == 0 {
         DagCollectAcc {
           seen: acc.seen,
           order: acc.order,
-          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
+          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
         }
       } else {
         // Authored span: provisional key may alias; first canonical record wins until v4 content_hash.
         acc
       }
     None => {
-      let acc1 = DagCollectAcc {
-        seen: map_insert(acc.seen, key, fp),
-        order: list_push(acc.order, node),
-        collision_errors: acc.collision_errors
-      }
-      dag_collect_node_tree(node: node, acc: acc1)
+      [DagCollectPending { anchor: anchor, key: key, fp: fp }]
+        |> fold(
+          init: acc,
+          f: (inner, pending) =>
+            dag_collect_node_tree(
+              node: pending.anchor,
+              acc: DagCollectAcc {
+                seen: map_insert(inner.seen, pending.key, pending.fp),
+                order: list_push(inner.order, pending.anchor),
+                collision_errors: inner.collision_errors
+              }
+            )
+        )
     }
   }
 }
