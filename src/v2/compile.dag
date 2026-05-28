@@ -206,11 +206,20 @@ type DagCollectAcc {
   collision_errors: List<ErrorNode>
 }
 
-// Provisional location key until v4 content_hash (see DagNodeId 🟡 gate). Collection
-// fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
+// Provisional collect/emit identity until v4 content_hash (see DagNodeId 🟡 gate).
+// Peel Resolved so inference back-links share one table slot; anchor with structural
+// fingerprint plus compact span+ident (omit file path — keys were OOM on large graphs).
 fn dag_node_key(node: Node) -> String {
+  match node.inferred {
+    Some { value: Resolved { node: target } } => dag_node_key(node: target)
+    _ => dag_node_provisional_key(node: node)
+  }
+}
+
+fn dag_node_provisional_key(node: Node) -> String {
   concat(
-    node.span.file, ":", to_string(i: node.span.start), "..", to_string(i: node.span.end),
+    dag_node_fingerprint(node: node), "@",
+    to_string(i: node.span.start), "..", to_string(i: node.span.end),
     match node.ident {
       Some { value: id } => concat(":", to_string(i: id))
       None => ""
@@ -394,7 +403,7 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
           collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
         }
       } else {
-        // Authored span: provisional key may alias; first canonical record wins until v4 content_hash.
+        // Same provisional key, different fingerprint — distinct nodes at one span; keep first.
         acc
       }
     None => {
