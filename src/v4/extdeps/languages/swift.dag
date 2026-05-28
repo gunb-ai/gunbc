@@ -21,6 +21,7 @@ import v4.compiler.parse {
   Repeat,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
@@ -43,7 +44,8 @@ import v4.compiler.tokenize {
   StringTextChar,
   TokenRule,
   TriviaRule,
-  WhitespaceChar
+  WhitespaceChar,
+  lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
@@ -271,12 +273,6 @@ data swift_token_kw_false: Symbol = swift_token_kw_false
 data swift_token_ident: Symbol = swift_token_ident
 data swift_token_int_literal: Symbol = swift_token_int_literal
 data swift_token_string_literal: Symbol = swift_token_string_literal
-data swift_token_ty_int: Symbol = swift_token_ty_int
-data swift_token_ty_int32: Symbol = swift_token_ty_int32
-data swift_token_ty_string: Symbol = swift_token_ty_string
-data swift_token_ty_bool: Symbol = swift_token_ty_bool
-data swift_token_ty_double: Symbol = swift_token_ty_double
-data swift_token_ty_void: Symbol = swift_token_ty_void
 data swift_token_plus: Symbol = swift_token_plus
 data swift_token_minus: Symbol = swift_token_minus
 data swift_token_star: Symbol = swift_token_star
@@ -336,6 +332,7 @@ data swift_surface_bin_add: Symbol = swift_surface_bin_add
 data swift_binding_fn_add: Symbol = swift_binding_fn_add
 data swift_binding_param_x: Symbol = swift_binding_param_x
 data swift_binding_param_y: Symbol = swift_binding_param_y
+data swift_binding_ty_int32: Symbol = swift_binding_ty_int32
 
 data swift_relation_rule_mvp1_fn_add: Symbol = swift_relation_rule_mvp1_fn_add
 
@@ -350,14 +347,14 @@ fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
     SwiftFixedToken { token_class: swift_token_lparen },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
     SwiftFixedToken { token_class: swift_token_colon },
-    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
     SwiftFixedToken { token_class: swift_token_comma },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
     SwiftFixedToken { token_class: swift_token_colon },
-    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
     SwiftFixedToken { token_class: swift_token_rparen },
     SwiftFixedToken { token_class: swift_token_arrow },
-    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
     SwiftFixedToken { token_class: swift_token_lbrace },
     SwiftFixedToken { token_class: swift_token_kw_return },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
@@ -904,12 +901,16 @@ fn swift_mvp1_target_model_node() -> Node {
 fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), swift_binding_fn_add, "add"),
-      swift_binding_param_x,
-      "x"
+      map_insert(
+        map_insert(empty_map(), swift_binding_fn_add, "add"),
+        swift_binding_param_x,
+        "x"
+      ),
+      swift_binding_param_y,
+      "y"
     ),
-    swift_binding_param_y,
-    "y"
+    swift_binding_ty_int32,
+    "Int32"
   )
 }
 
@@ -998,12 +999,6 @@ fn swift_wave1_lex_rules() -> LexRuleSet {
       swift_keyword_lex_rule(token_class: swift_token_kw_import, text: "import"),
       swift_keyword_lex_rule(token_class: swift_token_kw_true, text: "true"),
       swift_keyword_lex_rule(token_class: swift_token_kw_false, text: "false"),
-      swift_lex_rule(token_class: swift_token_ty_int, text: "Int"),
-      swift_lex_rule(token_class: swift_token_ty_int32, text: "Int32"),
-      swift_lex_rule(token_class: swift_token_ty_string, text: "String"),
-      swift_lex_rule(token_class: swift_token_ty_bool, text: "Bool"),
-      swift_lex_rule(token_class: swift_token_ty_double, text: "Double"),
-      swift_lex_rule(token_class: swift_token_ty_void, text: "Void"),
       swift_lex_rule(token_class: swift_token_plus, text: "+"),
       swift_lex_rule(token_class: swift_token_minus, text: "-"),
       swift_lex_rule(token_class: swift_token_star, text: "*"),
@@ -1060,25 +1055,7 @@ fn swift_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
 }
 
 fn swift_grammar_type_expr() -> GrammarExpr {
-  swift_grammar_choice(
-    left: swift_grammar_terminal(token_class: swift_token_ty_int),
-    right: swift_grammar_choice(
-      left: swift_grammar_terminal(token_class: swift_token_ty_int32),
-      right: swift_grammar_choice(
-        left: swift_grammar_terminal(token_class: swift_token_ty_string),
-        right: swift_grammar_choice(
-          left: swift_grammar_terminal(token_class: swift_token_ty_bool),
-          right: swift_grammar_choice(
-            left: swift_grammar_terminal(token_class: swift_token_ty_double),
-            right: swift_grammar_choice(
-              left: swift_grammar_terminal(token_class: swift_token_ty_void),
-              right: swift_grammar_terminal(token_class: swift_token_ident)
-            )
-          )
-        )
-      )
-    )
-  )
+  swift_grammar_terminal(token_class: swift_token_ident)
 }
 
 fn swift_grammar_typed_param_expr() -> GrammarExpr {
@@ -1497,90 +1474,14 @@ fn swift_wave1_grammar() -> Grammar {
 }
 
 fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == swift_token_kw_func ||
-    sym == swift_token_kw_return ||
-    sym == swift_token_kw_let ||
-    sym == swift_token_kw_var ||
-    sym == swift_token_kw_if ||
-    sym == swift_token_kw_else ||
-    sym == swift_token_kw_while ||
-    sym == swift_token_kw_for ||
-    sym == swift_token_kw_in ||
-    sym == swift_token_kw_struct ||
-    sym == swift_token_kw_class ||
-    sym == swift_token_kw_enum ||
-    sym == swift_token_kw_protocol ||
-    sym == swift_token_kw_extension ||
-    sym == swift_token_kw_import ||
-    sym == swift_token_kw_true ||
-    sym == swift_token_kw_false ||
-    sym == swift_token_ident ||
-    sym == swift_token_int_literal ||
-    sym == swift_token_string_literal ||
-    sym == swift_token_ty_int ||
-    sym == swift_token_ty_int32 ||
-    sym == swift_token_ty_string ||
-    sym == swift_token_ty_bool ||
-    sym == swift_token_ty_double ||
-    sym == swift_token_ty_void ||
-    sym == swift_token_plus ||
-    sym == swift_token_minus ||
-    sym == swift_token_star ||
-    sym == swift_token_slash ||
-    sym == swift_token_percent ||
-    sym == swift_token_arrow ||
-    sym == swift_token_equal ||
-    sym == swift_token_eq_eq ||
-    sym == swift_token_bang_eq ||
-    sym == swift_token_lt ||
-    sym == swift_token_gt ||
-    sym == swift_token_lte ||
-    sym == swift_token_gte ||
-    sym == swift_token_lbrace ||
-    sym == swift_token_rbrace ||
-    sym == swift_token_lparen ||
-    sym == swift_token_rparen ||
-    sym == swift_token_lbracket ||
-    sym == swift_token_rbracket ||
-    sym == swift_token_comma ||
-    sym == swift_token_colon ||
-    sym == swift_token_dot ||
-    sym == swift_token_semicolon
+  lex_rule_set_token_class_member(
+    rules: swift_wave1_lex_rules(),
+    token_class: sym
+  )
 }
 
-fn swift_wave1_grammar_symbol(sym: Symbol) -> Bool {
-  sym == swift_production_mvp1_fn_add ||
-    sym == swift_production_fn_decl ||
-    sym == swift_production_typed_param ||
-    sym == swift_production_param_list ||
-    sym == swift_production_type_expr ||
-    sym == swift_production_block ||
-    sym == swift_production_stmt ||
-    sym == swift_production_return_stmt ||
-    sym == swift_production_let_stmt ||
-    sym == swift_production_if_stmt ||
-    sym == swift_production_while_stmt ||
-    sym == swift_production_expr ||
-    sym == swift_production_binary_expr ||
-    sym == swift_production_call_expr ||
-    sym == swift_production_primary_expr
-}
-
-fn swift_wave1_surface_symbol(sym: Symbol) -> Bool {
-  sym == swift_surface_fn_item ||
-    sym == swift_surface_typed_param ||
-    sym == swift_surface_param_list ||
-    sym == swift_surface_type_expr ||
-    sym == swift_surface_block ||
-    sym == swift_surface_stmt ||
-    sym == swift_surface_return_stmt ||
-    sym == swift_surface_let_stmt ||
-    sym == swift_surface_if_stmt ||
-    sym == swift_surface_while_stmt ||
-    sym == swift_surface_expr ||
-    sym == swift_surface_binary_expr ||
-    sym == swift_surface_call_expr ||
-    sym == swift_surface_primary_expr
+fn swift_primitive_type_surface_spelling(sym: Symbol) -> Bool {
+  swift_catalog_surface_symbol(sym: sym)
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
@@ -1806,10 +1707,9 @@ fn swift_catalog_surface_symbol(sym: Symbol) -> Bool {
 fn swift_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
-      swift_catalog_surface_symbol(sym: sym) ||
+      swift_primitive_type_surface_spelling(sym: sym) ||
         swift_wave1_lex_token_symbol(sym: sym) ||
-        swift_wave1_grammar_symbol(sym: sym) ||
-        swift_wave1_surface_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: swift_wave1_grammar(), sym: sym) ||
         sym == swift_mvp1_source_literal
     }
   }
