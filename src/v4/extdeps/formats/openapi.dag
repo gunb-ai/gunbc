@@ -13,12 +13,9 @@ module v4.extdeps.formats.openapi
 import v4.extdeps.coordination { ExchangePattern, RequestReply }
 import v4.extdeps.formats.json { JsonDocument, JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
-<<<<<<< HEAD
-import v4.std.nat { Nat }
-=======
 import v4.extdeps.formats.yaml { YamlDocument }
 import v4.std.collection { Optional }
->>>>>>> origin/main
+import v4.std.nat { Nat }
 import v4.std.network {
   DELETE,
   GET,
@@ -141,7 +138,6 @@ type OpenApiAdmittedHttpMethod
   | OpenApiTrace
 
 
-<<<<<<< HEAD
 // One-way projection to std.network.HttpMethod; anchored to RFC 9110 method identity.
 // (Not a bridge table — no two-sided row type; single authority for OAS-admitted methods
 //  remains OpenApiAdmittedHttpMethod.)
@@ -159,14 +155,6 @@ fn openapi_admitted_to_http_method(method: OpenApiAdmittedHttpMethod) -> HttpMet
 }
 
 
-// 🟢 coproduct dissolution — T-4.6-P4-OpenApiOptionalString.
-type OpenApiOptionalString
-  = OpenApiStringPresent { value: String }
-  | OpenApiStringAbsent
-
-
-=======
->>>>>>> origin/main
 type OpenApiReferenceObject {
   dollar_ref: String,
   summary: Optional<String>,
