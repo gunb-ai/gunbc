@@ -6814,7 +6814,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
 fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>) -> String {
   concat(
     "#[derive(Parser)]\n",
-    "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n",
+    "#[command(name = \"gunbc\", about = \"A causal compiler: write .dag, get Rust/Python/Go.\")]\n",
     "struct Cli {\n",
     "    #[command(subcommand)]\n",
     "    command: Commands,\n",
