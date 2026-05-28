@@ -98,9 +98,7 @@ import v4.std.node {
 }
 import v4.std.logic { Bool }
 import v4.std.algebra {
-  approximate_field_node,
   approximate_field_type_node,
-  commutative_semiring_node,
   commutative_semiring_type_node,
   Cons,
   Empty,
@@ -1808,7 +1806,9 @@ data wasm_op_float_copysign: Symbol = wasm_op_float_copysign
 
 data wasm_partial_integer_divide_by_zero: Symbol = wasm_partial_integer_divide_by_zero
 data wasm_partial_integer_remainder_by_zero: Symbol = wasm_partial_integer_remainder_by_zero
+data wasm_partial_signed_quotient_overflow: Symbol = wasm_partial_signed_quotient_overflow
 data wasm_precondition_integer_divisor_nonzero: Symbol = wasm_precondition_integer_divisor_nonzero
+data wasm_precondition_signed_quotient_not_min_over_negative_one: Symbol = wasm_precondition_signed_quotient_not_min_over_negative_one
 
 fn wasm_integer_algebra_witness_node(facts: WasmIntegerPrimitiveFacts) -> Node {
   Node {
@@ -1865,7 +1865,7 @@ fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
 fn wasm_integer_algebra_inhabitance(facts: WasmIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = wasm_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: commutative_semiring_node(inhabitant: inhabitant),
+    algebra: commutative_semiring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: wasm_integer_algebra_witness_node(facts: facts)
   }
@@ -1874,7 +1874,7 @@ fn wasm_integer_algebra_inhabitance(facts: WasmIntegerPrimitiveFacts) -> Algebra
 fn wasm_float_algebra_inhabitance(facts: WasmFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = wasm_float_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: approximate_field_node(inhabitant: inhabitant),
+    algebra: approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: wasm_float_algebra_witness_node(facts: facts)
   }
@@ -2107,6 +2107,11 @@ fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
         reason: wasm_partial_integer_divide_by_zero
       ),
       wasm_fail_closed_partial_operation(
+        operation: wasm_op_integer_div_s,
+        precondition: wasm_precondition_signed_quotient_not_min_over_negative_one,
+        reason: wasm_partial_signed_quotient_overflow
+      ),
+      wasm_fail_closed_partial_operation(
         operation: wasm_op_integer_div_u,
         precondition: wasm_precondition_integer_divisor_nonzero,
         reason: wasm_partial_integer_divide_by_zero
@@ -2115,6 +2120,11 @@ fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
         operation: wasm_op_integer_rem_s,
         precondition: wasm_precondition_integer_divisor_nonzero,
         reason: wasm_partial_integer_remainder_by_zero
+      ),
+      wasm_fail_closed_partial_operation(
+        operation: wasm_op_integer_rem_s,
+        precondition: wasm_precondition_signed_quotient_not_min_over_negative_one,
+        reason: wasm_partial_signed_quotient_overflow
       ),
       wasm_fail_closed_partial_operation(
         operation: wasm_op_integer_rem_u,
