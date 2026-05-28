@@ -379,3 +379,52 @@ fn v4_workflow_affected_set_ci_runner_claim_wiring() {
         "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
     );
 }
+
+#[test]
+fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        CI_DAG.contains("| TestClaimCorpusEvalCommand"),
+        "{CI_DAG_PATH}: T-38 dissolution step must declare TestClaimCorpusEvalCommand arm in CiCommand"
+    );
+    assert!(
+        CI_DAG.contains("feature:t38-testclaim-corpus-eval"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry t38-testclaim-corpus-eval dissolution tag"
+    );
+    assert!(
+        CI_DAG.contains("ci_select_from_affected_set narrows roster to content_hash frontier"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must name ci_select_from_affected_set \
+         as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
+    );
+    assert!(
+        CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
+        "{CI_DAG_PATH}: ci_command_authority_ok must enforce selection_fn == ci_testclaim_corpus_selection_fn (not unconditional true)"
+    );
+    assert!(
+        CI_DAG.contains("data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set"),
+        "{CI_DAG_PATH}: ci_testclaim_corpus_selection_fn must be declared as ci_select_from_affected_set (IRT-1 P2 single authority)"
+    );
+    assert!(
+        CI_DAG.contains("testclaim_corpus_eval_execution"),
+        "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_execution job"
+    );
+    assert!(
+        CI_DAG.contains("testclaim_corpus_eval_signal"),
+        "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_signal gate"
+    );
+    assert!(
+        CI_DAG.contains("command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"),
+        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind selection_fn to the canonical authority"
+    );
+    assert!(
+        CI_DAG.contains("ci_cache_cmd_testclaim_corpus_eval_tag"),
+        "{CI_DAG_PATH}: ci_command_cache_digest must cover TestClaimCorpusEvalCommand"
+    );
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::TypeSum { name, .. } if name == "CiCommand"
+        )),
+        "{CI_DAG_PATH}: CiCommand sum type must exist"
+    );
+}
