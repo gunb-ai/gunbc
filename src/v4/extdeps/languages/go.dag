@@ -1446,6 +1446,8 @@ fn go_ident_lex_rule() -> LexRule {
 }
 
 fn go_wave1_lex_rules() -> LexRuleSet {
+  // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
+  // matches, so ident must precede keywords and fixed literals that must win ties.
   LexRuleSet {
     rules: [
       go_whitespace_trivia_rule(),
