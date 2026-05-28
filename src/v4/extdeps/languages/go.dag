@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/go.dag
 // Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, wave-2a lex/grammar-data target model.
-// Status: T-4.17 Wave 2a go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2b go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; integer/float/bool/string inhabitance populated via grounded std.algebra Node constructors; Go complex primitive bundles remain present but withheld from AlgebraInhabitanceDecl until std exports a complex-specific approximate algebra constructor; laws/effects/partiality empty (wave-2+); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
@@ -78,12 +78,12 @@ import v4.std.algebra {
   BooleanAlgebra,
   approximate_field_node,
   boolean_algebra_node,
+  commutative_ring_node,
   Empty,
   fold_list,
   free_monoid_node,
   list_append,
   list_snoc_item,
-  ordered_ring_node
 }
 import v4.std.text { String }
 
@@ -262,7 +262,7 @@ data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
-data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
+data go_witness_integer_commutative_ring: Symbol = go_witness_integer_commutative_ring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
 data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
 data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
@@ -1006,15 +1006,33 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
   match facts {
     GoSignedIntegerPrimitiveFacts {
       surface_spelling: _,
-      width: _,
-      encoding: _,
+      width,
+      encoding,
       std_projection
     } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: go_witness_integer_ordered_ring,
-          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+          name: go_witness_integer_commutative_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_commutative_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_width,
+          target: go_signed_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: go_facts_field_signedness,
+          target: go_int_kind_node(kind: Signed)
+        ),
+        go_named_edge(
+          name: go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
           name: go_facts_field_std_projection,
@@ -1024,15 +1042,33 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
     }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling: _,
-      width: _,
-      encoding: _,
+      width,
+      encoding,
       std_projection
     } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: go_witness_integer_ordered_ring,
-          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+          name: go_witness_integer_commutative_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_commutative_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_width,
+          target: go_unsigned_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: go_facts_field_signedness,
+          target: go_int_kind_node(kind: Unsigned)
+        ),
+        go_named_edge(
+          name: go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
           name: go_facts_field_std_projection,
@@ -1106,7 +1142,7 @@ fn go_string_element_node() -> Node {
 fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = go_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
+    algebra: commutative_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_integer_algebra_witness_node(facts: facts)
   }
@@ -1169,7 +1205,11 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md.
+// Go complex values are unordered and backed by finite-precision float components;
+// std.algebra currently has no complex-specific approximate algebra constructor,
+// so Wave 2b keeps their primitive fact-bundles but does not advertise a stronger
+// AlgebraInhabitanceDecl than the shared substrate can defend.
 fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   []
 }
