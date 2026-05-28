@@ -535,11 +535,11 @@ fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
     runtime_identity: authority.runtime_identity,
     interpretation: authority.interpretation
   )
+  let registry_unbound = test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
+  let registry_mismatch = test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
   if registry_witness == authority.semantics_digest
-    && registry_witness
-      != test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
-    && registry_witness
-      != test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag) {
+    && registry_witness != registry_unbound
+    && registry_witness != registry_mismatch {
     combine_hash(
       a: test_claim_symbol_digest(sym: authority.runtime_identity),
       b: registry_witness
