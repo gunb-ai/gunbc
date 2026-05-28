@@ -5,7 +5,7 @@
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   LexPattern,
@@ -566,7 +566,7 @@ fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: machine_code_production_x86_64_nop,
     expression: machine_code_grammar_terminal(token_class: machine_code_token_x86_64_nop),
-    emitted: Node { kind: TypeNode { connective: Atom { identity: machine_code_surface_x86_64_nop_instruction } }, children: [] }
+    emitted: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
   }
   ModeledGrammar {
     root: GrammarRoot {

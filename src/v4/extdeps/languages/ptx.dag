@@ -12,7 +12,7 @@ module v4.extdeps.languages.ptx
 
 
 
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -33,7 +33,7 @@ import v4.std.lexing {
 }
 import v4.std.nat { Nat }
 import v4.std.cardinality { PositiveUpperBoundedNat }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Symbol }
 
 
 
@@ -240,7 +240,7 @@ fn ptx_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ptx_production_entry_kernel,
     expression: ptx_entry_kernel_expr(),
-    emitted: Node { kind: TypeNode { connective: Atom { identity: ptx_surface_entry_kernel } }, children: [] }
+    emitted: grammar_atom(identity: ptx_surface_entry_kernel)
   }
   ModeledGrammar {
     root: GrammarRoot {

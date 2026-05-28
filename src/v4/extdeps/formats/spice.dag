@@ -30,8 +30,8 @@ module v4.extdeps.formats.spice
 
 
 import v4.std.diagnostic { Outcome }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.std.node { Symbol }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -301,7 +301,7 @@ fn spice_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: spice_production_resistor_statement,
     expression: spice_resistor_statement_expr(),
-    emitted: Node { kind: TypeNode { connective: Atom { identity: spice_surface_resistor_statement } }, children: [] }
+    emitted: grammar_atom(identity: spice_surface_resistor_statement)
   }
   ModeledGrammar {
     root: GrammarRoot {
