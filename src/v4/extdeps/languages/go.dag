@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/go.dag
-// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, T-11 MVP-1 grammar-data target model.
-// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, wave-2a lex/grammar-data target model.
+// Status: T-4.17 Wave 2a go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
@@ -8,20 +8,31 @@ module v4.extdeps.languages.go
 import v4.std.grammar {
   GrammarExpr,
   GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  ParseGrammar,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
+  grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.std.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
   LexRule,
   LexRuleSet,
   LexRules,
+  LexPattern,
   LiteralPattern,
   ModeledLexRules,
-  TokenRule
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  lex_rule_set_token_class_member
 }
-import v4.std.target_model { TargetModel }
-import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -37,6 +48,7 @@ import v4.std.model_core {
 }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
+  TargetModel,
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -149,6 +161,20 @@ type GoGrammarRelationRow {
   tokens: List<GoConcreteSyntaxToken>
 }
 
+// Wave 2a accepts the shared identifier character classes as an explicit
+// subset. Go's full identifier grammar is Unicode letter/digit based; this
+// gate dissolves when std.lexing exports language-specific Unicode classes.
+type GoIdentifierLexicalScope
+  = GoIdentifierAsciiSubsetFailClosed
+
+type GoLanguageModel {
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
+}
+
 // Go spec: typed integer arithmetic truncates silently on overflow (not panic).
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoBuiltinIntegerArithmeticOverflow
@@ -227,6 +253,12 @@ data go_surface_spelling_complex64: Symbol = go_surface_spelling_complex64
 data go_surface_spelling_complex128: Symbol = go_surface_spelling_complex128
 data go_surface_spelling_bool: Symbol = go_surface_spelling_bool
 data go_surface_spelling_string: Symbol = go_surface_spelling_string
+
+data go_language_model_surface_id: Symbol = go_language_model_surface_id
+data go_surface_fn_item: Symbol = go_surface_fn_item
+data go_surface_type_int: Symbol = go_surface_type_int
+data go_surface_bin_add: Symbol = go_surface_bin_add
+data go_wave2a_identifier_ascii_subset_gate: Symbol = go_wave2a_identifier_ascii_subset_gate
 
 data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
@@ -1161,10 +1193,6 @@ fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-language-model-wave1-consumer — E-6(b) bounded
-// exception — scaffold: T-4 go slice has no GoLanguageModel carrier yet (lex / grammar /
-// MVP are T-11 rust-first specialization follow-on). Dissolve-on: GoLanguageModel lands and
-// binds `core: go_model_core_wave1()`.
 fn go_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: go_wave1_primitive_fact_bundles(),
@@ -1300,11 +1328,15 @@ fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
+fn go_grammar_atom(id: Symbol) -> Node {
+  go_inhabitant_atom(id: id)
+}
+
 fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: go_production_mvp1_fn_add,
     expression: go_grammar_sequence_from_token_classes(),
-    emitted: go_mvp1_emitted_add_fn_node()
+    emitted: go_grammar_atom(id: go_surface_fn_item)
   }
 }
 
@@ -1386,20 +1418,202 @@ fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn go_wave1_lex_rules() -> List<LexRule> {
-  [
-    go_lex_rule(token_class: go_token_kw_func, text: "func "),
-    go_lex_rule(token_class: go_token_lparen, text: "("),
-    go_lex_rule(token_class: go_token_ty_int, text: " int"),
-    go_lex_rule(token_class: go_token_comma, text: ", "),
-    go_lex_rule(token_class: go_token_rparen, text: ")"),
-    go_lex_rule(token_class: go_token_lbrace, text: " { "),
-    go_lex_rule(token_class: go_token_kw_return, text: "return "),
-    go_lex_rule(token_class: go_token_plus, text: " + "),
-    go_lex_rule(token_class: go_token_rbrace, text: " }")
-  ]
+// 🟡 gated — feature:go-unicode-identifier-lexing — Go spec identifiers are
+// Unicode-letter/digit based. Wave 2a deliberately accepts only the shared
+// identifier classes and rejects outside-subset identifiers via lexer no-match;
+// dissolve-on: std.lexing exports Go Unicode identifier classes and this
+// pattern consumes them.
+fn go_ident_lex_pattern(scope: GoIdentifierLexicalScope) -> LexPattern {
+  match scope {
+    GoIdentifierAsciiSubsetFailClosed =>
+      SequencePattern {
+        left: CharClassPattern { class: IdentStartChar },
+        right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+      }
+  }
+}
+
+fn go_wave2a_identifier_scope() -> GoIdentifierLexicalScope {
+  GoIdentifierAsciiSubsetFailClosed
+}
+
+fn go_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: go_token_ident,
+    pattern: go_ident_lex_pattern(scope: go_wave2a_identifier_scope())
+  }
+}
+
+fn go_wave1_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      go_lex_rule(token_class: go_token_kw_func, text: "func "),
+      go_ident_lex_rule(),
+      go_lex_rule(token_class: go_token_lparen, text: "("),
+      go_lex_rule(token_class: go_token_ty_int, text: " int"),
+      go_lex_rule(token_class: go_token_comma, text: ", "),
+      go_lex_rule(token_class: go_token_rparen, text: ")"),
+      go_lex_rule(token_class: go_token_lbrace, text: " { "),
+      go_lex_rule(token_class: go_token_kw_return, text: "return "),
+      go_lex_rule(token_class: go_token_plus, text: " + "),
+      go_lex_rule(token_class: go_token_rbrace, text: " }")
+    ]
+  }
 }
 
 fn go_wave1_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: go_wave1_lex_rules() } }
+  ModeledLexRules { root: go_wave1_lex_rules() }
+}
+
+fn go_wave1_grammar_root() -> GrammarRoot {
+  let start = go_grammar_production_mvp1_fn_add()
+  GrammarRoot {
+    start: go_production_mvp1_fn_add,
+    productions: [start],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn go_wave1_grammar() -> ParseGrammar {
+  ModeledGrammar { root: go_wave1_grammar_root() }
+}
+
+fn go_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(
+    rules: go_wave1_lex_rules(),
+    token_class: sym
+  )
+}
+
+fn go_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoIntegerPrimitiveFacts
+) -> Bool {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => acc || sym == surface_spelling
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => acc || sym == surface_spelling
+  }
+}
+
+fn go_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_complex_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoComplexPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_bool_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoBoolPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_string_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoStringPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_complex_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_bool_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_string_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_string_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_catalog_surface_symbol(sym: Symbol) -> Bool {
+  go_integer_catalog_surface_symbol(sym: sym) ||
+    go_float_catalog_surface_symbol(sym: sym) ||
+    go_complex_catalog_surface_symbol(sym: sym) ||
+    go_bool_catalog_surface_symbol(sym: sym) ||
+    go_string_catalog_surface_symbol(sym: sym)
+}
+
+fn go_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      go_catalog_surface_symbol(sym: sym) ||
+        go_wave1_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: go_wave1_grammar(), sym: sym) ||
+        sym == go_production_mvp1_fn_add ||
+        sym == go_mvp1_source_literal
+    }
+  }
+}
+
+fn go_language_model_wave1() -> GoLanguageModel {
+  GoLanguageModel {
+    lex: go_wave1_lex(),
+    grammar: go_wave1_grammar(),
+    language_identity: go_language_model_surface_id,
+    canonical_symbols: go_language_model_canonical_symbols(),
+    core: go_model_core_wave1()
+  }
 }
