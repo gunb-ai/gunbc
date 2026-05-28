@@ -11,6 +11,8 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.text { Char, String }
 
+type Lexeme = String
+
 // 🟡 coproduct dissolution — feature:t6-lex-char-class-morphism — consumer:v4.compiler.tokenize.char_in_class — bind TASKS.md T-6 — dissolve-on-arrival: substrate-derived LexCharClass membership morphism replaces per-arm character-range predicates; forbidden: adding LexCharClass arms without the morphism consumer.
 type LexCharClass
   = WhitespaceChar
@@ -59,7 +61,7 @@ type LexRules
 
 type Token {
   class: Symbol
-  lexeme: String
+  lexeme: Lexeme
   file: Symbol
   start: Int
   end: Int

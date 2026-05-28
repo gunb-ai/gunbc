@@ -119,6 +119,36 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Canonical example (ratified 2026-05-27):** `ModulePath` was `FreeMonoid<ModulePathSegment>` where `ModulePathSegment = { name: Symbol }` — a qualified identifier sequence (`[v4, std, algebra]`), not a path through any graph. The `Path` concept in `std/node.dag` is `{ steps: List<Symbol> }` — a route through Node edges. `ModulePath` was a nickname for `QualifiedName`; renamed accordingly. `ModulePathSegment` was a nickname for `Symbol`; deleted.
 
+### Problem shape: Internal vocabulary for a canonical concept
+
+**Rule:** When a concept has a recognized definition in formal CS literature, use the canonical name and structure. Do not coin an internal name for it. Cite the authoritative source (Wikipedia article, RFC, ISO standard, or textbook) in the module header comment of the file that declares the type.
+
+**Why it belongs in P1:** Faithfulness is intersubjective — grounding must point at shared external consensus. Renaming a canonical concept internally asserts the internal name is as authoritative as the external one, which it is not. It also creates a hidden mapping burden: workers must learn the internal name, learn the mapping, and trust the fidelity of that mapping. The external name carries that fidelity for free.
+
+**Problem shape:** A module named after a pipeline stage (e.g. `compiler/tokenize.dag`, `compiler/parse.dag`) defines types whose concepts predate the pipeline — lexical analysis, context-free grammar, production rules. The module that *operates on* a concept is not the authority for its *definition*. Names like `GrammarProduction`, `ModeledLexRules`, `GrammarSchema` are internal nicknames for concepts the field already named (`Production`, `LexRuleSet`, `Grammar`).
+
+**Solution shape:** Before naming a new type, search for its canonical name in the relevant field. If one exists, use it. Place the type definition in a `std/` module named after the concept domain (e.g. `std/lexing.dag`, `std/grammar.dag`), not after the pipeline stage that happens to use it first. The pipeline stage imports from `std/`; it does not define vocabulary.
+
+**Enforcement:** New substrate type names corresponding to recognized CS concepts must cite the grounding source in the file's module header comment using Practice 9's per-carrier anchor form (e.g. `// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis`). Reviewers should ask "does this concept have a canonical name in the field?" before approving new type declarations in `compiler/` or `extdeps/`.
+
+**Receipt (live violation; dissolution not yet landed):** `v4.compiler.tokenize` still defines `LexRule`, `LexRuleSet`, `ModeledLexRules`, `LexPattern`; `v4.compiler.parse` still defines `GrammarProduction`, `GrammarExpr`, `GrammarSchema`. These are canonical CS concepts (lexical analysis, context-free grammar) wrapped in compiler-internal names. **`std/lexing.dag` and `std/grammar.dag` do not exist yet** — extdeps such as `python.dag` still import from `v4.compiler.parse` / `v4.compiler.tokenize`. **Dissolution target:** author `std/lexing.dag` + `std/grammar.dag` grounded in Wikipedia *Lexical Analysis* and *Formal Grammar*; move type definitions there; `compiler/` and `extdeps/` import from `std/`.
+
+### Problem shape: Existing implementations are not automatically correct
+
+**Rule:** An approved or landed implementation is not evidence that its model is correct — it is only evidence that it passed review at the time. Every implementation is subject to re-examination when a better or more holistic model becomes visible. Prior approval does not foreclose redesign.
+
+**Why it belongs in P1:** Faithfulness is not a one-time gate at merge. Approval meant "no blocking concern at review time," not "this is the best possible model." If workers treat landed code as settled fact, violations compound silently. The discipline of interrogating existing models — asking "given what we now know, is this still the right shape?" — is how the codebase improves.
+
+**The calibration:** This principle does not license endless refactoring. The bar for revisiting a landed model is: (a) a clearer external grounding exists (as with the lexing/grammar vocabulary move), or (b) the existing model creates cascading wrong-direction dependencies, or (c) a more holistic solution would reduce total lines/concepts, not increase them. Cosmetic renames, subjective preference changes, and "could be marginally cleaner" are not sufficient — those produce churn without structural improvement.
+
+**Concrete check:** When a worker encounters a type, function, or module and thinks "this seems slightly off but it's landed," they should ask: does a canonical external model exist that this should conform to? Does the current shape create cross-layer dependencies? Would conforming reduce concepts or add them? If the answer to any of these is yes with clear evidence, surface it — don't silently implement on top of a wrong foundation.
+
+**Problem shape:** Worker finds that `extdeps/` files import from `compiler/` and treats this as load-bearing because multiple PRs approved it. Assumes the existing pattern must be right. Builds T-4.18 on top of the violation. Violation compounds.
+
+**Solution shape:** Treat every landed model as a hypothesis, not a proof. When external grounding reveals a better shape, surface it — even if it requires re-examining previously approved work.
+
+**Receipt (live violation; dissolution not yet landed):** The extdeps/compiler coupling remains on `main` — extdep language/format files and `workflow/bootstrap.dag` still import `v4.compiler.tokenize`, `v4.compiler.parse`, and/or `v4.compiler.target_carriers` (e.g. `python.dag` → `v4.compiler.parse`; `bootstrap.dag` → `TargetModel` from `v4.compiler.target_carriers`). Multiple PRs approved this pattern before the cross-layer import rule made the violation explicit; prior approval is not proof the model is correct (see above). **`src/v4/std/target_model.dag` exists** (edge-key symbols only); **`TargetModel` still lives in `v4.compiler` target-carrier modules**; **`std/lexing.dag` / `std/grammar.dag` are not landed**. **Dissolution target:** complete `std/lexing.dag` + `std/grammar.dag`, promote `TargetModel` authority into `std/`, migrate all wrong-direction imports — not because prior PRs were negligent, but because a clearer model became visible.
+
 ### Procedure: substrate-fact introduction (decision procedure for new modeling)
 
 **When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
@@ -168,6 +198,8 @@ Fundamental primitives (physics, computation, mathematics) declare as substrate 
 - **Documentation Describes Live State** — aspirational docs describe a reality the codebase doesn't embody
 - **Substrate-Fact Introduction Procedure** (above) — operational decision procedure for adding new substrate types/variants/fields
 - **Model names must reflect what they are (operator-ratified 2026-05-27).** A type named `FooBar` must be a structural composition or projection of `Foo` and `Bar` — not a convenient label for something else. Nicknaming is a modeling violation because it claims structural identity the type does not have. In the compiler especially, a type name that implies a concept it does not embody creates false mental models for workers and reviewers. Canonical example: `ModulePath = FreeMonoid<ModulePathSegment>` was a nickname for `FreeMonoid<Symbol>` (the declared identifier of a code unit); the name implied graph traversal (`Path { steps: List<Symbol> }` in `std/node.dag`) when no such relationship holds. Correct form: `QualifiedName = FreeMonoid<Symbol>` — the name states exactly what it is. When a type name is wrong, fix the name before dispatching workers; dispatching on a wrong name propagates the fiction through implementations. Enforcement via lens (forthcoming, see T-QN-1).
+- **Internal vocabulary for a canonical concept** — canonical CS names belong in std/, not in compiler/-internal modules
+- **Existing implementations are not automatically correct** — landed code is a hypothesis subject to re-examination when clearer grounding or structural evidence appears; prior approval does not foreclose redesign
 
 ---
 
@@ -199,6 +231,29 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 **Receipt:** Lens implementations once reached into hand-written storage details of the substrate, so every storage refactor cascaded into lens edits. Dissolution: declared substrate query functions (L-7); lenses became consumers of a typed boundary instead of the storage itself.
 
+### Problem shape: Cross-layer import (dependency direction violation)
+
+**Rule:** Module-layer dependencies form a strict DAG. The declared layer order is:
+
+```
+std/        — universal primitives; may be imported by any layer
+extdeps/    — external dependency modeling; imports std/ only
+compiler/   — pipeline stages; imports std/ and extdeps/
+workflow/   — orchestration; imports std/ and compiler/
+```
+
+An import edge pointing opposite to this order (`extdeps/ → compiler/`, `std/ → compiler/`) is a violation regardless of whether the imported symbol "happens to work." The compiler reads external models; external models do not read the compiler.
+
+**Why it belongs in P2:** Every wrong-direction import creates a hidden parallel authority: the type definition lives in the importing layer's dependency, not in the layer that conceptually owns it. Every consumer of the wrong-direction import inherits that hidden coupling. It also violates the homomorphism premise: the compiler processes Node graphs uniformly; if extdeps/ types are defined in compiler/, the compiler owns the schema of something it should be reading, not defining.
+
+**Problem shape:** `extdeps/python.dag` imports `LexRules`, `GrammarProduction` from `v4.compiler.tokenize` / `v4.compiler.parse`. The compiler now owns the schema of the language model it is supposed to read. Adding or renaming a compiler type forces updates to all language definitions. Moving the compiler requires moving the language definitions.
+
+**Solution shape:** Any type shared between `extdeps/` and `compiler/` belongs in `std/`. Both sides import from `std/`; neither imports the other.
+
+**Enforcement:** PR review must check: does any `extdeps/` file import from `v4.compiler.*`? If yes, the import is a violation unless the type being imported does not belong in std/ (file a finding and require the move). Same check for `std/` importing from `compiler/` or `extdeps/`.
+
+**Receipt (live violation; dissolution not yet landed):** As of this writing, extdep language/format `.dag` files (including `python.dag`, `rust.dag`, `cpp.dag`, `go.dag`, `swift.dag`, `kotlin.dag`, `java.dag`, `typescript.dag`, `wasm.dag`, `csv.dag`, `json.dag`, `sql.dag`, `toml.dag`, `yaml.dag`) **still** import from `v4.compiler.tokenize`, `v4.compiler.parse`, and/or `v4.compiler.target_carriers`; `workflow/bootstrap.dag` **still** imports `TargetModel` from `v4.compiler.target_carriers`. `src/v4/std/target_model.dag` is landed (protocol edge symbols); **`std/lexing.dag` and `std/grammar.dag` are not**; **`TargetModel` type authority remains in compiler target-carrier modules**. **Dissolution target:** author `std/lexing.dag` + `std/grammar.dag`, complete `TargetModel` promotion into `std/`, replace every wrong-direction import.
+
 ### <a id="p2-host-process-boundary"></a>Host-process boundary discipline
 
 **Rule:** Predicates that spawn **host processes** to evaluate a claim (e.g. `std::process` / `ExecuteCommand` in the test runner) meet the same boundary bar as the rest of the compiler: the contract is **typed and single-authority**, not a growing pile of string-heuristic special cases. Concretely:
@@ -222,6 +277,7 @@ A downstream stage reads a lower layer not through its declared accessors but by
 - **Emission Is Translation, Not Decision-Making**
 - **No Duplicate Representations** + **No Parallel Implementations** + **Single-Authority Metadata**
 - **Root-Cause Depth Invariant** — fix at the deepest unsound boundary, not the first downstream symptom
+- **Cross-layer import (dependency direction violation)** — workflow/ → compiler/ → extdeps/ → std/; imports only toward `std/`; no reverse edges
 - **Performance Invariant** + **Facts Flow Forward** — redundant work is dependency modeling at the wrong boundary
 - **Verification Predicates Are Substrate Consumers** — verification is not its own authority
 - **The One Boundary** (from Verifiability) — verification crosses target-specific realization only at declared boundaries
