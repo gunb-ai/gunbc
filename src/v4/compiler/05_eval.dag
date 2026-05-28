@@ -72,6 +72,7 @@ import v4.std.diagnostic {
   Correction,
   Diagnostic,
   NoCorrectionReason,
+  NonEmptyDiagnostics,
   node_locus,
   Outcome,
   Unavailable,
@@ -146,7 +147,7 @@ type TestClaimCacheKey<T> {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, interpretation_pin, evaluator pin/subgraph).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, interpretation_pin, evaluator pin / Node input).
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -177,6 +178,9 @@ type EvalProgress
 
 data test_claim_cache_claim_digest_tag: Symbol = test_claim_cache_claim_digest_tag
 data test_claim_cache_interpretation_digest_tag: Symbol = test_claim_cache_interpretation_digest_tag
+data test_claim_no_correction_user_input_boundary_tag: Symbol = test_claim_no_correction_user_input_boundary_tag
+data test_claim_no_correction_ambiguous_intent_tag: Symbol = test_claim_no_correction_ambiguous_intent_tag
+data test_claim_no_correction_external_contract_unknown_tag: Symbol = test_claim_no_correction_external_contract_unknown_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -209,6 +213,56 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
       hash_combine(a: acc, b: content_hash(n: n))
     }
   )
+}
+
+
+fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
+  match reason {
+    UserInputBoundary =>
+      test_claim_symbol_digest(sym: test_claim_no_correction_user_input_boundary_tag)
+    AmbiguousIntent =>
+      test_claim_symbol_digest(sym: test_claim_no_correction_ambiguous_intent_tag)
+    ExternalContractUnknown =>
+      test_claim_symbol_digest(sym: test_claim_no_correction_external_contract_unknown_tag)
+  }
+}
+
+
+fn correction_verdict_digest(c: Correction) -> Hash {
+  match c {
+    Suggested { node: n } => content_hash(n: n)
+    Unavailable { reason: r } => no_correction_reason_digest(reason: r)
+  }
+}
+
+
+fn diagnostic_verdict_authority_digest(d: Diagnostic) -> Hash {
+  hash_combine(
+    a: test_claim_symbol_digest(sym: d.reason),
+    b: correction_verdict_digest(c: d.correction)
+  )
+}
+
+
+fn non_empty_diagnostics_verdict_digest(d: NonEmptyDiagnostics) -> Hash {
+  fold_list(
+    xs: d.tail,
+    empty: diagnostic_verdict_authority_digest(d: d.head),
+    cons: fn(acc, diag) {
+      hash_combine(a: acc, b: diagnostic_verdict_authority_digest(d: diag))
+    }
+  )
+}
+
+
+// IRT-4 claim_hash: evaluation-node frontier plus verdict authority symbols absent from diagnostic_evaluation_nodes (reason, Unavailable correction).
+fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
+  let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
+  match c {
+    DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
+      hash_combine(a: nodes_digest, b: non_empty_diagnostics_verdict_digest(d: e))
+    _ => nodes_digest
+  }
 }
 
 
@@ -338,7 +392,7 @@ fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestCla
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
-      claim_hash: test_claim_evaluation_nodes_digest(c: subject.claim),
+      claim_hash: test_claim_claim_hash_digest(c: subject.claim),
       interpretation_hash: test_claim_cache_interpretation_hash_node(subject: subject)
     }
   }
@@ -349,7 +403,7 @@ fn test_claim_cache_receipt_pinned<T>(subject: TestClaimEvalSubject<T>) -> TestC
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
-      claim_hash: test_claim_evaluation_nodes_digest(c: subject.claim),
+      claim_hash: test_claim_claim_hash_digest(c: subject.claim),
       interpretation_hash: test_claim_cache_interpretation_hash_pinned(subject: subject)
     }
   }
