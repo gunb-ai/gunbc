@@ -182,6 +182,10 @@ fn bootstrap_source_snapshot_root() -> Node {
   }
 }
 
+fn bootstrap_canonical_snapshot_content_hash() -> BootstrapHashPin {
+  BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+}
+
 fn bs_list_eq(a: List<Symbol>, b: List<Symbol>) -> Bool {
   bag_eq(xs: a, ys: b, eq: bs_symbol_eq)
 }
@@ -233,6 +237,7 @@ fn bootstrap_footprint_constructs() -> List<BootstrapConstruct> {
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
     && (inputs.snapshot.language_model == seed_capability_language_model())
+    && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
     && (inputs.target_model == rust_mvp1_target_model())
     && (inputs.runtime_model == v4_evaluator_runtime_wave1())
 }
@@ -370,7 +375,7 @@ data bootstrap_projection_inputs: BootstrapProjectionInputs = BootstrapProjectio
   snapshot: BootstrapSourceSnapshot {
     root: bootstrap_source_snapshot_root(),
     language_model: seed_capability_language_model(),
-    content_hash: BootstrapHashPin { digest: pinned_v4_fixed_point_hash, pin: pinned_v4_fixed_point_hash_pin }
+    content_hash: bootstrap_canonical_snapshot_content_hash()
   },
   target_model: rust_mvp1_target_model(),
   runtime_model: v4_evaluator_runtime_wave1()
