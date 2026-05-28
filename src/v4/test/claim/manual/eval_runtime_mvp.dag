@@ -107,6 +107,8 @@ data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
 data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
+data eval_mvp2_interpretation_pin: Symbol = eval_mvp2_interpretation_pin
+data eval_mvp2_evaluator_pin: Symbol = eval_mvp2_evaluator_pin
 fn eval_mvp2_byte() -> Byte {
   Byte { bits: [true] }
 }
@@ -364,7 +366,8 @@ data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
 
 fn eval_mvp2_context() -> EvalContext {
   EvalContext {
-    interpretation: eval_mvp2_interpretation_algebra()
+    interpretation: eval_mvp2_interpretation_algebra(),
+    interpretation_pin: eval_mvp2_interpretation_pin
   }
 }
 
@@ -382,6 +385,7 @@ data run_eval_mvp2_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test
   subject: eval_test_claim_subject(
     claim: claim_eval_mvp2_test_claim_route,
     context: eval_mvp2_context(),
-    tree: eval_mvp2_inferred_tree()
+    tree: eval_mvp2_inferred_tree(),
+    evaluator_pin: eval_mvp2_evaluator_pin
   )
 )

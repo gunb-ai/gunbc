@@ -1245,7 +1245,8 @@ fn run_test_claim(
 fn eval_test_claim_subject(
   claim: TestClaim,
   context: EvalContext,
-  tree: InferredTree
+  tree: InferredTree,
+  evaluator_pin: Symbol
 ) -> TestClaimEvalSubject<Node> {
   let input = test_claim_input(c: claim)
   TestClaimEvalSubject {
@@ -1254,7 +1255,7 @@ fn eval_test_claim_subject(
     tree: tree,
     input: test_claim_typed_input_node(
       evaluator_input: input,
-      evaluator_pin: v4_evaluator_interpretation_pin
+      evaluator_pin: evaluator_pin
     )
   }
 }

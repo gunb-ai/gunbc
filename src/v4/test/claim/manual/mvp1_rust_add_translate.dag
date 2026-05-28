@@ -58,7 +58,10 @@ import v4.extdeps.languages.rust {
 import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v4.test.claim.manual.infer_ground_add_mvp { infer_receipt_context }
+import v4.test.claim.manual.infer_ground_add_mvp {
+  infer_receipt_context,
+  infer_receipt_input_infer_add_mvp
+}
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { Map, empty_map }
 import v4.std.constraints {
@@ -482,7 +485,10 @@ data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEva
   claim: claim_mvp1_emit_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
@@ -502,7 +508,10 @@ data subject_mvp1_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = 
   claim: claim_mvp1_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 

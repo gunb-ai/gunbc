@@ -291,7 +291,8 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 
 fn pipeline_claim_context() -> EvalContext {
   EvalContext {
-    interpretation: pipeline_interpretation()
+    interpretation: pipeline_interpretation(),
+    interpretation_pin: pipeline_interpretation_pin
   }
 }
 
@@ -305,7 +306,10 @@ fn pipeline_rejection_subject(
     claim: claim,
     context: pipeline_claim_context(),
     tree: workflow_inferred_tree(root: test_claim_input(c: claim)),
-    input: TestClaimTypedInput { evaluator_input: case.pipeline }
+    input: test_claim_typed_input_pinned(
+      evaluator_input: case.pipeline,
+      evaluator_pin: case.input_symbol
+    )
   }
 }
 

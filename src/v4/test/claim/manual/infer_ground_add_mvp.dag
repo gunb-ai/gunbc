@@ -87,6 +87,7 @@ data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
 data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_symbol
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
+data infer_receipt_interpretation_pin: Symbol = infer_receipt_interpretation_pin
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
 // 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
@@ -236,7 +237,8 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 fn infer_receipt_context() -> EvalContext {
   EvalContext {
-    interpretation: infer_receipt_interpretation()
+    interpretation: infer_receipt_interpretation(),
+    interpretation_pin: infer_receipt_interpretation_pin
   }
 }
 
@@ -256,11 +258,23 @@ fn infer_receipt_empty_tree(root: Node) -> InferredTree {
 
 
 fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
+  let input = infer_receipt_case_input(case: case)
   TestClaimEvalSubject {
     claim: infer_receipt_claim(case: case),
     context: infer_receipt_context(),
-    tree: infer_receipt_empty_tree(root: infer_receipt_case_input(case: case)),
-    input: TestClaimTypedInput { evaluator_input: infer_receipt_case_input(case: case) }
+    tree: infer_receipt_empty_tree(root: input),
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: infer_receipt_case_pin(case: case)
+    )
+  }
+}
+
+
+fn infer_receipt_case_pin(case: InferReceiptCase) -> Symbol {
+  match case {
+    InferDiagnosticReceiptCase { input_symbol: sym, label: _, input: _, expected_rejection: _ } => sym
+    InferCompilesReceiptCase { input_symbol: sym, label: _, input: _, expected_value: _ } => sym
   }
 }
 
