@@ -523,6 +523,28 @@ fn wasm_inhabitant_f64_node() -> Node {
   wasm_float_inhabitant_node(id: wasm_inhabitant_f64, facts: wasm_facts_f64)
 }
 
+fn wasm_integer_inhabitant_id(facts: WasmIntegerPrimitiveFacts) -> Symbol {
+  match facts {
+    wasm_facts_i32 => wasm_inhabitant_i32
+    wasm_facts_i64 => wasm_inhabitant_i64
+  }
+}
+
+fn wasm_float_inhabitant_id(facts: WasmFloatPrimitiveFacts) -> Symbol {
+  match facts {
+    wasm_facts_f32 => wasm_inhabitant_f32
+    wasm_facts_f64 => wasm_inhabitant_f64
+  }
+}
+
+fn wasm_integer_inhabitant_for_facts(facts: WasmIntegerPrimitiveFacts) -> Node {
+  wasm_integer_inhabitant_node(id: wasm_integer_inhabitant_id(facts: facts), facts: facts)
+}
+
+fn wasm_float_inhabitant_for_facts(facts: WasmFloatPrimitiveFacts) -> Node {
+  wasm_float_inhabitant_node(id: wasm_float_inhabitant_id(facts: facts), facts: facts)
+}
+
 fn wasm_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
@@ -2054,7 +2076,7 @@ fn wasm_float_algebra_witness_node(facts: WasmFloatPrimitiveFacts) -> Node {
 }
 
 fn wasm_integer_algebra_inhabitance(facts: WasmIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = wasm_integer_facts_node(facts: facts)
+  let inhabitant = wasm_integer_inhabitant_for_facts(facts: facts)
   AlgebraInhabitanceDecl {
     algebra: commutative_semiring_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
@@ -2063,7 +2085,7 @@ fn wasm_integer_algebra_inhabitance(facts: WasmIntegerPrimitiveFacts) -> Algebra
 }
 
 fn wasm_float_algebra_inhabitance(facts: WasmFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = wasm_float_facts_node(facts: facts)
+  let inhabitant = wasm_float_inhabitant_for_facts(facts: facts)
   AlgebraInhabitanceDecl {
     algebra: approximate_field_type_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
@@ -2134,7 +2156,7 @@ fn wasm_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligat
 
 fn wasm_integer_law_obligations(facts: WasmIntegerPrimitiveFacts) -> List<AlgebraLawObligation> {
   let witness = wasm_integer_algebra_witness_node(facts: facts)
-  let inhabitant = wasm_integer_facts_node(facts: facts)
+  let inhabitant = wasm_integer_inhabitant_for_facts(facts: facts)
   let algebra = commutative_semiring_type_node(inhabitant: inhabitant)
   [
     wasm_model_core_law_obligation(
@@ -2190,7 +2212,7 @@ fn wasm_integer_law_obligations(facts: WasmIntegerPrimitiveFacts) -> List<Algebr
 
 fn wasm_float_law_obligations(facts: WasmFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
   let witness = wasm_float_algebra_witness_node(facts: facts)
-  let inhabitant = wasm_float_facts_node(facts: facts)
+  let inhabitant = wasm_float_inhabitant_for_facts(facts: facts)
   let algebra = approximate_field_type_node(inhabitant: inhabitant)
   [
     wasm_model_core_law_obligation(
