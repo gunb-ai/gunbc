@@ -479,8 +479,7 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     let text = fs::read_to_string(&compile_path)
         .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
     let patched = patch_bootstrap_dag_collect_text(&text)?;
-    fs::write(&compile_path, patched)
-        .map_err(|e| format!("write {}: {e}", compile_path.display()))
+    fs::write(&compile_path, patched).map_err(|e| format!("write {}: {e}", compile_path.display()))
 }
 
 fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
