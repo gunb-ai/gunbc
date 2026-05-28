@@ -12,6 +12,9 @@ import v4.lens.registry {
   Idempotency,
   LensIdV0,
   Parallelism,
+  Provenance,
+  StructuralResolution,
+  TableDecisionTree,
   UnusedParameters,
   lens_registry_ids_resolve
 }
@@ -22,7 +25,29 @@ import v4.lens.affected_set {
   affected_set_rerun_nodes
 }
 import v4.std.change { AffectedSet }
-import v4.std.node { Node, Symbol }
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimCacheKey,
+  TestClaimCacheReceipt,
+  TestClaimEvalSubject,
+  TestClaimTypedInput,
+  inferred_tree_digest,
+  test_claim_claim_hash_digest,
+  test_claim_interpretation_cache_digest
+}
+import v4.std.node {
+  Atom,
+  Hash,
+  Node,
+  Symbol,
+  TypeNode,
+  combine_hash,
+  content_hash,
+  byte_offset_cache_digest
+}
+import v4.std.algebra { fold_list }
+import v4.std.collection { List }
+import v4.std.text { Char, String }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.algebra {
   count_equal,
@@ -283,6 +308,203 @@ fn ci_all_commands_authority_ok(jobs: List<CiJob>) -> Bool {
     acc && ci_command_authority_ok(c: j.command)
   })
 }
+
+data ci_cache_cmd_lint_tag: Symbol = ci_cache_cmd_lint_tag
+data ci_cache_cmd_test_tag: Symbol = ci_cache_cmd_test_tag
+data ci_cache_cmd_ignored_test_tag: Symbol = ci_cache_cmd_ignored_test_tag
+data ci_cache_cmd_lens_ci_tag: Symbol = ci_cache_cmd_lens_ci_tag
+data ci_cache_cmd_bootstrap_compile_tag: Symbol = ci_cache_cmd_bootstrap_compile_tag
+data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
+data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
+data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
+data ci_cache_jobs_empty_tag: Symbol = ci_cache_jobs_empty_tag
+data ci_cache_gates_empty_tag: Symbol = ci_cache_gates_empty_tag
+data ci_cache_lens_complexity_tag: Symbol = ci_cache_lens_complexity_tag
+data ci_cache_lens_cost_tag: Symbol = ci_cache_lens_cost_tag
+data ci_cache_lens_parallelism_tag: Symbol = ci_cache_lens_parallelism_tag
+data ci_cache_lens_effect_enum_tag: Symbol = ci_cache_lens_effect_enum_tag
+data ci_cache_lens_idempotency_tag: Symbol = ci_cache_lens_idempotency_tag
+data ci_cache_lens_provenance_tag: Symbol = ci_cache_lens_provenance_tag
+data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
+data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
+data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
+data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
+
+
+fn ci_symbol_digest(sym: Symbol) -> Hash {
+  content_hash(
+    n: Node {
+      kind: TypeNode { connective: Atom { identity: sym } },
+      children: []
+    }
+  )
+}
+
+
+fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
+  match policy {
+    Always => ci_symbol_digest(sym: ci_cache_gate_policy_always_tag)
+    RequiresJobAttempt { job: job } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_gate_policy_requires_job_tag),
+        b: ci_symbol_digest(sym: job)
+      )
+  }
+}
+
+
+// v4.std.text Char = Nat (scalar); use O(log |c|) base-256 digest, not Peano scalar_int_hash.
+fn ci_char_cache_digest(c: Char) -> Hash {
+  byte_offset_cache_digest(i: c)
+}
+
+
+fn ci_string_cache_digest(s: String) -> Hash {
+  fold_list(
+    xs: s,
+    empty: ci_symbol_digest(sym: ci_cache_string_empty_tag),
+    cons: fn(acc, ch) {
+      combine_hash(a: acc, b: ci_char_cache_digest(c: ch))
+    }
+  )
+}
+
+
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of LensIdV0) replaces ci_lens_id_cache_digest; interim hand-rolled coproduct fold for CiPipeline cache only.
+fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
+  match lens {
+    Complexity => ci_symbol_digest(sym: ci_cache_lens_complexity_tag)
+    Cost => ci_symbol_digest(sym: ci_cache_lens_cost_tag)
+    Parallelism => ci_symbol_digest(sym: ci_cache_lens_parallelism_tag)
+    EffectEnumeration => ci_symbol_digest(sym: ci_cache_lens_effect_enum_tag)
+    Idempotency => ci_symbol_digest(sym: ci_cache_lens_idempotency_tag)
+    Provenance => ci_symbol_digest(sym: ci_cache_lens_provenance_tag)
+    UnusedParameters => ci_symbol_digest(sym: ci_cache_lens_unused_params_tag)
+    StructuralResolution => ci_symbol_digest(sym: ci_cache_lens_structural_resolution_tag)
+    TableDecisionTree => ci_symbol_digest(sym: ci_cache_lens_table_decision_tree_tag)
+  }
+}
+
+
+fn ci_command_cache_digest(c: CiCommand) -> Hash {
+  match c {
+    LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
+    TestCommand => ci_symbol_digest(sym: ci_cache_cmd_test_tag)
+    IgnoredTestCommand { test_name: name } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_cmd_ignored_test_tag),
+        b: ci_string_cache_digest(s: name)
+      )
+    LensCiCommand { required_lenses: lenses } =>
+      fold_list(
+        xs: lenses,
+        empty: ci_symbol_digest(sym: ci_cache_cmd_lens_ci_tag),
+        cons: fn(acc, lens) {
+          combine_hash(a: acc, b: ci_lens_id_cache_digest(lens: lens))
+        }
+      )
+    BootstrapStageCompile { produces: produces } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
+        b: ci_symbol_digest(sym: produces)
+      )
+    M1RustEmitProbeCommand => ci_symbol_digest(sym: ci_cache_cmd_m1_probe_tag)
+  }
+}
+
+
+fn ci_job_cache_digest(j: CiJob) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: ci_symbol_digest(sym: j.id),
+      b: ci_command_cache_digest(c: j.command)
+    ),
+    b: fold_list(
+      xs: j.needs,
+      empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
+      cons: fn(acc, need) {
+        combine_hash(a: acc, b: ci_symbol_digest(sym: need))
+      }
+    )
+  )
+}
+
+
+fn ci_gate_cache_digest(g: CiGate) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: ci_symbol_digest(sym: g.id),
+      b: ci_symbol_digest(sym: g.job)
+    ),
+    b: ci_gate_run_policy_cache_digest(policy: g.run_policy)
+  )
+}
+
+
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of CiPipeline) replaces this hand-rolled coproduct digest fold; interim TestClaim pinned-evaluator cache authority only.
+fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
+  combine_hash(
+    a: fold_list(
+      xs: p.jobs,
+      empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
+      cons: fn(acc, job) {
+        combine_hash(a: acc, b: ci_job_cache_digest(j: job))
+      }
+    ),
+    b: fold_list(
+      xs: p.gates,
+      empty: ci_symbol_digest(sym: ci_cache_gates_empty_tag),
+      cons: fn(acc, gate) {
+        combine_hash(a: acc, b: ci_gate_cache_digest(g: gate))
+      }
+    )
+  )
+}
+
+
+fn test_claim_typed_input_ci_pipeline(
+  evaluator_input: CiPipeline,
+  evaluator_pin: Symbol
+) -> TestClaimTypedInput<CiPipeline> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin
+  }
+}
+
+
+fn ci_test_claim_evaluator_digest(input: TestClaimTypedInput<CiPipeline>) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: input.evaluator_pin),
+    b: ci_pipeline_cache_digest(p: input.evaluator_input)
+  )
+}
+
+
+fn ci_test_claim_cache_interpretation_hash(subject: TestClaimEvalSubject<CiPipeline>) -> Hash {
+  combine_hash(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: combine_hash(
+      a: test_claim_interpretation_cache_digest(context: subject.context),
+      b: ci_test_claim_evaluator_digest(input: subject.input)
+    )
+  )
+}
+
+
+fn test_claim_cache_key_interpretation_hash_ci_pipeline(key: TestClaimCacheKey<CiPipeline>) -> Hash {
+  ci_test_claim_cache_interpretation_hash(subject: key.eval_subject)
+}
+
+
+fn test_claim_cache_receipt_pinned(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimCacheReceipt<CiPipeline> {
+  TestClaimCacheReceipt {
+    key: TestClaimCacheKey {
+      eval_subject: subject
+    }
+  }
+}
+
 
 fn ci_pipeline_well_formed(p: CiPipeline) -> Outcome<CiPipeline> {
   if ci_all_job_ids_unique(jobs: p.jobs) {

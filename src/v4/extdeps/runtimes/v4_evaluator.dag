@@ -41,6 +41,7 @@ import v4.std.runtime {
   EvaluationFrame,
   ExecutionSemantics,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   LoopInterpreter,
   Raise,
   ResourceEffectBoundary,
@@ -60,6 +61,11 @@ data v4_eval_wave1_boundary_operation_symbol: Symbol = v4_eval_wave1_boundary_op
 data v4_eval_wave1_boundary_effect_symbol: Symbol = v4_eval_wave1_boundary_effect_symbol
 data v4_eval_wave1_semantics_deferred: Symbol = v4_eval_wave1_semantics_deferred
 data v4_eval_wave1_binding_miss: Symbol = v4_eval_wave1_binding_miss
+data v4_eval_wave1_allocate_literal_sym: Symbol = v4_eval_wave1_allocate_literal_sym
+data v4_eval_wave1_call_primitive_sym: Symbol = v4_eval_wave1_call_primitive_sym
+data v4_eval_wave1_choose_branch_sym: Symbol = v4_eval_wave1_choose_branch_sym
+data v4_eval_wave1_step_loop_sym: Symbol = v4_eval_wave1_step_loop_sym
+data v4_eval_wave1_bind_value_sym: Symbol = v4_eval_wave1_bind_value_sym
 
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
@@ -265,6 +271,16 @@ fn v4_evaluator_interpretation_wave1() -> InterpretationAlgebra {
     bind: BindInterpreter {
       bind_value: v4_eval_wave1_bind_value
     }
+  }
+}
+
+fn v4_evaluator_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: v4_eval_wave1_allocate_literal_sym,
+    call_primitive: v4_eval_wave1_call_primitive_sym,
+    choose_branch: v4_eval_wave1_choose_branch_sym,
+    step_loop: v4_eval_wave1_step_loop_sym,
+    bind_value: v4_eval_wave1_bind_value_sym
   }
 }
 

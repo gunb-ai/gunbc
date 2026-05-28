@@ -8,6 +8,7 @@ module v4.test.claim.manual.dissolution_subsumption_reverification
 import v4.compiler.eval {
   EvalContext,
   TestClaimRun,
+  eval_context_with_semantics,
   eval_diagnostic,
   eval_test_claim_subject,
   run_test_claim
@@ -66,6 +67,7 @@ import v4.std.runtime {
   EnvironmentBindingKey,
   EvaluationEnvironment,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   LoopInterpreter,
   RuntimeUnit,
   RuntimeUnitValue,
@@ -92,8 +94,13 @@ data subsumption_second_leaf_edge: Symbol = subsumption_second_leaf_edge
 data subsumption_mechanical_claim_edge: Symbol = subsumption_mechanical_claim_edge
 data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
 data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
-data subsumption_claim_hash: Hash = subsumption_claim_hash
-data subsumption_interpretation_hash: Hash = subsumption_interpretation_hash
+data subsumption_interpretation_pin: Symbol = subsumption_interpretation_pin
+data subsumption_allocate_literal_sym: Symbol = subsumption_allocate_literal_sym
+data subsumption_call_primitive_sym: Symbol = subsumption_call_primitive_sym
+data subsumption_choose_branch_sym: Symbol = subsumption_choose_branch_sym
+data subsumption_step_loop_sym: Symbol = subsumption_step_loop_sym
+data subsumption_bind_value_sym: Symbol = subsumption_bind_value_sym
+data subsumption_evaluator_pin: Symbol = subsumption_evaluator_pin
 data mechanical_reverification_verified: Symbol = mechanical_reverification_verified
 data mechanical_reverification_not_verified: Symbol = mechanical_reverification_not_verified
 data mechanical_reverification_unverifiable: Symbol = mechanical_reverification_unverifiable
@@ -436,10 +443,22 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
 }
 
 
-fn subsumption_context() -> EvalContext {
-  EvalContext {
-    interpretation: subsumption_interpretation()
+fn subsumption_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: subsumption_allocate_literal_sym,
+    call_primitive: subsumption_call_primitive_sym,
+    choose_branch: subsumption_choose_branch_sym,
+    step_loop: subsumption_step_loop_sym,
+    bind_value: subsumption_bind_value_sym
   }
+}
+
+fn subsumption_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: subsumption_interpretation_pin,
+    interpretation: subsumption_interpretation(),
+    structure_witness: subsumption_interpretation_structure_witness()
+  )
 }
 
 
@@ -458,10 +477,9 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
     context: subsumption_context(),
     tree: subsumption_inferred_tree(
       root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
-    )
-  ),
-  claim_hash: subsumption_claim_hash,
-  interpretation_hash: subsumption_interpretation_hash
+    ),
+    evaluator_pin: subsumption_evaluator_pin
+  )
 )
 
 
@@ -522,8 +540,7 @@ data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, Run
     context: subsumption_context(),
     tree: subsumption_inferred_tree(
       root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
-    )
-  ),
-  claim_hash: subsumption_claim_hash,
-  interpretation_hash: subsumption_interpretation_hash
+    ),
+    evaluator_pin: subsumption_evaluator_pin
+  )
 )
