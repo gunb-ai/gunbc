@@ -387,6 +387,16 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         "{PYTHON_LANGUAGE_PATH}: Python TargetModel must consume the shared translation-rules edge"
     );
     assert!(
+        import_includes_name(&module, &["v4", "std", "grammar"], "FormalProduction"),
+        "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume canonical FormalProduction"
+    );
+    for name in ["GrammarExpr", "Sequence", "Terminal"] {
+        assert!(
+            !import_includes_name(&module, &["v4", "std", "grammar"], name),
+            "{PYTHON_LANGUAGE_PATH}: Python grammar rows must not import legacy nested GrammarExpr helper `{name}`"
+        );
+    }
+    assert!(
         import_includes_name(&module, &["v4", "std", "algebra"], "Empty"),
         "{PYTHON_LANGUAGE_PATH}: Python T-11 folds must import Empty from v4.std.algebra"
     );
@@ -401,6 +411,10 @@ fn v4_python_language_model_declares_t11_translation_rules() {
     assert!(
         surface_declares_fn(&module, "python_mvp1_target_model"),
         "{PYTHON_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
+        "{PYTHON_LANGUAGE_PATH}: must build grammar production RHS as a flat formal-symbol list"
     );
 }
 

@@ -9,11 +9,12 @@
 module v4.extdeps.languages.python
 
 import v4.std.grammar {
-  GrammarProduction,
-  GrammarExpr,
-  Sequence,
-  Terminal,
-  grammar_production_to_node
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence
 }
 import v4.std.lexing {
   LexRule,
@@ -97,7 +98,7 @@ type PythonConcreteSyntaxToken
 
 // 🟢 grounded.
 type PythonGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<PythonConcreteSyntaxToken>
 }
@@ -198,6 +199,12 @@ data python_mvp1_source_literal: Symbol = python_mvp1_source_literal
 data python_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data python_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data python_mvp1_source_text: String = "def add(x, y): return x + y"
+data python_formal_production_field_lhs: Symbol = python_formal_production_field_lhs
+data python_formal_production_field_rhs: Symbol = python_formal_production_field_rhs
+data python_formal_nonterminal_field_identity: Symbol = python_formal_nonterminal_field_identity
+data python_formal_terminal_field_identity: Symbol = python_formal_terminal_field_identity
+data python_formal_symbol_field_terminal: Symbol = python_formal_symbol_field_terminal
+data python_formal_symbol_field_nonterminal: Symbol = python_formal_symbol_field_nonterminal
 
 fn python_mvp1_concrete_tokens() -> List<PythonConcreteSyntaxToken> {
   [
@@ -859,45 +866,29 @@ fn python_mvp1_serialize_source_node() -> Node {
   }
 }
 
-fn python_grammar_terminal(token_class: Symbol) -> GrammarExpr {
-  Terminal { token_class: token_class }
-}
-
-type PythonGramBuild1State
-  = PythonGramBuild1StateInit
-  | PythonGramBuild1StateReady { expr: GrammarExpr }
-
-fn python_grammar_sequence_from_token_classes() -> GrammarExpr {
-  match fold_list(
-    xs: python_mvp1_concrete_tokens(),
-    empty: PythonGramBuild1StateInit,
-    cons: fn(state, token) {
-      match state {
-        PythonGramBuild1StateInit =>
-          PythonGramBuild1StateReady {
-            expr: python_grammar_terminal(token_class: python_concrete_token_class(token: token))
-          }
-        PythonGramBuild1StateReady { expr: acc } =>
-          PythonGramBuild1StateReady {
-            expr: Sequence {
-              left: acc,
-              right: python_grammar_terminal(token_class: python_concrete_token_class(token: token))
-            }
-          }
-      }
-    }
-  ) {
-    PythonGramBuild1StateInit =>
-      python_grammar_terminal(token_class: python_token_kw_def)
-    PythonGramBuild1StateReady { expr: result } => result
+fn python_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence {
+    terminal: FormalTerminal { identity: token_class }
   }
 }
 
-fn python_grammar_production_mvp1_fn_add() -> GrammarProduction {
-  GrammarProduction {
-    name: python_production_mvp1_fn_add,
-    expression: python_grammar_sequence_from_token_classes(),
-    emitted: python_mvp1_emitted_add_fn_node()
+fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: python_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: python_formal_terminal_symbol(token_class: python_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn python_grammar_production_mvp1_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: python_production_mvp1_fn_add },
+    rhs: python_formal_rhs_from_token_classes()
   }
 }
 
@@ -919,11 +910,77 @@ fn python_relation_token_edges(tokens: List<PythonConcreteSyntaxToken>) -> List<
   )
 }
 
+fn python_formal_nonterminal_node(nonterminal: FormalNonterminal) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(name: python_formal_nonterminal_field_identity, target: python_inhabitant_atom(id: nonterminal.identity))
+    ]
+  }
+}
+
+fn python_formal_terminal_node(terminal: FormalTerminal) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(name: python_formal_terminal_field_identity, target: python_inhabitant_atom(id: terminal.identity))
+    ]
+  }
+}
+
+fn python_formal_grammar_symbol_node(symbol: FormalGrammarSymbol) -> Node {
+  match symbol {
+    FormalTerminalOccurrence { terminal } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          python_named_edge(name: python_formal_symbol_field_terminal, target: python_formal_terminal_node(terminal: terminal))
+        ]
+      }
+    FormalNonterminalOccurrence { nonterminal } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          python_named_edge(name: python_formal_symbol_field_nonterminal, target: python_formal_nonterminal_node(nonterminal: nonterminal))
+        ]
+      }
+  }
+}
+
+fn python_formal_rhs_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
+  fold_list(
+    xs: symbols,
+    empty: Empty,
+    cons: fn(acc, symbol) {
+      list_snoc_item(
+        xs: acc,
+        item: Edge { label: Positional, target: python_formal_grammar_symbol_node(symbol: symbol) }
+      )
+    }
+  )
+}
+
+fn python_formal_production_node(production: FormalProduction) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      python_named_edge(name: python_formal_production_field_lhs, target: python_formal_nonterminal_node(nonterminal: production.lhs)),
+      python_named_edge(
+        name: python_formal_production_field_rhs,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: python_formal_rhs_edges(symbols: production.rhs)
+        }
+      )
+    ]
+  }
+}
+
 fn python_grammar_relation_row_node(row: PythonGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      python_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      python_named_edge(name: grammar_relation_field_production, target: python_formal_production_node(production: row.production)),
       python_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       python_named_edge(
         name: grammar_relation_field_tokens,
