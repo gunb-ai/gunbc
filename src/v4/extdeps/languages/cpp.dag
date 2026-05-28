@@ -2,7 +2,7 @@
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
 // Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding, CppGramBuild1State.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.extdeps.cpp_abi.CppTargetProfile.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed integer catalog → ordered_ring_node, unsigned integer catalog → commutative_semiring_node (modulo overflow facts), bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
+// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed integer catalog → ordered_ring_node + partiality for representable-result-required, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
@@ -38,7 +38,9 @@ import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
+  FailClosedAtBoundary,
   ModelCore,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
@@ -261,6 +263,13 @@ data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
 data cpp_witness_ordered_ring_integer: Symbol = cpp_witness_ordered_ring_integer
 data cpp_witness_commutative_semiring_integer: Symbol = cpp_witness_commutative_semiring_integer
 data cpp_witness_bool_boolean_algebra: Symbol = cpp_witness_bool_boolean_algebra
+
+data cpp_op_signed_integer_add: Symbol = cpp_op_signed_integer_add
+data cpp_op_signed_integer_sub: Symbol = cpp_op_signed_integer_sub
+data cpp_op_signed_integer_mul: Symbol = cpp_op_signed_integer_mul
+data cpp_op_signed_integer_neg: Symbol = cpp_op_signed_integer_neg
+data cpp_precondition_signed_integer_result_representable: Symbol = cpp_precondition_signed_integer_result_representable
+data cpp_partial_signed_integer_result_not_representable: Symbol = cpp_partial_signed_integer_result_not_representable
 
 fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
   [
