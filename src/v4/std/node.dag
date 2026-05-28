@@ -438,6 +438,7 @@ data canonical_tag_byte_offset_byte: Symbol = canonical_tag_byte_offset_byte
 data canonical_tag_byte_offset_neg: Symbol = canonical_tag_byte_offset_neg
 data canonical_tag_byte_limb_out_of_range: Symbol = canonical_tag_byte_limb_out_of_range
 data canonical_tag_byte_offset_out_of_ceiling: Symbol = canonical_tag_byte_offset_out_of_ceiling
+data canonical_tag_byte_offset_overflow_tail_empty: Symbol = canonical_tag_byte_offset_overflow_tail_empty
 data byte_offset_cache_digest_max_limbs: Int = 9
 
 
@@ -468,10 +469,29 @@ fn byte_offset_byte_digest(b: Int) -> Hash {
 }
 
 
+fn byte_offset_cache_digest_overflow_tail(i: Int) -> Hash {
+  if i == 0 {
+    atom_identity_hash(s: canonical_tag_byte_offset_overflow_tail_empty)
+  } else {
+    combine_hash(
+      a: byte_offset_byte_digest(b: i - (i / 256) * 256),
+      b: byte_offset_cache_digest_overflow_tail(i: i / 256)
+    )
+  }
+}
+
+
 // 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
 fn byte_offset_cache_digest_nonneg_bounded(i: Int, limbs_remaining: Int) -> Hash {
   if limbs_remaining == 0 {
-    atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling)
+    if i == 0 {
+      atom_identity_hash(s: canonical_tag_byte_offset_zero)
+    } else {
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling),
+        b: byte_offset_cache_digest_overflow_tail(i: i)
+      )
+    }
   } else if i == 0 {
     atom_identity_hash(s: canonical_tag_byte_offset_zero)
   } else {
