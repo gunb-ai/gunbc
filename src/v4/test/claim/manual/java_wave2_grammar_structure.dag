@@ -39,5 +39,4 @@ fn java_wave2_grammar_structure_satisfied(lm: JavaLanguageModel) -> Bool {
     )
 }
 
-data java_wave2_grammar_structure_ready: Bool =
-  java_wave2_grammar_structure_satisfied(lm: java_language_model_wave2())
+data java_wave2_grammar_structure_ready: Bool = java_wave2_grammar_structure_satisfied(lm: java_language_model_wave2())
