@@ -56,6 +56,8 @@ const WASM_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/w
 const WASM_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/wasm.dag";
 const GO_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/go.dag");
 const GO_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/go.dag";
+const KOTLIN_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/kotlin.dag");
+const KOTLIN_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/kotlin.dag";
 const DAG_LANGUAGE_DAG: &str = include_str!("../../../../v4/extdeps/languages/dag.dag");
 const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
@@ -503,6 +505,64 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
             surface_fn_count(&module, name),
             0,
             "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must not declare faithful algebra inhabitance for deferred complex/singleton facts via `{name}`"
+        );
+    }
+}
+
+#[test]
+fn v4_kotlin_language_model_declares_wave2b_algebra_inhabitance() {
+    let module = parse_module(KOTLIN_LANGUAGE_DAG, KOTLIN_LANGUAGE_PATH);
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "model_core"],
+            "AlgebraInhabitanceDecl"
+        ),
+        "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must consume ModelCore algebra inhabitance rows"
+    );
+    for name in [
+        "ordered_ring_node",
+        "approximate_field_node",
+        "boolean_algebra_node",
+    ] {
+        assert!(
+            import_includes_name(&module, &["v4", "std", "algebra"], name),
+            "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must use grounded std.algebra Node constructor `{name}`"
+        );
+    }
+    for name in [
+        "kotlin_integer_algebra_witness_node",
+        "kotlin_float_algebra_witness_node",
+        "kotlin_bool_algebra_witness_node",
+        "kotlin_integer_algebra_inhabitance",
+        "kotlin_float_algebra_inhabitance",
+        "kotlin_bool_algebra_inhabitance",
+        "kotlin_model_core_inhabitance_decls",
+        "kotlin_model_core_wave1",
+    ] {
+        assert!(
+            surface_declares_fn(&module, name),
+            "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must declare `{name}`"
+        );
+    }
+    for name in [
+        "kotlin_char_algebra_witness_node",
+        "kotlin_string_algebra_witness_node",
+        "kotlin_unit_algebra_witness_node",
+        "kotlin_nothing_algebra_witness_node",
+        "kotlin_char_algebra_inhabitance",
+        "kotlin_string_algebra_inhabitance",
+        "kotlin_unit_algebra_inhabitance",
+        "kotlin_nothing_algebra_inhabitance",
+        "kotlin_char_algebra_inhabitance_decls",
+        "kotlin_string_algebra_inhabitance_decls",
+        "kotlin_unit_algebra_inhabitance_decls",
+        "kotlin_nothing_algebra_inhabitance_decls",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{KOTLIN_LANGUAGE_PATH}: Kotlin Wave 2b must not declare faithful algebra inhabitance for deferred char/string/unit/nothing facts via `{name}`"
         );
     }
 }

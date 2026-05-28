@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/kotlin.dag
 // Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles, wave-1 lex/grammar/MVP.
-// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar; wave-1 productions declared as `FormalProduction` flat rhs (`kotlin_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence; built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
+// Status: T-4 Kotlin wave-1 + T-4.17 wave-2a lex/grammar (wave-1 productions declared as `FormalProduction` flat rhs — `kotlin_wave1_formal_productions`; `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence) + wave-2b inhabitance (int/float/bool only); built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 `fun add` substrate for T-11; char/string/unit/nothing inhabitance deferred (encoding/singleton/uninhabited); runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
 // Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html — syntax/lex/grammar: https://kotlinlang.org/spec/syntax-and-grammar.html
 
 module v4.extdeps.languages.kotlin
@@ -55,6 +55,7 @@ import v4.std.lexing {
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
@@ -95,7 +96,17 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Cons, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  approximate_field_node,
+  boolean_algebra_node,
+  Cons,
+  Empty,
+  fold_list,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node
+}
 import v4.std.text { String }
 
 // Kotlin's specification defines only signed built-in integer types; unsigned
@@ -246,6 +257,10 @@ data kotlin_integer_overflow_unspecified: KotlinIntegerOverflowUnspecified = Kot
 data kotlin_platform_specific_runtime_representation: KotlinRuntimeRepresentation = KotlinRuntimeRepresentation {}
 data kotlin_singleton_object: KotlinSingletonInhabitance = KotlinSingletonInhabitance {}
 data kotlin_uninhabited_control_flow: KotlinControlFlowInhabitance = KotlinControlFlowInhabitance {}
+
+data kotlin_witness_integer_ordered_ring: Symbol = kotlin_witness_integer_ordered_ring
+data kotlin_witness_float_approximate_field: Symbol = kotlin_witness_float_approximate_field
+data kotlin_witness_bool_boolean_algebra: Symbol = kotlin_witness_bool_boolean_algebra
 
 data kotlin_facts_byte: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFacts {
   surface_spelling: kotlin_surface_spelling_byte,
@@ -848,6 +863,127 @@ fn kotlin_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
       right: kotlin_primitive_bundles_from_float_catalog()
     ),
     right: kotlin_primitive_bundles_from_nonnumeric_catalog()
+  )
+}
+
+fn kotlin_integer_algebra_witness_node(facts: KotlinIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_witness_integer_ordered_ring,
+        target: kotlin_atom(id: kotlin_witness_integer_ordered_ring)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_overflow,
+        target: kotlin_overflow_node(overflow: facts.overflow)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_representation,
+        target: kotlin_runtime_representation_node(representation: facts.representation)
+      )
+    ]
+  }
+}
+
+fn kotlin_float_algebra_witness_node(facts: KotlinFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_witness_float_approximate_field,
+        target: kotlin_atom(id: kotlin_witness_float_approximate_field)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_value_format,
+        target: kotlin_float_value_format_node(value_format: facts.value_format)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_representation,
+        target: kotlin_runtime_representation_node(representation: facts.representation)
+      )
+    ]
+  }
+}
+
+fn kotlin_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_witness_bool_boolean_algebra,
+        target: kotlin_atom(id: kotlin_witness_bool_boolean_algebra)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_representation,
+        target: kotlin_runtime_representation_node(
+          representation: kotlin_platform_specific_runtime_representation
+        )
+      )
+    ]
+  }
+}
+
+fn kotlin_integer_algebra_inhabitance(facts: KotlinIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = kotlin_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: kotlin_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn kotlin_float_algebra_inhabitance(facts: KotlinFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = kotlin_float_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: kotlin_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn kotlin_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = kotlin_nonnumeric_facts_node(facts: kotlin_facts_boolean)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: kotlin_bool_algebra_witness_node()
+  }
+}
+
+fn kotlin_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: kotlin_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: kotlin_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn kotlin_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: kotlin_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: kotlin_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn kotlin_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    kotlin_bool_algebra_inhabitance()
+  ]
+}
+
+fn kotlin_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
+      left: kotlin_integer_algebra_inhabitance_decls(),
+      right: kotlin_float_algebra_inhabitance_decls()
+    ),
+    right: kotlin_bool_algebra_inhabitance_decls()
   )
 }
 
@@ -2584,7 +2720,7 @@ fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
 fn kotlin_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: kotlin_wave1_primitive_fact_bundles(),
-    inhabitance: [],
+    inhabitance: kotlin_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
