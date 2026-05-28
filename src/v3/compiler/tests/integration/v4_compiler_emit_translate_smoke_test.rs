@@ -564,7 +564,7 @@ fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
         "f64.const ",
     ] {
         assert!(
-            !module_expr_string_literal_eq(&module, stale_literal),
+            !module_string_literal_eq(&module, WASM_LANGUAGE_DAG, stale_literal),
             "{WASM_LANGUAGE_PATH}: WAT token literal `{stale_literal}` must not embed whitespace"
         );
     }
@@ -775,18 +775,42 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
     })
 }
 
-fn module_expr_string_literal_eq(
+fn module_string_literal_eq(
     module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
     expected: &str,
 ) -> bool {
     module.items.iter().any(|item| match item {
         SurfaceItem::Let { expr, .. } => expr_string_literal_eq(expr, expected),
         SurfaceItem::Fn { body, .. } => expr_string_literal_eq(body, expected),
+        SurfaceItem::FnExternalBody { body_span, .. } => {
+            source_span_string_literal_eq(source, body_span, expected)
+        }
         SurfaceItem::Data {
             body: Some(expr), ..
         } => expr_string_literal_eq(expr, expected),
+        SurfaceItem::Data {
+            body: None,
+            body_span,
+            ..
+        } => source_span_string_literal_eq(source, body_span, expected),
         _ => false,
     })
+}
+
+fn source_span_string_literal_eq(
+    source: &str,
+    span: &v3_compiler::SourceSpan,
+    expected: &str,
+) -> bool {
+    let Some(body) = source.get(span.byte_start as usize..span.byte_end as usize) else {
+        return false;
+    };
+    body.contains(&dag_string_literal(expected))
+}
+
+fn dag_string_literal(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn expr_string_literal_eq(expr: &SurfaceExpr, expected: &str) -> bool {
