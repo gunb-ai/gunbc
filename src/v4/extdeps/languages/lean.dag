@@ -604,9 +604,11 @@ fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 // probes match the fixture without claiming parse-stage binding projection.
 
 
-fn lean_mvp1_formal_token_classes() -> List<Symbol> {
+data lean_mvp1_token_class_head: Symbol = lean_token_kw_def
+
+
+fn lean_mvp1_token_class_tail() -> List<Symbol> {
   [
-    lean_token_kw_def,
     lean_token_name_dec,
     lean_token_lparen,
     lean_token_name_n,
@@ -622,6 +624,14 @@ fn lean_mvp1_formal_token_classes() -> List<Symbol> {
     lean_token_kw_termination_by,
     lean_token_name_n
   ]
+}
+
+
+fn lean_mvp1_formal_token_classes() -> List<Symbol> {
+  Cons {
+    head: lean_mvp1_token_class_head,
+    tail: lean_mvp1_token_class_tail()
+  }
 }
 
 
@@ -650,41 +660,31 @@ fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
 data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
 
 
-type LeanGramBuildState
-  = LeanGramBuildInit
-  | LeanGramBuildReady { expr: GrammarExpr }
-
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — parse sequence derived from same token-class spine as FormalProduction.rhs.
-fn lean_grammar_sequence_from_token_classes(classes: List<Symbol>) -> GrammarExpr {
-  match fold_list(
-    xs: classes,
-    empty: LeanGramBuildInit,
-    cons: fn(state, token_class) {
-      match state {
-        LeanGramBuildInit =>
-          LeanGramBuildReady {
-            expr: lean_grammar_terminal(token_class: token_class)
-          }
-        LeanGramBuildReady { expr: acc } =>
-          LeanGramBuildReady {
-            expr: Sequence {
-              left: acc,
-              right: lean_grammar_terminal(token_class: token_class)
-            }
-          }
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — parse sequence derived from same
+// non-empty token-class spine as FormalProduction.rhs; dissolve when ParseGrammar consumes
+// FormalProduction directly.
+fn lean_grammar_sequence_from_nonempty(
+  head: Symbol,
+  tail: List<Symbol>
+) -> GrammarExpr {
+  fold_list(
+    xs: tail,
+    empty: lean_grammar_terminal(token_class: head),
+    cons: fn(acc, token_class) {
+      Sequence {
+        left: acc,
+        right: lean_grammar_terminal(token_class: token_class)
       }
     }
-  ) {
-    LeanGramBuildInit =>
-      lean_grammar_terminal(token_class: lean_token_kw_def)
-    LeanGramBuildReady { expr: result } => result
-  }
+  )
 }
 
 
 fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
-  lean_grammar_sequence_from_token_classes(classes: lean_mvp1_formal_token_classes())
+  lean_grammar_sequence_from_nonempty(
+    head: lean_mvp1_token_class_head,
+    tail: lean_mvp1_token_class_tail()
+  )
 }
 
 
@@ -714,11 +714,11 @@ fn lean_wave1_lex_rules() -> LexRuleSet {
       lean_lex_rule(token_class: lean_token_minus, text: " - "),
       lean_lex_rule(token_class: lean_token_kw_def, text: "def "),
       lean_lex_rule(token_class: lean_token_type_int32, text: "Int32"),
-      lean_lex_rule(token_class: lean_token_name_dec, text: "dec"),
+      lean_lex_rule(token_class: lean_token_name_dec, text: "dec "),
       lean_numeric_literal_lex_rule(),
       lean_lex_rule(token_class: lean_token_name_n, text: "n"),
       lean_lex_rule(token_class: lean_token_lparen, text: "("),
-      lean_lex_rule(token_class: lean_token_colon, text: ": "),
+      lean_lex_rule(token_class: lean_token_colon, text: " : "),
       lean_lex_rule(token_class: lean_token_rparen, text: ")")
     ]
   }
