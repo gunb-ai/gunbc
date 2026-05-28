@@ -17353,7 +17353,12 @@ pub fn emit_main_rs(
             has_pipeline.clone(),
             crate_name.clone(),
         );
-        let cli_struct = emit_cli_struct(workflow_funcs.clone());
+        let binary_name = if has_pipeline.clone() {
+            "gunbc".to_string()
+        } else {
+            crate_name.clone()
+        };
+        let cli_struct = emit_cli_struct(workflow_funcs.clone(), binary_name);
         let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
         let pipeline_fns = if has_pipeline.clone() {
             emit_main_pipeline_fns(crate_name.clone())
@@ -17462,8 +17467,8 @@ pub fn emit_main_mod_uses(
     }
 }
 
-pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"gunbc\", about = \"A causal compiler: write .dag, get Rust/Python/Go.\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
+pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>, binary_name: String) -> String {
+    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"".to_string()), binary_name), "\", about = \"A causal compiler: write .dag, get Rust/Python/Go.\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
 }
 
 pub fn emit_subcommand_enum(
