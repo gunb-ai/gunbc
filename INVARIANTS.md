@@ -214,6 +214,29 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 **Receipt:** Lens implementations once reached into hand-written storage details of the substrate, so every storage refactor cascaded into lens edits. Dissolution: declared substrate query functions (L-7); lenses became consumers of a typed boundary instead of the storage itself.
 
+### Problem shape: Cross-layer import (dependency direction violation)
+
+**Rule:** Module-layer dependencies form a strict DAG. The declared layer order is:
+
+```
+std/        — universal primitives; may be imported by any layer
+extdeps/    — external dependency modeling; imports std/ only
+compiler/   — pipeline stages; imports std/ and extdeps/
+workflow/   — orchestration; imports std/ and compiler/
+```
+
+An import edge pointing opposite to this order (`extdeps/ → compiler/`, `std/ → compiler/`) is a violation regardless of whether the imported symbol "happens to work." The compiler reads external models; external models do not read the compiler.
+
+**Why it belongs in P2:** Every wrong-direction import creates a hidden parallel authority: the type definition lives in the importing layer's dependency, not in the layer that conceptually owns it. Every consumer of the wrong-direction import inherits that hidden coupling. It also violates the homomorphism premise: the compiler processes Node graphs uniformly; if extdeps/ types are defined in compiler/, the compiler owns the schema of something it should be reading, not defining.
+
+**Problem shape:** `extdeps/python.dag` imports `LexRules`, `GrammarProduction` from `v4.compiler.tokenize` / `v4.compiler.parse`. The compiler now owns the schema of the language model it is supposed to read. Adding or renaming a compiler type forces updates to all language definitions. Moving the compiler requires moving the language definitions.
+
+**Solution shape:** Any type shared between `extdeps/` and `compiler/` belongs in `std/`. Both sides import from `std/`; neither imports the other.
+
+**Enforcement:** PR review must check: does any `extdeps/` file import from `v4.compiler.*`? If yes, the import is a violation unless the type being imported does not belong in std/ (file a finding and require the move). Same check for `std/` importing from `compiler/` or `extdeps/`.
+
+**Receipt:** 14 extdep files (`python.dag`, `rust.dag`, `cpp.dag`, `go.dag`, `swift.dag`, `kotlin.dag`, `java.dag`, `typescript.dag`, `wasm.dag`, `csv.dag`, `json.dag`, `sql.dag`, `toml.dag`, `yaml.dag`) imported types from `v4.compiler.tokenize`, `v4.compiler.parse`, and `v4.compiler.target_carriers`. `workflow/bootstrap.dag` imported `TargetModel` from `v4.compiler.target_carriers`. Dissolution: `std/lexing.dag` + `std/grammar.dag` authored; `TargetModel` promoted to `std/target_model.dag`; all wrong-direction imports replaced.
+
 ### <a id="p2-host-process-boundary"></a>Host-process boundary discipline
 
 **Rule:** Predicates that spawn **host processes** to evaluate a claim (e.g. `std::process` / `ExecuteCommand` in the test runner) meet the same boundary bar as the rest of the compiler: the contract is **typed and single-authority**, not a growing pile of string-heuristic special cases. Concretely:
@@ -237,6 +260,7 @@ A downstream stage reads a lower layer not through its declared accessors but by
 - **Emission Is Translation, Not Decision-Making**
 - **No Duplicate Representations** + **No Parallel Implementations** + **Single-Authority Metadata**
 - **Root-Cause Depth Invariant** — fix at the deepest unsound boundary, not the first downstream symptom
+- **Cross-layer import (dependency direction violation)** — extdeps/ → std/ → compiler/; no reverse edges
 - **Performance Invariant** + **Facts Flow Forward** — redundant work is dependency modeling at the wrong boundary
 - **Verification Predicates Are Substrate Consumers** — verification is not its own authority
 - **The One Boundary** (from Verifiability) — verification crosses target-specific realization only at declared boundaries
