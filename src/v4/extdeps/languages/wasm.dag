@@ -746,6 +746,30 @@ fn wasm_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
+fn wasm_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn wasm_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: wasm_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: wasm_formal_terminal_symbol(token_class: wasm_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn wasm_formal_production_mvp1_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: wasm_production_mvp1_fn_add },
+    rhs: wasm_formal_rhs_from_token_classes()
+  }
+}
+
 fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Choice { left: left, right: right }
 }
@@ -803,7 +827,7 @@ fn wasm_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn wasm_mvp1_grammar_relation_row() -> WasmGrammarRelationRow {
   WasmGrammarRelationRow {
-    production: wasm_grammar_production_mvp1_fn_add(),
+    production: wasm_formal_production_mvp1_fn_add(),
     emitted: wasm_mvp1_emitted_add_fn_node(),
     tokens: wasm_mvp1_concrete_tokens()
   }
@@ -828,7 +852,7 @@ fn wasm_grammar_relation_row_node(row: WasmGrammarRelationRow) -> Node {
     children: [
       wasm_named_edge(
         name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
+        target: formal_production_to_node(production: row.production)
       ),
       wasm_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       wasm_named_edge(

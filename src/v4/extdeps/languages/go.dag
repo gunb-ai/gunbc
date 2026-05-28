@@ -1388,7 +1388,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
-      go_named_edge(name: grammar_relation_field_emitted, target: row.production.emitted),
+      go_named_edge(name: grammar_relation_field_emitted, target: go_mvp1_emitted_add_fn_node()),
       go_named_edge(
         name: grammar_relation_field_tokens,
         target: Node { kind: TypeNode { connective: Conj }, children: go_relation_token_edges(tokens: row.tokens) }

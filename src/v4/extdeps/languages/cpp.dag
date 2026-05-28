@@ -6,11 +6,16 @@
 module v4.extdeps.languages.cpp
 
 import v4.std.grammar {
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   GrammarExpr,
   GrammarProduction,
   Sequence,
   Terminal,
-  grammar_production_to_node
+  formal_production_to_node
 }
 import v4.std.lexing {
   LexRule,
@@ -194,7 +199,7 @@ type CppConcreteSyntaxToken
   | CppBoundToken { token_class: Symbol, binding: Symbol }
 
 type CppGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<CppConcreteSyntaxToken>
 }
@@ -1127,6 +1132,30 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
+fn cpp_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn cpp_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: cpp_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: cpp_formal_terminal_symbol(token_class: cpp_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn cpp_formal_production_mvp1_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: cpp_production_mvp1_fn_add },
+    rhs: cpp_formal_rhs_from_token_classes()
+  }
+}
+
 type CppGramBuild1State
   = CppGramBuild1StateInit
   | CppGramBuild1StateReady { expr: GrammarExpr }
@@ -1167,7 +1196,7 @@ fn cpp_grammar_production_mvp1_fn_add(target_profile: Node) -> GrammarProduction
 
 fn cpp_mvp1_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow {
   CppGrammarRelationRow {
-    production: cpp_grammar_production_mvp1_fn_add(target_profile: target_profile),
+    production: cpp_formal_production_mvp1_fn_add(),
     emitted: cpp_mvp1_emitted_add_fn_node(target_profile: target_profile),
     tokens: cpp_mvp1_concrete_tokens()
   }
@@ -1187,7 +1216,7 @@ fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      cpp_named_edge(name: grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
       cpp_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       cpp_named_edge(
         name: grammar_relation_field_tokens,
