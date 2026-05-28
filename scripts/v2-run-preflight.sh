@@ -2,9 +2,9 @@
 # scripts/v2-run-preflight.sh
 #
 # Retired T-24 bridge helper. The structural v4 bootstrap authority remains
-# `v2-compiler compile`; the T-22 host eval receipt now runs in CI through
-# `scripts/check-v4-host-eval-receipt.py` and pins
-# `eval(tree, interpretation, inputs)`.
+# `v2-compiler compile`; the T-22 manual TestClaim corpus gate now runs in CI
+# through `scripts/v4-testclaim-corpus-gate.sh` and pins the modeled
+# TestClaimRun surface.
 #
 # Usage: from repo root, with v2-compiler already built:
 #   V2_COMPILER=target/release/v2-compiler bash scripts/v2-run-preflight.sh
@@ -35,6 +35,6 @@ else
   echo "compile: OK"
 fi
 
-echo "::notice::v2 run preflight bridge is retired for CI; T-22 host eval receipt now pins eval(tree, interpretation, inputs). Evidence: src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
+echo "::notice::v2 run preflight bridge is retired for CI; T-22 TestClaim corpus gate now pins the modeled TestClaimRun surface. Evidence: src/v4/test/v2_run_preflight/MOVE1_COVERAGE.txt"
 
 exit 0
