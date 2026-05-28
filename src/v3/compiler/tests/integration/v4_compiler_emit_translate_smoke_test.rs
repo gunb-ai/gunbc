@@ -17,7 +17,9 @@
 //! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
 //! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
 //! `run_mvp1_serialize_rejects_missing_translation_rules` in `mvp1_rust_add_translate.dag`
-//! (not host `str::contains` probes). See INVARIANTS.md row
+//! (not host `str::contains` probes). **PR #3798 (+0 census paths):** extends
+//! `v4_python_language_model_declares_t11_translation_rules` for T-4.17 python wave-2a
+//! LanguageModel / lex/grammar surface on `python.dag`. See INVARIANTS.md row
 //! `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt and T-PB-B deferral lane.
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
