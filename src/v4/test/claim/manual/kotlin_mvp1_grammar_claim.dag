@@ -7,17 +7,20 @@
 module v4.test.claim.manual.kotlin_mvp1_grammar_claim
 
 import v4.compiler.parse {
-  ParseTree,
   grammar_validate_for_parse,
   parse_production,
   parse_stage_locus_port
 }
+import v4.compiler.tokenize { tokenize }
 import v4.extdeps.languages.kotlin {
-  kotlin_mvp1_parse_tokens,
+  kotlin_mvp1_parse_fixture_file,
   kotlin_production_mvp1_fn_add,
+  kotlin_mvp1_source_text,
+  kotlin_wave1_lex,
   kotlin_wave1_grammar_root
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v4.std.grammar { ParseTree }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.logic { Bool }
 import v4.std.verification {
@@ -60,14 +63,18 @@ fn kotlin_mvp1_grammar_parse_accepted() -> Bool {
 
 fn kotlin_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
-  match kotlin_mvp1_parse_tokens() {
+  match tokenize(
+    text: kotlin_mvp1_source_text,
+    file: kotlin_mvp1_parse_fixture_file,
+    rules: kotlin_wave1_lex()
+  ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
+    Accepted { value: stream, diagnostics: _ } =>
       match grammar_validate_for_parse(root: kotlin_wave1_grammar_root(), at: at) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: validated, diagnostics: _ } =>
           parse_production(
-            tokens: tokens,
+            tokens: stream.tokens,
             validated: validated,
             production_name: kotlin_production_mvp1_fn_add
           )

@@ -6,7 +6,7 @@
 module v4.extdeps.formats.sql
 
 
-import v4.compiler.parse { GrammarSchema }
+import v4.std.grammar { GrammarSchema }
 import v4.std.algebra { fold_list, list_append }
 import v4.std.collection { List, Map, Optional }
 import v4.std.nat { Nat }

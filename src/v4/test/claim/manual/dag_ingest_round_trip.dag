@@ -19,7 +19,7 @@ import v4.extdeps.languages.dag {
   dag_token_kw_module,
   dag_wave1_lex_token_symbol
 }
-import v4.compiler.parse { grammar_carries_symbol }
+import v4.std.grammar { grammar_carries_symbol }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.verification {

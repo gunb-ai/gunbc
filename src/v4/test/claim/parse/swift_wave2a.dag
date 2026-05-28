@@ -5,8 +5,10 @@
 
 module v4.test.claim.parse.swift_wave2a
 
-import v4.compiler.tokenize { TokenStream, tokenize }
-import v4.compiler.parse { ParseTree, parse }
+import v4.std.lexing { TokenStream }
+import v4.std.grammar { ParseTree }
+import v4.compiler.tokenize { tokenize }
+import v4.compiler.parse { parse }
 import v4.extdeps.languages.swift { swift_wave1_lex, swift_wave1_grammar }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.node { Atom, Node, Symbol, TypeNode }

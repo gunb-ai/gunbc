@@ -11,60 +11,34 @@
 module v4.compiler.parse
 
 
-import v4.compiler.tokenize { LexRules, Token, TokenStream }
 import v4.std.diagnostic { Accepted, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, None, Outcome, Some, Unavailable, UserInputBoundary, diagnostics_singleton, port_locus }
-import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node, well_formed }
+import v4.std.node { Conj, Edge, Named, Node, Symbol, TypeNode, well_formed }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.algebra { Cons, Empty, TailAbsent, TailFound, contains, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail }
 import v4.std.logic { Bool }
 import v4.std.witness { Holds, Violates, Witness }
-
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
-type GrammarExpr
-  = Terminal { token_class: Symbol }
-  | Nonterminal { production: Symbol }
-  | Sequence { left: GrammarExpr, right: GrammarExpr }
-  | Choice { left: GrammarExpr, right: GrammarExpr }
-  | Optional { element: GrammarExpr }
-  | Repeat { element: GrammarExpr }
-
-
-type GrammarProduction {
-  name: Symbol
-  expression: GrammarExpr
-  emitted: Node
+import v4.std.lexing { Token, TokenStream }
+import v4.std.grammar {
+  Choice,
+  ParseGrammar,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Nonterminal,
+  ParseTree,
+  Repeat,
+  Sequence,
+  Terminal,
+  ValidatedGrammarRoot,
+  VoidGrammar,
+  grammar_empty_node,
+  grammar_named_edge,
+  grammar_sequence_left_node_projection,
+  grammar_sequence_right_node_projection,
+  grammar_to_node
 }
 
-
-// 🟡 gated — feature: T-8 parse error-recovery trigger — sync_tokens present; parse_skip_to_sync
-// is structurally correct but unreachable until parse_expr emits non-empty diagnostics on
-// committed Terminal mismatches. Dissolve-on: T-8.
-type GrammarRoot {
-  start: Symbol
-  productions: List<GrammarProduction>
-  sync_tokens: Set<Symbol>
-}
-
-// Parse-table entrypoint carrier: produced only after undefined/duplicate/left-recursion gates pass.
-type ValidatedGrammarRoot {
-  root: GrammarRoot
-}
-
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: Grammar converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
-type Grammar
-  = VoidGrammar
-  | ModeledGrammar { root: GrammarRoot }
-
-
-type GrammarSchema {
-  lex: LexRules
-  grammar: Grammar
-}
-
-
-type ParseTree = Node
 
 // 🟡 coproduct dissolution — feature:T-8-parse-result-projection; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult
@@ -105,10 +79,6 @@ type ParsePositionKey {
 // Memoized (position, production) → parse_expr result for production.expression at that offset.
 type ParseTable = Map<ParsePositionKey, ParseExprResult>
 
-type GrammarSymbolFoldState {
-  found: Bool
-}
-
 type TokensAtPositionAcc {
   skipped: Int
   target: Int
@@ -116,20 +86,6 @@ type TokensAtPositionAcc {
 }
 
 
-data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
-data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
-data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
-data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
-data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
-data grammar_choice_right_node_projection: Symbol = grammar_choice_right_node_projection
-data grammar_optional_element_node_projection: Symbol = grammar_optional_element_node_projection
-data grammar_repeat_element_node_projection: Symbol = grammar_repeat_element_node_projection
-data grammar_production_name_node_projection: Symbol = grammar_production_name_node_projection
-data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
-data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
-data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
-data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
-data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
 data grammar_production_identity_node_projection: Symbol = grammar_production_identity_node_projection
 data grammar_production_captured_node_projection: Symbol = grammar_production_captured_node_projection
 
@@ -199,208 +155,6 @@ fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
     at: at,
     correction: Unavailable { reason: UserInputBoundary }
   }
-}
-
-
-fn grammar_atom(identity: Symbol) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Atom { identity: identity }
-    },
-    children: []
-  }
-}
-
-
-fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge {
-    label: Named { name: name },
-    target: target
-  }
-}
-
-
-fn grammar_empty_sync_tokens() -> Set<Symbol> {
-  Set { member: fn(_) { false } }
-}
-
-
-fn grammar_empty_node() -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: []
-  }
-}
-
-
-fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
-  match expr {
-    Terminal { token_class: token_class } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
-        ]
-      }
-    Nonterminal { production: production } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
-        ]
-      }
-    Sequence { left: left, right: right } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_sequence_left_node_projection, target: grammar_expr_to_node(expr: left)),
-          grammar_named_edge(name: grammar_sequence_right_node_projection, target: grammar_expr_to_node(expr: right))
-        ]
-      }
-    Choice { left: left, right: right } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_choice_left_node_projection, target: grammar_expr_to_node(expr: left)),
-          grammar_named_edge(name: grammar_choice_right_node_projection, target: grammar_expr_to_node(expr: right))
-        ]
-      }
-    Optional { element: element } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_optional_element_node_projection, target: grammar_expr_to_node(expr: element))
-        ]
-      }
-    Repeat { element: element } =>
-      Node {
-        kind: TypeNode {
-          connective: Conj
-        },
-        children: [
-          grammar_named_edge(name: grammar_repeat_element_node_projection, target: grammar_expr_to_node(expr: element))
-        ]
-      }
-  }
-}
-
-
-fn grammar_production_to_node(production: GrammarProduction) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_production_name_node_projection, target: grammar_atom(identity: production.name)),
-      grammar_named_edge(name: grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
-      grammar_named_edge(name: grammar_production_emitted_node_projection, target: production.emitted)
-    ]
-  }
-}
-
-
-fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProduction) -> List<Edge> {
-  list_snoc_item(
-    xs: acc,
-    item: grammar_named_edge(
-      name: production.name,
-      target: grammar_production_to_node(production: production)
-    )
-  )
-}
-
-
-fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: fold_list(
-      xs: productions,
-      empty: Empty,
-      cons: fn(acc, production) {
-        grammar_production_to_list_step(acc: acc, production: production)
-      }
-    )
-  }
-}
-
-
-// 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
-// bind TASKS.md T-8 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
-// { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
-// sync_tokens cannot be materialized as a Node child here. grammar_root_sync_tokens_node_projection
-// names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership
-// list type (or substrate gains literal-value edge support), enabling the edge to be emitted.
-fn grammar_root_to_node(root: GrammarRoot) -> Node {
-  Node {
-    kind: TypeNode {
-      connective: Conj
-    },
-    children: [
-      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
-      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
-    ]
-  }
-}
-
-
-fn grammar_to_node(grammar: Grammar) -> Node {
-  match grammar {
-    VoidGrammar => grammar_empty_node()
-    ModeledGrammar { root: root } => grammar_root_to_node(root: root)
-  }
-}
-
-
-fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
-  NodeFold {
-    init: fn(n0) {
-      grammar_symbol_fold_init(n: n0, sym: sym)
-    },
-    step: grammar_symbol_fold_step
-  }
-}
-
-
-fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
-  match n.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      GrammarSymbolFoldState { found: id == sym }
-    _ =>
-      GrammarSymbolFoldState { found: false }
-  }
-}
-
-
-fn grammar_symbol_fold_step(
-  acc: GrammarSymbolFoldState,
-  edge: Edge,
-  child_has_symbol: GrammarSymbolFoldState
-) -> GrammarSymbolFoldState {
-  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
-}
-
-
-fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
-  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
-}
-
-
-fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
-  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
 
@@ -1114,7 +868,7 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
 }
 
 
-fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
+fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)

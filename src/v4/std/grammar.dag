@@ -1,54 +1,58 @@
 // src/v4/std/grammar.dag
-// Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar
-// Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar
-// Owns: Terminal, Nonterminal, GrammarSymbol, Production, Grammar, WellFormedGrammar
-// Consumes: v4.std.node, v4.std.collection
-// Status: substrate canonical declaration; v4.compiler.parse operational grammar types
-//         gate to converge here under feature:CP-1b-bidirectional-grammar-carrier (TASKS.md T-6/T-7).
+// Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar, https://en.wikipedia.org/wiki/Parsing
+// Scope: canonical grammar model shared by compiler stages and target-language specs.
+// Status: T-7 grammar data carriers; parser implementation remains in v4.compiler.parse.
 
 module v4.std.grammar
 
-import v4.std.node { Symbol }
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.collection { List, Set }
+import v4.std.lexing { LexRules }
+import v4.std.logic { Bool }
+import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
 
 // "What is a terminal symbol?"
 // Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
 // A terminal is a symbol drawn from the terminal alphabet Σ. It cannot appear
 // as the left-hand side of any production rule; it represents an atomic
 // input token that terminates a derivation.
-type Terminal {
+type FormalTerminal {
   identity: Symbol
 }
+
 
 // "What is a nonterminal symbol?"
 // A nonterminal is a symbol drawn from the nonterminal set N. It may appear
 // as the left-hand side of a production rule; it represents a syntactic
 // category subject to rewriting.
-type Nonterminal {
+type FormalNonterminal {
   identity: Symbol
 }
+
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // "What is an element of the grammar vocabulary (N ∪ Σ)?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar#Formal_definition
 // A grammar symbol is either a terminal or a nonterminal. Sequences of
 // grammar symbols form the right-hand sides of production rules.
-type GrammarSymbol
-  = TerminalOccurrence { terminal: Terminal }
-  | NonterminalOccurrence { nonterminal: Nonterminal }
+type FormalGrammarSymbol
+  = FormalTerminalOccurrence { terminal: FormalTerminal }
+  | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
+
 
 // "What is a production rule?"
 // Ref: https://en.wikipedia.org/wiki/Production_(computer_science)
 // In a context-free grammar: A → α where A ∈ N and α ∈ (N ∪ Σ)*.
 // The left-hand side is a single nonterminal; the right-hand side is
 // a (possibly empty) sequence of grammar symbols.
-type Production {
-  lhs: Nonterminal
-  rhs: List<GrammarSymbol>
+type FormalProduction {
+  lhs: FormalNonterminal
+  rhs: List<FormalGrammarSymbol>
 }
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse grammar types (Grammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
-// 🟡 gated — feature:grammar-well-formed-witness — Grammar carries four representable invalid states: (1) start ∉ nonterminals, (2) Production.lhs not in N, (3) Production.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (Terminal and Nonterminal both carry identity: Symbol). Dissolve-on: consumers require WellFormedGrammar (below) not bare Grammar; bare Grammar becomes internal construction only.
+
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
+// 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries five representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol), (5) N or Σ infinite (Set<T> is a predicate fn(T)->Bool; finiteness not enforced by the type). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
 // "What is a formal grammar?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar
 // G = (N, Σ, P, S) — the four-component definition of a formal language:
@@ -56,14 +60,287 @@ type Production {
 //   Σ  (terminals):    finite set of terminal symbols, disjoint from N
 //   P  (productions):  finite collection of production rules
 //   S  (start):        designated start symbol, S ∈ N
-type Grammar {
-  nonterminals: Set<Nonterminal>
-  terminals: Set<Terminal>
-  productions: List<Production>
-  start: Nonterminal
+type FormalGrammar {
+  nonterminals: Set<FormalNonterminal>
+  terminals: Set<FormalTerminal>
+  productions: List<FormalProduction>
+  start: FormalNonterminal
 }
 
-// 🟡 gated — feature:grammar-well-formed-witness — witness that a Grammar value satisfies all four invariants: (1) start∈N, (2) each Production.lhs∈N, (3) each Production.rhs symbol∈N∪Σ, (4) N∩Σ=∅. Dissolve-on: validate_grammar(g: Grammar) -> Witness<WellFormedGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
-type WellFormedGrammar {
-  grammar: Grammar
+
+// 🟡 gated — feature:grammar-well-formed-witness — witness that a FormalGrammar value satisfies all five invariants: (1) start∈N, (2) each FormalProduction.lhs∈N, (3) each FormalProduction.rhs symbol∈N∪Σ, (4) N∩Σ=∅, (5) N and Σ are finite (Set<T> is a predicate; finiteness requires an explicit cardinality proof). Dissolve-on: validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
+type WellFormedFormalGrammar {
+  grammar: FormalGrammar
+}
+
+
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+type GrammarExpr
+  = Terminal { token_class: Symbol }
+  | Nonterminal { production: Symbol }
+  | Sequence { left: GrammarExpr, right: GrammarExpr }
+  | Choice { left: GrammarExpr, right: GrammarExpr }
+  | Optional { element: GrammarExpr }
+  | Repeat { element: GrammarExpr }
+
+
+type GrammarProduction {
+  name: Symbol
+  expression: GrammarExpr
+  emitted: Node
+}
+
+
+// 🟡 gated — feature: T-8 parse error-recovery trigger — sync_tokens present; parse_skip_to_sync
+// is structurally correct but unreachable until parse_expr emits non-empty diagnostics on
+// committed Terminal mismatches. Dissolve-on: T-8.
+type GrammarRoot {
+  start: Symbol
+  productions: List<GrammarProduction>
+  sync_tokens: Set<Symbol>
+}
+
+
+// Parse-table entrypoint carrier: produced only after undefined/duplicate/left-recursion gates pass.
+type ValidatedGrammarRoot {
+  root: GrammarRoot
+}
+
+
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+type ParseGrammar
+  = VoidGrammar
+  | ModeledGrammar { root: GrammarRoot }
+
+
+type GrammarSchema {
+  lex: LexRules
+  grammar: ParseGrammar
+}
+
+
+type ParseTree = Node
+
+
+type GrammarSymbolFoldState {
+  found: Bool
+}
+
+
+data grammar_terminal_token_class_node_projection: Symbol = grammar_terminal_token_class_node_projection
+data grammar_nonterminal_production_node_projection: Symbol = grammar_nonterminal_production_node_projection
+data grammar_sequence_left_node_projection: Symbol = grammar_sequence_left_node_projection
+data grammar_sequence_right_node_projection: Symbol = grammar_sequence_right_node_projection
+data grammar_choice_left_node_projection: Symbol = grammar_choice_left_node_projection
+data grammar_choice_right_node_projection: Symbol = grammar_choice_right_node_projection
+data grammar_optional_element_node_projection: Symbol = grammar_optional_element_node_projection
+data grammar_repeat_element_node_projection: Symbol = grammar_repeat_element_node_projection
+data grammar_production_name_node_projection: Symbol = grammar_production_name_node_projection
+data grammar_production_expression_node_projection: Symbol = grammar_production_expression_node_projection
+data grammar_production_emitted_node_projection: Symbol = grammar_production_emitted_node_projection
+data grammar_root_start_production_node_projection: Symbol = grammar_root_start_production_node_projection
+data grammar_root_productions_node_projection: Symbol = grammar_root_productions_node_projection
+data grammar_root_sync_tokens_node_projection: Symbol = grammar_root_sync_tokens_node_projection
+
+
+fn grammar_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: identity }
+    },
+    children: []
+  }
+}
+
+
+fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target
+  }
+}
+
+
+fn grammar_empty_sync_tokens() -> Set<Symbol> {
+  Set { member: fn(_) { false } }
+}
+
+
+fn grammar_empty_node() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: []
+  }
+}
+
+
+// 🟡 gated — walker-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:grammar-expr-node-projection — bound task: src/v4/TASKS.md §T-7.1 (owner/lane: T-7 std grammar substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived GrammarExpr fold/projection to canonical Node edges deletes this recursive coproduct walker and routes grammar_to_node through that projection in the same commit train; forbidden: duplicating GrammarExpr arm re-encoders outside this std projection.
+fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
+  match expr {
+    Terminal { token_class: token_class } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_terminal_token_class_node_projection, target: grammar_atom(identity: token_class))
+        ]
+      }
+    Nonterminal { production: production } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_nonterminal_production_node_projection, target: grammar_atom(identity: production))
+        ]
+      }
+    Sequence { left: left, right: right } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_sequence_left_node_projection, target: grammar_expr_to_node(expr: left)),
+          grammar_named_edge(name: grammar_sequence_right_node_projection, target: grammar_expr_to_node(expr: right))
+        ]
+      }
+    Choice { left: left, right: right } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_choice_left_node_projection, target: grammar_expr_to_node(expr: left)),
+          grammar_named_edge(name: grammar_choice_right_node_projection, target: grammar_expr_to_node(expr: right))
+        ]
+      }
+    Optional { element: element } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_optional_element_node_projection, target: grammar_expr_to_node(expr: element))
+        ]
+      }
+    Repeat { element: element } =>
+      Node {
+        kind: TypeNode {
+          connective: Conj
+        },
+        children: [
+          grammar_named_edge(name: grammar_repeat_element_node_projection, target: grammar_expr_to_node(expr: element))
+        ]
+      }
+  }
+}
+
+
+fn grammar_production_to_node(production: GrammarProduction) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: grammar_production_name_node_projection, target: grammar_atom(identity: production.name)),
+      grammar_named_edge(name: grammar_production_expression_node_projection, target: grammar_expr_to_node(expr: production.expression)),
+      grammar_named_edge(name: grammar_production_emitted_node_projection, target: production.emitted)
+    ]
+  }
+}
+
+
+fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProduction) -> List<Edge> {
+  list_snoc_item(
+    xs: acc,
+    item: grammar_named_edge(
+      name: production.name,
+      target: grammar_production_to_node(production: production)
+    )
+  )
+}
+
+
+fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: fold_list(
+      xs: productions,
+      empty: Empty,
+      cons: fn(acc, production) {
+        grammar_production_to_list_step(acc: acc, production: production)
+      }
+    )
+  }
+}
+
+
+// 🟡 gated T-8 — P2-boundary interim — feature: grammar-root-node-projection-completeness —
+// bind TASKS.md T-8 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
+// { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
+// sync_tokens cannot be materialized as a Node child here. grammar_root_sync_tokens_node_projection
+// names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership
+// list type (or substrate gains literal-value edge support), enabling the edge to be emitted.
+fn grammar_root_to_node(root: GrammarRoot) -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Conj
+    },
+    children: [
+      grammar_named_edge(name: grammar_root_start_production_node_projection, target: grammar_atom(identity: root.start)),
+      grammar_named_edge(name: grammar_root_productions_node_projection, target: grammar_productions_to_node(productions: root.productions))
+    ]
+  }
+}
+
+
+fn grammar_to_node(grammar: ParseGrammar) -> Node {
+  match grammar {
+    VoidGrammar => grammar_empty_node()
+    ModeledGrammar { root: root } => grammar_root_to_node(root: root)
+  }
+}
+
+
+fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
+  NodeFold {
+    init: fn(n0) {
+      grammar_symbol_fold_init(n: n0, sym: sym)
+    },
+    step: grammar_symbol_fold_step
+  }
+}
+
+
+fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      GrammarSymbolFoldState { found: id == sym }
+    _ =>
+      GrammarSymbolFoldState { found: false }
+  }
+}
+
+
+fn grammar_symbol_fold_step(
+  acc: GrammarSymbolFoldState,
+  edge: Edge,
+  child_has_symbol: GrammarSymbolFoldState
+) -> GrammarSymbolFoldState {
+  GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
+}
+
+
+fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
+  fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
+}
+
+
+fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
+  grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }

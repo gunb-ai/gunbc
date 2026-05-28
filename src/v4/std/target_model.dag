@@ -1,10 +1,21 @@
 // src/v4/std/target_model.dag
-// Scope: TargetModel Conj-bundle edge keys + grammar-relation protocol symbols.
+// Scope: TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols.
 // Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
 
 module v4.std.target_model
 
-import v4.std.node { Symbol }
+import v4.std.collection { Map }
+import v4.std.lexing { LexRules }
+import v4.std.node { Node, Symbol }
+import v4.std.text { String }
+
+type TargetModelBundle {
+  bundle: Node
+  lex: LexRules
+  binding_spellings: Map<Symbol, String>
+  authority_source_text: String
+}
+type TargetModel = TargetModelBundle
 
 data target_model_edge_selection_policy: Symbol = target_model_edge_selection_policy
 data target_model_edge_declared_inhabitants: Symbol = target_model_edge_declared_inhabitants

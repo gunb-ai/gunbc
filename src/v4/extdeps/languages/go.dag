@@ -5,14 +5,14 @@
 
 module v4.extdeps.languages.go
 
-import v4.compiler.parse {
+import v4.std.grammar {
   GrammarExpr,
   GrammarProduction,
   Sequence,
   Terminal,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
@@ -20,7 +20,7 @@ import v4.compiler.tokenize {
   ModeledLexRules,
   TokenRule
 }
-import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
