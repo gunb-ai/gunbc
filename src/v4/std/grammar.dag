@@ -10,6 +10,7 @@ import v4.std.collection { List, Set }
 import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v4.std.text { String }
 
 // "What is a terminal symbol?"
 // Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
@@ -119,6 +120,19 @@ type GrammarSchema {
 }
 
 
+type GrammarSchemaProbe {
+  fixture: String
+  production: FormalProduction
+  expected_parse_surface: Node
+}
+
+
+type GrammarSchemaProbeBinding {
+  schema: GrammarSchema
+  probe: GrammarSchemaProbe
+}
+
+
 type ParseTree = Node
 
 
@@ -178,6 +192,25 @@ fn grammar_empty_node() -> Node {
       connective: Conj
     },
     children: []
+  }
+}
+
+
+fn grammar_formal_nonterminal(identity: Symbol) -> FormalNonterminal {
+  FormalNonterminal { identity: identity }
+}
+
+
+fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence {
+    terminal: FormalTerminal { identity: identity }
+  }
+}
+
+
+fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
+  FormalNonterminalOccurrence {
+    nonterminal: FormalNonterminal { identity: identity }
   }
 }
 

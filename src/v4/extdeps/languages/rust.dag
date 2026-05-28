@@ -1,23 +1,35 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4 rust slice — Rust Reference primitives (not std::string::String); `core: ModelCore` (#3474) primitives + surface-symbol membership from `rust_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11 Rust emit; layout-in-literals bridge gated to T-6 TokenLayout; bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
 
 import v4.std.grammar {
+  Choice,
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
+  Optional,
+  Repeat,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.std.lexing {
   CharClassPattern,
+  DigitChar,
   IdentContinueChar,
   IdentStartChar,
   LexPattern,
@@ -26,9 +38,13 @@ import v4.std.lexing {
   LexRules,
   LiteralPattern,
   ModeledLexRules,
+  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
-  TokenRule
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar,
+  lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
@@ -356,10 +372,51 @@ data rust_token_lparen: Symbol = rust_token_lparen
 data rust_token_rparen: Symbol = rust_token_rparen
 data rust_token_comma: Symbol = rust_token_comma
 data rust_token_colon: Symbol = rust_token_colon
+data rust_token_kw_let: Symbol = rust_token_kw_let
+data rust_token_kw_if: Symbol = rust_token_kw_if
+data rust_token_kw_else: Symbol = rust_token_kw_else
+data rust_token_kw_return: Symbol = rust_token_kw_return
+data rust_token_equal: Symbol = rust_token_equal
+data rust_token_gt: Symbol = rust_token_gt
+data rust_token_semicolon: Symbol = rust_token_semicolon
+data rust_token_int_literal: Symbol = rust_token_int_literal
 
 data rust_production_mvp1_fn_add: Symbol = rust_production_mvp1_fn_add
+data rust_production_fn_item: Symbol = rust_production_fn_item
+data rust_production_typed_param: Symbol = rust_production_typed_param
+data rust_production_param_list: Symbol = rust_production_param_list
+data rust_production_param_list_suffix: Symbol = rust_production_param_list_suffix
+data rust_production_type: Symbol = rust_production_type
+data rust_production_block: Symbol = rust_production_block
+data rust_production_stmts: Symbol = rust_production_stmts
+data rust_production_stmt: Symbol = rust_production_stmt
+data rust_production_expr_stmt: Symbol = rust_production_expr_stmt
+data rust_production_let_stmt: Symbol = rust_production_let_stmt
+data rust_production_if_expr: Symbol = rust_production_if_expr
+data rust_production_return_expr: Symbol = rust_production_return_expr
+data rust_production_expr_without_block: Symbol = rust_production_expr_without_block
+data rust_production_expr_with_block: Symbol = rust_production_expr_with_block
+data rust_production_expr: Symbol = rust_production_expr
+data rust_production_comparison_expr: Symbol = rust_production_comparison_expr
+data rust_production_additive_expr: Symbol = rust_production_additive_expr
+data rust_production_primary_expr: Symbol = rust_production_primary_expr
 
 data rust_surface_fn_item: Symbol = rust_surface_fn_item
+data rust_surface_typed_param: Symbol = rust_surface_typed_param
+data rust_surface_param_list: Symbol = rust_surface_param_list
+data rust_surface_type: Symbol = rust_surface_type
+data rust_surface_block: Symbol = rust_surface_block
+data rust_surface_stmt: Symbol = rust_surface_stmt
+data rust_surface_expr_stmt: Symbol = rust_surface_expr_stmt
+data rust_surface_let_stmt: Symbol = rust_surface_let_stmt
+data rust_surface_if_expr: Symbol = rust_surface_if_expr
+data rust_surface_return_expr: Symbol = rust_surface_return_expr
+data rust_surface_expr_without_block: Symbol = rust_surface_expr_without_block
+data rust_surface_expr_with_block: Symbol = rust_surface_expr_with_block
+data rust_surface_expr: Symbol = rust_surface_expr
+data rust_surface_comparison_expr: Symbol = rust_surface_comparison_expr
+data rust_surface_additive_expr: Symbol = rust_surface_additive_expr
+data rust_surface_primary_expr: Symbol = rust_surface_primary_expr
 data rust_surface_type_i32: Symbol = rust_surface_type_i32
 data rust_surface_bin_add: Symbol = rust_surface_bin_add
 data rust_binding_fn_add: Symbol = rust_binding_fn_add
@@ -1388,7 +1445,8 @@ fn rust_ident_lex_rule() -> LexRule {
 }
 
 // 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// LiteralPattern.text below (e.g. "fn " not "fn"). Dissolves when T-6 supplies
+// most LiteralPattern.text below (e.g. "fn " not "fn"); `rust_token_plus` is layout-free
+// (`"+"`) so additive expressions tokenize with trivia. Dissolves when T-6 supplies
 // TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
 fn rust_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
@@ -1396,7 +1454,7 @@ fn rust_wave1_lex_rules() -> LexRuleSet {
       rust_lex_rule(token_class: rust_token_kw_fn, text: "fn "),
       rust_ident_lex_rule(),
       rust_lex_rule(token_class: rust_token_ty_i32, text: "i32"),
-      rust_lex_rule(token_class: rust_token_plus, text: " + "),
+      rust_lex_rule(token_class: rust_token_plus, text: "+"),
       rust_lex_rule(token_class: rust_token_arrow, text: " -> "),
       rust_lex_rule(token_class: rust_token_lbrace, text: " { "),
       rust_lex_rule(token_class: rust_token_rbrace, text: " }"),
@@ -1414,6 +1472,41 @@ fn rust_wave1_lex() -> LexRules {
 
 fn rust_grammar_atom(id: Symbol) -> Node {
   rust_inhabitant_atom(id: id)
+}
+
+fn rust_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn rust_formal_nonterminal(production: Symbol) -> FormalGrammarSymbol {
+  FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
+}
+
+fn rust_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: lhs },
+    rhs: rhs
+  }
+}
+
+fn rust_formal_rhs_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: rust_formal_terminal(token_class: rust_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn rust_formal_production_mvp1_fn_add() -> FormalProduction {
+  rust_formal_production(
+    lhs: rust_production_mvp1_fn_add,
+    rhs: rust_formal_rhs_from_tokens(tokens: rust_mvp1_concrete_tokens())
+  )
 }
 
 fn rust_grammar_production_mvp1_fn_add() -> GrammarProduction {
@@ -2034,6 +2127,655 @@ fn rust_language_model_wave1() -> RustLanguageModel {
     grammar: rust_wave1_grammar(),
     language_identity: rust_language_model_surface_id,
     canonical_symbols: rust_language_model_canonical_symbols(),
+    core: rust_model_core_wave1()
+  }
+}
+
+// --- T-4.17 Wave 2a: extended lex/grammar (Rust Reference §17.4/§17.6/§17.10.1/§17.11) ---
+
+fn rust_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  }
+}
+
+fn rust_int_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: rust_token_int_literal,
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+  }
+}
+
+fn rust_wave2_additional_lex_rules() -> List<LexRule> {
+  [
+    rust_whitespace_trivia_rule(),
+    rust_int_literal_lex_rule(),
+    rust_lex_rule(token_class: rust_token_kw_let, text: "let"),
+    rust_lex_rule(token_class: rust_token_kw_if, text: "if"),
+    rust_lex_rule(token_class: rust_token_kw_else, text: "else"),
+    rust_lex_rule(token_class: rust_token_kw_return, text: "return"),
+    rust_lex_rule(token_class: rust_token_equal, text: "="),
+    rust_lex_rule(token_class: rust_token_gt, text: ">"),
+    rust_lex_rule(token_class: rust_token_semicolon, text: ";")
+  ]
+}
+
+fn rust_wave2_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: list_append(
+      left: rust_wave1_lex_rules().rules,
+      right: rust_wave2_additional_lex_rules()
+    )
+  }
+}
+
+fn rust_wave2_lex() -> LexRules {
+  ModeledLexRules { root: rust_wave2_lex_rules() }
+}
+
+// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
+fn rust_wave2_formal_productions() -> List<FormalProduction> {
+  [
+    rust_formal_production(lhs: rust_production_type, rhs: [rust_formal_terminal(token_class: rust_token_ty_i32)]),
+    rust_formal_production(
+      lhs: rust_production_typed_param,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_ident),
+        rust_formal_terminal(token_class: rust_token_colon),
+        rust_formal_nonterminal(production: rust_production_type)
+      ]
+    ),
+    rust_formal_production(lhs: rust_production_param_list, rhs: []),
+    rust_formal_production(
+      lhs: rust_production_param_list,
+      rhs: [rust_formal_nonterminal(production: rust_production_typed_param)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_param_list,
+      rhs: [
+        rust_formal_nonterminal(production: rust_production_typed_param),
+        rust_formal_terminal(token_class: rust_token_comma),
+        rust_formal_nonterminal(production: rust_production_typed_param),
+        rust_formal_nonterminal(production: rust_production_param_list_suffix)
+      ]
+    ),
+    rust_formal_production(lhs: rust_production_param_list_suffix, rhs: []),
+    rust_formal_production(
+      lhs: rust_production_param_list_suffix,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_comma),
+        rust_formal_nonterminal(production: rust_production_typed_param),
+        rust_formal_nonterminal(production: rust_production_param_list_suffix)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_fn_item,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_kw_fn),
+        rust_formal_terminal(token_class: rust_token_ident),
+        rust_formal_terminal(token_class: rust_token_lparen),
+        rust_formal_nonterminal(production: rust_production_param_list),
+        rust_formal_terminal(token_class: rust_token_rparen),
+        rust_formal_terminal(token_class: rust_token_arrow),
+        rust_formal_nonterminal(production: rust_production_type),
+        rust_formal_nonterminal(production: rust_production_block)
+      ]
+    ),
+    rust_formal_production(lhs: rust_production_primary_expr, rhs: [rust_formal_terminal(token_class: rust_token_ident)]),
+    rust_formal_production(
+      lhs: rust_production_primary_expr,
+      rhs: [rust_formal_terminal(token_class: rust_token_int_literal)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_primary_expr,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_lparen),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_terminal(token_class: rust_token_rparen)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_additive_expr,
+      rhs: [rust_formal_nonterminal(production: rust_production_primary_expr)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_additive_expr,
+      rhs: [
+        rust_formal_nonterminal(production: rust_production_additive_expr),
+        rust_formal_terminal(token_class: rust_token_plus),
+        rust_formal_nonterminal(production: rust_production_primary_expr)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_comparison_expr,
+      rhs: [rust_formal_nonterminal(production: rust_production_additive_expr)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_comparison_expr,
+      rhs: [
+        rust_formal_nonterminal(production: rust_production_additive_expr),
+        rust_formal_terminal(token_class: rust_token_gt),
+        rust_formal_nonterminal(production: rust_production_additive_expr)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_return_expr,
+      rhs: [rust_formal_terminal(token_class: rust_token_kw_return)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_return_expr,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_kw_return),
+        rust_formal_nonterminal(production: rust_production_expr)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_without_block,
+      rhs: [rust_formal_nonterminal(production: rust_production_return_expr)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_without_block,
+      rhs: [rust_formal_nonterminal(production: rust_production_comparison_expr)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_block,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_lbrace),
+        rust_formal_terminal(token_class: rust_token_rbrace)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_block,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_lbrace),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_terminal(token_class: rust_token_rbrace)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_block,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_lbrace),
+        rust_formal_nonterminal(production: rust_production_stmts),
+        rust_formal_terminal(token_class: rust_token_rbrace)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_block,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_lbrace),
+        rust_formal_nonterminal(production: rust_production_stmts),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_terminal(token_class: rust_token_rbrace)
+      ]
+    ),
+    rust_formal_production(lhs: rust_production_stmts, rhs: [rust_formal_nonterminal(production: rust_production_stmt)]),
+    rust_formal_production(
+      lhs: rust_production_stmts,
+      rhs: [
+        rust_formal_nonterminal(production: rust_production_stmts),
+        rust_formal_nonterminal(production: rust_production_stmt)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_let_stmt,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_kw_let),
+        rust_formal_terminal(token_class: rust_token_ident),
+        rust_formal_terminal(token_class: rust_token_equal),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_terminal(token_class: rust_token_semicolon)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_stmt,
+      rhs: [
+        rust_formal_nonterminal(production: rust_production_expr_without_block),
+        rust_formal_terminal(token_class: rust_token_semicolon)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_stmt,
+      rhs: [rust_formal_nonterminal(production: rust_production_expr_with_block)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_stmt,
+      rhs: [
+        rust_formal_nonterminal(production: rust_production_expr_with_block),
+        rust_formal_terminal(token_class: rust_token_semicolon)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_stmt,
+      rhs: [rust_formal_nonterminal(production: rust_production_let_stmt)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_stmt,
+      rhs: [rust_formal_nonterminal(production: rust_production_expr_stmt)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_with_block,
+      rhs: [rust_formal_nonterminal(production: rust_production_if_expr)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr_with_block,
+      rhs: [rust_formal_nonterminal(production: rust_production_block)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_if_expr,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_kw_if),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_nonterminal(production: rust_production_block)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_if_expr,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_kw_if),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_nonterminal(production: rust_production_block),
+        rust_formal_terminal(token_class: rust_token_kw_else),
+        rust_formal_nonterminal(production: rust_production_block)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_if_expr,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_kw_if),
+        rust_formal_nonterminal(production: rust_production_expr),
+        rust_formal_nonterminal(production: rust_production_block),
+        rust_formal_terminal(token_class: rust_token_kw_else),
+        rust_formal_nonterminal(production: rust_production_if_expr)
+      ]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr,
+      rhs: [rust_formal_nonterminal(production: rust_production_expr_with_block)]
+    ),
+    rust_formal_production(
+      lhs: rust_production_expr,
+      rhs: [rust_formal_nonterminal(production: rust_production_expr_without_block)]
+    ),
+    rust_formal_production_mvp1_fn_add()
+  ]
+}
+
+fn rust_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+fn rust_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
+  fold_list(
+    xs: productions,
+    empty: false,
+    cons: fn(found, production) {
+      found || rust_formal_production_matches_lhs(production: production, lhs: lhs)
+    }
+  )
+}
+
+// Operational parse scaffold (GrammarExpr); dissolves when CP-1b converges FormalGrammar ↔ ParseGrammar.
+fn rust_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+  Nonterminal { production: production }
+}
+
+fn rust_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn rust_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn rust_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn rust_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn rust_grammar_production(name: Symbol, expression: GrammarExpr, emitted: Symbol) -> GrammarProduction {
+  GrammarProduction {
+    name: name,
+    expression: expression,
+    emitted: rust_grammar_atom(id: emitted)
+  }
+}
+
+fn rust_grammar_type_expr() -> GrammarExpr {
+  rust_grammar_terminal(token_class: rust_token_ty_i32)
+}
+
+fn rust_grammar_typed_param_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_terminal(token_class: rust_token_ident),
+    right: rust_grammar_sequence(
+      left: rust_grammar_terminal(token_class: rust_token_colon),
+      right: rust_grammar_nonterminal(production: rust_production_type)
+    )
+  )
+}
+
+fn rust_grammar_param_list_expr() -> GrammarExpr {
+  rust_grammar_optional(
+    element: rust_grammar_sequence(
+      left: rust_grammar_nonterminal(production: rust_production_typed_param),
+      right: rust_grammar_repeat(
+        element: rust_grammar_sequence(
+          left: rust_grammar_terminal(token_class: rust_token_comma),
+          right: rust_grammar_nonterminal(production: rust_production_typed_param)
+        )
+      )
+    )
+  )
+}
+
+fn rust_grammar_primary_expr() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_terminal(token_class: rust_token_ident),
+    right: rust_grammar_choice(
+      left: rust_grammar_terminal(token_class: rust_token_int_literal),
+      right: rust_grammar_sequence(
+        left: rust_grammar_terminal(token_class: rust_token_lparen),
+        right: rust_grammar_sequence(
+          left: rust_grammar_nonterminal(production: rust_production_expr),
+          right: rust_grammar_terminal(token_class: rust_token_rparen)
+        )
+      )
+    )
+  )
+}
+
+fn rust_grammar_additive_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_nonterminal(production: rust_production_primary_expr),
+    right: rust_grammar_repeat(
+      element: rust_grammar_sequence(
+        left: rust_grammar_terminal(token_class: rust_token_plus),
+        right: rust_grammar_nonterminal(production: rust_production_primary_expr)
+      )
+    )
+  )
+}
+
+// Rust Reference: comparison operators are non-chaining (at most one relational op).
+fn rust_grammar_comparison_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_nonterminal(production: rust_production_additive_expr),
+    right: rust_grammar_optional(
+      element: rust_grammar_sequence(
+        left: rust_grammar_terminal(token_class: rust_token_gt),
+        right: rust_grammar_nonterminal(production: rust_production_additive_expr)
+      )
+    )
+  )
+}
+
+// Rust Reference §17.9.1: ExpressionWithoutBlock vs ExpressionWithBlock.
+fn rust_grammar_expr_without_block() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_nonterminal(production: rust_production_return_expr),
+    right: rust_grammar_nonterminal(production: rust_production_comparison_expr)
+  )
+}
+
+// Rust Reference ExpressionWithBlock: if expressions and block expressions.
+fn rust_grammar_expr_with_block() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_nonterminal(production: rust_production_if_expr),
+    right: rust_grammar_nonterminal(production: rust_production_block)
+  )
+}
+
+fn rust_grammar_expr_expr() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_nonterminal(production: rust_production_expr_with_block),
+    right: rust_grammar_nonterminal(production: rust_production_expr_without_block)
+  )
+}
+
+// Rust Reference ExpressionStatement: ExpressionWithoutBlock `;` | ExpressionWithBlock `;`?.
+fn rust_grammar_expr_stmt_expr() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_sequence(
+      left: rust_grammar_nonterminal(production: rust_production_expr_without_block),
+      right: rust_grammar_terminal(token_class: rust_token_semicolon)
+    ),
+    right: rust_grammar_sequence(
+      left: rust_grammar_nonterminal(production: rust_production_expr_with_block),
+      right: rust_grammar_optional(
+        element: rust_grammar_terminal(token_class: rust_token_semicolon)
+      )
+    )
+  )
+}
+
+// Rust Reference ReturnExpression: `return` Expression?.
+fn rust_grammar_return_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_terminal(token_class: rust_token_kw_return),
+    right: rust_grammar_optional(
+      element: rust_grammar_nonterminal(production: rust_production_expr)
+    )
+  )
+}
+
+fn rust_grammar_let_stmt_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_terminal(token_class: rust_token_kw_let),
+    right: rust_grammar_sequence(
+      left: rust_grammar_terminal(token_class: rust_token_ident),
+      right: rust_grammar_sequence(
+        left: rust_grammar_terminal(token_class: rust_token_equal),
+        right: rust_grammar_sequence(
+          left: rust_grammar_nonterminal(production: rust_production_expr),
+          right: rust_grammar_terminal(token_class: rust_token_semicolon)
+        )
+      )
+    )
+  )
+}
+
+// Rust Reference IfExpression: `if` Expression BlockExpression [ `else` ( BlockExpression | IfExpression ) ].
+fn rust_grammar_if_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_terminal(token_class: rust_token_kw_if),
+    right: rust_grammar_sequence(
+      left: rust_grammar_nonterminal(production: rust_production_expr),
+      right: rust_grammar_sequence(
+        left: rust_grammar_nonterminal(production: rust_production_block),
+        right: rust_grammar_optional(
+          element: rust_grammar_sequence(
+            left: rust_grammar_terminal(token_class: rust_token_kw_else),
+            right: rust_grammar_choice(
+              left: rust_grammar_nonterminal(production: rust_production_block),
+              right: rust_grammar_nonterminal(production: rust_production_if_expr)
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// Rust Reference §17.11: let + ExpressionStatement forms, then optional tail Expression.
+fn rust_grammar_stmt_expr() -> GrammarExpr {
+  rust_grammar_choice(
+    left: rust_grammar_nonterminal(production: rust_production_let_stmt),
+    right: rust_grammar_nonterminal(production: rust_production_expr_stmt)
+  )
+}
+
+fn rust_grammar_block_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_terminal(token_class: rust_token_lbrace),
+    right: rust_grammar_sequence(
+      left: rust_grammar_repeat(element: rust_grammar_nonterminal(production: rust_production_stmt)),
+      right: rust_grammar_sequence(
+        left: rust_grammar_optional(element: rust_grammar_nonterminal(production: rust_production_expr)),
+        right: rust_grammar_terminal(token_class: rust_token_rbrace)
+      )
+    )
+  )
+}
+
+fn rust_grammar_fn_item_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_terminal(token_class: rust_token_kw_fn),
+    right: rust_grammar_sequence(
+      left: rust_grammar_terminal(token_class: rust_token_ident),
+      right: rust_grammar_sequence(
+        left: rust_grammar_terminal(token_class: rust_token_lparen),
+        right: rust_grammar_sequence(
+          left: rust_grammar_nonterminal(production: rust_production_param_list),
+          right: rust_grammar_sequence(
+            left: rust_grammar_terminal(token_class: rust_token_rparen),
+            right: rust_grammar_sequence(
+              left: rust_grammar_terminal(token_class: rust_token_arrow),
+              right: rust_grammar_sequence(
+                left: rust_grammar_nonterminal(production: rust_production_type),
+                right: rust_grammar_nonterminal(production: rust_production_block)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn rust_wave2_grammar_root() -> GrammarRoot {
+  let fn_item = rust_grammar_production(
+    name: rust_production_fn_item,
+    expression: rust_grammar_fn_item_expr(),
+    emitted: rust_surface_fn_item
+  )
+  let typed_param = rust_grammar_production(
+    name: rust_production_typed_param,
+    expression: rust_grammar_typed_param_expr(),
+    emitted: rust_surface_typed_param
+  )
+  let param_list = rust_grammar_production(
+    name: rust_production_param_list,
+    expression: rust_grammar_param_list_expr(),
+    emitted: rust_surface_param_list
+  )
+  let type_prod = rust_grammar_production(
+    name: rust_production_type,
+    expression: rust_grammar_type_expr(),
+    emitted: rust_surface_type
+  )
+  let block = rust_grammar_production(
+    name: rust_production_block,
+    expression: rust_grammar_block_expr(),
+    emitted: rust_surface_block
+  )
+  let stmt = rust_grammar_production(
+    name: rust_production_stmt,
+    expression: rust_grammar_stmt_expr(),
+    emitted: rust_surface_stmt
+  )
+  let expr_stmt = rust_grammar_production(
+    name: rust_production_expr_stmt,
+    expression: rust_grammar_expr_stmt_expr(),
+    emitted: rust_surface_expr_stmt
+  )
+  let let_stmt = rust_grammar_production(
+    name: rust_production_let_stmt,
+    expression: rust_grammar_let_stmt_expr(),
+    emitted: rust_surface_let_stmt
+  )
+  let if_expr = rust_grammar_production(
+    name: rust_production_if_expr,
+    expression: rust_grammar_if_expr(),
+    emitted: rust_surface_if_expr
+  )
+  let return_expr = rust_grammar_production(
+    name: rust_production_return_expr,
+    expression: rust_grammar_return_expr(),
+    emitted: rust_surface_return_expr
+  )
+  let expr_without_block = rust_grammar_production(
+    name: rust_production_expr_without_block,
+    expression: rust_grammar_expr_without_block(),
+    emitted: rust_surface_expr_without_block
+  )
+  let expr_with_block = rust_grammar_production(
+    name: rust_production_expr_with_block,
+    expression: rust_grammar_expr_with_block(),
+    emitted: rust_surface_expr_with_block
+  )
+  let expr = rust_grammar_production(
+    name: rust_production_expr,
+    expression: rust_grammar_expr_expr(),
+    emitted: rust_surface_expr
+  )
+  let comparison_expr = rust_grammar_production(
+    name: rust_production_comparison_expr,
+    expression: rust_grammar_comparison_expr(),
+    emitted: rust_surface_comparison_expr
+  )
+  let additive_expr = rust_grammar_production(
+    name: rust_production_additive_expr,
+    expression: rust_grammar_additive_expr(),
+    emitted: rust_surface_additive_expr
+  )
+  let primary_expr = rust_grammar_production(
+    name: rust_production_primary_expr,
+    expression: rust_grammar_primary_expr(),
+    emitted: rust_surface_primary_expr
+  )
+  let mvp1_fn_add = rust_grammar_production_mvp1_fn_add()
+  GrammarRoot {
+    start: rust_production_fn_item,
+    productions: [
+      fn_item,
+      typed_param,
+      param_list,
+      type_prod,
+      block,
+      stmt,
+      expr_stmt,
+      let_stmt,
+      if_expr,
+      return_expr,
+      expr_without_block,
+      expr_with_block,
+      expr,
+      comparison_expr,
+      additive_expr,
+      primary_expr,
+      mvp1_fn_add
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn rust_wave2_grammar() -> ParseGrammar {
+  ModeledGrammar { root: rust_wave2_grammar_root() }
+}
+
+fn rust_language_model_wave2_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      rust_catalog_surface_symbol(sym: sym) ||
+        lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: rust_wave2_grammar(), sym: sym) ||
+        sym == rust_surface_fn_item ||
+        sym == rust_production_mvp1_fn_add ||
+        sym == rust_mvp1_source_literal
+    }
+  }
+}
+
+fn rust_language_model_wave2() -> RustLanguageModel {
+  RustLanguageModel {
+    lex: rust_wave2_lex(),
+    grammar: rust_wave2_grammar(),
+    language_identity: rust_language_model_surface_id,
+    canonical_symbols: rust_language_model_wave2_canonical_symbols(),
     core: rust_model_core_wave1()
   }
 }
