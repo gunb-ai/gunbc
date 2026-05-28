@@ -1,6 +1,5 @@
 // src/v4/std/node_query.dag
 // Scope: Outcome-bearing structural queries over Node children.
-// Owns: find_named_child, named_child_missing, named_child_ambiguous.
 // Consumes: std/diagnostic.dag, std/node.dag.
 // Note: lives here rather than in std/node.dag because std/node.dag is a base module
 //       that carries no imports; adding Outcome here would create a circular dep

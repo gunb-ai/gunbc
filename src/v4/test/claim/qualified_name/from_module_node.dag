@@ -2,7 +2,6 @@
 // Scope: TestClaim rows for qualified_name_from_module_node — the extdeps/ entry point
 //        that resolves dag_surface_module_header_qualified_name before delegating to
 //        qualified_name_from_node in std/.
-// Owns: claims for module-header node with QN edge → Accepted, missing QN edge → Rejected.
 // Consumes: v4.extdeps.languages.dag v4.std.qualified_name v4.std.diagnostic
 //           v4.std.node v4.std.verification
 // Status: T-QN-1 follow-on behavior receipts; execution deferred to T-22 runner bridge.
