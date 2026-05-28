@@ -25,7 +25,9 @@
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
 
 use v3_compiler::parse_for_test;
-use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
+use v3_compiler::parse_surface::{
+    SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceType, TypeAngleArg,
+};
 use v3_compiler::tokenize_for_test;
 
 const FIND_WITNESS_DAG: &str = include_str!("../../../../v4/std/find_witness.dag");
@@ -519,6 +521,70 @@ fn v4_wasm_language_model_declares_t11_translation_rules() {
 }
 
 #[test]
+fn v4_wasm_wat_lex_boundary_uses_trivia_and_numeric_literal_authority() {
+    let module = parse_module(WASM_LANGUAGE_DAG, WASM_LANGUAGE_PATH);
+    for stale in [
+        "wasm_token_param_list",
+        "wasm_token_result",
+        "wasm_token_local_idx_0",
+        "wasm_token_local_idx_1",
+    ] {
+        assert!(
+            !surface_declares_data(&module, stale),
+            "{WASM_LANGUAGE_PATH}: stale whitespace-bearing fixture token `{stale}` must be dissolved"
+        );
+    }
+    for required in [
+        "wasm_token_kw_func",
+        "wasm_token_kw_param",
+        "wasm_token_kw_result",
+        "wasm_token_local_get",
+        "wasm_token_int_numeric_literal",
+        "wasm_token_float_numeric_literal",
+        "wasm_token_localidx_literal",
+        "wasm_token_i32_numeric_literal",
+        "wasm_token_i64_numeric_literal",
+        "wasm_token_f32_numeric_literal",
+        "wasm_token_f64_numeric_literal",
+        "wasm_binding_localidx_0",
+        "wasm_binding_localidx_1",
+        "wasm_numeric_immediate_validation_i32_range",
+        "wasm_numeric_immediate_validation_i64_range",
+        "wasm_numeric_immediate_validation_f32_payload",
+        "wasm_numeric_immediate_validation_f64_payload",
+        "wasm_production_i32_numeric_literal",
+        "wasm_production_i64_numeric_literal",
+        "wasm_production_f32_numeric_literal",
+        "wasm_production_f64_numeric_literal",
+        "wasm_production_localidx",
+        "wasm_surface_localidx",
+        "wasm_localidx_validation_u32_range",
+    ] {
+        assert!(
+            surface_declares_data(&module, required),
+            "{WASM_LANGUAGE_PATH}: WAT lex/grammar boundary must expose `{required}`"
+        );
+    }
+    for stale_literal in [
+        "func ",
+        " (param i32 i32) ",
+        "(result i32) ",
+        "local.get ",
+        "0 ",
+        "1 ",
+        "i32.const ",
+        "i64.const ",
+        "f32.const ",
+        "f64.const ",
+    ] {
+        assert!(
+            !module_string_literal_eq(&module, WASM_LANGUAGE_DAG, stale_literal),
+            "{WASM_LANGUAGE_PATH}: WAT token literal `{stale_literal}` must not embed whitespace"
+        );
+    }
+}
+
+#[test]
 fn v4_dag_language_model_declares_surface_emit_rows() {
     let module = parse_module(DAG_LANGUAGE_DAG, DAG_LANGUAGE_PATH);
     assert!(
@@ -721,6 +787,87 @@ fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, nam
         } => item_name == name,
         _ => false,
     })
+}
+
+fn module_string_literal_eq(
+    module: &v3_compiler::parse_surface::SurfaceModule,
+    source: &str,
+    expected: &str,
+) -> bool {
+    module.items.iter().any(|item| match item {
+        SurfaceItem::Let { expr, .. } => expr_string_literal_eq(expr, expected),
+        SurfaceItem::Fn { body, .. } => expr_string_literal_eq(body, expected),
+        SurfaceItem::FnExternalBody { body_span, .. } => {
+            source_span_string_literal_eq(source, body_span, expected)
+        }
+        SurfaceItem::Data {
+            body: Some(expr), ..
+        } => expr_string_literal_eq(expr, expected),
+        SurfaceItem::Data {
+            body: None,
+            body_span,
+            ..
+        } => source_span_string_literal_eq(source, body_span, expected),
+        _ => false,
+    })
+}
+
+fn source_span_string_literal_eq(
+    source: &str,
+    span: &v3_compiler::SourceSpan,
+    expected: &str,
+) -> bool {
+    let Some(body) = source.get(span.byte_start as usize..span.byte_end as usize) else {
+        return false;
+    };
+    body.contains(&dag_string_literal(expected))
+}
+
+fn dag_string_literal(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn expr_string_literal_eq(expr: &SurfaceExpr, expected: &str) -> bool {
+    match expr {
+        SurfaceExpr::Literal {
+            value: SurfaceLiteral::String(value),
+            ..
+        } => value == expected,
+        SurfaceExpr::Call { args, .. }
+        | SurfaceExpr::PathCall { args, .. }
+        | SurfaceExpr::Operator { args, .. } => {
+            args.iter().any(|arg| expr_string_literal_eq(arg, expected))
+        }
+        SurfaceExpr::Lambda { body, .. } => expr_string_literal_eq(body, expected),
+        SurfaceExpr::If {
+            cond,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            expr_string_literal_eq(cond, expected)
+                || expr_string_literal_eq(then_branch, expected)
+                || expr_string_literal_eq(else_branch, expected)
+        }
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
+            expr_string_literal_eq(scrutinee, expected)
+                || arms
+                    .iter()
+                    .any(|arm| expr_string_literal_eq(&arm.body, expected))
+        }
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields
+            .iter()
+            .any(|field| expr_string_literal_eq(&field.value, expected)),
+        SurfaceExpr::List { elements, .. } => elements
+            .iter()
+            .any(|element| expr_string_literal_eq(element, expected)),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|entry| expr_string_literal_eq(&entry.value, expected)),
+        _ => false,
+    }
 }
 
 fn surface_declares_type(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
