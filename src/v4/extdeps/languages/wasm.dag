@@ -267,6 +267,7 @@ data wasm_production_f32_numeric_literal: Symbol = wasm_production_f32_numeric_l
 data wasm_production_f64_numeric_literal: Symbol = wasm_production_f64_numeric_literal
 data wasm_production_numeric_const_instr: Symbol = wasm_production_numeric_const_instr
 data wasm_production_numeric_binop_instr: Symbol = wasm_production_numeric_binop_instr
+data wasm_production_localidx: Symbol = wasm_production_localidx
 
 data wasm_surface_fn_item: Symbol = wasm_surface_fn_item
 data wasm_surface_text_fragment: Symbol = wasm_surface_text_fragment
@@ -280,6 +281,7 @@ data wasm_surface_f32_numeric_literal: Symbol = wasm_surface_f32_numeric_literal
 data wasm_surface_f64_numeric_literal: Symbol = wasm_surface_f64_numeric_literal
 data wasm_surface_numeric_const_instr: Symbol = wasm_surface_numeric_const_instr
 data wasm_surface_numeric_binop_instr: Symbol = wasm_surface_numeric_binop_instr
+data wasm_surface_localidx: Symbol = wasm_surface_localidx
 data wasm_binding_fn_add: Symbol = wasm_binding_fn_add
 data wasm_binding_localidx_0: Symbol = wasm_binding_localidx_0
 data wasm_binding_localidx_1: Symbol = wasm_binding_localidx_1
@@ -291,6 +293,7 @@ data wasm_numeric_immediate_validation_i32_range: Symbol = wasm_numeric_immediat
 data wasm_numeric_immediate_validation_i64_range: Symbol = wasm_numeric_immediate_validation_i64_range
 data wasm_numeric_immediate_validation_f32_payload: Symbol = wasm_numeric_immediate_validation_f32_payload
 data wasm_numeric_immediate_validation_f64_payload: Symbol = wasm_numeric_immediate_validation_f64_payload
+data wasm_localidx_validation_u32_range: Symbol = wasm_localidx_validation_u32_range
 
 data wasm_relation_rule_mvp1_fn_add: Symbol = wasm_relation_rule_mvp1_fn_add
 
@@ -583,6 +586,30 @@ fn wasm_f64_numeric_literal_node() -> Node {
     width: WasmFloatBits64,
     validation: wasm_numeric_immediate_validation_f64_payload
   )
+}
+
+fn wasm_localidx_node(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: wasm_surface_localidx } },
+    children: [
+      wasm_named_edge(
+        name: wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: token_class)
+      ),
+      wasm_named_edge(
+        name: wasm_numeric_immediate_field_width,
+        target: wasm_int_width_node(width: WasmIntBits32)
+      ),
+      wasm_named_edge(
+        name: wasm_numeric_immediate_field_validation,
+        target: wasm_inhabitant_atom(id: wasm_localidx_validation_u32_range)
+      )
+    ]
+  }
+}
+
+fn wasm_localidx_operand_node() -> Node {
+  wasm_localidx_node(token_class: wasm_token_localidx_literal)
 }
 
 fn wasm_declared_inhabitants_root() -> Node {
@@ -1045,6 +1072,10 @@ fn wasm_float_special_lex_pattern() -> LexPattern {
   )
 }
 
+fn wasm_u32_lex_pattern() -> LexPattern {
+  wasm_digit_run_lex_pattern()
+}
+
 fn wasm_wat_int_literal_lex_pattern() -> LexPattern {
   wasm_lex_choice(
     left: wasm_hex_integer_lex_pattern(),
@@ -1086,7 +1117,7 @@ fn wasm_float_numeric_literal_lex_rule() -> LexRule {
 fn wasm_localidx_literal_lex_rule() -> LexRule {
   wasm_numeric_literal_lex_rule(
     token_class: wasm_token_localidx_literal,
-    pattern: wasm_wat_int_literal_lex_pattern()
+    pattern: wasm_u32_lex_pattern()
   )
 }
 
@@ -1246,11 +1277,11 @@ fn wasm_grammar_mvp1_fn_add_expr() -> GrammarExpr {
                           right: wasm_grammar_sequence(
                             left: wasm_grammar_terminal(token_class: wasm_token_local_get),
                             right: wasm_grammar_sequence(
-                              left: wasm_grammar_terminal(token_class: wasm_token_localidx_literal),
+                              left: Nonterminal { production: wasm_production_localidx },
                               right: wasm_grammar_sequence(
                                 left: wasm_grammar_terminal(token_class: wasm_token_local_get),
                                 right: wasm_grammar_sequence(
-                                  left: wasm_grammar_terminal(token_class: wasm_token_localidx_literal),
+                                  left: Nonterminal { production: wasm_production_localidx },
                                   right: wasm_grammar_sequence(
                                     left: wasm_grammar_terminal(token_class: wasm_token_i32_add),
                                     right: wasm_grammar_terminal(token_class: wasm_token_rparen)
@@ -1291,6 +1322,13 @@ fn wasm_grammar_value_type_expr() -> GrammarExpr {
         right: wasm_grammar_terminal(token_class: wasm_token_type_f64)
       )
     )
+  )
+}
+
+fn wasm_grammar_localidx_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: wasm_grammar_terminal(token_class: wasm_token_localidx_literal),
+    right: wasm_grammar_terminal(token_class: wasm_token_ident)
   )
 }
 
@@ -1398,8 +1436,11 @@ fn wasm_grammar_text_fragment_expr() -> GrammarExpr {
       right: wasm_grammar_choice(
         left: Nonterminal { production: wasm_production_value_type },
         right: wasm_grammar_choice(
-          left: Nonterminal { production: wasm_production_numeric_const_instr },
-          right: Nonterminal { production: wasm_production_numeric_binop_instr }
+          left: Nonterminal { production: wasm_production_localidx },
+          right: wasm_grammar_choice(
+            left: Nonterminal { production: wasm_production_numeric_const_instr },
+            right: Nonterminal { production: wasm_production_numeric_binop_instr }
+          )
         )
       )
     )
@@ -1462,6 +1503,14 @@ fn wasm_grammar_production_f64_numeric_literal() -> GrammarProduction {
   }
 }
 
+fn wasm_grammar_production_localidx() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_localidx,
+    expression: wasm_grammar_localidx_expr(),
+    emitted: wasm_localidx_operand_node()
+  }
+}
+
 fn wasm_grammar_production_numeric_const_instr() -> GrammarProduction {
   GrammarProduction {
     name: wasm_production_numeric_const_instr,
@@ -1487,6 +1536,7 @@ fn wasm_wave1_grammar_root() -> GrammarRoot {
   let i64_numeric_literal = wasm_grammar_production_i64_numeric_literal()
   let f32_numeric_literal = wasm_grammar_production_f32_numeric_literal()
   let f64_numeric_literal = wasm_grammar_production_f64_numeric_literal()
+  let localidx = wasm_grammar_production_localidx()
   let numeric_const = wasm_grammar_production_numeric_const_instr()
   let numeric_binop = wasm_grammar_production_numeric_binop_instr()
   GrammarRoot {
@@ -1500,6 +1550,7 @@ fn wasm_wave1_grammar_root() -> GrammarRoot {
       i64_numeric_literal,
       f32_numeric_literal,
       f64_numeric_literal,
+      localidx,
       numeric_const,
       numeric_binop
     ],
@@ -1574,6 +1625,7 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         sym == wasm_surface_f64_numeric_literal ||
         sym == wasm_surface_numeric_const_instr ||
         sym == wasm_surface_numeric_binop_instr ||
+        sym == wasm_surface_localidx ||
         sym == wasm_binding_localidx_0 ||
         sym == wasm_binding_localidx_1 ||
         sym == wasm_numeric_immediate_field_token_class ||
@@ -1583,6 +1635,7 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         sym == wasm_numeric_immediate_validation_i64_range ||
         sym == wasm_numeric_immediate_validation_f32_payload ||
         sym == wasm_numeric_immediate_validation_f64_payload ||
+        sym == wasm_localidx_validation_u32_range ||
         sym == wasm_production_mvp1_fn_add ||
         sym == wasm_production_text_fragment ||
         sym == wasm_production_mvp1_module ||
@@ -1593,6 +1646,7 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         sym == wasm_production_f64_numeric_literal ||
         sym == wasm_production_numeric_const_instr ||
         sym == wasm_production_numeric_binop_instr ||
+        sym == wasm_production_localidx ||
         sym == wasm_mvp1_source_literal
     }
   }
