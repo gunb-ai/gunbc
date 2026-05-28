@@ -1172,13 +1172,19 @@ fn java_grammar_return_statement_expr() -> GrammarExpr {
   )
 }
 
+// JLS §14.4.1 LocalVariableDeclaration — type and variable declarator id only.
 fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_nonterminal(production: java_production_type),
-    right: java_grammar_sequence(
-      left: java_grammar_terminal(token_class: java_token_ident),
-      right: java_grammar_terminal(token_class: java_token_semicolon)
-    )
+    right: java_grammar_terminal(token_class: java_token_ident)
+  )
+}
+
+// JLS §14.4.2 LocalVariableDeclarationStatement — LocalVariableDeclaration `;`.
+fn java_grammar_local_variable_declaration_statement_expr() -> GrammarExpr {
+  java_grammar_sequence(
+    left: java_grammar_nonterminal(production: java_production_local_variable_declaration),
+    right: java_grammar_terminal(token_class: java_token_semicolon)
   )
 }
 
@@ -1190,7 +1196,7 @@ fn java_grammar_statement_expr() -> GrammarExpr {
 // JLS §14.2 BlockStatement — LocalVariableDeclarationStatement | Statement.
 fn java_grammar_block_statement_expr() -> GrammarExpr {
   java_grammar_choice(
-    left: java_grammar_nonterminal(production: java_production_local_variable_declaration),
+    left: java_grammar_nonterminal(production: java_production_local_variable_declaration_statement),
     right: java_grammar_nonterminal(production: java_production_statement)
   )
 }
@@ -1352,6 +1358,11 @@ fn java_wave2_grammar_root() -> GrammarRoot {
     expression: java_grammar_local_variable_declaration_expr(),
     emitted: java_surface_local_variable_declaration
   )
+  let local_variable_declaration_statement = java_grammar_production(
+    name: java_production_local_variable_declaration_statement,
+    expression: java_grammar_local_variable_declaration_statement_expr(),
+    emitted: java_surface_local_variable_declaration_statement
+  )
   let expression = java_grammar_production(
     name: java_production_expression,
     expression: java_grammar_expression_expr(),
@@ -1392,6 +1403,7 @@ fn java_wave2_grammar_root() -> GrammarRoot {
       statement,
       return_statement,
       local_variable_declaration,
+      local_variable_declaration_statement,
       expression,
       additive_expression,
       multiplicative_expression,
