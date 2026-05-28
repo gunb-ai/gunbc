@@ -134,11 +134,10 @@ type EvalContext {
 }
 
 
-// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; evaluator_input_digest is derived from evaluator_input at construction (never an independent authority).
+// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; cache digests derive from evaluator_input at the cache-key boundary (monomorphic digest fns per T), not a parallel stored digest field.
 type TestClaimTypedInput<T> {
   evaluator_input: T
   evaluator_pin: Symbol
-  evaluator_input_digest: Hash
 }
 
 
@@ -203,8 +202,7 @@ data test_claim_cache_int_succ_tag: Symbol = test_claim_cache_int_succ_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin,
-    evaluator_input_digest: content_hash(n: evaluator_input)
+    evaluator_pin: evaluator_pin
   }
 }
 
@@ -215,8 +213,7 @@ fn test_claim_typed_input_ci_pipeline(
 ) -> TestClaimTypedInput<CiPipeline> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin,
-    evaluator_input_digest: ci_pipeline_cache_digest(p: evaluator_input)
+    evaluator_pin: evaluator_pin
   }
 }
 
@@ -448,27 +445,51 @@ fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
 }
 
 
-fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
+fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+  content_hash(n: input.evaluator_input)
+}
+
+
+fn test_claim_evaluator_input_digest_ci_pipeline(input: TestClaimTypedInput<CiPipeline>) -> Hash {
+  ci_pipeline_cache_digest(p: input.evaluator_input)
+}
+
+
+fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: input.evaluator_pin),
-    b: input.evaluator_input_digest
+    b: test_claim_evaluator_input_digest_node(input: input)
   )
 }
 
 
-fn test_claim_cache_interpretation_hash<T>(subject: TestClaimEvalSubject<T>) -> Hash {
+fn test_claim_evaluator_digest_ci_pipeline(input: TestClaimTypedInput<CiPipeline>) -> Hash {
   combine_hash(
-    a: inferred_tree_digest(tree: subject.tree),
-    b: combine_hash(
-      a: test_claim_interpretation_pin_digest(context: subject.context),
-      b: test_claim_evaluator_digest(input: subject.input)
-    )
+    a: test_claim_symbol_digest(sym: input.evaluator_pin),
+    b: test_claim_evaluator_input_digest_ci_pipeline(input: input)
   )
 }
 
 
 fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> Hash {
-  test_claim_cache_interpretation_hash(subject: subject)
+  combine_hash(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: combine_hash(
+      a: test_claim_interpretation_pin_digest(context: subject.context),
+      b: test_claim_evaluator_digest_node(input: subject.input)
+    )
+  )
+}
+
+
+fn test_claim_cache_interpretation_hash_ci_pipeline(subject: TestClaimEvalSubject<CiPipeline>) -> Hash {
+  combine_hash(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: combine_hash(
+      a: test_claim_interpretation_pin_digest(context: subject.context),
+      b: test_claim_evaluator_digest_ci_pipeline(input: subject.input)
+    )
+  )
 }
 
 
@@ -483,12 +504,12 @@ fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestCla
 }
 
 
-fn test_claim_cache_receipt_pinned<T>(subject: TestClaimEvalSubject<T>) -> TestClaimCacheReceipt<T> {
+fn test_claim_cache_receipt_pinned(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimCacheReceipt<CiPipeline> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
       claim_hash: test_claim_claim_hash_digest(c: subject.claim),
-      interpretation_hash: test_claim_cache_interpretation_hash(subject: subject)
+      interpretation_hash: test_claim_cache_interpretation_hash_ci_pipeline(subject: subject)
     }
   }
 }
