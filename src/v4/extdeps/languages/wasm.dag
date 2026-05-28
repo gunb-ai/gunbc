@@ -17,6 +17,8 @@ import v4.compiler.parse {
   GrammarRoot,
   ModeledGrammar,
   Nonterminal,
+  Optional,
+  Repeat,
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
@@ -251,14 +253,14 @@ data wasm_token_f64_copysign: Symbol = wasm_token_f64_copysign
 
 data wasm_production_mvp1_fn_add: Symbol = wasm_production_mvp1_fn_add
 data wasm_production_text_fragment: Symbol = wasm_production_text_fragment
-data wasm_production_module: Symbol = wasm_production_module
+data wasm_production_mvp1_module: Symbol = wasm_production_mvp1_module
 data wasm_production_value_type: Symbol = wasm_production_value_type
 data wasm_production_numeric_const_instr: Symbol = wasm_production_numeric_const_instr
 data wasm_production_numeric_binop_instr: Symbol = wasm_production_numeric_binop_instr
 
 data wasm_surface_fn_item: Symbol = wasm_surface_fn_item
 data wasm_surface_text_fragment: Symbol = wasm_surface_text_fragment
-data wasm_surface_module_item: Symbol = wasm_surface_module_item
+data wasm_surface_mvp1_module_item: Symbol = wasm_surface_mvp1_module_item
 data wasm_surface_type_i32: Symbol = wasm_surface_type_i32
 data wasm_surface_value_type: Symbol = wasm_surface_value_type
 data wasm_surface_bin_add: Symbol = wasm_surface_bin_add
@@ -600,6 +602,14 @@ fn wasm_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Choice { left: left, right: right }
 }
 
+fn wasm_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn wasm_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
 fn wasm_grammar_choice_fold_step(acc: GrammarExpr, token_class: Symbol) -> GrammarExpr {
   wasm_grammar_choice(
     left: wasm_grammar_terminal(token_class: token_class),
@@ -841,10 +851,7 @@ fn wasm_hex_integer_lex_pattern() -> LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_sequence(
-      left: wasm_lex_choice(
-        left: LiteralPattern { text: "0x" },
-        right: LiteralPattern { text: "0X" }
-      ),
+      left: LiteralPattern { text: "0x" },
       right: wasm_hex_digit_run_lex_pattern()
     )
   )
@@ -872,10 +879,7 @@ fn wasm_hex_float_lex_pattern() -> LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
     right: wasm_lex_sequence(
-      left: wasm_lex_choice(
-        left: LiteralPattern { text: "0x" },
-        right: LiteralPattern { text: "0X" }
-      ),
+      left: LiteralPattern { text: "0x" },
       right: wasm_lex_sequence(
         left: wasm_hex_digit_run_lex_pattern(),
         right: wasm_lex_sequence(
@@ -1119,14 +1123,21 @@ fn wasm_grammar_numeric_binop_instr_expr() -> GrammarExpr {
   )
 }
 
-fn wasm_grammar_module_expr() -> GrammarExpr {
+fn wasm_grammar_mvp1_module_expr() -> GrammarExpr {
   wasm_grammar_sequence(
     left: wasm_grammar_terminal(token_class: wasm_token_lparen),
     right: wasm_grammar_sequence(
       left: wasm_grammar_terminal(token_class: wasm_token_kw_module),
       right: wasm_grammar_sequence(
-        left: Nonterminal { production: wasm_production_mvp1_fn_add },
-        right: wasm_grammar_terminal(token_class: wasm_token_rparen)
+        left: wasm_grammar_optional(
+          element: wasm_grammar_terminal(token_class: wasm_token_ident)
+        ),
+        right: wasm_grammar_sequence(
+          left: wasm_grammar_repeat(
+            element: Nonterminal { production: wasm_production_mvp1_fn_add }
+          ),
+          right: wasm_grammar_terminal(token_class: wasm_token_rparen)
+        )
       )
     )
   )
@@ -1136,7 +1147,7 @@ fn wasm_grammar_text_fragment_expr() -> GrammarExpr {
   wasm_grammar_choice(
     left: Nonterminal { production: wasm_production_mvp1_fn_add },
     right: wasm_grammar_choice(
-      left: Nonterminal { production: wasm_production_module },
+      left: Nonterminal { production: wasm_production_mvp1_module },
       right: wasm_grammar_choice(
         left: Nonterminal { production: wasm_production_value_type },
         right: wasm_grammar_choice(
@@ -1156,11 +1167,11 @@ fn wasm_grammar_production_text_fragment() -> GrammarProduction {
   }
 }
 
-fn wasm_grammar_production_module() -> GrammarProduction {
+fn wasm_grammar_production_mvp1_module() -> GrammarProduction {
   GrammarProduction {
-    name: wasm_production_module,
-    expression: wasm_grammar_module_expr(),
-    emitted: wasm_grammar_atom(id: wasm_surface_module_item)
+    name: wasm_production_mvp1_module,
+    expression: wasm_grammar_mvp1_module_expr(),
+    emitted: wasm_grammar_atom(id: wasm_surface_mvp1_module_item)
   }
 }
 
@@ -1191,7 +1202,7 @@ fn wasm_grammar_production_numeric_binop_instr() -> GrammarProduction {
 fn wasm_wave1_grammar_root() -> GrammarRoot {
   let start = wasm_grammar_production_text_fragment()
   let fn_add = wasm_grammar_production_mvp1_fn_add()
-  let module = wasm_grammar_production_module()
+  let module = wasm_grammar_production_mvp1_module()
   let value_type = wasm_grammar_production_value_type()
   let numeric_const = wasm_grammar_production_numeric_const_instr()
   let numeric_binop = wasm_grammar_production_numeric_binop_instr()
@@ -1261,13 +1272,13 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         wasm_wave1_lex_token_symbol(sym: sym) ||
         sym == wasm_surface_fn_item ||
         sym == wasm_surface_text_fragment ||
-        sym == wasm_surface_module_item ||
+        sym == wasm_surface_mvp1_module_item ||
         sym == wasm_surface_value_type ||
         sym == wasm_surface_numeric_const_instr ||
         sym == wasm_surface_numeric_binop_instr ||
         sym == wasm_production_mvp1_fn_add ||
         sym == wasm_production_text_fragment ||
-        sym == wasm_production_module ||
+        sym == wasm_production_mvp1_module ||
         sym == wasm_production_value_type ||
         sym == wasm_production_numeric_const_instr ||
         sym == wasm_production_numeric_binop_instr ||
