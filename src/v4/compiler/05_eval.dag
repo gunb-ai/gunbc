@@ -62,8 +62,8 @@ import v4.std.node {
   TypeNode,
   Value,
   Atom,
+  bag_hash_digest,
   combine_hash,
-  combine_hash_commutative,
   content_hash,
   fold_node,
   is_positional,
@@ -364,15 +364,9 @@ fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
 
 
 fn diagnostic_tail_bag_cache_digest(xs: List<Diagnostic>) -> Hash {
-  fold_list(
-    xs: xs,
+  bag_hash_digest(
     empty: test_claim_symbol_digest(sym: test_claim_cache_diagnostic_tail_bag_empty_tag),
-    cons: fn(acc, diag) {
-      combine_hash_commutative(
-        a: acc,
-        b: diagnostic_cache_digest(d: diag)
-      )
-    }
+    xs: map(xs, diag => diagnostic_cache_digest(d: diag))
   )
 }
 

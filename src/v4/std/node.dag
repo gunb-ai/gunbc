@@ -428,13 +428,26 @@ fn combine_hash(a: Hash, b: Hash) -> Hash {
 }
 
 
-// Order-insensitive pair combine for bag/multiset cache digests (lexicographic tie-break on digest carriers).
+// Order-insensitive pair combine (lexicographic tie-break on digest carriers). Not associative:
+// do not fold bags with this — use bag_hash_digest.
 fn combine_hash_commutative(a: Hash, b: Hash) -> Hash {
   if a < b {
     combine_hash(a: a, b: b)
   } else {
     combine_hash(a: b, b: a)
   }
+}
+
+
+// Canonical multiset/bag digest: sort element hashes, then order-sensitive combine_hash fold.
+fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
+  fold(
+    sort_by(xs, h => h),
+    init: empty,
+    f: fn(acc, h) {
+      combine_hash(a: acc, b: h)
+    }
+  )
 }
 
 
