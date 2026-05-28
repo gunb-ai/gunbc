@@ -123,6 +123,7 @@ type GrammarSchema {
 type GrammarSchemaProbe {
   schema: GrammarSchema
   fixture: String
+  production: FormalProduction
   expected_parse_surface: Node
 }
 
@@ -180,6 +181,25 @@ fn grammar_empty_node() -> Node {
       connective: Conj
     },
     children: []
+  }
+}
+
+
+fn grammar_formal_nonterminal(identity: Symbol) -> FormalNonterminal {
+  FormalNonterminal { identity: identity }
+}
+
+
+fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence {
+    terminal: FormalTerminal { identity: identity }
+  }
+}
+
+
+fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
+  FormalNonterminalOccurrence {
+    nonterminal: FormalNonterminal { identity: identity }
   }
 }
 
