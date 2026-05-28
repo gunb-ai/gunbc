@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/english.dag
 // Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms.
 // Consumes: std/node.dag (Symbol); std/grammar.dag; std/lexing.dag; std/collection.dag; std/model_core.dag; extdeps/languages/fidelity.dag.
-// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.  Wave-1 word rule accepts any identifier; vocabulary bounding (UnknownVocabulary enforcement) is deferred to wave-2 — see dissolution note on UnknownVocabulary below.
+// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.  Wave-1 word rule accepts any identifier; vocabulary bounding is deferred to wave-2 (no UnknownVocabulary disposition declared until a closed vocabulary exists).
 // Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
@@ -121,11 +121,13 @@ type EnglishGrammar {
 // ---------------------------------------------------------------------------
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Features with wave-1 grammar authority → Modeled.
-// Features that have no grammar production yet → FailClosed (not DeclaredNormalized:
-// there is no normalization story to declare without a production).
-// Arbitrary prose, ambiguous constructs, and unknown vocabulary are always
-// FailClosed — never a silent fabricated parse.
+// Features with wave-1 grammar authority → Modeled or DeclaredNormalized.
+// Features with no grammar production → FailClosed (grammar simply won't match them).
+// UnknownVocabulary is NOT a feature here: the wave-1 word rule accepts any
+// identifier, so unknown vocabulary is not fail-closed in practice.  Declaring
+// it FailClosed while the grammar accepts it would be a false claim.  The arm
+// is deferred to wave-2 when a closed vocabulary is declared; until then the
+// feature has no authority and no disposition.
 type EnglishFidelityFeature
   = FormalSubsetSvo
   | FormalSubsetCopula
@@ -136,7 +138,6 @@ type EnglishFidelityFeature
   | VerbSpelling
   | OutOfSubsetProse
   | AmbiguousConstruct
-  | UnknownVocabulary
   | MalformedSentence
 
 
@@ -151,11 +152,6 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     VerbSpelling => DeclaredNormalized { feature: VerbSpelling }
     OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
     AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
-    // 🟡 dissolution — wave-1 word rule accepts any identifier; vocabulary bounding
-    // requires a closed keyword set or a separate validation layer not yet declared.
-    // Dissolve: declare a closed word vocabulary and replace english_token_word with
-    // per-word keyword rules (or a typed word set), then promote to Modeled.
-    UnknownVocabulary => FailClosed { feature: UnknownVocabulary }
     MalformedSentence => FailClosed { feature: MalformedSentence }
   }
 }
