@@ -340,34 +340,49 @@ pub struct DagCollectAcc {
     pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn dag_node_key(mut node: Rc<Node>) -> String {
+pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
+    match (*node.expr_data).clone() {
+        ExprData::NoExprData => match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: _, .. }) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
     loop {
+        if !dag_node_is_resolved_identity_shell(node.clone()) {
+            break node;
+        }
         match node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: target, .. }) => {
-                let __tco_0 = target.clone();
-                node = __tco_0;
+                node = target.clone();
                 continue;
             }
-            _ => {
-                break v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(node.span.clone().file.clone(), ":".to_string()),
-                                (node.span.clone().start.clone()).to_string(),
-                            ),
-                            "..".to_string(),
-                        ),
-                        (node.span.clone().end.clone()).to_string(),
-                    ),
-                    match node.ident.clone() {
-                        Some(id) => v2_rt::concat(":".to_string(), (id.clone()).to_string()),
-                        None => "".to_string(),
-                    },
-                );
-            }
+            _ => break node,
         }
     }
+}
+
+pub fn dag_node_key(node: Rc<Node>) -> String {
+    let anchor = dag_node_collection_anchor(node);
+    v2_rt::concat(
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
+                    (anchor.span.clone().start.clone()).to_string(),
+                ),
+                "..".to_string(),
+            ),
+            (anchor.span.clone().end.clone()).to_string(),
+        ),
+        match anchor.ident.clone() {
+            Some(id) => v2_rt::concat(":".to_string(), (id.clone()).to_string()),
+            None => "".to_string(),
+        },
+    )
 }
 
 pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
@@ -464,19 +479,8 @@ pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
     }
 }
 
-pub fn dag_node_fingerprint(mut node: Rc<Node>) -> String {
-    loop {
-        match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => {
-                let __tco_0 = target.clone();
-                node = __tco_0;
-                continue;
-            }
-            _ => {
-                break dag_node_surface_fingerprint(node.clone());
-            }
-        }
-    }
+pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
+    dag_node_surface_fingerprint(dag_node_collection_anchor(node))
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
@@ -708,35 +712,22 @@ pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCo
     }
 }
 
-// Peel terminates at a non-Resolved node (resolver must not emit Resolved→Resolved cycles).
-pub fn dag_collect_canonical_node(mut node: Rc<Node>) -> Rc<Node> {
-    loop {
-        match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => {
-                node = target.clone();
-                continue;
-            }
-            _ => break node,
-        }
-    }
-}
-
 pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
-    let canonical = dag_collect_canonical_node(node.clone());
-    let key = dag_node_key(canonical.clone());
-    let fp = dag_node_fingerprint(canonical.clone());
+    let anchor = dag_node_collection_anchor(node.clone());
+    let key = dag_node_key(anchor.clone());
+    let fp = dag_node_fingerprint(anchor.clone());
     let lookup = v2_rt::map_get(&*acc.seen, key.clone());
     match lookup {
         Some(prior) => {
             if prior.as_str() == fp.as_str() {
                 acc
-            } else if canonical.span.start == 0 && canonical.span.end == 0 {
+            } else if anchor.span.start == 0 && anchor.span.end == 0 {
                 Rc::new(DagCollectAcc {
                     seen: acc.seen.clone(),
                     order: acc.order.clone(),
                     collision_errors: v2_rt::rc_list_push(
                         acc.collision_errors.clone(),
-                        dag_node_key_collision_error(key.clone(), canonical.span.clone()),
+                        dag_node_key_collision_error(key.clone(), anchor.span.clone()),
                     ),
                 })
             } else {
@@ -750,10 +741,10 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
             };
             let acc1 = Rc::new(DagCollectAcc {
                 seen: v2_rt::rc_map_insert(inner.seen, key.clone(), fp),
-                order: v2_rt::rc_list_push(inner.order, canonical.clone()),
+                order: v2_rt::rc_list_push(inner.order, anchor.clone()),
                 collision_errors: inner.collision_errors,
             });
-            dag_collect_node_tree(canonical.clone(), acc1)
+            dag_collect_node_tree(anchor.clone(), acc1)
         }
     }
 }
