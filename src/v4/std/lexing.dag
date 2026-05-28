@@ -1,0 +1,140 @@
+// src/v4/std/lexing.dag
+// Scope: canonical lexical analysis substrate types.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
+// Ref: Kleene (1956) — regular expression algebra (LexPattern structure).
+// Ref: Aho, Lam, Sethi, Ullman "Compilers: Principles, Techniques, and Tools"
+//      (Dragon Book, 2nd ed.) §3.1 (tokens, patterns, lexemes), §3.3.3 (maximal munch).
+// Status: substrate home for lexical analysis domain types; v4.compiler.tokenize
+//         currently re-declares LexPattern/LexRule/LexRuleSet/Token as incumbent forms
+//         pending migration to import from here.
+//
+// This file is the single substrate authority for the five concepts named in
+// Wikipedia "Lexical analysis":
+//   Token      — the unit emitted by the tokenizer (class + lexeme + source span).
+//   Lexeme     — the matched character sequence from source (coincides with String;
+//                see comment below — not declared as a separate type).
+//   LexCharClass — character classification discriminant used inside LexPattern.
+//   LexPattern — describes the form lexemes of a token class can take (Kleene algebra).
+//   LexRule    — a (pattern, token-class) pair, or a trivia pattern to discard.
+//   LexRuleSet — an ordered collection of LexRules under maximal-munch policy.
+//
+// Consumers (pending migration):
+//   src/v4/compiler/01_tokenize.dag   — tokenizer walk + LexPattern match engine
+//   src/v4/extdeps/languages/*.dag    — per-language lex rule declarations
+
+
+module v4.std.lexing
+
+
+import v4.std.collection { List }
+import v4.std.node { Symbol }
+import v4.std.text { Char, String }
+
+
+// -- Lexeme (concept, not a separate type) -----------------------------------
+// Wikipedia "Lexical analysis" § Lexeme:
+//   "A lexeme is a sequence of characters in the source program that matches
+//    the pattern for a token and is identified by the lexical analyzer as an
+//    instance of that token."
+// Structural coincidence with String (= FreeMonoid<Char>): a lexeme IS a
+// sequence of characters — no additional structural facts distinguish the two.
+// Grounding evidence: Wikipedia definition maps to FreeMonoid<Char> exactly;
+// no spec facts are dropped by using String as the carrier.
+// Role surfaces as the `lexeme: String` field on Token below.
+// Not declared as a type alias to avoid a hollow alias (P1: hollow-alias problem shape).
+
+
+// -- LexCharClass ------------------------------------------------------------
+// Character classification for lexical analysis — discriminant for CharClassPattern
+// in LexPattern. Variants cover the named character sets used by standard programming-
+// language lex rules.
+// Grounded in: Dragon Book §3.5 (character-class notation in lex specifications);
+// standard ASCII-oriented lex character classes.
+// Note: v4.compiler.tokenize declares LexCharClass with a Char-suffixed naming
+// convention (WhitespaceChar, DigitChar, …) as the incumbent form; this is the
+// canonical-name authority. Migration: v4.compiler.tokenize → imports LexCharClass
+// from v4.std.lexing (follow-up, tracked via 🟡 CP-1b item 13a).
+// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm
+//    lexer morphism witness remains gated.
+type LexCharClass
+  = Whitespace
+  | Digit
+  | HexDigit
+  | IdentStart
+  | IdentContinue
+  | StringText
+  | LineCommentText
+  | BlockCommentText
+
+
+// -- LexPattern --------------------------------------------------------------
+// A lex pattern describes the form that lexemes of a token class can take.
+// Ref: Wikipedia "Lexical analysis" § Pattern.
+// Algebraic structure grounds in Kleene (1956) regular expression algebra:
+//   EmptyPattern          — ε (empty string, always matches consuming nothing)
+//   LiteralPattern        — exact literal text match
+//   KeywordPattern        — literal text with identifier-boundary guard (keyword vs ident)
+//   CharPattern           — exact single character match
+//   CharClassPattern      — character class membership
+//   SequencePattern       — concatenation (rs): left then right
+//   ChoicePattern         — alternation (r|s): left if it matches, else right
+//   OptionalPattern       — optionality (r?): match r or accept empty
+//   RepeatPattern         — Kleene star (r*): zero or more, greedy, zero-width guarded
+//   OneOrMorePattern      — Kleene plus (r+): one or more, greedy, zero-width guarded
+//   DelimitedPattern      — open-body-close with try-close-first semantics; used for
+//                           block constructs (e.g. block comments /**/) where the close
+//                           delimiter may share characters with the body element.
+// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data
+//    is modeled, bidirectional grammar carrier convergence remains gated.
+type LexPattern
+  = EmptyPattern
+  | LiteralPattern { text: String }
+  | KeywordPattern { text: String }
+  | CharPattern { char: Char }
+  | CharClassPattern { class: LexCharClass }
+  | SequencePattern { left: LexPattern, right: LexPattern }
+  | ChoicePattern { left: LexPattern, right: LexPattern }
+  | OptionalPattern { element: LexPattern }
+  | RepeatPattern { element: LexPattern }
+  | OneOrMorePattern { element: LexPattern }
+  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
+
+
+// -- LexRule -----------------------------------------------------------------
+// A lex rule pairs a lex pattern with the token class it produces, or marks a
+// pattern as trivia (whitespace, comments) to be discarded without emitting a token.
+// Ref: Wikipedia "Lexical analysis" § Tokenization; Dragon Book §3.1.
+// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled,
+//    per-arm lexer morphism witness remains gated.
+type LexRule
+  = TokenRule { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule { pattern: LexPattern }
+
+
+// -- LexRuleSet --------------------------------------------------------------
+// An ordered collection of lex rules.
+// Rule order determines tie-breaking under maximal-munch (longest-match) policy:
+// equal-length accepting matches prefer the later rule, so specific keyword or
+// literal rules placed after the general identifier rule win (e.g., keyword "if"
+// listed after ident pattern claims the lexeme over a generic identifier).
+// Ref: Dragon Book §3.3.3 (maximal munch); Wikipedia "Maximal munch".
+type LexRuleSet {
+  rules: List<LexRule>
+}
+
+
+// -- Token -------------------------------------------------------------------
+// A token is the atomic unit emitted by the tokenizer.
+// Ref: Wikipedia "Lexical analysis" § Token:
+//   "a pair consisting of a token name and an optional attribute value."
+//   token name     → class: the terminal symbol / token-category identifier.
+//   attribute value → lexeme: the matched character sequence from source.
+// Source-span fields (file, start, end) ground in Dragon Book §3.1: tokens carry
+// source location for diagnostic reporting and downstream AST construction.
+type Token {
+  class: Symbol
+  lexeme: String
+  file: Symbol
+  start: Int
+  end: Int
+}
