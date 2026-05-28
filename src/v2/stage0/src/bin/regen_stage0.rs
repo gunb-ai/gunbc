@@ -486,7 +486,8 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
 fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
     let mut duplicates = Vec::new();
     for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
-        let marker = format!("pub fn {symbol}");
+        // Use `(` so `dag_node_key` does not match `dag_node_key_collision_error`.
+        let marker = format!("pub fn {symbol}(");
         if text.contains(&marker) {
             duplicates.push(*symbol);
         }
@@ -874,7 +875,7 @@ pub fn build_dag_key_to_id(order: ()) -> () {
         let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
         for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
             assert!(
-                !patched.contains(&format!("pub fn {symbol}")),
+                !patched.contains(&format!("pub fn {symbol}(")),
                 "local definition remained for {symbol}"
             );
         }
