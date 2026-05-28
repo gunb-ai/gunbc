@@ -1754,20 +1754,15 @@ fn swift_language_model_wave1() -> SwiftLanguageModel {
 
 
 
-// ── Wave 2b: AlgebraInhabitanceDecl fill + laws + effects + partiality ──────
 
-// Witness identity atoms
 data swift_witness_signed_int_ordered_ring: Symbol = swift_witness_signed_int_ordered_ring
 data swift_witness_unsigned_int_commutative_semiring: Symbol = swift_witness_unsigned_int_commutative_semiring
 data swift_witness_float_approximate_field: Symbol = swift_witness_float_approximate_field
 data swift_witness_bool_boolean_algebra: Symbol = swift_witness_bool_boolean_algebra
 data swift_witness_string_free_monoid: Symbol = swift_witness_string_free_monoid
 
-// Element type for Swift String (extended grapheme cluster, Unicode-native)
-// Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/stringsandcharacters/
 data swift_inhabitant_grapheme_cluster: Symbol = swift_inhabitant_grapheme_cluster
 
-// Edge-label atoms for float and non-numeric inhabitant nodes
 data swift_inhabitant_field_float: Symbol = swift_inhabitant_field_float
 data swift_inhabitant_field_bool: Symbol = swift_inhabitant_field_bool
 data swift_inhabitant_field_string: Symbol = swift_inhabitant_field_string
@@ -2199,8 +2194,6 @@ fn swift_model_core_law_obligations() -> List<AlgebraLawObligation> {
 }
 
 
-// Effect semantics: all arithmetic/string ops pure (no IO side effects)
-// Note: integer arithmetic traps on overflow at runtime but carries no IO effect
 data swift_effect_signature_pure_value: Symbol = swift_effect_signature_pure_value
 data swift_op_int_add: Symbol = swift_op_int_add
 data swift_op_int_sub: Symbol = swift_op_int_sub
@@ -2266,9 +2259,6 @@ fn swift_effect_semantics_wave2b() -> EffectSemanticsDecl {
 }
 
 
-// Partiality semantics: integer div/rem by zero traps (Swift Standard Library precondition)
-// Anchor: https://developer.apple.com/documentation/swift/int/remainder(dividingby:)
-// Float div by zero yields Inf/NaN per IEEE-754 — NOT partial.
 data swift_partial_int_divide_by_zero: Symbol = swift_partial_int_divide_by_zero
 data swift_partial_int_remainder_by_zero: Symbol = swift_partial_int_remainder_by_zero
 data swift_partial_uint_divide_by_zero: Symbol = swift_partial_uint_divide_by_zero
