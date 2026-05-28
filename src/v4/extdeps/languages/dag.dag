@@ -854,6 +854,36 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
       ]
     ),
     dag_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_match_expr)
+      ]
+    ),
+    dag_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_if_expr)
+      ]
+    ),
+    dag_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_fn_literal)
+      ]
+    ),
+    dag_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_block_expr)
+      ]
+    ),
+    dag_formal_production(
+      lhs: dag_production_expr,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: dag_production_binary_expr)
+      ]
+    ),
+    dag_formal_production(
       lhs: dag_production_unary_expr,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: dag_production_postfix_expr)
