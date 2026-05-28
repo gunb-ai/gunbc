@@ -12,7 +12,6 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   eval_context_with_semantics,
-  test_claim_symbol_digest,
   test_claim_cache_receipt,
   test_claim_typed_input_node
 }
@@ -241,8 +240,7 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 fn infer_receipt_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: infer_receipt_interpretation_pin,
-    interpretation: infer_receipt_interpretation(),
-    semantics_digest: test_claim_symbol_digest(sym: infer_receipt_interpretation_semantics_tag)
+    interpretation: infer_receipt_interpretation()
   )
 }
 

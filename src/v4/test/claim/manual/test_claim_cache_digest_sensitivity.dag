@@ -7,8 +7,7 @@ module v4.test.claim.manual.test_claim_cache_digest_sensitivity
 import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
-  eval_context_with_semantics,
-  test_claim_symbol_digest,
+  eval_context_v4_evaluator_wave1,
   test_claim_cache_interpretation_hash_node,
   test_claim_claim_hash_digest,
   test_claim_no_correction_ambiguous_intent_tag,

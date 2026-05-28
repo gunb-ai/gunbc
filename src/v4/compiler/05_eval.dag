@@ -148,16 +148,19 @@ type EvalContext {
 }
 
 
+// P2/P3: semantics_digest is registry-only — callers must not supply a parallel witness.
 fn eval_context_with_semantics(
   runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra,
-  semantics_digest: Hash
+  interpretation: InterpretationAlgebra
 ) -> EvalContext {
   EvalContext {
     cache_authority: InterpretationCacheAuthority {
       runtime_identity: runtime_identity,
       interpretation: interpretation,
-      semantics_digest: semantics_digest
+      semantics_digest: interpretation_registry_semantics_digest(
+        runtime_identity: runtime_identity,
+        interpretation: interpretation
+      )
     }
   }
 }
@@ -167,8 +170,7 @@ fn eval_context_with_semantics(
 fn eval_context_v4_evaluator_wave1() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: v4_evaluator_runtime_id,
-    interpretation: v4_evaluator_interpretation_wave1(),
-    semantics_digest: test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
+    interpretation: v4_evaluator_interpretation_wave1()
   )
 }
 
@@ -540,15 +542,7 @@ fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
       != test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag) {
     combine_hash(
       a: test_claim_symbol_digest(sym: authority.runtime_identity),
-      b: authority.semantics_digest
-    )
-  } else if authority.semantics_digest
-    != test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
-    && authority.semantics_digest
-      != test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag) {
-    combine_hash(
-      a: test_claim_symbol_digest(sym: authority.runtime_identity),
-      b: authority.semantics_digest
+      b: registry_witness
     )
   } else {
     test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag)

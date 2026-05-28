@@ -12,7 +12,6 @@ import v4.compiler.eval {
   TestClaimRun,
   aggregate_verdicts,
   eval_context_with_semantics,
-  test_claim_symbol_digest,
   eval_diagnostic,
   eval_rejected_roundtrip_deferred
 }
@@ -296,8 +295,7 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 fn pipeline_claim_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: pipeline_interpretation_pin,
-    interpretation: pipeline_interpretation(),
-    semantics_digest: test_claim_symbol_digest(sym: pipeline_interpretation_semantics_tag)
+    interpretation: pipeline_interpretation()
   )
 }
 
