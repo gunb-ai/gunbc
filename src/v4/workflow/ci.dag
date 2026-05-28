@@ -490,12 +490,15 @@ fn ci_test_claim_cache_interpretation_hash(subject: TestClaimEvalSubject<CiPipel
 }
 
 
+fn test_claim_cache_key_interpretation_hash_ci_pipeline(key: TestClaimCacheKey<CiPipeline>) -> Hash {
+  ci_test_claim_cache_interpretation_hash(subject: key.eval_subject)
+}
+
+
 fn test_claim_cache_receipt_pinned(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimCacheReceipt<CiPipeline> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
-      eval_subject: subject,
-      claim_hash: test_claim_claim_hash_digest(c: subject.claim),
-      interpretation_hash: ci_test_claim_cache_interpretation_hash(subject: subject)
+      eval_subject: subject
     }
   }
 }

@@ -156,11 +156,19 @@ type TestClaimEvalSubject<T> {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived boundaries until projection lands.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
-  claim_hash: Hash
-  interpretation_hash: Hash
+}
+
+
+fn test_claim_cache_key_claim_hash<T>(key: TestClaimCacheKey<T>) -> Hash {
+  test_claim_claim_hash_digest(c: key.eval_subject.claim)
+}
+
+
+fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -> Hash {
+  test_claim_cache_interpretation_hash_node(subject: key.eval_subject)
 }
 
 
@@ -493,9 +501,7 @@ fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>
 fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
-      eval_subject: subject,
-      claim_hash: test_claim_claim_hash_digest(c: subject.claim),
-      interpretation_hash: test_claim_cache_interpretation_hash_node(subject: subject)
+      eval_subject: subject
     }
   }
 }
