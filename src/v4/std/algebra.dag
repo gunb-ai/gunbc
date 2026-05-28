@@ -2,7 +2,6 @@
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
 // Status: T-2 modeled.
-// Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 
 
 module v4.std.algebra

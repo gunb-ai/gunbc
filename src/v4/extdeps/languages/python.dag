@@ -2,8 +2,6 @@
 // Scope: Python 3.14 Reference primitive fact-bundles + T-11 MVP-1 grammar-data target model.
 // Status: T-4 python slice — Python Reference primitives (not CPython library types); int is honestly width-axis-omitted (unbounded — see C-PYINT below); ModelCore.primitives filled via fold; inhabitance/laws/effects/partiality empty (wave-2+); `python_model_core_wave1` itself is 🟡 E-6(b) consumer-less until PythonLanguageModel lands (wave-2). canonical-B bool decl-ref is 🟡 E-6(b) staging (mirrors rust slice).
 // Anchor: https://docs.python.org/3.14/reference/datamodel.html
-// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
-// 🟡
 
 module v4.extdeps.languages.python
 

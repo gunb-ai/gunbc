@@ -153,7 +153,6 @@ type ReactCreateElementChild
   | Text { text_value_ref: ReactCrossDeclRef }
 
 // Anchor: https://react.dev/reference/react/createContext
-// 🟢
 type ReactContextBinding {
   context_ref: ReactCrossDeclRef
   default_value_ref: ReactCrossDeclRef
