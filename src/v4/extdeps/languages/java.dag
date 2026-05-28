@@ -1099,21 +1099,21 @@ fn java_grammar_formal_parameter_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.4.1 FormalParameterList — comma-separated parameters only (no parentheses).
+// JLS §8.4.1 FormalParameterList — comma-separated parameters only (non-empty when present).
 fn java_grammar_formal_parameter_list_expr() -> GrammarExpr {
-  java_grammar_optional(
-    element: java_grammar_comma_list_expr(item: java_grammar_formal_parameter_expr())
-  )
+  java_grammar_comma_list_expr(item: java_grammar_formal_parameter_expr())
 }
 
-// JLS §8.4 MethodDeclarator — Identifier ( FormalParameterList ).
+// JLS §8.4 MethodDeclarator — Identifier ( [FormalParameterList] ).
 fn java_grammar_method_declarator_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: java_token_ident),
     right: java_grammar_sequence(
       left: java_grammar_terminal(token_class: java_token_lparen),
       right: java_grammar_sequence(
-        left: java_grammar_nonterminal(production: java_production_formal_parameter_list),
+        left: java_grammar_optional(
+          element: java_grammar_nonterminal(production: java_production_formal_parameter_list)
+        ),
         right: java_grammar_terminal(token_class: java_token_rparen)
       )
     )
