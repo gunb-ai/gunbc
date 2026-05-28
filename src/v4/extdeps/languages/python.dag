@@ -9,6 +9,7 @@
 
 module v4.extdeps.languages.python
 
+import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.grammar {
   ParseGrammar,
   GrammarExpr,
@@ -16,9 +17,14 @@ import v4.std.grammar {
   GrammarRoot,
   ModeledGrammar,
   Choice,
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   Nonterminal,
   Optional,
-  Repeat,
   Sequence,
   Terminal,
   grammar_carries_symbol,
@@ -244,6 +250,9 @@ data python_production_return_stmt: Symbol = python_production_return_stmt
 data python_production_comparison: Symbol = python_production_comparison
 data python_production_additive: Symbol = python_production_additive
 data python_production_primary: Symbol = python_production_primary
+data python_production_additive_tail: Symbol = python_production_additive_tail
+data python_production_comparison_tail: Symbol = python_production_comparison_tail
+data python_formal_epsilon_shim_terminal: Symbol = python_formal_epsilon_shim_terminal
 data python_surface_fn_item: Symbol = python_surface_fn_item
 data python_surface_suite: Symbol = python_surface_suite
 data python_surface_stmt: Symbol = python_surface_stmt
@@ -253,6 +262,8 @@ data python_surface_return_stmt: Symbol = python_surface_return_stmt
 data python_surface_comparison: Symbol = python_surface_comparison
 data python_surface_additive: Symbol = python_surface_additive
 data python_surface_primary: Symbol = python_surface_primary
+data python_surface_additive_tail: Symbol = python_surface_additive_tail
+data python_surface_comparison_tail: Symbol = python_surface_comparison_tail
 data python_mvp1_parse_fixture_file: Symbol = python_mvp1_parse_fixture_file
 data python_wave2a_non_mvp_source: String = "def choose(x):\n    y = x + 1\n    if y > 0:\n        return y\n    return 0"
 data python_binding_fn_add: Symbol = python_binding_fn_add
