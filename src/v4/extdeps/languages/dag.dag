@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_relation_token_*; dag_wave1_*; emit_grammar_relation_row; emit_row_module_header; emit_row_import_decl; emit_row_data_decl; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens.
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/logic.dag.
+// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_relation_token_*; dag_wave1_*; emit_grammar_relation_row; emit_row_module_header; emit_row_import_decl; emit_row_data_decl; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens; qualified_name_from_module_node.
+// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/node_query.dag, std/logic.dag, std/diagnostic.dag, std/qualified_name.dag.
 // Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
 // Anchor: docs/v3-spec.md
 
@@ -52,6 +52,7 @@ import v4.compiler.tokenize {
   lex_rule_set_token_class_member
 }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node_query { find_named_child }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
@@ -63,7 +64,9 @@ import v4.std.target_model {
   grammar_relation_field_tokens
 }
 import v4.std.logic { Bool }
-import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
+import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName, qualified_name_for_all, qualified_name_from_node, qualified_name_projection_gated, qualified_name_structure_invalid }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
@@ -1770,4 +1773,49 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
 // Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
 fn dag_language_model_wave1_modeled() -> DagLanguageModel {
   dag_language_model_wave1()
+}
+
+
+// Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
+// the declared QualifiedName by walking dag_surface_module_header_qualified_name to the fold_list_node
+// sub-node, then delegating to qualified_name_from_node in std/.
+// std/qualified_name.dag cannot import dag_surface_module_header_qualified_name (extdeps/ → std/ only),
+// so this wrapper lives in extdeps/. compiler/00_compile.dag admission calls this function on each
+// batch entry (post-normalize module Node). std/module_batch.dag batch_delete/batch_lookup cannot
+// use this wrapper (std/ layering barrier); they call qualified_name_from_node as best-effort and
+// always receive Rejected for post-normalize module Nodes — kept as non-match per delete policy.
+// 🟡 gated — T-8 parse fidelity — dissolve-on: T-8 lands per-identifier hashing. Until then every
+// segment extracted from a real parse tree carries dag_token_ident (identifier identity unavailable);
+// this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName (P3).
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node; the nested Rejected/Accepted propagation inherits the same carrier threading constraint; forbidden: re-inlining the ladder after Q4 resolves.
+fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+  match find_named_child(root: root, name: dag_surface_module_header) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: _, diagnostics: _ } =>
+      match find_named_child(root: root, name: dag_surface_module_header_qualified_name) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: qn_node, diagnostics: _ } =>
+          match qualified_name_from_node(root: qn_node) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: qn, diagnostics: _ } =>
+              match qn {
+                QnEmpty => outcome_rejected(Diagnostic {
+                  reason: qualified_name_structure_invalid,
+                  at: node_locus(node: root),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                })
+                QnCons { head: _, tail: _ } =>
+                  if qualified_name_for_all(qn: qn, predicate: fn(sym) { sym != dag_token_ident }) {
+                    outcome_accepted(value: qn)
+                  } else {
+                    outcome_rejected(Diagnostic {
+                      reason: qualified_name_projection_gated,
+                      at: node_locus(node: root),
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    })
+                  }
+              }
+          }
+      }
+  }
 }
