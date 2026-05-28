@@ -1,27 +1,46 @@
 // src/v4/extdeps/languages/go.dag
-// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, T-11 MVP-1 grammar-data target model.
-// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, wave-2a lex/grammar-data target model.
+// Status: T-4.17 Wave 2b go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; integer/float/bool/string inhabitance populated via grounded std.algebra Node constructors; Go complex primitive bundles remain present but withheld from AlgebraInhabitanceDecl until std exports a complex-specific approximate algebra constructor; laws/effects/partiality empty (wave-2+); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
 
 import v4.std.grammar {
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   GrammarExpr,
   GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  ParseGrammar,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
+  grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.std.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
   LexRule,
   LexRuleSet,
   LexRules,
+  LexPattern,
   LiteralPattern,
   ModeledLexRules,
-  TokenRule
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  lex_rule_set_token_class_member
 }
-import v4.std.target_model { TargetModel }
-import v4.std.collection { List, Map, empty_map, map_insert }
+import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
@@ -37,6 +56,7 @@ import v4.std.model_core {
 }
 import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
 import v4.std.target_model {
+  TargetModel,
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
   concrete_syntax_token_field_kind,
@@ -58,12 +78,12 @@ import v4.std.algebra {
   BooleanAlgebra,
   approximate_field_node,
   boolean_algebra_node,
+  commutative_ring_node,
   Empty,
   fold_list,
   free_monoid_node,
   list_append,
   list_snoc_item,
-  ordered_ring_node
 }
 import v4.std.text { String }
 
@@ -145,8 +165,15 @@ type GoConcreteSyntaxToken
 
 type GoGrammarRelationRow {
   production: GrammarProduction
-  emitted: Node
   tokens: List<GoConcreteSyntaxToken>
+}
+
+type GoLanguageModel {
+  lex: LexRules
+  grammar: ParseGrammar
+  language_identity: Symbol
+  canonical_symbols: Set<Symbol>
+  core: ModelCore
 }
 
 // Go spec: typed integer arithmetic truncates silently on overflow (not panic).
@@ -228,11 +255,14 @@ data go_surface_spelling_complex128: Symbol = go_surface_spelling_complex128
 data go_surface_spelling_bool: Symbol = go_surface_spelling_bool
 data go_surface_spelling_string: Symbol = go_surface_spelling_string
 
+data go_language_model_surface_id: Symbol = go_language_model_surface_id
+data go_surface_fn_item: Symbol = go_surface_fn_item
+
 data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
-data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
+data go_witness_integer_commutative_ring: Symbol = go_witness_integer_commutative_ring
 data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
 data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
 data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
@@ -240,6 +270,11 @@ data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
 data go_token_kw_func: Symbol = go_token_kw_func
 data go_token_kw_return: Symbol = go_token_kw_return
 data go_token_ident: Symbol = go_token_ident
+// 🟡 gated — feature:go-predeclared-identifier-binding — Go predeclared
+// identifiers such as `int` are not reserved. Wave 2a treats the MVP `int`
+// type reference as a fixed type token and therefore rejects programs that
+// shadow/use `int` as an ordinary identifier; dissolve-on: T-11 binding facts
+// express predeclared type references over `go_token_ident` without this token.
 data go_token_ty_int: Symbol = go_token_ty_int
 data go_token_lparen: Symbol = go_token_lparen
 data go_token_rparen: Symbol = go_token_rparen
@@ -971,15 +1006,33 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
   match facts {
     GoSignedIntegerPrimitiveFacts {
       surface_spelling: _,
-      width: _,
-      encoding: _,
+      width,
+      encoding,
       std_projection
     } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: go_witness_integer_ordered_ring,
-          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+          name: go_witness_integer_commutative_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_commutative_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_width,
+          target: go_signed_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: go_facts_field_signedness,
+          target: go_int_kind_node(kind: Signed)
+        ),
+        go_named_edge(
+          name: go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
           name: go_facts_field_std_projection,
@@ -989,15 +1042,33 @@ fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
     }
     GoUnsignedIntegerPrimitiveFacts {
       surface_spelling: _,
-      width: _,
-      encoding: _,
+      width,
+      encoding,
       std_projection
     } => Node {
       kind: TypeNode { connective: Conj },
       children: [
         go_named_edge(
-          name: go_witness_integer_ordered_ring,
-          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+          name: go_witness_integer_commutative_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_commutative_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_width,
+          target: go_unsigned_int_width_node(width: width)
+        ),
+        go_named_edge(
+          name: go_facts_field_signedness,
+          target: go_int_kind_node(kind: Unsigned)
+        ),
+        go_named_edge(
+          name: go_facts_field_overflow,
+          target: go_overflow_node(
+            overflow: UnsignedTypedIntegerTruncatesSilentlyOnOverflow
+          )
+        ),
+        go_named_edge(
+          name: go_facts_field_encoding,
+          target: go_inhabitant_atom(id: encoding)
         ),
         go_named_edge(
           name: go_facts_field_std_projection,
@@ -1071,7 +1142,7 @@ fn go_string_element_node() -> Node {
 fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = go_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
+    algebra: commutative_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: go_integer_algebra_witness_node(facts: facts)
   }
@@ -1134,7 +1205,11 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md.
+// Go complex values are unordered and backed by finite-precision float components;
+// std.algebra currently has no complex-specific approximate algebra constructor,
+// so Wave 2b keeps their primitive fact-bundles but does not advertise a stronger
+// AlgebraInhabitanceDecl than the shared substrate can defend.
 fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   []
 }
@@ -1161,10 +1236,6 @@ fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-language-model-wave1-consumer — E-6(b) bounded
-// exception — scaffold: T-4 go slice has no GoLanguageModel carrier yet (lex / grammar /
-// MVP are T-11 rust-first specialization follow-on). Dissolve-on: GoLanguageModel lands and
-// binds `core: go_model_core_wave1()`.
 fn go_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: go_wave1_primitive_fact_bundles(),
@@ -1202,6 +1273,7 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
     children: [
+      go_named_edge(name: go_surface_fn_item, target: go_inhabitant_atom(id: go_surface_fn_item)),
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() },
       Edge { label: Positional, target: go_int_inhabitant_node() }
@@ -1270,6 +1342,28 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
+fn go_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn go_formal_rhs_from_tokens(tokens: List<GoConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: go_formal_terminal(token_class: go_concrete_token_class(token: token)))
+    }
+  )
+}
+
+fn go_formal_production_mvp1_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: go_production_mvp1_fn_add },
+    rhs: go_formal_rhs_from_tokens(tokens: go_mvp1_concrete_tokens())
+  }
+}
+
+// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: src/v4/TASKS.md §T-7.1 / T-4.17 grammar-as-data migration — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
 type GoGramBuild1State
   = GoGramBuild1StateInit
   | GoGramBuild1StateReady { expr: GrammarExpr }
@@ -1300,6 +1394,10 @@ fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
   }
 }
 
+fn go_grammar_atom(id: Symbol) -> Node {
+  go_inhabitant_atom(id: id)
+}
+
 fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: go_production_mvp1_fn_add,
@@ -1311,7 +1409,6 @@ fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
 fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
   GoGrammarRelationRow {
     production: go_grammar_production_mvp1_fn_add(),
-    emitted: go_mvp1_emitted_add_fn_node(),
     tokens: go_mvp1_concrete_tokens()
   }
 }
@@ -1331,7 +1428,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       go_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
-      go_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      go_named_edge(name: grammar_relation_field_emitted, target: row.production.emitted),
       go_named_edge(
         name: grammar_relation_field_tokens,
         target: Node { kind: TypeNode { connective: Conj }, children: go_relation_token_edges(tokens: row.tokens) }
@@ -1386,20 +1483,216 @@ fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
 }
 
-fn go_wave1_lex_rules() -> List<LexRule> {
-  [
-    go_lex_rule(token_class: go_token_kw_func, text: "func "),
-    go_lex_rule(token_class: go_token_lparen, text: "("),
-    go_lex_rule(token_class: go_token_ty_int, text: " int"),
-    go_lex_rule(token_class: go_token_comma, text: ", "),
-    go_lex_rule(token_class: go_token_rparen, text: ")"),
-    go_lex_rule(token_class: go_token_lbrace, text: " { "),
-    go_lex_rule(token_class: go_token_kw_return, text: "return "),
-    go_lex_rule(token_class: go_token_plus, text: " + "),
-    go_lex_rule(token_class: go_token_rbrace, text: " }")
-  ]
+fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: KeywordPattern { text: text } }
+}
+
+fn go_whitespace_trivia_rule() -> LexRule {
+  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: src/v4/TASKS.md §T-11 Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
+  // semicolons after line-final identifiers, literals, break/continue/fallthrough/
+  // return, and selected delimiters. Wave 2a accepts only the horizontal-space
+  // MVP subset; newline layout fails closed until std.lexing carries Go layout.
+  // dissolve-on: T-6/T-11 TokenLayout/TriviaPolicy carries Go semicolon-insertion layout facts.
+  TriviaRule {
+    pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
+  }
+}
+
+// 🟡 gated — feature:go-unicode-identifier-lexing — Go spec identifiers are
+// Unicode-letter/digit based. Wave 2a deliberately accepts only the shared
+// identifier classes and rejects outside-subset identifiers via lexer no-match;
+// dissolve-on: std.lexing exports Go Unicode identifier classes and this
+// pattern consumes them.
+fn go_ident_lex_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn go_ident_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: go_token_ident,
+    pattern: go_ident_lex_pattern()
+  }
+}
+
+fn go_wave1_lex_rules() -> LexRuleSet {
+  // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
+  // matches, so ident must precede keywords and fixed literals that must win ties.
+  LexRuleSet {
+    rules: [
+      go_whitespace_trivia_rule(),
+      go_ident_lex_rule(),
+      go_keyword_lex_rule(token_class: go_token_kw_func, text: "func"),
+      go_lex_rule(token_class: go_token_lparen, text: "("),
+      // See feature:go-predeclared-identifier-binding above. This is a
+      // fail-closed MVP type-reference token, not a claim that `int` is reserved.
+      go_lex_rule(token_class: go_token_ty_int, text: "int"),
+      go_lex_rule(token_class: go_token_comma, text: ","),
+      go_lex_rule(token_class: go_token_rparen, text: ")"),
+      go_lex_rule(token_class: go_token_lbrace, text: "{"),
+      go_keyword_lex_rule(token_class: go_token_kw_return, text: "return"),
+      go_lex_rule(token_class: go_token_plus, text: "+"),
+      go_lex_rule(token_class: go_token_rbrace, text: "}")
+    ]
+  }
 }
 
 fn go_wave1_lex() -> LexRules {
-  ModeledLexRules { root: LexRuleSet { rules: go_wave1_lex_rules() } }
+  ModeledLexRules { root: go_wave1_lex_rules() }
+}
+
+fn go_wave1_grammar_root() -> GrammarRoot {
+  let start = go_grammar_production_mvp1_fn_add()
+  GrammarRoot {
+    start: go_production_mvp1_fn_add,
+    productions: [start],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn go_wave1_grammar() -> ParseGrammar {
+  ModeledGrammar { root: go_wave1_grammar_root() }
+}
+
+fn go_wave1_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(
+    rules: go_wave1_lex_rules(),
+    token_class: sym
+  )
+}
+
+fn go_integer_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoIntegerPrimitiveFacts
+) -> Bool {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => acc || sym == surface_spelling
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling,
+      width: _,
+      encoding: _,
+      std_projection: _
+    } => acc || sym == surface_spelling
+  }
+}
+
+fn go_float_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoFloatPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_complex_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoComplexPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_bool_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoBoolPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_string_catalog_surface_symbol_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: GoStringPrimitiveFacts
+) -> Bool {
+  acc || sym == facts.surface_spelling
+}
+
+fn go_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_integer_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_float_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_complex_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_complex_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_bool_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_bool_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_string_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      go_string_catalog_surface_symbol_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
+fn go_catalog_surface_symbol(sym: Symbol) -> Bool {
+  go_integer_catalog_surface_symbol(sym: sym) ||
+    go_float_catalog_surface_symbol(sym: sym) ||
+    go_complex_catalog_surface_symbol(sym: sym) ||
+    go_bool_catalog_surface_symbol(sym: sym) ||
+    go_string_catalog_surface_symbol(sym: sym)
+}
+
+fn go_language_model_canonical_symbols() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      go_catalog_surface_symbol(sym: sym) ||
+        go_wave1_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: go_wave1_grammar(), sym: sym) ||
+        sym == go_production_mvp1_fn_add ||
+        sym == go_mvp1_source_literal
+    }
+  }
+}
+
+// 🟡 needs-more-work · E-6(b) bounded-exception · scaffold feature:go-language-model-consumer · dissolve-on: GoLanguageModel registry/T-11 consumes `go_language_model_wave1()` as the Go target carrier.
+fn go_language_model_wave1() -> GoLanguageModel {
+  GoLanguageModel {
+    lex: go_wave1_lex(),
+    grammar: go_wave1_grammar(),
+    language_identity: go_language_model_surface_id,
+    canonical_symbols: go_language_model_canonical_symbols(),
+    core: go_model_core_wave1()
+  }
 }

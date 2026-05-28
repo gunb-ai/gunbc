@@ -155,6 +155,15 @@ type InterpretationAlgebra {
   bind: BindInterpreter
 }
 
+// P2/P3: one Symbol per top-level interpreter fn ref — co-located with InterpretationAlgebra literals at call sites; cache digests derive from this witness (not manual module pins alone).
+type InterpretationStructureWitness {
+  allocate_literal: Symbol,
+  call_primitive: Symbol,
+  choose_branch: Symbol,
+  step_loop: Symbol,
+  bind_value: Symbol
+}
+
 // 🟢 coproduct dissolution — behavior dispatch authority lives with InterpretationAlgebra, not eval consumers.
 type RuntimeBehaviorInterpreter
   = ValueRuntimeInterpreter { interpreter: ValueInterpreter }

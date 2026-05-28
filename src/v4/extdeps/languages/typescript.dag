@@ -1,26 +1,30 @@
 // src/v4/extdeps/languages/typescript.dag
-// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
-// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
+// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
 
 module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
+  Choice,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.std.lexing {
   CharClassPattern,
+  DigitChar,
   IdentContinueChar,
   IdentStartChar,
   LexPattern,
@@ -28,7 +32,9 @@ import v4.std.lexing {
   LexRuleSet,
   LexRules,
   LiteralPattern,
+  lex_rule_set_token_class_member,
   ModeledLexRules,
+  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
   TokenRule
@@ -36,10 +42,18 @@ import v4.std.lexing {
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
   ModelCore,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic,
@@ -81,6 +95,7 @@ import v4.std.algebra {
   BooleanAlgebra,
   Empty,
   fold_list,
+  free_monoid_type_node,
   list_append,
   list_snoc_item,
   ordered_ring_type_node
@@ -118,6 +133,8 @@ type TsLanguageModel {
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
+  lex: LexRules
+  grammar: ParseGrammar
 }
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
@@ -188,11 +205,39 @@ data ts_token_comma: Symbol = ts_token_comma
 data ts_token_colon: Symbol = ts_token_colon
 data ts_token_semicolon: Symbol = ts_token_semicolon
 
+data ts_token_kw_let: Symbol = ts_token_kw_let
+data ts_token_kw_const: Symbol = ts_token_kw_const
+data ts_token_ty_string: Symbol = ts_token_ty_string
+data ts_token_ty_boolean: Symbol = ts_token_ty_boolean
+data ts_token_ty_void: Symbol = ts_token_ty_void
+data ts_token_eq: Symbol = ts_token_eq
+data ts_token_minus: Symbol = ts_token_minus
+data ts_token_star: Symbol = ts_token_star
+data ts_token_num_lit: Symbol = ts_token_num_lit
+
 data ts_production_mvp1_fn_add: Symbol = ts_production_mvp1_fn_add
+
+data ts_production_wave2a_type_annotation: Symbol = ts_production_wave2a_type_annotation
+data ts_production_wave2a_type_number: Symbol = ts_production_wave2a_type_number
+data ts_production_wave2a_type_string: Symbol = ts_production_wave2a_type_string
+data ts_production_wave2a_type_boolean: Symbol = ts_production_wave2a_type_boolean
+data ts_production_wave2a_type_void: Symbol = ts_production_wave2a_type_void
+data ts_production_wave2a_let_decl: Symbol = ts_production_wave2a_let_decl
+data ts_production_wave2a_const_decl: Symbol = ts_production_wave2a_const_decl
+data ts_production_wave2a_item: Symbol = ts_production_wave2a_item
 
 data ts_surface_fn_item: Symbol = ts_surface_fn_item
 data ts_surface_type_number: Symbol = ts_surface_type_number
 data ts_surface_bin_add: Symbol = ts_surface_bin_add
+
+data ts_surface_type_string: Symbol = ts_surface_type_string
+data ts_surface_type_boolean: Symbol = ts_surface_type_boolean
+data ts_surface_type_void: Symbol = ts_surface_type_void
+data ts_surface_type_annotation: Symbol = ts_surface_type_annotation
+data ts_surface_let_decl: Symbol = ts_surface_let_decl
+data ts_surface_const_decl: Symbol = ts_surface_const_decl
+data ts_surface_item: Symbol = ts_surface_item
+
 data ts_binding_fn_add: Symbol = ts_binding_fn_add
 data ts_binding_param_x: Symbol = ts_binding_param_x
 data ts_binding_param_y: Symbol = ts_binding_param_y
@@ -1032,6 +1077,719 @@ fn ts_language_model_wave1() -> TsLanguageModel {
   TsLanguageModel {
     language_identity: ts_language_model_surface_id,
     canonical_symbols: ts_language_model_canonical_symbols(),
-    core: ts_model_core_wave1()
+    core: ts_model_core_wave1(),
+    lex: ts_wave1_lex(),
+    grammar: ts_wave1_grammar()
+  }
+}
+
+
+fn ts_num_lit_lex_pattern() -> LexPattern {
+  OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+}
+
+fn ts_num_lit_lex_rule() -> LexRule {
+  TokenRule { token_class: ts_token_num_lit, pattern: ts_num_lit_lex_pattern() }
+}
+
+fn ts_wave2a_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      ts_lex_rule(token_class: ts_token_kw_function, text: "function "),
+      ts_lex_rule(token_class: ts_token_kw_return, text: "return "),
+      ts_lex_rule(token_class: ts_token_kw_let, text: "let "),
+      ts_lex_rule(token_class: ts_token_kw_const, text: "const "),
+      ts_ident_lex_rule(),
+      ts_lex_rule(token_class: ts_token_ty_number, text: "number"),
+      ts_lex_rule(token_class: ts_token_ty_string, text: "string"),
+      ts_lex_rule(token_class: ts_token_ty_boolean, text: "boolean"),
+      ts_lex_rule(token_class: ts_token_ty_void, text: "void"),
+      ts_num_lit_lex_rule(),
+      ts_lex_rule(token_class: ts_token_plus, text: " + "),
+      ts_lex_rule(token_class: ts_token_minus, text: " - "),
+      ts_lex_rule(token_class: ts_token_star, text: " * "),
+      ts_lex_rule(token_class: ts_token_eq, text: " = "),
+      ts_lex_rule(token_class: ts_token_lbrace, text: " { "),
+      ts_lex_rule(token_class: ts_token_rbrace, text: " }"),
+      ts_lex_rule(token_class: ts_token_lparen, text: "("),
+      ts_lex_rule(token_class: ts_token_rparen, text: ")"),
+      ts_lex_rule(token_class: ts_token_comma, text: ", "),
+      ts_lex_rule(token_class: ts_token_colon, text: ": "),
+      ts_lex_rule(token_class: ts_token_semicolon, text: ";")
+    ]
+  }
+}
+
+fn ts_wave2a_lex() -> LexRules {
+  ModeledLexRules { root: ts_wave2a_lex_rules() }
+}
+
+fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
+  lex_rule_set_token_class_member(rules: ts_wave2a_lex_rules(), token_class: sym)
+}
+
+fn ts_grammar_production_wave2a_type_number() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_number,
+    expression: Terminal { token_class: ts_token_ty_number },
+    emitted: ts_grammar_atom(id: ts_surface_type_number)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_string() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_string,
+    expression: Terminal { token_class: ts_token_ty_string },
+    emitted: ts_grammar_atom(id: ts_surface_type_string)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_boolean() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_boolean,
+    expression: Terminal { token_class: ts_token_ty_boolean },
+    emitted: ts_grammar_atom(id: ts_surface_type_boolean)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_void() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_void,
+    expression: Terminal { token_class: ts_token_ty_void },
+    emitted: ts_grammar_atom(id: ts_surface_type_void)
+  }
+}
+
+fn ts_grammar_production_wave2a_type_annotation() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_type_annotation,
+    expression: Choice {
+      left: Nonterminal { production: ts_production_wave2a_type_number },
+      right: Choice {
+        left: Nonterminal { production: ts_production_wave2a_type_string },
+        right: Choice {
+          left: Nonterminal { production: ts_production_wave2a_type_boolean },
+          right: Nonterminal { production: ts_production_wave2a_type_void }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_type_annotation)
+  }
+}
+
+fn ts_grammar_production_wave2a_let_decl() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_let_decl,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_kw_let },
+      right: Sequence {
+        left: Terminal { token_class: ts_token_ident },
+        right: Sequence {
+          left: Terminal { token_class: ts_token_colon },
+          right: Sequence {
+            left: Nonterminal { production: ts_production_wave2a_type_annotation },
+            right: Sequence {
+              left: Terminal { token_class: ts_token_eq },
+              right: Sequence {
+                left: Terminal { token_class: ts_token_ident },
+                right: Terminal { token_class: ts_token_semicolon }
+              }
+            }
+          }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_let_decl)
+  }
+}
+
+fn ts_grammar_production_wave2a_const_decl() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_const_decl,
+    expression: Sequence {
+      left: Terminal { token_class: ts_token_kw_const },
+      right: Sequence {
+        left: Terminal { token_class: ts_token_ident },
+        right: Sequence {
+          left: Terminal { token_class: ts_token_colon },
+          right: Sequence {
+            left: Nonterminal { production: ts_production_wave2a_type_annotation },
+            right: Sequence {
+              left: Terminal { token_class: ts_token_eq },
+              right: Sequence {
+                left: Terminal { token_class: ts_token_ident },
+                right: Terminal { token_class: ts_token_semicolon }
+              }
+            }
+          }
+        }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_const_decl)
+  }
+}
+
+fn ts_grammar_production_wave2a_item() -> GrammarProduction {
+  GrammarProduction {
+    name: ts_production_wave2a_item,
+    expression: Choice {
+      left: Nonterminal { production: ts_production_mvp1_fn_add },
+      right: Choice {
+        left: Nonterminal { production: ts_production_wave2a_let_decl },
+        right: Nonterminal { production: ts_production_wave2a_const_decl }
+      }
+    },
+    emitted: ts_grammar_atom(id: ts_surface_item)
+  }
+}
+
+fn ts_wave2a_grammar_root() -> GrammarRoot {
+  let mvp1 = ts_grammar_production_mvp1_fn_add()
+  let ty_num = ts_grammar_production_wave2a_type_number()
+  let ty_str = ts_grammar_production_wave2a_type_string()
+  let ty_bool = ts_grammar_production_wave2a_type_boolean()
+  let ty_void = ts_grammar_production_wave2a_type_void()
+  let type_annot = ts_grammar_production_wave2a_type_annotation()
+  let let_decl = ts_grammar_production_wave2a_let_decl()
+  let const_decl = ts_grammar_production_wave2a_const_decl()
+  let item = ts_grammar_production_wave2a_item()
+  GrammarRoot {
+    start: ts_production_wave2a_item,
+    productions: [mvp1, ty_num, ty_str, ty_bool, ty_void, type_annot, let_decl, const_decl, item],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn ts_wave2a_grammar() -> ParseGrammar {
+  ModeledGrammar { root: ts_wave2a_grammar_root() }
+}
+
+fn ts_language_model_canonical_symbols_wave2a() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      ts_catalog_surface_symbol(sym: sym) ||
+        ts_wave2a_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: ts_wave2a_grammar(), sym: sym) ||
+        sym == ts_mvp1_source_literal
+    }
+  }
+}
+
+fn ts_language_model_wave2a() -> TsLanguageModel {
+  TsLanguageModel {
+    language_identity: ts_language_model_surface_id,
+    canonical_symbols: ts_language_model_canonical_symbols_wave2a(),
+    core: ts_model_core_wave1(),
+    lex: ts_wave2a_lex(),
+    grammar: ts_wave2a_grammar()
+  }
+}
+
+
+
+// 🟢 grounded.
+type TsStringPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+  code_unit_inhabitant: Symbol
+}
+
+data ts_surface_spelling_string: Symbol = ts_surface_spelling_string
+data ts_repr_string_utf16_code_unit_sequence: Symbol = ts_repr_string_utf16_code_unit_sequence
+data ts_std_projection_string: Symbol = ts_std_projection_string
+
+data ts_inhabitant_string: Symbol = ts_inhabitant_string
+data ts_inhabitant_field_string: Symbol = ts_inhabitant_field_string
+data ts_inhabitant_utf16_code_unit: Symbol = ts_inhabitant_utf16_code_unit
+data ts_witness_string_free_monoid: Symbol = ts_witness_string_free_monoid
+
+data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
+  surface_spelling: ts_surface_spelling_string,
+  encoding: ts_repr_string_utf16_code_unit_sequence,
+  std_projection: ts_std_projection_string,
+  code_unit_inhabitant: ts_inhabitant_utf16_code_unit
+}
+
+fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: ts_facts_field_surface_spelling,
+        target: ts_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_encoding,
+        target: ts_inhabitant_atom(id: facts.encoding)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_std_projection,
+        target: ts_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn ts_string_inhabitant_node(id: Symbol, facts: TsStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: ts_inhabitant_field_string, target: ts_inhabitant_atom(id: id)),
+      ts_named_edge(name: ts_facts_field_encoding, target: ts_inhabitant_atom(id: facts.encoding)),
+      ts_named_edge(
+        name: ts_facts_field_surface_spelling,
+        target: ts_inhabitant_atom(id: facts.surface_spelling)
+      )
+    ]
+  }
+}
+
+fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: ts_witness_string_free_monoid,
+        target: ts_inhabitant_atom(id: ts_witness_string_free_monoid)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_encoding,
+        target: ts_inhabitant_atom(id: facts.encoding)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_std_projection,
+        target: ts_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = ts_string_inhabitant_node(id: ts_inhabitant_string, facts: facts)
+  let code_unit = ts_inhabitant_atom(id: facts.code_unit_inhabitant)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_type_node(inhabitant: code_unit),
+    inhabitant: inhabitant,
+    witness: ts_string_algebra_witness_node(facts: facts)
+  }
+}
+
+fn ts_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    ts_string_algebra_inhabitance(facts: ts_facts_string)
+  ]
+}
+
+fn ts_model_core_inhabitance_decls_wave2b() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: ts_model_core_inhabitance_decls(),
+    right: ts_string_algebra_inhabitance_decls()
+  )
+}
+
+fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<Symbol, Node> {
+  let m0 = empty_map()
+  let m1 = map_insert(
+    m: m0,
+    key: primitive_fact_axis_surface_spelling,
+    value: ts_inhabitant_atom(id: facts.surface_spelling)
+  )
+  let m2 = map_insert(
+    m: m1,
+    key: primitive_fact_axis_encoding,
+    value: ts_inhabitant_atom(id: facts.encoding)
+  )
+  m2
+}
+
+fn ts_primitive_bundle_from_string_facts(facts: TsStringPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: ts_string_facts_node(facts: facts),
+    spec_facts: ts_string_spec_facts(facts: facts)
+  }
+}
+
+fn ts_wave2b_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: ts_wave1_primitive_fact_bundles(),
+    right: [ts_primitive_bundle_from_string_facts(facts: ts_facts_string)]
+  )
+}
+
+
+// 🟡 coproduct dissolution — SL-T4-WAVE2B-TS-LAW-KEY — feature:model-core-law-expression-carrier — scaffold:T-4-wave-2b · law-kind coproduct for ts_model_core_law_node kind edge — owner:T-4 typescript language model lane — dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+type TsModelCoreLawKey
+  = TsLawNumberIeee754Rounding
+  | TsLawNumberNanInfCarriedByIeee754
+  | TsLawBigIntAddAssociative
+  | TsLawBigIntAddCommutative
+  | TsLawBigIntMulAssociative
+  | TsLawBigIntMulCommutative
+  | TsLawBigIntDistributive
+  | TsLawBigIntTotalOrder
+  | TsLawBoolBoundedLattice
+  | TsLawBoolComplement
+  | TsLawStringConcatAssociative
+  | TsLawStringConcatLeftIdentity
+  | TsLawStringConcatRightIdentity
+
+data ts_law_kind_number_ieee754_rounding: Symbol = ts_law_kind_number_ieee754_rounding
+data ts_law_kind_number_nan_inf_carried_by_ieee754: Symbol = ts_law_kind_number_nan_inf_carried_by_ieee754
+data ts_law_kind_bigint_add_associative: Symbol = ts_law_kind_bigint_add_associative
+data ts_law_kind_bigint_add_commutative: Symbol = ts_law_kind_bigint_add_commutative
+data ts_law_kind_bigint_mul_associative: Symbol = ts_law_kind_bigint_mul_associative
+data ts_law_kind_bigint_mul_commutative: Symbol = ts_law_kind_bigint_mul_commutative
+data ts_law_kind_bigint_distributive: Symbol = ts_law_kind_bigint_distributive
+data ts_law_kind_bigint_total_order: Symbol = ts_law_kind_bigint_total_order
+data ts_law_kind_bool_bounded_lattice: Symbol = ts_law_kind_bool_bounded_lattice
+data ts_law_kind_bool_complement: Symbol = ts_law_kind_bool_complement
+data ts_law_kind_string_concat_associative: Symbol = ts_law_kind_string_concat_associative
+data ts_law_kind_string_concat_left_identity: Symbol = ts_law_kind_string_concat_left_identity
+data ts_law_kind_string_concat_right_identity: Symbol = ts_law_kind_string_concat_right_identity
+
+fn ts_law_kind_symbol(key: TsModelCoreLawKey) -> Symbol {
+  match key {
+    TsLawNumberIeee754Rounding => ts_law_kind_number_ieee754_rounding
+    TsLawNumberNanInfCarriedByIeee754 => ts_law_kind_number_nan_inf_carried_by_ieee754
+    TsLawBigIntAddAssociative => ts_law_kind_bigint_add_associative
+    TsLawBigIntAddCommutative => ts_law_kind_bigint_add_commutative
+    TsLawBigIntMulAssociative => ts_law_kind_bigint_mul_associative
+    TsLawBigIntMulCommutative => ts_law_kind_bigint_mul_commutative
+    TsLawBigIntDistributive => ts_law_kind_bigint_distributive
+    TsLawBigIntTotalOrder => ts_law_kind_bigint_total_order
+    TsLawBoolBoundedLattice => ts_law_kind_bool_bounded_lattice
+    TsLawBoolComplement => ts_law_kind_bool_complement
+    TsLawStringConcatAssociative => ts_law_kind_string_concat_associative
+    TsLawStringConcatLeftIdentity => ts_law_kind_string_concat_left_identity
+    TsLawStringConcatRightIdentity => ts_law_kind_string_concat_right_identity
+  }
+}
+
+fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      ts_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      ts_named_edge(
+        name: model_core_wave1_law_field_kind,
+        target: ts_inhabitant_atom(id: ts_law_kind_symbol(key: key))
+      )
+    ]
+  }
+}
+
+fn ts_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: law
+  }
+}
+
+fn ts_number_law_obligations(facts: TsNumberPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = ts_number_algebra_witness_node(facts: facts)
+  let inhabitant = ts_number_inhabitant_node(id: ts_inhabitant_number, facts: facts)
+  let algebra = approximate_field_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawNumberIeee754Rounding
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawNumberNanInfCarriedByIeee754
+      )
+    )
+  ]
+}
+
+fn ts_bigint_law_obligations(facts: TsBigIntPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = ts_bigint_algebra_witness_node(facts: facts)
+  let inhabitant = ts_bigint_inhabitant_node(id: ts_inhabitant_bigint, facts: facts)
+  let algebra = ordered_ring_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntAddAssociative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntAddCommutative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntMulAssociative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntMulCommutative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntDistributive
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntTotalOrder
+      )
+    )
+  ]
+}
+
+fn ts_bool_law_obligations() -> List<AlgebraLawObligation> {
+  let witness = ts_bool_algebra_witness_node()
+  let inhabitant = ts_inhabitant_boolean_node()
+  let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBoolBoundedLattice
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBoolComplement
+      )
+    )
+  ]
+}
+
+fn ts_string_law_obligations(facts: TsStringPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = ts_string_algebra_witness_node(facts: facts)
+  let code_unit = ts_inhabitant_atom(id: facts.code_unit_inhabitant)
+  let algebra = free_monoid_type_node(inhabitant: code_unit)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawStringConcatAssociative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawStringConcatLeftIdentity
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawStringConcatRightIdentity
+      )
+    )
+  ]
+}
+
+fn ts_number_law_step(
+  acc: List<AlgebraLawObligation>,
+  row: TsEcma262NumericPrimitiveFactsUnion
+) -> List<AlgebraLawObligation> {
+  match row {
+    TsNumericFactsNumber { facts: f } =>
+      list_append(left: acc, right: ts_number_law_obligations(facts: f))
+    TsNumericFactsBigInt { facts: _ } => acc
+  }
+}
+
+fn ts_bigint_law_step(
+  acc: List<AlgebraLawObligation>,
+  row: TsEcma262NumericPrimitiveFactsUnion
+) -> List<AlgebraLawObligation> {
+  match row {
+    TsNumericFactsNumber { facts: _ } => acc
+    TsNumericFactsBigInt { facts: f } =>
+      list_append(left: acc, right: ts_bigint_law_obligations(facts: f))
+  }
+}
+
+fn ts_number_law_decls() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: ts_numeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, row) { ts_number_law_step(acc: acc, row: row) }
+  )
+}
+
+fn ts_bigint_law_decls() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: ts_numeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, row) { ts_bigint_law_step(acc: acc, row: row) }
+  )
+}
+
+fn ts_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: ts_number_law_decls(),
+        right: ts_bigint_law_decls()
+      ),
+      right: ts_bool_law_obligations()
+    ),
+    right: ts_string_law_obligations(facts: ts_facts_string)
+  )
+}
+
+
+
+data ts_effect_signature_pure_value: Symbol = ts_effect_signature_pure_value
+data ts_op_number_add: Symbol = ts_op_number_add
+data ts_op_number_sub: Symbol = ts_op_number_sub
+data ts_op_number_mul: Symbol = ts_op_number_mul
+data ts_op_number_div: Symbol = ts_op_number_div
+data ts_op_number_neg: Symbol = ts_op_number_neg
+data ts_op_number_compare: Symbol = ts_op_number_compare
+data ts_op_bigint_add: Symbol = ts_op_bigint_add
+data ts_op_bigint_sub: Symbol = ts_op_bigint_sub
+data ts_op_bigint_mul: Symbol = ts_op_bigint_mul
+data ts_op_bigint_div: Symbol = ts_op_bigint_div
+data ts_op_bigint_rem: Symbol = ts_op_bigint_rem
+data ts_op_bigint_neg: Symbol = ts_op_bigint_neg
+data ts_op_bigint_compare: Symbol = ts_op_bigint_compare
+data ts_op_bool_and: Symbol = ts_op_bool_and
+data ts_op_bool_or: Symbol = ts_op_bool_or
+data ts_op_bool_not: Symbol = ts_op_bool_not
+data ts_op_string_concat: Symbol = ts_op_string_concat
+
+fn ts_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: ts_inhabitant_atom(id: operation),
+    effect_signature: EffectSignature {
+      signature: ts_inhabitant_atom(id: ts_effect_signature_pure_value)
+    }
+  }
+}
+
+fn ts_effect_semantics_wave2b() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      ts_pure_operation(operation: ts_op_number_add),
+      ts_pure_operation(operation: ts_op_number_sub),
+      ts_pure_operation(operation: ts_op_number_mul),
+      ts_pure_operation(operation: ts_op_number_div),
+      ts_pure_operation(operation: ts_op_number_neg),
+      ts_pure_operation(operation: ts_op_number_compare),
+      ts_pure_operation(operation: ts_op_bigint_add),
+      ts_pure_operation(operation: ts_op_bigint_sub),
+      ts_pure_operation(operation: ts_op_bigint_mul),
+      ts_pure_operation(operation: ts_op_bigint_div),
+      ts_pure_operation(operation: ts_op_bigint_rem),
+      ts_pure_operation(operation: ts_op_bigint_neg),
+      ts_pure_operation(operation: ts_op_bigint_compare),
+      ts_pure_operation(operation: ts_op_bool_and),
+      ts_pure_operation(operation: ts_op_bool_or),
+      ts_pure_operation(operation: ts_op_bool_not),
+      ts_pure_operation(operation: ts_op_string_concat)
+    ]
+  }
+}
+
+
+
+data ts_partial_bigint_divide_by_zero: Symbol = ts_partial_bigint_divide_by_zero
+data ts_partial_bigint_remainder_by_zero: Symbol = ts_partial_bigint_remainder_by_zero
+data ts_precondition_bigint_divisor_nonzero: Symbol = ts_precondition_bigint_divisor_nonzero
+
+fn ts_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: ts_inhabitant_atom(id: operation),
+    precondition: ts_inhabitant_atom(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn ts_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      ts_fail_closed_partial_operation(
+        operation: ts_op_bigint_div,
+        precondition: ts_precondition_bigint_divisor_nonzero,
+        reason: ts_partial_bigint_divide_by_zero
+      ),
+      ts_fail_closed_partial_operation(
+        operation: ts_op_bigint_rem,
+        precondition: ts_precondition_bigint_divisor_nonzero,
+        reason: ts_partial_bigint_remainder_by_zero
+      )
+    ]
+  }
+}
+
+
+
+fn ts_model_core_wave2b() -> ModelCore {
+  ModelCore {
+    primitives: ts_wave2b_primitive_fact_bundles(),
+    inhabitance: ts_model_core_inhabitance_decls_wave2b(),
+    laws: ts_model_core_law_obligations(),
+    effects: ts_effect_semantics_wave2b(),
+    partiality: ts_partiality_semantics_wave2b()
+  }
+}
+
+fn ts_language_model_canonical_symbols_wave2b() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      ts_language_model_canonical_symbols_wave2a().member(sym: sym) ||
+        sym == ts_surface_spelling_string
+    }
+  }
+}
+
+fn ts_language_model_wave2b() -> TsLanguageModel {
+  TsLanguageModel {
+    language_identity: ts_language_model_surface_id,
+    canonical_symbols: ts_language_model_canonical_symbols_wave2b(),
+    core: ts_model_core_wave2b(),
+    lex: ts_wave2a_lex(),
+    grammar: ts_wave2a_grammar()
   }
 }
