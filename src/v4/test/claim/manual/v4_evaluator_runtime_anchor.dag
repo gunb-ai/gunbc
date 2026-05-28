@@ -69,11 +69,9 @@ data v4_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v4_evalua
 data witness_v4_evaluator_runtime_identity: Bool = v4_evaluator_anchor_runtime.runtime_identity == v4_evaluator_runtime_id
 
 // T-22 registry receipt: InterpretationAlgebra == is structural on named top-level fn refs.
-data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool =
-  v4_evaluator_anchor_interpretation == v4_evaluator_anchor_interpretation_standalone
+data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = v4_evaluator_anchor_interpretation == v4_evaluator_anchor_interpretation_standalone
 
-data witness_v4_evaluator_interpretation_fresh_call_eq: Bool =
-  v4_evaluator_anchor_interpretation == v4_evaluator_interpretation_wave1()
+data witness_v4_evaluator_interpretation_fresh_call_eq: Bool = v4_evaluator_anchor_interpretation == v4_evaluator_interpretation_wave1()
 
 data witness_v4_evaluator_model_core_wires_wave1: Bool = v4_evaluator_anchor_core == wave1_model_core() && v4_evaluator_anchor_core_standalone == wave1_model_core()
 
@@ -112,12 +110,7 @@ fn v4_evaluator_witness_claim_input(ok: Bool) -> Node {
 data claim_v4_evaluator_runtime_bundle: TestClaim = CompilesClaim {
   label: "T-34 v4 evaluator concrete runtime bundle constructs and carriers wire",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: v4_evaluator_witness_claim_input(
-    ok: witness_v4_evaluator_runtime_identity
-      && witness_v4_evaluator_model_core_wires_wave1
-      && witness_v4_evaluator_interpretation_reinstantiation_eq
-      && witness_v4_evaluator_interpretation_fresh_call_eq
-  ),
+  input: v4_evaluator_witness_claim_input(ok: witness_v4_evaluator_runtime_identity && witness_v4_evaluator_model_core_wires_wave1 && witness_v4_evaluator_interpretation_reinstantiation_eq && witness_v4_evaluator_interpretation_fresh_call_eq),
   expected_value: v4_eval_wave1_unit_type_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
