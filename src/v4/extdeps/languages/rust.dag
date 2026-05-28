@@ -6,7 +6,7 @@
 module v4.extdeps.languages.rust
 
 import v4.std.grammar {
-  Grammar,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -224,7 +224,7 @@ type OverflowDisposition<IRCarrier> {
 
 type RustLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
@@ -1429,7 +1429,7 @@ fn rust_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot { start: rust_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
-fn rust_wave1_grammar() -> Grammar {
+fn rust_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: rust_wave1_grammar_root() }
 }
 

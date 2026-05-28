@@ -10,7 +10,7 @@
 module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
-  Grammar,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -733,7 +733,7 @@ fn ts_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot { start: ts_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
-fn ts_wave1_grammar() -> Grammar {
+fn ts_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: ts_wave1_grammar_root() }
 }
 

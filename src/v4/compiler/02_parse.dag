@@ -20,7 +20,7 @@ import v4.std.witness { Holds, Violates, Witness }
 import v4.std.lexing { Token, TokenStream }
 import v4.std.grammar {
   Choice,
-  Grammar,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -868,7 +868,7 @@ fn parse_production(tokens: List<Token>, validated: ValidatedGrammarRoot, produc
 }
 
 
-fn parse(tokens: TokenStream, grammar: Grammar) -> Outcome<ParseTree> {
+fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
   let at = port_locus(port: parse_stage_locus_port)
   let ntok = length(xs: tokens.tokens)
   let grammar_node = grammar_to_node(grammar: grammar)

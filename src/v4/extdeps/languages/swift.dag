@@ -11,7 +11,7 @@ module v4.extdeps.languages.swift
 
 import v4.std.grammar {
   Choice,
-  Grammar,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -1472,7 +1472,7 @@ fn swift_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn swift_wave1_grammar() -> Grammar {
+fn swift_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: swift_wave1_grammar_root() }
 }
 

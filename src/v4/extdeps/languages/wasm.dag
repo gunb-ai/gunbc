@@ -11,7 +11,7 @@ module v4.extdeps.languages.wasm
 
 import v4.std.grammar {
   Choice,
-  Grammar,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -125,7 +125,7 @@ type WasmFloatPrimitiveFacts {
 // 🟢 grounded.
 type WasmLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
@@ -1558,7 +1558,7 @@ fn wasm_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn wasm_wave1_grammar() -> Grammar {
+fn wasm_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: wasm_wave1_grammar_root() }
 }
 
