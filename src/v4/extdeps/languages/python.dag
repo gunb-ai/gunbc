@@ -1068,42 +1068,23 @@ fn python_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> G
   )
 }
 
-type PythonFormalProductionsFirstState
-  = PythonFormalProductionsFirstAbsent
-  | PythonFormalProductionsFirstPresent { prod: FormalProduction }
-
-fn python_formal_productions_first_fallback() -> FormalProduction {
-  python_formal_authority_prod(
-    lhs: python_production_primary,
-    rhs: Empty
-  )
-}
-
-fn python_formal_productions_first(prods: List<FormalProduction>) -> FormalProduction {
-  match fold_list(
-    xs: prods,
-    empty: PythonFormalProductionsFirstAbsent,
-    cons: fn(state, prod) {
-      match state {
-        PythonFormalProductionsFirstAbsent =>
-          PythonFormalProductionsFirstPresent { prod: prod }
-        PythonFormalProductionsFirstPresent { prod: _ } => state
-      }
-    }
-  ) {
-    PythonFormalProductionsFirstAbsent => python_formal_productions_first_fallback()
-    PythonFormalProductionsFirstPresent { prod: head } => head
-  }
+fn python_formal_production_alts(
+  head: FormalProduction,
+  alts: List<FormalProduction>
+) -> List<FormalProduction> {
+  list_append(xs: [head], ys: alts)
 }
 
 fn python_formal_productions_to_grammar_production(
-  prods: List<FormalProduction>,
+  head: FormalProduction,
+  alts: List<FormalProduction>,
   emitted: Symbol
 ) -> GrammarProduction {
-  let authority = python_formal_productions_first(prods: prods)
   GrammarProduction {
-    name: authority.lhs.identity,
-    expression: python_formal_productions_to_grammar_expr(prods: prods),
+    name: head.lhs.identity,
+    expression: python_formal_productions_to_grammar_expr(
+      prods: python_formal_production_alts(head: head, alts: alts)
+    ),
     emitted: python_grammar_atom(id: emitted)
   }
 }
@@ -1317,31 +1298,30 @@ fn python_wave1_grammar_root() -> GrammarRoot {
     productions: [
       python_grammar_production_mvp1_fn_add(),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_fn_def,
-            rhs: [
-              python_formal_sym_terminal(symbol: python_token_kw_def),
-              python_formal_sym_terminal(symbol: python_token_ident),
-              python_formal_sym_terminal(symbol: python_token_lparen),
-              python_formal_sym_terminal(symbol: python_token_ident),
-              python_formal_sym_terminal(symbol: python_token_rparen_suite_indent),
-              python_formal_sym_nonterminal(symbol: python_production_suite)
-            ]
-          )
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_fn_def,
+          rhs: [
+            python_formal_sym_terminal(symbol: python_token_kw_def),
+            python_formal_sym_terminal(symbol: python_token_ident),
+            python_formal_sym_terminal(symbol: python_token_lparen),
+            python_formal_sym_terminal(symbol: python_token_ident),
+            python_formal_sym_terminal(symbol: python_token_rparen_suite_indent),
+            python_formal_sym_nonterminal(symbol: python_production_suite)
+          ]
+        ),
+        alts: Empty,
         emitted: python_surface_fn_item
       ),
       // Left-biased Choice: longer/recursive suite alt must precede single-stmt alt.
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_suite,
-            rhs: [
-              python_formal_sym_nonterminal(symbol: python_production_stmt),
-              python_formal_sym_nonterminal(symbol: python_production_suite)
-            ]
-          ),
+        head: python_formal_authority_prod(
+          lhs: python_production_suite,
+          rhs: [
+            python_formal_sym_nonterminal(symbol: python_production_stmt),
+            python_formal_sym_nonterminal(symbol: python_production_suite)
+          ]
+        ),
+        alts: [
           python_formal_authority_prod(
             lhs: python_production_suite,
             rhs: [python_formal_sym_nonterminal(symbol: python_production_stmt)]
@@ -1350,11 +1330,11 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_suite
       ),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_stmt,
-            rhs: [python_formal_sym_nonterminal(symbol: python_production_assign_stmt)]
-          ),
+        head: python_formal_authority_prod(
+          lhs: python_production_stmt,
+          rhs: [python_formal_sym_nonterminal(symbol: python_production_assign_stmt)]
+        ),
+        alts: [
           python_formal_authority_prod(
             lhs: python_production_stmt,
             rhs: [python_formal_sym_nonterminal(symbol: python_production_if_stmt)]
@@ -1367,43 +1347,41 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_stmt
       ),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_assign_stmt,
-            rhs: [
-              python_formal_sym_terminal(symbol: python_token_ident),
-              python_formal_sym_terminal(symbol: python_token_equal),
-              python_formal_sym_nonterminal(symbol: python_production_additive)
-            ]
-          )
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_assign_stmt,
+          rhs: [
+            python_formal_sym_terminal(symbol: python_token_ident),
+            python_formal_sym_terminal(symbol: python_token_equal),
+            python_formal_sym_nonterminal(symbol: python_production_additive)
+          ]
+        ),
+        alts: Empty,
         emitted: python_surface_assign_stmt
       ),
       // colon_if_suite_indent carries ":\n        " (layout boundary); if-body return uses
       // kw_return+primary alt (no leading newline) so token/grammar paths stay consistent.
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_if_stmt,
-            rhs: [
-              python_formal_sym_terminal(symbol: python_token_newline_if_stmt),
-              python_formal_sym_nonterminal(symbol: python_production_comparison),
-              python_formal_sym_terminal(symbol: python_token_colon_if_suite_indent),
-              python_formal_sym_nonterminal(symbol: python_production_return_stmt)
-            ]
-          )
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_if_stmt,
+          rhs: [
+            python_formal_sym_terminal(symbol: python_token_newline_if_stmt),
+            python_formal_sym_nonterminal(symbol: python_production_comparison),
+            python_formal_sym_terminal(symbol: python_token_colon_if_suite_indent),
+            python_formal_sym_nonterminal(symbol: python_production_return_stmt)
+          ]
+        ),
+        alts: Empty,
         emitted: python_surface_if_stmt
       ),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_return_stmt,
-            rhs: [
-              python_formal_sym_terminal(symbol: python_token_newline_return_inner),
-              python_formal_sym_nonterminal(symbol: python_production_primary)
-            ]
-          ),
+        head: python_formal_authority_prod(
+          lhs: python_production_return_stmt,
+          rhs: [
+            python_formal_sym_terminal(symbol: python_token_newline_return_inner),
+            python_formal_sym_nonterminal(symbol: python_production_primary)
+          ]
+        ),
+        alts: [
           python_formal_authority_prod(
             lhs: python_production_return_stmt,
             rhs: [
@@ -1422,56 +1400,50 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_return_stmt
       ),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_comparison,
-            rhs: [
-              python_formal_sym_nonterminal(symbol: python_production_additive),
-              python_formal_sym_nonterminal(symbol: python_production_comparison_tail)
-            ]
-          )
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_comparison,
+          rhs: [
+            python_formal_sym_nonterminal(symbol: python_production_additive),
+            python_formal_sym_nonterminal(symbol: python_production_comparison_tail)
+          ]
+        ),
+        alts: Empty,
         emitted: python_surface_comparison
       ),
       // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_comparison_tail,
-            rhs: [
-              python_formal_sym_terminal(symbol: python_token_greater),
-              python_formal_sym_nonterminal(symbol: python_production_additive)
-            ]
-          ),
-          python_formal_authority_prod(lhs: python_production_comparison_tail, rhs: Empty)
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_comparison_tail,
+          rhs: [
+            python_formal_sym_terminal(symbol: python_token_greater),
+            python_formal_sym_nonterminal(symbol: python_production_additive)
+          ]
+        ),
+        alts: [python_formal_authority_prod(lhs: python_production_comparison_tail, rhs: Empty)],
         emitted: python_surface_comparison_tail
       ),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_additive,
-            rhs: [
-              python_formal_sym_nonterminal(symbol: python_production_primary),
-              python_formal_sym_nonterminal(symbol: python_production_additive_tail)
-            ]
-          )
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_additive,
+          rhs: [
+            python_formal_sym_nonterminal(symbol: python_production_primary),
+            python_formal_sym_nonterminal(symbol: python_production_additive_tail)
+          ]
+        ),
+        alts: Empty,
         emitted: python_surface_additive
       ),
       // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_additive_tail,
-            rhs: [
-              python_formal_sym_terminal(symbol: python_token_plus),
-              python_formal_sym_nonterminal(symbol: python_production_primary),
-              python_formal_sym_nonterminal(symbol: python_production_additive_tail)
-            ]
-          ),
-          python_formal_authority_prod(lhs: python_production_additive_tail, rhs: Empty)
-        ],
+        head: python_formal_authority_prod(
+          lhs: python_production_additive_tail,
+          rhs: [
+            python_formal_sym_terminal(symbol: python_token_plus),
+            python_formal_sym_nonterminal(symbol: python_production_primary),
+            python_formal_sym_nonterminal(symbol: python_production_additive_tail)
+          ]
+        ),
+        alts: [python_formal_authority_prod(lhs: python_production_additive_tail, rhs: Empty)],
         emitted: python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(
