@@ -783,6 +783,8 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
+**Close-status (2026-05-28, post-#3783):** predicates 1–3 **PARTIAL**; 4–5 **PAPER-ONLY**. Lane A convergence (T-37 / T-38 / T-20-fill): no implementation workers dispatched. Side branch `T-4 → T-9`: T-29 / T-30 / T-25-core / T-21 landed; **P1-KEYSTONE** still open (docs — merge [#3752](https://github.com/gunb-ai/gunbc/pull/3752)); **T-19** dispatchable but unassigned; **T-33** substrate on `main` but task still `[SCHEDULED]` in this file.
+
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
 **File**: 7 files in `src/v4/extdeps/formats/` (operator-ratified 2026-05-15: arbitrary ingestion via direction-agnostic format models; `sql.dag` added 2026-05-17 — Theme-A #4 fork (a))
