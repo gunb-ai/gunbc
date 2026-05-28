@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/rust.dag
 // Scope: Rust Reference LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence. canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. layout-in-literals bridge gated to T-6 TokenLayout; bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 Wave 2a — wave-1 MVP-1 + wave-2 lex/grammar (Rust Reference §17.4 if, §17.6 return, §17.10.1 let, §17.11 block). Wave-2 productions declared as `FormalProduction` flat rhs (`rust_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence (independently maintained — CP-1b dual-carrier hold). Wave-2 keyword/operator lexemes are layout-free; `WhitespaceChar` trivia separates tokens. Wave-1 MVP-1 lex still has layout-in-literals — 🟡 T-6 TokenLayout. bool/`!` canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://doc.rust-lang.org/reference/types.html
 
 module v4.extdeps.languages.rust
@@ -385,6 +385,7 @@ data rust_production_mvp1_fn_add: Symbol = rust_production_mvp1_fn_add
 data rust_production_fn_item: Symbol = rust_production_fn_item
 data rust_production_typed_param: Symbol = rust_production_typed_param
 data rust_production_param_list: Symbol = rust_production_param_list
+data rust_production_param_list_suffix: Symbol = rust_production_param_list_suffix
 data rust_production_type: Symbol = rust_production_type
 data rust_production_block: Symbol = rust_production_block
 data rust_production_stmts: Symbol = rust_production_stmts
@@ -2148,12 +2149,12 @@ fn rust_wave2_additional_lex_rules() -> List<LexRule> {
   [
     rust_whitespace_trivia_rule(),
     rust_int_literal_lex_rule(),
-    rust_lex_rule(token_class: rust_token_kw_let, text: "let "),
-    rust_lex_rule(token_class: rust_token_kw_if, text: "if "),
-    rust_lex_rule(token_class: rust_token_kw_else, text: " else "),
-    rust_lex_rule(token_class: rust_token_kw_return, text: "return "),
-    rust_lex_rule(token_class: rust_token_equal, text: " = "),
-    rust_lex_rule(token_class: rust_token_gt, text: " > "),
+    rust_lex_rule(token_class: rust_token_kw_let, text: "let"),
+    rust_lex_rule(token_class: rust_token_kw_if, text: "if"),
+    rust_lex_rule(token_class: rust_token_kw_else, text: "else"),
+    rust_lex_rule(token_class: rust_token_kw_return, text: "return"),
+    rust_lex_rule(token_class: rust_token_equal, text: "="),
+    rust_lex_rule(token_class: rust_token_gt, text: ">"),
     rust_lex_rule(token_class: rust_token_semicolon, text: ";")
   ]
 }
@@ -2193,7 +2194,17 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
       rhs: [
         rust_formal_nonterminal(production: rust_production_typed_param),
         rust_formal_terminal(token_class: rust_token_comma),
-        rust_formal_nonterminal(production: rust_production_param_list)
+        rust_formal_nonterminal(production: rust_production_typed_param),
+        rust_formal_nonterminal(production: rust_production_param_list_suffix)
+      ]
+    ),
+    rust_formal_production(lhs: rust_production_param_list_suffix, rhs: []),
+    rust_formal_production(
+      lhs: rust_production_param_list_suffix,
+      rhs: [
+        rust_formal_terminal(token_class: rust_token_comma),
+        rust_formal_nonterminal(production: rust_production_typed_param),
+        rust_formal_nonterminal(production: rust_production_param_list_suffix)
       ]
     ),
     rust_formal_production(
