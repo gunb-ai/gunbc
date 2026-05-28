@@ -349,7 +349,7 @@ fn ci_char_cache_digest_positive(c: Char) -> Hash {
   if c == 1 {
     ci_symbol_digest(sym: ci_cache_char_one_tag)
   } else {
-    if c % 2 == 0 {
+    if (c / 2) * 2 == c {
       combine_hash(
         a: ci_symbol_digest(sym: ci_cache_char_even_tag),
         b: ci_char_cache_digest_positive(c: c / 2)
