@@ -7,6 +7,7 @@ module v4.test.claim.manual.test_claim_cache_digest_sensitivity
 import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
+  eval_context_registered,
   test_claim_cache_interpretation_hash_node,
   test_claim_claim_hash_digest,
   test_claim_no_correction_ambiguous_intent_tag,
@@ -100,10 +101,10 @@ fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
 }
 
 fn tcc_cache_eval_context() -> EvalContext {
-  EvalContext {
-    interpretation: v4_evaluator_interpretation_wave1(),
-    interpretation_pin: tcc_cache_interpretation_pin
-  }
+  eval_context_registered(
+    runtime_identity: tcc_cache_interpretation_pin,
+    interpretation: v4_evaluator_interpretation_wave1()
+  )
 }
 
 fn tcc_cache_stub_claim() -> TestClaim {

@@ -10,6 +10,7 @@ import v4.compiler.eval {
   Inputs,
   TestClaimRun,
   eval,
+  eval_context_registered,
   eval_diagnostic,
   eval_test_claim_subject,
   run_test_claim

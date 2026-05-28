@@ -8,6 +8,7 @@ module v4.test.claim.manual.dissolution_subsumption_reverification
 import v4.compiler.eval {
   EvalContext,
   TestClaimRun,
+  eval_context_registered,
   eval_diagnostic,
   eval_test_claim_subject,
   run_test_claim

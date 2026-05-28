@@ -11,6 +11,7 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
   aggregate_verdicts,
+  eval_context_registered,
   eval_diagnostic,
   eval_rejected_roundtrip_deferred
 }
@@ -291,10 +292,10 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 
 
 fn pipeline_claim_context() -> EvalContext {
-  EvalContext {
-    interpretation: pipeline_interpretation(),
-    interpretation_pin: pipeline_interpretation_pin
-  }
+  eval_context_registered(
+    runtime_identity: pipeline_interpretation_pin,
+    interpretation: pipeline_interpretation()
+  )
 }
 
 

@@ -127,16 +127,37 @@ import v4.extdeps.runtimes.v4_evaluator {
 }
 
 
+// P2/P3: cache-visible interpretation identity is a registered (runtime_identity, InterpretationAlgebra) pair;
+// digest fails closed on mismatch instead of trusting a caller-maintained pin alone.
+type InterpretationCacheAuthority
+  = Registered {
+      runtime_identity: Symbol,
+      interpretation: InterpretationAlgebra
+    }
+  | NonCacheable { reason: Symbol }
+
+
 // RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
 type Inputs {
   root: Node
 }
 
 
-// RULING-1: pretty-much-done — explicit runtime interpretation authority; interpretation_pin is the IRT-4 boundary until InterpretationAlgebra is Node-projectable.
+// RULING-1: pretty-much-done — explicit runtime interpretation authority; cache_authority witnesses the algebra until Node-projectable content_hash lands.
 type EvalContext {
   interpretation: InterpretationAlgebra
-  interpretation_pin: Symbol
+  cache_authority: InterpretationCacheAuthority
+}
+
+
+fn eval_context_registered(runtime_identity: Symbol, interpretation: InterpretationAlgebra) -> EvalContext {
+  EvalContext {
+    interpretation: interpretation,
+    cache_authority: Registered {
+      runtime_identity: runtime_identity,
+      interpretation: interpretation
+    }
+  }
 }
 
 
@@ -172,7 +193,7 @@ fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, interpretation_pin, evaluator pin / Node input).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, registered interpretation authority, evaluator pin / Node input).
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -219,6 +240,7 @@ data test_claim_cache_variant_compiles_tag: Symbol = test_claim_cache_variant_co
 data test_claim_cache_variant_diagnostic_tag: Symbol = test_claim_cache_variant_diagnostic_tag
 data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equals_tag
 data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
+data test_claim_cache_interpretation_authority_mismatch_tag: Symbol = test_claim_cache_interpretation_authority_mismatch_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -470,8 +492,17 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 }
 
 
-fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
-  test_claim_symbol_digest(sym: context.interpretation_pin)
+fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
+  match context.cache_authority {
+    Registered { runtime_identity: id, interpretation: expected } =>
+      if context.interpretation == expected {
+        test_claim_symbol_digest(sym: id)
+      } else {
+        test_claim_symbol_digest(sym: test_claim_cache_interpretation_authority_mismatch_tag)
+      }
+    NonCacheable { reason: reason } =>
+      test_claim_symbol_digest(sym: reason)
+  }
 }
 
 
@@ -492,7 +523,7 @@ fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>
   combine_hash(
     a: inferred_tree_digest(tree: subject.tree),
     b: combine_hash(
-      a: test_claim_interpretation_pin_digest(context: subject.context),
+      a: test_claim_interpretation_cache_digest(context: subject.context),
       b: test_claim_evaluator_digest_node(input: subject.input)
     )
   )

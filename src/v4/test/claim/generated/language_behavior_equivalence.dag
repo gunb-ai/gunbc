@@ -9,6 +9,7 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval_context_registered,
   eval_diagnostic,
   run_test_claim,
   run_test_claim_assert,
