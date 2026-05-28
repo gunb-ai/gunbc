@@ -286,10 +286,17 @@ substrate) done (#3770). T-22 (eval interpreter) substantially authored. CI
 wiring — a step that invokes T-22 eval on the claim corpus and surfaces
 `TestClaimRun` witness vs Violates — is the gap.
 
-**T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` scaffold
-is on `main`; the full step sequence (seed→stage0→stage1→fixed-point assertion)
-is not authored. T-15 consumes the completed file for fixed-point validation;
-T-24 consumes it for bootstrap CI interaction. No dispatch against the fill.
+**T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
+sequence IS authored (header: "Status: filled — compiler-of-record is the
+self-hosting structural fact; structural gate only"). Two scaffold placeholders
+remain before T-15 can consume it as a real fixed-point proof:
+(1) `bootstrap_footprint` (line 190) returns `Violates` pending
+`feature:t21-bootstrap-footprint-fold` — dissolves when T-21's affected-set/
+content-hash fold reads the projection input closure; T-21 merged (#3747), so
+this scaffold is now dispatchable.
+(2) `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
+aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
+No dispatch against either placeholder today.
 
 ---
 
@@ -2164,33 +2171,28 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 
 ### T-37 — v2 DAG artifact serializer fix  [SCHEDULED]
 
-**File**: `src/v2/` (v2 Rust codebase — specifically the `--target dag` emission backend)
+**File**: `src/v2/compile.dag` — the `.dag` authority for v2's artifact emission;
+`Dag =>` arm dispatches `emit_dag_artifact` at `src/v2/compile.dag:179`. The
+generated Rust in `target/` is compile output, not the fix surface.
 **Why this is a T-15 gate**: `scripts/v4-bootstrap-resolve-posture-gate.sh` is a
 CI bridge that passes on SIGTERM (exit 143/124) when v2 `--target dag` OOM-kills
 before writing any output. The bridge's own dissolution condition is "v4 emit
 reaches `compiled:` without SIGTERM." T-15 cannot close while this bridge
 silently masks full-compile failure — it would pass trivially forever.
 
-**Root cause** (from `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`):
-v2's DAG backend recursively expands `Node` by value in `serialize_node` — every
-child, inferred reference, and expression sub-node is serialized by value, not by
-reference. Any shared subgraph reachable through multiple fields is duplicated,
-producing super-linear memory growth. Full `src/v4` (252 modules, cross-referenced
-typed graph) triggers >8 GB RSS OOM and no output before SIGTERM.
+**Current state** (`src/v2/compile.dag` v0.2.0): the DAG backend already uses a
+memoized collection fold (`DagCollectAcc { seen: Map<String, String>, order: List<Node> }`)
+that visits each `Node` once and emits `$ref` JSON for subsequent references. The
+audit doc (`docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`) described
+the old recursive-by-value behavior; v0.2.0 is the reference-fold rewrite. The
+remaining gap is that `dag_node_key` uses provisional span-based keys rather than
+v4 content_hash (gated on B1 — see `DagNodeId` `🟡` gate in the file). If the
+OOM persists with v0.2.0 on current `main`, the repro command from the audit doc
+is the diagnostic entry point. If v0.2.0 already clears the SIGTERM, T-37 is
+bridge-dissolution bookkeeping only (confirm `compiled:` appears, delete the
+bridge script, update CI).
 
-**Scope checks**: `std/node.dag` alone (1 file) succeeds in ~2 s with 1.4 MB
-output. The full `src/v4` closure is the first input large enough to combine
-compiler, lens, test-claim, extdeps, and typed inferred references at scale.
-
-**Fix shape** (from audit, operator-reviewed design):
-- `DagArtifact = { nodes: Map<NodeId, NodeRecord>, modules: List<NodeId>, item_registry: Map<String, NodeId>, diagnostics: List<DiagnosticRecord> }`
-- `NodeRecord` carries local fields only — stable id, content hash, local spans, authored name facts, child references as `List<NodeId>`, parameter/body/type/inferred references as `NodeId?` (not embedded `Node`)
-- `InferredRecord = Resolved { node: NodeId } | TypeVariable { id } | CompilerError { ... }`
-- Serialization is a memoized fold: first visit emits a `NodeRecord`; later visits emit a reference only; cycles or backedges fail closed
-
-This matches P2 boundary discipline: every fact is serialized once; consumers cite nodes by reference instead of copying typed subgraphs into parallel payloads.
-
-**Dependencies**: `[schedulable now — pure v2 Rust; no .dag deps; no T-## prerequisite]`
+**Dependencies**: `[schedulable now — work is in src/v2/compile.dag; no T-## prerequisite]`
 
 **Dissolution**: bridge script dissolves when `v4 emit reaches 'compiled:' without SIGTERM` — the dissolution condition is in the script header. After T-37 lands and the bridge dissolves, the resolve-posture fallback becomes unnecessary and should be removed from CI.
 
