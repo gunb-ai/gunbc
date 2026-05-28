@@ -390,6 +390,14 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         import_includes_name(&module, &["v4", "std", "grammar"], "FormalProduction"),
         "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume canonical FormalProduction"
     );
+    assert!(
+        import_includes_name(
+            &module,
+            &["v4", "std", "grammar"],
+            "formal_production_to_node"
+        ),
+        "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume the shared FormalProduction Node projection"
+    );
     for name in ["GrammarExpr", "Sequence", "Terminal"] {
         assert!(
             !import_includes_name(&module, &["v4", "std", "grammar"], name),
@@ -416,6 +424,19 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
         "{PYTHON_LANGUAGE_PATH}: must build grammar production RHS as a flat formal-symbol list"
     );
+    for name in [
+        "python_formal_nonterminal_node",
+        "python_formal_terminal_node",
+        "python_formal_grammar_symbol_node",
+        "python_formal_rhs_edges",
+        "python_formal_production_node",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python must not mirror std FormalProduction projection helper `{name}`"
+        );
+    }
 }
 
 #[test]
