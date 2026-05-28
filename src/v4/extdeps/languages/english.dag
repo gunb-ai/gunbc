@@ -19,6 +19,8 @@ import v4.std.grammar {
   GrammarSchemaProbeBinding,
   ModeledGrammar,
   ParseGrammar,
+  Choice,
+  Nonterminal,
   Sequence,
   Terminal,
   grammar_atom,
@@ -59,25 +61,6 @@ import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 // ---------------------------------------------------------------------------
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// The declared sentence forms of the formal subset.
-// OutOfSubset covers all prose outside these forms — always FailClosed.
-type EnglishSentenceForm
-  = SubjectVerbObject
-  | SubjectCopulaComplement
-  | SubjectVerbAdverbial
-  | SubjectIntransitiveVerb
-  | OutOfSubset
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Noun-phrase role in a formal-subset sentence.
-type NounPhraseRole
-  = SubjectRole
-  | ObjectRole
-  | ComplementRole
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 // Determiner forms modeled in the formal subset.
 type Determiner
   = DefiniteArticle
@@ -90,25 +73,18 @@ type Determiner
 type FormalNounPhrase {
   determiner: Determiner
   head: Symbol
-  role: NounPhraseRole
 }
 
 
-// 🟢 grounded.
-// A verb phrase in the formal subset: single head verb + optional direct object.
-type FormalVerbPhrase {
-  head: Symbol
-  object: FormalNounPhrase?
-}
-
-
-// 🟢 grounded.
-// A sentence in the formal subset — subject NP + VP.
-type FormalSentence {
-  subject: FormalNounPhrase
-  predicate: FormalVerbPhrase
-  form: EnglishSentenceForm
-}
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// Each arm carries the shape that is valid for that sentence form.
+// Adverbial and intransitive forms are declared FailClosed for wave-1;
+// they are not arms here because there are no grammar productions for
+// them yet — modeling them as arms before the grammar exists would
+// misrepresent the subset boundary (M1 / P1 modeling faithfulness).
+type FormalSentence
+  = SvoSentence   { subject: FormalNounPhrase, verb: Symbol, object: FormalNounPhrase }
+  | CopulaSentence { subject: FormalNounPhrase, copula: Symbol, complement: FormalNounPhrase }
 
 
 // 🟢 grounded.
@@ -140,9 +116,11 @@ type EnglishGrammar {
 // ---------------------------------------------------------------------------
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Every feature is either modeled in-subset or fail-closed.
-// Arbitrary prose, ambiguous constructs, and unknown vocabulary are
-// always FailClosed — never a silent fabricated parse.
+// Features with wave-1 grammar authority → Modeled.
+// Features that have no grammar production yet → FailClosed (not DeclaredNormalized:
+// there is no normalization story to declare without a production).
+// Arbitrary prose, ambiguous constructs, and unknown vocabulary are always
+// FailClosed — never a silent fabricated parse.
 type EnglishFidelityFeature
   = FormalSubsetSvo
   | FormalSubsetCopula
@@ -161,8 +139,8 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
   match f {
     FormalSubsetSvo => Modeled
     FormalSubsetCopula => Modeled
-    FormalSubsetAdverbial => Modeled
-    FormalSubsetIntransitive => Modeled
+    FormalSubsetAdverbial => FailClosed { feature: FormalSubsetAdverbial }
+    FormalSubsetIntransitive => FailClosed { feature: FormalSubsetIntransitive }
     ArticleDeterminer => Modeled
     NounSpelling => DeclaredNormalized { feature: NounSpelling }
     VerbSpelling => DeclaredNormalized { feature: VerbSpelling }
@@ -184,10 +162,12 @@ data english_token_verb: Symbol = english_token_verb
 data english_token_copula: Symbol = english_token_copula
 data english_token_period: Symbol = english_token_period
 
+data english_production_sentence: Symbol = english_production_sentence
 data english_production_svo_sentence: Symbol = english_production_svo_sentence
 data english_production_copula_sentence: Symbol = english_production_copula_sentence
 data english_surface_svo: Symbol = english_surface_svo
 data english_surface_copula: Symbol = english_surface_copula
+data english_surface_sentence: Symbol = english_surface_sentence
 
 data english_language_identity: Symbol = english_language_identity
 
@@ -285,10 +265,21 @@ fn english_wave1_grammar() -> ParseGrammar {
     expression: english_copula_sentence_expr(),
     emitted: grammar_atom(identity: english_surface_copula)
   }
+  // Top-level start production: sentence → svo_sentence | copula_sentence.
+  // A single start symbol ensures both SVO and copula arms are reachable from
+  // the declared grammar root (finding 3 — start must dominate all productions).
+  let sentence = GrammarProduction {
+    name: english_production_sentence,
+    expression: Choice {
+      left: Nonterminal { production: english_production_svo_sentence },
+      right: Nonterminal { production: english_production_copula_sentence }
+    },
+    emitted: grammar_atom(identity: english_surface_sentence)
+  }
   ModeledGrammar {
     root: GrammarRoot {
-      start: english_production_svo_sentence,
-      productions: [svo, copula],
+      start: english_production_sentence,
+      productions: [sentence, svo, copula],
       sync_tokens: grammar_empty_sync_tokens()
     }
   }
