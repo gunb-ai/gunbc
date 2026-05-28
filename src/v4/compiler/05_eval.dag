@@ -69,10 +69,17 @@ import v4.std.node {
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
+  ByteRange,
   Correction,
   Diagnostic,
+  Extent,
+  Locus,
+  NodeLocus,
   NoCorrectionReason,
   NonEmptyDiagnostics,
+  PortLocus,
+  Textual,
+  WholeFile,
   node_locus,
   Outcome,
   Unavailable,
@@ -87,6 +94,7 @@ import v4.std.diagnostic {
   absorb_outcome_diagnostics,
   append_outcome_value,
   bind_outcome,
+  diagnostic_evaluation_nodes,
   diagnostics_eq,
   diagnostics_singleton,
   non_empty_diagnostics_eq,
@@ -101,7 +109,6 @@ import v4.std.verification {
   EqualsClaim,
   RoundTripClaim,
   TestClaim,
-  diagnostic_evaluation_nodes,
   test_claim_evaluation_nodes,
   test_claim_input
 }
@@ -184,6 +191,13 @@ data test_claim_cache_interpretation_digest_tag: Symbol = test_claim_cache_inter
 data test_claim_no_correction_user_input_boundary_tag: Symbol = test_claim_no_correction_user_input_boundary_tag
 data test_claim_no_correction_ambiguous_intent_tag: Symbol = test_claim_no_correction_ambiguous_intent_tag
 data test_claim_no_correction_external_contract_unknown_tag: Symbol = test_claim_no_correction_external_contract_unknown_tag
+data test_claim_cache_extent_whole_file_tag: Symbol = test_claim_cache_extent_whole_file_tag
+data test_claim_cache_extent_byte_range_tag: Symbol = test_claim_cache_extent_byte_range_tag
+data test_claim_cache_int_zero_tag: Symbol = test_claim_cache_int_zero_tag
+data test_claim_cache_int_one_tag: Symbol = test_claim_cache_int_one_tag
+data test_claim_cache_int_pos_tag: Symbol = test_claim_cache_int_pos_tag
+data test_claim_cache_int_neg_tag: Symbol = test_claim_cache_int_neg_tag
+data test_claim_cache_int_succ_tag: Symbol = test_claim_cache_int_succ_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -239,31 +253,95 @@ fn correction_verdict_digest(c: Correction) -> Hash {
 }
 
 
-fn diagnostic_verdict_authority_digest(d: Diagnostic) -> Hash {
+fn int_cache_digest_positive(i: Int) -> Hash {
+  if i == 1 {
+    test_claim_symbol_digest(sym: test_claim_cache_int_one_tag)
+  } else {
+    hash_combine(
+      a: test_claim_symbol_digest(sym: test_claim_cache_int_succ_tag),
+      b: int_cache_digest_positive(i: i - 1)
+    )
+  }
+}
+
+
+fn int_cache_digest(i: Int) -> Hash {
+  if i == 0 {
+    test_claim_symbol_digest(sym: test_claim_cache_int_zero_tag)
+  } else {
+    if i < 0 {
+      hash_combine(
+        a: test_claim_symbol_digest(sym: test_claim_cache_int_neg_tag),
+        b: int_cache_digest(i: 0 - i)
+      )
+    } else {
+      hash_combine(
+        a: test_claim_symbol_digest(sym: test_claim_cache_int_pos_tag),
+        b: int_cache_digest_positive(i: i)
+      )
+    }
+  }
+}
+
+
+fn extent_cache_digest(e: Extent) -> Hash {
+  match e {
+    WholeFile =>
+      test_claim_symbol_digest(sym: test_claim_cache_extent_whole_file_tag)
+    ByteRange { start: sa, end: ea } =>
+      hash_combine(
+        a: hash_combine(
+          a: test_claim_symbol_digest(sym: test_claim_cache_extent_byte_range_tag),
+          b: int_cache_digest(i: sa)
+        ),
+        b: int_cache_digest(i: ea)
+      )
+  }
+}
+
+
+fn locus_cache_digest(at: Locus) -> Hash {
+  match at {
+    NodeLocus { anchor: a } => content_hash(n: a.at)
+    PortLocus { anchor: a } => test_claim_symbol_digest(sym: a.at)
+    Textual { file: f, extent: e } =>
+      hash_combine(
+        a: test_claim_symbol_digest(sym: f),
+        b: extent_cache_digest(e: e)
+      )
+  }
+}
+
+
+// Canonical diagnostic digest for cache keys: locus + reason + correction (aligned with diagnostic_eq).
+fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
   hash_combine(
-    a: test_claim_symbol_digest(sym: d.reason),
-    b: correction_verdict_digest(c: d.correction)
+    a: locus_cache_digest(at: d.at),
+    b: hash_combine(
+      a: test_claim_symbol_digest(sym: d.reason),
+      b: correction_verdict_digest(c: d.correction)
+    )
   )
 }
 
 
-fn non_empty_diagnostics_verdict_digest(d: NonEmptyDiagnostics) -> Hash {
+fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
   fold_list(
     xs: d.tail,
-    empty: diagnostic_verdict_authority_digest(d: d.head),
+    empty: diagnostic_cache_digest(d: d.head),
     cons: fn(acc, diag) {
-      hash_combine(a: acc, b: diagnostic_verdict_authority_digest(d: diag))
+      hash_combine(a: acc, b: diagnostic_cache_digest(d: diag))
     }
   )
 }
 
 
-// IRT-4 claim_hash: evaluation-node frontier plus verdict authority symbols absent from diagnostic_evaluation_nodes (reason, Unavailable correction).
+// IRT-4 claim_hash: evaluation-node frontier plus diagnostic authority absent from node-only frontiers.
 fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
   let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
   match c {
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
-      hash_combine(a: nodes_digest, b: non_empty_diagnostics_verdict_digest(d: e))
+      hash_combine(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
     _ => nodes_digest
   }
 }
@@ -304,14 +382,7 @@ fn termination_proof_digest(proof: TerminationProof) -> Hash {
 fn descent_witness_digest(d: Witness<TerminationProof>) -> Hash {
   match d {
     Holds { value: proof } => termination_proof_digest(proof: proof)
-    Violates { diagnostic: diag } =>
-      fold_list(
-        xs: diagnostic_evaluation_nodes(d: diag),
-        empty: test_claim_symbol_digest(sym: diag.reason),
-        cons: fn(acc, n) {
-          hash_combine(a: acc, b: content_hash(n: n))
-        }
-      )
+    Violates { diagnostic: diag } => diagnostic_cache_digest(d: diag)
   }
 }
 
@@ -331,23 +402,37 @@ fn inferred_facts_digest(facts: InferredFacts) -> Hash {
 }
 
 
+fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
+  hash_combine(
+    a: content_hash(n: node),
+    b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
+      Holds { value: facts } => inferred_facts_digest(facts: facts)
+      Violates { diagnostic: diag } => diagnostic_cache_digest(d: diag)
+    }
+  )
+}
+
+
+fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
+  fold_node(
+    n: tree.root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        inferred_node_facts_cache_digest(tree: tree, node: n0)
+      },
+      step: fn(acc, e, child) {
+        hash_combine(a: acc, b: child)
+      }
+    }
+  )
+}
+
+
 fn inferred_tree_digest(tree: InferredTree) -> Hash {
-  let root_hash = content_hash(n: tree.root)
-  match inferred_facts_witness_for_eval(tree: tree, node: tree.root) {
-    Holds { value: facts } =>
-      hash_combine(a: root_hash, b: inferred_facts_digest(facts: facts))
-    Violates { diagnostic: diag } =>
-      hash_combine(
-        a: root_hash,
-        b: fold_list(
-          xs: diagnostic_evaluation_nodes(d: diag),
-          empty: test_claim_symbol_digest(sym: diag.reason),
-          cons: fn(acc, n) {
-            hash_combine(a: acc, b: content_hash(n: n))
-          }
-        )
-      )
-  }
+  hash_combine(
+    a: content_hash(n: tree.root),
+    b: inferred_tree_evaluated_facts_digest(tree: tree)
+  )
 }
 
 
