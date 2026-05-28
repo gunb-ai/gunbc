@@ -449,8 +449,8 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
 /// Delegate DAG collect + identity-key helpers to hand-maintained bootstrap module.
 fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
     let lib_path = src_dir.join("lib.rs");
-    let mut lib_text = fs::read_to_string(&lib_path)
-        .map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    let mut lib_text =
+        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
     if !lib_text.contains("pub mod v2_compiler_dag_collect;") {
         lib_text = lib_text.replace(
             "pub mod v2_compiler_compile;\n",
@@ -488,8 +488,7 @@ fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
         insert_after,
         &format!("}}\n\n{BOOTSTRAP_DAG_COLLECT_USE}pub fn inferred_fingerprint"),
     );
-    fs::write(&compile_path, text)
-        .map_err(|e| format!("write {}: {e}", compile_path.display()))
+    fs::write(&compile_path, text).map_err(|e| format!("write {}: {e}", compile_path.display()))
 }
 
 fn strip_between(text: &str, start_marker: &str, end_marker: &str) -> Result<String, String> {

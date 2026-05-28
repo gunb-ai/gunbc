@@ -2,12 +2,15 @@
 // Semantic source: src/v2/compile.dag (dag_node_*, dag_collect_*). Stage0 codegen does
 // not yet emit owned-fold for DagCollectAcc; regen_stage0 delegates here via pub use.
 
-use crate::v2_compiler_compile::{dag_node_key_collision_error, dag_node_surface_fingerprint, DagCollectAcc};
-use crate::v2_std_core::module_imports;
+use crate::v2_compiler_compile::{
+    dag_node_key_collision_error, dag_node_surface_fingerprint, DagCollectAcc,
+};
+use crate::v2_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v2_rt;
+use crate::v2_std_core::module_imports;
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::Resolved;
-use crate::v2_std_core::{InferredNode, MatchPattern, Node, ResolvedGraph, TypedModule};
+use crate::v2_std_core::{InferredNode, MatchPattern, Node};
 use std::rc::Rc;
 
 pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
@@ -66,7 +69,9 @@ pub fn dag_collect_nodes_list(
     nodes
         .iter()
         .cloned()
-        .fold(acc, |a: Rc<DagCollectAcc>, n: Rc<Node>| dag_collect_insert(n.clone(), a))
+        .fold(acc, |a: Rc<DagCollectAcc>, n: Rc<Node>| {
+            dag_collect_insert(n.clone(), a)
+        })
 }
 
 pub fn dag_collect_optional_node(
@@ -100,7 +105,9 @@ pub fn dag_collect_match_pattern(
             .clone()
             .iter()
             .cloned()
-            .fold(acc, |a: Rc<DagCollectAcc>, fb: Rc<Node>| dag_collect_insert(fb.clone(), a)),
+            .fold(acc, |a: Rc<DagCollectAcc>, fb: Rc<Node>| {
+                dag_collect_insert(fb.clone(), a)
+            }),
         MatchPattern::Wildcard => acc,
     }
 }
@@ -168,7 +175,9 @@ pub fn dag_collect_from_module(
         .clone()
         .iter()
         .cloned()
-        .fold(acc, |a: Rc<DagCollectAcc>, item: Rc<Node>| dag_collect_insert(item.clone(), a))
+        .fold(acc, |a: Rc<DagCollectAcc>, item: Rc<Node>| {
+            dag_collect_insert(item.clone(), a)
+        })
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {

@@ -341,7 +341,7 @@ pub struct DagCollectAcc {
 }
 
 pub use crate::v2_compiler_dag_collect::{
-    collect_dag_nodes, dag_collect_from_module, dag_collect_insert, dag_collect_inferred,
+    collect_dag_nodes, dag_collect_from_module, dag_collect_inferred, dag_collect_insert,
     dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
     dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
     dag_node_is_resolved_identity_shell, dag_node_key,
