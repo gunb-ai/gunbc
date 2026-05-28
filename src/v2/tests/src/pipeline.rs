@@ -985,14 +985,21 @@ fn dag_collect_typed_expression_keeps_own_identity() {
                 .is_some_and(|n| n == "Int")
         })
         .collect();
-    assert_eq!(int_records.len(), 1, "kernel Int should appear once in nodes table");
+    assert_eq!(
+        int_records.len(),
+        1,
+        "kernel Int should appear once in nodes table"
+    );
 
-    let expr_var_records: Vec<_> = nodes.values().filter(|v| {
-        v.get("expr_data")
-            .and_then(|e| e.get("kind"))
-            .and_then(Value::as_str)
-            == Some("ExprVar")
-    }).collect();
+    let expr_var_records: Vec<_> = nodes
+        .values()
+        .filter(|v| {
+            v.get("expr_data")
+                .and_then(|e| e.get("kind"))
+                .and_then(Value::as_str)
+                == Some("ExprVar")
+        })
+        .collect();
     assert!(
         !expr_var_records.is_empty(),
         "ExprVar nodes must remain distinct records, not fold into type refs"
