@@ -522,7 +522,7 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                if zip_eq(a: source_targets, b: row_targets, eq: fn(a, b) { a == b }) {
+                if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
