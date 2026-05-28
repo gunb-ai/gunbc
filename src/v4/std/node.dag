@@ -422,6 +422,106 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
+// B1 primitive re-export: v2 runtime hash_combine is available in-module but not importable cross-module until wrapped.
+fn combine_hash(a: Hash, b: Hash) -> Hash {
+  hash_combine(a: a, b: b)
+}
+
+
+data canonical_tag_scalar_int_zero: Symbol = canonical_tag_scalar_int_zero
+data canonical_tag_scalar_int_one: Symbol = canonical_tag_scalar_int_one
+data canonical_tag_scalar_int_neg: Symbol = canonical_tag_scalar_int_neg
+data canonical_tag_scalar_int_pos: Symbol = canonical_tag_scalar_int_pos
+data canonical_tag_scalar_int_succ: Symbol = canonical_tag_scalar_int_succ
+data canonical_tag_byte_offset_zero: Symbol = canonical_tag_byte_offset_zero
+data canonical_tag_byte_offset_byte: Symbol = canonical_tag_byte_offset_byte
+data canonical_tag_byte_offset_neg: Symbol = canonical_tag_byte_offset_neg
+data canonical_tag_byte_limb_out_of_range: Symbol = canonical_tag_byte_limb_out_of_range
+data canonical_tag_byte_offset_out_of_ceiling: Symbol = canonical_tag_byte_offset_out_of_ceiling
+data byte_offset_cache_digest_max_limbs: Int = 9
+
+
+// Byte limb 0..255 only: fail-closed before Peano recursion (P4 bounded substrate).
+fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
+  if limb < 0 || limb > 255 {
+    atom_identity_hash(s: canonical_tag_byte_limb_out_of_range)
+  } else if limb == 0 {
+    atom_identity_hash(s: canonical_tag_scalar_int_zero)
+  } else {
+    if limb == 1 {
+      atom_identity_hash(s: canonical_tag_scalar_int_one)
+    } else {
+      combine_hash(
+        a: atom_identity_hash(s: canonical_tag_scalar_int_succ),
+        b: byte_limb_hash_peano_digest(limb: limb - 1)
+      )
+    }
+  }
+}
+
+
+fn byte_offset_byte_digest(b: Int) -> Hash {
+  combine_hash(
+    a: atom_identity_hash(s: canonical_tag_byte_offset_byte),
+    b: byte_limb_hash_peano_digest(limb: b)
+  )
+}
+
+
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
+fn byte_offset_cache_digest_nonneg_bounded(i: Int, limbs_remaining: Int) -> Hash {
+  if limbs_remaining == 0 {
+    if i == 0 {
+      atom_identity_hash(s: canonical_tag_byte_offset_zero)
+    } else {
+      atom_identity_hash(s: canonical_tag_byte_offset_out_of_ceiling)
+    }
+  } else if i == 0 {
+    atom_identity_hash(s: canonical_tag_byte_offset_zero)
+  } else {
+    combine_hash(
+      a: byte_offset_byte_digest(b: i - (i / 256) * 256),
+      b: byte_offset_cache_digest_nonneg_bounded(
+        i: i / 256,
+        limbs_remaining: limbs_remaining - 1
+      )
+    )
+  }
+}
+
+
+fn byte_offset_cache_digest_nonneg(i: Int) -> Hash {
+  byte_offset_cache_digest_nonneg_bounded(
+    i: i,
+    limbs_remaining: byte_offset_cache_digest_max_limbs
+  )
+}
+
+
+fn byte_offset_cache_digest(i: Int) -> Hash {
+  if i < 0 {
+    combine_hash(
+      a: atom_identity_hash(s: canonical_tag_byte_offset_neg),
+      b: byte_offset_cache_digest_nonneg(i: 0 - i)
+    )
+  } else {
+    byte_offset_cache_digest_nonneg(i: i)
+  }
+}
+
+
+// Canonical multiset/bag digest: sort element hashes, then order-sensitive combine_hash fold.
+fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
+  fold(
+    sort_by(xs, h => h),
+    init: empty,
+    f: fn(acc, h) {
+      combine_hash(a: acc, b: h)
+    }
+  )
+}
+
+
 // 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized after body; other positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
