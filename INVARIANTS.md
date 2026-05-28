@@ -119,6 +119,20 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Canonical example (ratified 2026-05-27):** `ModulePath` was `FreeMonoid<ModulePathSegment>` where `ModulePathSegment = { name: Symbol }` — a qualified identifier sequence (`[v4, std, algebra]`), not a path through any graph. The `Path` concept in `std/node.dag` is `{ steps: List<Symbol> }` — a route through Node edges. `ModulePath` was a nickname for `QualifiedName`; renamed accordingly. `ModulePathSegment` was a nickname for `Symbol`; deleted.
 
+### Problem shape: Internal vocabulary for a canonical concept
+
+**Rule:** When a concept has a recognized definition in formal CS literature, use the canonical name and structure. Do not coin an internal name for it. Cite the authoritative source (Wikipedia article, RFC, ISO standard, or textbook) in the module header comment of the file that declares the type.
+
+**Why it belongs in P1:** Faithfulness is intersubjective — grounding must point at shared external consensus. Renaming a canonical concept internally asserts the internal name is as authoritative as the external one, which it is not. It also creates a hidden mapping burden: workers must learn the internal name, learn the mapping, and trust the fidelity of that mapping. The external name carries that fidelity for free.
+
+**Problem shape:** A module named after a pipeline stage (e.g. `compiler/tokenize.dag`, `compiler/parse.dag`) defines types whose concepts predate the pipeline — lexical analysis, context-free grammar, production rules. The module that *operates on* a concept is not the authority for its *definition*. Names like `GrammarProduction`, `ModeledLexRules`, `GrammarSchema` are internal nicknames for concepts the field already named (`Production`, `LexRuleSet`, `Grammar`).
+
+**Solution shape:** Before naming a new type, search for its canonical name in the relevant field. If one exists, use it. Place the type definition in a `std/` module named after the concept domain (e.g. `std/lexing.dag`, `std/grammar.dag`), not after the pipeline stage that happens to use it first. The pipeline stage imports from `std/`; it does not define vocabulary.
+
+**Enforcement:** New substrate type names corresponding to recognized CS concepts must cite the grounding source in the file's module header comment (e.g. `// Grounds in: https://en.wikipedia.org/wiki/Lexical_analysis`). Reviewers should ask "does this concept have a canonical name in the field?" before approving new type declarations in `compiler/` or `extdeps/`.
+
+**Receipt:** `v4.compiler.tokenize` defined `LexRule`, `LexRuleSet`, `ModeledLexRules`, `LexPattern`; `v4.compiler.parse` defined `GrammarProduction`, `GrammarExpr`, `GrammarSchema`. These are canonical CS concepts (lexical analysis, context-free grammar) wrapped in compiler-internal names. Dissolution: author `std/lexing.dag` + `std/grammar.dag` grounded in Wikipedia *Lexical Analysis* and *Formal Grammar*; move type definitions there; compiler/ imports from std/; extdeps/ imports from std/.
+
 ### Procedure: substrate-fact introduction (decision procedure for new modeling)
 
 **When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
@@ -168,6 +182,7 @@ Fundamental primitives (physics, computation, mathematics) declare as substrate 
 - **Documentation Describes Live State** — aspirational docs describe a reality the codebase doesn't embody
 - **Substrate-Fact Introduction Procedure** (above) — operational decision procedure for adding new substrate types/variants/fields
 - **Model names must reflect what they are (operator-ratified 2026-05-27).** A type named `FooBar` must be a structural composition or projection of `Foo` and `Bar` — not a convenient label for something else. Nicknaming is a modeling violation because it claims structural identity the type does not have. In the compiler especially, a type name that implies a concept it does not embody creates false mental models for workers and reviewers. Canonical example: `ModulePath = FreeMonoid<ModulePathSegment>` was a nickname for `FreeMonoid<Symbol>` (the declared identifier of a code unit); the name implied graph traversal (`Path { steps: List<Symbol> }` in `std/node.dag`) when no such relationship holds. Correct form: `QualifiedName = FreeMonoid<Symbol>` — the name states exactly what it is. When a type name is wrong, fix the name before dispatching workers; dispatching on a wrong name propagates the fiction through implementations. Enforcement via lens (forthcoming, see T-QN-1).
+- **Internal vocabulary for a canonical concept** — canonical CS names belong in std/, not in compiler/-internal modules
 
 ---
 
