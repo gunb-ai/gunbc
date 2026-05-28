@@ -125,6 +125,52 @@ fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
   }
 }
 
+fn bootstrap_footprint_anchor_bad_runtime_boundary() -> ResourceEffectBoundary {
+  ResourceEffectBoundary {
+    ffi: v4_eval_wave1_boundary_allowance(allowed: true),
+    exceptions: v4_eval_wave1_boundary_allowance(allowed: false),
+    async: v4_eval_wave1_boundary_allowance(allowed: false),
+    concurrency: v4_eval_wave1_boundary_allowance(allowed: false),
+    identity_reference: v4_eval_wave1_boundary_allowance(allowed: false)
+  }
+}
+
+fn bootstrap_footprint_anchor_bad_runtime_model() -> V4EvaluatorRuntime {
+  V4EvaluatorRuntime {
+    runtime_identity: v4_evaluator_runtime_id,
+    core: v4_evaluator_model_core_wave1(),
+    values: v4_evaluator_value_representation_wave1(),
+    execution: v4_evaluator_execution_wave1(),
+    boundary: bootstrap_footprint_anchor_bad_runtime_boundary()
+  }
+}
+
+fn bootstrap_footprint_anchor_bad_runtime_projection_inputs() -> BootstrapProjectionInputs {
+  BootstrapProjectionInputs {
+    snapshot: BootstrapSourceSnapshot {
+      root: bootstrap_source_snapshot_root(),
+      language_model: seed_capability_language_model(),
+      content_hash: BootstrapHashPin {
+        digest: pinned_v4_fixed_point_hash,
+        pin: pinned_v4_fixed_point_hash_pin
+      }
+    },
+    target_model: rust_mvp1_target_model(),
+    runtime_model: bootstrap_footprint_anchor_bad_runtime_model()
+  }
+}
+
+fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
+  let bad_runtime = bootstrap_footprint_anchor_bad_runtime_model()
+  let canonical_runtime = v4_evaluator_runtime_wave1()
+  (bad_runtime.runtime_identity == canonical_runtime.runtime_identity)
+    && (bad_runtime != canonical_runtime)
+    && (match bootstrap_footprint(inputs: bootstrap_footprint_anchor_bad_runtime_projection_inputs()) {
+      Holds { value: _ } => false
+      Violates { diagnostic: d } => d.reason == bootstrap_footprint_not_realized
+    })
+}
+
 data claim_bootstrap_footprint_canonical_holds: TestClaim = CompilesClaim {
   label: "T-20 bootstrap_footprint: canonical projection inputs return Holds with closure_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -145,6 +191,14 @@ data claim_bootstrap_footprint_bad_content_hash_violates: TestClaim = CompilesCl
   label: "T-20 bootstrap_footprint: mismatched snapshot content_hash fails closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_bad_content_hash_violates()),
+  expected_value: bootstrap_footprint_anchor_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_bootstrap_footprint_bad_runtime_violates: TestClaim = CompilesClaim {
+  label: "T-20 bootstrap_footprint: same runtime_identity with non-wave1 boundary fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_bad_runtime_same_identity_violates()),
   expected_value: bootstrap_footprint_anchor_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
