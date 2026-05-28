@@ -902,13 +902,52 @@ fn cpp_model_core_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabit
   )
 }
 
+fn cpp_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: cpp_atom(id: operation),
+    precondition: cpp_atom(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      cpp_fail_closed_partial_operation(
+        operation: cpp_op_signed_integer_add,
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      ),
+      cpp_fail_closed_partial_operation(
+        operation: cpp_op_signed_integer_sub,
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      ),
+      cpp_fail_closed_partial_operation(
+        operation: cpp_op_signed_integer_mul,
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      ),
+      cpp_fail_closed_partial_operation(
+        operation: cpp_op_signed_integer_neg,
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      )
+    ]
+  }
+}
+
 fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
   ModelCore {
     primitives: cpp_wave1_primitive_fact_bundles(target_profile: target_profile),
     inhabitance: cpp_model_core_inhabitance_decls(target_profile: target_profile),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    partiality: cpp_partiality_semantics_wave1()
   }
 }
 
