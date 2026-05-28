@@ -1,10 +1,7 @@
 // src/v4/extdeps/formatters/clang_format.dag
 // Scope: clang-format configuration model — option space grounded in clang-format 23.0.0git.
-<<<<<<< HEAD
 // Owns: ClangFormatQualifierAlignmentStyle, ClangFormatConfig, clang_format_defaults, ClangFormatConfigPatch, clang_format_layer.
 // Consumes: v4.std.patch { FieldPatch, apply_field_patch }.
-=======
->>>>>>> origin/main
 // Status: T-4.16 scaffold — full top-level option space grounded in clang-format 23.0.0git style reference.
 // Anchor: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
 
