@@ -15,6 +15,7 @@ import v4.compiler.parse {
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
   Sequence,
   Terminal,
   grammar_empty_sync_tokens,
@@ -22,6 +23,8 @@ import v4.compiler.parse {
 }
 import v4.compiler.tokenize {
   CharClassPattern,
+  DelimitedPattern,
+  DigitChar,
   IdentContinueChar,
   IdentStartChar,
   LexPattern,
@@ -30,8 +33,10 @@ import v4.compiler.tokenize {
   LexRules,
   LiteralPattern,
   ModeledLexRules,
+  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
+  StringTextChar,
   TokenRule
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
