@@ -1064,7 +1064,9 @@ fn ts_language_model_wave1() -> TsLanguageModel {
   TsLanguageModel {
     language_identity: ts_language_model_surface_id,
     canonical_symbols: ts_language_model_canonical_symbols(),
-    core: ts_model_core_wave1()
+    core: ts_model_core_wave1(),
+    lex: ts_wave1_lex(),
+    grammar: ts_wave1_grammar()
   }
 }
 
@@ -1186,10 +1188,10 @@ fn ts_grammar_production_wave2a_item() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_wave2a_item,
     expression: Choice {
-      first: Nonterminal { name: ts_production_mvp1_fn_add },
-      rest: Choice {
-        first: Nonterminal { name: ts_production_wave2a_let_decl },
-        rest: Nonterminal { name: ts_production_wave2a_const_decl }
+      left: Nonterminal { production: ts_production_mvp1_fn_add },
+      right: Choice {
+        left: Nonterminal { production: ts_production_wave2a_let_decl },
+        right: Nonterminal { production: ts_production_wave2a_const_decl }
       }
     },
     emitted: ts_grammar_atom(id: ts_surface_item)
