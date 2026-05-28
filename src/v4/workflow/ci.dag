@@ -43,7 +43,7 @@ import v4.std.node {
   TypeNode,
   combine_hash,
   content_hash,
-  scalar_int_hash
+  byte_offset_cache_digest
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -353,8 +353,9 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 }
 
 
+// v4.std.text Char = Nat (scalar); use O(log |c|) base-256 digest, not Peano scalar_int_hash.
 fn ci_char_cache_digest(c: Char) -> Hash {
-  scalar_int_hash(i: c)
+  byte_offset_cache_digest(i: c)
 }
 
 
