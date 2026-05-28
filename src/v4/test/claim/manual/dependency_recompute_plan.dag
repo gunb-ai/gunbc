@@ -12,6 +12,7 @@ import v4.std.change {
   AffectedSetProduced,
   Change,
   ChangeSet,
+  DependencyDependent,
   NodeChanged,
   RecomputePlan
 }
@@ -125,15 +126,18 @@ data refinement_affected_set: AffectedSet = AffectedSetProduced {
   affected: [
     AffectedDependency {
       change: refinement_change,
-      dependency: testclaim_dependency
+      dependency: testclaim_dependency,
+      target: DependencyDependent
     },
     AffectedDependency {
       change: refinement_change,
-      dependency: boundary_dependency
+      dependency: boundary_dependency,
+      target: DependencyDependent
     },
     AffectedDependency {
       change: refinement_change,
-      dependency: target_projection_dependency
+      dependency: target_projection_dependency,
+      target: DependencyDependent
     }
   ],
   exclusions: [],

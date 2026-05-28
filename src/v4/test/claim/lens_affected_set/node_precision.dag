@@ -8,7 +8,8 @@
 module v4.test.claim.lens_affected_set.node_precision
 
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.lens.affected_set { AffectedSetReading, affected_set }
+import v4.lens.affected_set { AffectedSetReading, FrontierDependency, affected_set_reading }
+import v4.std.change { DependencyDependent, DependencySource }
 import v4.std.dependency { Contains, DependencyView }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
@@ -61,6 +62,23 @@ data affected_set_mid_to_leaf_dependency: DependencyView = DependencyView {
   usage_site: affected_set_leaf
 }
 
+data affected_set_root_to_mid_dependency: DependencyView = DependencyView {
+  source: affected_set_root,
+  dependent: affected_set_mid,
+  kind: Contains,
+  usage_site: affected_set_mid
+}
+
+data affected_set_root_to_mid_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_root_to_mid_dependency,
+  target: DependencySource
+}
+
+data affected_set_mid_to_leaf_frontier_dependency: FrontierDependency = FrontierDependency {
+  dependency: affected_set_mid_to_leaf_dependency,
+  target: DependencyDependent
+}
+
 type LensAffectedSetClaim {
   input: InferredTree
   edit_locus: Node
@@ -73,10 +91,10 @@ data affected_set_node_precision_claim: LensAffectedSetClaim = LensAffectedSetCl
   edit_locus: affected_set_mid,
   expected: AffectedSetReading {
     edit_locus: affected_set_mid,
-    affected: [affected_set_mid, affected_set_leaf],
-    dependencies: [affected_set_mid_to_leaf_dependency]
+    affected: [affected_set_mid, affected_set_root, affected_set_leaf],
+    dependencies: [affected_set_root_to_mid_frontier_dependency, affected_set_mid_to_leaf_frontier_dependency]
   },
-  actual: affected_set(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
+  actual: affected_set_reading(graph: affected_set_claim_tree(), edit_locus: affected_set_mid)
 }
 
 fn affected_set_node_precision_claim_holds() -> Bool {
