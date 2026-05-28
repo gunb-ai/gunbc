@@ -562,7 +562,10 @@ data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubj
   claim: claim_mvp1_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 

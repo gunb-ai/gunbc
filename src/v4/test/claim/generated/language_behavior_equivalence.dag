@@ -87,6 +87,8 @@ import v4.test.claim.manual.connective_anchors {
 }
 
 
+data lbe_interpretation_pin: Symbol = lbe_interpretation_pin
+data lbe_evaluator_pin: Symbol = lbe_evaluator_pin
 data lbe_interpretation_rejected: Symbol = lbe_interpretation_rejected
 data lbe_runtime_value_symbol: Symbol = lbe_runtime_value_symbol
 data eval_rejected_lbe_projection_deferred: Symbol = eval_rejected_lbe_projection_deferred
@@ -174,6 +176,7 @@ fn lbe_inferred_tree(root: Node) -> InferredTree {
 
 fn lbe_eval_context() -> EvalContext {
   EvalContext {
+    interpretation_pin: lbe_interpretation_pin,
     interpretation: InterpretationAlgebra {
       value: ValueInterpreter {
         allocate_literal: lbe_allocate_literal
@@ -210,7 +213,10 @@ fn lbe_subject_from_claim(claim: TestClaim) -> TestClaimEvalSubject<Node> {
     claim: claim,
     context: lbe_eval_context(),
     tree: lbe_inferred_tree(root: input),
-    input: TestClaimTypedInput { evaluator_input: input }
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: lbe_evaluator_pin
+    )
   }
 }
 
