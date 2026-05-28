@@ -64,6 +64,7 @@ type BootstrapProjectionInputs {
 
 type BootstrapFootprint {
   inputs: BootstrapProjectionInputs
+  closure_hash: Hash
   constructs: List<BootstrapConstruct>
 }
 
@@ -240,13 +241,14 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
     && (inputs.runtime_model.runtime_identity == v4_evaluator_runtime_id)
 }
 
-// Phase-1 footprint fold: content_hash over the projection-input closure (T-21 B1); constructs are the four frozen-submodel subset carriers until a deeper snapshot walk lands.
+// 🟡 needs-more-work — feature:t21-footprint-snapshot-walk — scaffold:T-32 Phase 1 · dissolve-on: deeper snapshot walk PR lands; constructs remain four frozen-submodel subset carriers until snapshot Node walk derives them.
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
-  let _closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
+  let closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
   if bootstrap_projection_inputs_well_formed(inputs: inputs) {
     Holds {
       value: BootstrapFootprint {
         inputs: inputs,
+        closure_hash: closure_hash,
         constructs: bootstrap_footprint_constructs()
       }
     }
