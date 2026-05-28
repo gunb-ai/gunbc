@@ -15,11 +15,11 @@ the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution st
 not get a second grounded line. Grounded lines are **not** preserved across strip —
 they are re-injected every run so spacing stays canonical.
 
-For the eight files in this script's allowlist, `// Owns:` is a generated
-manifest of top-level module symbols in file order: every `type`, `data`, and
-`fn` binding in the `.dag` body (deduped by name), not only headline carriers.
-Outside this allowlist, `// Owns:` and `// Consumes:` are ordinary parallel
-ledgers and Practice 9 removes them.
+For files in this script's `specs` allowlist, `// Owns:` is a generated manifest
+of top-level module symbols in file order: every `type`, `data`, and `fn`
+binding in the `.dag` body (deduped by name), not only headline carriers.
+Outside the `specs` allowlist, `// Owns:` and `// Consumes:` are ordinary
+parallel ledgers and Practice 9 removes them.
 
 `// Ledger:` lists **slug inventory for the live substrate**: one ledger ref per live sum
 coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
@@ -619,7 +619,7 @@ def main() -> None:
 
     # Sixth field: operator RULING-1 slice groundedness (emoji-only; ratified in
     # `docs/modeling-discipline.md` Practice 9; ledger doc retired 2026-05-19).
-    # This eight-file allowlist is the only place where `// Owns:` and
+    # This `specs` allowlist is the only place where `// Owns:` and
     # `// Consumes:` remain live: strict_deprose_dag regenerates them as part of
     # its machine-checked header contract.
     # Extdeps language slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.

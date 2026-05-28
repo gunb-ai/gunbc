@@ -29,6 +29,7 @@
 module v4.extdeps.formats.spice
 
 
+import v4.std.diagnostic { Outcome }
 import v4.std.node { Symbol }
 
 
@@ -204,4 +205,15 @@ type DeckStatement
 type SpiceNetlist {
   title: String
   body: List<DeckStatement>
+}
+
+type SpiceParseResult = Outcome<SpiceNetlist>
+
+type SpiceParse = fn(String) -> SpiceParseResult
+
+type SpiceEmit = fn(SpiceNetlist) -> String
+
+type SpiceIoContract {
+  parse: SpiceParse
+  emit: SpiceEmit
 }
