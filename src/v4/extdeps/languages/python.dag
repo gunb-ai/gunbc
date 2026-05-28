@@ -12,6 +12,7 @@ module v4.extdeps.languages.python
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
   FormalGrammarSymbol,
   FormalProduction,
   FormalTerminal,

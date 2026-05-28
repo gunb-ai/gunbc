@@ -8,6 +8,7 @@ module v4.extdeps.languages.java
 import v4.std.grammar {
   grammar_formal_terminal,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
   Choice,
   FormalGrammarSymbol,
   FormalNonterminalOccurrence,
