@@ -1763,10 +1763,6 @@ data swift_witness_string_free_monoid: Symbol = swift_witness_string_free_monoid
 
 data swift_inhabitant_unicode_scalar: Symbol = swift_inhabitant_unicode_scalar
 
-data swift_inhabitant_field_float: Symbol = swift_inhabitant_field_float
-data swift_inhabitant_field_bool: Symbol = swift_inhabitant_field_bool
-data swift_inhabitant_field_string: Symbol = swift_inhabitant_field_string
-
 fn swift_float_inhabitant_node(id: Symbol, facts: SwiftFloatPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
