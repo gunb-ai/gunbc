@@ -1,13 +1,12 @@
 // src/v4/std/network.dag
 // Scope: network boundary carriers.
-// Owns: HttpMethod, Rfc3986AbnfProduction, UriScheme, UriUserInfo, UriUserInfoSlot, UriHost, UriPort, UriPortSlot, UriAuthority, UriPath, UriHierPart, UriQuery, UriQuerySlot, UriFragment, UriFragmentSlot, Url, UriRelativePart, UriRelativeReference, UriReference, NetworkAddress.
-// Consumes: std text, std nat.
 // Status: T-26 modeled.
 
 
 module v4.std.network
 
 
+import v4.std.collection { Optional }
 import v4.std.text { String }
 import v4.std.nat { Nat }
 
@@ -75,11 +74,6 @@ type UriUserInfo {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — T-26-UriComponentPresence.
-type UriUserInfoSlot
-  = UriUserInfoAbsent
-  | UriUserInfoPresent { userinfo: UriUserInfo }
-
 type UriHost {
   spelling: String,
   grammar: Rfc3986AbnfProduction,
@@ -90,15 +84,10 @@ type UriPort {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — T-26-UriComponentPresence.
-type UriPortSlot
-  = UriPortAbsent
-  | UriPortPresent { port: UriPort }
-
 type UriAuthority {
-  userinfo: UriUserInfoSlot,
+  userinfo: Optional<UriUserInfo>,
   host: UriHost,
-  port: UriPortSlot,
+  port: Optional<UriPort>,
 }
 
 type UriPath {
@@ -118,27 +107,17 @@ type UriQuery {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — T-26-UriComponentPresence.
-type UriQuerySlot
-  = UriQueryAbsent
-  | UriQueryPresent { query: UriQuery }
-
 type UriFragment {
   spelling: String,
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — T-26-UriComponentPresence.
-type UriFragmentSlot
-  = UriFragmentAbsent
-  | UriFragmentPresent { fragment: UriFragment }
-
 // Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3
 type Url {
   scheme: UriScheme,
   hier_part: UriHierPart,
-  query: UriQuerySlot,
-  fragment: UriFragmentSlot,
+  query: Optional<UriQuery>,
+  fragment: Optional<UriFragment>,
 }
 
 // Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-4.2
@@ -151,8 +130,8 @@ type UriRelativePart
 
 type UriRelativeReference {
   relative_part: UriRelativePart,
-  query: UriQuerySlot,
-  fragment: UriFragmentSlot,
+  query: Optional<UriQuery>,
+  fragment: Optional<UriFragment>,
 }
 
 // 🟢 coproduct dissolution — T-26-UriReference.

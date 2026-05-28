@@ -1,20 +1,18 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
 // Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + LM `canonical_symbols` (TASKS T-8).
-// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols; anchor_resolve_wave1_empty_prelude_service_atom; anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols; anchor_resolve_wave1_bind_binder_use; claim_resolve_module_with_admission_imported_binding_accepts.
-// Consumes: compiler/03_resolve.dag, compiler/03_module_resolve.dag, extdeps/languages/dag.dag, std/module_graph.dag, std/diagnostic.dag, std/node.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.test.claim.manual.resolve_compile_anchor
 
 
-import v4.compiler.module_resolve {
-  ModuleAdmission,
-  ModuleImport,
-  ModuleImportVisible,
-  ModuleSubject,
-  resolve_module_with_admission
+import v4.compiler.name_resolve {
+  Admission,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  resolve_with_admission
 }
 import v4.compiler.resolve { resolve, ResolvedTree }
 import v4.extdeps.languages.dag {
@@ -27,7 +25,7 @@ import v4.extdeps.languages.dag {
 import v4.std.algebra { Cons, Empty }
 import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.logic { Bool }
-import v4.std.module_graph { ModuleEntry, ModuleGraph, ModulePath, ModulePathSegment }
+import v4.std.catalog { Catalog, Entry }
 import v4.std.node {
   Atom,
   Bind,
@@ -55,8 +53,8 @@ data anchor_decl_first: Symbol = anchor_decl_first
 data anchor_decl_second: Symbol = anchor_decl_second
 data anchor_imported_decl: Symbol = anchor_imported_decl
 data anchor_imported_path_segment: Symbol = anchor_imported_path_segment
-data anchor_resolve_graph_pass: Symbol = anchor_resolve_graph_pass
-data anchor_resolve_graph_fail: Symbol = anchor_resolve_graph_fail
+data anchor_resolve_catalog_pass: Symbol = anchor_resolve_catalog_pass
+data anchor_resolve_catalog_fail: Symbol = anchor_resolve_catalog_fail
 
 
 fn service_atom_conj_tree() -> Node {
@@ -170,22 +168,22 @@ fn anchor_resolve_wave1_bind_binder_use() -> Outcome<ResolvedTree> {
 }
 
 
-fn resolve_graph_claim_node(ok: Bool) -> Node {
+fn resolve_catalog_claim_node(ok: Bool) -> Node {
   if ok {
     Node {
-      kind: TypeNode { connective: Atom { identity: anchor_resolve_graph_pass } },
+      kind: TypeNode { connective: Atom { identity: anchor_resolve_catalog_pass } },
       children: []
     }
   } else {
     Node {
-      kind: TypeNode { connective: Atom { identity: anchor_resolve_graph_fail } },
+      kind: TypeNode { connective: Atom { identity: anchor_resolve_catalog_fail } },
       children: []
     }
   }
 }
 
 
-fn resolve_graph_imported_root() -> Node {
+fn resolve_catalog_imported_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
@@ -203,30 +201,25 @@ fn resolve_graph_imported_root() -> Node {
 }
 
 
-fn resolve_graph_imported_entry() -> ModuleEntry {
-  ModuleEntry {
-    path: ModulePath {
-      segments: Cons {
-        head: ModulePathSegment { name: anchor_imported_path_segment },
-        tail: Empty
-      }
-    },
-    root: resolve_graph_imported_root()
+fn resolve_catalog_imported_entry() -> Entry {
+  Entry {
+    name: Cons { head: anchor_imported_path_segment, tail: Empty },
+    root: resolve_catalog_imported_root()
   }
 }
 
 
-fn resolve_graph_single_import() -> ModuleGraph {
-  ModuleGraph {
+fn resolve_catalog_single_import() -> Catalog {
+  Catalog {
     entries: Cons {
-      head: resolve_graph_imported_entry(),
+      head: resolve_catalog_imported_entry(),
       tail: Empty
     }
   }
 }
 
 
-fn resolve_graph_imported_use_tree() -> Node {
+fn resolve_catalog_imported_use_tree() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: anchor_imported_decl } },
     children: []
@@ -234,24 +227,19 @@ fn resolve_graph_imported_use_tree() -> Node {
 }
 
 
-fn resolve_module_with_admission_imported_binding_accepts() -> Bool {
-  match resolve_module_with_admission(
+fn resolve_with_admission_imported_binding_accepts() -> Bool {
+  match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
-    graph: resolve_graph_single_import(),
-    admission: ModuleAdmission {
-      subject: ModuleSubject {
-        path: ModulePath { segments: Empty },
-        tree: resolve_graph_imported_use_tree()
+    catalog: resolve_catalog_single_import(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: Empty,
+        tree: resolve_catalog_imported_use_tree()
       },
       imports: Cons {
-        head: ModuleImport {
-          target: ModulePath {
-            segments: Cons {
-              head: ModulePathSegment { name: anchor_imported_path_segment },
-              tail: Empty
-            }
-          },
-          visibility: ModuleImportVisible
+        head: Import {
+          target: Cons { head: anchor_imported_path_segment, tail: Empty },
+          visibility: ImportVisible
         },
         tail: Empty
       }
@@ -263,10 +251,10 @@ fn resolve_module_with_admission_imported_binding_accepts() -> Bool {
 }
 
 
-data claim_resolve_module_with_admission_imported_binding_accepts: TestClaim = CompilesClaim {
-  label: "module_resolve/with_admission: visible imported module named export resolves",
+data claim_resolve_with_admission_imported_binding_accepts: TestClaim = CompilesClaim {
+  label: "resolve/with_admission: visible imported module named export resolves",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: resolve_graph_claim_node(ok: resolve_module_with_admission_imported_binding_accepts()),
-  expected_value: resolve_graph_claim_node(ok: true),
+  input: resolve_catalog_claim_node(ok: resolve_with_admission_imported_binding_accepts()),
+  expected_value: resolve_catalog_claim_node(ok: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

@@ -1,15 +1,14 @@
 // src/v4/compiler/03_normalize.dag
 //
 // Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
-// Owns: NormalizedTree; SurfaceSugarKind; normalize; stage Symbol reasons.
-// Consumes: std/node.dag, std/diagnostic.dag, compiler/02_parse.dag, extdeps/languages/dag.dag.
 // Status: T-8 modeled — C3 sugar dissolution (ServiceSugar / FnSugar / TypeSugar / OperationSugar).
 // Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
 
 module v4.compiler.normalize
 
 
-import v4.compiler.parse { ParseTree }
+import v4.std.algebra { list_snoc_item }
+import v4.std.grammar { ParseTree }
 import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_fn,
   dag_c3_surface_sugar_operation,
@@ -140,7 +139,7 @@ fn normalize_children(children: List<Edge>) -> Outcome<List<Edge>> {
         match normalize_edge(e: e) {
           Accepted { value: normalized_edge, diagnostics: ed } =>
             Accepted {
-              value: list_push(done, normalized_edge),
+              value: list_snoc_item(xs: done, item: normalized_edge),
               diagnostics: diagnostics_merge(outer: ad, inner: ed)
             }
           Rejected { diagnostics: r } =>

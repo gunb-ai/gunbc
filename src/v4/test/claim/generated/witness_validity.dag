@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/witness_validity.dag
 // Scope: T-19 witness-validity generated corpus.
-// Owns: row_witness_validity_* data rows; witness_validity_unrealized_rule symbol.
-// Consumes: v4.lens.testgen v4.std.witness v4.std.find_witness v4.std.verification v4.std.node v4.std.diagnostic v4.test.claim.manual.connective_anchors.
 // Status: generated rows route through testgen_emit_witness_validity_claim; RoundTripClaim Deferred until eval interpretation-algebra lands.
 
 module v4.test.claim.generated.witness_validity

@@ -13,29 +13,14 @@
 //              visible: the architecture refusing to lie IS the result.
 // Anchor: THESIS no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
 //         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
-//
-// Owns:
-//   - test_english_prose_ingest_is_diagnostic: TestClaim
-//     - input: arbitrary English prose handed to `ingest`
-//     - expected: a precise Diagnostic (reason = NotInLosslessCore /
-//       AmbiguousIntent), NOT a fabricated/partial Node — fail-closed
-//   - test_english_emit_is_shapeB_docs: TestClaim
-//     - input: a typed `.dag` value + a Shape B English-doc walker
-//     - expected: English prose output; coherent with the same Node the
-//       other T-16 artifacts derive from (no parallel authority)
-//
 // Prerequisites (sequencing — NOT parallel to an unfilled verification
-//   scaffold): concrete TestClaim / AssertKind payloads in this file bind
+//   scaffold): concrete TestClaim payloads in this file bind
 //   to the closed schema in std/verification.dag. That file is T-3
 //   Wave-A2 work (needs algebra + diagnostic per TASKS.md T-3 ordering).
 //   English (T-4.11) is intentionally sequenced *behind* verification.dag
 //   fill — cite verification.dag as schema authority only after T-3 lands
 //   it; do not list it as peer "Consumes" substrate while the scaffold is
 //   empty.
-//
-// Consumes:
-//   - std/diagnostic.dag
-//   - compiler/00_compile.dag (the `ingest` boundary — B2-OMNI)
 //
 // Status: T-4.11 corpus rows; execution deferred to T-22 runner bridge.
 // Brief: see BRIEF_TEMPLATE.md.
@@ -46,9 +31,9 @@ module v4.test.claim.boundary.english_ingest_fail_closed
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
-  NodeLocus,
   Unavailable,
-  diagnostics_singleton
+  diagnostics_singleton,
+  node_locus
 }
 import v4.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj }
 import v4.std.verification {
@@ -134,7 +119,7 @@ data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
   expected_rejection: diagnostics_singleton(
       d: Diagnostic {
         reason: english_ingest_not_in_lossless_core_reason,
-        at: NodeLocus { node: arbitrary_english_prose_input },
+        at: node_locus(node: arbitrary_english_prose_input),
         correction: Unavailable { reason: AmbiguousIntent }
       }
     ),

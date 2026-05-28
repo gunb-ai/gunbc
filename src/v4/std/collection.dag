@@ -1,7 +1,5 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
-// Consumes: std/algebra.dag; std/witness.dag; std/diagnostic.dag; std/node.dag.
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
 // AI-3: non_empty removed (duplicate of v4.std.algebra.non_empty).
@@ -17,6 +15,39 @@ import v4.std.algebra { FreeMonoid, PointwisePower, fold_list, is_empty }
 import v4.std.diagnostic { Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
 import v4.std.node { Symbol }
 import v4.std.witness { Holds, Violates, Witness }
+// 🟢 coproduct dissolution — M6-Optional-generic.
+// Anchor: initial algebra of F(X) = 1 + T; Haskell Maybe / Rust Option / ML option.
+type Optional<T>
+  = Absent
+  | Present { value: T }
+fn optional_absent<T>() -> Optional<T> {
+  Absent
+}
+fn optional_present<T>(value: T) -> Optional<T> {
+  Present { value: value }
+}
+fn optional_prefer_first_present<T>(left: Optional<T>, right: Optional<T>) -> Optional<T> {
+  match left {
+    Present { value: _ } => left
+    Absent => right
+  }
+}
+data optional_absent_unwrap: Symbol = optional_absent_unwrap
+data optional_present_witness_port: Symbol = optional_present_witness_port
+fn optional_absent_unwrap_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: optional_absent_unwrap,
+    at: port_locus(port: optional_present_witness_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10) — feature:optional-present-witness — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate projects Optional<T> Present arm to Witness<T>; forbidden: returning a synthetic payload on Absent (fail-open unwrap).
+fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
+  match opt {
+    Present { value: v } => Holds { value: v }
+    Absent => Violates { diagnostic: optional_absent_unwrap_diagnostic() }
+  }
+}
 type List<T> = FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 type Map<K, V> {

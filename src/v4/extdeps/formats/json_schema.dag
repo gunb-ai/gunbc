@@ -1,15 +1,14 @@
 // src/v4/extdeps/formats/json_schema.dag
 // Scope: JSON Schema Draft 2020-12 instance shell + default-dialect keyword bundle (Lane C T-4.6); typed slots favor Core-shaped surface; additional_keywords enumerates keywords authorized by the meta-schema anchor.
-// Owns: JsonSchemaCoreTypeName, JsonSchemaTypeSlot, JsonSchemaItemsSlot, JsonSchemaPropertiesSlot, JsonSchemaRequiredSlot, JsonSchemaAdditionalKeywordKey, JsonSchema
-// Consumes: std/node.dag, std/diagnostic.dag, std/witness.dag, std/collection.dag, extdeps/formats/json.dag
 // Status: scaffold — TASKS.md T-4.6
 // Anchor: https://json-schema.org/draft/2020-12/schema
 
 module v4.extdeps.formats.json_schema
 
 
-import v4.extdeps.formats.json { JsonValue }
-import v4.std.collection { Map, Set }
+import v4.extdeps.formats.json { JsonDocument, JsonValue }
+import v4.std.collection { Map, Optional, Set }
+import v4.std.witness { Witness }
 
 
 // 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaCoreTypeName.
@@ -28,24 +27,6 @@ type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
   | JsonSchemaTypeUnion { first: JsonSchemaCoreTypeName, rest: Set<JsonSchemaCoreTypeName> }
-
-
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaItemsSlot.
-type JsonSchemaItemsSlot
-  = JsonSchemaItemsAbsent
-  | JsonSchemaItemsSchema { item_schema: JsonSchema }
-
-
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaPropertiesSlot.
-type JsonSchemaPropertiesSlot
-  = JsonSchemaPropertiesAbsent
-  | JsonSchemaPropertiesPresent { properties: Map<String, JsonSchema> }
-
-
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaRequiredSlot.
-type JsonSchemaRequiredSlot
-  = JsonSchemaRequiredAbsent
-  | JsonSchemaRequiredPresent { required: Set<String> }
 
 
 // 🟡 coproduct dissolution — T-4.6-JSK.
@@ -113,8 +94,19 @@ type JsonSchema
   | JsonSchemaFalse
   | JsonSchemaInstance {
       instance_type: JsonSchemaTypeSlot,
-      properties: JsonSchemaPropertiesSlot,
-      required: JsonSchemaRequiredSlot,
-      items: JsonSchemaItemsSlot,
+      properties: Optional<Map<String, JsonSchema>>,
+      required: Optional<Set<String>>,
+      items: Optional<JsonSchema>,
       additional_keywords: Map<JsonSchemaAdditionalKeywordKey, JsonValue>,
     }
+
+
+type JsonSchemaInterpretation {
+  json_document: JsonDocument,
+  schema: JsonSchema,
+}
+
+
+type JsonSchemaDocument {
+  interpretation: Witness<JsonSchemaInterpretation>,
+}

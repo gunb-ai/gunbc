@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/diagnostic_assert_eval.dag
 // Scope: T-22 DiagnosticClaim + aggregate_verdicts behavior witnesses.
-// Owns: Pass/Fail receipts for matching/mismatching rejected diagnostics; Deferred blocks Pass.
-// Consumes: v4.compiler.eval, v4.std.diagnostic, v4.test.claim.manual.connective_anchors.
 // Status: Wave-0 eval regression anchor.
 
 

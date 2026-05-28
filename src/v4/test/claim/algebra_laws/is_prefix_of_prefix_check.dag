@@ -1,7 +1,5 @@
 // src/v4/test/claim/algebra_laws/is_prefix_of_prefix_check.dag
 // Scope: TestClaim corpus for is_prefix_of structural prefix check.
-// Owns: claim rows for is_prefix_of empty/matching/non-matching/overlength prefix cases.
-// Consumes: v4.std.algebra v4.std.node v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 

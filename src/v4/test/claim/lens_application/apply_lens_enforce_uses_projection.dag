@@ -1,8 +1,6 @@
 // src/v4/test/claim/lens_application/apply_lens_enforce_uses_projection.dag
-// Scope: T-23 worked claim — apply_lens_enforce calls violates(Output, Budget).
-// Owns: claim_apply_lens_enforce_uses_projection.
-// Consumes: v4.lens.application, v4.std.node, std verification.
-// Status: compile-only ratchet for LensEnforcement output-shaped violation relation.
+// Scope: T-23 worked claim — apply_lens_enforce carries project(Output) forward.
+// Status: compile-only ratchet for LensEnforcement projection + output-shaped violation relation.
 
 module v4.test.claim.lens_application.apply_lens_enforce_uses_projection
 
@@ -18,7 +16,7 @@ import v4.lens.application {
 }
 import v4.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
 import v4.std.logic { Bool }
-import v4.std.node { Atom, ComputationNode, Conj, Node, Symbol, TypeNode }
+import v4.std.node { Atom, ComputationNode, Conj, Edge, Named, Node, Path, Symbol, TypeNode }
 import v4.std.verification {
   EqualsClaim,
   TestClaim,
@@ -30,12 +28,25 @@ import v4.std.verification {
 }
 
 data projection_test_symbol: Symbol = projection_test_symbol
+data projection_section_step: Symbol = projection_section_step
+data projection_section_symbol: Symbol = projection_section_symbol
+data projection_projected_symbol: Symbol = projection_projected_symbol
 data projection_budget_ok: Symbol = projection_budget_ok
 data projection_budget_fail: Symbol = projection_budget_fail
 
+data projection_test_section: Node = Node {
+  kind: TypeNode { connective: Atom { identity: projection_section_symbol } },
+  children: []
+}
+
 data projection_test_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: projection_test_symbol } },
-  children: []
+  children: [
+    Edge {
+      label: Named { name: projection_section_step },
+      target: projection_test_section
+    }
+  ]
 }
 
 fn projection_test_read(root: Node) -> Outcome<Symbol> {
@@ -49,7 +60,7 @@ fn projection_test_read(root: Node) -> Outcome<Symbol> {
 data projection_test_lens: Lens<Symbol> = Lens { read: projection_test_read }
 
 fn projection_test_project(output: Symbol) -> Symbol {
-  output
+  projection_projected_symbol
 }
 
 fn projection_test_violates(output: Symbol, declared: Symbol) -> Bool {
@@ -66,7 +77,9 @@ data projection_test_enforceable: EnforceableLens<Symbol, Symbol, Symbol> = Enfo
   enforcement: projection_test_enforcement
 }
 
-data projection_test_declaration: DeclarationId = projection_test_declaration
+data projection_test_declaration: DeclarationId = DeclarationId {
+  path: Path { steps: [projection_section_step] }
+}
 
 fn apply_lens_enforce_projection_claim_holds() -> Bool {
   match apply_lens_enforce(
@@ -76,7 +89,8 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
     budget: projection_budget_ok,
     diagnostic_severity: SeverityError {}
   ) {
-    Accepted { value: _, diagnostics: _ } => true
+    Accepted { value: result, diagnostics: _ } =>
+      result.output == projection_section_symbol && result.projected == projection_projected_symbol
     Rejected { diagnostics: _ } => false
   }
 }
@@ -86,7 +100,7 @@ fn apply_lens_enforce_projection_claim_rhs() -> Bool {
 }
 
 data claim_apply_lens_enforce_uses_projection: TestClaim = EqualsClaim {
-  label: "lens_application/apply_lens_enforce_uses_projection: projected enforcement path accepts",
+  label: "lens_application/apply_lens_enforce_uses_projection: enforce result carries projection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_enforce_projection_claim_rhs(),
   rhs: true,

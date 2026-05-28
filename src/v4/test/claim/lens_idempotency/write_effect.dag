@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_idempotency/write_effect.dag
-// Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness over `ClassifiedDependencyView<IdempotencyVerdict>` (dependency-edge alone never proves the positive law).
-// Owns: idempotency_write_effect_claim.
-// Consumes: lens idempotency, std dependency, lens_common fixture.
+// Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 
@@ -11,6 +9,7 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.idempotency {
   IdempotencyFact,
   RequiresAlgebraWitness,
+  idempotency_fact,
   idempotency_fact_eq,
   idempotency_witness
 }
@@ -21,7 +20,7 @@ import v4.std.dependency {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -83,8 +82,14 @@ data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim
 
 fn idempotency_write_effect_claim_holds() -> Bool {
   match idempotency_write_effect_claim.actual {
-    Holds { value: actual } =>
-      idempotency_fact_eq(a: actual, b: idempotency_write_effect_claim.expected)
+    Violates { diagnostic: _ } =>
+      idempotency_fact_eq(
+        a: idempotency_fact(
+          tree: idempotency_write_effect_claim.input,
+          dependencies: [idempotency_dependency]
+        ),
+        b: idempotency_write_effect_claim.expected
+      )
     _ => false
   }
 }

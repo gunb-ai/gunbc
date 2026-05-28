@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_coverage/parallel_authority_defect_key.dag
 // Scope: T-18 worked claim — ParallelAuthority defect acceptance pins the canonical key.
-// Owns: claim_parallel_authority_defect_key.
-// Consumes: lens coverage, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_coverage.parallel_authority_defect_key

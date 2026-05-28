@@ -1,11 +1,6 @@
 // src/v4/test/claim/parse/grammar_validation.dag
 // Scope: TestClaim rows asserting grammar validation boundaries, sync-recovery fail-closed behavior,
 //       and parse-table acceptance for a right-recursive grammar via parse_production.
-// Owns: claims for duplicate-name rejection, undefined-nonterminal rejection (missing-start and
-//       dangling-reference paths), parse_skip_to_sync with empty sync set returning
-//       found_sync: false (no token drain), and memoized ParseTable parse success receipt.
-// Consumes: v4.compiler.tokenize v4.compiler.parse v4.std.algebra v4.std.collection
-//           v4.std.node v4.std.logic v4.std.verification
 // Status: T-22 runner deferred — execution pending T-22 complexity fix.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
@@ -13,8 +8,8 @@
 module v4.test.claim.parse.grammar_validation
 
 
-import v4.compiler.tokenize { Token }
-import v4.compiler.parse {
+import v4.std.lexing { Token }
+import v4.std.grammar {
   GrammarProduction,
   GrammarRoot,
   Nonterminal,
@@ -23,7 +18,10 @@ import v4.compiler.parse {
   Sequence,
   Terminal,
   grammar_atom,
-  grammar_empty_sync_tokens,
+  grammar_empty_sync_tokens
+}
+import v4.compiler.parse {
+  ParseSyncState,
   grammar_has_duplicate_productions,
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
@@ -185,6 +183,16 @@ fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
 }
 
 
+fn validation_empty_sync_found() -> Bool {
+  match parse_skip_to_sync(
+    tokens: validation_one_token_list,
+    sync_tokens: grammar_empty_sync_tokens()
+  ) {
+    ParseSyncState { found_sync: found, result: _ } => found
+  }
+}
+
+
 data claim_duplicate_productions_detected: TestClaim = EqualsClaim {
   label: "grammar_has_duplicate_productions returns true for duplicate production names",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -215,10 +223,7 @@ data claim_dangling_nonterminal_in_expression_detected: TestClaim = EqualsClaim 
 data claim_empty_sync_set_no_token_drain: TestClaim = EqualsClaim {
   label: "parse_skip_to_sync with empty sync set returns found_sync: false for non-empty input",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: validation_bool_atom(b: parse_skip_to_sync(
-    tokens: validation_one_token_list,
-    sync_tokens: grammar_empty_sync_tokens()
-  ).found_sync),
+  lhs: validation_bool_atom(b: validation_empty_sync_found()),
   rhs: validation_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

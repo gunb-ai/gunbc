@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/testgen_category_wishlist.dag
 // Scope: T-19 non-tautological generator wishlist over the closed TestgenConcept arms.
-// Owns: testgen pending/dispatched wishlist rows and dispatch keys.
-// Consumes: v4.lens.testgen, v4.std.verification, v4.test.claim.manual.connective_anchors.
 // Status: dispatch ledger — rows dissolve as each generator emits executable TestClaims.
 
 module v4.test.claim.generated.testgen_category_wishlist

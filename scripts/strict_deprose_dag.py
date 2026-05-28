@@ -15,9 +15,11 @@ the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution st
 not get a second grounded line. Grounded lines are **not** preserved across strip —
 they are re-injected every run so spacing stays canonical.
 
-`// Owns:` is a **manifest of top-level module symbols** in **file order**: every
-`type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
-carriers—so regenerated headers stay aligned with actual exports.
+For files in this script's `specs` allowlist, `// Owns:` is a generated manifest
+of top-level module symbols in file order: every `type`, `data`, and `fn`
+binding in the `.dag` body (deduped by name), not only headline carriers.
+Outside the `specs` allowlist, `// Owns:` and `// Consumes:` are ordinary
+parallel ledgers and Practice 9 removes them.
 
 `// Ledger:` lists **slug inventory for the live substrate**: one ledger ref per live sum
 coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
@@ -270,6 +272,18 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
         out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["TsGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/rust.dag":
+        out["RustGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/python.dag":
+        out["PythonConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["PythonGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/go.dag":
+        out["GoConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["GoGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/cpp.dag":
+        out["CppConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["CppGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/swift.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (
@@ -294,6 +308,12 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
         # (absent at merge-base).
         out["Signedness"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerBoundSign"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerRangeEndpoint"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["DecimalDigit"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["NonZeroDecimalDigit"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["DecimalMagnitude"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerIntervalBound"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["Representation"] = ("🟡", "SL-3229-INTEGER-REPRESENTATION-STUBS")
         out["OverflowDisposition"] = ("🟡", "SL-3229-INTEGER-OVERFLOW-SEMANTICS")
     if rel == "src/v4/std/float.dag":
@@ -356,6 +376,17 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
 
 
 def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if ref == "SL-T11-GRAMMAR-FROM-TOKEN-ROW":
+        return (
+            "// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — "
+            "feature:t11-grammar-from-token-row — "
+            "bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — "
+            "owner:T-11 target-model grammar rows — "
+            "dissolve-on-arrival: replace the fold1 accumulator with a std "
+            "fold_non_empty/list-to-sequence helper once that helper lands and "
+            "T-11 grammar rows consume it; forbidden: hand-authoring token-class "
+            "sequence trees beside the *_mvp1_concrete_tokens source."
+        )
     if type_name == "LlvmWave1IntegerBits":
         return (
             "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "
@@ -518,7 +549,10 @@ def strip_body_comments(after_module: str) -> str:
         # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
         # always re-materialized by inject_grounded_tags (keeps one code path and
         # spacing normalization — e.g. float.dag after coproduct variants).
-        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
+        if (
+            sl.lstrip().startswith("//")
+            and not COPRODUCT_TAG_RE.match(sl)
+        ):
             continue
         out_lines.append(line)
     return "".join(out_lines)
@@ -585,6 +619,9 @@ def main() -> None:
 
     # Sixth field: operator RULING-1 slice groundedness (emoji-only; ratified in
     # `docs/modeling-discipline.md` Practice 9; ledger doc retired 2026-05-19).
+    # This `specs` allowlist is the only place where `// Owns:` and
+    # `// Consumes:` remain live: strict_deprose_dag regenerates them as part of
+    # its machine-checked header contract.
     # Extdeps language slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.
     specs: list[tuple[str, str, str, str, str, str]] = [
         (
@@ -615,7 +652,7 @@ def main() -> None:
             "src/v4/extdeps/languages/typescript.dag",
             "// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.",
             "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
-            "// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.",
+            "// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.",
             "// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.",
             "// 🟡",
         ),
@@ -623,7 +660,7 @@ def main() -> None:
             "src/v4/extdeps/languages/swift.dag",
             "// Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.",
             "// Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/",
-            "// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
+            "// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
             "// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.",
             "// 🟡",
         ),
@@ -631,7 +668,7 @@ def main() -> None:
             "src/v4/extdeps/languages/wasm.dag",
             "// Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).",
             "// Anchor: https://webassembly.github.io/spec/core/types.html#number-types",
-            "// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
+            "// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
             "// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).",
             "// 🟡",
         ),

@@ -1,12 +1,10 @@
 // src/v4/std/dependency.dag
 // Scope: P6 dependency taxonomy and lens-over-substrate dependency view.
-// Owns: DependencyKind, DependencyView, ClassifiedDependencyView, ReadinessLayer, dependency_lens, ready_set, topological_layers.
-// Consumes: v4.std.algebra (list_append), v4.std.collection, v4.std.node.
 // Status: Wave-2-A staged classifier — dissolve-on: T-9 resolve writes BindsTo substrate facts inline.
 
 module v4.std.dependency
 
-import v4.std.algebra { list_append }
+import v4.std.algebra { list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node {
@@ -54,6 +52,54 @@ type DependencyView {
 type ClassifiedDependencyView<C> {
   dependency: DependencyView
   classification: C
+}
+
+type DependencyKindClassifier<C> {
+  contains: C
+  binds_to: C
+  type_depends_on: C
+  data_depends_on: C
+  effect_depends_on: C
+  resource_depends_on: C
+  module_depends_on: C
+  barrier_before: C
+  placement_depends_on: C
+  model_depends_on: C
+  projection_depends_on: C
+  generated_from: C
+  verified_by: C
+  promoted_by: C
+  bootstrap_depends_on: C
+}
+
+fn classify_dependency_kind<C>(classifier: DependencyKindClassifier<C>, kind: DependencyKind) -> C {
+  match kind {
+    Contains => classifier.contains
+    BindsTo => classifier.binds_to
+    TypeDependsOn => classifier.type_depends_on
+    DataDependsOn => classifier.data_depends_on
+    EffectDependsOn => classifier.effect_depends_on
+    ResourceDependsOn => classifier.resource_depends_on
+    ModuleDependsOn => classifier.module_depends_on
+    BarrierBefore => classifier.barrier_before
+    PlacementDependsOn => classifier.placement_depends_on
+    ModelDependsOn => classifier.model_depends_on
+    ProjectionDependsOn => classifier.projection_depends_on
+    GeneratedFrom => classifier.generated_from
+    VerifiedBy => classifier.verified_by
+    PromotedBy => classifier.promoted_by
+    BootstrapDependsOn => classifier.bootstrap_depends_on
+  }
+}
+
+fn classify_dependency_view<C>(
+  classifier: DependencyKindClassifier<C>,
+  view: DependencyView
+) -> ClassifiedDependencyView<C> {
+  ClassifiedDependencyView {
+    dependency: view,
+    classification: classify_dependency_kind(classifier: classifier, kind: view.kind)
+  }
 }
 
 fn classified_source<C>(view: ClassifiedDependencyView<C>) -> Node {
@@ -129,7 +175,7 @@ fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: Depen
   DependencyFoldState {
     current: acc.current,
     dependencies: append_dependency_views(
-      left: list_push(acc.dependencies, dependency_view_for_edge(parent: acc.current, edge: edge)),
+      left: list_snoc_item(xs: acc.dependencies, item: dependency_view_for_edge(parent: acc.current, edge: edge)),
       right: child_state.dependencies
     )
   }

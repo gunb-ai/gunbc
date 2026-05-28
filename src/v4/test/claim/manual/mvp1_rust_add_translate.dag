@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/mvp1_rust_add_translate.dag
 // Scope: MVP-1 T-10/T-11 receipt — translate/emit/compile-inferred substrate + rust_mvp1 add-fn Accepted emit.
-// Owns: mvp1 anchors, inferred tree, emit and compile-inferred TestClaimRun receipts, translate/emit module compiles claims.
-// Consumes: compiler/00_compile.dag, compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag, extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag, test/claim/manual/infer_ground_add_mvp.dag, std/*.
 // Status: T-11 Rust slice — grammar-inverse compile-inferred accepts for rust_mvp1_target_model + emitted add-fn tree; full source-ingest compile remains blocked on ingest staging.
 
 
@@ -22,7 +20,11 @@ import v4.compiler.eval {
   run_test_claim_assert,
   test_claim_cache_receipt
 }
-import v4.compiler.translate { translate }
+import v4.compiler.translate {
+  target_serialize_source_from_model,
+  translate,
+  translate_target_bundle_malformed
+}
 import v4.extdeps.languages.rust {
   rust_inhabitant_i32_node,
   rust_inhabitant_atom,
@@ -54,7 +56,8 @@ import v4.extdeps.languages.rust {
   rust_tag_two_complement_wrap
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetSource }
+import v4.std.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
   claim_hash_placeholder,
@@ -62,7 +65,7 @@ import v4.test.claim.manual.infer_ground_add_mvp {
   interpretation_hash_placeholder
 }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
-import v4.std.collection { Map }
+import v4.std.collection { Map, empty_map }
 import v4.std.constraints {
   CanonicalGrounding,
   CanonicalGroundingWitness,
@@ -83,6 +86,7 @@ import v4.std.diagnostic {
 import v4.std.node {
   Atom,
   Arrow,
+  Conj,
   Edge,
   Node,
   Positional,
@@ -90,6 +94,7 @@ import v4.std.node {
   TypeNode
 }
 import v4.std.verification {
+  DiagnosticClaim,
   ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -105,6 +110,7 @@ data mvp_add_int_atom: Symbol = mvp_add_int_atom
 data mvp1_rust_grounding_miss: Symbol = mvp1_rust_grounding_miss
 data mvp1_emit_source_mismatch: Symbol = mvp1_emit_source_mismatch
 data mvp1_compile_source_mismatch: Symbol = mvp1_compile_source_mismatch
+data mvp1_serialize_unexpected_accept: Symbol = mvp1_serialize_unexpected_accept
 data mvp1_forbidden_authority_source_text: TargetSource = "authority_source_text_fallback_forbidden"
 
 
@@ -137,6 +143,49 @@ data mvp1_rust_poisoned_authority_target_model: TargetModel = TargetModel {
   lex: rust_wave1_lex(),
   binding_spellings: rust_mvp1_binding_spellings(),
   authority_source_text: mvp1_forbidden_authority_source_text
+}
+
+
+// Empty Conj bundle — missing target_model_edge_translation_rules; measure path must fail-closed.
+data mvp1_rust_empty_translation_rules_bundle: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: []
+}
+
+
+data mvp1_rust_missing_translation_rules_target: TargetModel = TargetModel {
+  bundle: mvp1_rust_empty_translation_rules_bundle,
+  lex: rust_wave1_lex(),
+  binding_spellings: empty_map(),
+  authority_source_text: ""
+}
+
+
+fn anchor_mvp1_serialize_rejects_missing_translation_rules() -> Outcome<TargetSource> {
+  target_serialize_source_from_model(
+    target: mvp1_rust_missing_translation_rules_target,
+    emitted: mvp1_rust_emitted_root
+  )
+}
+
+
+data mvp1_serialize_reject_receipt: Outcome<TargetSource> = anchor_mvp1_serialize_rejects_missing_translation_rules()
+
+
+fn mvp1_serialize_reject_claim_outcome() -> Outcome<Node> {
+  match mvp1_serialize_reject_receipt {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: _, diagnostics: _ } =>
+      Rejected {
+        diagnostics: diagnostics_singleton(
+          d: Diagnostic {
+            reason: mvp1_serialize_unexpected_accept,
+            at: node_locus(node: mvp1_rust_emitted_root),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          }
+        )
+      }
+  }
 }
 
 
@@ -495,4 +544,41 @@ data claim_mvp1_emit_module_compiles: TestClaim = CompilesClaim {
   input: mvp_add_arrow_node,
   expected_value: mvp_add_arrow_node,
   classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_mvp1_serialize_rejects_missing_translation_rules: TestClaim = DiagnosticClaim {
+  label: "manual/mvp1: target_serialize_source_from_model rejects bundle missing translation_rules",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: mvp1_rust_emitted_root,
+  expected_rejection: diagnostics_singleton(
+    d: Diagnostic {
+      reason: translate_target_bundle_malformed,
+      at: node_locus(node: mvp1_rust_empty_translation_rules_bundle),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
+  claim: claim_mvp1_serialize_rejects_missing_translation_rules,
+  context: infer_receipt_context(),
+  tree: mvp1_rust_inferred_tree,
+  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+}
+
+
+data run_mvp1_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
+  cache: test_claim_cache_receipt(
+    subject: subject_mvp1_serialize_rejects_missing_translation_rules,
+    claim_hash: claim_hash_placeholder,
+    interpretation_hash: interpretation_hash_placeholder
+  ),
+  verdict: run_test_claim_assert(
+    claim: claim_mvp1_serialize_rejects_missing_translation_rules,
+    actual: mvp1_serialize_reject_claim_outcome(),
+    at: mvp1_rust_emitted_root
+  )
 }

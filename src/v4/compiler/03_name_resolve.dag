@@ -1,0 +1,257 @@
+// src/v4/compiler/03_name_resolve.dag
+//
+// Scope: Stage 3c — Catalog admission for cross-file resolution.
+// Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
+// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
+
+module v4.compiler.name_resolve
+
+
+import v4.compiler.normalize { NormalizedTree }
+import v4.compiler.resolve {
+  Namespace,
+  ResolvedTree,
+  build_program_namespace,
+  resolve_with_namespace,
+  try_edge_declared_binding
+}
+import v4.extdeps.languages.dag { DagLanguageModel }
+import v4.std.algebra { Cons, Empty, FreeMonoid }
+import v4.std.collection { Map, empty_map, map_insert }
+import v4.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  port_locus
+}
+import v4.std.catalog {
+  Catalog,
+  catalog_entry_for_name
+}
+import v4.std.node {
+  Conj,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode,
+  well_formed
+}
+import v4.std.qualified_name { QualifiedName }
+import v4.std.witness { Holds, Violates }
+
+
+// 🟢 coproduct dissolution — T-28-B admission visibility is a closed alternative: a declared import is either admitted into the subject namespace or rejected as hidden; no third visibility state is modeled.
+type ImportVisibility
+  = ImportVisible
+  | ImportHidden
+
+
+type Import {
+  target: QualifiedName
+  visibility: ImportVisibility
+}
+
+
+type ResolutionSubject {
+  name: QualifiedName
+  tree: NormalizedTree
+}
+
+
+type Admission {
+  subject: ResolutionSubject
+  imports: FreeMonoid<Import>
+}
+
+
+// 🟡 gated — feature:T-28-B-admission-state-outcome — internal fold state mirrors Outcome while carrying accepted namespace bindings plus origin facts for ambiguity checks; dissolve-on: generic Outcome fold/traverse can carry the accepted admission accumulator directly without losing the origin map.
+type AdmissionState
+  = AdmissionAccepted {
+      bindings: Map<Symbol, Symbol>,
+      origins: Map<Symbol, QualifiedName>
+    }
+  | AdmissionRejected { diagnostic: Diagnostic }
+
+
+data resolve_import_not_visible: Symbol = resolve_import_not_visible
+data resolve_ambiguous_export: Symbol = resolve_ambiguous_export
+data resolve_reason_malformed_imported_root: Symbol = resolve_reason_malformed_imported_root
+
+
+fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn admission_initial(base: Namespace) -> AdmissionState {
+  AdmissionAccepted {
+    bindings: base.bindings,
+    origins: empty_map()
+  }
+}
+
+
+fn admit_export_symbol(
+  sym: Symbol,
+  origin: QualifiedName,
+  state: AdmissionState
+) -> AdmissionState {
+  match state {
+    AdmissionRejected { diagnostic: d } =>
+      AdmissionRejected { diagnostic: d }
+    AdmissionAccepted { bindings: b, origins: os } =>
+      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: admit_export_symbol origins
+      match map_get(os, sym) {
+        Some { value: _ } =>
+          AdmissionRejected {
+            diagnostic: resolve_diagnostic(reason: resolve_ambiguous_export)
+          }
+        None =>
+          AdmissionAccepted {
+            bindings: map_insert(m: b, key: sym, value: sym),
+            origins: map_insert(m: os, key: sym, value: origin)
+          }
+      }
+  }
+}
+
+
+fn admit_named_export_edge(
+  edge: Edge,
+  origin: QualifiedName,
+  state: AdmissionState
+) -> AdmissionState {
+  match try_edge_declared_binding(e: edge) {
+    Some { value: b } =>
+      admit_export_symbol(sym: b.name, origin: origin, state: state)
+    None => state
+  }
+}
+
+
+fn admit_named_exports(
+  root: Node,
+  origin: QualifiedName,
+  state: AdmissionState
+) -> AdmissionState {
+  match root.kind {
+    TypeNode { connective: Conj } =>
+      fold(root.children, init: state, f: fn(acc, e) {
+        admit_named_export_edge(edge: e, origin: origin, state: acc)
+      })
+    _ => state
+  }
+}
+
+
+fn admit_import_entry(
+  catalog: Catalog,
+  import_edge: Import,
+  state: AdmissionState
+) -> AdmissionState {
+  match state {
+    AdmissionRejected { diagnostic: d } =>
+      AdmissionRejected { diagnostic: d }
+    AdmissionAccepted { bindings: _, origins: _ } =>
+      match import_edge.visibility {
+        ImportHidden =>
+          AdmissionRejected {
+            diagnostic: resolve_diagnostic(reason: resolve_import_not_visible)
+          }
+        ImportVisible =>
+          match catalog_entry_for_name(catalog: catalog, name: import_edge.target) {
+            Holds { value: entry } =>
+              if well_formed(n: entry.root) {
+                admit_named_exports(
+                  root: entry.root,
+                  origin: import_edge.target,
+                  state: state
+                )
+              } else {
+                AdmissionRejected {
+                  diagnostic: resolve_diagnostic(reason: resolve_reason_malformed_imported_root)
+                }
+              }
+            Violates { diagnostic: d } =>
+              AdmissionRejected { diagnostic: d }
+          }
+      }
+  }
+}
+
+
+fn admit_imports(
+  catalog: Catalog,
+  imports: FreeMonoid<Import>,
+  state: AdmissionState
+) -> AdmissionState {
+  // 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-import — same v2 bootstrap limitation as std/catalog.dag's Entry folds; hand-rolls Empty/Cons accumulation over FreeMonoid<Import>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+  match imports {
+    Empty => state
+    Cons { head: import_edge, tail: rest } =>
+      admit_imports(
+        catalog: catalog,
+        imports: rest,
+        state: admit_import_entry(
+          catalog: catalog,
+          import_edge: import_edge,
+          state: state
+        )
+      )
+  }
+}
+
+
+fn namespace_for_subject(
+  lm: DagLanguageModel,
+  catalog: Catalog,
+  admission: Admission
+) -> Outcome<Namespace> {
+  let base = build_program_namespace(tree: admission.subject.tree, lm: lm)
+  match admit_imports(
+    catalog: catalog,
+    imports: admission.imports,
+    state: admit_named_exports(
+      root: admission.subject.tree,
+      origin: admission.subject.name,
+      state: admission_initial(base: base)
+    )
+  ) {
+    AdmissionAccepted { bindings: b, origins: _ } =>
+      Accepted {
+        value: Namespace {
+          bindings: b,
+          canonical_symbols: base.canonical_symbols
+        },
+        diagnostics: None
+      }
+    AdmissionRejected { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+
+fn resolve_with_admission(
+  lm: DagLanguageModel,
+  catalog: Catalog,
+  admission: Admission
+) -> Outcome<ResolvedTree> {
+  match namespace_for_subject(
+    lm: lm,
+    catalog: catalog,
+    admission: admission
+  ) {
+    Accepted { value: namespace, diagnostics: _ } =>
+      resolve_with_namespace(tree: admission.subject.tree, namespace: namespace)
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}

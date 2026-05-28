@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_application/substitute_at_depth_three.dag
 // Scope: T-23 worked claim — substitute_at preserves ancestors for path depth 3.
-// Owns: claim_substitute_at_depth_three.
-// Consumes: v4.lens.application (substitute_at), v4.std.node (Path), std verification.
 // Status: compile-only ratchet for D1 ancestor threading order (depth > 2).
 
 module v4.test.claim.lens_application.substitute_at_depth_three

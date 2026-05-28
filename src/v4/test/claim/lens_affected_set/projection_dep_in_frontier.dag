@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/projection_dep_in_frontier.dag
 // Scope: T-21 worked claim — ProjectionDependsOn is in the lens frontier kind set.
-// Owns: claim_projection_dep_in_frontier.
-// Consumes: lens affected_set, std dependency, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.projection_dep_in_frontier

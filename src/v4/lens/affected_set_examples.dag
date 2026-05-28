@@ -1,7 +1,5 @@
 // src/v4/lens/affected_set_examples.dag
 // Scope: Expected affected-frontier example values for the affected-set lens.
-// Owns: affected-set expected frontier rows
-// Consumes: v4.std.diagnostic v4.std.node v4.lens.affected_set
 // Status: example data for the affected-set frontier model.
 
 module v4.lens.affected_set_examples

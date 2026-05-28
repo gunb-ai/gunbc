@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/content_hash_named_edge_order.dag
 // Scope: B1-CANON receipt — content_hash is invariant under LabeledEdges child list order.
-// Owns: claim_content_hash_named_edge_order_invariant.
-// Consumes: v4.std.node v4.std.verification.
 // Status: v2 compile; claim execution deferred (T-22).
 
 module v4.test.claim.manual.content_hash_named_edge_order

@@ -1,8 +1,6 @@
 // src/v4/test/claim/lens_synthesis/synthesis_no_technique_diagnostic.dag
 // Scope: T-17 worked claim — AlgebraicRank (non-implemented technique) emits a
 //        non-empty SynthesisNoTechnique diagnostic from synthesis_lens_diagnostics.
-// Owns: claim_synthesis_no_technique_diagnostic.
-// Consumes: lens synthesis, std algebra, std node, std verification.
 // Status: T-17 filled.
 
 module v4.test.claim.lens_synthesis.synthesis_no_technique_diagnostic

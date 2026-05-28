@@ -3,19 +3,7 @@
 // Scope: lens-application surface — how a user attaches a lens to a program section (declaration / module / expression scope) with configurable enforcement. THE opt-in-depth mechanism + user-defined-dimensions surface + the ONLY advisory→fail-closed bridge. Referenced by report.dag/synthesis.dag's apply_lens(Enforce) — this file is its substrate home.
 // Anchor: THESIS:95-101 (user-defined dimensions) + THESIS:307-321 (audience duality / opt-in depth) + r3-structure.md:40 (v3 T-Lens-Application-Surface precedent)
 //
-// Owns:
-//   - SectionRef = DeclarationScope | NodeScope (disjoint sum; where the lens attaches)
-//   - EnforceableLens + LensApplicationConfig (single enforce/introspect mode authority)
-//   - apply_lens / apply_lens_enforce — introspect (Lens only) vs enforce entry points
-//   - THE single advisory→fail-closed bridge: Enforce { } converts a lens's
-//     Set<Report> into fail-closed Diagnostics (per std/report.dag discipline);
-//     no other path from advisory to blocking exists
-//   - D1 OPERATIONS over the std/node.dag structural-delta types
-//     (Path/Edit/Diff — the DATA lives in std/node.dag):
-//       - subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
-//       - apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
-//
-// Status: T-23 filled — carriers + apply_lens + D1 ops (see header for immutable I/O contract).
+// Status: T-23 filled — carriers + apply_lens + D1 ops; section_subject projects via Path-backed handles pending section-ref-identity-evidence (gate below).
 // P2 boundary: THIS module is the single authority for section-scoped `Lens<Output>.read`,
 // `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
 // `v4.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
@@ -24,7 +12,7 @@
 
 module v4.lens.application
 
-import v4.std.algebra { Cons, Empty, is_empty, fold_list }
+import v4.std.algebra { Cons, Empty, is_empty, fold_list, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.diagnostic {
@@ -56,11 +44,19 @@ import v4.std.node {
   TypeNode,
   name_occurrences
 }
+import v4.std.node_query { find_named_child, named_child_ambiguous }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
-// Mechanical port (interface-freeze pin §4): opaque until shared substrate graduates.
-type DeclarationId
-type NodeId
+// 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
+// dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
+// node-containment evidence from the shared declaration/node identity substrate; forbidden:
+// marking SectionRef construction fully grounded while arbitrary paths can inhabit these handles.
+type DeclarationId {
+  path: Path
+}
+type NodeId {
+  path: Path
+}
 type SourceSpan
 
 // 🟢 TERMINAL — disjoint sum over section shapes (design-lens-application-surface §1.2).
@@ -115,6 +111,23 @@ type EnforcedApplication<Output, Budget, Projected> {
   span: SourceSpan
 }
 
+// 🟢 grounded — enforce-mode output carrier. `Projected` flows forward for
+// downstream composition / diagnostics instead of remaining a phantom witness.
+type EnforcedLensResult<Output, Projected> {
+  output: Output
+  projected: Projected
+}
+
+// 🟡 gated — feature:lens-enforcement-diagnostic-detail — generic observed/declared facts
+// flow to the diagnostic boundary, but v4.std.diagnostic is reason/locus shaped today.
+// dissolve-on-arrival: Diagnostic detail payloads can carry Projected/Budget evidence;
+// forbidden: claiming projected/declared facts are consumed by plain Diagnostic.
+type LensEnforcementViolationInput<Projected, Budget> {
+  at: Node
+  projected: Projected
+  declared: Budget
+}
+
 // 🟢 TERMINAL — introspect-mode application carrier (design-lens-application-surface §2).
 type IntrospectApplication<Output> {
   lens: Lens<Output>
@@ -143,11 +156,25 @@ fn path_ambiguous_diagnostic(at: Node) -> Diagnostic {
   }
 }
 
-fn lens_enforcement_violation_diagnostic(at: Node) -> Diagnostic {
+fn lens_enforcement_violation_diagnostic<Projected, Budget>(
+  input: LensEnforcementViolationInput<Projected, Budget>
+) -> Diagnostic {
   Diagnostic {
     reason: lens_enforcement_violation_reason,
-    at: node_locus(node: at),
+    at: node_locus(node: input.at),
     correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn lens_enforcement_violation_input<Projected, Budget>(
+  at: Node,
+  projected: Projected,
+  declared: Budget
+) -> LensEnforcementViolationInput<Projected, Budget> {
+  LensEnforcementViolationInput {
+    at: at,
+    projected: projected,
+    declared: declared
   }
 }
 
@@ -159,33 +186,18 @@ fn advisory_report_diagnostic(report: Report) -> Diagnostic {
   }
 }
 
-// 🟢 grounded — D1 path step via std.node `name_occurrences` uniqueness gate (Practice 10:
-// canonical substrate accessor; no parallel EdgeLabel walker).
+// Delegates to the 🟢-canonical find_named_child in std/node_query.dag; translates
+// node_query diagnostic vocabulary to the lens D1 path contract's own reasons
+// (path_unresolvable_reason / path_ambiguous_reason) so callers see only lens-boundary diagnostics.
 fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
-  if name_occurrences(name: name, children: root.children) == 0 {
-    outcome_rejected(d: path_unresolvable_diagnostic(at: root))
-  } else if name_occurrences(name: name, children: root.children) == 1 {
-    fold(
-      root.children,
-      init: outcome_rejected(d: path_unresolvable_diagnostic(at: root)),
-      f: fn(acc, e) {
-        match acc {
-          Rejected { diagnostics: _ } =>
-            match e.label {
-              Named { name: edge_name } =>
-                if edge_name == name {
-                  outcome_accepted(value: e.target)
-                } else {
-                  acc
-                }
-              Positional => acc
-            }
-          Accepted { value: _, diagnostics: _ } => acc
-        }
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
+    Rejected { diagnostics: diags } =>
+      if diags.head.reason == named_child_ambiguous {
+        outcome_rejected(d: path_ambiguous_diagnostic(at: root))
+      } else {
+        outcome_rejected(d: path_unresolvable_diagnostic(at: root))
       }
-    )
-  } else {
-    outcome_rejected(d: path_ambiguous_diagnostic(at: root))
   }
 }
 
@@ -230,7 +242,7 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
         match split.first {
           true => PathSplit { init: [], last: step, first: false }
           false => PathSplit {
-            init: list_push(split.init, split.last),
+            init: list_snoc_item(xs: split.init, item: split.last),
             last: step,
             first: false
           }
@@ -257,8 +269,8 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
                 true => replace_edge_target(e: edge, replacement: child)
                 false => edge
               }
-              list_push(current_acc, next_edge)
-            Positional => list_push(current_acc, edge)
+              list_snoc_item(xs: current_acc, item: next_edge)
+            Positional => list_snoc_item(xs: current_acc, item: edge)
           }
         }
       )
@@ -376,18 +388,42 @@ fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
-// 🟡 gated — feature:section-ref-to-subject-projection — bind: TASKS.md T-23 follow-on wire —
-// dissolve-on-arrival: resolve `DeclarationScope` / `NodeScope` to the bounded sub-`Node` the
-// lens reads (declaration body sub-DAG or expression subtree); forbidden: decorative `SectionRef`
-// parameters with whole-graph `read(root)` while claiming section-scoped application.
+// 🟡 gated — feature:section-ref-identity-evidence — projection is real, but handle construction is
+// still a bounded bridge until DeclarationId proves declaration-ness and NodeId proves containment.
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
-    DeclarationScope { declaration: _ } => outcome_accepted(value: root)
-    NodeScope { declaration: _, node: _ } => outcome_accepted(value: root)
+    DeclarationScope { declaration: declaration } =>
+      subterm_at(root: root, p: declaration.path)
+    NodeScope { declaration: declaration, node: node } =>
+      bind_outcome(
+        o: subterm_at(root: root, p: declaration.path),
+        f: fn(declaration_subject) {
+          subterm_at(root: declaration_subject, p: node.path)
+        }
+      )
+  }
+}
+
+fn lens_enforcement_violated<Output, Budget, Projected>(
+  enforcement: LensEnforcement<Output, Budget, Projected>,
+  output: Output,
+  budget: Budget
+) -> Bool {
+  enforcement.violates(output: output, declared: budget)
+}
+
+fn lens_enforcement_result<Output, Budget, Projected>(
+  enforcement: LensEnforcement<Output, Budget, Projected>,
+  output: Output
+) -> EnforcedLensResult<Output, Projected> {
+  EnforcedLensResult {
+    output: output,
+    projected: enforcement.project(output: output)
   }
 }
 
 // Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
+// 🟡 gated — feature:section-ref-identity-evidence — `section` selects the lens read subject via `section_subject`; Path-backed DeclarationId/NodeId handles are the bounded bridge (see gate on `section_subject` above).
 fn apply_lens<Output>(
   lens: Lens<Output>,
   section: SectionRef,
@@ -402,23 +438,40 @@ fn apply_lens<Output>(
 }
 
 // Enforce substrate entry — EnforceableLens + declared budget (design §2 EnforcedApplication).
+// 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,
   section: SectionRef,
   root: Node,
   budget: Budget,
   diagnostic_severity: DiagnosticSeverity
-) -> Outcome<Output> {
+) -> Outcome<EnforcedLensResult<Output, Projected>> {
   bind_outcome(
     o: section_subject(root: root, section: section),
     f: fn(subject) {
       bind_outcome(
         o: enforceable.lens.read(root: subject),
         f: fn(lens_output) {
-          if enforceable.enforcement.violates(output: lens_output, declared: budget) {
-            outcome_rejected(d: lens_enforcement_violation_diagnostic(at: subject))
+          let enforcement_result = lens_enforcement_result(
+            enforcement: enforceable.enforcement,
+            output: lens_output
+          )
+          if lens_enforcement_violated(
+            enforcement: enforceable.enforcement,
+            output: lens_output,
+            budget: budget
+          ) {
+            outcome_rejected(
+              d: lens_enforcement_violation_diagnostic(
+                input: lens_enforcement_violation_input(
+                  at: subject,
+                  projected: enforcement_result.projected,
+                  declared: budget
+                )
+              )
+            )
           } else {
-            outcome_accepted(value: lens_output)
+            outcome_accepted(value: enforcement_result)
           }
         }
       )
@@ -472,6 +525,7 @@ fn reports_to_non_empty_diagnostics(
 }
 
 // THE single advisory→fail-closed bridge: non-empty advisory reports ⇒ Rejected diagnostics.
+// 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_advisory_lens(
   lens: AdvisoryLens,
   section: SectionRef,

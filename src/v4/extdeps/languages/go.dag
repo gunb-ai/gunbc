@@ -1,14 +1,29 @@
 // src/v4/extdeps/languages/go.dag
-// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary.
-// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, GoIntegerPrimitiveFacts, GoFloatPrimitiveFacts, GoComplexPrimitiveFacts, GoBoolPrimitiveFacts, GoStringPrimitiveFacts, go_*_facts_catalog, go_*_primitive_bundle, go_model_core_wave1, go_bool_grounding.
-// Consumes: v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance/laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, T-11 MVP-1 grammar-data target model.
+// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
 
-import v4.std.collection { List, Map, map_insert }
+import v4.std.grammar {
+  GrammarExpr,
+  GrammarProduction,
+  Sequence,
+  Terminal,
+  grammar_production_to_node
+}
+import v4.std.lexing {
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  TokenRule
+}
+import v4.std.target_model { TargetModel }
+import v4.std.collection { List, Map, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
@@ -20,10 +35,37 @@ import v4.std.model_core {
   primitive_fact_axis_unbound_diagnostic,
   primitive_fact_axis_width
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens,
+  serialize_source_field_source_grammar,
+  serialize_source_field_source_text,
+  target_model_edge_declared_inhabitants,
+  target_model_edge_selection_policy,
+  target_model_edge_translation_rules,
+  target_model_edge_serialize_source
+}
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  approximate_field_node,
+  boolean_algebra_node,
+  Empty,
+  fold_list,
+  free_monoid_node,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node
+}
+import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SignedIntWidth
@@ -94,6 +136,17 @@ type GoChannel {
 type GoCost {
   instruction_cost: Int
   allocation_cost: Int
+}
+
+// GoConcreteSyntaxToken: 🟢 coproduct dissolution — token rows are fixed-or-bound alternatives in the grammar relation.
+type GoConcreteSyntaxToken
+  = GoFixedToken { token_class: Symbol }
+  | GoBoundToken { token_class: Symbol, binding: Symbol }
+
+type GoGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<GoConcreteSyntaxToken>
 }
 
 // Go spec: typed integer arithmetic truncates silently on overflow (not panic).
@@ -174,6 +227,56 @@ data go_surface_spelling_complex64: Symbol = go_surface_spelling_complex64
 data go_surface_spelling_complex128: Symbol = go_surface_spelling_complex128
 data go_surface_spelling_bool: Symbol = go_surface_spelling_bool
 data go_surface_spelling_string: Symbol = go_surface_spelling_string
+
+data go_inhabitant_int: Symbol = go_inhabitant_int
+data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
+data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
+data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
+data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
+data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
+data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
+data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
+
+data go_token_kw_func: Symbol = go_token_kw_func
+data go_token_kw_return: Symbol = go_token_kw_return
+data go_token_ident: Symbol = go_token_ident
+data go_token_ty_int: Symbol = go_token_ty_int
+data go_token_lparen: Symbol = go_token_lparen
+data go_token_rparen: Symbol = go_token_rparen
+data go_token_comma: Symbol = go_token_comma
+data go_token_plus: Symbol = go_token_plus
+data go_token_lbrace: Symbol = go_token_lbrace
+data go_token_rbrace: Symbol = go_token_rbrace
+data go_production_mvp1_fn_add: Symbol = go_production_mvp1_fn_add
+data go_binding_fn_add: Symbol = go_binding_fn_add
+data go_binding_param_x: Symbol = go_binding_param_x
+data go_binding_param_y: Symbol = go_binding_param_y
+data go_relation_rule_mvp1_fn_add: Symbol = go_relation_rule_mvp1_fn_add
+data go_mvp1_source_literal: Symbol = go_mvp1_source_literal
+data go_mvp1_source_text_field: Symbol = serialize_source_field_source_text
+data go_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
+data go_mvp1_source_text: String = "func add(x int, y int) int { return x + y }"
+
+fn go_mvp1_concrete_tokens() -> List<GoConcreteSyntaxToken> {
+  [
+    GoFixedToken { token_class: go_token_kw_func },
+    GoBoundToken { token_class: go_token_ident, binding: go_binding_fn_add },
+    GoFixedToken { token_class: go_token_lparen },
+    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+    GoFixedToken { token_class: go_token_ty_int },
+    GoFixedToken { token_class: go_token_comma },
+    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+    GoFixedToken { token_class: go_token_ty_int },
+    GoFixedToken { token_class: go_token_rparen },
+    GoFixedToken { token_class: go_token_ty_int },
+    GoFixedToken { token_class: go_token_lbrace },
+    GoFixedToken { token_class: go_token_kw_return },
+    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_x },
+    GoFixedToken { token_class: go_token_plus },
+    GoBoundToken { token_class: go_token_ident, binding: go_binding_param_y },
+    GoFixedToken { token_class: go_token_rbrace }
+  ]
+}
 
 data go_std_projection_int8: Symbol = go_std_projection_int8
 data go_std_projection_int16: Symbol = go_std_projection_int16
@@ -864,6 +967,200 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width: _,
+      encoding: _,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_witness_integer_ordered_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ]
+    }
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width: _,
+      encoding: _,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_witness_integer_ordered_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ]
+    }
+  }
+}
+
+fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_float_approximate_field,
+        target: go_inhabitant_atom(id: go_witness_float_approximate_field)
+      ),
+      go_named_edge(
+        name: go_facts_field_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_bool_boolean_algebra,
+        target: go_inhabitant_atom(id: go_witness_bool_boolean_algebra)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: go_facts_bool.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_string_free_monoid,
+        target: go_inhabitant_atom(id: go_witness_string_free_monoid)
+      ),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_string_element_node() -> Node {
+  go_integer_facts_node(facts: go_facts_uint8)
+}
+
+fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_float_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = go_bool_facts_node(facts: go_facts_bool)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_bool_algebra_witness_node()
+  }
+}
+
+fn go_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_string_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_node(inhabitant: go_string_element_node()),
+    inhabitant: inhabitant,
+    witness: go_string_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_string_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md
+fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  []
+}
+
+fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    go_bool_algebra_inhabitance()
+  ]
+}
+
+fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_integer_algebra_inhabitance_decls(),
+          right: go_float_algebra_inhabitance_decls()
+        ),
+        right: go_bool_algebra_inhabitance_decls()
+      ),
+      right: go_string_algebra_inhabitance_decls()
+    ),
+    right: go_complex_algebra_inhabitance_decls()
+  )
+}
+
 // 🟡 needs-more-work — feature:go-language-model-wave1-consumer — E-6(b) bounded
 // exception — scaffold: T-4 go slice has no GoLanguageModel carrier yet (lex / grammar /
 // MVP are T-11 rust-first specialization follow-on). Dissolve-on: GoLanguageModel lands and
@@ -871,9 +1168,238 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 fn go_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: go_wave1_primitive_fact_bundles(),
-    inhabitance: [],
+    inhabitance: go_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }
   }
+}
+
+fn go_int_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: go_inhabitant_field_atom, target: go_inhabitant_atom(id: go_inhabitant_int)),
+      go_named_edge(name: go_inhabitant_field_facts, target: go_integer_facts_node(facts: go_facts_int))
+    ]
+  }
+}
+
+fn go_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: go_inhabitant_field_int, target: go_int_inhabitant_node())
+    ]
+  }
+}
+
+fn go_mvp1_selection_policy_node() -> Node {
+  go_int_inhabitant_node()
+}
+
+fn go_mvp1_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: go_int_inhabitant_node() },
+      Edge { label: Positional, target: go_int_inhabitant_node() },
+      Edge { label: Positional, target: go_int_inhabitant_node() }
+    ]
+  }
+}
+
+fn go_concrete_token_class(token: GoConcreteSyntaxToken) -> Symbol {
+  match token {
+    GoFixedToken { token_class: c } => c
+    GoBoundToken { token_class: c, binding: _ } => c
+  }
+}
+
+fn go_concrete_token_node(token: GoConcreteSyntaxToken) -> Node {
+  match token {
+    GoFixedToken { token_class: c } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: concrete_syntax_token_kind_fixed)),
+          go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c))
+        ]
+      }
+    GoBoundToken { token_class: c, binding: b } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          go_named_edge(name: concrete_syntax_token_field_kind, target: go_inhabitant_atom(id: concrete_syntax_token_kind_bound)),
+          go_named_edge(name: concrete_syntax_token_field_class, target: go_inhabitant_atom(id: c)),
+          go_named_edge(name: concrete_syntax_token_field_binding, target: go_inhabitant_atom(id: b))
+        ]
+      }
+  }
+}
+
+fn go_positional_token_edge(token: GoConcreteSyntaxToken) -> Edge {
+  Edge { label: Positional, target: go_concrete_token_node(token: token) }
+}
+
+fn go_positional_edges_from_token_classes() -> List<Edge> {
+  fold_list(
+    xs: go_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: go_positional_token_edge(token: token))
+    }
+  )
+}
+
+fn go_mvp1_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      go_named_edge(name: go_mvp1_source_text_field, target: go_inhabitant_atom(id: go_mvp1_source_literal)),
+      go_named_edge(name: go_mvp1_source_grammar_field, target: go_inhabitant_atom(id: go_production_mvp1_fn_add))
+    ],
+    right: go_positional_edges_from_token_classes()
+  )
+}
+
+fn go_mvp1_serialize_source_node() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: go_mvp1_serialize_source_children() }
+}
+
+fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+type GoGramBuild1State
+  = GoGramBuild1StateInit
+  | GoGramBuild1StateReady { expr: GrammarExpr }
+
+fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match fold_list(
+    xs: go_mvp1_concrete_tokens(),
+    empty: GoGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        GoGramBuild1StateInit =>
+          GoGramBuild1StateReady {
+            expr: go_grammar_terminal(token_class: go_concrete_token_class(token: token))
+          }
+        GoGramBuild1StateReady { expr: acc } =>
+          GoGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: go_grammar_terminal(token_class: go_concrete_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    GoGramBuild1StateInit =>
+      go_grammar_terminal(token_class: go_token_kw_func)
+    GoGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: go_production_mvp1_fn_add,
+    expression: go_grammar_sequence_from_token_classes(),
+    emitted: go_mvp1_emitted_add_fn_node()
+  }
+}
+
+fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
+  GoGrammarRelationRow {
+    production: go_grammar_production_mvp1_fn_add(),
+    emitted: go_mvp1_emitted_add_fn_node(),
+    tokens: go_mvp1_concrete_tokens()
+  }
+}
+
+fn go_relation_token_edges(tokens: List<GoConcreteSyntaxToken>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: go_positional_token_edge(token: token))
+    }
+  )
+}
+
+fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      go_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
+      go_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node { kind: TypeNode { connective: Conj }, children: go_relation_token_edges(tokens: row.tokens) }
+      )
+    ]
+  }
+}
+
+fn go_mvp1_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: go_relation_rule_mvp1_fn_add, target: go_grammar_relation_row_node(row: go_mvp1_grammar_relation_row()))
+    ]
+  }
+}
+
+fn go_mvp1_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(name: target_model_edge_selection_policy, target: go_mvp1_selection_policy_node()),
+      go_named_edge(name: target_model_edge_declared_inhabitants, target: go_declared_inhabitants_root()),
+      go_named_edge(name: target_model_edge_translation_rules, target: go_mvp1_translation_rules_node()),
+      go_named_edge(name: target_model_edge_serialize_source, target: go_mvp1_serialize_source_node())
+    ]
+  }
+}
+
+fn go_mvp1_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), go_binding_fn_add, "add"),
+      go_binding_param_x,
+      "x"
+    ),
+    go_binding_param_y,
+    "y"
+  )
+}
+
+fn go_mvp1_target_model() -> TargetModel {
+  TargetModel {
+    bundle: go_mvp1_target_model_node(),
+    lex: go_wave1_lex(),
+    binding_spellings: go_mvp1_binding_spellings(),
+    authority_source_text: go_mvp1_source_text
+  }
+}
+
+fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+}
+
+fn go_wave1_lex_rules() -> List<LexRule> {
+  [
+    go_lex_rule(token_class: go_token_kw_func, text: "func "),
+    go_lex_rule(token_class: go_token_lparen, text: "("),
+    go_lex_rule(token_class: go_token_ty_int, text: " int"),
+    go_lex_rule(token_class: go_token_comma, text: ", "),
+    go_lex_rule(token_class: go_token_rparen, text: ")"),
+    go_lex_rule(token_class: go_token_lbrace, text: " { "),
+    go_lex_rule(token_class: go_token_kw_return, text: "return "),
+    go_lex_rule(token_class: go_token_plus, text: " + "),
+    go_lex_rule(token_class: go_token_rbrace, text: " }")
+  ]
+}
+
+fn go_wave1_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: go_wave1_lex_rules() } }
 }

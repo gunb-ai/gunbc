@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_cost/nested_product.dag
 // Scope: T-12 worked claim — nested cardinalities compose by iterative product.
-// Owns: claim_nested_product.
-// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.nested_product

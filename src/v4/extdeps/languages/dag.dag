@@ -1,17 +1,15 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_wave1_*; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens.
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/logic.dag.
 // Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
 // Anchor: docs/v3-spec.md
 
 module v4.extdeps.languages.dag
 
 
-import v4.std.collection { Set }
-import v4.compiler.parse {
-  Grammar,
+import v4.std.collection { List, Set }
+import v4.std.grammar {
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -25,7 +23,7 @@ import v4.compiler.parse {
   VoidGrammar,
   grammar_carries_symbol
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
@@ -51,8 +49,22 @@ import v4.compiler.tokenize {
   WhitespaceChar,
   lex_rule_set_token_class_member
 }
-import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+import v4.std.node_query { find_named_child }
+import v4.std.target_model {
+  concrete_syntax_token_field_binding,
+  concrete_syntax_token_field_class,
+  concrete_syntax_token_field_kind,
+  concrete_syntax_token_kind_bound,
+  concrete_syntax_token_kind_fixed,
+  grammar_relation_field_emitted,
+  grammar_relation_field_production,
+  grammar_relation_field_tokens
+}
 import v4.std.logic { Bool }
+import v4.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
+import v4.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus, outcome_accepted, outcome_rejected }
+import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName, qualified_name_for_all, qualified_name_from_node, qualified_name_projection_gated, qualified_name_structure_invalid }
 
 
 data dag_c3_surface_sugar_service: Symbol = dag_c3_surface_sugar_service
@@ -106,6 +118,12 @@ data dag_token_lbracket: Symbol = dag_token_lbracket
 data dag_token_rbracket: Symbol = dag_token_rbracket
 data dag_token_lt: Symbol = dag_token_lt
 data dag_token_gt: Symbol = dag_token_gt
+data dag_surface_module_header_qualified_name: Symbol = dag_surface_module_header_qualified_name
+data dag_surface_import_decl_qualified_name: Symbol = dag_surface_import_decl_qualified_name
+data dag_surface_import_decl_block: Symbol = dag_surface_import_decl_block
+data dag_surface_data_decl_name: Symbol = dag_surface_data_decl_name
+data dag_surface_data_decl_type: Symbol = dag_surface_data_decl_type
+data dag_surface_data_decl_expr: Symbol = dag_surface_data_decl_expr
 
 data dag_production_module: Symbol = dag_production_module
 data dag_production_module_header: Symbol = dag_production_module_header
@@ -178,7 +196,7 @@ data dag_surface_fn_literal: Symbol = dag_surface_fn_literal
 
 type DagLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
 }
@@ -334,6 +352,99 @@ fn dag_grammar_atom(id: Symbol) -> Node {
       connective: Atom { identity: id }
     },
     children: []
+  }
+}
+
+
+fn dag_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: target
+  }
+}
+
+
+fn dag_positional_edge(target: Node) -> Edge {
+  Edge {
+    label: Positional,
+    target: target
+  }
+}
+
+
+fn emit_fixed_token(token_class: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: dag_grammar_atom(id: concrete_syntax_token_kind_fixed)
+      ),
+      dag_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: dag_grammar_atom(id: token_class)
+      )
+    ]
+  }
+}
+
+
+fn emit_bound_token(token_class: Symbol, binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: concrete_syntax_token_field_kind,
+        target: dag_grammar_atom(id: concrete_syntax_token_kind_bound)
+      ),
+      dag_named_edge(
+        name: concrete_syntax_token_field_class,
+        target: dag_grammar_atom(id: token_class)
+      ),
+      dag_named_edge(
+        name: concrete_syntax_token_field_binding,
+        target: dag_grammar_atom(id: binding)
+      )
+    ]
+  }
+}
+
+
+fn emit_relation_token_edges(tokens: List<Node>) -> List<Edge> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(xs: acc, item: dag_positional_edge(target: token))
+    }
+  )
+}
+
+
+fn emit_grammar_relation_row(
+  production: GrammarProduction,
+  emitted: Node,
+  tokens: List<Node>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: grammar_relation_field_production,
+        target: dag_grammar_atom(id: production.name)
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_emitted,
+        target: emitted
+      ),
+      dag_named_edge(
+        name: grammar_relation_field_tokens,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: emit_relation_token_edges(tokens: tokens)
+        }
+      )
+    ]
   }
 }
 
@@ -1206,6 +1317,152 @@ fn dag_grammar_module_production() -> GrammarProduction {
 }
 
 
+fn emit_module_header_emitted_node(qualified_name: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_module_header,
+        target: dag_grammar_atom(id: dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: dag_surface_module_header_qualified_name,
+        target: qualified_name
+      )
+    ]
+  }
+}
+
+
+fn emit_row_module_header(qualified_name: Node) -> Node {
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: dag_production_module_header,
+      expression: dag_grammar_module_header_expr(),
+      emitted: dag_surface_module_header
+    ),
+    emitted: emit_module_header_emitted_node(qualified_name: qualified_name),
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_module),
+      qualified_name
+    ]
+  )
+}
+
+
+fn emit_import_decl_emitted_node(
+  qualified_name: Node,
+  import_block: Node?
+) -> Node {
+  let prefix = [
+    dag_named_edge(
+      name: dag_surface_import_decl,
+      target: dag_grammar_atom(id: dag_surface_import_decl)
+    ),
+    dag_named_edge(
+      name: dag_surface_import_decl_qualified_name,
+      target: qualified_name
+    )
+  ]
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: match import_block {
+      Some { value: block } =>
+        list_append(
+          left: prefix,
+          right: [
+            dag_named_edge(name: dag_surface_import_decl_block, target: block)
+          ]
+        )
+      None => prefix
+    }
+  }
+}
+
+
+fn emit_row_import_decl(
+  qualified_name: Node,
+  import_block: Node?
+) -> Node {
+  let prefix = [
+    emit_fixed_token(token_class: dag_token_kw_import),
+    qualified_name
+  ]
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: dag_production_import_decl,
+      expression: dag_grammar_import_decl_expr(),
+      emitted: dag_surface_import_decl
+    ),
+    emitted: emit_import_decl_emitted_node(
+      qualified_name: qualified_name,
+      import_block: import_block
+    ),
+    tokens: match import_block {
+      Some { value: block } => list_append(left: prefix, right: [block])
+      None => prefix
+    }
+  )
+}
+
+
+fn emit_data_decl_emitted_node(
+  name_binding: Symbol,
+  type_expr: Node,
+  expr: Node
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_data_decl,
+        target: dag_grammar_atom(id: dag_surface_data_decl)
+      ),
+      dag_named_edge(
+        name: dag_surface_data_decl_name,
+        target: dag_grammar_atom(id: name_binding)
+      ),
+      dag_named_edge(
+        name: dag_surface_data_decl_type,
+        target: type_expr
+      ),
+      dag_named_edge(
+        name: dag_surface_data_decl_expr,
+        target: expr
+      )
+    ]
+  }
+}
+
+
+fn emit_row_data_decl(
+  name_binding: Symbol,
+  type_expr: Node,
+  expr: Node
+) -> Node {
+  emit_grammar_relation_row(
+    production: dag_grammar_production(
+      name: dag_production_data_decl,
+      expression: dag_grammar_data_decl_expr(),
+      emitted: dag_surface_data_decl
+    ),
+    emitted: emit_data_decl_emitted_node(
+      name_binding: name_binding,
+      type_expr: type_expr,
+      expr: expr
+    ),
+    tokens: [
+      emit_fixed_token(token_class: dag_token_kw_data),
+      emit_bound_token(token_class: dag_token_ident, binding: name_binding),
+      emit_fixed_token(token_class: dag_token_colon),
+      type_expr,
+      emit_fixed_token(token_class: dag_token_eq),
+      expr
+    ]
+  )
+}
+
+
 fn dag_wave1_grammar_root() -> GrammarRoot {
   let module = dag_grammar_module_production()
   let module_header = dag_grammar_production(
@@ -1410,12 +1667,12 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
 }
 
 
-fn dag_wave1_g0_void_grammar() -> Grammar {
+fn dag_wave1_g0_void_grammar() -> ParseGrammar {
   VoidGrammar
 }
 
 
-fn dag_wave1_grammar() -> Grammar {
+fn dag_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_wave1_grammar_root() }
 }
 
@@ -1514,4 +1771,49 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
 // Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
 fn dag_language_model_wave1_modeled() -> DagLanguageModel {
   dag_language_model_wave1()
+}
+
+
+// Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
+// the declared QualifiedName by walking dag_surface_module_header_qualified_name to the fold_list_node
+// sub-node, then delegating to qualified_name_from_node in std/.
+// std/qualified_name.dag cannot import dag_surface_module_header_qualified_name (extdeps/ → std/ only),
+// so this wrapper lives in extdeps/. compiler/00_compile.dag admission calls this function on each
+// batch entry (post-normalize module Node). std/module_batch.dag batch_delete/batch_lookup cannot
+// use this wrapper (std/ layering barrier); they call qualified_name_from_node as best-effort and
+// always receive Rejected for post-normalize module Nodes — kept as non-match per delete policy.
+// 🟡 gated — T-8 parse fidelity — dissolve-on: T-8 lands per-identifier hashing. Until then every
+// segment extracted from a real parse tree carries dag_token_ident (identifier identity unavailable);
+// this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName (P3).
+// 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node; the nested Rejected/Accepted propagation inherits the same carrier threading constraint; forbidden: re-inlining the ladder after Q4 resolves.
+fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
+  match find_named_child(root: root, name: dag_surface_module_header) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: _, diagnostics: _ } =>
+      match find_named_child(root: root, name: dag_surface_module_header_qualified_name) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: qn_node, diagnostics: _ } =>
+          match qualified_name_from_node(root: qn_node) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: qn, diagnostics: _ } =>
+              match qn {
+                QnEmpty => outcome_rejected(Diagnostic {
+                  reason: qualified_name_structure_invalid,
+                  at: node_locus(node: root),
+                  correction: Unavailable { reason: ExternalContractUnknown }
+                })
+                QnCons { head: _, tail: _ } =>
+                  if qualified_name_for_all(qn: qn, predicate: fn(sym) { sym != dag_token_ident }) {
+                    outcome_accepted(value: qn)
+                  } else {
+                    outcome_rejected(Diagnostic {
+                      reason: qualified_name_projection_gated,
+                      at: node_locus(node: root),
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    })
+                  }
+              }
+          }
+      }
+  }
 }

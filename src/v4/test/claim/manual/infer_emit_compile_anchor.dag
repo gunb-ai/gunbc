@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/infer_emit_compile_anchor.dag
 // Scope: Tier-1 compile anchor for infer/emit/compile Wave-1 boundary (T-10 MVP fixture).
-// Owns: stub anchors, anchor_emit_mvp1_accepts, anchor_compile_inferred_mvp1_accepts.
-// Consumes: compiler/04_infer.dag, compiler/05_emit.dag, compiler/00_compile.dag, test/claim/manual/mvp1_rust_add_translate.dag, std/*.
 // Status: T-10 — stub targets fail-closed; rust_mvp1 fixture accepts emit + compile_inferred.
 
 
@@ -17,8 +15,9 @@ import v4.compiler.compile {
   compile_inferred,
   compile_ingest_staging
 }
-import v4.compiler.target_carriers { TargetModel, TargetSource }
-import v4.compiler.tokenize { VoidLexRules }
+import v4.compiler.target_carriers { TargetSource }
+import v4.std.target_model { TargetModel }
+import v4.std.lexing { VoidLexRules }
 import v4.compiler.emit { emit }
 import v4.compiler.infer {
   InferredFacts,

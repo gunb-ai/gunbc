@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_application/empty_required_lenses_skip_gate.dag
 // Scope: T-23 negative claim — empty required-lens list does not emit compile_lens_gate_rejected.
-// Owns: claim_empty_required_lenses_skip_gate.
-// Consumes: compiler compile, manual infer fixture, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_application.empty_required_lenses_skip_gate
@@ -14,8 +12,8 @@ import v4.compiler.compile {
   compile_lens_gate_rejected,
   validate_then_compile
 }
-import v4.compiler.target_carriers { TargetModel }
-import v4.compiler.tokenize { VoidLexRules }
+import v4.std.target_model { TargetModel }
+import v4.std.lexing { VoidLexRules }
 import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }

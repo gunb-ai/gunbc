@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/lbe_anchor_manifest.dag
 // Scope: Three-row manifest for LanguageBehaviorEquivalence generated anchors (P2 join extension).
-// Owns: manual_anchor_lbe_* rows
-// Consumes: v4.std.verification
 
 module v4.test.claim.generated.lbe_anchor_manifest
 
