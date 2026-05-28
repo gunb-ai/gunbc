@@ -430,10 +430,10 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, UsesStep {
-          name: Some { value: "Cache v2-compiler binary (v4 bootstrap / host eval gate)" },
+          name: Some { value: "Cache gunbc binary (v4 bootstrap / host eval gate)" },
           id: Some { value: "v4-v2-bin" },
           uses: { owner: "actions", repo: "cache", ref: "v4" },
-          with: { "path": "target/release/v2-compiler", "key": "v2-compiler-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
+          with: { "path": "target/release/gunbc", "key": "gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}" },
           env: none,
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
           continue_on_error: false,
@@ -461,7 +461,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Lens-CI registry semantic v4 compile (rust target)" },
           id: none,
-          run: "set -euo pipefail\nentry_root=\"${RUNNER_TEMP}/v4-lens-ci-entry\"\ndeps_root=\"${RUNNER_TEMP}/v4-lens-ci-deps\"\nmkdir -p \"${entry_root}/v4/workflow\" \"${deps_root}\"\ncp src/v4/workflow/ci.dag \"${entry_root}/v4/workflow/ci.dag\"\ncp -R src/v4/. \"${deps_root}/\"\nrm \"${deps_root}/workflow/ci.dag\"\ntarget/release/v2-compiler compile --source-root \"${entry_root}\" --source-root \"${deps_root}\" --output-dir \"${RUNNER_TEMP}/v4-lens-ci-rust\" --target rust\n",
+          run: "set -euo pipefail\nentry_root=\"${RUNNER_TEMP}/v4-lens-ci-entry\"\ndeps_root=\"${RUNNER_TEMP}/v4-lens-ci-deps\"\nmkdir -p \"${entry_root}/v4/workflow\" \"${deps_root}\"\ncp src/v4/workflow/ci.dag \"${entry_root}/v4/workflow/ci.dag\"\ncp -R src/v4/. \"${deps_root}/\"\nrm \"${deps_root}/workflow/ci.dag\"\ntarget/release/gunbc compile --source-root \"${entry_root}\" --source-root \"${deps_root}\" --output-dir \"${RUNNER_TEMP}/v4-lens-ci-rust\" --target rust\n",
           shell: Bash,
           env: none,
           working_directory: none,

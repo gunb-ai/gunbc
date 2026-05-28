@@ -1,11 +1,11 @@
 // src/v4/compiler/06_translate.dag
 // Scope: Stage 5a — T-10 translate: fold_node + coercion_fold over infer-authored canonical grounding.
-// Status: W-T-11 — Rust MVP-1 grammar-inverse lex walk is exercised by compile-inferred
-// TestClaim; live translate_node/coerce_grounded_node + child reattachment zip-fold;
+// Status: W-T-11 — Shape-A MVP-1 grammar-inverse lex walk is exercised by compile-inferred
+// TestClaims for rust/python/go/cpp/typescript (test/claim/manual/mvp1_*_add_translate.dag);
+// live translate_node/coerce_grounded_node + child reattachment zip-fold;
 // authority_source_text retained on TargetModel as self-host anchor only.
 //         grammar-inverse serialize uses translate_serialize_measure (node_subtree_count +
 //         translation_rules subtree) — no fixed fuel constant.
-// 🟡 gated — feature:T-11-grammar-inverse-serializer-remaining-targets — bind TASKS.md T-11 — dissolve-on: grammar-inverse compile TestClaims for the remaining Shape-A targets and ingest-backed compile once T-7/T-10 source ingest is live; Rust MVP-1 slice is covered by test/claim/manual/mvp1_rust_add_translate.dag. TargetModel.authority_source_text remains self-host anchor only, not emit authority; forbidden: treating host/literal anchor as complete inverse emit.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
 
@@ -869,7 +869,9 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
     }
   )
 }
-// Rust MVP-1 is live through grammar-inverse token_sequence_to_source; remaining targets stay gated by feature:T-11-grammar-inverse-serializer-remaining-targets above. TargetModel.authority_source_text must not substitute for validated emitted Node serialization.
+// Shape-A MVP-1 grammar-inverse serialize via token_sequence_to_source for all five
+// Shape-A targets (rust/python/go/cpp/typescript TestClaims). TargetModel.authority_source_text
+// must not substitute for validated emitted Node serialization.
 fn target_serialize_source_from_model_bounded(
   remaining: Int,
   target: TargetModel,
