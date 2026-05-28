@@ -650,9 +650,7 @@ pub fn dag_collect_nodes_list(
     nodes
         .iter()
         .cloned()
-        .fold(acc.clone(), |a: Rc<DagCollectAcc>, n: Rc<Node>| {
-            dag_collect_insert(n.clone(), a)
-        })
+        .fold(acc, |a: Rc<DagCollectAcc>, n: Rc<Node>| dag_collect_insert(n.clone(), a))
 }
 
 pub fn dag_collect_optional_node(
@@ -694,19 +692,17 @@ pub fn dag_collect_match_pattern(
 }
 
 pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
-    {
-        let acc = dag_collect_nodes_list(node.children.clone(), acc.clone());
-        let acc = dag_collect_nodes_list(node.params.clone(), acc.clone());
-        let acc = dag_collect_nodes_list(node.uses.clone(), acc.clone());
-        let acc = dag_collect_optional_node(node.body.clone(), acc.clone());
-        let acc = dag_collect_optional_node(node.transport.clone(), acc.clone());
-        let acc = dag_collect_nodes_list(node.properties.clone(), acc.clone());
-        let acc = dag_collect_optional_node(node.type_annotation.clone(), acc.clone());
-        let acc = dag_collect_inferred(node.inferred.clone(), acc.clone());
-        match node.match_pattern.clone() {
-            Some(p) => dag_collect_match_pattern(p.clone(), acc.clone()),
-            None => acc.clone(),
-        }
+    let acc = dag_collect_nodes_list(node.children.clone(), acc);
+    let acc = dag_collect_nodes_list(node.params.clone(), acc);
+    let acc = dag_collect_nodes_list(node.uses.clone(), acc);
+    let acc = dag_collect_optional_node(node.body.clone(), acc);
+    let acc = dag_collect_optional_node(node.transport.clone(), acc);
+    let acc = dag_collect_nodes_list(node.properties.clone(), acc);
+    let acc = dag_collect_optional_node(node.type_annotation.clone(), acc);
+    let acc = dag_collect_inferred(node.inferred.clone(), acc);
+    match node.match_pattern.clone() {
+        Some(p) => dag_collect_match_pattern(p.clone(), acc),
+        None => acc,
     }
 }
 
@@ -751,18 +747,14 @@ pub fn dag_collect_from_module(
     module: Rc<TypedModule>,
     acc: Rc<DagCollectAcc>,
 ) -> Rc<DagCollectAcc> {
-    {
-        let acc = dag_collect_insert(module.module.clone(), acc.clone());
-        let acc = dag_collect_nodes_list(module_imports(module.module.clone()), acc.clone());
-        module
-            .items
-            .clone()
-            .iter()
-            .cloned()
-            .fold(acc.clone(), |a: Rc<DagCollectAcc>, item: Rc<Node>| {
-                dag_collect_insert(item.clone(), a)
-            })
-    }
+    let acc = dag_collect_insert(module.module.clone(), acc);
+    let acc = dag_collect_nodes_list(module_imports(module.module.clone()), acc);
+    module
+        .items
+        .clone()
+        .iter()
+        .cloned()
+        .fold(acc, |a: Rc<DagCollectAcc>, item: Rc<Node>| dag_collect_insert(item.clone(), a))
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
