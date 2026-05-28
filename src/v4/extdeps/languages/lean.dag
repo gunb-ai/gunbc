@@ -43,10 +43,10 @@ import v4.std.algebra {
   Cons,
   Empty,
   boolean_algebra_node,
+  commutative_ring_node,
   fold_list,
   list_append,
   list_snoc_item,
-  ordered_ring_node,
   semiring_node
 }
 import v4.std.text { String }
@@ -417,8 +417,8 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
 ]
 
 
-data lean_witness_integer_ordered_ring: Symbol = lean_witness_integer_ordered_ring
-data lean_witness_integer_semiring: Symbol = lean_witness_integer_semiring
+data lean_witness_signed_integer_commutative_ring: Symbol = lean_witness_signed_integer_commutative_ring
+data lean_witness_unsigned_integer_semiring: Symbol = lean_witness_unsigned_integer_semiring
 data lean_witness_bool_boolean_algebra: Symbol = lean_witness_bool_boolean_algebra
 data lean_witness_field_representation: Symbol = lean_witness_field_representation
 data lean_witness_field_signedness: Symbol = lean_witness_field_signedness
