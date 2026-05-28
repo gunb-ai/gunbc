@@ -32,7 +32,8 @@ import v4.std.node {
   Symbol,
   TypeNode,
   combine_hash,
-  content_hash
+  content_hash,
+  scalar_char_hash
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -318,11 +319,6 @@ data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
 data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
 data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
 data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
-data ci_cache_char_zero_tag: Symbol = ci_cache_char_zero_tag
-data ci_cache_char_one_tag: Symbol = ci_cache_char_one_tag
-data ci_cache_char_pos_tag: Symbol = ci_cache_char_pos_tag
-data ci_cache_char_neg_tag: Symbol = ci_cache_char_neg_tag
-data ci_cache_char_succ_tag: Symbol = ci_cache_char_succ_tag
 
 
 fn ci_symbol_digest(sym: Symbol) -> Hash {
@@ -347,34 +343,8 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 }
 
 
-fn ci_char_cache_digest_positive(c: Char) -> Hash {
-  if c == 1 {
-    ci_symbol_digest(sym: ci_cache_char_one_tag)
-  } else {
-    combine_hash(
-      a: ci_symbol_digest(sym: ci_cache_char_succ_tag),
-      b: ci_char_cache_digest_positive(c: c - 1)
-    )
-  }
-}
-
-
 fn ci_char_cache_digest(c: Char) -> Hash {
-  if c == 0 {
-    ci_symbol_digest(sym: ci_cache_char_zero_tag)
-  } else {
-    if c < 0 {
-      combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_char_neg_tag),
-        b: ci_char_cache_digest(c: 0 - c)
-      )
-    } else {
-      combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_char_pos_tag),
-        b: ci_char_cache_digest_positive(c: c)
-      )
-    }
-  }
+  scalar_char_hash(c: c)
 }
 
 

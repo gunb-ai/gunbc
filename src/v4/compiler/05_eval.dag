@@ -65,6 +65,7 @@ import v4.std.node {
   bag_hash_digest,
   combine_hash,
   content_hash,
+  scalar_int_hash,
   fold_node,
   is_positional,
   well_formed
@@ -200,11 +201,6 @@ data test_claim_no_correction_ambiguous_intent_tag: Symbol = test_claim_no_corre
 data test_claim_no_correction_external_contract_unknown_tag: Symbol = test_claim_no_correction_external_contract_unknown_tag
 data test_claim_cache_extent_whole_file_tag: Symbol = test_claim_cache_extent_whole_file_tag
 data test_claim_cache_extent_byte_range_tag: Symbol = test_claim_cache_extent_byte_range_tag
-data test_claim_cache_int_zero_tag: Symbol = test_claim_cache_int_zero_tag
-data test_claim_cache_int_one_tag: Symbol = test_claim_cache_int_one_tag
-data test_claim_cache_int_pos_tag: Symbol = test_claim_cache_int_pos_tag
-data test_claim_cache_int_neg_tag: Symbol = test_claim_cache_int_neg_tag
-data test_claim_cache_int_succ_tag: Symbol = test_claim_cache_int_succ_tag
 data test_claim_cache_correction_suggested_tag: Symbol = test_claim_cache_correction_suggested_tag
 data test_claim_cache_correction_unavailable_tag: Symbol = test_claim_cache_correction_unavailable_tag
 data test_claim_cache_locus_node_tag: Symbol = test_claim_cache_locus_node_tag
@@ -281,34 +277,8 @@ fn correction_verdict_digest(c: Correction) -> Hash {
 }
 
 
-fn int_cache_digest_positive(i: Int) -> Hash {
-  if i == 1 {
-    test_claim_symbol_digest(sym: test_claim_cache_int_one_tag)
-  } else {
-    combine_hash(
-      a: test_claim_symbol_digest(sym: test_claim_cache_int_succ_tag),
-      b: int_cache_digest_positive(i: i - 1)
-    )
-  }
-}
-
-
 fn int_cache_digest(i: Int) -> Hash {
-  if i == 0 {
-    test_claim_symbol_digest(sym: test_claim_cache_int_zero_tag)
-  } else {
-    if i < 0 {
-      combine_hash(
-        a: test_claim_symbol_digest(sym: test_claim_cache_int_neg_tag),
-        b: int_cache_digest(i: 0 - i)
-      )
-    } else {
-      combine_hash(
-        a: test_claim_symbol_digest(sym: test_claim_cache_int_pos_tag),
-        b: int_cache_digest_positive(i: i)
-      )
-    }
-  }
+  scalar_int_hash(i: i)
 }
 
 

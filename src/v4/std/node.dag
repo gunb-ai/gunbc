@@ -428,14 +428,68 @@ fn combine_hash(a: Hash, b: Hash) -> Hash {
 }
 
 
-// Order-insensitive pair combine (lexicographic tie-break on digest carriers). Not associative:
-// do not fold bags with this — use bag_hash_digest.
-fn combine_hash_commutative(a: Hash, b: Hash) -> Hash {
-  if a < b {
-    combine_hash(a: a, b: b)
+data canonical_tag_scalar_int_zero: Symbol = canonical_tag_scalar_int_zero
+data canonical_tag_scalar_int_neg: Symbol = canonical_tag_scalar_int_neg
+data canonical_tag_scalar_int_pos: Symbol = canonical_tag_scalar_int_pos
+data canonical_tag_scalar_int_nibble_zero: Symbol = canonical_tag_scalar_int_nibble_zero
+data canonical_tag_scalar_int_nibble_succ: Symbol = canonical_tag_scalar_int_nibble_succ
+data canonical_tag_scalar_int_byte: Symbol = canonical_tag_scalar_int_byte
+
+
+fn scalar_int_nibble_digest(n: Int) -> Hash {
+  if n == 0 {
+    atom_identity_hash(s: canonical_tag_scalar_int_nibble_zero)
   } else {
-    combine_hash(a: b, b: a)
+    combine_hash(
+      a: atom_identity_hash(s: canonical_tag_scalar_int_nibble_succ),
+      b: scalar_int_nibble_digest(n: n - 1)
+    )
   }
+}
+
+
+fn scalar_int_byte_digest(b: Int) -> Hash {
+  combine_hash(
+    a: atom_identity_hash(s: canonical_tag_scalar_int_byte),
+    b: combine_hash(
+      a: scalar_int_nibble_digest(n: b - (b / 16) * 16),
+      b: scalar_int_nibble_digest(n: b / 16)
+    )
+  )
+}
+
+
+fn scalar_int_le_digits_digest(i: Int) -> Hash {
+  if i == 0 {
+    atom_identity_hash(s: canonical_tag_scalar_int_zero)
+  } else {
+    combine_hash(
+      a: scalar_int_byte_digest(b: i - (i / 256) * 256),
+      b: scalar_int_le_digits_digest(i: i / 256)
+    )
+  }
+}
+
+
+// O(log |i|) scalar Int digest via base-256 little-endian bytes (not Peano unary on |i|).
+fn scalar_int_hash(i: Int) -> Hash {
+  if i < 0 {
+    combine_hash(
+      a: atom_identity_hash(s: canonical_tag_scalar_int_neg),
+      b: scalar_int_hash(i: 0 - i)
+    )
+  } else {
+    combine_hash(
+      a: atom_identity_hash(s: canonical_tag_scalar_int_pos),
+      b: scalar_int_le_digits_digest(i: i)
+    )
+  }
+}
+
+
+// Char codepoints share the scalar Int encoding (Unicode scalar values).
+fn scalar_char_hash(c: Char) -> Hash {
+  scalar_int_hash(i: c)
 }
 
 
