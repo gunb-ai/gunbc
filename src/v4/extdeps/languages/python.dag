@@ -252,6 +252,9 @@ data python_production_additive: Symbol = python_production_additive
 data python_production_primary: Symbol = python_production_primary
 data python_production_additive_tail: Symbol = python_production_additive_tail
 data python_production_comparison_tail: Symbol = python_production_comparison_tail
+// 🟡 gated — feature:python-formal-epsilon-shim-terminal — bind TASKS.md T-7 / CP-1b —
+// dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
+// without fabricated parse-only token_class.
 data python_formal_epsilon_shim_terminal: Symbol = python_formal_epsilon_shim_terminal
 data python_surface_fn_item: Symbol = python_surface_fn_item
 data python_surface_suite: Symbol = python_surface_suite
@@ -975,6 +978,8 @@ fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr
   }
 }
 
+// 🟡 gated — feature:python-formal-epsilon-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
 fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   Optional {
     element: Terminal { token_class: python_formal_epsilon_shim_terminal }
@@ -1064,13 +1069,24 @@ fn python_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> G
   )
 }
 
+fn python_formal_productions_first(prods: List<FormalProduction>) -> FormalProduction {
+  match prods {
+    Empty =>
+      python_formal_authority_prod(
+        lhs: python_production_primary,
+        rhs: Empty
+      )
+    Cons { head: head, tail: _ } => head
+  }
+}
+
 fn python_formal_productions_to_grammar_production(
-  name: Symbol,
   prods: List<FormalProduction>,
   emitted: Symbol
 ) -> GrammarProduction {
+  let authority = python_formal_productions_first(prods: prods)
   GrammarProduction {
-    name: name,
+    name: authority.lhs.identity,
     expression: python_formal_productions_to_grammar_expr(prods: prods),
     emitted: python_grammar_atom(id: emitted)
   }
@@ -1479,17 +1495,66 @@ fn python_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
-// 🟡 predicate dissolution — feature:python-wave2a-catalog-surface-membership — bind TASKS.md T-4.17 —
-// dissolve-on: canonical_symbols catalog membership derives from python_integer_facts_catalog
-// fold (single list authority) instead of hand-written || predicate.
+fn python_catalog_surface_spelling_eq(sym: Symbol, spelling: Symbol) -> Bool {
+  sym == spelling
+}
+
+fn python_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_integer_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+    }
+  )
+}
+
+fn python_float_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_float_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+    }
+  )
+}
+
+fn python_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_complex_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+    }
+  )
+}
+
+fn python_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_bool_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+    }
+  )
+}
+
+fn python_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: python_singleton_facts_catalog,
+    empty: false,
+    cons: fn(acc, facts) {
+      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+    }
+  )
+}
+
 fn python_catalog_surface_symbol(sym: Symbol) -> Bool {
-  sym == python_surface_spelling_int ||
-    sym == python_surface_spelling_float ||
-    sym == python_surface_spelling_complex ||
-    sym == python_surface_spelling_bool ||
-    sym == python_surface_spelling_none ||
-    sym == python_surface_spelling_notimplemented ||
-    sym == python_surface_spelling_ellipsis
+  python_integer_catalog_surface_symbol(sym: sym) ||
+    python_float_catalog_surface_symbol(sym: sym) ||
+    python_complex_catalog_surface_symbol(sym: sym) ||
+    python_bool_catalog_surface_symbol(sym: sym) ||
+    python_singleton_catalog_surface_symbol(sym: sym)
 }
 
 fn python_language_model_canonical_symbols() -> Set<Symbol> {
