@@ -4,10 +4,9 @@
 
 module v4.test.claim.manual.bootstrap_footprint_anchor
 
-import v4.compiler.target_carriers { TargetModel }
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, content_hash }
+import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_runtime_wave1 }
+import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -19,7 +18,6 @@ import v4.std.verification {
 }
 import v4.std.witness { Holds, Violates }
 import v4.workflow.bootstrap {
-  BootstrapFootprint,
   BootstrapHashPin,
   BootstrapProjectionInputs,
   BootstrapSourceSnapshot,
