@@ -129,7 +129,7 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Solution shape:** Before naming a new type, search for its canonical name in the relevant field. If one exists, use it. Place the type definition in a `std/` module named after the concept domain (e.g. `std/lexing.dag`, `std/grammar.dag`), not after the pipeline stage that happens to use it first. The pipeline stage imports from `std/`; it does not define vocabulary.
 
-**Enforcement:** New substrate type names corresponding to recognized CS concepts must cite the grounding source in the file's module header comment (e.g. `// Grounds in: https://en.wikipedia.org/wiki/Lexical_analysis`). Reviewers should ask "does this concept have a canonical name in the field?" before approving new type declarations in `compiler/` or `extdeps/`.
+**Enforcement:** New substrate type names corresponding to recognized CS concepts must cite the grounding source in the file's module header comment using Practice 9's per-carrier anchor form (e.g. `// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis`). Reviewers should ask "does this concept have a canonical name in the field?" before approving new type declarations in `compiler/` or `extdeps/`.
 
 **Receipt (live violation; dissolution not yet landed):** `v4.compiler.tokenize` still defines `LexRule`, `LexRuleSet`, `ModeledLexRules`, `LexPattern`; `v4.compiler.parse` still defines `GrammarProduction`, `GrammarExpr`, `GrammarSchema`. These are canonical CS concepts (lexical analysis, context-free grammar) wrapped in compiler-internal names. **`std/lexing.dag` and `std/grammar.dag` do not exist yet** — extdeps such as `python.dag` still import from `v4.compiler.parse` / `v4.compiler.tokenize`. **Dissolution target:** author `std/lexing.dag` + `std/grammar.dag` grounded in Wikipedia *Lexical Analysis* and *Formal Grammar*; move type definitions there; `compiler/` and `extdeps/` import from `std/`.
 
@@ -277,7 +277,7 @@ An import edge pointing opposite to this order (`extdeps/ → compiler/`, `std/ 
 - **Emission Is Translation, Not Decision-Making**
 - **No Duplicate Representations** + **No Parallel Implementations** + **Single-Authority Metadata**
 - **Root-Cause Depth Invariant** — fix at the deepest unsound boundary, not the first downstream symptom
-- **Cross-layer import (dependency direction violation)** — extdeps/ → std/ → compiler/; no reverse edges
+- **Cross-layer import (dependency direction violation)** — workflow/ → compiler/ → extdeps/ → std/; imports only toward `std/`; no reverse edges
 - **Performance Invariant** + **Facts Flow Forward** — redundant work is dependency modeling at the wrong boundary
 - **Verification Predicates Are Substrate Consumers** — verification is not its own authority
 - **The One Boundary** (from Verifiability) — verification crosses target-specific realization only at declared boundaries
