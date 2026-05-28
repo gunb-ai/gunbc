@@ -44,7 +44,6 @@ import v4.std.lexing {
   LexRules,
   LiteralPattern,
   ModeledLexRules,
-  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
   TokenRule,
