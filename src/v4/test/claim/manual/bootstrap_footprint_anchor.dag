@@ -5,7 +5,16 @@
 module v4.test.claim.manual.bootstrap_footprint_anchor
 
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_runtime_wave1 }
+import v4.extdeps.runtimes.v4_evaluator {
+  V4EvaluatorRuntime,
+  v4_eval_wave1_boundary_allowance,
+  v4_evaluator_execution_wave1,
+  v4_evaluator_model_core_wave1,
+  v4_evaluator_runtime_id,
+  v4_evaluator_runtime_wave1,
+  v4_evaluator_value_representation_wave1
+}
+import v4.std.runtime { ResourceEffectBoundary }
 import v4.std.node { Atom, Node, Symbol, TypeNode, content_hash }
 import v4.std.verification {
   CompilesClaim,
