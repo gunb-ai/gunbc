@@ -56,7 +56,7 @@ import v4.std.node {
   TypeNode,
   name_occurrences
 }
-import v4.std.node_query { find_named_child }
+import v4.std.node_query { find_named_child, named_child_ambiguous }
 import v4.std.report { Report, report_reason_to_diagnostic_reason }
 
 // 🟡 gated — feature:section-ref-identity-evidence — bind: T-23/T-10 projection bridge —
@@ -198,9 +198,19 @@ fn advisory_report_diagnostic(report: Report) -> Diagnostic {
   }
 }
 
-// Delegates to the 🟢-canonical find_named_child in std/node_query.dag.
+// Delegates to the 🟢-canonical find_named_child in std/node_query.dag; translates
+// node_query diagnostic vocabulary to the lens D1 path contract's own reasons
+// (path_unresolvable_reason / path_ambiguous_reason) so callers see only lens-boundary diagnostics.
 fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
-  find_named_child(root: root, name: name)
+  match find_named_child(root: root, name: name) {
+    Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
+    Rejected { diagnostics: diags } =>
+      if diags.head.reason == named_child_ambiguous {
+        outcome_rejected(d: path_ambiguous_diagnostic(at: root))
+      } else {
+        outcome_rejected(d: path_unresolvable_diagnostic(at: root))
+      }
+  }
 }
 
 fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
