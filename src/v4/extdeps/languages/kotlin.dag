@@ -443,6 +443,7 @@ fn kotlin_mvp1_concrete_tokens() -> List<KotlinConcreteSyntaxToken> {
 }
 
 data kotlin_mvp1_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
+data kotlin_mvp1_parse_fixture_file: Symbol = kotlin_mvp1_source_literal
 
 // canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1 · grounding-worked-examples.md §0)
 data kotlin_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
