@@ -252,6 +252,7 @@ fn ptx_wave1_grammar() -> ParseGrammar {
 }
 
 
+// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for `.entry k() {}`; forbidden: reporting PTX ingest completion without that fixture consumer.
 fn ptx_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: ptx_wave1_lex(),

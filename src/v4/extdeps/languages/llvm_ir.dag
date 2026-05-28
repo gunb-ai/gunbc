@@ -959,6 +959,7 @@ fn llvm_ir_wave1_grammar() -> ParseGrammar {
 }
 
 
+// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for `define void @f() { ret void }`; forbidden: reporting LLVM IR ingest completion without that fixture consumer.
 fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: llvm_wave1_lex(),

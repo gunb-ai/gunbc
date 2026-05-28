@@ -832,6 +832,7 @@ fn verilog_wave1_lex() -> LexRules {
     root: LexRuleSet {
       rules: [
         TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        // Keywords intentionally follow ident: std.lexing LexRuleSet ties prefer the later rule.
         verilog_lex_token(token_class: verilog_token_ident, pattern: verilog_identifier_pattern()),
         verilog_lex_token(token_class: verilog_token_kw_module, pattern: KeywordPattern { text: "module" }),
         verilog_lex_token(token_class: verilog_token_kw_endmodule, pattern: KeywordPattern { text: "endmodule" }),
@@ -872,6 +873,7 @@ fn verilog_wave1_grammar() -> ParseGrammar {
 }
 
 
+// 🟡 gated — feature:t4-18-probe-ingest-validation — consumer:v4.compiler.parse wave-1 schema fixture receipt — bind node://adhoc-d2439fe2-dbd — dissolve-on-arrival: replace this schema-only probe surface with a generated parse/TestClaim receipt for `module m; endmodule`; forbidden: reporting Verilog ingest completion without that fixture consumer.
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: verilog_wave1_lex(),
