@@ -349,25 +349,23 @@ pub fn dag_node_key(mut node: Rc<Node>) -> String {
                 continue;
             }
             _ => {
-                break dag_node_provisional_key(node.clone());
+                break v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(node.span.clone().file.clone(), ":".to_string()),
+                                (node.span.clone().start.clone()).to_string(),
+                            ),
+                            "..".to_string(),
+                        ),
+                        (node.span.clone().end.clone()).to_string(),
+                    ),
+                    match node.ident.clone() {
+                        Some(id) => v2_rt::concat(":".to_string(), (id.clone()).to_string()),
+                        None => "".to_string(),
+                    },
+                );
             }
-        }
-    }
-}
-
-pub fn dag_node_provisional_key(node: Rc<Node>) -> String {
-    {
-        let fp = dag_node_fingerprint(node.clone());
-        if ((node.span.clone().start.clone() == 0) && (node.span.clone().end.clone() == 0)) {
-            v2_rt::concat(
-                v2_rt::concat(fp, "@0..0".to_string()),
-                match node.ident.clone() {
-                    Some(id) => v2_rt::concat(":".to_string(), (id.clone()).to_string()),
-                    None => "".to_string(),
-                },
-            )
-        } else {
-            fp
         }
     }
 }
@@ -715,11 +713,31 @@ pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCo
 pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
     {
         let key = dag_node_key(node.clone());
+        let fp = dag_node_fingerprint(node.clone());
         match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
-            Some(_) => acc.clone(),
+            Some(prior) => {
+                if (prior.clone().as_str() == fp.as_str()) {
+                    acc.clone()
+                } else {
+                    if ((node.span.clone().start.clone() == 0)
+                        && (node.span.clone().end.clone() == 0))
+                    {
+                        Rc::new(DagCollectAcc {
+                            seen: acc.seen.clone(),
+                            order: acc.order.clone(),
+                            collision_errors: v2_rt::rc_list_push(
+                                acc.collision_errors.clone(),
+                                dag_node_key_collision_error(key.clone(), node.span.clone()),
+                            ),
+                        })
+                    } else {
+                        acc.clone()
+                    }
+                }
+            }
             None => {
                 let acc1 = Rc::new(DagCollectAcc {
-                    seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), "".to_string()),
+                    seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), fp),
                     order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
                     collision_errors: acc.collision_errors.clone(),
                 });
