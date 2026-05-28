@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_synthesis/factorial_dominates_exponential.dag
 // Scope: T-17 worked claim — factorial symbolic cost dominates exponential lower bound.
-// Owns: claim_factorial_dominates_exponential.
-// Consumes: lens cost, std node, std verification.
 // Status: T-17 filled — cost-lattice prerequisite (symbolic_cost_dominates).
 
 module v4.test.claim.lens_synthesis.factorial_dominates_exponential

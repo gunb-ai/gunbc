@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/outcome_diagnostics_eq.dag
 // Scope: Outcome diagnostic equality preserves tail multiplicity; merge threads accepted diagnostics.
-// Owns: multiplicity witness rows for non_empty_diagnostics_eq / outcome_node_eq / diagnostics_merge.
-// Consumes: v4.std.diagnostic v4.test.claim.manual.connective_anchors.
 // Status: Wave-2-BC3 behavior anchor; eval T-22.
 
 

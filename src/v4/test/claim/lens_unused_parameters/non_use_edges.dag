@@ -3,8 +3,6 @@
 //   Contains       ⇒ IsStructuralComposition
 //   DataDependsOn  ⇒ IsNonUseDependency
 //   GeneratedFrom  ⇒ RequiresResolutionWitness (fail-closed)
-// Owns: unused_parameters_non_use_edges_claim.
-// Consumes: lens unused_parameters, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 

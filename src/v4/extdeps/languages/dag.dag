@@ -1,8 +1,6 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Owns: DagLanguageModel; dag_c3_surface_sugar_*; dag_language_model_surface_id; dag_token_*; dag_production_*; dag_surface_*; dag_production_generic_params; dag_surface_generic_params; dag_production_fn_type; dag_surface_fn_type; dag_relation_token_*; dag_wave1_*; emit_grammar_relation_row; emit_row_module_header; emit_row_import_decl; emit_row_data_decl; dag_language_model_wave1; dag_language_model_wave1_void; dag_language_model_wave1_modeled; dag_language_model_surface_empty_prelude; dag_language_model_canonical_symbols; dag_language_model_wave1_canonical_symbols; dag_language_model_surface_prelude_atoms; dag_language_model_empty_canonical_symbol_set; dag_wave1_sync_tokens; qualified_name_from_module_node.
-// Consumes: compiler/tokenize.dag, compiler/parse.dag, std/collection.dag, std/node.dag, std/node_query.dag, std/logic.dag, std/diagnostic.dag, std/qualified_name.dag.
 // Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
 // Anchor: docs/v3-spec.md
 

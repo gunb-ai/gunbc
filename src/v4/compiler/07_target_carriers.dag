@@ -1,7 +1,5 @@
 // src/v4/compiler/07_target_carriers.dag
 // Scope: Shared compile-stage language/target carriers — breaks compile ↔ emit import cycle.
-// Owns: LanguageModel, TargetModel, TargetModelBundle, TargetSource.
-// Consumes: compiler/01_tokenize.dag; std/collection.dag; std/node.dag; std/text.dag.
 // Status: Wave-5-A — single authority for target projection carriers.
 // Anchor: docs/design-v4-compiler-homomorphism.md
 

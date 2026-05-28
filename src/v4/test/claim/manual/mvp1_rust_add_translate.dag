@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/mvp1_rust_add_translate.dag
 // Scope: MVP-1 T-10/T-11 receipt — translate/emit/compile-inferred substrate + rust_mvp1 add-fn Accepted emit.
-// Owns: mvp1 anchors, inferred tree, emit and compile-inferred TestClaimRun receipts, translate/emit module compiles claims.
-// Consumes: compiler/00_compile.dag, compiler/05_emit.dag, compiler/05_eval.dag, compiler/06_translate.dag, extdeps/languages/rust.dag, test/claim/lens_common/infer_fixture.dag, test/claim/manual/infer_ground_add_mvp.dag, std/*.
 // Status: T-11 Rust slice — grammar-inverse compile-inferred accepts for rust_mvp1_target_model + emitted add-fn tree; full source-ingest compile remains blocked on ingest staging.
 
 

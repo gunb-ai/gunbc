@@ -1,7 +1,5 @@
 // src/v4/extdeps/coordination.dag
 // Scope: Multi-program coordination as effect-typed Bind composition.
-// Owns: coordination wire-contract fact-bundles and effect obligation bridge.
-// Consumes: std/node.dag, std/collection.dag, std/nat.dag, std/network.dag.
 // Status: T-4.8 modeled; WIRECONTRACT-OBLIGATION-TABLE-T4.8 is executable as per-arm obligation rows, with CoordinationEffectKind retained as a tracked bridge until binds reference canonical obligation rows directly.
 
 module v4.extdeps.coordination

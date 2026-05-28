@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/typescript_language_model_anchor.dag
 // Scope: T-4 compile anchor — typescript.dag LanguageModel, numeric inhabitants, ModelCore wave-1.
-// Owns: ts_anchor_language_model, ts_anchor_number_inhabitant, ts_anchor_bigint_inhabitant.
-// Consumes: extdeps/languages/typescript.dag.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.typescript_language_model_anchor

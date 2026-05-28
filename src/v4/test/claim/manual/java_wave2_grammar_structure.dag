@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/java_wave2_grammar_structure.dag
 // Scope: Wave-2 Java grammar structural receipt — key JLS productions are registered and reachable.
-// Owns: java_wave2_grammar_structure_ready (data), java_wave2_grammar_structure_satisfied (fn).
-// Consumes: extdeps/languages/java.dag, v4.compiler.parse.
 // Status: manual structural TestClaim input for wave-2 grammar contracts.
 
 module v4.test.claim.manual.java_wave2_grammar_structure

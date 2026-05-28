@@ -3,17 +3,6 @@
 // Scope: TestClaim — transport/type drift impossible-bug class (R1). Client and server cannot hold different types for the same field — both derive from the same declaration. Drift is impossible by construction.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §379-380 R1 + gate #29 wire-serde-alignment + extdeps/coordination.dag
 //
-// Owns:
-//   - test_wire_contract_drift_impossible: TestClaim
-//     - input: try to declare different types client-side vs server-side for the same wire field
-//     - expected: declaration site rejected; substrate refuses parallel-authority shape
-//   - test_shared_declaration_compiles_both_sides: TestClaim
-//     - input: one shared declaration; emit to both client and server targets
-//     - expected: emitted types are structurally equivalent across targets
-//
-// Consumes:
-//   - std/verification.dag, std/diagnostic.dag, extdeps/coordination.dag, extdeps/languages/*
-//
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 

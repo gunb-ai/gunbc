@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_parallelism/data_dependency.dag
 // Scope: T-13 worked claim — DataDependsOn classifies as DataDependent over `ClassifiedDependencyView<ParallelismRelation>`.
-// Owns: parallelism_data_dependency_claim.
-// Consumes: lens parallelism, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 

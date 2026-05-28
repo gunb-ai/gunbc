@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_application/subterm_at_ambiguous_duplicate_name.dag
 // Scope: T-23 worked claim — duplicate named edges fail-closed in subterm_at.
-// Owns: claim_subterm_at_ambiguous_duplicate_name.
-// Consumes: v4.lens.application (subterm_at), v4.std.node (Path), std verification.
 // Status: compile-only ratchet for D1 ambiguous path rejection.
 
 module v4.test.claim.lens_application.subterm_at_ambiguous_duplicate_name

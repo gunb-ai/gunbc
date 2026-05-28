@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_effect/effect_depends_on.dag
 // Scope: T-13 worked claim — signature-deferred `EffectClassification` projection; witness envelope is Violates until signature-derived effect kinds land (#3468); projection fact still matches expected.
-// Owns: effect_depends_on_claim.
-// Consumes: lens effect, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 

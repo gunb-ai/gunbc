@@ -1,11 +1,6 @@
 // src/v4/test/claim/parse/grammar_validation.dag
 // Scope: TestClaim rows asserting grammar validation boundaries, sync-recovery fail-closed behavior,
 //       and parse-table acceptance for a right-recursive grammar via parse_production.
-// Owns: claims for duplicate-name rejection, undefined-nonterminal rejection (missing-start and
-//       dangling-reference paths), parse_skip_to_sync with empty sync set returning
-//       found_sync: false (no token drain), and memoized ParseTable parse success receipt.
-// Consumes: v4.compiler.tokenize v4.compiler.parse v4.std.algebra v4.std.collection
-//           v4.std.node v4.std.logic v4.std.verification
 // Status: T-22 runner deferred — execution pending T-22 complexity fix.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 

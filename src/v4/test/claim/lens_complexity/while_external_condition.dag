@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_complexity/while_external_condition.dag
 // Scope: T-12 worked claim — non-structural loop bounds fail closed.
-// Owns: while_external_condition_claim.
-// Consumes: lens cost, lens complexity, std diagnostic, std node.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_complexity.while_external_condition

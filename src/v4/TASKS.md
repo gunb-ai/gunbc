@@ -143,7 +143,7 @@ Substrate / extdeps fan-out:
   T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core, T-26]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
-  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; header Consumes: std/node.dag; std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
+  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; imports std/node.dag and std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
   T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
   T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-4.19 (english.dag), T-3 std/verification.dag; conformance test for english.dag boundary — out-of-subset prose → Diagnostic, never fabricated parse]
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
@@ -437,8 +437,8 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `LexRules` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
-**Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
-**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
+**Merged `00_compile.dag` ingest signature:** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling in the orchestrator body. Read `Result<…, Diagnostic>` prose as the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**.
+**Merged `01_tokenize.dag` signature:** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
 *Theme-A #9 resolved:* `src/v4/compiler/07_target_carriers.dag` is the
 single carrier authority: `type LanguageModel = Node`. Read
 **`LexRules` / `Grammar` as lexical and syntax projections** on that
@@ -463,8 +463,8 @@ conceptual `(Source, LanguageModel)` spelling.
 
 **Role:** Syntactic half of `ingest`: walker over `Grammar` `Node`; grammar = bidirectional concrete-syntax ⟷ `Node`; parse forward, emit (T-10) inverse (`ingest = emit⁻¹`, C5). G0+ = **data** on model.
 
-**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches **`compiler/02_parse.dag` `Owns`** (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
-*Ingest tie-in (`00_compile.dag` `Owns` today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
+**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches the merged **`compiler/02_parse.dag`** body signature (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
+*Ingest tie-in (`00_compile.dag` body signature today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
 *Theme-A #9 resolved:* Same projection reading as T-6 — `Grammar` is the
 syntax-side projection of the landed `LanguageModel = Node` authority in
 `src/v4/compiler/07_target_carriers.dag`.
@@ -545,15 +545,14 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 **emit is `ingest` inverted, not a codegen backend.** emit is the **emit
 boundary** of the OMNI pivot — `ingest = emit⁻¹` over the **same**
 bidirectional relation (00_compile.dag C5). **`TargetModel`** is the
-Shape-A emit parameter in **`00_compile.dag`** and in **`05_emit.dag`
-`Owns` / B2-OMNI** (`emit: (InferredTree, TargetModel) -> …`). **P2
-boundary honesty:** **`05_emit.dag` is not yet internally consistent** — the
-frozen scope line still says "target spec" and **`Consumes` still lists
-`TargetSpec`**, while the **`Owns` / B2-OMNI / signature** spelling already
-moved to **`TargetModel`**. That is **one carrier, dual names in-flight** on
-the T-10 scaffold — not a second authority; reconcile the scope prose +
-**`Consumes`** line in the same CP-1b/T-10 close-out train that touches
-`05_emit.dag`. TASKS tracks the **typed `Owns` I/O** here. Emission *applies
+Shape-A emit parameter in **`00_compile.dag`** and in the **`05_emit.dag`
+B2-OMNI body signature** (`emit: (InferredTree, TargetModel) -> …`). **P2
+boundary honesty:** **`05_emit.dag` carried in-flight naming drift** — older
+scope/import prose said "target spec" / `TargetSpec`, while the body signature
+had already moved to **`TargetModel`**. That was **one carrier, dual names
+in-flight** on the T-10 scaffold — not a second authority; reconcile any
+remaining scope prose or imports in the same CP-1b/T-10 close-out train that
+touches `05_emit.dag`. TASKS tracks the **typed body I/O** here. Emission *applies
 the target language's declarative grammar in the inverse direction* (`Node`
 → concrete syntax). The orchestrator `compile = emit ∘ core ∘ ingest`
 composes the three; `run = eval ∘ core ∘ ingest` is the sibling execution
@@ -571,11 +570,11 @@ if any emission step cannot be expressed as inverse grammar-data.)
 **I/O**:
 - `emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>` — the emit
   boundary, the U1 Realize phase, inverse of `ingest` (matches `00_compile.dag` and
-  `05_emit.dag` **`Owns`** contract headers; see the `TargetSpec` / scope-line caveat above).
+  `05_emit.dag` body signatures; see the `TargetSpec` / scope-line caveat above).
 - `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
   `emit ∘ core ∘ ingest`.
 
-**`Result` vs `Outcome` (literal alignment, api-review):** **Ground in merged headers, not TASKS invention:** `compiler/00_compile.dag` **`Owns`** spells **`Result<…, Diagnostic>`** for `ingest` / `core` / `emit` / `eval` today; `compiler/01_tokenize.dag` and `compiler/02_parse.dag` **`Owns`** still spell **`Outcome<…>`** on `tokenize` / `parse`. Stage files **import** `Outcome` (and `Diagnostic`) from **`std/diagnostic.dag`**, which **`Owns`** the declared **`Outcome<T>`** carrier — there is no parallel `.dag` `Result<ok, err>` type (per DECISIONS.md item **I**). TASKS quotes **`Result`** here only where **`00_compile.dag` / `05_emit.dag` `Owns`** do (emit/compile bullets above); do not “standardize” orchestrator prose to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
+**`Result` vs `Outcome` (literal alignment, api-review):** **Ground in merged body signatures, not TASKS invention:** `compiler/00_compile.dag` spells **`Result<…, Diagnostic>`** for `ingest` / `core` / `emit` / `eval` today; `compiler/01_tokenize.dag` and `compiler/02_parse.dag` still spell **`Outcome<…>`** on `tokenize` / `parse`. Stage files **import** `Outcome` (and `Diagnostic`) from **`std/diagnostic.dag`**, whose body declares the **`Outcome<T>`** carrier — there is no parallel `.dag` `Result<ok, err>` type. TASKS quotes **`Result`** here only where **`00_compile.dag` / `05_emit.dag` body signatures** do (emit/compile bullets above); do not “standardize” orchestrator prose to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
 
 **Modeling decisions**:
 - How the `TargetModel`'s grammar drives emission **as the inverse walk**
@@ -844,9 +843,9 @@ model shape to keep the probe "parallel."
 
 #### T-4.9: `extdeps/languages/verilog.dag`
 - **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
-- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** — path line, the four-line `Scope` / `Owns` / `Consumes` / `Status` block, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative lives **here** and under `DECISIONS.md` **L-1**, not as parallel prose authority in the substrate header. **Boundary (P2):** the **authoritative import surface** is the header `Consumes: std/node.dag; std/nat.dag (Nat)` — not the execution-graph tag `[needs T-1, T-2]` (that tag names **substrate schedule prerequisites**: `node` + `algebra` must exist before the probe is fillable). T-2 facts reach Verilog through `std/nat.dag` (which **Consumes** `std/algebra.dag`), not by importing `algebra.dag` directly in this file.
+- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** and script-owned where generated — path line, `Scope` / generated `Owns` / generated `Consumes` / `Status`, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9; strict-deprose allowlist). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative lives **here** and in PR review, not as parallel prose authority in the substrate header. **Boundary (P2):** the **authoritative import surface** is the module's import/body contract (`std/node.dag`; `std/nat.dag (Nat)`) — not the execution-graph tag `[needs T-1, T-2]` (that tag names **substrate schedule prerequisites**: `node` + `algebra` must exist before the probe is fillable). T-2 facts reach Verilog through `std/nat.dag` (which imports `std/algebra.dag`), not by importing `algebra.dag` directly in this file.
 - **Clear win**: one `.dag` FSM → simulable Verilog + a Rust reference model, same Node, zero translator.
-- **Owns D3200 dissolution arrival**: `SL-3229-VERILOG-D3200` gates on this task, specifically the Verilog `LanguageModel` axis rework that decomposes `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, and `PrimitiveGateKind` against their merge-base richer-source axes. This is a T-4.9-owned arrival, not the mainstream T-4 language fact-bundle task.
+- **D3200 dissolution arrival is owned here**: `SL-3229-VERILOG-D3200` gates on this task, specifically the Verilog `LanguageModel` axis rework that decomposes `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, and `PrimitiveGateKind` against their merge-base richer-source axes. This is a T-4.9-owned arrival, not the mainstream T-4 language fact-bundle task.
 - **Scope**: L (substrate-validating; concurrency model is the risk).
 
 #### T-4.10: `extdeps/formats/spice.dag`
@@ -1191,9 +1190,9 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 follow-on to T-26 (`feature:network-validated-components`), not gated on T-25-core.
 `NonEmptyList` witness in `src/v4/test/claim/manual/refinement_nonempty_list.dag`
 (acceptance witness, T-22 exec) is similarly unblocked.
-**Independent sub-bug (resolved):** `file_system.dag` header dangling-`Consumes`
-(cited `std/collection NonEmptyList` before T-25-core landed) is corrected — the header
-no longer cites a non-existent type.
+**Independent sub-bug (resolved):** `file_system.dag` had stale import prose
+for `std/collection NonEmptyList` before T-25-core landed; that stale reference
+is corrected and no longer cites a non-existent type.
 
 ### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SUBSTRATE LANDED]
 **Operator ruling 2026-05-17 — disposition unchanged (no fork); authority lives in `std/`.**
@@ -2044,13 +2043,17 @@ It has two parts:
   their prose indefinitely.
 
 **KEEP / REMOVE / RELOCATE** is the per-line classification:
-- **KEEP** — the structured header *contract* (a file's `Consumes` /
-  `Owns` / `Scope` lines, behavior tables, the machine-readable parts a
-  reviewer and the substrate depend on).
+- **KEEP** — the structured header *contract* that survives Practice 9:
+  the file path, terse `Scope` / `Status` boundary signals, anchors, and
+  one-line classification tags. `Owns` / `Consumes` are **not** kept for
+  ordinary `.dag` files; ownership is the module body, and consumption is
+  the import graph. The only exception is the strict-deprose allowlist
+  regenerated by `scripts/strict_deprose_dag.py`, where those two lines are
+  machine-owned header output.
 - **REMOVE** — rationale prose, narrative motivation, design-history
   asides: anything a reader does not need to *use* the file.
 - **RELOCATE** — long-form rationale worth keeping moves to
-  `src/v4/DECISIONS.md` or a `docs/` subdoc. The `.dag` file keeps **no
+  PR review or a `docs/` subdoc. The `.dag` file keeps **no
   pointer**: per Practice 9 a file's comments are only the four allowed
   classes (file-path line, terse header, per-carrier `// Anchor:`,
   optional one-line concept tag), and a `see docs/X` pointer is not one
@@ -2058,9 +2061,11 @@ It has two parts:
   not linked from the carrier.
 
 **Load-bearing files** (`node.dag`, `STRUCTURE.md`-named substrate,
-the four pipeline stages) de-prose **carefully**: KEEP the structured
-header contract intact — REMOVE only the rationale prose around it. When
-in doubt on a load-bearing file, KEEP.
+the four pipeline stages) de-prose **carefully**: keep the surviving
+Practice 9 header contract intact and remove `Owns` / `Consumes` unless
+the file is in the strict-deprose allowlist. When in doubt on a
+load-bearing file, keep only the allowed boundary signals and move
+process rationale out of the file.
 
 **Where it sits.** Parallel fill, **not** critical path — it does not
 block the T-4 gates and is not blocked by them. It cites

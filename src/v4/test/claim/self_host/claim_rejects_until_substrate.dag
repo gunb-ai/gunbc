@@ -1,7 +1,5 @@
 // src/v4/test/claim/self_host/claim_rejects_until_substrate.dag
 // Scope: scaffold claim — runner fails closed until execution substrate and candidate generation land.
-// Owns: claim_rejects_until_substrate.
-// Consumes: v4.compiler.self_host, v4.std.verification, v4.std.diagnostic, v4.std.node.
 // Status: scaffold-against-contract; execution deferred to future substrate.
 
 module v4.test.claim.self_host.claim_rejects_until_substrate

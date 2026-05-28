@@ -1,7 +1,5 @@
 // src/v4/lens/affected_set.dag
 // Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Owns: Dag, AffectedDimension, ExclusionKey, ExclusionProof, PropagationExclusionProof, BoundaryExclusionProof, BoundaryExclusion, FailClosedReason, FrontierDecision, ReExecFrontier, RerunNodeSet, AffectedSetReading, AffectedSetRead, HashReceipt, ChangedDimensionReceipt, FrontierDependency, FrontierReceipt, affected_set, affected_set_reading, re_exec_frontier_from_diff, affected_set_from_diff.
-// Consumes: List, Map, Diagnostic, Diff, Edit, Hash, Node, Path, Symbol, Witness, DependencyView, InferredTree; B1 content_hash receipts; B-4 resolved Symbol equality; B-5 per-Arrow signature effects.
 // Status: T-21 IRT-1 filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI/T-24 node-precision closure via affected_set_from_diff.
 
 module v4.lens.affected_set

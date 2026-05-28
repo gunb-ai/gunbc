@@ -1,8 +1,6 @@
 // src/v4/extdeps/cpp_abi.dag
 // Scope: C++ ABI / target data-model facts for implementation-defined fundamental widths.
 // Anchor: ISO/IEC 14882:2024 [basic.fundamental] + Itanium C++ ABI revision 1.86.
-// Owns: CppMachineWidth8/16/32/64, CppIntegerWidth, CppCoreIntegerWidthModel, CppPlainCharSignedness, CppWcharTSignedness, CppDataModelFamily, CppAbiModel, CppTargetDataModel, CppTargetProfile, Cpp{ILP32,LP64,LLP64,ILP64}DataModel<plain_char_signedness,wchar_t_signedness>.
-// Consumes: std/machine.dag vocabulary by coincidence index only: MachineWidth<Word8/16/32/64>.
 // Status: T-29 modeled 2026-05-18.
 
 module v4.extdeps.cpp_abi

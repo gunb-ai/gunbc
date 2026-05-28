@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/dependency_recompute_plan.dag
 // Scope: Wave-2-A dependency recomputation fixture.
-// Owns: dependency recomputation worked example rows.
-// Consumes: v4.std.change, v4.std.dependency, v4.std.diagnostic, v4.std.node.
 // Status: manual fixture until generated TestClaim execution lands.
 
 module v4.test.claim.manual.dependency_recompute_plan

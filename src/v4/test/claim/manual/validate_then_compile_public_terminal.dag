@@ -1,10 +1,5 @@
 // src/v4/test/claim/manual/validate_then_compile_public_terminal.dag
 // Scope: Wave-5-A — P3 commitment 6 public terminal; empty required-lens list + reject-before-compile gate.
-// Owns: claim_validate_then_compile_module_compiles, claim_empty_lenses_skips_gate,
-//       claim_rejecting_lens_blocks_before_compile, anchor_validate_then_compile_empty_lenses,
-//       anchor_validate_then_compile_rejecting_lens, grounding_sanity_lens (test scaffold only).
-// Consumes: compiler/00_compile.dag, test/claim/manual/infer_ground_add_mvp.dag, std/diagnostic.dag,
-//           std/node.dag, std/verification.dag, std/witness.dag.
 // Status: scaffold — full Accepted TargetSource blocked on infer descent + rust LanguageModel (Wave-4).
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6
 

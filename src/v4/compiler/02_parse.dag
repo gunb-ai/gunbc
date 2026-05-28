@@ -1,17 +1,6 @@
 // src/v4/compiler/02_parse.dag
 // Scope: generic parsing over language grammar rules.
 // Anchor: https://en.wikipedia.org/wiki/Parsing
-// Owns: Grammar type hierarchy (GrammarExpr/GrammarProduction/GrammarRoot), ParseTree, parse walk,
-//       Node projection functions, left-recursion check, error-recovery helpers,
-//       ParseSyncState, TokenPeek, ParseRepeatAcc, parse_diag_cons, parse_token_first,
-//       parse_e1_syntax_error, expr_is_nullable_given_set, compute_nullable_step,
-//       compute_nullable_set, grammar_empty_corner_list, expr_direct_left_corner_list,
-//       compute_left_corner_closure, expr_has_undefined_nonterminal,
-//       grammar_has_undefined_nonterminals, grammar_validate_for_parse, ValidatedGrammarRoot,
-//       grammar_has_left_recursion_step,
-//       grammar_has_undefined_nonterminals_step, parse_sync_step, build_parse_table,
-//       grammar_carries_symbol.
-// Consumes: std diagnostic, std node, std algebra, std collection, std witness, compiler tokenize.
 // Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
 //         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
 //         parse_expr Nonterminal arm uses memoized ParseTable (position × production) built by

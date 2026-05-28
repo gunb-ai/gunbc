@@ -1,7 +1,5 @@
 // src/v4/std/artifact.dag
 // Scope: artifact identity and Node-to-artifact provenance.
-// Owns: ArtifactKind, Artifact, NodeArtifactProvenance.
-// Consumes: v4.std.node, v4.std.text.
 // Status: Wave-2-A substrate.
 
 module v4.std.artifact

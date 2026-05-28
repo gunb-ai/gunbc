@@ -1,7 +1,5 @@
 // src/v4/std/constraint_satisfaction_predicate.dag
 // Scope: mechanical constraint-satisfaction preservation check.
-// Owns: constraint_satisfaction_preservation_holds.
-// Consumes: std/node.dag.
 // Status: T-25-tail predicate prover.
 // Anchor: docs/design-v4-compiler-homomorphism.md
 

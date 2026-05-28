@@ -1,9 +1,5 @@
 // src/v4/std/target_model.dag
 // Scope: TargetModel Conj-bundle edge keys + grammar-relation protocol symbols.
-// Owns: target_model_edge_selection_policy, target_model_edge_declared_inhabitants,
-//       target_model_edge_translation_rules, target_model_edge_serialize_source, grammar_relation_field_*,
-//       concrete_syntax_token_field_*, concrete_syntax_token_kind_*, serialize_source_field_*.
-// Consumes: v4.std.node.
 // Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
 
 module v4.std.target_model

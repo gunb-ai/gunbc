@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_coverage/sibling_degenerate_not_hollow.dag
 // Scope: T-18 negative claim — DegenerateType acceptance does not alias HollowType.
-// Owns: claim_sibling_degenerate_not_hollow.
-// Consumes: lens coverage, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_coverage.sibling_degenerate_not_hollow

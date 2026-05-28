@@ -14,24 +14,6 @@
 //         is annotation shorthand, the modeled mechanism is a structural
 //         cost bound + lens derivation. Also lens/complexity.dag.
 //
-// Owns:
-//   - test_overcost_against_structural_bound_violates: TestClaim
-//     - input: an operation at a position whose structural cost bound is
-//       ≤ O(n log n) (propagated from its consumer / algebra inhabitance)
-//       whose body lens/complexity.dag derives as O(n²)
-//     - expected: Diagnostic { reason: SuboptimalComplexityViolation,
-//       correction: Correction, at: <cost-violating composition> }
-//   - test_within_structural_bound_passes: TestClaim
-//     - input: the same body where no consuming position imposes a tighter
-//       bound → compiles (the requirement is structural context, not a tag)
-//   - test_cost_contradicts_inhabitance_caught: TestClaim
-//     - input: an operation whose lens-derived cost contradicts the cost
-//       class its algebra inhabitance fixes (e.g. a "constant-cost" monoid
-//       op that composes a linear scan) → Diagnostic
-//
-// Consumes:
-//   - std/verification.dag, std/diagnostic.dag, std/algebra.dag, lens/complexity.dag
-//
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 

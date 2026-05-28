@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_complexity/nested.dag
 // Scope: T-12 worked claim — nested structural cardinalities project to polynomial complexity.
-// Owns: nested_claim.
-// Consumes: lens cost, lens complexity, std diagnostic, std node.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_complexity.nested

@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_fact_density/fact_bundle_named.dag
 // Scope: T-30 worked claim — conj with named fields records NamedFieldFacts density.
-// Owns: claim_fact_bundle_named.
-// Consumes: lens fact_density, std cardinality, std nat, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.fact_bundle_named

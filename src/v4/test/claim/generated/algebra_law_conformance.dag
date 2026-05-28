@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/algebra_law_conformance.dag
 // Scope: T-19 generated algebra-law TestClaim rows from Nat algebra subjects.
-// Owns: algebra-law generated sample rows via testgen_emit_algebra_law_claim.
-// Consumes: v4.lens.testgen, v4.std.nat, v4.std.verification, v4.test.claim.algebra_laws.nat_semiring.
 // Status: generated corpus — first non-LBE generator slice; execution deferred to T-22 runner bridge.
 
 module v4.test.claim.generated.algebra_law_conformance
