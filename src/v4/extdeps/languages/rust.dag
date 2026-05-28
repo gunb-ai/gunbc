@@ -381,6 +381,7 @@ data rust_production_param_list: Symbol = rust_production_param_list
 data rust_production_type: Symbol = rust_production_type
 data rust_production_block: Symbol = rust_production_block
 data rust_production_stmt: Symbol = rust_production_stmt
+data rust_production_expr_stmt: Symbol = rust_production_expr_stmt
 data rust_production_let_stmt: Symbol = rust_production_let_stmt
 data rust_production_if_expr: Symbol = rust_production_if_expr
 data rust_production_return_expr: Symbol = rust_production_return_expr
@@ -395,6 +396,7 @@ data rust_surface_param_list: Symbol = rust_surface_param_list
 data rust_surface_type: Symbol = rust_surface_type
 data rust_surface_block: Symbol = rust_surface_block
 data rust_surface_stmt: Symbol = rust_surface_stmt
+data rust_surface_expr_stmt: Symbol = rust_surface_expr_stmt
 data rust_surface_let_stmt: Symbol = rust_surface_let_stmt
 data rust_surface_if_expr: Symbol = rust_surface_if_expr
 data rust_surface_return_expr: Symbol = rust_surface_return_expr
@@ -2205,10 +2207,11 @@ fn rust_grammar_additive_expr() -> GrammarExpr {
   )
 }
 
+// Rust Reference: comparison operators are non-chaining (at most one relational op).
 fn rust_grammar_comparison_expr() -> GrammarExpr {
   rust_grammar_sequence(
     left: rust_grammar_nonterminal(production: rust_production_additive_expr),
-    right: rust_grammar_repeat(
+    right: rust_grammar_optional(
       element: rust_grammar_sequence(
         left: rust_grammar_terminal(token_class: rust_token_gt),
         right: rust_grammar_nonterminal(production: rust_production_additive_expr)
@@ -2218,7 +2221,17 @@ fn rust_grammar_comparison_expr() -> GrammarExpr {
 }
 
 fn rust_grammar_expr_expr() -> GrammarExpr {
-  rust_grammar_nonterminal(production: rust_production_comparison_expr)
+  rust_grammar_choice(
+    left: rust_grammar_nonterminal(production: rust_production_return_expr),
+    right: rust_grammar_nonterminal(production: rust_production_comparison_expr)
+  )
+}
+
+fn rust_grammar_expr_stmt_expr() -> GrammarExpr {
+  rust_grammar_sequence(
+    left: rust_grammar_nonterminal(production: rust_production_comparison_expr),
+    right: rust_grammar_terminal(token_class: rust_token_semicolon)
+  )
 }
 
 fn rust_grammar_return_expr() -> GrammarExpr {
@@ -2256,15 +2269,13 @@ fn rust_grammar_if_expr() -> GrammarExpr {
   )
 }
 
+// Rust Reference §17.11: Statement+ then optional tail ExpressionWithoutBlock (no semicolon).
 fn rust_grammar_stmt_expr() -> GrammarExpr {
   rust_grammar_choice(
     left: rust_grammar_nonterminal(production: rust_production_let_stmt),
     right: rust_grammar_choice(
       left: rust_grammar_nonterminal(production: rust_production_if_expr),
-      right: rust_grammar_choice(
-        left: rust_grammar_nonterminal(production: rust_production_return_expr),
-        right: rust_grammar_nonterminal(production: rust_production_expr)
-      )
+      right: rust_grammar_nonterminal(production: rust_production_expr_stmt)
     )
   )
 }
@@ -2274,7 +2285,10 @@ fn rust_grammar_block_expr() -> GrammarExpr {
     left: rust_grammar_terminal(token_class: rust_token_lbrace),
     right: rust_grammar_sequence(
       left: rust_grammar_repeat(element: rust_grammar_nonterminal(production: rust_production_stmt)),
-      right: rust_grammar_terminal(token_class: rust_token_rbrace)
+      right: rust_grammar_sequence(
+        left: rust_grammar_optional(element: rust_grammar_nonterminal(production: rust_production_expr)),
+        right: rust_grammar_terminal(token_class: rust_token_rbrace)
+      )
     )
   )
 }
@@ -2335,6 +2349,11 @@ fn rust_wave2_grammar_root() -> GrammarRoot {
     expression: rust_grammar_stmt_expr(),
     emitted: rust_surface_stmt
   )
+  let expr_stmt = rust_grammar_production(
+    name: rust_production_expr_stmt,
+    expression: rust_grammar_expr_stmt_expr(),
+    emitted: rust_surface_expr_stmt
+  )
   let let_stmt = rust_grammar_production(
     name: rust_production_let_stmt,
     expression: rust_grammar_let_stmt_expr(),
@@ -2380,6 +2399,7 @@ fn rust_wave2_grammar_root() -> GrammarRoot {
       type_prod,
       block,
       stmt,
+      expr_stmt,
       let_stmt,
       if_expr,
       return_expr,
