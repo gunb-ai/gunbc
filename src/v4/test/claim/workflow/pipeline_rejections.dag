@@ -170,9 +170,6 @@ data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 // 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
-// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
-data claim_hash_placeholder: Hash = claim_hash_placeholder
-data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
 
 
 fn pipeline_symbol_node(s: Symbol) -> Node {
@@ -315,11 +312,7 @@ fn pipeline_rejection_subject(
 fn workflow_pipeline_run(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimRun<CiPipeline, CiPipeline> {
   let actual = ci_pipeline_well_formed(p: subject.input.evaluator_input)
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash_placeholder,
-      interpretation_hash: interpretation_hash_placeholder
-    ),
+    cache: test_claim_cache_receipt(subject: subject),
     verdict: run_pipeline_assert(
       claim: subject.claim,
       actual: actual,

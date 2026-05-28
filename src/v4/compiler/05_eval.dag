@@ -13,6 +13,7 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
+import v4.std.algebra { fold_list }
 import v4.std.collection { List, Map, list_nth }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
@@ -59,6 +60,8 @@ import v4.std.node {
   Transform,
   TypeNode,
   Value,
+  Atom,
+  content_hash,
   fold_node,
   is_positional,
   well_formed
@@ -93,6 +96,7 @@ import v4.std.verification {
   EqualsClaim,
   RoundTripClaim,
   TestClaim,
+  test_claim_evaluation_nodes,
   test_claim_input
 }
 import v4.std.witness { Holds, Violates, Witness }
@@ -130,21 +134,15 @@ type TestClaimEvalSubject<T> {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: B1 content_hash of the whole TestClaim evaluation subgraph replaces staging placeholders; forbidden: caller-supplied hash parameters acting as cache-validating authority before B1 content_hash lands.
-type TestClaimCacheKeyStagingPlaceholder {
+// 🟢 TERMINAL — B1 content_hash of TestClaim evaluation nodes (IRT-4 / TASKS.md T-22).
+type TestClaimCacheKey<T> {
+  eval_subject: TestClaimEvalSubject<T>
   claim_hash: Hash
   interpretation_hash: Hash
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: cache key derived from content_hash(eval_subject); hash_staging is NOT cache-validating authority until B1 lands.
-type TestClaimCacheKey<T> {
-  eval_subject: TestClaimEvalSubject<T>
-  hash_staging: TestClaimCacheKeyStagingPlaceholder
-}
-
-
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: receipt keyed by derived content_hash; forbidden: treating hash_staging as authoritative cache boundary.
+// 🟢 TERMINAL — receipt keyed by derived content_hash facts on eval_subject (IRT-4).
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -173,18 +171,39 @@ type EvalProgress
   | Interpreted
 
 
-fn test_claim_cache_receipt<T>(
-  subject: TestClaimEvalSubject<T>,
-  claim_hash: Hash,
-  interpretation_hash: Hash
-) -> TestClaimCacheReceipt<T> {
+data test_claim_cache_claim_digest_tag: Symbol = test_claim_cache_claim_digest_tag
+
+
+fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: tag } },
+    children: []
+  }
+}
+
+
+fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
+  fold_list(
+    xs: test_claim_evaluation_nodes(c: c),
+    empty: content_hash(n: test_claim_cache_digest_tag_node(tag: test_claim_cache_claim_digest_tag)),
+    cons: fn(acc, n) {
+      hash_combine(a: acc, b: content_hash(n: n))
+    }
+  )
+}
+
+
+fn test_claim_cache_interpretation_hash<T>(subject: TestClaimEvalSubject<T>) -> Hash {
+  content_hash(n: subject.tree.root)
+}
+
+
+fn test_claim_cache_receipt<T>(subject: TestClaimEvalSubject<T>) -> TestClaimCacheReceipt<T> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
-      hash_staging: TestClaimCacheKeyStagingPlaceholder {
-        claim_hash: claim_hash,
-        interpretation_hash: interpretation_hash
-      }
+      claim_hash: test_claim_evaluation_nodes_digest(c: subject.claim),
+      interpretation_hash: test_claim_cache_interpretation_hash(subject: subject)
     }
   }
 }
@@ -1071,11 +1090,8 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — claim_hash/interpretation_hash are staging placeholders, NOT cache-validating authority; dissolve-on: B1 content_hash derivation replaces caller-supplied hashes.
 fn run_test_claim(
-  subject: TestClaimEvalSubject<Node>,
-  claim_hash: Hash,
-  interpretation_hash: Hash
+  subject: TestClaimEvalSubject<Node>
 ) -> TestClaimRun<Node, RuntimeValue> {
   let actual = eval(
     tree: subject.tree,
@@ -1084,11 +1100,7 @@ fn run_test_claim(
   )
   let at = test_claim_input(c: subject.claim)
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash,
-      interpretation_hash: interpretation_hash
-    ),
+    cache: test_claim_cache_receipt(subject: subject),
     verdict: aggregate_verdicts(
       rs: [
         run_test_claim_runtime_assert(

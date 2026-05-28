@@ -87,11 +87,6 @@ data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
 data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_symbol
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
-// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
-data claim_hash_placeholder: Hash = claim_hash_placeholder
-data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
-
-
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
 // 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
