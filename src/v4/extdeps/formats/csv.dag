@@ -5,7 +5,7 @@
 
 module v4.extdeps.formats.csv
 
-import v4.compiler.parse { GrammarSchema }
+import v4.std.grammar { GrammarSchema }
 import v4.std.collection { Optional }
 
 

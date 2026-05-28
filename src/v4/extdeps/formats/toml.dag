@@ -6,7 +6,7 @@
 module v4.extdeps.formats.toml
 
 
-import v4.compiler.parse { GrammarSchema }
+import v4.std.grammar { GrammarSchema }
 import v4.std.datetime { LocalDate, LocalDateTime, LocalTime, OffsetDateTime }
 
 

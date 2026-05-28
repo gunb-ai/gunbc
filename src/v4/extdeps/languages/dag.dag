@@ -8,8 +8,8 @@ module v4.extdeps.languages.dag
 
 
 import v4.std.collection { List, Set }
-import v4.compiler.parse {
-  Grammar,
+import v4.std.grammar {
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -23,7 +23,7 @@ import v4.compiler.parse {
   VoidGrammar,
   grammar_carries_symbol
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
@@ -196,7 +196,7 @@ data dag_surface_fn_literal: Symbol = dag_surface_fn_literal
 
 type DagLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
 }
@@ -1667,12 +1667,12 @@ fn dag_wave1_grammar_root() -> GrammarRoot {
 }
 
 
-fn dag_wave1_g0_void_grammar() -> Grammar {
+fn dag_wave1_g0_void_grammar() -> ParseGrammar {
   VoidGrammar
 }
 
 
-fn dag_wave1_grammar() -> Grammar {
+fn dag_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_wave1_grammar_root() }
 }
 
