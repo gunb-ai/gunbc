@@ -65,13 +65,13 @@ import v4.std.target_model {
   target_model_edge_serialize_source
 }
 import v4.std.algebra {
-  approximate_field_type_node,
-  boolean_algebra_type_node,
+  approximate_field_node,
+  boolean_algebra_node,
   Empty,
   fold_list,
   list_append,
   list_snoc_item,
-  ordered_ring_type_node
+  ordered_ring_node
 }
 import v4.std.text { String }
 
@@ -672,7 +672,7 @@ fn python_bool_algebra_witness_node(facts: PythonBoolPrimitiveFacts) -> Node {
 fn python_integer_algebra_inhabitance(facts: PythonIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = python_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: ordered_ring_type_node(inhabitant: inhabitant),
+    algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: python_integer_algebra_witness_node(facts: facts)
   }
@@ -681,7 +681,7 @@ fn python_integer_algebra_inhabitance(facts: PythonIntegerPrimitiveFacts) -> Alg
 fn python_float_algebra_inhabitance(facts: PythonFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = python_float_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: approximate_field_type_node(inhabitant: inhabitant),
+    algebra: approximate_field_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: python_float_algebra_witness_node(facts: facts)
   }
@@ -690,7 +690,7 @@ fn python_float_algebra_inhabitance(facts: PythonFloatPrimitiveFacts) -> Algebra
 fn python_bool_algebra_inhabitance(facts: PythonBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = python_bool_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
-    algebra: boolean_algebra_type_node(inhabitant: inhabitant),
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
     witness: python_bool_algebra_witness_node(facts: facts)
   }
