@@ -1761,7 +1761,7 @@ data swift_witness_float_approximate_field: Symbol = swift_witness_float_approxi
 data swift_witness_bool_boolean_algebra: Symbol = swift_witness_bool_boolean_algebra
 data swift_witness_string_free_monoid: Symbol = swift_witness_string_free_monoid
 
-data swift_inhabitant_grapheme_cluster: Symbol = swift_inhabitant_grapheme_cluster
+data swift_inhabitant_unicode_scalar: Symbol = swift_inhabitant_unicode_scalar
 
 data swift_inhabitant_field_float: Symbol = swift_inhabitant_field_float
 data swift_inhabitant_field_bool: Symbol = swift_inhabitant_field_bool
@@ -1912,7 +1912,7 @@ fn swift_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
 
 fn swift_string_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_string)
-  let code_unit = swift_atom(id: swift_inhabitant_grapheme_cluster)
+  let code_unit = swift_atom(id: swift_inhabitant_unicode_scalar)
   AlgebraInhabitanceDecl {
     algebra: free_monoid_type_node(inhabitant: code_unit),
     inhabitant: inhabitant,
@@ -2139,7 +2139,7 @@ fn swift_bool_law_obligations() -> List<AlgebraLawObligation> {
 
 fn swift_string_law_obligations() -> List<AlgebraLawObligation> {
   let inhabitant = swift_nonnumeric_facts_node(facts: swift_facts_string)
-  let code_unit = swift_atom(id: swift_inhabitant_grapheme_cluster)
+  let code_unit = swift_atom(id: swift_inhabitant_unicode_scalar)
   let algebra = free_monoid_type_node(inhabitant: code_unit)
   let witness = swift_string_algebra_witness_node()
   [
@@ -2274,6 +2274,9 @@ data swift_partial_uint_remainder_by_zero: Symbol = swift_partial_uint_remainder
 data swift_precondition_divisor_nonzero: Symbol = swift_precondition_divisor_nonzero
 data swift_precondition_signed_division_not_min_over_negative_one: Symbol = swift_precondition_signed_division_not_min_over_negative_one
 data swift_partial_signed_min_divide_by_negative_one: Symbol = swift_partial_signed_min_divide_by_negative_one
+
+data swift_precondition_neither_arg_nan: Symbol = swift_precondition_neither_arg_nan
+data swift_partial_float_compare_nan: Symbol = swift_partial_float_compare_nan
 
 data swift_precondition_no_overflow: Symbol = swift_precondition_no_overflow
 data swift_partial_int_add_overflow: Symbol = swift_partial_int_add_overflow
