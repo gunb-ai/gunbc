@@ -204,8 +204,7 @@ data test_claim_cache_int_zero_tag: Symbol = test_claim_cache_int_zero_tag
 data test_claim_cache_int_one_tag: Symbol = test_claim_cache_int_one_tag
 data test_claim_cache_int_pos_tag: Symbol = test_claim_cache_int_pos_tag
 data test_claim_cache_int_neg_tag: Symbol = test_claim_cache_int_neg_tag
-data test_claim_cache_int_even_tag: Symbol = test_claim_cache_int_even_tag
-data test_claim_cache_int_odd_tag: Symbol = test_claim_cache_int_odd_tag
+data test_claim_cache_int_succ_tag: Symbol = test_claim_cache_int_succ_tag
 data test_claim_cache_correction_suggested_tag: Symbol = test_claim_cache_correction_suggested_tag
 data test_claim_cache_correction_unavailable_tag: Symbol = test_claim_cache_correction_unavailable_tag
 data test_claim_cache_locus_node_tag: Symbol = test_claim_cache_locus_node_tag
@@ -286,17 +285,10 @@ fn int_cache_digest_positive(i: Int) -> Hash {
   if i == 1 {
     test_claim_symbol_digest(sym: test_claim_cache_int_one_tag)
   } else {
-    if (i / 2) * 2 == i {
-      combine_hash(
-        a: test_claim_symbol_digest(sym: test_claim_cache_int_even_tag),
-        b: int_cache_digest_positive(i: i / 2)
-      )
-    } else {
-      combine_hash(
-        a: test_claim_symbol_digest(sym: test_claim_cache_int_odd_tag),
-        b: int_cache_digest_positive(i: (i - 1) / 2)
-      )
-    }
+    combine_hash(
+      a: test_claim_symbol_digest(sym: test_claim_cache_int_succ_tag),
+      b: int_cache_digest_positive(i: i - 1)
+    )
   }
 }
 
