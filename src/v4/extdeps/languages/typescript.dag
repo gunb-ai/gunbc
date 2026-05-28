@@ -1593,8 +1593,8 @@ fn ts_bool_law_obligations() -> List<AlgebraLawObligation> {
 
 fn ts_string_law_obligations(facts: TsStringPrimitiveFacts) -> List<AlgebraLawObligation> {
   let witness = ts_string_algebra_witness_node(facts: facts)
-  let inhabitant = ts_string_inhabitant_node(id: ts_inhabitant_string, facts: facts)
-  let algebra = free_monoid_type_node(inhabitant: inhabitant)
+  let code_unit = ts_inhabitant_atom(id: facts.code_unit_inhabitant)
+  let algebra = free_monoid_type_node(inhabitant: code_unit)
   [
     ts_model_core_law_obligation(
       witness: witness,
