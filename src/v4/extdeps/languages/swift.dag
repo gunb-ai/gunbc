@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/swift.dag
 // Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
+// Status: T-4 Swift wave-1; wave-1 grammar declared as `FormalProduction` flat rhs (`swift_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
 // Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
@@ -10,6 +10,12 @@ module v4.extdeps.languages.swift
 
 import v4.std.grammar {
   Choice,
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -302,6 +308,10 @@ data swift_production_expr: Symbol = swift_production_expr
 data swift_production_binary_expr: Symbol = swift_production_binary_expr
 data swift_production_call_expr: Symbol = swift_production_call_expr
 data swift_production_primary_expr: Symbol = swift_production_primary_expr
+data swift_production_param_list_suffix: Symbol = swift_production_param_list_suffix
+data swift_production_stmt_list: Symbol = swift_production_stmt_list
+data swift_production_expr_list: Symbol = swift_production_expr_list
+data swift_production_expr_list_suffix: Symbol = swift_production_expr_list_suffix
 
 data swift_surface_fn_item: Symbol = swift_surface_fn_item
 data swift_surface_typed_param: Symbol = swift_surface_typed_param
@@ -784,6 +794,357 @@ fn swift_mvp1_serialize_source_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: swift_mvp1_serialize_source_children()
   }
+}
+
+fn swift_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn swift_formal_nonterminal(production: Symbol) -> FormalGrammarSymbol {
+  FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
+}
+
+fn swift_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: lhs },
+    rhs: rhs
+  }
+}
+
+fn swift_formal_rhs_from_tokens(tokens: List<SwiftConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_formal_terminal(token_class: swift_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn swift_formal_production_mvp1_fn_add() -> FormalProduction {
+  swift_formal_production(
+    lhs: swift_production_mvp1_fn_add,
+    rhs: swift_formal_rhs_from_tokens(tokens: swift_mvp1_concrete_tokens())
+  )
+}
+
+// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
+fn swift_wave1_formal_productions() -> List<FormalProduction> {
+  [
+    swift_formal_production(lhs: swift_production_type_expr, rhs: [swift_formal_terminal(token_class: swift_token_ident)]),
+    swift_formal_production(
+      lhs: swift_production_typed_param,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_colon),
+        swift_formal_nonterminal(production: swift_production_type_expr)
+      ]
+    ),
+    swift_formal_production(lhs: swift_production_param_list, rhs: []),
+    swift_formal_production(
+      lhs: swift_production_param_list,
+      rhs: [swift_formal_nonterminal(production: swift_production_typed_param)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_param_list,
+      rhs: [
+        swift_formal_nonterminal(production: swift_production_typed_param),
+        swift_formal_terminal(token_class: swift_token_comma),
+        swift_formal_nonterminal(production: swift_production_typed_param),
+        swift_formal_nonterminal(production: swift_production_param_list_suffix)
+      ]
+    ),
+    swift_formal_production(lhs: swift_production_param_list_suffix, rhs: []),
+    swift_formal_production(
+      lhs: swift_production_param_list_suffix,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_comma),
+        swift_formal_nonterminal(production: swift_production_typed_param),
+        swift_formal_nonterminal(production: swift_production_param_list_suffix)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_fn_decl,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_func),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_lparen),
+        swift_formal_nonterminal(production: swift_production_param_list),
+        swift_formal_terminal(token_class: swift_token_rparen),
+        swift_formal_nonterminal(production: swift_production_block)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_fn_decl,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_func),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_lparen),
+        swift_formal_nonterminal(production: swift_production_param_list),
+        swift_formal_terminal(token_class: swift_token_rparen),
+        swift_formal_terminal(token_class: swift_token_arrow),
+        swift_formal_nonterminal(production: swift_production_type_expr),
+        swift_formal_nonterminal(production: swift_production_block)
+      ]
+    ),
+    swift_formal_production(lhs: swift_production_primary_expr, rhs: [swift_formal_terminal(token_class: swift_token_ident)]),
+    swift_formal_production(lhs: swift_production_primary_expr, rhs: [swift_formal_terminal(token_class: swift_token_int_literal)]),
+    swift_formal_production(lhs: swift_production_primary_expr, rhs: [swift_formal_terminal(token_class: swift_token_string_literal)]),
+    swift_formal_production(lhs: swift_production_primary_expr, rhs: [swift_formal_terminal(token_class: swift_token_kw_true)]),
+    swift_formal_production(lhs: swift_production_primary_expr, rhs: [swift_formal_terminal(token_class: swift_token_kw_false)]),
+    swift_formal_production(
+      lhs: swift_production_primary_expr,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_lparen),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_terminal(token_class: swift_token_rparen)
+      ]
+    ),
+    swift_formal_production(lhs: swift_production_expr_list, rhs: []),
+    swift_formal_production(
+      lhs: swift_production_expr_list,
+      rhs: [swift_formal_nonterminal(production: swift_production_expr)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_expr_list,
+      rhs: [
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_terminal(token_class: swift_token_comma),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_nonterminal(production: swift_production_expr_list_suffix)
+      ]
+    ),
+    swift_formal_production(lhs: swift_production_expr_list_suffix, rhs: []),
+    swift_formal_production(
+      lhs: swift_production_expr_list_suffix,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_comma),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_nonterminal(production: swift_production_expr_list_suffix)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_call_expr,
+      rhs: [swift_formal_nonterminal(production: swift_production_primary_expr)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_call_expr,
+      rhs: [
+        swift_formal_nonterminal(production: swift_production_call_expr),
+        swift_formal_terminal(token_class: swift_token_lparen),
+        swift_formal_nonterminal(production: swift_production_expr_list),
+        swift_formal_terminal(token_class: swift_token_rparen)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_binary_expr,
+      rhs: [swift_formal_nonterminal(production: swift_production_call_expr)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_binary_expr,
+      rhs: [
+        swift_formal_nonterminal(production: swift_production_binary_expr),
+        swift_formal_terminal(token_class: swift_token_operator),
+        swift_formal_nonterminal(production: swift_production_call_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_expr,
+      rhs: [swift_formal_nonterminal(production: swift_production_binary_expr)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_return_stmt,
+      rhs: [swift_formal_terminal(token_class: swift_token_kw_return)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_return_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_return),
+        swift_formal_nonterminal(production: swift_production_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_let),
+        swift_formal_terminal(token_class: swift_token_ident)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_let),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_colon),
+        swift_formal_nonterminal(production: swift_production_type_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_let),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_equal),
+        swift_formal_nonterminal(production: swift_production_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_let),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_colon),
+        swift_formal_nonterminal(production: swift_production_type_expr),
+        swift_formal_terminal(token_class: swift_token_equal),
+        swift_formal_nonterminal(production: swift_production_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_var),
+        swift_formal_terminal(token_class: swift_token_ident)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_var),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_colon),
+        swift_formal_nonterminal(production: swift_production_type_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_var),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_equal),
+        swift_formal_nonterminal(production: swift_production_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_let_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_var),
+        swift_formal_terminal(token_class: swift_token_ident),
+        swift_formal_terminal(token_class: swift_token_colon),
+        swift_formal_nonterminal(production: swift_production_type_expr),
+        swift_formal_terminal(token_class: swift_token_equal),
+        swift_formal_nonterminal(production: swift_production_expr)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_if_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_if),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_nonterminal(production: swift_production_block)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_if_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_if),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_nonterminal(production: swift_production_block),
+        swift_formal_terminal(token_class: swift_token_kw_else),
+        swift_formal_nonterminal(production: swift_production_block)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_if_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_if),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_nonterminal(production: swift_production_block),
+        swift_formal_terminal(token_class: swift_token_kw_else),
+        swift_formal_nonterminal(production: swift_production_if_stmt)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_while_stmt,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_kw_while),
+        swift_formal_nonterminal(production: swift_production_expr),
+        swift_formal_nonterminal(production: swift_production_block)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt,
+      rhs: [swift_formal_nonterminal(production: swift_production_return_stmt)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt,
+      rhs: [swift_formal_nonterminal(production: swift_production_let_stmt)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt,
+      rhs: [swift_formal_nonterminal(production: swift_production_if_stmt)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt,
+      rhs: [swift_formal_nonterminal(production: swift_production_while_stmt)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt,
+      rhs: [swift_formal_nonterminal(production: swift_production_expr)]
+    ),
+    swift_formal_production(lhs: swift_production_stmt_list, rhs: []),
+    swift_formal_production(
+      lhs: swift_production_stmt_list,
+      rhs: [swift_formal_nonterminal(production: swift_production_stmt)]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt_list,
+      rhs: [
+        swift_formal_nonterminal(production: swift_production_stmt_list),
+        swift_formal_nonterminal(production: swift_production_stmt)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_stmt_list,
+      rhs: [
+        swift_formal_nonterminal(production: swift_production_stmt_list),
+        swift_formal_terminal(token_class: swift_token_semicolon),
+        swift_formal_nonterminal(production: swift_production_stmt)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_block,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_lbrace),
+        swift_formal_terminal(token_class: swift_token_rbrace)
+      ]
+    ),
+    swift_formal_production(
+      lhs: swift_production_block,
+      rhs: [
+        swift_formal_terminal(token_class: swift_token_lbrace),
+        swift_formal_nonterminal(production: swift_production_stmt_list),
+        swift_formal_terminal(token_class: swift_token_rbrace)
+      ]
+    ),
+    swift_formal_production_mvp1_fn_add()
+  ]
+}
+
+fn swift_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+fn swift_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
+  fold_list(
+    xs: productions,
+    empty: false,
+    cons: fn(found, production) {
+      found || swift_formal_production_matches_lhs(production: production, lhs: lhs)
+    }
+  )
 }
 
 fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
