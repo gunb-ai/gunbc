@@ -12,7 +12,10 @@ module v4.test.claim.round_trip.dag_ingest_round_trip
 
 import v4.extdeps.languages.dag {
   DagLanguageModel,
+  DagBlockCommentDeclaredNormalized,
+  DagLineCommentDeclaredNormalized,
   DagTriviaNormalization,
+  DagWhitespaceDeclaredNormalized,
   dag_block_comment_fidelity,
   dag_language_model_surface_id,
   dag_language_model_wave1_modeled,
