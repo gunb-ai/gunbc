@@ -211,6 +211,11 @@ find src/v2 src/v4 dsl -name "*.dag" | xargs \
 # Then manual pass for inline trailing comments
 ```
 
+**IMPORTANT — preserve load-bearing markers before running:**
+- Lines matching `🟡 feature:` are dissolution triggers; **do not strip** (especially in `src/v4/`)
+- WHY-comments (non-obvious invariants, workarounds per CODING.md) must be kept
+- The sed above is a first-pass draft; do a manual review before committing the result
+
 ---
 
 ## 5. Binary distribution
