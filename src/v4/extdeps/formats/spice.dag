@@ -336,7 +336,6 @@ fn spice_format_grammar_schema() -> GrammarSchema {
 
 fn spice_format_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
-    schema: spice_format_grammar_schema(),
     fixture: "R1 n1 n2 1",
     production: spice_resistor_statement_formal_production(),
     expected_parse_surface: grammar_atom(identity: spice_surface_resistor_statement)

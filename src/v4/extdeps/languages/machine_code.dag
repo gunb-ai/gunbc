@@ -623,7 +623,6 @@ fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
 
 fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
-    schema: machine_code_x86_64_ingest_grammar_schema(),
     fixture: "nop",
     production: machine_code_wave1_formal_production(
       production_name: machine_code_production_x86_64_nop,
@@ -658,7 +657,6 @@ fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
 
 fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
-    schema: machine_code_aarch64_ingest_grammar_schema(),
     fixture: "nop",
     production: machine_code_wave1_formal_production(
       production_name: machine_code_production_aarch64_nop,
@@ -693,7 +691,6 @@ fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
 
 fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
-    schema: machine_code_riscv64_ingest_grammar_schema(),
     fixture: "nop",
     production: machine_code_wave1_formal_production(
       production_name: machine_code_production_riscv64_nop,

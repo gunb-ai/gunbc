@@ -276,7 +276,6 @@ fn ptx_ingest_grammar_schema() -> GrammarSchema {
 
 fn ptx_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
-    schema: ptx_ingest_grammar_schema(),
     fixture: ".entry k() {}",
     production: ptx_entry_kernel_formal_production(),
     expected_parse_surface: grammar_atom(identity: ptx_surface_entry_kernel)

@@ -121,7 +121,6 @@ type GrammarSchema {
 
 
 type GrammarSchemaProbe {
-  schema: GrammarSchema
   fixture: String
   production: FormalProduction
   expected_parse_surface: Node

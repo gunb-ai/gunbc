@@ -999,7 +999,6 @@ fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
 
 fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
-    schema: llvm_ir_ingest_grammar_schema(),
     fixture: "define void @f() { ret void }",
     production: llvm_void_function_formal_production(),
     expected_parse_surface: grammar_atom(identity: llvm_surface_void_function)
