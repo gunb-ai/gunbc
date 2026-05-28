@@ -288,15 +288,15 @@ wiring — a step that invokes T-22 eval on the claim corpus and surfaces
 
 **T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
 sequence IS authored (header: "Status: filled — compiler-of-record is the
-self-hosting structural fact; structural gate only"). Two scaffold placeholders
-remain before T-15 can consume it as a real fixed-point proof:
-(1) `bootstrap_footprint` (line 190) returns `Violates` pending
-`feature:t21-bootstrap-footprint-fold` — dissolves when T-21's affected-set/
-content-hash fold reads the projection input closure; T-21 merged (#3747), so
-this scaffold is now dispatchable.
-(2) `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
+self-hosting structural fact; structural gate only"). `bootstrap_footprint`
+filled (#3788): B1 `closure_hash` over projection closure + fail-closed
+`Witness` gate; manual anchor receipt in
+`src/v4/test/claim/manual/bootstrap_footprint_anchor.dag`. One scaffold
+placeholder remains before T-15 can consume it as a real fixed-point proof:
+`bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
 aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
-No dispatch against either placeholder today.
+Construct-list snapshot walk is separately tracked on `bootstrap_footprint_constructs`
+(🟡 `feature:bootstrap-footprint-constructs-walk`, owner T-32 §).
 
 ---
 

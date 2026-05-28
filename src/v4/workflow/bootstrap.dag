@@ -241,6 +241,7 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
   }
 }
 
+// 🟡 needs-more-work — feature:bootstrap-footprint-constructs-walk — scaffold:T-32 · dissolve-on: T-32 seed-reduction Phase-2+ replaces this hand-list with a snapshot-root Node walk that derives BootstrapConstruct identities per docs/design-bootstrap-fact-model.md §4 footprint fold; delete the four bootstrap_construct_* subset carriers here (ledger: src/v4/TASKS.md § T-32 — minimum never-hand-edited bootstrap seed; Phase-1 definition gates reduction — do not dispatch until operator ratifies).
 fn bootstrap_footprint_constructs() -> List<BootstrapConstruct> {
   [
     BootstrapConstruct { identity: bootstrap_construct_source_language_subset },
@@ -258,7 +259,6 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
     && (inputs.runtime_model == v4_evaluator_runtime_wave1())
 }
 
-// 🟡 needs-more-work — feature:t21-footprint-snapshot-walk — scaffold:T-32 Phase 1 · dissolve-on: deeper snapshot walk PR lands; constructs remain four frozen-submodel subset carriers until snapshot Node walk derives them.
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
   let closure_hash = content_hash(n: bootstrap_projection_closure_node(inputs: inputs))
   if bootstrap_projection_inputs_well_formed(inputs: inputs) {
