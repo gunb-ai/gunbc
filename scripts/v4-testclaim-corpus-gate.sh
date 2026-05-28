@@ -93,6 +93,14 @@ require_node() {
   fi
 }
 
+require_artifact_text() {
+  local text="$1"
+  if ! grep -F "$text" "$artifact" >/dev/null; then
+    echo "error: dag artifact missing text: $text" >&2
+    exit 1
+  fi
+}
+
 for file in "${manual_files[@]}"; do
   stem="$(basename "$file" .dag)"
   require_node "v4.test.claim.manual.${stem}"
@@ -117,11 +125,12 @@ for name in \
   TestClaimEvalSubject \
   run_test_claim \
   eval_test_claim_subject \
-  run_test_claim_assert \
-  run_test_claim_runtime_assert
+  run_test_claim_assert
 do
   require_node "$name"
 done
+
+require_artifact_text "run_test_claim_runtime_assert"
 
 require_node "v4.test.claim.manual.eval_runtime_mvp"
 require_node "claim_eval_mvp2_test_claim_route"
