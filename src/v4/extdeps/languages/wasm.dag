@@ -194,11 +194,9 @@ data wasm_token_rparen: Symbol = wasm_token_rparen
 data wasm_token_kw_module: Symbol = wasm_token_kw_module
 data wasm_token_kw_func: Symbol = wasm_token_kw_func
 data wasm_token_ident: Symbol = wasm_token_ident
-data wasm_token_param_list: Symbol = wasm_token_param_list
-data wasm_token_result: Symbol = wasm_token_result
+data wasm_token_kw_param: Symbol = wasm_token_kw_param
+data wasm_token_kw_result: Symbol = wasm_token_kw_result
 data wasm_token_local_get: Symbol = wasm_token_local_get
-data wasm_token_local_idx_0: Symbol = wasm_token_local_idx_0
-data wasm_token_local_idx_1: Symbol = wasm_token_local_idx_1
 data wasm_token_type_i32: Symbol = wasm_token_type_i32
 data wasm_token_type_i64: Symbol = wasm_token_type_i64
 data wasm_token_type_f32: Symbol = wasm_token_type_f32
@@ -282,12 +280,19 @@ fn wasm_mvp1_concrete_tokens() -> List<WasmConcreteSyntaxToken> {
     WasmFixedToken { token_class: wasm_token_lparen },
     WasmFixedToken { token_class: wasm_token_kw_func },
     WasmBoundToken { token_class: wasm_token_ident, binding: wasm_binding_fn_add },
-    WasmFixedToken { token_class: wasm_token_param_list },
-    WasmFixedToken { token_class: wasm_token_result },
+    WasmFixedToken { token_class: wasm_token_lparen },
+    WasmFixedToken { token_class: wasm_token_kw_param },
+    WasmFixedToken { token_class: wasm_token_type_i32 },
+    WasmFixedToken { token_class: wasm_token_type_i32 },
+    WasmFixedToken { token_class: wasm_token_rparen },
+    WasmFixedToken { token_class: wasm_token_lparen },
+    WasmFixedToken { token_class: wasm_token_kw_result },
+    WasmFixedToken { token_class: wasm_token_type_i32 },
+    WasmFixedToken { token_class: wasm_token_rparen },
     WasmFixedToken { token_class: wasm_token_local_get },
-    WasmFixedToken { token_class: wasm_token_local_idx_0 },
+    WasmFixedToken { token_class: wasm_token_int_numeric_literal },
     WasmFixedToken { token_class: wasm_token_local_get },
-    WasmFixedToken { token_class: wasm_token_local_idx_1 },
+    WasmFixedToken { token_class: wasm_token_int_numeric_literal },
     WasmFixedToken { token_class: wasm_token_i32_add },
     WasmFixedToken { token_class: wasm_token_rparen }
   ]
@@ -971,11 +976,15 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       },
       wasm_lex_rule(token_class: wasm_token_kw_func, text: "func "),
       wasm_ident_lex_rule(),
-      wasm_lex_rule(token_class: wasm_token_param_list, text: " (param i32 i32) "),
-      wasm_lex_rule(token_class: wasm_token_result, text: "(result i32) "),
-      wasm_lex_rule(token_class: wasm_token_local_get, text: "local.get "),
-      wasm_lex_rule(token_class: wasm_token_local_idx_0, text: "0 "),
-      wasm_lex_rule(token_class: wasm_token_local_idx_1, text: "1 "),
+      TokenRule {
+        token_class: wasm_token_kw_param,
+        pattern: KeywordPattern { text: "param" }
+      },
+      TokenRule {
+        token_class: wasm_token_kw_result,
+        pattern: KeywordPattern { text: "result" }
+      },
+      wasm_lex_rule(token_class: wasm_token_local_get, text: "local.get"),
       wasm_lex_rule(token_class: wasm_token_type_i32, text: "i32"),
       wasm_lex_rule(token_class: wasm_token_type_i64, text: "i64"),
       wasm_lex_rule(token_class: wasm_token_type_f32, text: "f32"),
@@ -1042,10 +1051,65 @@ fn wasm_grammar_atom(id: Symbol) -> Node {
   wasm_inhabitant_atom(id: id)
 }
 
+fn wasm_grammar_mvp1_fn_add_expr() -> GrammarExpr {
+  wasm_grammar_sequence(
+    left: wasm_grammar_terminal(token_class: wasm_token_lparen),
+    right: wasm_grammar_sequence(
+      left: wasm_grammar_terminal(token_class: wasm_token_kw_func),
+      right: wasm_grammar_sequence(
+        left: wasm_grammar_terminal(token_class: wasm_token_ident),
+        right: wasm_grammar_sequence(
+          left: wasm_grammar_terminal(token_class: wasm_token_lparen),
+          right: wasm_grammar_sequence(
+            left: wasm_grammar_terminal(token_class: wasm_token_kw_param),
+            right: wasm_grammar_sequence(
+              left: wasm_grammar_terminal(token_class: wasm_token_type_i32),
+              right: wasm_grammar_sequence(
+                left: wasm_grammar_terminal(token_class: wasm_token_type_i32),
+                right: wasm_grammar_sequence(
+                  left: wasm_grammar_terminal(token_class: wasm_token_rparen),
+                  right: wasm_grammar_sequence(
+                    left: wasm_grammar_terminal(token_class: wasm_token_lparen),
+                    right: wasm_grammar_sequence(
+                      left: wasm_grammar_terminal(token_class: wasm_token_kw_result),
+                      right: wasm_grammar_sequence(
+                        left: wasm_grammar_terminal(token_class: wasm_token_type_i32),
+                        right: wasm_grammar_sequence(
+                          left: wasm_grammar_terminal(token_class: wasm_token_rparen),
+                          right: wasm_grammar_sequence(
+                            left: wasm_grammar_terminal(token_class: wasm_token_local_get),
+                            right: wasm_grammar_sequence(
+                              left: wasm_grammar_terminal(token_class: wasm_token_int_numeric_literal),
+                              right: wasm_grammar_sequence(
+                                left: wasm_grammar_terminal(token_class: wasm_token_local_get),
+                                right: wasm_grammar_sequence(
+                                  left: wasm_grammar_terminal(token_class: wasm_token_int_numeric_literal),
+                                  right: wasm_grammar_sequence(
+                                    left: wasm_grammar_terminal(token_class: wasm_token_i32_add),
+                                    right: wasm_grammar_terminal(token_class: wasm_token_rparen)
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn wasm_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: wasm_production_mvp1_fn_add,
-    expression: wasm_grammar_sequence_from_token_classes(),
+    expression: wasm_grammar_mvp1_fn_add_expr(),
     emitted: wasm_grammar_atom(id: wasm_surface_fn_item)
   }
 }
