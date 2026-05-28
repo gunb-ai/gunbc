@@ -1124,6 +1124,118 @@ fn kotlin_grammar_production_mvp1_fn_add() -> GrammarProduction {
   )
 }
 
+fn kotlin_grammar_production_fn_decl() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_fn_decl,
+    expression: kotlin_grammar_fn_decl_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_fn_item)
+  }
+}
+
+fn kotlin_grammar_production_typed_param() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_typed_param,
+    expression: kotlin_grammar_typed_param_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_typed_param)
+  }
+}
+
+fn kotlin_grammar_production_param_list() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_param_list,
+    expression: kotlin_grammar_param_list_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_param_list)
+  }
+}
+
+fn kotlin_grammar_production_type_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_type_expr,
+    expression: kotlin_grammar_type_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_type_expr)
+  }
+}
+
+fn kotlin_grammar_production_block() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_block,
+    expression: kotlin_grammar_block_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_block)
+  }
+}
+
+fn kotlin_grammar_production_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_stmt,
+    expression: kotlin_grammar_stmt_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_stmt)
+  }
+}
+
+fn kotlin_grammar_production_return_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_return_stmt,
+    expression: kotlin_grammar_return_stmt_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_return_stmt)
+  }
+}
+
+fn kotlin_grammar_production_value_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_value_stmt,
+    expression: kotlin_grammar_value_stmt_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_value_stmt)
+  }
+}
+
+fn kotlin_grammar_production_if_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_if_stmt,
+    expression: kotlin_grammar_if_stmt_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_if_stmt)
+  }
+}
+
+fn kotlin_grammar_production_while_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_while_stmt,
+    expression: kotlin_grammar_while_stmt_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_while_stmt)
+  }
+}
+
+fn kotlin_grammar_production_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_expr,
+    expression: kotlin_grammar_expr_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_expr)
+  }
+}
+
+fn kotlin_grammar_production_binary_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_binary_expr,
+    expression: kotlin_grammar_binary_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_binary_expr)
+  }
+}
+
+fn kotlin_grammar_production_call_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_call_expr,
+    expression: kotlin_grammar_call_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_call_expr)
+  }
+}
+
+fn kotlin_grammar_production_primary_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: kotlin_production_primary_expr,
+    expression: kotlin_grammar_primary_expr(),
+    emitted: kotlin_grammar_atom(id: kotlin_surface_primary_expr)
+  }
+}
+
 fn kotlin_mvp1_grammar_relation_row() -> KotlinGrammarRelationRow {
   KotlinGrammarRelationRow {
     head: kotlin_mvp1_concrete_token_head,
@@ -1627,9 +1739,39 @@ fn kotlin_mvp1_parse_tokens() -> Outcome<List<Token>> {
 
 fn kotlin_wave1_grammar_root() -> GrammarRoot {
   let start = kotlin_grammar_production_mvp1_fn_add()
+  let fn_decl = kotlin_grammar_production_fn_decl()
+  let typed_param = kotlin_grammar_production_typed_param()
+  let param_list = kotlin_grammar_production_param_list()
+  let type_expr = kotlin_grammar_production_type_expr()
+  let block = kotlin_grammar_production_block()
+  let stmt = kotlin_grammar_production_stmt()
+  let return_stmt = kotlin_grammar_production_return_stmt()
+  let value_stmt = kotlin_grammar_production_value_stmt()
+  let if_stmt = kotlin_grammar_production_if_stmt()
+  let while_stmt = kotlin_grammar_production_while_stmt()
+  let expr = kotlin_grammar_production_expr()
+  let binary_expr = kotlin_grammar_production_binary_expr()
+  let call_expr = kotlin_grammar_production_call_expr()
+  let primary_expr = kotlin_grammar_production_primary_expr()
   GrammarRoot {
-    start: kotlin_production_mvp1_fn_add,
-    productions: [start],
+    start: kotlin_production_fn_decl,
+    productions: [
+      start,
+      fn_decl,
+      typed_param,
+      param_list,
+      type_expr,
+      block,
+      stmt,
+      return_stmt,
+      value_stmt,
+      if_stmt,
+      while_stmt,
+      expr,
+      binary_expr,
+      call_expr,
+      primary_expr
+    ],
     sync_tokens: grammar_empty_sync_tokens()
   }
 }
@@ -1648,8 +1790,9 @@ fn kotlin_wave1_lex_token_symbol(sym: Symbol) -> Bool {
 fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
-      kotlin_catalog_surface_symbol(sym: sym) ||
+        kotlin_catalog_surface_symbol(sym: sym) ||
         kotlin_wave1_lex_token_symbol(sym: sym) ||
+        grammar_carries_symbol(grammar: kotlin_wave1_grammar(), sym: sym) ||
         sym == kotlin_surface_fn_item ||
         sym == kotlin_production_mvp1_fn_add ||
         sym == kotlin_mvp1_source_literal ||
