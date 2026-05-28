@@ -1,7 +1,5 @@
 // src/v4/extdeps/formatters/rustfmt.dag
 // Scope: rustfmt configuration model — option space grounded in rustfmt v1.6.0 toml reference.
-// Owns: RustfmtIndentStyle, RustfmtBraceStyle, RustfmtControlBraceStyle, RustfmtTrailingComma, RustfmtMatchArmLeadingPipes, RustfmtImportsGranularity, RustfmtGroupImports, RustfmtImportsLayout, RustfmtFnParamsLayout, RustfmtNewlineStyle, RustfmtEdition, RustfmtSmallHeuristics, RustfmtHexLiteralCase, RustfmtVersion, RustfmtBinopSeparator, RustfmtColor, RustfmtTypePunctuationDensity, RustfmtMacroSelector, RustfmtRequiredVersion, RustfmtConfig, rustfmt_defaults, RustfmtConfigPatch, rustfmt_layer.
-// Consumes: v4.std.patch { FieldPatch, apply_field_patch }.
 // Status: T-4.16 scaffold — full option space grounded in rustfmt v1.6.0 toml reference.
 // Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
 

@@ -1,7 +1,5 @@
 // src/v4/extdeps/formatters/black.dag
 // Scope: Black 26.5.1 pyproject [tool.black] configuration model.
-// Owns: BlackTargetVersion, BlackTargetVersionPolicy, BlackRequiredVersionPolicy, BlackUnstableFeature, BlackConfig, black_defaults, BlackConfigPatch, black_layer.
-// Consumes: v4.std.collection { List }, v4.std.patch { FieldPatch, apply_field_patch }.
 // Status: T-4.16 scaffold — Black 26.5.1 pyproject schema.
 // Anchor: https://github.com/psf/black/blob/26.5.1/src/black/resources/black.schema.json
 
