@@ -1,0 +1,90 @@
+// src/v4/std/lexing.dag
+// Scope: canonical lexical model shared by compiler stages and target-language specs.
+// Anchor: THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-6.
+// Status: T-6 lexical data carriers; lexer implementation remains in v4.compiler.tokenize.
+
+module v4.std.lexing
+
+import v4.std.algebra { fold_list }
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.std.node { Symbol }
+import v4.std.text { Char, String }
+
+// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
+type LexCharClass
+  = WhitespaceChar
+  | DigitChar
+  | HexDigitChar
+  | IdentStartChar
+  | IdentContinueChar
+  | StringTextChar
+  | LineCommentTextChar
+  | BlockCommentTextChar
+
+
+// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
+type LexPattern
+  = EmptyPattern
+  | LiteralPattern { text: String }
+  | KeywordPattern { text: String }
+  | CharPattern { char: Char }
+  | CharClassPattern { class: LexCharClass }
+  | SequencePattern { left: LexPattern, right: LexPattern }
+  | ChoicePattern { left: LexPattern, right: LexPattern }
+  | OptionalPattern { element: LexPattern }
+  | RepeatPattern { element: LexPattern }
+  | OneOrMorePattern { element: LexPattern }
+  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
+
+
+// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
+type LexRule
+  = TokenRule { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule { pattern: LexPattern }
+
+
+// Maximal munch: compiler tokenization selects the accepting rule with the longest lexeme;
+// equal-length ties prefer the later rule (specific literals/keywords after ident).
+type LexRuleSet {
+  rules: List<LexRule>
+}
+
+
+// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk realized.
+type LexRules
+  = VoidLexRules
+  | ModeledLexRules { root: LexRuleSet }
+
+
+type Token {
+  class: Symbol
+  lexeme: String
+  file: Symbol
+  start: Int
+  end: Int
+}
+
+
+type TokenStream {
+  tokens: List<Token>
+}
+
+
+fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
+  match rule {
+    TokenRule { token_class: c, pattern: _ } => c == token_class
+    TriviaRule { pattern: _ } => false
+  }
+}
+
+
+fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
+  fold_list(
+    xs: rules.rules,
+    empty: false,
+    cons: fn(acc, rule) {
+      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
+    }
+  )
+}
