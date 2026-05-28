@@ -133,6 +133,22 @@ In the compiler especially, nicknames compound: consumers read the name and buil
 
 **Receipt:** `v4.compiler.tokenize` defined `LexRule`, `LexRuleSet`, `ModeledLexRules`, `LexPattern`; `v4.compiler.parse` defined `GrammarProduction`, `GrammarExpr`, `GrammarSchema`. These are canonical CS concepts (lexical analysis, context-free grammar) wrapped in compiler-internal names. Dissolution: author `std/lexing.dag` + `std/grammar.dag` grounded in Wikipedia *Lexical Analysis* and *Formal Grammar*; move type definitions there; compiler/ imports from std/; extdeps/ imports from std/.
 
+### Problem shape: Existing implementations are not automatically correct
+
+**Rule:** An approved or landed implementation is not evidence that its model is correct — it is only evidence that it passed review at the time. Every implementation is subject to re-examination when a better or more holistic model becomes visible. Prior approval does not foreclose redesign.
+
+**Why it belongs in P1:** Faithfulness is not a one-time gate at merge. Approval meant "no blocking concern at review time," not "this is the best possible model." If workers treat landed code as settled fact, violations compound silently. The discipline of interrogating existing models — asking "given what we now know, is this still the right shape?" — is how the codebase improves.
+
+**The calibration:** This principle does not license endless refactoring. The bar for revisiting a landed model is: (a) a clearer external grounding exists (as with the lexing/grammar vocabulary move), or (b) the existing model creates cascading wrong-direction dependencies, or (c) a more holistic solution would reduce total lines/concepts, not increase them. Cosmetic renames, subjective preference changes, and "could be marginally cleaner" are not sufficient — those produce churn without structural improvement.
+
+**Concrete check:** When a worker encounters a type, function, or module and thinks "this seems slightly off but it's landed," they should ask: does a canonical external model exist that this should conform to? Does the current shape create cross-layer dependencies? Would conforming reduce concepts or add them? If the answer to any of these is yes with clear evidence, surface it — don't silently implement on top of a wrong foundation.
+
+**Problem shape:** Worker finds that `extdeps/` files import from `compiler/` and treats this as load-bearing because multiple PRs approved it. Assumes the existing pattern must be right. Builds T-4.18 on top of the violation. Violation compounds.
+
+**Solution shape:** Treat every landed model as a hypothesis, not a proof. When external grounding reveals a better shape, surface it — even if it requires re-examining previously approved work.
+
+**Receipt:** The extdeps/compiler coupling (14 extdep files importing `v4.compiler.tokenize`, `v4.compiler.parse`, `v4.compiler.target_carriers`; `workflow/bootstrap.dag` importing `TargetModel` from compiler/) was approved in multiple PRs before the cross-layer import rule made the violation explicit. Dissolution: `std/lexing.dag` + `std/grammar.dag` + `std/target_model.dag`; wrong-direction imports replaced — not because prior PRs were negligent, but because a clearer model became visible.
+
 ### Procedure: substrate-fact introduction (decision procedure for new modeling)
 
 **When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
@@ -183,6 +199,7 @@ Fundamental primitives (physics, computation, mathematics) declare as substrate 
 - **Substrate-Fact Introduction Procedure** (above) — operational decision procedure for adding new substrate types/variants/fields
 - **Model names must reflect what they are (operator-ratified 2026-05-27).** A type named `FooBar` must be a structural composition or projection of `Foo` and `Bar` — not a convenient label for something else. Nicknaming is a modeling violation because it claims structural identity the type does not have. In the compiler especially, a type name that implies a concept it does not embody creates false mental models for workers and reviewers. Canonical example: `ModulePath = FreeMonoid<ModulePathSegment>` was a nickname for `FreeMonoid<Symbol>` (the declared identifier of a code unit); the name implied graph traversal (`Path { steps: List<Symbol> }` in `std/node.dag`) when no such relationship holds. Correct form: `QualifiedName = FreeMonoid<Symbol>` — the name states exactly what it is. When a type name is wrong, fix the name before dispatching workers; dispatching on a wrong name propagates the fiction through implementations. Enforcement via lens (forthcoming, see T-QN-1).
 - **Internal vocabulary for a canonical concept** — canonical CS names belong in std/, not in compiler/-internal modules
+- **Existing implementations are not automatically correct** — landed code is a hypothesis subject to re-examination when clearer grounding or structural evidence appears; prior approval does not foreclose redesign
 
 ---
 
