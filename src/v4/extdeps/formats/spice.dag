@@ -31,8 +31,8 @@ module v4.extdeps.formats.spice
 
 import v4.std.diagnostic { Outcome }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.compiler.parse { Grammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
-import v4.compiler.tokenize {
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
@@ -297,7 +297,7 @@ fn spice_resistor_statement_expr() -> GrammarExpr {
 }
 
 
-fn spice_wave1_grammar() -> Grammar {
+fn spice_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: spice_production_resistor_statement,
     expression: spice_resistor_statement_expr(),

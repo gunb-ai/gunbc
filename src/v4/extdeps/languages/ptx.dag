@@ -12,8 +12,8 @@ module v4.extdeps.languages.ptx
 
 
 
-import v4.compiler.parse { Grammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
-import v4.compiler.tokenize {
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
@@ -236,7 +236,7 @@ fn ptx_entry_kernel_expr() -> GrammarExpr {
 }
 
 
-fn ptx_wave1_grammar() -> Grammar {
+fn ptx_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ptx_production_entry_kernel,
     expression: ptx_entry_kernel_expr(),
