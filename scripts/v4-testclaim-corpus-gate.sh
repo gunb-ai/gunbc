@@ -108,7 +108,7 @@ fi
 module_names="${out}/dag-module-names.txt"
 item_names="${out}/dag-item-registry-keys.txt"
 jq -e 'has("modules") and has("item_registry_keys") and has("files")' "$artifact" >/dev/null
-jq -r '.modules[] | .module["$ref"] as $id | .nodes[$id].name' "$artifact" > "$module_names"
+jq -r '. as $root | .modules[] | .module["$ref"] as $id | $root.nodes[$id].name' "$artifact" > "$module_names"
 jq -r '.item_registry_keys[]' "$artifact" > "$item_names"
 
 require_module() {
