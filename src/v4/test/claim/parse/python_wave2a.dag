@@ -1,7 +1,8 @@
 // src/v4/test/claim/parse/python_wave2a.dag
 // Scope: TestClaim rows for Python Wave 2a lex/grammar behavior beyond MVP-1.
+// Owns: claim_python_wave2a_non_mvp_function_parses.
+// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.extdeps.languages.python, v4.std.*.
 // Status: T-22 runner deferred — execution pending T-22 complexity fix.
-// Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
 module v4.test.claim.parse.python_wave2a
 
