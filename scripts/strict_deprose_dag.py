@@ -15,11 +15,9 @@ the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution st
 not get a second grounded line. Grounded lines are **not** preserved across strip —
 they are re-injected every run so spacing stays canonical.
 
-For files in this script's `specs` allowlist, `// Owns:` is a generated manifest
-of top-level module symbols in file order: every `type`, `data`, and `fn`
-binding in the `.dag` body (deduped by name), not only headline carriers.
-Outside the `specs` allowlist, `// Owns:` and `// Consumes:` are ordinary
-parallel ledgers and Practice 9 removes them.
+`// Owns:` has been removed from all files, including those previously on this
+script's `specs` allowlist. Practice 9 treats it as a parallel ledger everywhere;
+the allowlist exception is dissolved.
 
 `// Ledger:` lists **slug inventory for the live substrate**: one ledger ref per live sum
 coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
@@ -506,34 +504,6 @@ def inject_coproduct_tags(body: str, rel: str, tag_map: dict[str, tuple[str, str
     return "\n".join(out_lines) + trailing
 
 
-def carrier_names(path: Path) -> list[str]:
-    """Top-level `type`, `data`, and `fn` names in file order (deduped)."""
-    seen: set[str] = set()
-    out: list[str] = []
-    for line in path.read_text().splitlines():
-        s = line.strip()
-        m = TYPE_RE.match(s)
-        if m:
-            name = m.group(1)
-            if name not in seen:
-                seen.add(name)
-                out.append(name)
-            continue
-        m = DATA_RE.match(s)
-        if m:
-            name = m.group(1)
-            if name not in seen:
-                seen.add(name)
-                out.append(name)
-            continue
-        m = FN_RE.match(s)
-        if m:
-            name = m.group(1)
-            if name not in seen:
-                seen.add(name)
-                out.append(name)
-    return out
-
 
 def comment_ratio(text: str) -> tuple[int, int, float]:
     lines = text.splitlines()
@@ -585,15 +555,12 @@ def run_check(specs: list[tuple[str, str, str, str, str, str]]) -> None:
         path = ROOT / rel
         tag_map = coproduct_tag_from_merge_base(rel)
         live = coproduct_type_names_in_path(path)
-        names = carrier_names(path)
-        owns_line = "// Owns: " + ", ".join(names)
         first = path.read_text().splitlines()[0]
         if not first.startswith("// src/"):
             raise SystemExit(f"{rel}: expected line 1 // src/…, got {first!r}")
         header = (
             f"{first}\n"
             f"{scope}\n"
-            f"{owns_line}\n"
             f"{consumes}\n"
             f"{status}\n"
             f"{anchor}\n"
@@ -619,9 +586,7 @@ def main() -> None:
 
     # Sixth field: operator RULING-1 slice groundedness (emoji-only; ratified in
     # `docs/modeling-discipline.md` Practice 9; ledger doc retired 2026-05-19).
-    # This `specs` allowlist is the only place where `// Owns:` and
-    # `// Consumes:` remain live: strict_deprose_dag regenerates them as part of
-    # its machine-checked header contract.
+    # `// Owns:` is no longer generated; the allowlist exception is dissolved.
     # Extdeps language slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.
     specs: list[tuple[str, str, str, str, str, str]] = [
         (
@@ -699,15 +664,12 @@ def main() -> None:
         path = ROOT / rel
         tag_map = coproduct_tag_from_merge_base(rel)
         live = coproduct_type_names_in_path(path)
-        names = carrier_names(path)
-        owns_line = "// Owns: " + ", ".join(names)
         first = path.read_text().splitlines()[0]
         if not first.startswith("// src/"):
             raise SystemExit(f"{rel}: expected line 1 // src/…, got {first!r}")
         header = (
             f"{first}\n"
             f"{scope}\n"
-            f"{owns_line}\n"
             f"{consumes}\n"
             f"{status}\n"
             f"{anchor}\n"
