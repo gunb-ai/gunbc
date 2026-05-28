@@ -1412,7 +1412,7 @@ SQL as a checked `extdeps` Shape-B format) on 2026-05-17 (D2-reversal
 Phase-1 execution). Theme-A missed-planning debt is **closed** — no fork
 remains open.
 
-### T-33 — std/model_core.dag — shared substrate factoring  [SCHEDULED]
+### T-33 — std/model_core.dag — shared substrate factoring  [DONE]
 **Operator-ratified 2026-05-21 (Option C runtime split).** The shared base
 substrate that both `LanguageModel` (T-4) and concrete runtime extdeps
 (T-34) consume. `ModelCore` is the categorical floor for primitive-type
@@ -1424,9 +1424,6 @@ and runtime targets without duplicate authority.
 root (T-1). Low-dependency — no upstream-feeder watch items — but a hard
 T-4 / T-34 prerequisite per the side-branch graph at the top of this
 file.
-
-**File:** `src/v4/std/model_core.dag` — does not exist on main; this task
-is its first authoring.
 
 **Carrier shape (per `docs/design-v4-compiler-homomorphism.md` §"`ModelCore`"):**
 - **Primitive types** — each a Practice-8 fact-bundle (width, signedness,
