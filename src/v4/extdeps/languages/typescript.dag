@@ -1284,3 +1284,513 @@ fn ts_language_model_wave2a() -> TsLanguageModel {
     grammar: ts_wave2a_grammar()
   }
 }
+
+
+// ── Wave 2b: string primitive fact-bundle ─────────────────────────────────────
+// Anchor: ECMA-262 §6.1.4 — TypeScript `string` = ordered sequence of zero or
+// more 16-bit unsigned integer values (UTF-16 code units). Concatenation forms a
+// free monoid with empty sequence as identity.
+
+// 🟢 grounded.
+type TsStringPrimitiveFacts {
+  surface_spelling: Symbol
+  encoding: Symbol
+  std_projection: Symbol
+}
+
+data ts_surface_spelling_string: Symbol = ts_surface_spelling_string
+data ts_repr_string_utf16_code_unit_sequence: Symbol = ts_repr_string_utf16_code_unit_sequence
+data ts_std_projection_string: Symbol = ts_std_projection_string
+
+data ts_inhabitant_string: Symbol = ts_inhabitant_string
+data ts_inhabitant_field_string: Symbol = ts_inhabitant_field_string
+data ts_witness_string_free_monoid: Symbol = ts_witness_string_free_monoid
+
+data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
+  surface_spelling: ts_surface_spelling_string,
+  encoding: ts_repr_string_utf16_code_unit_sequence,
+  std_projection: ts_std_projection_string
+}
+
+fn ts_string_facts_node(facts: TsStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: ts_facts_field_surface_spelling,
+        target: ts_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_encoding,
+        target: ts_inhabitant_atom(id: facts.encoding)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_std_projection,
+        target: ts_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn ts_string_inhabitant_node(id: Symbol, facts: TsStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: ts_inhabitant_field_string, target: ts_inhabitant_atom(id: id)),
+      ts_named_edge(name: ts_facts_field_encoding, target: ts_inhabitant_atom(id: facts.encoding)),
+      ts_named_edge(
+        name: ts_facts_field_surface_spelling,
+        target: ts_inhabitant_atom(id: facts.surface_spelling)
+      )
+    ]
+  }
+}
+
+fn ts_string_algebra_witness_node(facts: TsStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: ts_witness_string_free_monoid,
+        target: ts_inhabitant_atom(id: ts_witness_string_free_monoid)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_encoding,
+        target: ts_inhabitant_atom(id: facts.encoding)
+      ),
+      ts_named_edge(
+        name: ts_facts_field_std_projection,
+        target: ts_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn ts_string_algebra_inhabitance(facts: TsStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = ts_string_inhabitant_node(id: ts_inhabitant_string, facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_type_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: ts_string_algebra_witness_node(facts: facts)
+  }
+}
+
+fn ts_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    ts_string_algebra_inhabitance(facts: ts_facts_string)
+  ]
+}
+
+fn ts_model_core_inhabitance_decls_wave2b() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: ts_model_core_inhabitance_decls(),
+    right: ts_string_algebra_inhabitance_decls()
+  )
+}
+
+fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<Symbol, Node> {
+  let m0 = empty_map()
+  let m1 = map_insert(
+    map: m0,
+    key: primitive_fact_axis_surface_spelling,
+    value: ts_inhabitant_atom(id: facts.surface_spelling)
+  )
+  let m2 = map_insert(
+    map: m1,
+    key: primitive_fact_axis_encoding,
+    value: ts_inhabitant_atom(id: facts.encoding)
+  )
+  m2
+}
+
+fn ts_primitive_bundle_from_string_facts(facts: TsStringPrimitiveFacts) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    surface_spelling: facts.surface_spelling,
+    spec_facts: ts_string_spec_facts(facts: facts)
+  }
+}
+
+fn ts_wave2b_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
+  list_append(
+    left: ts_wave1_primitive_fact_bundles(),
+    right: [ts_primitive_bundle_from_string_facts(facts: ts_facts_string)]
+  )
+}
+
+
+// ── Wave 2b: algebra law obligations ─────────────────────────────────────────
+// 🟡 needs-more-work — feature:model-core-law-expression-carrier — scaffold:T-33-wave2 ·
+// law-kind coproduct is a bounded schedule key; dissolve-on: std/algebra exports typed law
+// Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+type TsModelCoreLawKey
+  = TsLawNumberIeee754Rounding
+  | TsLawNumberNanInfCarriedByIeee754
+  | TsLawBigIntAddAssociative
+  | TsLawBigIntAddCommutative
+  | TsLawBigIntMulAssociative
+  | TsLawBigIntMulCommutative
+  | TsLawBigIntDistributive
+  | TsLawBigIntTotalOrder
+  | TsLawBoolBoundedLattice
+  | TsLawBoolComplement
+  | TsLawStringConcatAssociative
+  | TsLawStringConcatLeftIdentity
+  | TsLawStringConcatRightIdentity
+
+data ts_law_kind_number_ieee754_rounding: Symbol = ts_law_kind_number_ieee754_rounding
+data ts_law_kind_number_nan_inf_carried_by_ieee754: Symbol = ts_law_kind_number_nan_inf_carried_by_ieee754
+data ts_law_kind_bigint_add_associative: Symbol = ts_law_kind_bigint_add_associative
+data ts_law_kind_bigint_add_commutative: Symbol = ts_law_kind_bigint_add_commutative
+data ts_law_kind_bigint_mul_associative: Symbol = ts_law_kind_bigint_mul_associative
+data ts_law_kind_bigint_mul_commutative: Symbol = ts_law_kind_bigint_mul_commutative
+data ts_law_kind_bigint_distributive: Symbol = ts_law_kind_bigint_distributive
+data ts_law_kind_bigint_total_order: Symbol = ts_law_kind_bigint_total_order
+data ts_law_kind_bool_bounded_lattice: Symbol = ts_law_kind_bool_bounded_lattice
+data ts_law_kind_bool_complement: Symbol = ts_law_kind_bool_complement
+data ts_law_kind_string_concat_associative: Symbol = ts_law_kind_string_concat_associative
+data ts_law_kind_string_concat_left_identity: Symbol = ts_law_kind_string_concat_left_identity
+data ts_law_kind_string_concat_right_identity: Symbol = ts_law_kind_string_concat_right_identity
+
+fn ts_law_kind_symbol(key: TsModelCoreLawKey) -> Symbol {
+  match key {
+    TsLawNumberIeee754Rounding => ts_law_kind_number_ieee754_rounding
+    TsLawNumberNanInfCarriedByIeee754 => ts_law_kind_number_nan_inf_carried_by_ieee754
+    TsLawBigIntAddAssociative => ts_law_kind_bigint_add_associative
+    TsLawBigIntAddCommutative => ts_law_kind_bigint_add_commutative
+    TsLawBigIntMulAssociative => ts_law_kind_bigint_mul_associative
+    TsLawBigIntMulCommutative => ts_law_kind_bigint_mul_commutative
+    TsLawBigIntDistributive => ts_law_kind_bigint_distributive
+    TsLawBigIntTotalOrder => ts_law_kind_bigint_total_order
+    TsLawBoolBoundedLattice => ts_law_kind_bool_bounded_lattice
+    TsLawBoolComplement => ts_law_kind_bool_complement
+    TsLawStringConcatAssociative => ts_law_kind_string_concat_associative
+    TsLawStringConcatLeftIdentity => ts_law_kind_string_concat_left_identity
+    TsLawStringConcatRightIdentity => ts_law_kind_string_concat_right_identity
+  }
+}
+
+fn ts_model_core_law_node(witness: Node, algebra: Node, key: TsModelCoreLawKey) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(name: model_core_wave1_law_field_subject, target: witness),
+      ts_named_edge(name: model_core_wave1_law_field_algebra, target: algebra),
+      ts_named_edge(
+        name: model_core_wave1_law_field_kind,
+        target: ts_inhabitant_atom(id: ts_law_kind_symbol(key: key))
+      )
+    ]
+  }
+}
+
+fn ts_model_core_law_obligation(witness: Node, law: Node) -> AlgebraLawObligation {
+  AlgebraLawObligation {
+    inhabitance_witness: witness,
+    law: law
+  }
+}
+
+fn ts_number_law_obligations(facts: TsNumberPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = ts_number_algebra_witness_node(facts: facts)
+  let inhabitant = ts_number_inhabitant_node(id: ts_inhabitant_number, facts: facts)
+  let algebra = approximate_field_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawNumberIeee754Rounding
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawNumberNanInfCarriedByIeee754
+      )
+    )
+  ]
+}
+
+fn ts_bigint_law_obligations(facts: TsBigIntPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = ts_bigint_algebra_witness_node(facts: facts)
+  let inhabitant = ts_bigint_inhabitant_node(id: ts_inhabitant_bigint, facts: facts)
+  let algebra = ordered_ring_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntAddAssociative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntAddCommutative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntMulAssociative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntMulCommutative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntDistributive
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBigIntTotalOrder
+      )
+    )
+  ]
+}
+
+fn ts_bool_law_obligations() -> List<AlgebraLawObligation> {
+  let witness = ts_bool_algebra_witness_node()
+  let inhabitant = ts_inhabitant_boolean_node()
+  let algebra = boolean_algebra_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBoolBoundedLattice
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawBoolComplement
+      )
+    )
+  ]
+}
+
+fn ts_string_law_obligations(facts: TsStringPrimitiveFacts) -> List<AlgebraLawObligation> {
+  let witness = ts_string_algebra_witness_node(facts: facts)
+  let inhabitant = ts_string_inhabitant_node(id: ts_inhabitant_string, facts: facts)
+  let algebra = free_monoid_type_node(inhabitant: inhabitant)
+  [
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawStringConcatAssociative
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawStringConcatLeftIdentity
+      )
+    ),
+    ts_model_core_law_obligation(
+      witness: witness,
+      law: ts_model_core_law_node(
+        witness: witness,
+        algebra: algebra,
+        key: TsLawStringConcatRightIdentity
+      )
+    )
+  ]
+}
+
+fn ts_number_law_step(
+  acc: List<AlgebraLawObligation>,
+  row: TsEcma262NumericPrimitiveFactsUnion
+) -> List<AlgebraLawObligation> {
+  match row {
+    TsNumericFactsNumber { facts: f } =>
+      list_append(left: acc, right: ts_number_law_obligations(facts: f))
+    TsNumericFactsBigInt { facts: _ } => acc
+  }
+}
+
+fn ts_bigint_law_step(
+  acc: List<AlgebraLawObligation>,
+  row: TsEcma262NumericPrimitiveFactsUnion
+) -> List<AlgebraLawObligation> {
+  match row {
+    TsNumericFactsNumber { facts: _ } => acc
+    TsNumericFactsBigInt { facts: f } =>
+      list_append(left: acc, right: ts_bigint_law_obligations(facts: f))
+  }
+}
+
+fn ts_number_law_decls() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: ts_numeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, row) { ts_number_law_step(acc: acc, row: row) }
+  )
+}
+
+fn ts_bigint_law_decls() -> List<AlgebraLawObligation> {
+  fold_list(
+    xs: ts_numeric_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, row) { ts_bigint_law_step(acc: acc, row: row) }
+  )
+}
+
+fn ts_model_core_law_obligations() -> List<AlgebraLawObligation> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: ts_number_law_decls(),
+        right: ts_bigint_law_decls()
+      ),
+      right: ts_bool_law_obligations()
+    ),
+    right: ts_string_law_obligations(facts: ts_facts_string)
+  )
+}
+
+
+// ── Wave 2b: effects ──────────────────────────────────────────────────────────
+// TypeScript arithmetic + string operations are pure value expressions (no I/O,
+// no observable side effects). ECMA-262 §6.1 — all scalar operations return values.
+
+data ts_effect_signature_pure_value: Symbol = ts_effect_signature_pure_value
+data ts_op_number_add: Symbol = ts_op_number_add
+data ts_op_number_sub: Symbol = ts_op_number_sub
+data ts_op_number_mul: Symbol = ts_op_number_mul
+data ts_op_number_div: Symbol = ts_op_number_div
+data ts_op_number_neg: Symbol = ts_op_number_neg
+data ts_op_number_compare: Symbol = ts_op_number_compare
+data ts_op_bigint_add: Symbol = ts_op_bigint_add
+data ts_op_bigint_sub: Symbol = ts_op_bigint_sub
+data ts_op_bigint_mul: Symbol = ts_op_bigint_mul
+data ts_op_bigint_div: Symbol = ts_op_bigint_div
+data ts_op_bigint_rem: Symbol = ts_op_bigint_rem
+data ts_op_bigint_neg: Symbol = ts_op_bigint_neg
+data ts_op_bigint_compare: Symbol = ts_op_bigint_compare
+data ts_op_bool_and: Symbol = ts_op_bool_and
+data ts_op_bool_or: Symbol = ts_op_bool_or
+data ts_op_bool_not: Symbol = ts_op_bool_not
+data ts_op_string_concat: Symbol = ts_op_string_concat
+
+fn ts_pure_operation(operation: Symbol) -> PrimitiveOperationRef {
+  PrimitiveOperationRef {
+    operation: ts_inhabitant_atom(id: operation),
+    effect_signature: EffectSignature {
+      signature: ts_inhabitant_atom(id: ts_effect_signature_pure_value)
+    }
+  }
+}
+
+fn ts_effect_semantics_wave2b() -> EffectSemanticsDecl {
+  EffectSemanticsDecl {
+    operations: [
+      ts_pure_operation(operation: ts_op_number_add),
+      ts_pure_operation(operation: ts_op_number_sub),
+      ts_pure_operation(operation: ts_op_number_mul),
+      ts_pure_operation(operation: ts_op_number_div),
+      ts_pure_operation(operation: ts_op_number_neg),
+      ts_pure_operation(operation: ts_op_number_compare),
+      ts_pure_operation(operation: ts_op_bigint_add),
+      ts_pure_operation(operation: ts_op_bigint_sub),
+      ts_pure_operation(operation: ts_op_bigint_mul),
+      ts_pure_operation(operation: ts_op_bigint_div),
+      ts_pure_operation(operation: ts_op_bigint_rem),
+      ts_pure_operation(operation: ts_op_bigint_neg),
+      ts_pure_operation(operation: ts_op_bigint_compare),
+      ts_pure_operation(operation: ts_op_bool_and),
+      ts_pure_operation(operation: ts_op_bool_or),
+      ts_pure_operation(operation: ts_op_bool_not),
+      ts_pure_operation(operation: ts_op_string_concat)
+    ]
+  }
+}
+
+
+// ── Wave 2b: partiality ───────────────────────────────────────────────────────
+// bigint division and remainder by zero throw RangeError (ECMA-262 §13.14.3).
+// number division by zero is NOT partial — IEEE-754 returns Infinity/NaN (§6.1.6.1).
+
+data ts_partial_bigint_divide_by_zero: Symbol = ts_partial_bigint_divide_by_zero
+data ts_partial_bigint_remainder_by_zero: Symbol = ts_partial_bigint_remainder_by_zero
+data ts_precondition_bigint_divisor_nonzero: Symbol = ts_precondition_bigint_divisor_nonzero
+
+fn ts_fail_closed_partial_operation(
+  operation: Symbol,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: ts_inhabitant_atom(id: operation),
+    precondition: ts_inhabitant_atom(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+fn ts_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      ts_fail_closed_partial_operation(
+        operation: ts_op_bigint_div,
+        precondition: ts_precondition_bigint_divisor_nonzero,
+        reason: ts_partial_bigint_divide_by_zero
+      ),
+      ts_fail_closed_partial_operation(
+        operation: ts_op_bigint_rem,
+        precondition: ts_precondition_bigint_divisor_nonzero,
+        reason: ts_partial_bigint_remainder_by_zero
+      )
+    ]
+  }
+}
+
+
+// ── Wave 2b: entry points ─────────────────────────────────────────────────────
+
+fn ts_model_core_wave2b() -> ModelCore {
+  ModelCore {
+    primitives: ts_wave2b_primitive_fact_bundles(),
+    inhabitance: ts_model_core_inhabitance_decls_wave2b(),
+    laws: ts_model_core_law_obligations(),
+    effects: ts_effect_semantics_wave2b(),
+    partiality: ts_partiality_semantics_wave2b()
+  }
+}
+
+fn ts_language_model_wave2b() -> TsLanguageModel {
+  TsLanguageModel {
+    language_identity: ts_language_model_surface_id,
+    canonical_symbols: ts_language_model_canonical_symbols_wave2a(),
+    core: ts_model_core_wave2b(),
+    lex: ts_wave2a_lex(),
+    grammar: ts_wave2a_grammar()
+  }
+}
