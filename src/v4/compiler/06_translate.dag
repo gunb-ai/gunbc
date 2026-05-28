@@ -404,8 +404,6 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
       )
   }
 }
-<<<<<<< HEAD
-=======
 fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
   // Token-sequence dispatch items may be inner-production nodes with positional edges.
   match parent.kind {
@@ -520,7 +518,6 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
     }
   )
 }
->>>>>>> origin/main
 fn grammar_serialize_source_matches_row(
   serialize_source: Node,
   row: Node
@@ -535,11 +532,7 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-<<<<<<< HEAD
                 if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
-=======
-                if zip_eq(a: source_targets, b: row_targets, eq: fn(a, b) { a == b }) {
->>>>>>> origin/main
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
