@@ -880,11 +880,40 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-fn python_grammar_production_mvp1_fn_add() -> FormalProduction {
+fn python_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
   FormalProduction {
-    lhs: FormalNonterminal { identity: python_production_mvp1_fn_add },
-    rhs: python_formal_rhs_from_token_classes()
+    lhs: FormalNonterminal { identity: lhs },
+    rhs: rhs
   }
+}
+
+fn python_formal_production_mvp1_fn_add() -> FormalProduction {
+  python_formal_production(
+    lhs: python_production_mvp1_fn_add,
+    rhs: python_formal_rhs_from_token_classes()
+  )
+}
+
+fn python_wave1_formal_productions() -> List<FormalProduction> {
+  [python_formal_production_mvp1_fn_add()]
+}
+
+fn python_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+fn python_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
+  fold_list(
+    xs: productions,
+    empty: false,
+    cons: fn(found, production) {
+      found || python_formal_production_matches_lhs(production: production, lhs: lhs)
+    }
+  )
+}
+
+fn python_grammar_production_mvp1_fn_add() -> FormalProduction {
+  python_formal_production_mvp1_fn_add()
 }
 
 fn python_mvp1_grammar_relation_row() -> PythonGrammarRelationRow {
