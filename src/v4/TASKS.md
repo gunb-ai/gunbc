@@ -185,10 +185,10 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Consumes T-10/T-23 for lens verdict via `run_required_lens_gates`
         (T-24 schedules; T-10 owns the orchestrator gate surface).
 
-Bootstrap execution gap (gate T-15 close — no workers dispatched 2026-05-28):
-  T-37  v2 DAG artifact serializer fix   [schedulable now — pure v2 Rust; gates T-15 bridge dissolution]
-        Blocks scripts/v4-bootstrap-resolve-posture-gate.sh dissolution;
-        T-15 cannot close while the bridge passes on SIGTERM.
+Bootstrap execution gap (gate T-15 close — 2026-05-28; live dispatch snapshot: T-15 Close-status below):
+  T-37  v2 DAG artifact serializer fix   [#3791 merge queue — probe PASS royal-carp-716; gates T-15 bridge dissolution on merge]
+        Blocks scripts/v4-bootstrap-resolve-posture-gate.sh dissolution until #3791 lands;
+        T-15 cannot close while the bridge passes on SIGTERM (fix not on `main` yet).
   T-38  TestClaim execution harness      [needs T-22 runnable; T-34 done #3770; gates T-15 "claim suite passes"]
         Claims compile only today; no CI step invokes T-22 eval on the corpus.
 
@@ -265,13 +265,13 @@ Close-the-loop + late substrate:
 ### Bootstrap execution convergence — additional T-15 gates (2026-05-28)
 
 The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
-T-15 to close. Three gaps have no workers and gate the close condition:
+T-15 to close. Three gaps gate the close condition (live dispatch: T-15 Close-status):
 
 **T-37 → bridge dissolution.** `scripts/v4-bootstrap-resolve-posture-gate.sh`
 passes CI on SIGTERM (exit 143/124) whenever v2 `--target dag` OOM-kills before
 writing output. The bridge's own dissolution condition is "v4 emit reaches
-`compiled:` without SIGTERM." Until T-37 lands, T-15 cannot close — CI trivially
-passes through the bridge regardless of serializer state.
+`compiled:` without SIGTERM." Until [#3791](https://github.com/gunb-ai/gunbc/pull/3791) merges (probe PASS royal-carp-716), T-15 cannot close — CI trivially
+passes through the bridge regardless of serializer state on `main`.
 Root cause and fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
 **T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
@@ -778,6 +778,8 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - That binary, run on `src/v4/compiler/*.dag`, produces bit-identical output
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
+
+**Close-status (2026-05-28, post-#3783; T-37 probe PASS royal-carp-716):** predicates 1–2 moving toward **CLOSABLE** on [#3791](https://github.com/gunb-ai/gunbc/pull/3791) merge; 3 **PARTIAL**; 4–5 **PAPER-ONLY** (predicate 4 partial after #3788 + T22-EVAL-CACHE-HASHES). **T-37 (royal-carp-716):** probe **PASS** EXIT:0 in 88s; `dag-artifact.json` ~40MB — O(n²)→O(n) stage0 Rc + Resolved-peel in `dag_node_key`. `scripts/v4-bootstrap-resolve-posture-gate.sh` dissolves when #3791 lands (`--target dag` completes without SIGTERM). Prior fail: crisp-raven-567 exit 124 on `main@c65b9bdc5`. Lane A: T-38 / T-20-fill ([#3788](https://github.com/gunb-ai/gunbc/pull/3788) in operator queue). Side branch `T-4 → T-9`: T-29 / T-30 / T-25-core / T-21 landed; **P1-KEYSTONE** [#3752](https://github.com/gunb-ai/gunbc/pull/3752); **T-19** [#3789](https://github.com/gunb-ai/gunbc/pull/3789); **T-33** [#3787](https://github.com/gunb-ai/gunbc/pull/3787).
 
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
