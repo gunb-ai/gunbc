@@ -4,7 +4,7 @@
 // Owns: ResolvedTree; Namespace; Scope; BindEdgeAcc; resolve; resolve_with_namespace; Symbol reasons.
 // Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag,
 //           compiler/03_normalize.dag, extdeps/languages/dag.dag (DagLanguageModel for canonical_symbols).
-// Status: T-8 modeled — K-1 single-file resolution; cross-file module admission lives in compiler/03_module_resolve.dag.
+// Status: T-8 modeled — K-1 single-file resolution; cross-file name admission lives in compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
 module v4.compiler.resolve
@@ -15,7 +15,7 @@ import v4.extdeps.languages.dag {
   DagLanguageModel,
   dag_language_model_canonical_symbols
 }
-import v4.std.algebra { Cons, Empty, FreeMonoid }
+import v4.std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import v4.std.collection { Set }
 import v4.std.diagnostic {
   Diagnostic,
@@ -57,7 +57,7 @@ type Namespace {
 }
 
 
-// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension enters through compiler/03_module_resolve.dag, not a third Scope arm.
+// 🟢 coproduct dissolution — T-8 close (feature:T-8-lexical-scope-chain gate fired): Scope arms are fixed; ScopeRoot for module-level, ScopeFrame for lexical nesting. Cross-file extension enters through compiler/03_name_resolve.dag, not a third Scope arm.
 type Scope
   = ScopeRoot { module: Namespace }
   | ScopeFrame { locals: Map<Symbol, Symbol>, outer: Scope }
@@ -204,6 +204,7 @@ fn scope_root_module(s: Scope) -> Namespace {
 }
 
 
+// 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: lookup_chain
 fn lookup_chain(s: Scope, name: Symbol) -> Symbol? {
   match s {
     ScopeFrame { locals: m, outer: o } =>
@@ -307,7 +308,7 @@ fn resolve_children_homogeneous_scope(n: Node, scope: Scope) -> Outcome<Node> {
             }
           Accepted { value: resolved_target, diagnostics: ed } =>
             Accepted {
-              value: list_push(done, Edge {
+              value: list_snoc_item(xs: done, item: Edge {
                 label: e.label,
                 target: resolved_target
               }),
@@ -360,13 +361,10 @@ fn resolve_edges_first_outer_then_inner(
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: Accepted {
-                        value: list_push(
-                          done,
-                          Edge {
+                        value: list_snoc_item(xs: done, item: Edge {
                             label: e.label,
                             target: resolved_target
-                          }
-                        ),
+                          }),
                         diagnostics: diagnostics_merge(outer: ad, inner: ed)
                       }
                     }
@@ -384,13 +382,10 @@ fn resolve_edges_first_outer_then_inner(
                     EdgeResolveAccMk {
                       have_seen_first: true,
                       acc: Accepted {
-                        value: list_push(
-                          done,
-                          Edge {
+                        value: list_snoc_item(xs: done, item: Edge {
                             label: e.label,
                             target: resolved_target
-                          }
-                        ),
+                          }),
                         diagnostics: diagnostics_merge(outer: ad, inner: ed)
                       }
                     }
@@ -450,13 +445,10 @@ fn resolve_bind_edges(
                     BindEdgeAccMk {
                       idx: i + 1,
                       acc: Accepted {
-                        value: list_push(
-                          done,
-                          Edge {
+                        value: list_snoc_item(xs: done, item: Edge {
                             label: e.label,
                             target: rt
-                          }
-                        ),
+                          }),
                         diagnostics: diagnostics_merge(outer: ad, inner: ed)
                       }
                     }
@@ -475,13 +467,10 @@ fn resolve_bind_edges(
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: Accepted {
-                          value: list_push(
-                            done,
-                            Edge {
+                          value: list_snoc_item(xs: done, item: Edge {
                               label: e.label,
                               target: rt
-                            }
-                          ),
+                            }),
                           diagnostics: diagnostics_merge(outer: ad, inner: ed)
                         }
                       }
@@ -499,13 +488,10 @@ fn resolve_bind_edges(
                       BindEdgeAccMk {
                         idx: i + 1,
                         acc: Accepted {
-                          value: list_push(
-                            done,
-                            Edge {
+                          value: list_snoc_item(xs: done, item: Edge {
                               label: e.label,
                               target: rt
-                            }
-                          ),
+                            }),
                           diagnostics: diagnostics_merge(outer: ad, inner: ed)
                         }
                       }

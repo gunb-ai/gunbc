@@ -25,7 +25,7 @@ import v4.std.model_core {
   ModelCore,
   PrimitiveOperationRef,
   ResourceAccess,
-  wave1_void
+  wave1_model_core
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.runtime {
@@ -239,7 +239,7 @@ fn v4_eval_wave1_resource_boundary() -> ResourceEffectBoundary {
 }
 
 fn v4_evaluator_model_core_wave1() -> ModelCore {
-  wave1_void()
+  wave1_model_core()
 }
 
 fn v4_evaluator_value_representation_wave1() -> ValueRepresentationModel {

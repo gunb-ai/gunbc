@@ -270,6 +270,18 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         out["TsEcma262NumericPrimitiveFactsUnion"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
         out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["TsGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/rust.dag":
+        out["RustGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/python.dag":
+        out["PythonConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["PythonGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/go.dag":
+        out["GoConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["GoGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+    if rel == "src/v4/extdeps/languages/cpp.dag":
+        out["CppConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["CppGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/swift.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (
@@ -294,6 +306,12 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
         # (absent at merge-base).
         out["Signedness"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerBoundSign"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerRangeEndpoint"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["DecimalDigit"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["NonZeroDecimalDigit"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["DecimalMagnitude"] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        out["IntegerIntervalBound"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["Representation"] = ("🟡", "SL-3229-INTEGER-REPRESENTATION-STUBS")
         out["OverflowDisposition"] = ("🟡", "SL-3229-INTEGER-OVERFLOW-SEMANTICS")
     if rel == "src/v4/std/float.dag":
@@ -356,6 +374,17 @@ def format_grounded_r1_slice_marker(marker: str) -> str:
 
 
 def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> str:
+    if ref == "SL-T11-GRAMMAR-FROM-TOKEN-ROW":
+        return (
+            "// 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — "
+            "feature:t11-grammar-from-token-row — "
+            "bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — "
+            "owner:T-11 target-model grammar rows — "
+            "dissolve-on-arrival: replace the fold1 accumulator with a std "
+            "fold_non_empty/list-to-sequence helper once that helper lands and "
+            "T-11 grammar rows consume it; forbidden: hand-authoring token-class "
+            "sequence trees beside the *_mvp1_concrete_tokens source."
+        )
     if type_name == "LlvmWave1IntegerBits":
         return (
             "// 🟡 coproduct dissolution — SL-3229-LLVM-WAVE1-INT-WIDTH — "
@@ -518,7 +547,10 @@ def strip_body_comments(after_module: str) -> str:
         # Only coproduct one-liners survive the strip; RULING-1 grounded lines are
         # always re-materialized by inject_grounded_tags (keeps one code path and
         # spacing normalization — e.g. float.dag after coproduct variants).
-        if sl.lstrip().startswith("//") and not COPRODUCT_TAG_RE.match(sl):
+        if (
+            sl.lstrip().startswith("//")
+            and not COPRODUCT_TAG_RE.match(sl)
+        ):
             continue
         out_lines.append(line)
     return "".join(out_lines)

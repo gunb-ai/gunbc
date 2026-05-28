@@ -74,8 +74,8 @@ fn v4_compile_dag_declares_ratified_compile_core() {
         "{COMPILE_PATH}: must declare compile_inferred (post-infer compile-core)"
     );
     assert!(
-        surface_declares_fn(&module, "apply_lens"),
-        "{COMPILE_PATH}: must declare apply_lens gate combinator (T-23 forward home)"
+        surface_declares_fn(&module, "apply_compile_lens"),
+        "{COMPILE_PATH}: must declare apply_compile_lens compile-orchestrator gate"
     );
     assert!(
         surface_declares_type(&module, "Validated"),

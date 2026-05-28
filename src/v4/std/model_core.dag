@@ -1,7 +1,7 @@
 // src/v4/std/model_core.dag
 // Scope: Shared ModelCore substrate for LanguageModel and concrete runtime extdeps.
-// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, ModelCoreWave1BoolLawKey, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, wave1_model_core, wave1_void, model_core_wave1_bool_law_bounded_lattice_identities, model_core_wave1_bool_law_distributivity, model_core_wave1_bool_law_complement_involution, model_core_wave1_bool_law_complement_bounds, model_core_wave1_law_field_subject, model_core_wave1_law_field_algebra, model_core_wave1_law_field_kind
-// Consumes: v4.std.collection, v4.std.logic, v4.std.node
+// Owns: ModelCore, PrimitiveFactBundle, primitive_fact_axis_unbound_diagnostic, AlgebraInhabitanceDecl, AlgebraLawObligation, ModelCoreWave1BoolLawKey, EffectSignature, ResourceAccess, EffectSemanticsDecl, PartialitySemanticsDecl, PartialOperationDecl, PartialityDischarge, primitive_fact_axis_width, primitive_fact_axis_signedness, primitive_fact_axis_range, primitive_fact_axis_encoding, primitive_fact_axis_surface_spelling, primitive_fact_axis_overflow_disposition, field_partiality_decl, wave1_model_core, wave1_void, model_core_wave1_bool_law_bounded_lattice_identities, model_core_wave1_bool_law_distributivity, model_core_wave1_bool_law_complement_involution, model_core_wave1_bool_law_complement_bounds, model_core_wave1_law_field_subject, model_core_wave1_law_field_algebra, model_core_wave1_law_field_kind
+// Consumes: v4.std.algebra, v4.std.collection, v4.std.logic, v4.std.node
 // Status: T-33 modeled.
 
 
@@ -15,6 +15,11 @@ import v4.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   WholeFile
+}
+import v4.std.algebra {
+  field_reciprocal_nonzero_precondition_node,
+  field_reciprocal_operation,
+  field_reciprocal_operation_node
 }
 import v4.std.logic {
   BoolPrimitiveFacts,
@@ -32,7 +37,7 @@ import v4.std.witness { Holds, Violates, Witness }
 
 data primitive_fact_axis_width: Symbol = primitive_fact_axis_width
 data primitive_fact_axis_signedness: Symbol = primitive_fact_axis_signedness
-// 🟡 needs-more-work — feature:primitive-fact-axis-range-unbound — scaffold:T-33-model-core · dissolve-on: rust.dag (or any LanguageModel extdep) gains a per-primitive range source carrier (e.g. range_min/range_max fields on RustIntegerPrimitiveFacts) and binds this axis in spec_facts (ledger: T-33 · TASKS.md § T-33)
+// Range is a first-class primitive fact axis; Rust derives it from OverflowDisposition<RustIntegerCarrier>.ir_carrier via IntegerIntervalSpec.
 data primitive_fact_axis_range: Symbol = primitive_fact_axis_range
 data primitive_fact_axis_encoding: Symbol = primitive_fact_axis_encoding
 data primitive_fact_axis_surface_spelling: Symbol = primitive_fact_axis_surface_spelling
@@ -108,6 +113,19 @@ type PartialityDischarge
 // 🟡 needs-more-work — feature:model-core-partiality-semantics — scaffold:T-33-model-core · dissolve-on: T-33 (#3474) populates PartialitySemanticsDecl.operations per operator partiality substrate (ledger: T-33 · TASKS.md § T-33)
 type PartialitySemanticsDecl {
   operations: List<PartialOperationDecl>
+}
+
+
+fn field_partiality_decl() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      PartialOperationDecl {
+        operation: field_reciprocal_operation_node(),
+        precondition: field_reciprocal_nonzero_precondition_node(),
+        discharge: FailClosedAtBoundary { reason: field_reciprocal_operation }
+      }
+    ]
+  }
 }
 
 
