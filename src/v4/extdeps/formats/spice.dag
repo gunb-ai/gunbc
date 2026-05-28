@@ -30,7 +30,25 @@ module v4.extdeps.formats.spice
 
 
 import v4.std.diagnostic { Outcome }
-import v4.std.node { Symbol }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.compiler.parse { Grammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_empty_sync_tokens }
+import v4.compiler.tokenize {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
 
 
 type NamedNode {
@@ -216,4 +234,91 @@ type SpiceEmit = fn(SpiceNetlist) -> String
 type SpiceIoContract {
   parse: SpiceParse
   emit: SpiceEmit
+}
+
+
+data spice_token_component_name: Symbol = spice_token_component_name
+data spice_token_node_name: Symbol = spice_token_node_name
+data spice_token_value: Symbol = spice_token_value
+data spice_production_resistor_statement: Symbol = spice_production_resistor_statement
+data spice_surface_resistor_statement: Symbol = spice_surface_resistor_statement
+
+
+fn spice_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+
+fn spice_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+
+fn spice_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+
+fn spice_word_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+
+fn spice_value_pattern() -> LexPattern {
+  OneOrMorePattern { element: CharClassPattern { class: IdentContinueChar } }
+}
+
+
+fn spice_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        spice_lex_token(token_class: spice_token_component_name, pattern: spice_word_pattern()),
+        spice_lex_token(token_class: spice_token_node_name, pattern: spice_word_pattern()),
+        spice_lex_token(token_class: spice_token_value, pattern: spice_value_pattern())
+      ]
+    }
+  }
+}
+
+
+fn spice_resistor_statement_expr() -> GrammarExpr {
+  spice_grammar_sequence(
+    left: spice_grammar_terminal(token_class: spice_token_component_name),
+    right: spice_grammar_sequence(
+      left: spice_grammar_terminal(token_class: spice_token_node_name),
+      right: spice_grammar_sequence(
+        left: spice_grammar_terminal(token_class: spice_token_node_name),
+        right: spice_grammar_terminal(token_class: spice_token_value)
+      )
+    )
+  )
+}
+
+
+fn spice_wave1_grammar() -> Grammar {
+  let start = GrammarProduction {
+    name: spice_production_resistor_statement,
+    expression: spice_resistor_statement_expr(),
+    emitted: Node { kind: TypeNode { connective: Atom { identity: spice_surface_resistor_statement } }, children: [] }
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: spice_production_resistor_statement,
+      productions: [start],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn spice_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: spice_wave1_lex(),
+    grammar: spice_wave1_grammar()
+  }
 }
