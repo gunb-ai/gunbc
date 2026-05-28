@@ -123,7 +123,7 @@ type GrammarSchema {
 type GrammarSchemaProbe {
   schema: GrammarSchema
   fixture: String
-  expected_surface: Node
+  expected_parse_surface: Node
 }
 
 

@@ -971,6 +971,6 @@ fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: llvm_ir_ingest_grammar_schema(),
     fixture: "define void @f() { ret void }",
-    expected_surface: grammar_atom(identity: llvm_surface_void_function)
+    expected_parse_surface: grammar_atom(identity: llvm_surface_void_function)
   }
 }

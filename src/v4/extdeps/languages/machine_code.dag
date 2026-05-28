@@ -616,7 +616,7 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: machine_code_x86_64_ingest_grammar_schema(),
     fixture: "nop",
-    expected_surface: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
+    expected_parse_surface: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
   }
 }
 
@@ -647,7 +647,7 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: machine_code_aarch64_ingest_grammar_schema(),
     fixture: "nop",
-    expected_surface: grammar_atom(identity: machine_code_surface_aarch64_nop_instruction)
+    expected_parse_surface: grammar_atom(identity: machine_code_surface_aarch64_nop_instruction)
   }
 }
 
@@ -678,6 +678,6 @@ fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: machine_code_riscv64_ingest_grammar_schema(),
     fixture: "nop",
-    expected_surface: grammar_atom(identity: machine_code_surface_riscv64_nop_instruction)
+    expected_parse_surface: grammar_atom(identity: machine_code_surface_riscv64_nop_instruction)
   }
 }

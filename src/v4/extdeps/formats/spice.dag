@@ -225,11 +225,6 @@ type SpiceNetlist {
   body: List<DeckStatement>
 }
 
-type SpiceDocument {
-  grammar_schema: GrammarSchema
-  netlist: SpiceNetlist
-}
-
 type SpiceParseResult = Outcome<SpiceNetlist>
 
 type SpiceParse = fn(String) -> SpiceParseResult
@@ -330,6 +325,6 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: spice_format_grammar_schema(),
     fixture: "R1 n1 n2 1",
-    expected_surface: grammar_atom(identity: spice_surface_resistor_statement)
+    expected_parse_surface: grammar_atom(identity: spice_surface_resistor_statement)
   }
 }

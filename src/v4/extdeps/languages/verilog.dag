@@ -884,6 +884,6 @@ fn verilog_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: verilog_ingest_grammar_schema(),
     fixture: "module m; endmodule",
-    expected_surface: grammar_atom(identity: verilog_surface_module_decl)
+    expected_parse_surface: grammar_atom(identity: verilog_surface_module_decl)
   }
 }
