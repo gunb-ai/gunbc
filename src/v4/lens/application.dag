@@ -15,7 +15,7 @@
 //       - subterm_at(root: Node, p: Path) -> Result<Node, Diagnostic>
 //       - apply_diff(root: Node, d: Diff) -> Result<Node, Diagnostic>
 //
-// Status: T-23 filled — carriers + apply_lens + D1 ops (see header for immutable I/O contract).
+// Status: T-23 filled — carriers + apply_lens + D1 ops; section_subject projects via Path-backed handles pending section-ref-identity-evidence (gate below).
 // P2 boundary: THIS module is the single authority for section-scoped `Lens<Output>.read`,
 // `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
 // `v4.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
@@ -449,6 +449,7 @@ fn lens_enforcement_result<Output, Budget, Projected>(
 }
 
 // Introspect substrate entry — Lens<Output> only (design-lens-application-surface §2).
+// 🟡 gated — feature:section-ref-identity-evidence — `section` selects the lens read subject via `section_subject`; Path-backed DeclarationId/NodeId handles are the bounded bridge (see gate on `section_subject` above).
 fn apply_lens<Output>(
   lens: Lens<Output>,
   section: SectionRef,
@@ -463,6 +464,7 @@ fn apply_lens<Output>(
 }
 
 // Enforce substrate entry — EnforceableLens + declared budget (design §2 EnforcedApplication).
+// 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,
   section: SectionRef,
@@ -549,6 +551,7 @@ fn reports_to_non_empty_diagnostics(
 }
 
 // THE single advisory→fail-closed bridge: non-empty advisory reports ⇒ Rejected diagnostics.
+// 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_advisory_lens(
   lens: AdvisoryLens,
   section: SectionRef,

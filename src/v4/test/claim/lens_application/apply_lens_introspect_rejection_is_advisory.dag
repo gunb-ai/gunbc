@@ -1,8 +1,10 @@
 // src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
-// Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness.
+// Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness;
+//        pins gate-rejection reason on Violates.diagnostic and advisory Accepted.diagnostics head
+//        (singleton fixture; does not ratchet tail/locus/correction).
 // Owns: claim_apply_lens_introspect_rejection_is_advisory.
 // Consumes: compiler compile, lens_common fixture, std verification.
-// Status: scaffold — compile-only until application.dag fills.
+// Status: compile-only ratchet — CompileLensIntrospect advisory demotion at compile boundary.
 
 module v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory
 
@@ -15,7 +17,7 @@ import v4.compiler.compile {
   compile_lens_gate_rejected_diagnostic
 }
 import v4.compiler.infer { InferredTree }
-import v4.std.diagnostic { Accepted, None, Outcome, PortLocus, Rejected, Some, outcome_rejected }
+import v4.std.diagnostic { Accepted, Diagnostics, None, Outcome, PortLocus, Rejected, Some, outcome_rejected }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -71,23 +73,36 @@ fn apply_lens_mode_gate_rejects_enforce() -> Bool {
   }
 }
 
+// 🟡 gated — feature:v2-nested-match — dissolve-on: v2-compiler supports nested match in arm OR
+// T-23 migration deletes apply_compile_lens; forbidden: treating as permanent API surface.
+// Pins: Introspect demotion produces Accepted(Violates) where Violates.diagnostic.reason matches
+// the original gate rejection reason (not a fabricated diagnostic).
+fn introspect_witness_violates_reason_matches(w: Witness<Node>) -> Bool {
+  match w {
+    Violates { diagnostic: d } => d.reason == compile_lens_gate_rejected
+    Holds { value: _ } => false
+  }
+}
+
+// 🟡 gated — feature:v2-nested-match — same constraint as introspect_witness_violates_reason_matches.
+// Pins: advisory Accepted.diagnostics carries Some (not None) and head.reason matches the original
+// gate rejection reason. Does not pin locus, tail, or correction — only head.reason identity.
+fn introspect_diagnostics_head_reason_matches(od: Diagnostics) -> Bool {
+  match od {
+    Some { diagnostics: r } => r.head.reason == compile_lens_gate_rejected
+    None => false
+  }
+}
+
 fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
   match apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
     mode: CompileLensIntrospect
   ) {
-    Accepted { value: w, diagnostics: ds } =>
-      match w {
-        Violates { diagnostic: d } =>
-          match ds {
-            Some { diagnostics: r } =>
-              (d.reason == compile_lens_gate_rejected)
-                && (r.head.reason == compile_lens_gate_rejected)
-            None => false
-          }
-        Holds { value: _ } => false
-      }
+    Accepted { value: w, diagnostics: od } =>
+      introspect_witness_violates_reason_matches(w: w) &&
+      introspect_diagnostics_head_reason_matches(od: od)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -108,7 +123,7 @@ fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
 }
 
 data claim_apply_lens_introspect_rejection_is_advisory: TestClaim = EqualsClaim {
-  label: "lens_application/apply_lens_introspect_rejection_is_advisory: Introspect accepts gate rejection as advisory",
+  label: "lens_application/apply_lens_introspect_rejection_is_advisory: Introspect accepts gate rejection as advisory; head reason forwarded from original rejection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_mode_root,
   rhs: apply_lens_introspect_rejection_is_advisory_claim_rhs(),
