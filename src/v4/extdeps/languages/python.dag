@@ -123,6 +123,11 @@ type PythonGrammarRelationRow {
   tokens: List<PythonConcreteSyntaxToken>
 }
 
+// 🟡 gated — feature:language-model-lex-grammar-bundle — per-language lex/grammar/core
+// authoring record; compiler ingest authority is `v4.compiler.target_carriers` `LanguageModel = Node`
+// (TASKS.md Theme-A #9: LexRules/Grammar are projections, not parallel authorities). Peer:
+// `KotlinLanguageModel`, `SwiftLanguageModel`, `JavaLanguageModel`. dissolve-on: wave-1 bundle
+// projects to `Node` at the ingest boundary (cf. `kotlin_mvp1_target_model_node`).
 type PythonLanguageModel {
   lex: LexRules
   grammar: ParseGrammar
