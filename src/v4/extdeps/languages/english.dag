@@ -147,8 +147,8 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     FormalSubsetAdverbial => FailClosed { feature: FormalSubsetAdverbial }
     FormalSubsetIntransitive => FailClosed { feature: FormalSubsetIntransitive }
     ArticleDeterminer => Modeled
-    NounSpelling => DeclaredNormalized { feature: NounSpelling }
-    VerbSpelling => DeclaredNormalized { feature: VerbSpelling }
+    NounSpelling => Modeled
+    VerbSpelling => Modeled
     OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
     AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
     MalformedSentence => FailClosed { feature: MalformedSentence }
