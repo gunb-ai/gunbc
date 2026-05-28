@@ -206,6 +206,14 @@ type DagCollectAcc {
   collision_errors: List<ErrorNode>
 }
 
+// Single-step insert payload so the None arm can use fold(init: acc, …) and the
+// Rust emitter can Rc::try_unwrap the accumulator (owned fold — stage0 bootstrap).
+type DagCollectPending {
+  anchor: Node
+  key: String
+  fp: String
+}
+
 // Provisional location key until v4 content_hash (see DagNodeId 🟡 gate). Collection
 // fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
 fn dag_node_key(node: Node) -> String {
@@ -420,12 +428,19 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
         acc
       }
     None => {
-      let acc1 = DagCollectAcc {
-        seen: map_insert(acc.seen, key, fp),
-        order: list_push(acc.order, anchor),
-        collision_errors: acc.collision_errors
-      }
-      dag_collect_node_tree(node: anchor, acc: acc1)
+      [DagCollectPending { anchor: anchor, key: key, fp: fp }]
+        |> fold(
+          init: acc,
+          f: (inner, pending) =>
+            dag_collect_node_tree(
+              node: pending.anchor,
+              acc: DagCollectAcc {
+                seen: map_insert(inner.seen, pending.key, pending.fp),
+                order: list_push(inner.order, pending.anchor),
+                collision_errors: inner.collision_errors
+              }
+            )
+        )
     }
   }
 }
