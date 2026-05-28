@@ -39,6 +39,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: none,
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
@@ -90,7 +100,17 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       id: "affected",
       name: none,
       runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
-      steps: [UsesStep {
+      steps: [RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, UsesStep {
           name: Some { value: "Checkout" },
           id: none,
           uses: { owner: "actions", repo: "checkout", ref: "v4" },
@@ -136,6 +156,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
           run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -389,6 +419,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
           continue_on_error: false,
           timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "M1 v4 workflow CI model/YAML binding smoke" },
+          id: none,
+          run: "cargo test -p v3-compiler --test integration v4_workflow_ci_runner_dag_smoke_test::v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml -- --exact --quiet",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main')" },
+          continue_on_error: false,
+          timeout_minutes: none
         }, UsesStep {
           name: Some { value: "Cache v2-compiler binary (v4 bootstrap / host eval gate)" },
           id: Some { value: "v4-v2-bin" },
@@ -429,6 +469,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
+          name: Some { value: "M1 v4 full-tree rust emit probe (v2 emit + cargo check)" },
+          id: none,
+          run: "bash scripts/v4-m1-rust-emit-probe.sh",
+          shell: Bash,
+          env: { "V4_M1_RUST_EMIT_OUT": "${{ runner.temp }}/v4-rust-emit" },
+          working_directory: none,
+          if_condition: Some { value: "needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'" },
+          continue_on_error: true,
+          timeout_minutes: Some { value: 20 }
+        }, RunStep {
           name: Some { value: "v2 → v4 bootstrap compile (fail-closed full)" },
           id: Some { value: "v4_bootstrap_compile" },
           run: "set +euo pipefail\nbash scripts/v4-bootstrap-viability.sh\nec=$?\necho \"exitcode=${ec}\" >> \"$GITHUB_OUTPUT\"\nexit \"${ec}\"\n",
@@ -455,13 +505,13 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           shell: Bash,
           env: none,
           working_directory: none,
-          if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true'" },
+          if_condition: Some { value: "always() && needs.affected.outputs.v4 == 'true' && steps.v4_bootstrap_compile.outcome != 'skipped'" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "T-22 host eval receipt — eval(tree, interpretation, inputs)" },
+          name: Some { value: "T-22 TestClaim corpus structural bridge — manual .dag corpus" },
           id: none,
-          run: "python3 scripts/check-v4-host-eval-receipt.py",
+          run: "bash scripts/v4-testclaim-corpus-gate.sh",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -485,6 +535,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
           run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -554,7 +614,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
       steps: [RunStep {
           name: Some { value: "v4 receipt (bootstrap gate runs in ci job)" },
           id: none,
-          run: "echo \"::notice::v4 bootstrap viability + T-22 host eval receipt ran inside the ci job when v4 is affected.\"\n",
+          run: "echo \"::notice::v4 bootstrap viability + T-22 TestClaim corpus structural bridge ran inside the ci job when v4 is affected; TestClaim verdict execution remains a T-38 follow-up.\"\n",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -578,6 +638,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           name: Some { value: "Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)" },
           id: none,
           run: "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\necho \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
           shell: Bash,
           env: none,
           working_directory: none,
@@ -859,6 +929,16 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           env: none,
           working_directory: none,
           if_condition: none,
+          continue_on_error: false,
+          timeout_minutes: none
+        }, RunStep {
+          name: Some { value: "Clear inherited GitHub auth header (shared runner HOME)" },
+          id: none,
+          run: "git config --global --unset-all http.https://github.com/.extraheader || true",
+          shell: Bash,
+          env: none,
+          working_directory: none,
+          if_condition: Some { value: "github.event_name == 'push' && github.ref == 'refs/heads/main'" },
           continue_on_error: false,
           timeout_minutes: none
         }, UsesStep {
