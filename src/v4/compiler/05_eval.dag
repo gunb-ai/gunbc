@@ -127,14 +127,11 @@ import v4.extdeps.runtimes.v4_evaluator {
 }
 
 
-// P2/P3: cache-visible interpretation identity is a registered (runtime_identity, InterpretationAlgebra) pair;
-// digest fails closed on mismatch instead of trusting a caller-maintained pin alone.
-type InterpretationCacheAuthority
-  = Registered {
-      runtime_identity: Symbol,
-      interpretation: InterpretationAlgebra
-    }
-  | NonCacheable { reason: Symbol }
+// P2/P3: single registered (runtime_identity, InterpretationAlgebra) pair — no parallel pin; NonCacheable lands with a real producer.
+type InterpretationCacheAuthority {
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra
+}
 
 
 // RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
@@ -151,7 +148,7 @@ type EvalContext {
 
 fn eval_context_registered(runtime_identity: Symbol, interpretation: InterpretationAlgebra) -> EvalContext {
   EvalContext {
-    cache_authority: Registered {
+    cache_authority: InterpretationCacheAuthority {
       runtime_identity: runtime_identity,
       interpretation: interpretation
     }
@@ -160,11 +157,7 @@ fn eval_context_registered(runtime_identity: Symbol, interpretation: Interpretat
 
 
 fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
-  match context.cache_authority {
-    Registered { interpretation: interpretation, runtime_identity: _ } => interpretation
-    NonCacheable { reason: _ } =>
-      v4_evaluator_interpretation_wave1()
-  }
+  context.cache_authority.interpretation
 }
 
 
@@ -499,12 +492,7 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 
 
 fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
-  match context.cache_authority {
-    Registered { runtime_identity: id, interpretation: _ } =>
-      test_claim_symbol_digest(sym: id)
-    NonCacheable { reason: reason } =>
-      test_claim_symbol_digest(sym: reason)
-  }
+  test_claim_symbol_digest(sym: context.cache_authority.runtime_identity)
 }
 
 
