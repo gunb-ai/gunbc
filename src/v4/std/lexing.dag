@@ -4,7 +4,8 @@
 // Status: structural LexPattern coproduct and LexCharClass declared here as the v4.std substrate
 //         home; v4.compiler.tokenize carries identical incumbent forms pending consumer migration.
 //         🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when v4.compiler.tokenize
-//         imports from v4.std.lexing and retires its local LexCharClass/LexPattern declarations.
+//         imports from v4.std.lexing and retires its local LexCharClass, LexPattern, LexRule,
+//         and LexRuleSet declarations.
 
 
 module v4.std.lexing
@@ -17,7 +18,7 @@ import v4.std.text { Char, String }
 
 type Lexeme = String
 
-// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
+// 🟡 coproduct dissolution — feature:std-lexing-migrate-t6-incumbent; per-arm lexer morphism witness remains gated.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -28,7 +29,7 @@ type LexCharClass
   | LineCommentTextChar
   | BlockCommentTextChar
 
-// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
+// 🟡 coproduct dissolution — feature:std-lexing-migrate-t6-incumbent; bidirectional grammar carrier convergence remains gated.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -42,7 +43,7 @@ type LexPattern
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
-// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
+// 🟡 coproduct dissolution — feature:std-lexing-migrate-t6-incumbent; per-arm lexer morphism witness remains gated.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
