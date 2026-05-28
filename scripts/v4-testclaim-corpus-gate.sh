@@ -98,6 +98,20 @@ for file in "${manual_files[@]}"; do
   require_node "v4.test.claim.manual.${stem}"
 done
 
+mapfile -t run_rows < <(
+  grep -R -h -E '^data[[:space:]]+run_[A-Za-z0-9_]+:[[:space:]]+TestClaimRun' "$manual_dir" \
+    | sed -E 's/^data[[:space:]]+(run_[A-Za-z0-9_]+):.*/\1/' \
+    | sort -u
+)
+if [[ "${#run_rows[@]}" -eq 0 ]]; then
+  echo "error: manual corpus has no TestClaimRun data rows" >&2
+  exit 1
+fi
+
+for row in "${run_rows[@]}"; do
+  require_node "$row"
+done
+
 for name in \
   TestClaimRun \
   TestClaimEvalSubject \
@@ -113,9 +127,4 @@ require_node "v4.test.claim.manual.eval_runtime_mvp"
 require_node "claim_eval_mvp2_test_claim_route"
 require_node "run_eval_mvp2_test_claim_route"
 
-if ! grep -R -nE '^data[[:space:]]+run_[A-Za-z0-9_]+:[[:space:]]+TestClaimRun' "$manual_dir" >/dev/null; then
-  echo "error: manual corpus has no TestClaimRun data rows" >&2
-  exit 1
-fi
-
-echo "T-22 TestClaim corpus gate OK: ${#manual_files[@]} manual .dag files compiled; TestClaimRun surface present."
+echo "T-22 TestClaim corpus gate OK: ${#manual_files[@]} manual .dag files compiled; ${#run_rows[@]} TestClaimRun rows present."

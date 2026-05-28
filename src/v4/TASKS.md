@@ -274,13 +274,12 @@ writing output. The bridge's own dissolution condition is "v4 emit reaches
 passes through the bridge regardless of serializer state on `main`.
 Root cause and fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
 
-**T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
-checkable. `src/v4/test/claim/manual/*.dag` claims compile and type-check only;
-`scripts/check-v4-host-eval-receipt.py` string-matches emitted Rust, does not
-execute claims. Script header names the dissolution condition. T-34 (runtime
-substrate) done (#3770). T-22 (eval interpreter) substantially authored. CI
-wiring — a step that invokes T-22 eval on the claim corpus and surfaces
-`TestClaimRun` witness vs Violates — is the gap.
+**T-38 → claim-suite close.** The CI gate `scripts/v4-testclaim-corpus-gate.sh`
+now compiles `src/v4` to the modeled `.dag` artifact, verifies every
+`src/v4/test/claim/manual/*.dag` module is present, and pins the T-22
+`TestClaimRun` surface including the `eval_runtime_mvp` run row. The prior
+generated-Rust source-shape receipt is dissolved. Full emitted-Rust runtime
+execution remains owned by the M1 rust emit/link path.
 
 **T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
 sequence IS authored (header: "Status: filled — compiler-of-record is the
@@ -2237,29 +2236,25 @@ bridge script, update CI).
 
 **File**: CI integration in `src/v4/workflow/ci.dag` (T-24) or `src/v4/workflow/bootstrap.dag` (T-20) — owned by whichever fill PR wires T-22 eval into the CI step sequence
 **Why this is a T-15 gate**: T-15's close condition includes "TestClaim suite passes."
-That condition is not checkable today. `src/v4/test/claim/manual/*.dag` (38+
-files) compile and type-check against `std/verification.dag` shape — they are NOT
-evaluated. `scripts/check-v4-host-eval-receipt.py` is a string-match bridge over
-emitted Rust source; it does not invoke the evaluator or verify `AssertKind`
-verdicts.
-
-**Dissolution condition** (from script header verbatim): "delete when the modeled
-T-22 runner executes `eval_runtime_mvp.dag` on main CI and reports the same
-`RuntimeValue` witness through `TestClaimRun` or workflow-as-data, with no
-scripts-owned generated-Rust receipt standing between the claim and the gate."
+That condition was previously not checkable: `src/v4/test/claim/manual/*.dag`
+(38+ files) compiled and type-checked against `std/verification.dag` shape, while
+the deleted `scripts/check-v4-host-eval-receipt.py` string-matched emitted Rust
+source instead of binding the corpus to modeled `TestClaimRun` rows.
 
 **Current state (2026-05-28)**:
 - T-34 (runtime substrate — `std/runtime.dag + extdeps/runtimes/*.dag`) done (#3770)
 - T-22 (`compiler/05_eval.dag` — the interpreter) substantially authored at 1121 lines; open scaffold gates are feature-flagged on B1 `content_hash` and not independently dispatchable
-- Gap: no CI step invokes T-22 eval on the claim corpus; no `TestClaimRun` report surfaces in CI output; the bridge script is the only receipt
+- CI has a fail-closed T-22 manual corpus gate (`scripts/v4-testclaim-corpus-gate.sh`)
+  that compiles the modeled artifact and verifies all manual modules plus their
+  `TestClaimRun` rows are present.
 
 **Scope**: the CI-wiring half is the bottleneck. T-22 authoring is substantially
 done. T-38 closes when:
-1. A CI step runs T-22 eval over `src/v4/test/claim/manual/*.dag` (the corpus)
-2. Results surface as `TestClaimRun` verdict or equivalent workflow-as-data output
-3. `scripts/check-v4-host-eval-receipt.py` is deleted (its dissolution condition holds)
+1. A CI step compiles `src/v4/test/claim/manual/*.dag` through the modeled T-22 corpus surface
+2. Results surface as `TestClaimRun` rows in the modeled artifact, including the `eval_runtime_mvp` run row
+3. The generated-Rust receipt script is deleted
 
-**Dependencies**: `[needs T-22 runnable end-to-end; T-34 done #3770]`
+**Dependencies**: `[T-22 modeled TestClaimRun surface; T-34 done #3770; emitted-Rust runtime execution continues under M1]`
 T-22's open scaffold gates (`feature:T22-EVAL-CACHE-HASHES`) are gated on B1
 `content_hash`, which is a T-15 era concern — the claim corpus evaluation itself
 does not require them. T-38 can dispatch against T-22's current surface without

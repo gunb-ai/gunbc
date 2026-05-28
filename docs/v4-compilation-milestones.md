@@ -48,12 +48,14 @@ distinguish them because only one produces an executable:
 
 **Current CI state:** the "v2 → v4 bootstrap compile (fail-closed full)" step uses
 `--target dag`. It is a structural check, not a compilation to a running binary.
-`--target rust` over the full `src/v4` source tree IS already run in CI by the
-T-22 host eval receipt (`scripts/check-v4-host-eval-receipt.py`, step "T-22 host
-eval receipt — eval(tree, interpretation, inputs)"). That step verifies zero
-v2 diagnostics and checks structural properties of the emitted Rust. What has
-**not** been done in CI is: compiling that emitted Rust crate with `rustc`/`cargo`
-to produce a runnable `v4-stage0` binary.
+The manual TestClaim corpus is now covered by the T-22 corpus gate
+(`scripts/v4-testclaim-corpus-gate.sh`, step "T-22 TestClaim corpus gate —
+manual .dag corpus"). That step compiles `src/v4` with `--target dag`, verifies
+zero v2 diagnostics, checks that every `src/v4/test/claim/manual/*.dag` module is
+present in the modeled artifact, and pins the modeled `TestClaimRun` surface
+including the `eval_runtime_mvp` run row. What has **not** been done in CI is:
+compiling full emitted Rust with `rustc`/`cargo` to produce a runnable
+`v4-stage0` binary.
 
 ---
 
@@ -89,8 +91,8 @@ full-compile arm, not the bridge arm, before treating CI green as M0 confirmatio
 compiles with `rustc`/`cargo` to a runnable `v4-stage0` binary without errors.
 
 **Evidence:** CI step that runs `cargo build` (or `rustc main.rs`) on the crate
-emitted by the T-22 host eval receipt step exits 0. A `v4-stage0` binary exists
-and runs.
+emitted by `v2-compiler compile --target rust src/v4` exits 0. A `v4-stage0`
+binary exists and runs.
 
 **What this proves:** The v2 emitter produces Rust that is not only syntactically
 valid but type-correct and linkable. This is the first moment that "v4" exists as
@@ -100,8 +102,8 @@ an executable artifact.
 It may exist but produce wrong or empty output for any input.
 
 **Known blockers:**
-1. **Emitted Rust does not pass `cargo check`.** The T-22 host eval receipt already
-   verifies zero v2 diagnostics on `--target rust src/v4`, but the emitted crate
+1. **Emitted Rust does not pass `cargo check`.** The M1 rust emit probe verifies
+   zero v2 diagnostics on `--target rust src/v4`, but the emitted crate
    currently has ~4,900 `rustc` errors (PR #3654). Top categories: E0282 type
    annotations needed (~2,125), E0107 wrong generic arity (~792), E0308 type mismatch
    (~669). These are v2 emitter fidelity gaps, not v4 modeling gaps.
@@ -250,10 +252,11 @@ the other.
 These are decisions required before the corresponding work can be dispatched:
 
 **Gap 1 — CI wiring for M1 (emitted Rust → binary)**
-The T-22 host eval receipt already runs `--target rust src/v4` and verifies zero v2
-diagnostics, but no CI step runs `cargo check` / `cargo build` on the emitted crate
-to link a binary. Adding this step will surface which v2 emitter patterns produce
-rustc errors. PR #3654 (probe-only, continue-on-error) surfaced ~4,900 errors.
+The M1 rust emit probe runs `--target rust src/v4` and surfaces v2 diagnostics /
+rustc failures, but no fail-closed CI step runs `cargo check` / `cargo build` on
+the emitted crate to link a binary. Adding this gate will surface which v2 emitter
+patterns still produce rustc errors. PR #3654 (probe-only, continue-on-error)
+surfaced ~4,900 errors.
 The next step is a gating `cargo build` step once the emitter gaps are fixed (`cargo check` alone does not link and does not satisfy M1).
 
 **Gap 2 — T-6/T-7 algorithm scope**
