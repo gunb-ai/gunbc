@@ -278,6 +278,8 @@ data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_r
 data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
 data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
 data test_claim_cache_interpretation_cache_ineligible_tag: Symbol = test_claim_cache_interpretation_cache_ineligible_tag
+data test_claim_cache_witness_holds_tag: Symbol = test_claim_cache_witness_holds_tag
+data test_claim_cache_witness_violates_tag: Symbol = test_claim_cache_witness_violates_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -472,10 +474,27 @@ fn termination_proof_digest(proof: TerminationProof) -> Hash {
 }
 
 
+fn witness_cache_holds_digest(payload: Hash) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: test_claim_cache_witness_holds_tag),
+    b: payload
+  )
+}
+
+
+fn witness_cache_violates_digest(diag: Diagnostic) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: test_claim_cache_witness_violates_tag),
+    b: diagnostic_cache_digest(d: diag)
+  )
+}
+
+
 fn descent_witness_digest(d: Witness<TerminationProof>) -> Hash {
   match d {
-    Holds { value: proof } => termination_proof_digest(proof: proof)
-    Violates { diagnostic: diag } => diagnostic_cache_digest(d: diag)
+    Holds { value: proof } =>
+      witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
+    Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
   }
 }
 
@@ -499,8 +518,9 @@ fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
   combine_hash(
     a: content_hash(n: node),
     b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
-      Holds { value: facts } => inferred_facts_digest(facts: facts)
-      Violates { diagnostic: diag } => diagnostic_cache_digest(d: diag)
+      Holds { value: facts } =>
+        witness_cache_holds_digest(payload: inferred_facts_digest(facts: facts))
+      Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
     }
   )
 }
