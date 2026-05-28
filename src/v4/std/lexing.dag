@@ -1,9 +1,10 @@
 // src/v4/std/lexing.dag
 // Scope: canonical lexing types — Token, Lexeme, LexPattern, LexRule, LexRuleSet.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Status: substrate home (model-before-implement). T-6 incumbent forms remain in v4.compiler.tokenize
-//         (LexPattern 11-variant, LexRule TokenRule|TriviaRule, Token+spans). 🟡 feature:std-lexing-migrate-t6-incumbent;
-//         dissolves when v4.compiler.tokenize imports these types and retires its local declarations.
+// Status: substrate home. Simplified placeholder shapes: LexPattern here is {text:String} (incumbent in
+//         v4.compiler.tokenize:33-44 is 11-variant coproduct); LexRule is one record (incumbent: TokenRule|TriviaRule);
+//         Token omits file/start/end spans. 🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when the
+//         richer incumbent shapes relocate here (replacing these placeholders) and v4.compiler.tokenize imports from v4.std.lexing.
 
 
 module v4.std.lexing
