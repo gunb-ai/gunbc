@@ -27,6 +27,7 @@ import v4.compiler.parse {
 }
 import v4.compiler.tokenize {
   CharClassPattern,
+  ChoicePattern,
   DelimitedPattern,
   DigitChar,
   IdentContinueChar,
@@ -273,19 +274,9 @@ data swift_token_kw_false: Symbol = swift_token_kw_false
 data swift_token_ident: Symbol = swift_token_ident
 data swift_token_int_literal: Symbol = swift_token_int_literal
 data swift_token_string_literal: Symbol = swift_token_string_literal
-data swift_token_plus: Symbol = swift_token_plus
-data swift_token_minus: Symbol = swift_token_minus
-data swift_token_star: Symbol = swift_token_star
-data swift_token_slash: Symbol = swift_token_slash
-data swift_token_percent: Symbol = swift_token_percent
+data swift_token_operator: Symbol = swift_token_operator
 data swift_token_arrow: Symbol = swift_token_arrow
 data swift_token_equal: Symbol = swift_token_equal
-data swift_token_eq_eq: Symbol = swift_token_eq_eq
-data swift_token_bang_eq: Symbol = swift_token_bang_eq
-data swift_token_lt: Symbol = swift_token_lt
-data swift_token_gt: Symbol = swift_token_gt
-data swift_token_lte: Symbol = swift_token_lte
-data swift_token_gte: Symbol = swift_token_gte
 data swift_token_lbrace: Symbol = swift_token_lbrace
 data swift_token_rbrace: Symbol = swift_token_rbrace
 data swift_token_lparen: Symbol = swift_token_lparen
@@ -333,6 +324,7 @@ data swift_binding_fn_add: Symbol = swift_binding_fn_add
 data swift_binding_param_x: Symbol = swift_binding_param_x
 data swift_binding_param_y: Symbol = swift_binding_param_y
 data swift_binding_ty_int32: Symbol = swift_binding_ty_int32
+data swift_binding_op_plus: Symbol = swift_binding_op_plus
 
 data swift_relation_rule_mvp1_fn_add: Symbol = swift_relation_rule_mvp1_fn_add
 
@@ -358,7 +350,7 @@ fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
     SwiftFixedToken { token_class: swift_token_lbrace },
     SwiftFixedToken { token_class: swift_token_kw_return },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
-    SwiftFixedToken { token_class: swift_token_plus },
+    SwiftBoundToken { token_class: swift_token_operator, binding: swift_binding_op_plus },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
     SwiftFixedToken { token_class: swift_token_rbrace }
   ]
@@ -902,15 +894,19 @@ fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
-        map_insert(empty_map(), swift_binding_fn_add, "add"),
-        swift_binding_param_x,
-        "x"
+        map_insert(
+          map_insert(empty_map(), swift_binding_fn_add, "add"),
+          swift_binding_param_x,
+          "x"
+        ),
+        swift_binding_param_y,
+        "y"
       ),
-      swift_binding_param_y,
-      "y"
+      swift_binding_ty_int32,
+      "Int32"
     ),
-    swift_binding_ty_int32,
-    "Int32"
+    swift_binding_op_plus,
+    "+"
   )
 }
 
