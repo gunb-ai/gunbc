@@ -429,7 +429,7 @@ fn kotlin_mvp1_concrete_token_tail() -> List<KotlinConcreteSyntaxToken> {
     KotlinFixedToken { token_class: kotlin_token_lbrace },
     KotlinFixedToken { token_class: kotlin_token_kw_return },
     KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_x },
-    KotlinFixedToken { token_class: kotlin_token_plus },
+    KotlinFixedToken { token_class: kotlin_token_operator },
     KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_y },
     KotlinFixedToken { token_class: kotlin_token_rbrace }
   ]
@@ -1453,7 +1453,6 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
       kotlin_keyword_lex_rule(token_class: kotlin_token_kw_false, text: "false"),
       kotlin_operator_lex_rule(),
       kotlin_lex_rule(token_class: kotlin_token_equal, text: "="),
-      kotlin_lex_rule(token_class: kotlin_token_plus, text: "+"),
       kotlin_lex_rule(token_class: kotlin_token_lbrace, text: "{"),
       kotlin_lex_rule(token_class: kotlin_token_rbrace, text: "}"),
       kotlin_lex_rule(token_class: kotlin_token_lparen, text: "("),
