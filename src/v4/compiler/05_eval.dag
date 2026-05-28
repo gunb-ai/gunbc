@@ -23,6 +23,7 @@ import v4.std.runtime {
   EvaluationEnvironment,
   EvaluationFrame,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   Raise,
   Return,
   RuntimeAggregate,
@@ -122,18 +123,19 @@ import v4.std.verification {
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
+  v4_evaluator_interpretation_structure_witness,
   v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1
 }
 
 
-// P2/P3: registered triple — runtime_identity, registry semantics_digest, corpus binding_digest (ineligible cache separation).
+// P2/P3: registered triple — runtime_identity, registry semantics_digest, structure witness (derived fn-ref symbols).
 type InterpretationCacheAuthority {
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
   semantics_digest: Hash,
-  binding_digest: Hash
+  structure_witness: InterpretationStructureWitness
 }
 
 
@@ -149,11 +151,11 @@ type EvalContext {
 }
 
 
-// P2/P3: semantics_digest is registry-only; interpretation_binding_tag is corpus binding witness (not registry authority).
+// P2/P3: semantics_digest is registry-only; structure_witness Symbols name each interpreter fn ref (co-located with algebra literals).
 fn eval_context_with_semantics(
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
-  interpretation_binding_tag: Symbol
+  structure_witness: InterpretationStructureWitness
 ) -> EvalContext {
   EvalContext {
     cache_authority: InterpretationCacheAuthority {
@@ -161,9 +163,10 @@ fn eval_context_with_semantics(
       interpretation: interpretation,
       semantics_digest: interpretation_registry_semantics_digest(
         runtime_identity: runtime_identity,
-        interpretation: interpretation
+        interpretation: interpretation,
+        structure_witness: structure_witness
       ),
-      binding_digest: test_claim_symbol_digest(sym: interpretation_binding_tag)
+      structure_witness: structure_witness
     }
   }
 }
@@ -174,7 +177,7 @@ fn eval_context_v4_evaluator_wave1() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: v4_evaluator_runtime_id,
     interpretation: v4_evaluator_interpretation_wave1(),
-    interpretation_binding_tag: v4_evaluator_runtime_id
+    structure_witness: v4_evaluator_interpretation_structure_witness()
   )
 }
 
@@ -182,9 +185,38 @@ fn eval_context_v4_evaluator_wave1() -> EvalContext {
 // Closed registry: structural == on InterpretationAlgebra compares named top-level fn refs
 // (not runtime closure identity). Receipt: v4_evaluator_runtime_anchor interpretation-eq witnesses.
 // 🟡 gated — dissolve-on: Node-projectable InterpretationAlgebra registry keys.
+fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitness) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: combine_hash(
+        a: test_claim_symbol_digest(sym: w.allocate_literal),
+        b: test_claim_symbol_digest(sym: w.call_primitive)
+      ),
+      b: test_claim_symbol_digest(sym: w.choose_branch)
+    ),
+    b: combine_hash(
+      a: test_claim_symbol_digest(sym: w.step_loop),
+      b: test_claim_symbol_digest(sym: w.bind_value)
+    )
+  )
+}
+
+
+fn interpretation_structure_witness_digest(
+  runtime_identity: Symbol,
+  structure_witness: InterpretationStructureWitness
+) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: runtime_identity),
+    b: interpretation_structure_witness_slots_digest(w: structure_witness)
+  )
+}
+
+
 fn interpretation_registry_semantics_digest(
   runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
 ) -> Hash {
   if runtime_identity == v4_evaluator_runtime_id {
     if interpretation == v4_evaluator_interpretation_wave1() {
@@ -193,7 +225,7 @@ fn interpretation_registry_semantics_digest(
       test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
     }
   } else {
-    test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
+    interpretation_structure_witness_slots_digest(w: structure_witness)
   }
 }
 
@@ -567,7 +599,7 @@ type InterpretationCacheDigestAuthority
   | InterpretationCacheIneligible {
       runtime_identity: Symbol,
       registry_witness: Hash,
-      binding_digest: Hash
+      structure_digest: Hash
     }
 
 
@@ -575,12 +607,15 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
   let authority = context.cache_authority
   let registry_witness = interpretation_registry_semantics_digest(
     runtime_identity: authority.runtime_identity,
-    interpretation: authority.interpretation
+    interpretation: authority.interpretation,
+    structure_witness: authority.structure_witness
   )
-  let registry_unbound = test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
+  let registered_semantics = test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
   let registry_mismatch = test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
-  if registry_witness == authority.semantics_digest
-    && registry_witness != registry_unbound
+  if authority.runtime_identity == v4_evaluator_runtime_id
+    && authority.interpretation == v4_evaluator_interpretation_wave1()
+    && authority.semantics_digest == registered_semantics
+    && registry_witness == registered_semantics
     && registry_witness != registry_mismatch {
     InterpretationCacheRegistered {
       runtime_identity: authority.runtime_identity,
@@ -590,7 +625,10 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
     InterpretationCacheIneligible {
       runtime_identity: authority.runtime_identity,
       registry_witness: registry_witness,
-      binding_digest: authority.binding_digest
+      structure_digest: interpretation_structure_witness_digest(
+        runtime_identity: authority.runtime_identity,
+        structure_witness: authority.structure_witness
+      )
     }
   }
 }
@@ -612,7 +650,7 @@ fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAut
     InterpretationCacheIneligible {
       runtime_identity: runtime_identity,
       registry_witness: registry_witness,
-      binding_digest: binding_digest
+      structure_digest: structure_digest
     } =>
       combine_hash(
         a: test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag),
@@ -621,7 +659,7 @@ fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAut
             a: test_claim_symbol_digest(sym: runtime_identity),
             b: registry_witness
           ),
-          b: binding_digest
+          b: structure_digest
         )
       )
   }
