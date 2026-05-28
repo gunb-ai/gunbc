@@ -1,7 +1,5 @@
 // src/v4/std/float.dag
 // Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.
-// Owns: Float32Interchange, Float64Interchange, FloatSpecial, FloatBody, Float32, Float64, Float, float_totalizer_reason_ieee754_nan_unordered, float_totalizer_port_ieee754_nan_totalizer, sign_rank_lex, ordering_invert, float_finite_unsigned_field_order, float_special_rank, float_body_is_nan, float_finite_magnitude_zero, float_body_compare_semantic_total, float_body_compare_ieee_ordered_outcome, float_ordered_compare_nan_rejected, float_ieee_ordered_compare_outcome, float_ordered_compare_tier2, NaNPropagation, InfPropagation, FloatExceptionDisposition
-// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, is_zero, nat_compare).
 // Status: std float vocabulary (32/64, specials, IEEE-ordered compare).
 // Anchor: https://en.wikipedia.org/wiki/IEEE_754
 // Ledger: CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-DISPOSITION, SL-3229-FLOAT-NOMINAL.

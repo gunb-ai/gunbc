@@ -1,8 +1,6 @@
 // src/v4/std/exact_structural_equality_zip_fold_predicate.dag
 // Scope: mechanical exact-structural-equality zip-fold preservation check (leaf — no find_witness import).
 // Anchor: design-v4-compiler-homomorphism.md coercion fold; grounding-worked-examples.md zip-fold.
-// Owns: exact_structural_equality_zip_fold, exact_structural_equality_zip_fold_preservation_holds.
-// Consumes: std node.
 // Status: T-25-tail predicate prover — catamorphic zip-fold over canonical Node shape; decidable, no search.
 
 

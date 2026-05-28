@@ -16,12 +16,10 @@
 // SymbolicCost lattice axioms at fill (`UnknownCost`-as-top must satisfy
 // the lattice laws — the AbelianGroup<Nat> precedent).
 //
-// Owns:
 //   - SymbolicCost lattice (Constant + Linear + Polynomial + PolyLog + Exponential + Factorial + Log + Sum/Product + UnknownCost)
 //   - lens read: Node -> Witness<SymbolicCost>   (total over the closed kernel)
 //   - composes algebra+realization end-to-end
 //
-// Consumes:
 //   - std/node.dag, std/witness.dag, std/algebra.dag
 //   - extdeps/languages/*.dag: per-target realization cost
 //

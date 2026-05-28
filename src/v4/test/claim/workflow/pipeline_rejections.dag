@@ -1,7 +1,5 @@
 // src/v4/test/claim/workflow/pipeline_rejections.dag
 // Scope: workflow pipeline rejection TestClaim data.
-// Owns: PipelineRejectionCase and pipeline rejection TestClaimRun rows.
-// Consumes: v4.compiler.eval, v4.compiler.infer, v4.std.verification, v4.workflow.ci, v4.workflow.bootstrap.
 // Status: workflow-owned rejection coverage for the Wave-0 TestClaim runner.
 
 

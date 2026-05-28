@@ -1,7 +1,5 @@
 // src/v4/test/coercion_fold_int_rust_fixture.dag
 // Scope: Wave-2-BC3 coercion_fold receipt wiring int source to rust.dag i32 inhabitant.
-// Owns: int_source_grounding_fixture, rust_i32_candidate_fixture, coercion_fold_int_to_i32_fixture.
-// Consumes: v4.extdeps.languages.rust, v4.std.coercion, v4.std.constraints, v4.std.find_witness, v4.std.integer.
 // Status: structural receipt — rust_inhabitant_i32_node authority in extdeps/languages/rust.dag.
 
 

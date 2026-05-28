@@ -3,7 +3,6 @@
 // Scope: TestClaim — unhandled diagnostic paths impossible-bug class (R2+). Tier 2 runtime-safety proofs make division-by-zero, OOB, force-unwrap either proven safe or made total — never partial.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §390-393 R2+ + std/integer.dag Tier-2 totalization
 //
-// Owns:
 //   - test_division_by_zero_total_or_proven_safe: TestClaim
 //     - input: a / b where b's non-zero is unprovable from structure
 //     - expected: compiler rejects (Tier 1) OR inserts Diagnostic-returning total form (Tier 2)
@@ -13,7 +12,6 @@
 //   - test_force_unwrap_count: TestClaim
 //     - assertion: zero force-unwrap patterns survive in language surface (only at user-input boundary)
 //
-// Consumes:
 //   - std/verification.dag, std/diagnostic.dag, std/integer.dag (Tier-2 totalization), std/witness.dag
 //
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.

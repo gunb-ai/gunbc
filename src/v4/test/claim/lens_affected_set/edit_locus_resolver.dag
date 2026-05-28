@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/edit_locus_resolver.dag
 // Scope: git diff → edit_locus Node resolver receipts (path-regex bindings).
-// Owns: edit_locus_narrow_resolution_claim, edit_locus_fail_closed_claim.
-// Consumes: v4.lens.edit_locus, v4.lens.affected_set, v4.test.claim.lens_common.infer_fixture.
 // Status: T-21 wire claim; host git projection lands with BinaryShim runner.
 
 module v4.test.claim.lens_affected_set.edit_locus_resolver

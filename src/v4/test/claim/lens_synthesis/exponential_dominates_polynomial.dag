@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_synthesis/exponential_dominates_polynomial.dag
 // Scope: T-17 worked claim — exponential symbolic cost dominates polynomial lower bound.
-// Owns: claim_exponential_dominates_polynomial.
-// Consumes: lens cost, std node, std verification.
 // Status: T-17 filled — cost-lattice prerequisite (symbolic_cost_dominates).
 
 module v4.test.claim.lens_synthesis.exponential_dominates_polynomial

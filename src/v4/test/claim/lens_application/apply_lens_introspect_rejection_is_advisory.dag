@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
 // Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness.
-// Owns: claim_apply_lens_introspect_rejection_is_advisory.
-// Consumes: compiler compile, lens_common fixture, std verification.
 // Status: scaffold — compile-only until application.dag fills.
 
 module v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory

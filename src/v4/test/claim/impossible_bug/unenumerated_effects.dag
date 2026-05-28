@@ -3,7 +3,6 @@
 // Scope: TestClaim — unenumerated effects impossible-bug class (R2+). Operations are intrinsically read-shaped or write-shaped via type signature — no parallel taxonomy or annotation layer needed. Tracking effects as a separate enumerated concept IS the bug pattern, dissolved by construction.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §384-389 R2+ + lens/effect.dag (5-behavior compositional fold)
 //
-// Owns:
 //   - test_effect_derived_from_signature: TestClaim
 //     - input: function with returned-modified-resource (write-shaped) and one with returns-derived-value-only (read-shaped)
 //     - expected: lens/effect.dag classifies each correctly without explicit annotation
@@ -14,7 +13,6 @@
 //     - input: same with explicit reread() primitive
 //     - expected: structurally tagged intent → no Diagnostic
 //
-// Consumes:
 //   - std/verification.dag, std/diagnostic.dag, lens/effect.dag
 //
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.

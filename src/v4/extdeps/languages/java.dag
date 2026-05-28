@@ -1,7 +1,5 @@
 // src/v4/extdeps/languages/java.dag
 // Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Owns: JavaScalar, JavaIntegerPrimitiveFacts, JavaFloatPrimitiveFacts, JavaNonIntegerPrimitiveFacts, JavaLanguageModel, java_*_facts, java_*_inhabitant_node, java_declared_inhabitants_root, java_mvp1_target_model, java_wave1_* grammar/lex.
-// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
 // Status: T-4 java slice — JLS §4.2 primitives (byte/short/int/long/float/double/boolean/char integral per §4.2.1; not java.lang.String); `void` declared-inhabitant-only (JLS §4.3, excluded from ModelCore.primitives); `core: ModelCore` (#3474) primitives + surface-symbol membership from `java_*_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-10 (literal Node round-trip still 🟡); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
 

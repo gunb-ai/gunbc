@@ -1,8 +1,6 @@
 // src/v4/std/algebra.dag
 // Scope: algebraic structures and canonical carrier constructions.
 // Anchor: https://en.wikipedia.org/wiki/Algebraic_structure
-// Owns: Magma, Semigroup, Monoid, CommutativeMonoid, Group, AbelianGroup, Semiring, CommutativeSemiring, Ring, CommutativeRing, OrderedRing, Field, ApproximateField, Lattice, BoundedLattice, BooleanAlgebra, FreeMonoid, FreeMonoidUniqueState, fold_list, fold_non_empty, fold_list_right, fold_list_node, ListTailResult, list_tail, algebra_inhabitance_node, algebra_unary_fn_node, algebra_binary_fn_node, magma_node, magma_type_node, semigroup_node, semigroup_type_node, monoid_node, monoid_type_node, commutative_monoid_node, commutative_monoid_type_node, group_node, group_type_node, abelian_group_node, abelian_group_type_node, semiring_node, semiring_type_node, commutative_semiring_node, commutative_semiring_type_node, ring_node, ring_type_node, commutative_ring_node, commutative_ring_type_node, ordered_ring_node, ordered_ring_type_node, field_node, field_type_node, field_reciprocal_operation, field_reciprocal_operation_node, field_reciprocal_nonzero_precondition, field_reciprocal_nonzero_precondition_node, approximate_field_node, approximate_field_type_node, lattice_node, lattice_type_node, bounded_lattice_node, bounded_lattice_type_node, boolean_algebra_node, boolean_algebra_type_node, free_monoid_node, free_monoid_type_node, is_empty, non_empty, length, for_all, count_where, count_equal, unique, list_append, list_snoc_item, bag_eq, zip_eq, is_prefix_of, PointwisePower, Ordering, Homomorphism.
-// Consumes: std node.
 // Status: T-2 modeled.
 // Ledger: Part 6 — SL-P6-FREEMONOID-IS-EMPTY-VPRED.
 

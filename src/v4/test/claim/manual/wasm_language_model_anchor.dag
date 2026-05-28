@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/wasm_language_model_anchor.dag
 // Scope: T-4 compile anchor — wasm.dag LanguageModel + ModelCore wave-1.
-// Owns: wasm_anchor_language_model, wasm_anchor_i32_inhabitant, wasm_anchor_model_core.
-// Consumes: extdeps/languages/wasm.dag.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.wasm_language_model_anchor

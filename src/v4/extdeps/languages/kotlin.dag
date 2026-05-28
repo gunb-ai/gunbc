@@ -1,7 +1,5 @@
 // src/v4/extdeps/languages/kotlin.dag
 // Scope: Kotlin language specification LanguageModel — built-in scalar fact-bundles, catalog-derived canonical symbols, ModelCore primitive bundles.
-// Owns: KotlinIntWidth, KotlinScalar, KotlinIntegerPrimitiveFacts, KotlinFloatPrimitiveFacts, KotlinNonNumericPrimitiveFacts, KotlinLanguageModel, kotlin_*_facts, kotlin_model_core_wave1, kotlin_language_model_wave1.
-// Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
 // Status: T-4 Kotlin wave-1; built-in classifier types from Kotlin language specification Version 1.9-rfc+0.1; runtime representation remains platform-specific where the spec says so; bool canonical-B decl-ref — E-6(b) staging.
 // Anchor: https://kotlinlang.org/spec/built-in-types-and-their-semantics.html
 

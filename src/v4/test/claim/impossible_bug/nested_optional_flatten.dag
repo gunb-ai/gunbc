@@ -3,7 +3,6 @@
 // Scope: TestClaim — nested-optional flatten impossible-bug class (R2+). Option<Option<T>> accessor patterns that require hand-unwrapping in normal languages are impossible by construction in v4 via cardinality refinement.
 // Anchor: THESIS.md "Enumerable impossible-bug classes" §381-383 R2+ + std/cardinality.dag
 //
-// Owns:
 //   - test_nested_optional_collapses: TestClaim
 //     - input: try to declare Option<Option<T>>
 //     - expected: substrate collapses or refuses (cardinality refinement makes nesting redundant)
@@ -11,7 +10,6 @@
 //     - input: chain accessors through optional fields
 //     - expected: emitted code has no double-unwrap pattern
 //
-// Consumes:
 //   - std/verification.dag, std/diagnostic.dag, std/cardinality.dag
 //
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.

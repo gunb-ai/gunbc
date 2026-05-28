@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/connective_anchors.dag
 // Scope: Manual TestClaim anchors for non-Atom connective stubs (K-1; Atom deferred).
-// Owns: stub_empty_conj stub_arrow_pair stub_empty_* claim_* TestClaim data
-// Consumes: v4.std.verification v4.std.diagnostic v4.std.node
 // Status: v2 compile; claim execution deferred (T-22).
 
 module v4.test.claim.manual.connective_anchors

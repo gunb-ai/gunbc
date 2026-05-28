@@ -1,9 +1,7 @@
 // src/v4/std/find_witness.dag
 // Scope: unified candidate-enumeration-and-check primitive (Pass B unification).
 // Anchor: docs/design-v4-compiler-homomorphism.md (Pass B unification row); docs/modeling-discipline.md Practice 11.
-// Owns: CandidateSet, PreservationPredicate, FindWitnessResult, TargetSelectionPolicy, MultiplicityPolicy,
 //       find_witness, verify_witness.
-// Consumes: std collection, std diagnostic, std node, std witness.
 // Status: W-T-10 — T-25-tail predicate prover for constraint_satisfaction + exact_structural_equality_zip_fold.
 
 

@@ -1,8 +1,6 @@
 // src/v4/std/machine.dag
 // Scope: machine representation widths and words.
 // Anchor: https://en.wikipedia.org/wiki/Word_(computer_architecture)
-// Owns: Bit, Byte, Word8, Word16, Word32, Word64, Word128, MachineWidth, PointerWidth.
-// Consumes: std collection, std logic.
 // Status: T-3 modeled.
 
 

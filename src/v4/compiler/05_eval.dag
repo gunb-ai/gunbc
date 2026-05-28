@@ -1,7 +1,5 @@
 // src/v4/compiler/05_eval.dag
 // Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Owns: Inputs, EvalContext, TestClaimTypedInput, TestClaimEvalSubject, TestClaimCacheKey, TestClaimCacheReceipt, TestClaimRun, EvalFoldState, eval, eval_node, run_test_claim, aggregate_verdicts.
-// Consumes: v4.compiler.infer, v4.std.runtime, v4.std.node, v4.std.diagnostic, v4.std.verification, v4.std.verdict (Verdict, verdict_fold).
 // Status: T-22 eval and TestClaim runner consume decomposed runtime interpretation algebra. Local control terminalization, runtime-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
 // CompilesClaim: run_test_claim_runtime_assert compares actual to expected_value through runtime evaluation (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
 

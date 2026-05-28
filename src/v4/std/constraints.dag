@@ -1,10 +1,8 @@
 // src/v4/std/constraints.dag
 // Scope: canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper).
 // Anchor: design-v4-compiler-homomorphism.md; TASKS.md T-9; docs/modeling-discipline.md Practice 11.
-// Owns: ConstraintGraph, CanonicalGrounding, ConstraintSatisfactionPredicate, ConstraintSolvePolicy,
 //       CanonicalGroundingCandidateSet, CanonicalGroundingWitness, constraint_satisfaction_holds,
 //       canonical_grounding_candidates, constraint_satisfaction_preservation_predicate, solve_constraints.
-// Consumes: std find_witness, std diagnostic, std witness, std node.
 // Status: identity-MVP wiring — solve_constraints → find_witness + constraint predicate dispatch; candidate/predicate bodies are tracked 🟡 scaffolds until T-9 ground + T-25-tail land.
 
 

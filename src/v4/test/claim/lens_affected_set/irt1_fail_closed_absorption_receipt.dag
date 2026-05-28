@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/irt1_fail_closed_absorption_receipt.dag
 // Scope: IRT-1 leaf — fail-closed fold absorbs later edits via seed_edit_fold_acc and re_exec_frontier_from_diff.
-// Owns: claim_irt1_fail_closed_absorption_receipt.
-// Consumes: lens affected_set, lens affected_set_examples, std logic, std node, std verification, std witness.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.irt1_fail_closed_absorption_receipt

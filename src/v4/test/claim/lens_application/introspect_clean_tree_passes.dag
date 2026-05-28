@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_application/introspect_clean_tree_passes.dag
 // Scope: T-23 worked claim — Introspect apply_lens admits a clean inferred tree.
-// Owns: claim_introspect_clean_tree_passes.
-// Consumes: compiler compile, lens_common fixture, std verification.
 // Status: scaffold — compile-only until application.dag fills introspect demotion.
 
 module v4.test.claim.lens_application.introspect_clean_tree_passes

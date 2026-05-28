@@ -1,7 +1,5 @@
 // src/v4/compiler/self_host.dag
 // Scope: self-host fixed-point validation runner shape; body is scaffolded fail-closed until execution substrate and candidate generation land.
-// Owns: CoreNode, SourceModels, StructurallyEqual, StageEmissionEquality, self_host_fixed_point_validate.
-// Consumes: v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: scaffold-against-contract; runner body returns SelfHostRunnerNotRealized.
 
 module v4.compiler.self_host

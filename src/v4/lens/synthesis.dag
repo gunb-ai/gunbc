@@ -14,7 +14,6 @@
 //         docs/r4-carve-out-routing.md C7 (advisory carrier, NOT fail-closed
 //         Diagnostic; algorithm choice is design-tier — programmer decides)
 //
-// Owns:
 //   - lens read: (Node, LowerBoundTechnique) -> Set<Report>  (advisory carrier,
 //     NEVER Witness — Witness is strictly fail-closed per INVARIANTS P3/C-8;
 //     advisory Report must not overload it. Empty set = no advice; non-empty =
@@ -49,7 +48,6 @@
 //     advisory Report into fail-closed Diagnostic per their policy choice
 //   - Default policy: Introspect (advisory) per opt-in-depth discipline
 //
-// Consumes:
 //   - std/node.dag, std/witness.dag, std/algebra.dag
 //   - std/report.dag (advisory carrier)
 //   - lens/complexity.dag (current-complexity input for cross-algorithm comparison)

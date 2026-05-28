@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/nat_law_anchors.dag
 // Scope: Manual Nat law TestClaims (stub payload; law text in claim label).
-// Owns: claim_nat_* TestClaim data
-// Consumes: v4.std.verification v4.std.diagnostic v4.test.claim.manual.connective_anchors
 // Status: v2 compile; classification discipline indexed DECISIONS V-HDR.
 
 module v4.test.claim.manual.nat_law_anchors

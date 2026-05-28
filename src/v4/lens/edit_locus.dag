@@ -1,8 +1,6 @@
 // src/v4/lens/edit_locus.dag
 // Scope: git diff name-only paths → substrate Node edit_locus for affected_set (T-21 wire).
-// Owns: RepoPath, GitDiffNameOnly, PathRegex, EditLocusBinding, EditLocusRead,
 //       resolve_edit_locus, affected_set_reading_from_git_diff.
-// Consumes: v4.compiler.infer, v4.lens.affected_set, v4.std.algebra,
 //           v4.std.collection, v4.std.diagnostic, v4.std.node, v4.std.text, v4.std.witness.
 // Status: Wave-0 — path-regex match authority injected via EditLocusRead until
 //   Q-Regex-Primitive; dissolves scripts/detect-affected-components.sh path buckets.

@@ -7,8 +7,6 @@
 // Anchor: docs/design-dissolution-lens.md §5 L1.13.c (status "reserved-
 //         proposed" → promoted-to-substrate (this file) via
 //         node://adhoc-086ab97b-b41 substrate-evolution 5/5).
-// Owns: TableDecisionTreeFact, TableDecisionTreeVerdict.
-// Consumes: v4.std.node (Node, Symbol — actually imported).
 //           Conceptual consumers landing with `TableDissolves` wiring:
 //           v4.std.collection (FiniteSet, TotalMap, TotalPolicy carriers
 //           referenced by the clearing receipt — the lens's *output* names

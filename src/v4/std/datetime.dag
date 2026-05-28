@@ -4,9 +4,7 @@
 // Anchor: https://www.iers.org/SharedDocs/News/EN/BulletinC.html
 // Anchor: https://maia.usno.navy.mil/products/leap-second
 // Anchor: https://en.wikipedia.org/wiki/Gregorian_calendar
-// Owns: Instant, RFC 3339 date/time field carriers, local date/time profiles,
 //       UTC offset carriers, and validation-discharge constructors.
-// Consumes: std collection, std diagnostic, std nat, std refinement, std node.
 // Status: 🟢 T-3 modeled.
 
 module v4.std.datetime

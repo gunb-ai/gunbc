@@ -1,7 +1,6 @@
 // src/v4/std/diagnostic.dag
 // Scope: fail-closed diagnostic schema.
 // Anchor: THESIS.md "show the correct code" + INVARIANTS P3; design-v4-compiler-homomorphism.md Ratified Q11.
-// Owns: Diagnostic, Outcome, Diagnostics, NonEmptyDiagnostics, StageDiagnosticPolicy,
 //       bind_outcome, diagnostics_merge, diagnostics_monoid,
 //       non_empty_diagnostics_append, non_empty_diagnostics_semigroup,
 //       rejected_with_pending, accepted_thread_diagnostics,
@@ -9,7 +8,6 @@
 //       diagnostics_eq,
 //       absorb_outcome_diagnostics, append_outcome_value, sequence_outcome,
 //       Locus, Extent, Correction, NoCorrectionReason.
-// Consumes: std node, std algebra (list_append, bag_eq, Magma, Monoid, Semigroup —
 //       avoids diagnostic↔collection cycle).
 // Status: T-3 modeled; Wave-2-BC3 Outcome ratification (Ratified Q11).
 

@@ -21,7 +21,6 @@
 // Clear win: ONE `.dag` circuit declaration → a SPICE netlist that
 //   simulates (omni-emission reaches analog hardware).
 //
-// Owns:
 //   - SpiceNetlist { title: String, body: List<DeckStatement> } —
 //     well-formed by construction; malformed input is a Diagnostic,
 //     never a partial parse (same fail-closed discipline as csv.dag's
@@ -79,7 +78,6 @@
 //     typed values to produce the netlist; not a compiler render target.
 //     Signature only; body deferred for the same reason as `parse`.)
 //
-// Consumes:
 //   - std/node.dag — the `Symbol` opaque-identity carrier (K-1).
 //     Symbol is conceptually substrate-ambient per node.dag's K-1
 //     header note, but the v2 bridge parser requires an explicit

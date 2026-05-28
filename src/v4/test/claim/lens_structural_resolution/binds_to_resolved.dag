@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_structural_resolution/binds_to_resolved.dag
 // Scope: T-13 worked claim — BindsTo with held infer facts projects BindingResolved.
-// Owns: binds_to_resolved_claim.
-// Consumes: lens structural_resolution, compiler infer, std dependency, std node.
 // Status: 🟡 scaffold — dissolve-on: T-13 lens driver executes TestClaim rows (r4-lane-a §3 B2); owner: lens family batch.
 
 module v4.test.claim.lens_structural_resolution.binds_to_resolved

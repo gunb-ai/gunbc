@@ -14,7 +14,6 @@
 // Anchor: THESIS no-fallback + C5 (ingest = emit⁻¹ on the lossless core;
 //         outside it ⇒ fail-closed Diagnostic) + feedback_no_engine
 //
-// Owns:
 //   - test_english_prose_ingest_is_diagnostic: TestClaim
 //     - input: arbitrary English prose handed to `ingest`
 //     - expected: a precise Diagnostic (reason = NotInLosslessCore /
@@ -33,7 +32,6 @@
 //   it; do not list it as peer "Consumes" substrate while the scaffold is
 //   empty.
 //
-// Consumes:
 //   - std/diagnostic.dag
 //   - compiler/00_compile.dag (the `ingest` boundary — B2-OMNI)
 //

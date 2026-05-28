@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/infer_ground_add_mvp.dag
 // Scope: T-9 worked fixture — ResolvedTree for MVP add-shaped Arrow; executable infer/descent receipts.
-// Owns: fixture_add_resolved_tree, anchor_infer_add_mvp, infer_descent_witness_contract_node, claim rows, TestClaimRun receipts.
-// Consumes: compiler/04_infer.dag, compiler/05_eval.dag, std/diagnostic.dag, std/node.dag, std/verification.dag.
 // Status: SPI-3 receipts — infer derives descent via PR #3559 substrate; add MVP compiles when solve_constraints succeeds.
 // Anchor: design-v4-compiler-homomorphism.md MVP add(x,y)=x+y
 

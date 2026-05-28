@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/find_witness_identity_mvp.dag
 // Scope: Wave-4-A identity-MVP behavior anchors for find_witness / verify_witness / coercion_fold.
-// Owns: accepted identity witness, fail-closed non-identity, UniqueOnly ambiguity, selected invalid, verify mismatch, coercion identity lift.
-// Consumes: std/find_witness.dag, std/coercion.dag, std/constraints.dag, std/verification.dag.
 // Status: manual behavior receipt for exact-structural-preservation-identity-mvp scaffold.
 
 

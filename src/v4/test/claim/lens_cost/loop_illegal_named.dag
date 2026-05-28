@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_cost/loop_illegal_named.dag
 // Scope: T-12 worked claim — Loop with illegal Named edge fails closed.
-// Owns: claim_loop_illegal_named.
-// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.loop_illegal_named

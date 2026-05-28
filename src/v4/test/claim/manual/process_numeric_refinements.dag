@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/process_numeric_refinements.dag
 // Scope: POSIX process numeric refinement regression witnesses.
-// Owns: manual witnesses that out-of-range POSIX numeric construction rejects.
-// Consumes: v4.extdeps.posix, v4.std.diagnostic, v4.std.verification, connective stubs.
 // Status: T-25-core process refinement consumer acceptance witness; eval T-22.
 
 

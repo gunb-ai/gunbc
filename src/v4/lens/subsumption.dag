@@ -1,7 +1,5 @@
 // src/v4/lens/subsumption.dag
 // Scope: dissolution-lens subsumption ordering rows for root fixes that mechanically close leaf fixes.
-// Owns: DiffId, TestClaimId, ProducerStageId, SubsumptionVerification, DissolutionSubsumption, affected_set_irt1_subsumption, rust_language_model_emit_subsumption.
-// Consumes: v4.std.collection, v4.std.node.
 // Status: scaffold; Lens-CI host runtime accepts structural row mirrors until TestClaim execution owns these rows.
 
 module v4.lens.subsumption

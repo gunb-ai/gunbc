@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/irt1_empty_diff_frontier_receipt.dag
 // Scope: IRT-1 leaf — empty accumulator yields empty frontier.
-// Owns: claim_irt1_empty_diff_frontier_receipt.
-// Consumes: lens affected_set, lens affected_set_examples, std logic, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.irt1_empty_diff_frontier_receipt

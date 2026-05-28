@@ -1,7 +1,5 @@
 // src/v4/extdeps/formatters/swift_format.dag
 // Scope: swift-format formatting configuration model — formatting knobs only; rules carrier excluded (see gate below).
-// Owns: SwiftFormatIndentation, SwiftFormatPrivacy, SwiftFormatTrailingCommaBehavior, SwiftFormatStringReflow, SwiftFormatOrderedImports, SwiftFormatConfig, swift_format_defaults, swift_format_layer.
-// Consumes: none (String, Bool, Int, List are language-level primitives; no compiler dependency).
 // Status: T-4.16 scaffold — formatting-knob option space grounded in swift-format Configuration.md; rules field gated pending Map primitive availability.
 // Anchor: https://github.com/apple/swift-format/blob/main/Documentation/Configuration.md
 

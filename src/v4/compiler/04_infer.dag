@@ -1,7 +1,5 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node, algebra_ref_is_grounded, infer_algebra_ref_ungrounded, infer_algebra_ref_ungrounded_diagnostic.
-// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: T-9 modeled — coercion substrate in std/coercion.dag. Option B: canonical_grounding_from_inferred_facts fails-closed on bare-Atom algebra references (bridge-symbol guard).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 

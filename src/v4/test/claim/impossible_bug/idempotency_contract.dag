@@ -14,7 +14,6 @@
 //         derivation (the lens reads Node structure, never a tag). Also
 //         lens/idempotency.dag.
 //
-// Owns:
 //   - test_nonidempotent_in_idempotent_position_caught: TestClaim
 //     - input: an operation declared to inhabit an idempotent algebraic
 //       structure (std/algebra.dag) whose body composes a non-idempotent
@@ -25,7 +24,6 @@
 //     - input: an operation in the same idempotent-algebra position whose
 //       structure lens/idempotency.dag derives as idempotent → compiles
 //
-// Consumes:
 //   - std/verification.dag, std/diagnostic.dag, std/algebra.dag, lens/idempotency.dag
 //
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.

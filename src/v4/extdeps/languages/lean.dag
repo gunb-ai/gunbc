@@ -1,7 +1,5 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Owns: LeanDeclarationKind, LeanName, LeanLevel, LeanLevelRef, LeanLevelNode, LeanBinderInfo, LeanBinder, LeanTermRef, LeanTermNode, LeanTermForm, LeanMatchAlternative, LeanTerminationMeasure, LeanTerminationBy, LeanDecreasingProof, LeanTerminationClause, LeanDefinitionTermination, LeanProofArtifact, LeanFidelityFeature, LeanProofCheckSemantics, LeanIntKind, LeanIntWidth, LeanScalar, LeanPrimitiveFacts, LeanLanguageModel, lean_*_facts, lean_*_inhabitant_node, lean_bool_grounding.
-// Consumes: List, Set, Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.std.node.
 // Status: D2-REV; PROOF-1 termination slice carries Lean scalar fact-bundles into ModelCore wave-1; bool canonical-B decl-ref grounding — 🟡 E-6(b) staging (scaffold at decl; ledger modeling-discipline.md classifier = LeanScalar.BoolScalar).
 
 module v4.extdeps.languages.lean

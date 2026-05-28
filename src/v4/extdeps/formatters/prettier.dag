@@ -1,7 +1,5 @@
 // src/v4/extdeps/formatters/prettier.dag
 // Scope: Prettier configuration file model (.prettierrc / package.json "prettier").
-// Owns: PrettierTrailingComma, PrettierQuoteProps, PrettierArrowParens, PrettierProseWrap, PrettierHtmlWhitespaceSensitivity, PrettierEndOfLine, PrettierEmbeddedLanguageFormatting, PrettierObjectWrap, PrettierExperimentalOperatorPosition, PrettierParser, PrettierIntPatch, PrettierBoolPatch, PrettierTrailingCommaPatch, PrettierQuotePropsPatch, PrettierArrowParensPatch, PrettierProseWrapPatch, PrettierHtmlWhitespaceSensitivityPatch, PrettierEndOfLinePatch, PrettierEmbeddedLanguageFormattingPatch, PrettierObjectWrapPatch, PrettierExperimentalOperatorPositionPatch, PrettierParserPatch, PrettierFormattingOptions, PrettierOverrideOptions, PrettierOverrideEntry, PrettierConfig, prettier_defaults, prettier_layer.
-// Consumes: v4.std.collection { List }.
 // Status: T-4.16 scaffold — Prettier stable config/options docs (v3 defaults).
 // Anchor: https://prettier.io/docs/configuration
 //         https://prettier.io/docs/options
