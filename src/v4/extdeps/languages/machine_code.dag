@@ -5,7 +5,7 @@
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   LexPattern,
@@ -538,18 +538,14 @@ fn machine_code_model_core_wave1() -> ModelCore {
 data machine_code_token_x86_64_nop: Symbol = machine_code_token_x86_64_nop
 data machine_code_production_x86_64_nop: Symbol = machine_code_production_x86_64_nop
 data machine_code_surface_x86_64_nop_instruction: Symbol = machine_code_surface_x86_64_nop_instruction
-data machine_code_t4_18_probe_ingest_fixture_x86_64_nop: Symbol = machine_code_t4_18_probe_ingest_fixture_x86_64_nop
 
 data machine_code_token_aarch64_nop: Symbol = machine_code_token_aarch64_nop
 data machine_code_production_aarch64_nop: Symbol = machine_code_production_aarch64_nop
 data machine_code_surface_aarch64_nop_instruction: Symbol = machine_code_surface_aarch64_nop_instruction
-data machine_code_t4_18_probe_ingest_fixture_aarch64_nop: Symbol = machine_code_t4_18_probe_ingest_fixture_aarch64_nop
 
 data machine_code_token_riscv64_nop: Symbol = machine_code_token_riscv64_nop
 data machine_code_production_riscv64_nop: Symbol = machine_code_production_riscv64_nop
 data machine_code_surface_riscv64_nop_instruction: Symbol = machine_code_surface_riscv64_nop_instruction
-data machine_code_t4_18_probe_ingest_fixture_riscv64_nop: Symbol = machine_code_t4_18_probe_ingest_fixture_riscv64_nop
-data machine_code_t4_18_probe_ingest_consumer_parse_testclaim_receipt: Symbol = machine_code_t4_18_probe_ingest_consumer_parse_testclaim_receipt
 
 
 fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
@@ -616,6 +612,15 @@ fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
+fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbe {
+  GrammarSchemaProbe {
+    schema: machine_code_x86_64_ingest_grammar_schema(),
+    fixture: "nop",
+    expected_surface: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
+  }
+}
+
+
 fn machine_code_aarch64_wave1_lex() -> LexRules {
   machine_code_wave1_lex(token_class: machine_code_token_aarch64_nop, spelling: "nop")
 }
@@ -638,6 +643,15 @@ fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
+fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbe {
+  GrammarSchemaProbe {
+    schema: machine_code_aarch64_ingest_grammar_schema(),
+    fixture: "nop",
+    expected_surface: grammar_atom(identity: machine_code_surface_aarch64_nop_instruction)
+  }
+}
+
+
 fn machine_code_riscv64_wave1_lex() -> LexRules {
   machine_code_wave1_lex(token_class: machine_code_token_riscv64_nop, spelling: "nop")
 }
@@ -656,5 +670,14 @@ fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_riscv64_wave1_lex(),
     grammar: machine_code_riscv64_wave1_grammar()
+  }
+}
+
+
+fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbe {
+  GrammarSchemaProbe {
+    schema: machine_code_riscv64_ingest_grammar_schema(),
+    fixture: "nop",
+    expected_surface: grammar_atom(identity: machine_code_surface_riscv64_nop_instruction)
   }
 }
