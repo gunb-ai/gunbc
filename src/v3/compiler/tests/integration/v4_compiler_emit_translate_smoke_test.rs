@@ -596,7 +596,10 @@ fn v4_wasm_language_model_declares_wave2b_algebra_inhabitance() {
         ),
         "{WASM_LANGUAGE_PATH}: Wasm Wave 2b must consume ModelCore algebra inhabitance rows"
     );
-    for name in ["commutative_semiring_type_node", "approximate_field_type_node"] {
+    for name in [
+        "commutative_semiring_type_node",
+        "approximate_field_type_node",
+    ] {
         assert!(
             import_includes_name(&module, &["v4", "std", "algebra"], name),
             "{WASM_LANGUAGE_PATH}: Wasm Wave 2b must use grounded std.algebra Node constructor `{name}`"
