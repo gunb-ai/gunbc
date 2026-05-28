@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/typescript.dag
-// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.
+// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
-// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
 // 🟡
@@ -42,10 +42,18 @@ import v4.std.lexing {
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
+  AlgebraLawObligation,
   EffectSemanticsDecl,
+  EffectSignature,
+  FailClosedAtBoundary,
   ModelCore,
+  model_core_wave1_law_field_algebra,
+  model_core_wave1_law_field_kind,
+  model_core_wave1_law_field_subject,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
+  PrimitiveOperationRef,
   primitive_fact_axis_encoding,
   primitive_fact_axis_surface_spelling,
   primitive_fact_axis_unbound_diagnostic,
@@ -87,6 +95,7 @@ import v4.std.algebra {
   BooleanAlgebra,
   Empty,
   fold_list,
+  free_monoid_type_node,
   list_append,
   list_snoc_item,
   ordered_ring_type_node
