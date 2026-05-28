@@ -344,6 +344,7 @@ data mvp1_ts_emit_receipt: Outcome<TargetSource> = anchor_mvp1_ts_emit_accepts()
 data mvp1_ts_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_ts_compile_inferred_accepts()
 
 
+// Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_ts_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_ts_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
@@ -365,6 +366,7 @@ fn mvp1_ts_emit_claim_outcome() -> Outcome<Node> {
 }
 
 
+// Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_ts_compile_inferred_claim_outcome() -> Outcome<Node> {
   match mvp1_ts_compile_inferred_receipt {
     Accepted { value: compile_result, diagnostics: d } =>
@@ -417,6 +419,8 @@ data claim_mvp1_ts_compile_inferred_add_fn_accepts: TestClaim = CompilesClaim {
 }
 
 
+// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
+// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_ts_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_ts_emit_add_fn_accepts,
   context: infer_receipt_context(),
@@ -438,6 +442,8 @@ data run_mvp1_ts_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
 }
 
 
+// T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
+// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_ts_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
@@ -450,11 +456,7 @@ data subject_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node>
 
 
 data run_mvp1_ts_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_ts_compile_inferred_add_fn_accepts,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_ts_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_ts_compile_inferred_add_fn_accepts,
     actual: mvp1_ts_compile_inferred_claim_outcome(),
@@ -490,11 +492,7 @@ data subject_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaimEvalS
 
 
 data run_mvp1_ts_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_ts_serialize_rejects_missing_translation_rules,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_ts_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_ts_serialize_rejects_missing_translation_rules,
     actual: mvp1_ts_serialize_reject_claim_outcome(),
