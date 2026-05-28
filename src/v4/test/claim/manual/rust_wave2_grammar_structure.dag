@@ -16,15 +16,17 @@ import v4.extdeps.languages.rust {
   rust_production_stmt,
   rust_production_typed_param,
   rust_production_type,
+  rust_token_kw_else,
   rust_token_kw_let,
   rust_wave2_lex_rules
 }
-import v4.compiler.parse { grammar_carries_symbol }
-import v4.compiler.tokenize { lex_rule_set_token_class_member }
+import v4.std.grammar { grammar_carries_symbol }
+import v4.std.lexing { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
 
 fn rust_wave2_grammar_structure_satisfied(lm: RustLanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_let) &&
+    lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_else) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_fn_item) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_typed_param) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_param_list) &&

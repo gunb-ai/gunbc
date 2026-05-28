@@ -368,6 +368,7 @@ data rust_token_comma: Symbol = rust_token_comma
 data rust_token_colon: Symbol = rust_token_colon
 data rust_token_kw_let: Symbol = rust_token_kw_let
 data rust_token_kw_if: Symbol = rust_token_kw_if
+data rust_token_kw_else: Symbol = rust_token_kw_else
 data rust_token_kw_return: Symbol = rust_token_kw_return
 data rust_token_equal: Symbol = rust_token_equal
 data rust_token_gt: Symbol = rust_token_gt
@@ -2107,6 +2108,7 @@ fn rust_wave2_additional_lex_rules() -> List<LexRule> {
     rust_int_literal_lex_rule(),
     rust_lex_rule(token_class: rust_token_kw_let, text: "let "),
     rust_lex_rule(token_class: rust_token_kw_if, text: "if "),
+    rust_lex_rule(token_class: rust_token_kw_else, text: " else "),
     rust_lex_rule(token_class: rust_token_kw_return, text: "return "),
     rust_lex_rule(token_class: rust_token_equal, text: " = "),
     rust_lex_rule(token_class: rust_token_gt, text: " > "),
@@ -2289,12 +2291,24 @@ fn rust_grammar_let_stmt_expr() -> GrammarExpr {
   )
 }
 
+// Rust Reference IfExpression: `if` Expression BlockExpression [ `else` ( BlockExpression | IfExpression ) ].
 fn rust_grammar_if_expr() -> GrammarExpr {
   rust_grammar_sequence(
     left: rust_grammar_terminal(token_class: rust_token_kw_if),
     right: rust_grammar_sequence(
       left: rust_grammar_nonterminal(production: rust_production_expr),
-      right: rust_grammar_nonterminal(production: rust_production_block)
+      right: rust_grammar_sequence(
+        left: rust_grammar_nonterminal(production: rust_production_block),
+        right: rust_grammar_optional(
+          element: rust_grammar_sequence(
+            left: rust_grammar_terminal(token_class: rust_token_kw_else),
+            right: rust_grammar_choice(
+              left: rust_grammar_nonterminal(production: rust_production_block),
+              right: rust_grammar_nonterminal(production: rust_production_if_expr)
+            )
+          )
+        )
+      )
     )
   )
 }
