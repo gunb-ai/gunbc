@@ -15,15 +15,7 @@ import v4.compiler.infer {
 }
 import v4.std.algebra { fold_list }
 import v4.std.cardinality { RankingDimension, TerminationProof }
-import v4.std.collection {
-  List,
-  Map,
-  Optional,
-  list_nth,
-  optional_absent,
-  optional_present,
-  optional_present_witness
-}
+import v4.std.collection { List, Map, list_nth }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
@@ -188,8 +180,7 @@ data test_claim_cache_interpretation_digest_tag: Symbol = test_claim_cache_inter
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin,
-    evaluator_subgraph: optional_present(value: evaluator_input)
+    evaluator_pin: evaluator_pin
   }
 }
 
@@ -197,8 +188,7 @@ fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> 
 fn test_claim_typed_input_pinned<T>(evaluator_input: T, evaluator_pin: Symbol) -> TestClaimTypedInput<T> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin,
-    evaluator_subgraph: optional_absent()
+    evaluator_pin: evaluator_pin
   }
 }
 
@@ -289,7 +279,17 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
   match inferred_facts_witness_for_eval(tree: tree, node: tree.root) {
     Holds { value: facts } =>
       hash_combine(a: root_hash, b: inferred_facts_digest(facts: facts))
-    Violates { diagnostic: _ } => root_hash
+    Violates { diagnostic: diag } =>
+      hash_combine(
+        a: root_hash,
+        b: fold_list(
+          xs: diagnostic_evaluation_nodes(d: diag),
+          empty: test_claim_symbol_digest(sym: diag.reason),
+          cons: fn(acc, n) {
+            hash_combine(a: acc, b: content_hash(n: n))
+          }
+        )
+      )
   }
 }
 
@@ -299,34 +299,65 @@ fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
 }
 
 
-fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
-  let pin_hash = test_claim_symbol_digest(sym: input.evaluator_pin)
-  match optional_present_witness(opt: input.evaluator_subgraph) {
-    Holds { value: n } => hash_combine(a: pin_hash, b: content_hash(n: n))
-    Violates { diagnostic: _ } => pin_hash
-  }
+fn test_claim_evaluator_pin_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
+  test_claim_symbol_digest(sym: input.evaluator_pin)
 }
 
 
-fn test_claim_cache_interpretation_hash<T>(subject: TestClaimEvalSubject<T>) -> Hash {
+fn test_claim_evaluator_node_digest(input: TestClaimTypedInput<Node>) -> Hash {
+  hash_combine(
+    a: test_claim_symbol_digest(sym: input.evaluator_pin),
+    b: content_hash(n: input.evaluator_input)
+  )
+}
+
+
+fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> Hash {
   hash_combine(
     a: inferred_tree_digest(tree: subject.tree),
     b: hash_combine(
       a: test_claim_interpretation_pin_digest(context: subject.context),
-      b: test_claim_evaluator_digest(input: subject.input)
+      b: test_claim_evaluator_node_digest(input: subject.input)
     )
   )
 }
 
 
-fn test_claim_cache_receipt<T>(subject: TestClaimEvalSubject<T>) -> TestClaimCacheReceipt<T> {
+fn test_claim_cache_interpretation_hash_pinned<T>(subject: TestClaimEvalSubject<T>) -> Hash {
+  hash_combine(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: hash_combine(
+      a: test_claim_interpretation_pin_digest(context: subject.context),
+      b: test_claim_evaluator_pin_digest(input: subject.input)
+    )
+  )
+}
+
+
+fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
       claim_hash: test_claim_evaluation_nodes_digest(c: subject.claim),
-      interpretation_hash: test_claim_cache_interpretation_hash(subject: subject)
+      interpretation_hash: test_claim_cache_interpretation_hash_node(subject: subject)
     }
   }
+}
+
+
+fn test_claim_cache_receipt_pinned<T>(subject: TestClaimEvalSubject<T>) -> TestClaimCacheReceipt<T> {
+  TestClaimCacheReceipt {
+    key: TestClaimCacheKey {
+      eval_subject: subject,
+      claim_hash: test_claim_evaluation_nodes_digest(c: subject.claim),
+      interpretation_hash: test_claim_cache_interpretation_hash_pinned(subject: subject)
+    }
+  }
+}
+
+
+fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
+  test_claim_cache_receipt_node(subject: subject)
 }
 
 
@@ -1221,7 +1252,7 @@ fn run_test_claim(
   )
   let at = test_claim_input(c: subject.claim)
   TestClaimRun {
-    cache: test_claim_cache_receipt(subject: subject),
+    cache: test_claim_cache_receipt_node(subject: subject),
     verdict: aggregate_verdicts(
       rs: [
         run_test_claim_runtime_assert(
