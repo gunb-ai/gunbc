@@ -9,18 +9,22 @@ import v4.compiler.eval {
   TestClaimEvalSubject,
   test_claim_cache_interpretation_hash_node,
   test_claim_claim_hash_digest,
+  test_claim_no_correction_ambiguous_intent_tag,
   test_claim_typed_input_node
 }
 import v4.compiler.infer { InferredTree }
 import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_interpretation_wave1 }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
-import v4.std.collection { Map }
+import v4.std.collection { List, Map }
 import v4.std.diagnostic {
   AmbiguousIntent,
   Diagnostic,
+  NonEmptyDiagnostics,
+  Suggested,
   Unavailable,
   diagnostics_singleton,
-  node_locus
+  node_locus,
+  port_locus
 }
 import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.verification {
@@ -46,6 +50,8 @@ data tcc_cache_interpretation_pin: Symbol = tcc_cache_interpretation_pin
 data tcc_cache_evaluator_pin: Symbol = tcc_cache_evaluator_pin
 data tcc_cache_pass_sym: Symbol = tcc_cache_pass_sym
 data tcc_cache_fail_sym: Symbol = tcc_cache_fail_sym
+data tcc_cache_tail_diag_b: Symbol = tcc_cache_tail_diag_b
+data tcc_cache_tail_diag_c: Symbol = tcc_cache_tail_diag_c
 
 fn tcc_cache_pass_node() -> Node {
   Node {
@@ -168,6 +174,112 @@ fn tcc_cache_evaluator_input_digest_differs() -> Bool {
   hash_a != hash_b
 }
 
+fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnostic>) -> TestClaim {
+  DiagnosticClaim {
+    label: label_suffix,
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    input: tcc_cache_root(),
+    expected_rejection: NonEmptyDiagnostics {
+      head: Diagnostic {
+        reason: tcc_cache_expected_diag_a,
+        at: node_locus(node: tcc_cache_root()),
+        correction: Unavailable { reason: AmbiguousIntent }
+      },
+      tail: tail
+    }
+  }
+}
+
+fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
+  let diag_b = Diagnostic {
+    reason: tcc_cache_tail_diag_b,
+    at: node_locus(node: tcc_cache_root()),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+  let diag_c = Diagnostic {
+    reason: tcc_cache_tail_diag_c,
+    at: node_locus(node: tcc_cache_root()),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+  test_claim_claim_hash_digest(
+    c: tcc_cache_diagnostic_tail_bag_claim(
+      label_suffix: "manual/test_claim_cache: tail order ab",
+      tail: [diag_b, diag_c]
+    )
+  ) == test_claim_claim_hash_digest(
+    c: tcc_cache_diagnostic_tail_bag_claim(
+      label_suffix: "manual/test_claim_cache: tail order ba",
+      tail: [diag_c, diag_b]
+    )
+  )
+}
+
+fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
+  let ambiguous_tag_node = claim_atom_node(s: test_claim_no_correction_ambiguous_intent_tag)
+  test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: suggested vs unavailable correction domain",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: node_locus(node: tcc_cache_root()),
+          correction: Suggested { node: ambiguous_tag_node }
+        }
+      )
+    }
+  ) != test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: unavailable ambiguous intent correction",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: node_locus(node: tcc_cache_root()),
+          correction: Unavailable { reason: AmbiguousIntent }
+        }
+      )
+    }
+  )
+}
+
+fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
+  test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: node locus domain",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: node_locus(node: tcc_cache_root()),
+          correction: Unavailable { reason: AmbiguousIntent }
+        }
+      )
+    }
+  ) != test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: port locus domain",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: port_locus(port: tcc_cache_root_sym),
+          correction: Unavailable { reason: AmbiguousIntent }
+        }
+      )
+    }
+  )
+}
+
 fn tcc_cache_sensitivity_claim_input(ok: Bool) -> Node {
   if ok {
     tcc_cache_pass_node()
@@ -197,5 +309,29 @@ data claim_test_claim_cache_diagnostic_reason_claim_hash_differs: TestClaim = Co
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_reason_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_diagnostic_tail_bag_order_invariant: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: DiagnosticClaim tail bag order does not change claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_tail_permutation_claim_hash_invariant()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_correction_variant_domain: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: Correction coproduct domain tags separate claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_correction_variant_domain_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_locus_variant_domain: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: Locus coproduct domain tags separate claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_locus_variant_domain_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()
 }
