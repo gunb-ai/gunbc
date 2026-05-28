@@ -392,8 +392,9 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry t38-testclaim-corpus-eval dissolution tag"
     );
     assert!(
-        CI_DAG.contains("ci_select_from_affected_set"),
-        "{CI_DAG_PATH}: T-38 dissolution step must reference ci_select_from_affected_set (IRT-1 wiring)"
+        CI_DAG.contains("ci_select_from_affected_set narrows roster to content_hash frontier"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand dissolution comment must name ci_select_from_affected_set \
+         as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
         CI_DAG.contains("TestClaimCorpusEvalCommand => true"),

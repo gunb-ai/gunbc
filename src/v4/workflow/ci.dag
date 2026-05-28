@@ -1,6 +1,6 @@
 // src/v4/workflow/ci.dag
 // Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection; ci.yml projection deferred.
-// Status: filled — declarative core + eager well-formedness + T-21/T-24 affected-set TestClaim selection (structural v2 gate only) + T-38 dissolution step wired (TestClaimCorpusEvalCommand; ci_select_from_affected_set narrows corpus to content_hash frontier; activates when modeled runner replaces scripts/v4-testclaim-corpus-gate.sh).
+// Status: filled — declarative core + eager well-formedness + T-21/T-24 affected-set TestClaim selection (structural v2 gate only) + T-38 dissolution step declared (TestClaimCorpusEvalCommand job/gate/cache-digest; IRT-1 call site — ci_select_from_affected_set narrows roster to content_hash frontier — lands with dissolution PR that replaces scripts/v4-testclaim-corpus-gate.sh).
 
 module v4.workflow.ci
 
