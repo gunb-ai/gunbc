@@ -1447,11 +1447,11 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(
-        prods: [
-          python_formal_authority_prod(
-            lhs: python_production_primary,
-            rhs: [python_formal_sym_terminal(symbol: python_token_ident)]
-          ),
+        head: python_formal_authority_prod(
+          lhs: python_production_primary,
+          rhs: [python_formal_sym_terminal(symbol: python_token_ident)]
+        ),
+        alts: [
           python_formal_authority_prod(
             lhs: python_production_primary,
             rhs: [python_formal_sym_terminal(symbol: python_token_int_literal)]
