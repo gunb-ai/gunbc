@@ -109,6 +109,7 @@ Chain: **T-37 → T-38 → T-20-fill → T-24 → T-16 → T-36 → T-15**
 | 2026-05-28 | Opened ledger | `vivid-boar-454`; Lane A/B initial status |
 | 2026-05-28 | TASKS.md bootstrap convergence section | execution-graph + convergence prose (PR #3783 aligned) |
 | 2026-05-28 | Role correction | operator owns implementation dispatch; ledger UNASSIGNED rows |
+| 2026-05-28 | Tracking PR opened | [#3784](https://github.com/gunb-ai/gunbc/pull/3784) (this ledger + TASKS.md annotations) |
 | — | PR #3783 merge | full T-37/T-38 task-definition bodies land in TASKS.md |
 
 ---
