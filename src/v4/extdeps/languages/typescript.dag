@@ -1401,7 +1401,7 @@ fn ts_string_spec_facts(facts: TsStringPrimitiveFacts) -> Map<Symbol, Node> {
 
 fn ts_primitive_bundle_from_string_facts(facts: TsStringPrimitiveFacts) -> PrimitiveFactBundle {
   PrimitiveFactBundle {
-    surface_spelling: facts.surface_spelling,
+    substrate_carrier: ts_string_facts_node(facts: facts),
     spec_facts: ts_string_spec_facts(facts: facts)
   }
 }
