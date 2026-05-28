@@ -21,7 +21,8 @@ import v4.std.collection {
   Optional,
   list_nth,
   optional_absent,
-  optional_present
+  optional_present,
+  optional_present_witness
 }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
@@ -185,14 +186,11 @@ type EvalProgress
 
 data test_claim_cache_claim_digest_tag: Symbol = test_claim_cache_claim_digest_tag
 data test_claim_cache_interpretation_digest_tag: Symbol = test_claim_cache_interpretation_digest_tag
-data test_claim_cache_evaluator_digest_tag: Symbol = test_claim_cache_evaluator_digest_tag
-
-
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
     evaluator_pin: evaluator_pin,
-    evaluator_subgraph: Present { value: evaluator_input }
+    evaluator_subgraph: optional_present(value: evaluator_input)
   }
 }
 
@@ -201,7 +199,7 @@ fn test_claim_typed_input_pinned<T>(evaluator_input: T, evaluator_pin: Symbol) -
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
     evaluator_pin: evaluator_pin,
-    evaluator_subgraph: Absent
+    evaluator_subgraph: optional_absent()
   }
 }
 
@@ -304,9 +302,9 @@ fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
 
 fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
   let pin_hash = test_claim_symbol_digest(sym: input.evaluator_pin)
-  match input.evaluator_subgraph {
-    Present { value: n } => hash_combine(a: pin_hash, b: content_hash(n: n))
-    Absent => pin_hash
+  match optional_present_witness(opt: input.evaluator_subgraph) {
+    Holds { value: n } => hash_combine(a: pin_hash, b: content_hash(n: n))
+    Violates { diagnostic: _ } => pin_hash
   }
 }
 
