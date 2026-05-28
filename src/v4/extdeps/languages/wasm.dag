@@ -21,6 +21,7 @@ import v4.compiler.parse {
   Repeat,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
@@ -2006,13 +2007,13 @@ fn wasm_grammar_production_control_if() -> GrammarProduction {
   }
 }
 
-// br $label
+// br $label  — WAT branch target is a label identifier ($name), not a numeric local index
 fn wasm_grammar_production_control_br() -> GrammarProduction {
   GrammarProduction {
     name: wasm_production_control_br,
     expression: wasm_grammar_sequence(
       left: wasm_grammar_terminal(token_class: wasm_token_kw_br),
-      right: wasm_grammar_terminal(token_class: wasm_token_localidx_literal)
+      right: wasm_grammar_terminal(token_class: wasm_token_ident)
     ),
     emitted: wasm_grammar_atom(id: wasm_surface_control_br)
   }
@@ -2190,6 +2191,8 @@ fn wasm_wave2_grammar_root() -> GrammarRoot {
       wasm_grammar_production_memory_load_instr(),
       wasm_grammar_production_memory_store_instr(),
       wasm_grammar_production_mvp1_fn_add(),
+      wasm_grammar_production_text_fragment(),
+      wasm_grammar_production_mvp1_module(),
       wasm_grammar_production_value_type(),
       wasm_grammar_production_localidx(),
       wasm_grammar_production_numeric_const_instr(),
@@ -2209,73 +2212,13 @@ fn wasm_wave2_grammar() -> Grammar {
 
 // ── Wave 2a canonical symbol set ─────────────────────────────────────────────
 
-fn wasm_wave2_lex_token_symbol(sym: Symbol) -> Bool {
-  wasm_wave1_lex_token_symbol(sym: sym) ||
-    sym == wasm_token_kw_export ||
-    sym == wasm_token_kw_call ||
-    sym == wasm_token_kw_block ||
-    sym == wasm_token_kw_loop ||
-    sym == wasm_token_kw_if ||
-    sym == wasm_token_kw_end ||
-    sym == wasm_token_kw_br ||
-    sym == wasm_token_kw_br_if ||
-    sym == wasm_token_kw_return ||
-    sym == wasm_token_kw_local_set ||
-    sym == wasm_token_kw_local_tee ||
-    sym == wasm_token_i32_load ||
-    sym == wasm_token_i32_store ||
-    sym == wasm_token_i64_load ||
-    sym == wasm_token_i64_store ||
-    sym == wasm_token_f32_load ||
-    sym == wasm_token_f32_store ||
-    sym == wasm_token_f64_load ||
-    sym == wasm_token_f64_store ||
-    sym == wasm_token_string_lit
-}
-
 fn wasm_language_model_canonical_symbols_wave2() -> Set<Symbol> {
   Set {
     member: fn(sym) {
       wasm_catalog_surface_symbol(sym: sym) ||
-        wasm_wave2_lex_token_symbol(sym: sym) ||
-        sym == wasm_surface_fn_item ||
-        sym == wasm_surface_mvp1_module_item ||
-        sym == wasm_surface_wave2_module_item ||
-        sym == wasm_surface_export_item ||
-        sym == wasm_surface_func_ref ||
-        sym == wasm_surface_value_type ||
-        sym == wasm_surface_localidx ||
-        sym == wasm_surface_numeric_const_instr ||
-        sym == wasm_surface_numeric_binop_instr ||
-        sym == wasm_surface_control_block ||
-        sym == wasm_surface_control_loop ||
-        sym == wasm_surface_control_if ||
-        sym == wasm_surface_control_br ||
-        sym == wasm_surface_control_call ||
-        sym == wasm_surface_control_return ||
-        sym == wasm_surface_local_set_instr ||
-        sym == wasm_surface_local_tee_instr ||
-        sym == wasm_surface_memory_load_instr ||
-        sym == wasm_surface_memory_store_instr ||
-        sym == wasm_surface_wave2_instr ||
-        sym == wasm_surface_wave2_text_fragment ||
-        sym == wasm_production_mvp1_fn_add ||
-        sym == wasm_production_mvp1_module ||
-        sym == wasm_production_wave2_module ||
-        sym == wasm_production_wave2_export ||
-        sym == wasm_production_wave2_func_ref ||
-        sym == wasm_production_control_block ||
-        sym == wasm_production_control_loop ||
-        sym == wasm_production_control_if ||
-        sym == wasm_production_control_br ||
-        sym == wasm_production_control_call ||
-        sym == wasm_production_control_return ||
-        sym == wasm_production_local_set_instr ||
-        sym == wasm_production_local_tee_instr ||
-        sym == wasm_production_memory_load_instr ||
-        sym == wasm_production_memory_store_instr ||
-        sym == wasm_production_wave2_instr ||
-        sym == wasm_production_wave2_text_fragment ||
+        lex_rule_set_token_class_member(rules: wasm_wave2_lex_rules(), token_class: sym) ||
+        grammar_carries_symbol(grammar: wasm_wave2_grammar(), sym: sym) ||
+        wasm_language_model_canonical_symbols().member(sym) ||
         sym == wasm_mvp1_source_literal ||
         sym == wasm_wave2_source_literal
     }
