@@ -438,7 +438,6 @@ data canonical_tag_byte_offset_byte: Symbol = canonical_tag_byte_offset_byte
 data canonical_tag_byte_offset_neg: Symbol = canonical_tag_byte_offset_neg
 data canonical_tag_byte_limb_out_of_range: Symbol = canonical_tag_byte_limb_out_of_range
 data canonical_tag_byte_offset_out_of_ceiling: Symbol = canonical_tag_byte_offset_out_of_ceiling
-data canonical_tag_byte_offset_overflow_tail_empty: Symbol = canonical_tag_byte_offset_overflow_tail_empty
 data byte_offset_cache_digest_max_limbs: Int = 9
 
 
