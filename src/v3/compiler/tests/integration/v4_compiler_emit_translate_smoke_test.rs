@@ -23,7 +23,8 @@
 //! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
 //! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
-//! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.//!
+//! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+//!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
