@@ -12,7 +12,7 @@ serde_json = "1"
 ureq = { version = "2", features = ["json"] }
 
 [[bin]]
-name = "v2-compiler"
+name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]

@@ -12,7 +12,7 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
-bin="${V2_COMPILER:-target/release/v2-compiler}"
+bin="${V2_COMPILER:-target/release/gunbc}"
 if [[ ! -x "$bin" ]]; then
   echo "error: v2-compiler not found at $bin" >&2
   exit 1

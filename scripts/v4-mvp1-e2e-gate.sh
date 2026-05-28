@@ -26,7 +26,7 @@
 #   bash scripts/v4-mvp1-e2e-gate.sh
 #
 # Env:
-#   V2_COMPILER   — path to v2-compiler binary (default: target/release/v2-compiler)
+#   V2_COMPILER   — path to v2-compiler binary (default: target/release/gunbc)
 #   MVP1_OUT_DIR  — compile output directory (default: $RUNNER_TEMP/v4-mvp1-out-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT,
 #                   falling back to /tmp/v4-mvp1-out-$$ outside GitHub Actions)
 
@@ -35,7 +35,7 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
-bin="${V2_COMPILER:-target/release/v2-compiler}"
+bin="${V2_COMPILER:-target/release/gunbc}"
 if [[ ! -x "$bin" ]]; then
   echo "=== MVP-1: build v2-compiler (release) ==="
   cargo build -p v2-compiler --release

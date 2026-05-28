@@ -13,6 +13,7 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
+<<<<<<< HEAD
 //! land in the same PR. **This PR (+0 census paths):** structural serialize-measure ratchet
 //! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
 //! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
@@ -21,6 +22,17 @@
 //! `v4_python_language_model_declares_t11_translation_rules` for T-4.17 python wave-2a
 //! LanguageModel / lex/grammar surface on `python.dag`. See INVARIANTS.md row
 //! `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt and T-PB-B deferral lane.
+=======
+//! land in the same PR. **This PR (+0 census paths):** expands the existing harness (no new
+//! census path) to ratchet T-11 grammar-inverse compile-inferred TestClaim parse/import receipts
+//! for python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`) via
+//! `v4_mvp1_python_add_claim_tokenizes_and_parses`, `v4_mvp1_go_add_claim_tokenizes_and_parses`,
+//! `v4_mvp1_cpp_add_claim_tokenizes_and_parses`, `v4_mvp1_typescript_add_claim_tokenizes_and_parses`,
+//! and `v4_mvp1_shape_a_add_claims_import_compile_inferred`; dissolves
+//! `feature:T-11-grammar-inverse-serializer-remaining-targets` status mark in `06_translate.dag`.
+//! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
+//! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
+>>>>>>> origin/main
 //!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
@@ -60,6 +72,19 @@ const DAG_LANGUAGE_PATH: &str = "src/v4/extdeps/languages/dag.dag";
 const MVP1_CLAIM_DAG: &str =
     include_str!("../../../../v4/test/claim/manual/mvp1_rust_add_translate.dag");
 const MVP1_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_rust_add_translate.dag";
+const MVP1_PYTHON_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_python_add_translate.dag");
+const MVP1_PYTHON_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_python_add_translate.dag";
+const MVP1_GO_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_go_add_translate.dag");
+const MVP1_GO_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_go_add_translate.dag";
+const MVP1_CPP_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_cpp_add_translate.dag");
+const MVP1_CPP_CLAIM_PATH: &str = "src/v4/test/claim/manual/mvp1_cpp_add_translate.dag";
+const MVP1_TYPESCRIPT_CLAIM_DAG: &str =
+    include_str!("../../../../v4/test/claim/manual/mvp1_typescript_add_translate.dag");
+const MVP1_TYPESCRIPT_CLAIM_PATH: &str =
+    "src/v4/test/claim/manual/mvp1_typescript_add_translate.dag";
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
@@ -813,6 +838,46 @@ fn v4_mvp1_rust_add_claim_imports_translate_and_emit() {
         import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
         "{MVP1_CLAIM_PATH}: claim must import emit stage"
     );
+}
+
+#[test]
+fn v4_mvp1_python_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_go_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_GO_CLAIM_DAG, MVP1_GO_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_cpp_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_CPP_CLAIM_DAG, MVP1_CPP_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_typescript_add_claim_tokenizes_and_parses() {
+    let _module = parse_module(MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH);
+}
+
+#[test]
+fn v4_mvp1_shape_a_add_claims_import_compile_inferred() {
+    for (source, path) in [
+        (MVP1_PYTHON_CLAIM_DAG, MVP1_PYTHON_CLAIM_PATH),
+        (MVP1_GO_CLAIM_DAG, MVP1_GO_CLAIM_PATH),
+        (MVP1_CPP_CLAIM_DAG, MVP1_CPP_CLAIM_PATH),
+        (MVP1_TYPESCRIPT_CLAIM_DAG, MVP1_TYPESCRIPT_CLAIM_PATH),
+    ] {
+        let module = parse_module(source, path);
+        assert!(
+            import_includes_name(&module, &["v4", "compiler", "compile"], "compile_inferred"),
+            "{path}: grammar-inverse claim must import compile_inferred"
+        );
+        assert!(
+            import_includes_name(&module, &["v4", "compiler", "emit"], "emit"),
+            "{path}: grammar-inverse claim must import emit stage"
+        );
+    }
 }
 
 fn module_paths(module: &v3_compiler::parse_surface::SurfaceModule) -> Vec<Vec<&str>> {

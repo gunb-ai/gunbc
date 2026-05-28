@@ -345,7 +345,7 @@ fn v4_ci_workflow_consumes_lens_registry_for_lens_ci_signal() {
     assert!(
         semantic_step.contains(r#"cp src/v4/workflow/ci.dag "${entry_root}/v4/workflow/ci.dag""#)
             && semantic_step.contains(r#"rm "${deps_root}/workflow/ci.dag""#)
-            && semantic_step.contains(r#"target/release/v2-compiler compile --source-root "${entry_root}" --source-root "${deps_root}""#)
+            && semantic_step.contains(r#"target/release/gunbc compile --source-root "${entry_root}" --source-root "${deps_root}""#)
             && semantic_step.contains(&format!("--target {semantic_target}")),
         "{CI_YML_PATH}: `{semantic_step_name}` must execute the modeled Lens-CI semantic signal"
     );

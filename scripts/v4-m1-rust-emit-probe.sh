@@ -9,7 +9,7 @@
 # Pattern: scripts/v4-bootstrap-viability.sh (compile + log receipt parsing).
 #
 # Env:
-#   V2_COMPILER              — v2-compiler binary (default: target/release/v2-compiler)
+#   V2_COMPILER              — v2-compiler binary (default: target/release/gunbc)
 #   V4_M1_RUST_EMIT_OUT       — emit output dir (default: /tmp/v4-rust-emit)
 #   V4_M1_RUST_EMIT_LOG       — v2 compile log (default: ${OUT}.compile.log)
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
@@ -21,7 +21,7 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
-bin="${V2_COMPILER:-target/release/v2-compiler}"
+bin="${V2_COMPILER:-target/release/gunbc}"
 if [[ -n "${GITHUB_ACTIONS:-}" && -z "${V4_M1_RUST_EMIT_OUT:-}" ]]; then
   out="${RUNNER_TEMP:-/tmp}/v4-rust-emit"
 else

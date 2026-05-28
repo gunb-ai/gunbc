@@ -16,7 +16,10 @@ use v2_compiler::v2_std_core::{
 };
 
 #[derive(Parser)]
-#[command(name = "v2-compiled", about = "Generated CLI from DAG compiler")]
+#[command(
+    name = "gunbc",
+    about = "A causal compiler: write .dag, get Rust/Python/Go."
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
