@@ -92,8 +92,6 @@ data subsumption_second_leaf_edge: Symbol = subsumption_second_leaf_edge
 data subsumption_mechanical_claim_edge: Symbol = subsumption_mechanical_claim_edge
 data subsumption_runtime_rejected: Symbol = subsumption_runtime_rejected
 data subsumption_descent_dimension: Symbol = subsumption_descent_dimension
-data subsumption_claim_hash: Hash = subsumption_claim_hash
-data subsumption_interpretation_hash: Hash = subsumption_interpretation_hash
 data mechanical_reverification_verified: Symbol = mechanical_reverification_verified
 data mechanical_reverification_not_verified: Symbol = mechanical_reverification_not_verified
 data mechanical_reverification_unverifiable: Symbol = mechanical_reverification_unverifiable
@@ -459,9 +457,7 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
     tree: subsumption_inferred_tree(
       root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
     )
-  ),
-  claim_hash: subsumption_claim_hash,
-  interpretation_hash: subsumption_interpretation_hash
+  )
 )
 
 
@@ -523,7 +519,5 @@ data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, Run
     tree: subsumption_inferred_tree(
       root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
     )
-  ),
-  claim_hash: subsumption_claim_hash,
-  interpretation_hash: subsumption_interpretation_hash
+  )
 )

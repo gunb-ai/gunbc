@@ -107,11 +107,6 @@ data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
 data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
-// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
-data eval_mvp2_claim_hash: Hash = eval_mvp2_claim_hash
-data eval_mvp2_interpretation_hash: Hash = eval_mvp2_interpretation_hash
-
-
 fn eval_mvp2_byte() -> Byte {
   Byte { bits: [true] }
 }
@@ -388,7 +383,5 @@ data run_eval_mvp2_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test
     claim: claim_eval_mvp2_test_claim_route,
     context: eval_mvp2_context(),
     tree: eval_mvp2_inferred_tree()
-  ),
-  claim_hash: eval_mvp2_claim_hash,
-  interpretation_hash: eval_mvp2_interpretation_hash
+  )
 )

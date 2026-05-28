@@ -280,11 +280,7 @@ fn infer_add_mvp_receipt_run(
 ) -> TestClaimRun<Node, InferredTree> {
   let actual = anchor_infer_add_mvp()
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash_placeholder,
-      interpretation_hash: interpretation_hash_placeholder
-    ),
+    cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
         match actual {
@@ -318,11 +314,7 @@ fn infer_descent_witness_receipt_run(
 ) -> TestClaimRun<Node, Node> {
   let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash_placeholder,
-      interpretation_hash: interpretation_hash_placeholder
-    ),
+    cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
         if outcome_node_eq(a: actual, b: expected) {

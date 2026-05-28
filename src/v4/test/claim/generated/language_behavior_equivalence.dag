@@ -87,8 +87,6 @@ import v4.test.claim.manual.connective_anchors {
 }
 
 
-data claim_hash_placeholder: Hash = claim_hash_placeholder
-data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
 data lbe_interpretation_rejected: Symbol = lbe_interpretation_rejected
 data lbe_runtime_value_symbol: Symbol = lbe_runtime_value_symbol
 data eval_rejected_lbe_projection_deferred: Symbol = eval_rejected_lbe_projection_deferred
@@ -218,11 +216,7 @@ fn lbe_subject_from_claim(claim: TestClaim) -> TestClaimEvalSubject<Node> {
 
 
 fn lbe_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
-  run_test_claim(
-    subject: lbe_subject_from_claim(claim: claim),
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  )
+  run_test_claim(subject: lbe_subject_from_claim(claim: claim))
 }
 
 
@@ -247,11 +241,7 @@ fn lbe_rejected_emit_cache_receipt(
   expected: NonEmptyDiagnostics
 ) -> TestClaimCacheReceipt<Node> {
   let claim = lbe_emit_rejection_sentinel_claim(label: label, mock: mock, expected: expected)
-  test_claim_cache_receipt(
-    subject: lbe_subject_from_claim(claim: claim),
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  )
+  test_claim_cache_receipt(subject: lbe_subject_from_claim(claim: claim))
 }
 
 
