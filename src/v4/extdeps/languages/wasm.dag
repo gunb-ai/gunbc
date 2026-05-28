@@ -860,15 +860,19 @@ fn wasm_hex_integer_lex_pattern() -> LexPattern {
 fn wasm_decimal_float_lex_pattern() -> LexPattern {
   wasm_lex_sequence(
     left: wasm_optional_sign_lex_pattern(),
-    right: wasm_lex_sequence(
-      left: wasm_digit_run_lex_pattern(),
-      right: wasm_lex_sequence(
-        left: OptionalPattern {
-          element: wasm_lex_sequence(
-            left: LiteralPattern { text: "." },
-            right: OptionalPattern { element: wasm_digit_run_lex_pattern() }
+    right: wasm_lex_choice(
+      left: wasm_lex_sequence(
+        left: wasm_digit_run_lex_pattern(),
+        right: wasm_lex_sequence(
+          left: LiteralPattern { text: "." },
+          right: wasm_lex_sequence(
+            left: OptionalPattern { element: wasm_digit_run_lex_pattern() },
+            right: OptionalPattern { element: wasm_decimal_exponent_lex_pattern() }
           )
-        },
+        )
+      ),
+      right: wasm_lex_sequence(
+        left: wasm_digit_run_lex_pattern(),
         right: wasm_decimal_exponent_lex_pattern()
       )
     )
