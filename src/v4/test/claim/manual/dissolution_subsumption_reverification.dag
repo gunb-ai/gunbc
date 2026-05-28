@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/dissolution_subsumption_reverification.dag
 // Scope: runnable TestClaim receipt for DissolutionSubsumption MechanicalReverification rows.
-// Owns: claim_rust_language_model_emit_mechanical_reverification, rust_language_model_emit_lens_ci_report, verdict_rust_language_model_emit_subsumption, run_rust_language_model_emit_subsumption_reverifies.
-// Consumes: v4.compiler.eval, v4.compiler.infer, v4.lens.subsumption, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.runtime, v4.std.verification, v4.std.witness.
 // Status: manual receipt over the canonical Set<DiffId> subsumption carrier.
 
 module v4.test.claim.manual.dissolution_subsumption_reverification

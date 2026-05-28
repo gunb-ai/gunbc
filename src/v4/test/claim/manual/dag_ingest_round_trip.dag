@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/dag_ingest_round_trip.dag
 // Scope: Omni-ingest .dag round-trip fidelity claim over the modeled .dag language surface.
-// Owns: claim_dag_ingest_round_trip_fidelity.
-// Consumes: v4.extdeps.languages.dag, v4.std.verification, v4.std.node.
 // Status: manual TestClaim receipt; RoundTripClaim execution remains owned by compiler/05_eval.dag.
 
 module v4.test.claim.manual.dag_ingest_round_trip

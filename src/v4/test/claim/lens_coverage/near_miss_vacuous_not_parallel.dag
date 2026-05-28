@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_coverage/near_miss_vacuous_not_parallel.dag
 // Scope: T-18 negative claim — VacuousArm acceptance does not match ParallelAuthority.
-// Owns: claim_near_miss_vacuous_not_parallel.
-// Consumes: lens coverage, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_coverage.near_miss_vacuous_not_parallel

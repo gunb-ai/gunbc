@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_cost/loop_linear.dag
 // Scope: T-12 worked claim — Loop with loop_bound_edge projects to linear symbolic cost.
-// Owns: claim_loop_linear.
-// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.loop_linear

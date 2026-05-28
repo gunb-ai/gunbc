@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/v4_evaluator_runtime_anchor.dag
 // Scope: T-34 compile anchor — v4_evaluator.dag concrete runtime bundle and carrier wiring.
-// Owns: v4_evaluator_anchor_runtime, carrier slice anchors, fail-closed witnesses, TestClaim receipts.
-// Consumes: extdeps/runtimes/v4_evaluator.dag, std/model_core.dag, std/runtime.dag, std/verification.dag.
 // Status: manual T-34 acceptance receipt.
 
 module v4.test.claim.manual.v4_evaluator_runtime_anchor

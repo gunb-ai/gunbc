@@ -1,7 +1,5 @@
 // src/v4/lens/registry.dag
 // Scope: PREFIX / T-23 v0 LENS_ID → v4 module_path registry (operator pin §3).
-// Owns: LensRegistryEntryV0 data rows + registry query surface
-// Consumes: v4.std.algebra, v4.std.text
 // Status: v0 registry-backed consumer surface
 // Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/briefs/r4-lane-a-lens-interface-freeze-pin.md
 

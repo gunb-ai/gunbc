@@ -1,8 +1,6 @@
 // src/v4/std/logic.dag
 // Scope: classical two-valued logic.
 // Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
-// Owns: Bool, BoolPrimitiveFacts, BoolWidthFact, BoolEncodingFact, bool_primitive_facts, bool_primitive_facts_node, bool_width_fact_node, bool_encoding_fact_node, bool_boolean_algebra, bool_node, bool_boolean_algebra_node, bool_boolean_algebra_type_node, bool_spec_fact_width_one_bit, bool_spec_fact_encoding_classical_two_valued.
-// Consumes: std algebra, std node.
 // Status: T-3 modeled; substrate-extension rule in src/v4/STRUCTURE.md.
 
 

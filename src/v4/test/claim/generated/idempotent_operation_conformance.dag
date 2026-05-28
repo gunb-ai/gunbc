@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/idempotent_operation_conformance.dag
 // Scope: T-19 idempotent-operation generator — f(f(x)) == f(x) rows with double-application witness.
-// Owns: generated idempotent-operation TestClaim rows via testgen_emit_idempotent_operation_claim.
-// Consumes: v4.lens.testgen, v4.std.effects, v4.std.verification.
 // Status: generated corpus — execution deferred to T-22 runner bridge.
 
 module v4.test.claim.generated.idempotent_operation_conformance

@@ -20,99 +20,8 @@
 //   (STOP-and-escalate), not after it is load-bearing.
 // Clear win: ONE `.dag` circuit declaration → a SPICE netlist that
 //   simulates (omni-emission reaches analog hardware).
-//
-// Owns:
-//   - SpiceNetlist { title: String, body: List<DeckStatement> } —
-//     well-formed by construction; malformed input is a Diagnostic,
-//     never a partial parse (same fail-closed discipline as csv.dag's
-//     rectangularity). The deck body is a single ordered list of
-//     `DeckStatement`s (one of Component / ModelCard /
-//     SubcircuitDefinition / Directive). Round-trip scope (PR #3168
-//     codex review): TOP-LEVEL source-order interleaving of these
-//     four statement kinds round-trips through `parse ∘ emit`.
-//     LIFTED nested `.SUBCKT` definitions preserve their parent
-//     identity (via `parent_scope`) but NOT their original within-
-//     parent positional offset — a documented secondary fidelity
-//     concession tracked as 🟡 YELLOW debt with a named consumer
-//     trigger: byte-exact nested-SUBCKT round-trip consumers. INSTANCE-MODIFIER
-//     FLAG-VS-KEYVALUE FIDELITY (PR #3168 codex review on commit
-//     9a477536 — the prior "equally-valid SPICE3 spellings" framing
-//     was overstated and is retracted). Instance modifiers are now
-//     a typed `Modifier = Flag { name } | KeyValue { name, value }`
-//     sub-coproduct on every context that admits both forms
-//     (`Mosfet` / `Bjt` instance modifiers AND the `.OPTIONS`
-//     directive — SPICE3 §11.5 `.OPTIONS` admits both
-//     `.OPTIONS ACCT NOPAGE` bare-flag and `.OPTIONS METHOD=GEAR`
-//     key-value forms in the same card per ngspice §Simulator
-//     Variables). A bare-flag `OFF` parses into `Flag { name = OFF }`
-//     and a parameter `AREA=2` parses into `KeyValue { name = AREA,
-//     value = ... }`. `parse ∘ emit` preserves the flag-vs-key-value
-//     distinction byte-exact (no normalization between forms); the
-//     two surface forms have distinct grammar and semantics in
-//     SPICE3 and the type system now models that distinction
-//     directly. (`Parameter` remains the carrier for contexts that
-//     admit ONLY the `name=value` form — `.MODEL` parameter sets
-//     and HSPICE-extension X-element params.) The contract
-//     promised here is therefore "top-level interleave round-trip" +
-//     "nested-SUBCKT parent-identity preservation" + "instance-
-//     modifier byte-exact round-trip (Flag vs KeyValue
-//     distinguished structurally)", not "byte-exact deck round-trip"
-//     (which still excludes lifted-nested-SUBCKT within-parent
-//     position). The original scaffold Owns line read
-//     `{components, nodes, models, directives}`; the `nodes` field
-//     is dropped per Practice 7 (the set of referenced nodes is a
-//     projection over component terminals — a parallel `nodes:
-//     List<NodeRef>` field would be a second authority, cost-of-
-//     change ≥ 2; INVARIANTS P2). Node-STATE declarations (`.IC` /
-//     `.NODESET`) are NOT lost — they live as `Directive` variants
-//     where they belong (variadic-card cardinality preserved by
-//     `NodeVoltageBindings` non-empty carrier). `SubcircuitDefinition`
-//     is a first-class deck statement (`DeckSubcircuit` variant),
-//     replacing the prior bucketed `subcircuits` field; nested
-//     definitions are lifted to top-level with `parent_scope` carrying
-//     lexical identity.
-//   - parse(String) -> Result<SpiceNetlist, Diagnostic>      (declared
-//     signature; the parse body is pipeline-stage work — T-6/T-7 — and
-//     does not live in this format-model file, matching the sibling
-//     csv/json/yaml format-scaffolds.)
-//   - emit(SpiceNetlist) -> String   (Shape B: a `.dag` program walks
-//     typed values to produce the netlist; not a compiler render target.
-//     Signature only; body deferred for the same reason as `parse`.)
-//
-// Consumes:
-//   - std/node.dag — the `Symbol` opaque-identity carrier (K-1).
-//     Symbol is conceptually substrate-ambient per node.dag's K-1
-//     header note, but the v2 bridge parser requires an explicit
-//     import to bring Symbol into the module's resolution scope; the
-//     import is a v2-bridge necessity, not a model-level dependency.
-//     The `Node` type itself is deliberately NOT imported: this is a
-//     Shape-B data format, not a `LanguageModel` — the probe's premise.
-//   - std/diagnostic.dag — the fail-closed Diagnostic carrier for
-//     malformed input (cited in prose only at this layer, matching
-//     sibling format scaffolds — `json.dag`, `csv.dag`, etc. —
-//     because parse/emit fn bodies are pipeline-stage work (T-6/T-7)
-//     and do not live in this format-model file; the actual
-//     `import v4.std.diagnostic { Diagnostic }` lands when those
-//     bodies do).
-//   (String, Int, List are kernel-ambient per STRUCTURE.md — none is
-//   imported. The scaffold-header `Consumes` line originally read
-//   `std/node.dag, std/diagnostic.dag, std/collection.dag,
-//   std/primitive.dag`; `std/primitive.dag` was deleted by PR #3152
-//   (STRUCTURE.md §"Scalar/numeric concept decomposition"); the
-//   diagnostic citation moved to prose-only to match sibling format
-//   scaffolds; `std/collection.dag` is not consumed because `List` is
-//   kernel-ambient and no modeled collection facts are used here.
-//   `std/node.dag` is retained for the Symbol bring-in. The line is
-//   corrected to actual modeled dependencies — a stale citation from
-//   the primitive.dag decomposition is mechanical cleanup, not a
-//   contract revision; the Scope/Owns/Stress/Clear-win contract above
-//   stands. Header Consumes change pending operator ratification of
-//   the systemic scaffold-Consumes reconciliation (T-4 mgr synthesis
-//   msg_1fddb75c) — consistent with ptx #3170 and the verilog probe;
-//   operator ratifies all per-file Consumes strikes uniformly.)
-//
 // Status: T-4.10 modeled 2026-05-16 (smart-raven-655); physical-quantity axis wave-1 (quiet-otter-381) — approximate voltage + named exact-carrier gap (T-3 `Dimension`/`Volt` std/ dissolution deferred). The I/O contract
-// in this header is immutable for downstream workers. Splitting this
+// lives in the module body for downstream workers. Splitting this
 // file requires explicit operator ratification (substrate extension =
 // stop signal).
 
@@ -120,6 +29,7 @@
 module v4.extdeps.formats.spice
 
 
+import v4.std.diagnostic { Outcome }
 import v4.std.node { Symbol }
 
 
@@ -295,4 +205,15 @@ type DeckStatement
 type SpiceNetlist {
   title: String
   body: List<DeckStatement>
+}
+
+type SpiceParseResult = Outcome<SpiceNetlist>
+
+type SpiceParse = fn(String) -> SpiceParseResult
+
+type SpiceEmit = fn(SpiceNetlist) -> String
+
+type SpiceIoContract {
+  parse: SpiceParse
+  emit: SpiceEmit
 }

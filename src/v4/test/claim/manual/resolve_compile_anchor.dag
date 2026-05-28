@@ -1,8 +1,6 @@
 // src/v4/test/claim/manual/resolve_compile_anchor.dag
 //
 // Scope: Tier-1 v2-bootstrap compile anchor for `resolve` + LM `canonical_symbols` (TASKS T-8).
-// Owns: anchor_resolve_wave1_service_atom_via_canonical_symbols; anchor_resolve_wave1_empty_prelude_service_atom; anchor_resolve_wave1_multi_edge_conj_via_canonical_symbols; anchor_resolve_wave1_bind_binder_use; claim_resolve_with_admission_imported_binding_accepts.
-// Consumes: compiler/03_resolve.dag, compiler/03_name_resolve.dag, extdeps/languages/dag.dag, std/algebra.dag, std/diagnostic.dag, std/logic.dag, std/catalog.dag, std/node.dag, std/verification.dag.
 // Status: scaffold — compile-only until T-22; `v2 run` TestClaims per MOVE1_COVERAGE.txt.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 

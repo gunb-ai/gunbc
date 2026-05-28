@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_idempotency/write_effect.dag
 // Scope: T-13 worked claim — EffectDependsOn classifies as RequiresAlgebraWitness; witness envelope is Violates (fail-closed slot) while projection fact matches expected.
-// Owns: idempotency_write_effect_claim.
-// Consumes: lens idempotency, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
 
 

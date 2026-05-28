@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/infer_algebra_ref_grounding_anchor.dag
 // Scope: Option B behavior receipts — algebra_ref_is_grounded guard in canonical_grounding_from_inferred_facts.
-// Owns: algebra_ref_bare_atom_is_ungrounded, algebra_ref_conj_is_grounded, algebra_ref_computation_node_is_ungrounded, anchor_canonical_grounding_rejects_bare_atom.
-// Consumes: compiler/04_infer.dag, std/cardinality.dag, std/constraints.dag, std/node.dag, std/witness.dag.
 // Status: compile-only anchor; execution deferred to T-22 runner bridge.
 // Anchor: TASKS.md T-4 Wave 2b — dissolves when constraint solver reads ModelCore.inhabitance.
 

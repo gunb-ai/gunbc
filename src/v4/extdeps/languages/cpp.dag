@@ -1,8 +1,6 @@
 // src/v4/extdeps/languages/cpp.dag
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
-// Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding, CppGramBuild1State.
-// Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.extdeps.cpp_abi.CppTargetProfile.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
+// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
@@ -24,11 +22,26 @@ import v4.compiler.tokenize {
 }
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  boolean_algebra_node,
+  commutative_semiring_node,
+  Empty,
+  fold_list,
+  group_field_inverse,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node,
+  ring_field_add,
+  ring_field_mul
+}
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
+  FailClosedAtBoundary,
   ModelCore,
+  PartialOperationDecl,
   PartialitySemanticsDecl,
   PrimitiveFactBundle,
   primitive_fact_axis_encoding,
@@ -248,6 +261,13 @@ data cpp_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data cpp_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
 
+data cpp_witness_representable_result_integer_arithmetic: Symbol = cpp_witness_representable_result_integer_arithmetic
+data cpp_witness_commutative_semiring_integer: Symbol = cpp_witness_commutative_semiring_integer
+data cpp_witness_bool_boolean_algebra: Symbol = cpp_witness_bool_boolean_algebra
+
+data cpp_precondition_signed_integer_result_representable: Symbol = cpp_precondition_signed_integer_result_representable
+data cpp_partial_signed_integer_result_not_representable: Symbol = cpp_partial_signed_integer_result_not_representable
+
 fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
   [
     CppFixedToken { token_class: cpp_token_ty_int },
@@ -433,7 +453,7 @@ fn cpp_unsigned_integer_facts(
   }
 }
 
-fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
+fn cpp_signed_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
   [
     cpp_signed_integer_facts(
       spelling: SignedChar,
@@ -459,7 +479,12 @@ fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFa
       spelling: LongLongInt,
       surface_spelling: cpp_surface_spelling_long_long_int,
       target_profile: target_profile
-    ),
+    )
+  ]
+}
+
+fn cpp_unsigned_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
+  [
     cpp_unsigned_integer_facts(
       spelling: UnsignedChar,
       surface_spelling: cpp_surface_spelling_unsigned_char,
@@ -470,6 +495,59 @@ fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFa
       surface_spelling: cpp_surface_spelling_unsigned_short_int,
       target_profile: target_profile
     ),
+    cpp_unsigned_integer_facts(
+      spelling: UnsignedInt,
+      surface_spelling: cpp_surface_spelling_unsigned_int,
+      target_profile: target_profile
+    ),
+    cpp_unsigned_integer_facts(
+      spelling: UnsignedLongInt,
+      surface_spelling: cpp_surface_spelling_unsigned_long_int,
+      target_profile: target_profile
+    ),
+    cpp_unsigned_integer_facts(
+      spelling: UnsignedLongLongInt,
+      surface_spelling: cpp_surface_spelling_unsigned_long_long_int,
+      target_profile: target_profile
+    )
+  ]
+}
+
+fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
+  list_append(
+    left: cpp_signed_integer_facts_catalog(target_profile: target_profile),
+    right: cpp_unsigned_integer_facts_catalog(target_profile: target_profile)
+  )
+}
+
+// Anchor: ISO/IEC 14882:2020 [conv.prom] / [expr.arith.conv] — char and short
+// promote before usual arithmetic, so they stay in primitive facts only (no T,T→T algebra closure).
+fn cpp_signed_integer_algebra_inhabitance_facts_catalog(
+  target_profile: Node
+) -> List<CppIntegerPrimitiveFacts> {
+  [
+    cpp_signed_integer_facts(
+      spelling: Int,
+      surface_spelling: cpp_surface_spelling_int,
+      target_profile: target_profile
+    ),
+    cpp_signed_integer_facts(
+      spelling: LongInt,
+      surface_spelling: cpp_surface_spelling_long_int,
+      target_profile: target_profile
+    ),
+    cpp_signed_integer_facts(
+      spelling: LongLongInt,
+      surface_spelling: cpp_surface_spelling_long_long_int,
+      target_profile: target_profile
+    )
+  ]
+}
+
+fn cpp_unsigned_integer_algebra_inhabitance_facts_catalog(
+  target_profile: Node
+) -> List<CppIntegerPrimitiveFacts> {
+  [
     cpp_unsigned_integer_facts(
       spelling: UnsignedInt,
       surface_spelling: cpp_surface_spelling_unsigned_int,
@@ -765,13 +843,175 @@ fn cpp_wave1_primitive_fact_bundles(
   )
 }
 
+fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: witness, target: cpp_atom(id: witness)),
+      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ]
+  }
+}
+
+fn cpp_signed_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(
+        name: cpp_witness_representable_result_integer_arithmetic,
+        target: cpp_atom(id: cpp_witness_representable_result_integer_arithmetic)
+      ),
+      cpp_named_edge(
+        name: cpp_precondition_signed_integer_result_representable,
+        target: cpp_atom(id: cpp_precondition_signed_integer_result_representable)
+      ),
+      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
+      cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact),
+      cpp_named_edge(name: cpp_field_overflow_disposition, target: facts.overflow_fact)
+    ]
+  }
+}
+
+fn cpp_signed_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = cpp_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: cpp_signed_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = cpp_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: commutative_semiring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: cpp_integer_algebra_witness_node(
+      facts: facts,
+      witness: cpp_witness_commutative_semiring_integer
+    )
+  }
+}
+
+fn cpp_bool_algebra_witness_node(facts: CppBoolPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cpp_named_edge(name: cpp_witness_bool_boolean_algebra, target: cpp_atom(id: cpp_witness_bool_boolean_algebra)),
+      cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
+      cpp_named_edge(name: cpp_field_signed_representation, target: facts.encoding_fact)
+    ]
+  }
+}
+
+fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = cpp_bool_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: cpp_bool_algebra_witness_node(facts: facts)
+  }
+}
+
+fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: cpp_signed_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: cpp_signed_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: cpp_unsigned_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: cpp_unsigned_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: cpp_signed_integer_algebra_inhabitance_decls(target_profile: target_profile),
+    right: cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: target_profile)
+  )
+}
+
+fn cpp_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: cpp_bool_facts_catalog(),
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: cpp_bool_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn cpp_model_core_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: cpp_integer_algebra_inhabitance_decls(target_profile: target_profile),
+    right: cpp_bool_algebra_inhabitance_decls()
+  )
+}
+
+fn cpp_algebra_operation_node(operation: Symbol) -> Node {
+  cpp_atom(id: operation)
+}
+
+fn cpp_fail_closed_partial_operation(
+  operation: Node,
+  precondition: Symbol,
+  reason: Symbol
+) -> PartialOperationDecl {
+  PartialOperationDecl {
+    operation: operation,
+    precondition: cpp_atom(id: precondition),
+    discharge: FailClosedAtBoundary { reason: reason }
+  }
+}
+
+// Partiality keys off canonical OrderedRing field identities from v4.std.algebra
+// (ring_field_add / ring_field_mul / group_field_inverse), not target-private op symbols.
+// Subtraction is not an exported ring field; representable-result for sub is covered
+// via the additive/inverse carriers until a canonical subtract ref lands in std.algebra.
+fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
+  PartialitySemanticsDecl {
+    operations: [
+      cpp_fail_closed_partial_operation(
+        operation: cpp_algebra_operation_node(operation: ring_field_add),
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      ),
+      cpp_fail_closed_partial_operation(
+        operation: cpp_algebra_operation_node(operation: ring_field_mul),
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      ),
+      cpp_fail_closed_partial_operation(
+        operation: cpp_algebra_operation_node(operation: group_field_inverse),
+        precondition: cpp_precondition_signed_integer_result_representable,
+        reason: cpp_partial_signed_integer_result_not_representable
+      )
+    ]
+  }
+}
+
 fn cpp_model_core_wave1(target_profile: Node) -> ModelCore {
   ModelCore {
     primitives: cpp_wave1_primitive_fact_bundles(target_profile: target_profile),
-    inhabitance: [],
+    inhabitance: cpp_model_core_inhabitance_decls(target_profile: target_profile),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
-    partiality: PartialitySemanticsDecl { operations: [] }
+    partiality: cpp_partiality_semantics_wave1()
   }
 }
 

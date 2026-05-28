@@ -1,8 +1,5 @@
 // src/v4/extdeps/formatters/lean4_format.dag
 // Scope: Lean 4 formatter configuration model — option space grounded in Lean 4 formatter/Lake option surfaces.
-// Owns: Lean4NameValue, Lean4SyntaxValue, Lean4NatValue, lean4_nat_value_validation, make_lean4_nat_value, Lean4OptionValue, Lean4OptionAssignment,
-//       Lean4FormatConfig, lean4_format_defaults, lean4_format_layer.
-// Consumes: Locus, Outcome, Symbol, Refined, Validation.
 // Status: T-4.16 scaffold — full documented Lean formatter-facing option surface.
 // Anchor: https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Format.lean
 //         https://github.com/leanprover/lean4/blob/master/src/Lean/Data/Options.lean
@@ -13,6 +10,7 @@ module v4.extdeps.formatters.lean4_format
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 import v4.std.refinement { Refined, Validation, refine }
+import v4.std.patch { FieldPatch, apply_field_patch }
 
 
 type Lean4NameValue
@@ -75,7 +73,22 @@ data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
 }
 
 
-// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: Lean4FormatConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
-fn lean4_format_layer(base: Lean4FormatConfig, outer: Lean4FormatConfig) -> Lean4FormatConfig {
-  outer
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: Lean4FormatConfigPatch projected from Lean4FormatConfig field set.
+type Lean4FormatConfigPatch {
+  format_width: FieldPatch<Lean4NatValue>
+  format_indent: FieldPatch<Lean4NatValue>
+  format_unicode: FieldPatch<Bool>
+  pp_oneline: FieldPatch<Bool>
+  lake_lean_options: FieldPatch<List<Lean4OptionAssignment>>
+}
+
+
+fn lean4_format_layer(base: Lean4FormatConfig, patch: Lean4FormatConfigPatch) -> Lean4FormatConfig {
+  Lean4FormatConfig {
+    format_width: apply_field_patch(base: base.format_width, patch: patch.format_width),
+    format_indent: apply_field_patch(base: base.format_indent, patch: patch.format_indent),
+    format_unicode: apply_field_patch(base: base.format_unicode, patch: patch.format_unicode),
+    pp_oneline: apply_field_patch(base: base.pp_oneline, patch: patch.pp_oneline),
+    lake_lean_options: apply_field_patch(base: base.lake_lean_options, patch: patch.lake_lean_options),
+  }
 }

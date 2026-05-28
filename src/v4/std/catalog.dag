@@ -1,7 +1,5 @@
 // src/v4/std/catalog.dag
 // Scope: Module catalog carrier for cross-file binding (T-28).
-// Owns: Catalog, Entry; entry lookup; validated catalog constructor.
-// Consumes: std/algebra.dag, std/diagnostic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 

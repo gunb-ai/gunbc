@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_unused_parameters/binds_to_edge.dag
 // Scope: T-13 worked claim (PROJECTION contract) — a `BindsTo` edge classifies as `IsUseOfDeclaration` over `ClassifiedDependencyView<UseRelation>`.
-// Owns: unused_parameters_binds_to_edge_claim.
-// Consumes: lens unused_parameters, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration). Pairs with non_use_edges.dag (non-USE partition) and rollup_unused_declaration.dag (BEHAVIORAL roll-up).
 
 

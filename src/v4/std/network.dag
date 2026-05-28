@@ -1,7 +1,5 @@
 // src/v4/std/network.dag
 // Scope: network boundary carriers.
-// Owns: HttpMethod, Rfc3986AbnfProduction, UriScheme, UriUserInfo, UriHost, UriPort, UriAuthority, UriPath, UriHierPart, UriQuery, UriFragment, Url, UriRelativePart, UriRelativeReference, UriReference, NetworkAddress.
-// Consumes: std text, std nat, std collection (Optional).
 // Status: T-26 modeled.
 
 

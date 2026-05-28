@@ -1,11 +1,6 @@
 // src/v4/compiler/03_name_resolve.dag
 //
 // Scope: Stage 3c — Catalog admission for cross-file resolution.
-// Owns: ResolutionSubject; Admission; namespace_for_subject; resolve_with_admission.
-// Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
-//           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
-//           std/diagnostic.dag, std/catalog.dag, std/node.dag,
-//           std/qualified_name.dag, std/witness.dag.
 // Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 

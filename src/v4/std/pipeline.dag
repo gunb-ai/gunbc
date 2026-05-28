@@ -1,7 +1,5 @@
 // src/v4/std/pipeline.dag
 // Scope: compiler pipeline substrate and stage policy values.
-// Owns: CarrierKind, PipelineStage, Pipeline, stage diagnostic policy rows.
-// Consumes: v4.std.diagnostic (StageDiagnosticPolicy authority), v4.std.node.
 // Status: Wave-2-A substrate; StageDiagnosticPolicy authority consolidated in diagnostic.dag (AI-1).
 
 module v4.std.pipeline

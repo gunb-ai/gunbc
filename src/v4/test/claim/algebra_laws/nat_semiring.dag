@@ -1,7 +1,5 @@
 // src/v4/test/claim/algebra_laws/nat_semiring.dag
 // Scope: TestClaim corpus rows for Nat algebra laws generated from std/nat.dag subjects.
-// Owns: Nat additive and multiplicative law TestClaim rows.
-// Consumes: v4.std.verification v4.std.diagnostic v4.std.node v4.std.nat
 // Status: T-14 corpus rows; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 

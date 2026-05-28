@@ -66,6 +66,7 @@ fidelity claim, needs only T-10). Both must be complete before T-15.
           theorem class; Coq is the deferred second-prover probe.
           PROOF-1 is realized when the lens framework composes with
           that model (composition, not a new subsystem).
+        [also needs T-37 + T-38 + T-20-fill — see "Bootstrap execution convergence" below]
 ```
 
 ### Side branch — `{P1-KEYSTONE, T-30, T-29, T-25-core, T-33, T-19, T-21} → T-4 → T-9` (watch item)
@@ -143,7 +144,7 @@ Substrate / extdeps fan-out:
   T-4.6 extdeps/formats/* (7 files: json/yaml/csv/toml/json_schema/openapi/sql)  [needs T-25-core, T-26]
   T-4.7 extdeps/frameworks/react.dag    [needs T-4 (typescript)]
   T-4.8 extdeps/coordination.dag         [needs T-4, T-4.7]
-  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; header Consumes: std/node.dag; std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
+  T-4.9  extdeps/languages/verilog.dag   [needs T-1, T-2; imports std/node.dag and std/nat.dag (Nat); B2-OMNI falsification probe — concurrency vs the 5 behaviors]
   T-4.10 extdeps/formats/spice.dag       [needs T-1; B2-OMNI falsification probe — LanguageModel generality (no control flow)]
   T-4.11 test/claim/boundary/english_ingest_fail_closed.dag  [needs T-4.19 (english.dag), T-3 std/verification.dag; conformance test for english.dag boundary — out-of-subset prose → Diagnostic, never fabricated parse]
   T-4.12 extdeps/languages/llvm_ir.dag   [needs T-1, T-2; B2-OMNI probe — generalize DOWN the stack (SSA IR)]
@@ -164,7 +165,7 @@ Substrate / extdeps fan-out:
    "Out of scope for the initial single-target compiler.")
 
 Test + bootstrap substrate (schedule early — every later task benefits):
-  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3]
+  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3 — DISPATCHABLE: all deps done; no dispatch issued 2026-05-28]
         Produces TestClaim corpus from substrate; manual TestClaims in
         test/claim/manual/ serve as anti-regression contract until
         T-19 implementation lands. Every later task benefits from
@@ -181,12 +182,19 @@ Test + bootstrap substrate (schedule early — every later task benefits):
         Structural authority that replaces scripts/detect-affected-
         components.sh. Consumed by T-24 (ci) + eval (skip pure
         unchanged subgraphs).
-  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23]
+  T-24  workflow/ci.dag                  [needs T-21, T-20, T-10, T-23 — T-21 (#3747) + T-23 (#3702) + T-10 done; T-20-fill remaining — prep/skeleton can start; cannot close until T-20-fill authored]
         CI pipeline AS DATA; .github/workflows/ci.yml derived. Closes
         v3's gate-#98 gap (hand-authored CI YAML). Consumes T-21 for
         job selection — the shell bridge dissolves once both land.
         Consumes T-10/T-23 for lens verdict via `run_required_lens_gates`
         (T-24 schedules; T-10 owns the orchestrator gate surface).
+
+Bootstrap execution gap (gate T-15 close — no workers dispatched 2026-05-28):
+  T-37  v2 DAG artifact serializer fix   [schedulable now — pure v2 Rust; gates T-15 bridge dissolution]
+        Blocks scripts/v4-bootstrap-resolve-posture-gate.sh dissolution;
+        T-15 cannot close while the bridge passes on SIGTERM.
+  T-38  TestClaim execution harness      [needs T-22 runnable; T-34 done #3770; gates T-15 "claim suite passes"]
+        Claims compile only today; no CI step invokes T-22 eval on the corpus.
 
 Interpreter + lens dimensions (each needs T-9):
   T-22  compiler/05_eval.dag             [needs T-9, T-34]
@@ -257,6 +265,40 @@ Close-the-loop + late substrate:
    ruled orthogonal to v4;
    see T-27 tombstone.)
 ```
+
+### Bootstrap execution convergence — additional T-15 gates (2026-05-28)
+
+The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
+T-15 to close. Three gaps have no workers and gate the close condition:
+
+**T-37 → bridge dissolution.** `scripts/v4-bootstrap-resolve-posture-gate.sh`
+passes CI on SIGTERM (exit 143/124) whenever v2 `--target dag` OOM-kills before
+writing output. The bridge's own dissolution condition is "v4 emit reaches
+`compiled:` without SIGTERM." Until T-37 lands, T-15 cannot close — CI trivially
+passes through the bridge regardless of serializer state.
+Root cause and fix shape: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`.
+
+**T-38 → claim-suite close.** T-15's "TestClaim suite passes" condition is not
+checkable. `src/v4/test/claim/manual/*.dag` claims compile and type-check only;
+`scripts/check-v4-host-eval-receipt.py` string-matches emitted Rust, does not
+execute claims. Script header names the dissolution condition. T-34 (runtime
+substrate) done (#3770). T-22 (eval interpreter) substantially authored. CI
+wiring — a step that invokes T-22 eval on the claim corpus and surfaces
+`TestClaimRun` witness vs Violates — is the gap.
+
+**T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
+sequence IS authored (header: "Status: filled — compiler-of-record is the
+self-hosting structural fact; structural gate only"). Two scaffold placeholders
+remain before T-15 can consume it as a real fixed-point proof:
+(1) `bootstrap_footprint` (line 190) returns `Violates` pending
+`feature:t21-bootstrap-footprint-fold` — dissolves when T-21's affected-set/
+content-hash fold reads the projection input closure; T-21 merged (#3747), so
+this scaffold is now dispatchable.
+(2) `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
+aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
+No dispatch against either placeholder today.
+
+---
 
 ## Task definitions
 
@@ -375,6 +417,8 @@ T-6/T-7 schema lands. Scheduled post-T-6/T-7. `[needs T-6, T-7, T-4]` (T-4 = fac
 **T-4 Wave 2b** (type deepening): inhabitance + algebra laws + effects + partiality per language.
 Scheduled in parallel with Wave 2a. `[needs T-4, T-33, T-2 Node constructors]` — T-4 = fact-bundle authoring; T-2 Node constructors = algebra.dag exports `ordered_ring_node() -> Node` etc., required so `AlgebraInhabitanceDecl.algebra` can be a grounded Node rather than a bridge Symbol atom. Wave 2b CANNOT ship while any bridge-Symbol algebra reference exists in any language file — these fail-closed at T-9 (`infer_algebra_ref_ungrounded`). The bridge symbols in rust.dag (e.g. `rust_model_core_bridge_std_ordered_ring_representable_integer`) are scaffolds that dissolve when T-2 Node constructors land and this wave replaces them.
 
+- **Go complex inhabitance** — `feature:go-complex-algebra-inhabitance`. Go complex primitives already exist as fact-bundles, but `std.algebra` still lacks a complex-specific constructor. Dissolve-on-arrival: when T-2 exports a dedicated complex algebra Node constructor and `src/v4/extdeps/languages/go.dag` wires it into `go_model_core_wave1()`, replace the current yellow placeholder with a grounded complex inhabitance row.
+
 **Modeling decisions**:
 - Per-language primitive **grounding** (fact-bundle, per DECISIONS.md "D2 REVERSAL + FACT-BUNDLE RESEED"): the bundle of spec-read facts for each primitive — width / signedness / representation / overflow disposition / surface spelling — grounding into the shared `std/` vocabulary (T-3). Libraries such as `std::vector` are NOT modeled per L-2 — they are ordinary `Node`s. Deduplicate to a `std/` carrier only on proven identity; never a bare alias, never a re-declared algebra inhabitance (INVARIANTS P1:42)
 - Per-language realization cost shape
@@ -435,8 +479,8 @@ substrate imported them, so the cut is a pure scope reduction.
 
 **Role:** Lexical half of generic `ingest` (00_compile B2-OMNI): walker over `LanguageModel` **lex** `LexRules` data — grammar-as-data, not hardcoded `.dag` classes (N×M STOP). Wave-2+ = extend **data**, not walker.
 
-**Merged `00_compile.dag` ingest (literal `Owns` today):** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling on the orchestrator file (per DECISIONS.md item **I**: `Result<…, Diagnostic>` prose denotes the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**).
-**Merged `01_tokenize.dag` (literal `Owns` today):** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
+**Merged `00_compile.dag` ingest signature:** `ingest: (Source, LanguageModel) -> Result<Node, Diagnostic>` — authoritative composed ingest spelling in the orchestrator body. Read `Result<…, Diagnostic>` prose as the same fail-closed surface as `Outcome<…>` from `std/diagnostic.dag`; do not “fix” TASKS to one carrier spelling without changing **`00_compile.dag` in the same commit train**.
+**Merged `01_tokenize.dag` signature:** `tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>` with `LexRules = VoidLexRules | ModeledLexRules { root: LexRuleSet }` and `TokenRule.pattern: LexPattern` (`String` + `file: Symbol` is the concrete source slot inside `ingest` today; read `LexRules` as the lexical projection of the `LanguageModel` bundle per Theme-A #9 — not a second authority).
 *Theme-A #9 resolved:* `src/v4/compiler/07_target_carriers.dag` is the
 single carrier authority: `type LanguageModel = Node`. Read
 **`LexRules` / `Grammar` as lexical and syntax projections** on that
@@ -461,8 +505,8 @@ conceptual `(Source, LanguageModel)` spelling.
 
 **Role:** Syntactic half of `ingest`: walker over `Grammar` `Node`; grammar = bidirectional concrete-syntax ⟷ `Node`; parse forward, emit (T-10) inverse (`ingest = emit⁻¹`, C5). G0+ = **data** on model.
 
-**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches **`compiler/02_parse.dag` `Owns`** (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
-*Ingest tie-in (`00_compile.dag` `Owns` today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
+**I/O**: `(TokenStream, Grammar) -> Outcome<ParseTree>` — `ParseTree = Node` (A1); matches the merged **`compiler/02_parse.dag`** body signature (`parse: (TokenStream, Grammar) -> Outcome<ParseTree>`).
+*Ingest tie-in (`00_compile.dag` body signature today):* composed `ingest` still closes as **`Result<Node, Diagnostic>`** (see T-6); this stage keeps **`Outcome<ParseTree>`** in **`02_parse.dag`** until a ratified rename train retires the split spelling across **`00_compile.dag` + `01_tokenize` + `02_parse` together**.
 *Theme-A #9 resolved:* Same projection reading as T-6 — `Grammar` is the
 syntax-side projection of the landed `LanguageModel = Node` authority in
 `src/v4/compiler/07_target_carriers.dag`.
@@ -543,15 +587,14 @@ syntax-side projection of the landed `LanguageModel = Node` authority in
 **emit is `ingest` inverted, not a codegen backend.** emit is the **emit
 boundary** of the OMNI pivot — `ingest = emit⁻¹` over the **same**
 bidirectional relation (00_compile.dag C5). **`TargetModel`** is the
-Shape-A emit parameter in **`00_compile.dag`** and in **`05_emit.dag`
-`Owns` / B2-OMNI** (`emit: (InferredTree, TargetModel) -> …`). **P2
-boundary honesty:** **`05_emit.dag` is not yet internally consistent** — the
-frozen scope line still says "target spec" and **`Consumes` still lists
-`TargetSpec`**, while the **`Owns` / B2-OMNI / signature** spelling already
-moved to **`TargetModel`**. That is **one carrier, dual names in-flight** on
-the T-10 scaffold — not a second authority; reconcile the scope prose +
-**`Consumes`** line in the same CP-1b/T-10 close-out train that touches
-`05_emit.dag`. TASKS tracks the **typed `Owns` I/O** here. Emission *applies
+Shape-A emit parameter in **`00_compile.dag`** and in the **`05_emit.dag`
+B2-OMNI body signature** (`emit: (InferredTree, TargetModel) -> …`). **P2
+boundary honesty:** **`05_emit.dag` carried in-flight naming drift** — older
+scope/import prose said "target spec" / `TargetSpec`, while the body signature
+had already moved to **`TargetModel`**. That was **one carrier, dual names
+in-flight** on the T-10 scaffold — not a second authority; reconcile any
+remaining scope prose or imports in the same CP-1b/T-10 close-out train that
+touches `05_emit.dag`. TASKS tracks the **typed body I/O** here. Emission *applies
 the target language's declarative grammar in the inverse direction* (`Node`
 → concrete syntax). The orchestrator `compile = emit ∘ core ∘ ingest`
 composes the three; `run = eval ∘ core ∘ ingest` is the sibling execution
@@ -569,11 +612,11 @@ if any emission step cannot be expressed as inverse grammar-data.)
 **I/O**:
 - `emit: (InferredTree, TargetModel) -> Result<TargetSource, Diagnostic>` — the emit
   boundary, the U1 Realize phase, inverse of `ingest` (matches `00_compile.dag` and
-  `05_emit.dag` **`Owns`** contract headers; see the `TargetSpec` / scope-line caveat above).
+  `05_emit.dag` body signatures; see the `TargetSpec` / scope-line caveat above).
 - `compile: (Source, TargetModel) -> Result<TargetSource, Diagnostic>` — the orchestrator,
   `emit ∘ core ∘ ingest`.
 
-**`Result` vs `Outcome` (literal alignment, api-review):** **Ground in merged headers, not TASKS invention:** `compiler/00_compile.dag` **`Owns`** spells **`Result<…, Diagnostic>`** for `ingest` / `core` / `emit` / `eval` today; `compiler/01_tokenize.dag` and `compiler/02_parse.dag` **`Owns`** still spell **`Outcome<…>`** on `tokenize` / `parse`. Stage files **import** `Outcome` (and `Diagnostic`) from **`std/diagnostic.dag`**, which **`Owns`** the declared **`Outcome<T>`** carrier — there is no parallel `.dag` `Result<ok, err>` type (per DECISIONS.md item **I**). TASKS quotes **`Result`** here only where **`00_compile.dag` / `05_emit.dag` `Owns`** do (emit/compile bullets above); do not “standardize” orchestrator prose to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
+**`Result` vs `Outcome` (literal alignment, api-review):** **Ground in merged body signatures, not TASKS invention:** `compiler/00_compile.dag` spells **`Result<…, Diagnostic>`** for `ingest` / `core` / `emit` / `eval` today; `compiler/01_tokenize.dag` and `compiler/02_parse.dag` still spell **`Outcome<…>`** on `tokenize` / `parse`. Stage files **import** `Outcome` (and `Diagnostic`) from **`std/diagnostic.dag`**, whose body declares the **`Outcome<T>`** carrier — there is no parallel `.dag` `Result<ok, err>` type. TASKS quotes **`Result`** here only where **`00_compile.dag` / `05_emit.dag` body signatures** do (emit/compile bullets above); do not “standardize” orchestrator prose to `Outcome<Source>` **without** changing **`00_compile.dag` in the same commit train**.
 
 **Modeling decisions**:
 - How the `TargetModel`'s grammar drives emission **as the inverse walk**
@@ -842,9 +885,9 @@ model shape to keep the probe "parallel."
 
 #### T-4.9: `extdeps/languages/verilog.dag`
 - **Stress axis**: hardware **concurrency** vs the 5 L1 behaviors. This is the **IN-B validation probe** — if Verilog (`always @(posedge clk)`, continuous assignment) cannot be modeled as effect-typed `Bind` composition without a 6th `Concurrent` behavior, that is a **C1 stop-signal escalation**, and catching it early is the entire point.
-- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** — path line, the four-line `Scope` / `Owns` / `Consumes` / `Status` block, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative lives **here** and under `DECISIONS.md` **L-1**, not as parallel prose authority in the substrate header. **Boundary (P2):** the **authoritative import surface** is the header `Consumes: std/node.dag; std/nat.dag (Nat)` — not the execution-graph tag `[needs T-1, T-2]` (that tag names **substrate schedule prerequisites**: `node` + `algebra` must exist before the probe is fillable). T-2 facts reach Verilog through `std/nat.dag` (which **Consumes** `std/algebra.dag`), not by importing `algebra.dag` directly in this file.
+- **Wave-0 / Practice 9 (header hygiene):** The live `verilog.dag` preamble stays **terse** and script-owned where generated — path line, `Scope` / generated `Owns` / generated `Consumes` / `Status`, `// Anchor`, `// Ledger`, and mandated coproduct one-liners only (`docs/modeling-discipline.md` §9; strict-deprose allowlist). Do not add extra `//` rationale paragraphs to the `.dag` file; falsification narrative lives **here** and in PR review, not as parallel prose authority in the substrate header. **Boundary (P2):** the **authoritative import surface** is the module's import/body contract (`std/node.dag`; `std/nat.dag (Nat)`) — not the execution-graph tag `[needs T-1, T-2]` (that tag names **substrate schedule prerequisites**: `node` + `algebra` must exist before the probe is fillable). T-2 facts reach Verilog through `std/nat.dag` (which imports `std/algebra.dag`), not by importing `algebra.dag` directly in this file.
 - **Clear win**: one `.dag` FSM → simulable Verilog + a Rust reference model, same Node, zero translator.
-- **Owns D3200 dissolution arrival**: `SL-3229-VERILOG-D3200` gates on this task, specifically the Verilog `LanguageModel` axis rework that decomposes `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, and `PrimitiveGateKind` against their merge-base richer-source axes. This is a T-4.9-owned arrival, not the mainstream T-4 language fact-bundle task.
+- **D3200 dissolution arrival is owned here**: `SL-3229-VERILOG-D3200` gates on this task, specifically the Verilog `LanguageModel` axis rework that decomposes `NonTriregNetKind`, `VariableDeclaration`, `OutputPortAnsiVariableTypeKind`, `ParameterTypeKind`, and `PrimitiveGateKind` against their merge-base richer-source axes. This is a T-4.9-owned arrival, not the mainstream T-4 language fact-bundle task.
 - **Scope**: L (substrate-validating; concurrency model is the risk).
 
 #### T-4.10: `extdeps/formats/spice.dag`
@@ -1189,9 +1232,9 @@ remaining fork — `#4 — T-16 SQL DDL` — was **RESOLVED by the operator
 follow-on to T-26 (`feature:network-validated-components`), not gated on T-25-core.
 `NonEmptyList` witness in `src/v4/test/claim/manual/refinement_nonempty_list.dag`
 (acceptance witness, T-22 exec) is similarly unblocked.
-**Independent sub-bug (resolved):** `file_system.dag` header dangling-`Consumes`
-(cited `std/collection NonEmptyList` before T-25-core landed) is corrected — the header
-no longer cites a non-existent type.
+**Independent sub-bug (resolved):** `file_system.dag` had stale import prose
+for `std/collection NonEmptyList` before T-25-core landed; that stale reference
+is corrected and no longer cites a non-existent type.
 
 ### T-26 — std/ boundary carriers (net-address / URL / HttpMethod)  [SUBSTRATE LANDED]
 **Operator ruling 2026-05-17 — disposition unchanged (no fork); authority lives in `std/`.**
@@ -1511,23 +1554,41 @@ to `QualifiedName`, add the projection.
 
 **Scope — two pieces:**
 
-1. **`QualifiedName = FreeMonoid<Symbol>`.** The declared identifier of a code
-   unit — the dotted name from its `module` declaration (e.g. `module
-   v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`). Not a graph path,
-   not a filesystem path. Declare in `std/node.dag` or a thin new
-   `std/qualified_name.dag`. Delete `ModulePath` and `ModulePathSegment`; migrate
-   all callers to `QualifiedName`.
+1. **`QualifiedName` — declared identifier of a code unit.** The dotted name from
+   its `module` declaration (e.g. `module v4.std.algebra` → `QualifiedName`
+   `[v4, std, algebra]`). Not a graph path, not a filesystem path. Declare in
+   `std/qualified_name.dag`. **Modeled as:** `QnEmpty | QnCons { head: Symbol,
+   tail: QualifiedName }` (standalone recursive coproduct — the intended alias
+   `FreeMonoid<Symbol>` is blocked by a v2 bootstrap limitation: the compiler
+   cannot resolve generic type alias constructors at definition site; tracked
+   under feature:free-monoid-qualified-name-alias, dissolves when the v2 bootstrap
+   is fixed). Delete `ModulePath` and `ModulePathSegment`; migrate all callers to
+   `QualifiedName`.
 
-2. **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`.**
-   Extracts the declared name from a Node's `module_header` child, or returns
-   `Rejected` with diagnostics when the projection is unavailable. The name is
-   already in the parse tree (`dag_surface_module_header` →
-   `dag_production_qualified_name`); this function makes it accessible without
-   an external key while preserving fail-closed projection failures. Once this
-   exists, `Entry { name: QualifiedName, root: Node }` is a denormalized pair —
-   name is projectable from root on the `Accepted` branch. Callers that carry
-   the pair can simplify to `FreeMonoid<Node>` only when they thread the
-   `Rejected` branch to their admission boundary.
+2. **Two-function surface (std/ primitive + extdeps/ entry point).**
+
+   **`qualified_name_from_node(root: Node) -> Outcome<QualifiedName>`** in
+   `std/qualified_name.dag`. Primitive: `root` is the `fold_list_node`
+   sub-node already resolved by the caller. Walks the `fold_list_node_head` /
+   `fold_list_node_tail` edge spine and collects the symbol sequence into
+   `QualifiedName` (`QnEmpty | QnCons`). Returns `Rejected` (fail-closed) for any non-Conj root
+   or malformed structure. `std/` cannot import `extdeps/`; the
+   `dag_surface_module_header_qualified_name` edge name lives in
+   `extdeps/languages/dag.dag`, so the edge lookup belongs in the layer that
+   owns that symbol.
+
+   **`qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName>`**
+   in `extdeps/languages/dag.dag`. Extdeps/ entry point for callers that hold a
+   module header Node produced by `emit_module_header_emitted_node`. Looks up
+   the `dag_surface_module_header_qualified_name` edge from `root` and delegates
+   to `qualified_name_from_node`. `extdeps/` may import `std/`, so the
+   layering invariant is preserved.
+
+   Once this two-function surface exists, `Entry { name: QualifiedName, root: Node }`
+   is a denormalized pair — name is projectable from root on the `Accepted`
+   branch via `qualified_name_from_module_node`. Callers that carry the pair can
+   simplify to `FreeMonoid<Node>` only when they thread the `Rejected` branch to
+   their admission boundary.
 
 **Naming invariant (to land with T-QN-1 in `INVARIANTS.md` §P1):**
 Model names must reflect what they are. A type named `FooBar` must be a
@@ -1538,22 +1599,19 @@ graph-traversal concept; the declared module identifier is not a path.
 Enforcement via lens (forthcoming).
 
 **Files:**
-- `std/node.dag` or `std/qualified_name.dag` — `QualifiedName` type +
-  `qualified_name_from_node`.
-- `extdeps/languages/dag.dag` — **read reference only.** `qualified_name_from_node`
-  reads the parse-tree structure produced by `dag_surface_module_header` →
-  `dag_production_qualified_name`. Workers must consult this file to know the
-  exact child layout a module-declaration Node presents. No changes to this file.
+- `std/qualified_name.dag` — `QualifiedName` type + `qualified_name_from_node` primitive.
+- `extdeps/languages/dag.dag` — `qualified_name_from_module_node` entry point.
+  Workers must read this file to understand the Node child layout a
+  module-declaration Node presents (`emit_module_header_emitted_node`). The
+  `dag_surface_module_header_qualified_name` edge symbol is the structural
+  authority here.
 - Any caller of `ModulePath`/`ModulePathSegment` — migrate to `QualifiedName`.
 - `INVARIANTS.md` §P1 — naming invariant entry.
 
-**Dependencies:** The module-header parse-tree surface (`dag_surface_module_header`
-/ `dag_production_qualified_name`) in `extdeps/languages/dag.dag` is the
-structural authority `qualified_name_from_node` reads from. This surface already
-exists in the codebase — no prerequisite task is needed. Workers must read
-`extdeps/languages/dag.dag` to understand the Node child layout before
-implementing `qualified_name_from_node`; they may not assume a fixed child
-index or invent a traversal not grounded in that grammar declaration.
+**Dependencies:** The module-header parse-tree surface
+(`dag_surface_module_header_qualified_name`) in `extdeps/languages/dag.dag` is
+the structural authority `qualified_name_from_module_node` reads from. This
+surface already exists in the codebase — no prerequisite task is needed.
 
 **Change 2 (follow-on):** Once T-QN-1 lands and callers migrate to
 `FreeMonoid<Node>` + `qualified_name_from_node`, `Entry`, `Catalog`,
@@ -1609,11 +1667,18 @@ Sequencing). T-35 workers must not proceed without both gates.
    `batch_insert(batch: ModuleBatch, node: Node)`,
    `batch_delete(batch: ModuleBatch, qname: QualifiedName)`;
    `batch_lookup` is an internal fold helper (folds `entries` applying
-   `qualified_name_from_node`, matching only `Accepted` qualified names) — not
-   exported from `module_batch.dag`, not a root-selection path (see Files
-   section). Each admitted Node carries its own `QualifiedName` via the
-   `qualified_name_from_node` projection (T-QN-1); no external path key is
-   required. Callers build the batch and invoke
+   `qualified_name_from_node` (the std/ primitive), matching only `Accepted`
+   qualified names) — not exported from `module_batch.dag`, not a root-selection
+   path (see Files section). Each admitted Node carries its own `QualifiedName`
+   via the `qualified_name_from_node` projection (T-QN-1) at the std/ layer, or
+   via `qualified_name_from_module_node` (extdeps/languages/dag.dag) at the
+   compiler/ admission layer; no external path key is required.
+   **Layering note:** `std/module_batch.dag` cannot import `extdeps/`, so
+   `batch_lookup` and `batch_delete` call `qualified_name_from_node` (std/); for
+   post-normalize module Nodes this always returns `Rejected` (non-fold_list_node
+   roots). The compiler/ admission layer (`compile_with_batch`) calls
+   `qualified_name_from_module_node` on each batch entry instead. T-35 workers
+   must account for this barrier — functional projection is at the compiler/ layer. Callers build the batch and invoke
    `compile_with_batch` — the filesystem-free entry point alongside existing
    `compile_ingest_staging` in `00_compile.dag`.
 
@@ -1621,18 +1686,20 @@ Sequencing). T-35 workers must not proceed without both gates.
    `Map<K,V>` in `std/collection.dag` is a closure `{ lookup: fn(K) ->
    Witness<V> }` — unenumerable by construction. `FreeMonoid<Node>` keeps the
    batch enumerable so `compile_with_batch` can fold over entries. `batch_lookup`
-   is a fold using `qualified_name_from_node` to match on the `Accepted` branch;
-   `Rejected` entries are non-matches for lookup and remain admission failures.
+   is a fold using `qualified_name_from_node` (std/ layer; see Layering note above
+   for the compiler/-layer path via `qualified_name_from_module_node`) to match on
+   the `Accepted` branch; `Rejected` entries are non-matches for lookup and remain
+   admission failures.
    `batch_insert` appends a Node; `batch_delete` filters by `QualifiedName`.
    Name-uniqueness is not the batch's responsibility — it is enforced at
    admission time.
 
    **Node-keyed invariants (ratified 2026-05-27):**
-   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable from the Node via the `Accepted` branch of `qualified_name_from_node`; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
+   - **`QualifiedName` is a projection of the Node, not an external key.** The declared name (`module v4.std.algebra` → `QualifiedName` `[v4, std, algebra]`) is extractable via `qualified_name_from_node` (std/ primitive, T-QN-1) at the std/ layer or via `qualified_name_from_module_node` (extdeps/languages/dag.dag) at the compiler/ admission layer; `Rejected` projection diagnostics flow to admission failure. Callers must not supply a `QualifiedName` that disagrees with the Node's declaration — the admission step detects duplicates; a mismatched key is a caller error, not a batch feature.
    - **Function (not bijection):** each `QualifiedName` corresponds to at most one `Node` at admission time — enforced at `compile_with_batch` admission, not by the batch. Distinct names may reference nodes with identical B1 content hash; content deduplication is the Node layer's concern, not the batch's.
    - **Fail-closed on missing:** `compile_with_batch` returns `Rejected` with a module-admission diagnostic if the root `QualifiedName` is absent from the batch — no silent fallback to the filesystem. The specific diagnostic carrier is T-28-B's authority to define when it extracts module admission from `03_resolve.dag`; T-35 workers must not coin a new carrier name here.
    - **Insert policy:** `batch_insert` always appends — inserts never fail. Duplicate-name detection is deferred to `compile_with_batch` admission. Workers must not expect silent last-write-wins behavior; the compile call is the rejection surface. Inserting two nodes with the same `QualifiedName` causes admission to fail, not a silent overwrite.
-   - **Delete policy:** `batch_delete` folds over `entries` applying `qualified_name_from_node`; entries where `qualified_name_from_node` returns `Rejected` (no declared module name or projection unavailable) are treated as non-match and **kept, not dropped**. This is correct behavior: the delete operation is keyed on a `QualifiedName` the caller supplies; an entry with no admitted name cannot match that key, so it is not the target. Such entries remain in the batch and cause admission failure at `compile_with_batch` (INVARIANTS P2/P3 satisfied at the actual admission boundary — not silently before it). Workers must not rely on `batch_delete` to remove unprojectable Nodes; they must never call `batch_delete` expecting it to clean up entries that were never well-formed.
+   - **Delete policy:** `batch_delete` in `std/module_batch.dag` folds over `entries` applying `qualified_name_from_node` (the std/ primitive). **Layering barrier:** `module_batch.dag` cannot import `extdeps/` and therefore cannot call `qualified_name_from_module_node`; `qualified_name_from_node` always returns `Rejected` for post-normalize module Nodes (which are not fold_list_node sub-nodes). Per the non-match policy, `Rejected` entries are **kept, not dropped** — so `batch_delete` does not functionally delete real post-normalize module Nodes by `QualifiedName`. T-35 workers must address this barrier (e.g., move delete to a compiler/-layer helper or redesign the batch structure); they must not ship `batch_delete` expecting it to work on well-formed module Nodes without resolving this gap.
 
 **Authority boundary — what T-35 does NOT own:**
 The non-text AGENT-SURFACE (structured compiler output — lens reads,
@@ -1655,16 +1722,19 @@ to define a new agent output surface.
   root until a later task models import extraction from the normalized Node;
   T-35 workers must not synthesize imports from filenames, batch order, or an
   undeclared parse traversal.
-  **Current execution gate:** because `qualified_name_from_node` is still the
-  T-8-gated projection stub and explicitly returns `Rejected`, the public
-  `compile_with_batch` terminal currently fails closed with
-  `qualified_name_projection_gated` before admission. The admission fold below
-  is modeled in the same file but is not the reachable public path until T-8
-  lands per-identifier symbol mapping. This is not a successful virtual-loader
+  **Current execution gate:** `qualified_name_from_node` (T-QN-1) is now the
+  real structural walker; the T-8 segment-identity gate moved to
+  `qualified_name_from_module_node` in `extdeps/languages/dag.dag`. However,
+  `compile_with_batch` itself is currently the stub: it returns
+  `compile_with_batch_projection_gated_diagnostic()` unconditionally
+  (`src/v4/compiler/00_compile.dag:439`). The admission fold below is modeled
+  in the same file but is not the reachable public path until T-8 lands
+  per-identifier symbol mapping. This is not a successful virtual-loader
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
-  `qualified_name_from_node`. For `Accepted { value: name, ... }`, the fold
+  `qualified_name_from_module_node` (extdeps/languages/dag.dag; compiler/ can
+  import extdeps/). For `Accepted { value: name, ... }`, the fold
   appends `Entry { name: name, root: node }` to the candidate
   `FreeMonoid<Entry>`; for `Rejected { diagnostics }`, the fold records the
   diagnostics and the overall admission returns `Rejected` before catalog
@@ -1840,7 +1910,8 @@ facts.
 
 `rustfmt.dag` established the pattern the sibling files follow:
 option coproducts → full config type → defaults data node →
-`*_layer` function for hierarchical override composition.
+`*ConfigPatch` (per-field `FieldPatch<T>` from `v4.std.patch`) →
+`*_layer(base, patch)` applying `apply_field_patch` per field.
 (Sibling files black.dag, gofmt.dag, prettier.dag, clang_format.dag,
 google_java_format.dag, swift_format.dag, ktfmt.dag, lean4_format.dag
 are already landed on main — see PRs #3650, #3651, #3652.)
@@ -1849,12 +1920,15 @@ are already landed on main — see PRs #3650, #3651, #3652.)
 - Each formatter file is **pure config substrate** — no dependency on
   `std/node.dag` or any compiler module. This keeps the formatter layer
   independent of the compiler pipeline and usable as a standalone fact bundle.
-- **Hierarchical override**: `*_layer(base: Config, outer: Config) ->
-  Config` where outer wins unconditionally. Layering is
-  `fold(layers, init: *_defaults, f: *_layer)`. Field-granularity patch
-  types (per-field `Override/Inherit` coproduct) are 🟡 gated —
-  feature: `formatter-config-patch` — dissolve when consumers need
-  partial override without full-config specification.
+- **Hierarchical override (per-field patches):** `*_layer(base: Config,
+  patch: *ConfigPatch) -> Config` rebuilds the config by applying
+  `apply_field_patch` on each field. Patches compose with right-biased
+  `compose_field_patch` / `field_patch_monoid` from `v4.std.patch`
+  (`Override { value }` replaces; `Inherit` defers to base). Layering is
+  `fold(layers, init: *_defaults, f: *_layer)` with one patch per layer.
+  The prior full-config `*_layer(base, outer) { outer }` scaffold and
+  `feature:formatter-config-patch` gate are dissolved in the T-4.16 follow-on.
+- **ConfigPatch record projection (interim mirrors):** `feature:config-patch-record-projection` in `v4.std.patch` — formatter `*ConfigPatch` records and `*_layer` bodies are hand mirrors until record-field projection derives them from `*Config`; owner **T-4.16 follow-on** (same lane as formatter-config-patch dissolution); consumers carry `consumer:config-patch-record-projection` tags until projection lands.
 - **Real options, not abstract axes**: each file models the actual
   formatter's documented option space (e.g., `rustfmt.toml` flags, not
   a synthetic `IndentWidth` abstraction shared across languages). A
@@ -2011,13 +2085,17 @@ It has two parts:
   their prose indefinitely.
 
 **KEEP / REMOVE / RELOCATE** is the per-line classification:
-- **KEEP** — the structured header *contract* (a file's `Consumes` /
-  `Owns` / `Scope` lines, behavior tables, the machine-readable parts a
-  reviewer and the substrate depend on).
+- **KEEP** — the structured header *contract* that survives Practice 9:
+  the file path, terse `Scope` / `Status` boundary signals, anchors, and
+  one-line classification tags. `Owns` / `Consumes` are **not** kept for
+  ordinary `.dag` files; ownership is the module body, and consumption is
+  the import graph. The only exception is the strict-deprose allowlist
+  regenerated by `scripts/strict_deprose_dag.py`, where those two lines are
+  machine-owned header output.
 - **REMOVE** — rationale prose, narrative motivation, design-history
   asides: anything a reader does not need to *use* the file.
 - **RELOCATE** — long-form rationale worth keeping moves to
-  `src/v4/DECISIONS.md` or a `docs/` subdoc. The `.dag` file keeps **no
+  PR review or a `docs/` subdoc. The `.dag` file keeps **no
   pointer**: per Practice 9 a file's comments are only the four allowed
   classes (file-path line, terse header, per-carrier `// Anchor:`,
   optional one-line concept tag), and a `see docs/X` pointer is not one
@@ -2025,9 +2103,11 @@ It has two parts:
   not linked from the carrier.
 
 **Load-bearing files** (`node.dag`, `STRUCTURE.md`-named substrate,
-the four pipeline stages) de-prose **carefully**: KEEP the structured
-header contract intact — REMOVE only the rationale prose around it. When
-in doubt on a load-bearing file, KEEP.
+the four pipeline stages) de-prose **carefully**: keep the surviving
+Practice 9 header contract intact and remove `Owns` / `Consumes` unless
+the file is in the strict-deprose allowlist. When in doubt on a
+load-bearing file, keep only the allowed boundary signals and move
+process rationale out of the file.
 
 **Where it sits.** Parallel fill, **not** critical path — it does not
 block the T-4 gates and is not blocked by them. It cites
@@ -2122,3 +2202,71 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
 
 **Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
+
+---
+
+### T-37 — v2 DAG artifact serializer fix  [SCHEDULED]
+
+**File**: `src/v2/compile.dag` — the `.dag` authority for v2's artifact emission;
+`Dag =>` arm dispatches `emit_dag_artifact` at `src/v2/compile.dag:179`. The
+generated Rust in `target/` is compile output, not the fix surface.
+**Why this is a T-15 gate**: `scripts/v4-bootstrap-resolve-posture-gate.sh` is a
+CI bridge that passes on SIGTERM (exit 143/124) when v2 `--target dag` OOM-kills
+before writing any output. The bridge's own dissolution condition is "v4 emit
+reaches `compiled:` without SIGTERM." T-15 cannot close while this bridge
+silently masks full-compile failure — it would pass trivially forever.
+
+**Current state** (`src/v2/compile.dag` v0.2.0): the DAG backend already uses a
+memoized collection fold (`DagCollectAcc { seen: Map<String, String>, order: List<Node> }`)
+that visits each `Node` once and emits `$ref` JSON for subsequent references. The
+audit doc (`docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`) described
+the old recursive-by-value behavior; v0.2.0 is the reference-fold rewrite. The
+remaining gap is that `dag_node_key` uses provisional span-based keys rather than
+v4 content_hash (gated on B1 — see `DagNodeId` `🟡` gate in the file). If the
+OOM persists with v0.2.0 on current `main`, the repro command from the audit doc
+is the diagnostic entry point. If v0.2.0 already clears the SIGTERM, T-37 is
+bridge-dissolution bookkeeping only (confirm `compiled:` appears, delete the
+bridge script, update CI).
+
+**Dependencies**: `[schedulable now — work is in src/v2/compile.dag; no T-## prerequisite]`
+
+**Dissolution**: bridge script dissolves when `v4 emit reaches 'compiled:' without SIGTERM` — the dissolution condition is in the script header. After T-37 lands and the bridge dissolves, the resolve-posture fallback becomes unnecessary and should be removed from CI.
+
+**Reference**: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md` — full reproduction, scope checks, design proposal
+
+---
+
+### T-38 — TestClaim execution harness  [SCHEDULED]
+
+**File**: CI integration in `src/v4/workflow/ci.dag` (T-24) or `src/v4/workflow/bootstrap.dag` (T-20) — owned by whichever fill PR wires T-22 eval into the CI step sequence
+**Why this is a T-15 gate**: T-15's close condition includes "TestClaim suite passes."
+That condition is not checkable today. `src/v4/test/claim/manual/*.dag` (38+
+files) compile and type-check against `std/verification.dag` shape — they are NOT
+evaluated. `scripts/check-v4-host-eval-receipt.py` is a string-match bridge over
+emitted Rust source; it does not invoke the evaluator or verify `AssertKind`
+verdicts.
+
+**Dissolution condition** (from script header verbatim): "delete when the modeled
+T-22 runner executes `eval_runtime_mvp.dag` on main CI and reports the same
+`RuntimeValue` witness through `TestClaimRun` or workflow-as-data, with no
+scripts-owned generated-Rust receipt standing between the claim and the gate."
+
+**Current state (2026-05-28)**:
+- T-34 (runtime substrate — `std/runtime.dag + extdeps/runtimes/*.dag`) done (#3770)
+- T-22 (`compiler/05_eval.dag` — the interpreter) substantially authored at 1121 lines; open scaffold gates are feature-flagged on B1 `content_hash` and not independently dispatchable
+- Gap: no CI step invokes T-22 eval on the claim corpus; no `TestClaimRun` report surfaces in CI output; the bridge script is the only receipt
+
+**Scope**: the CI-wiring half is the bottleneck. T-22 authoring is substantially
+done. T-38 closes when:
+1. A CI step runs T-22 eval over `src/v4/test/claim/manual/*.dag` (the corpus)
+2. Results surface as `TestClaimRun` verdict or equivalent workflow-as-data output
+3. `scripts/check-v4-host-eval-receipt.py` is deleted (its dissolution condition holds)
+
+**Dependencies**: `[needs T-22 runnable end-to-end; T-34 done #3770]`
+T-22's open scaffold gates (`feature:T22-EVAL-CACHE-HASHES`) are gated on B1
+`content_hash`, which is a T-15 era concern — the claim corpus evaluation itself
+does not require them. T-38 can dispatch against T-22's current surface without
+waiting for the cache-hash feature gate.
+
+**Scope**: M (bounded — T-22 authoring substantially done; T-34 done; CI wiring
+and the `TestClaimRun` report surface are the remaining work)

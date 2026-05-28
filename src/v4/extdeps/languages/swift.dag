@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/swift.dag
 // Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.
-// Owns: SwiftIntWidth, SwiftIntSignedness, SwiftFloatWidth, SwiftStringRepresentation, SwiftCharacterRepresentation, SwiftUnitRepresentation, SwiftBoolRepresentation, SwiftIntegerOverflowSemantics, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, SwiftConcreteSyntaxToken, SwiftGrammarRelationRow, swift_language_model_surface_id, swift_surface_spelling_int, swift_surface_spelling_int8, swift_surface_spelling_int16, swift_surface_spelling_int32, swift_surface_spelling_int64, swift_surface_spelling_uint, swift_surface_spelling_uint8, swift_surface_spelling_uint16, swift_surface_spelling_uint32, swift_surface_spelling_uint64, swift_surface_spelling_float, swift_surface_spelling_double, swift_surface_spelling_bool, swift_surface_spelling_character, swift_surface_spelling_string, swift_surface_spelling_void, swift_facts_field_surface_spelling, swift_facts_field_signedness, swift_facts_field_width, swift_facts_field_overflow, swift_facts_field_ieee754_binary, swift_facts_field_scalar, swift_facts_field_value_fact, swift_primitive_fact_axis_scalar_classifier, swift_tag_signed, swift_tag_unsigned, swift_tag_bits8, swift_tag_bits16, swift_tag_bits32, swift_tag_bits64, swift_tag_pointer_word, swift_tag_trap_on_overflow, swift_tag_ieee754_binary32, swift_tag_ieee754_binary64, swift_tag_bool_representation, swift_tag_character_extended_grapheme_cluster, swift_tag_string_unicode_text, swift_tag_void_empty_tuple, swift_tag_scalar_int, swift_tag_scalar_float, swift_tag_scalar_bool, swift_tag_scalar_character, swift_tag_scalar_string, swift_tag_scalar_void, swift_inhabitant_int32, swift_inhabitant_field_int32, swift_inhabitant_field_atom, swift_inhabitant_field_facts, swift_token_kw_func, swift_token_kw_return, swift_token_ident, swift_token_ty_int32, swift_token_plus, swift_token_arrow, swift_token_lbrace, swift_token_rbrace, swift_token_lparen, swift_token_rparen, swift_token_comma, swift_token_colon, swift_production_mvp1_fn_add, swift_surface_fn_item, swift_surface_type_int32, swift_surface_bin_add, swift_binding_fn_add, swift_binding_param_x, swift_binding_param_y, swift_relation_rule_mvp1_fn_add, swift_mvp1_source_literal, swift_mvp1_source_text_field, swift_mvp1_source_grammar_field, swift_mvp1_concrete_tokens, swift_mvp1_source_text, swift_integer_overflow_trap, swift_bool_representation, swift_character_representation, swift_string_representation, swift_unit_representation, swift_facts_int, swift_facts_int8, swift_facts_int16, swift_facts_int32, swift_facts_int64, swift_facts_uint, swift_facts_uint8, swift_facts_uint16, swift_facts_uint32, swift_facts_uint64, swift_facts_float, swift_facts_double, swift_facts_bool, swift_facts_character, swift_facts_string, swift_facts_void, swift_integer_facts_catalog, swift_float_facts_catalog, swift_nonnumeric_facts_catalog, swift_bool_grounding, swift_atom, swift_named_edge, swift_signedness_node, swift_width_node, swift_float_width_node, swift_overflow_node, swift_scalar_node, swift_nonnumeric_representation_node, swift_nonnumeric_scalar_classifier_node, swift_integer_facts_node, swift_float_facts_node, swift_nonnumeric_surface_spelling, swift_nonnumeric_facts_node, swift_integer_inhabitant_node, swift_inhabitant_int32_node, swift_declared_inhabitants_root, swift_mvp1_selection_policy_node, swift_mvp1_emitted_add_fn_node, swift_mvp1_source_text_authority, swift_concrete_token_class, swift_concrete_token_node, swift_mvp1_positional_token_edge, swift_mvp1_positional_edges_from_token_classes, swift_mvp1_serialize_source_prefix_edges, swift_mvp1_serialize_source_children, swift_mvp1_serialize_source_node, swift_grammar_terminal, swift_grammar_sequence_fold_step, swift_grammar_sequence_from_token_classes, swift_mvp1_grammar_relation_row, swift_relation_token_edges, swift_grammar_relation_row_node, swift_mvp1_translation_rules_node, swift_mvp1_target_model_node, swift_mvp1_binding_spellings, swift_mvp1_target_model, swift_lex_rule, swift_ident_lex_pattern, swift_ident_lex_rule, swift_wave1_lex_rules, swift_wave1_lex, swift_grammar_atom, swift_grammar_production_mvp1_fn_add, swift_wave1_grammar_root, swift_wave1_grammar, swift_wave1_lex_token_symbol, swift_empty_primitive_spec_facts, swift_primitive_fact_map_4, swift_primitive_fact_map_3, swift_primitive_fact_map_2, swift_primitive_bundle_from_integer_facts, swift_primitive_bundle_from_float_facts, swift_primitive_bundle_from_nonnumeric_facts, swift_primitive_bundles_from_integer_catalog, swift_primitive_bundles_from_float_catalog, swift_primitive_bundles_from_nonnumeric_catalog, swift_wave1_primitive_fact_bundles, swift_integer_catalog_surface_symbol_step, swift_float_catalog_surface_symbol_step, swift_nonnumeric_catalog_surface_symbol_step, swift_integer_catalog_surface_symbol, swift_float_catalog_surface_symbol, swift_nonnumeric_catalog_surface_symbol, swift_catalog_surface_symbol, swift_language_model_canonical_symbols, swift_model_core_wave1, swift_language_model_wave1
+// Owns: SwiftIntWidth, SwiftIntSignedness, SwiftFloatWidth, SwiftStringRepresentation, SwiftCharacterRepresentation, SwiftUnitRepresentation, SwiftBoolRepresentation, SwiftIntegerOverflowSemantics, SwiftScalar, SwiftIntegerPrimitiveFacts, SwiftFloatPrimitiveFacts, SwiftNonNumericPrimitiveFacts, SwiftLanguageModel, SwiftConcreteSyntaxToken, SwiftGrammarRelationRow, swift_language_model_surface_id, swift_surface_spelling_int, swift_surface_spelling_int8, swift_surface_spelling_int16, swift_surface_spelling_int32, swift_surface_spelling_int64, swift_surface_spelling_uint, swift_surface_spelling_uint8, swift_surface_spelling_uint16, swift_surface_spelling_uint32, swift_surface_spelling_uint64, swift_surface_spelling_float, swift_surface_spelling_double, swift_surface_spelling_bool, swift_surface_spelling_character, swift_surface_spelling_string, swift_surface_spelling_void, swift_facts_field_surface_spelling, swift_facts_field_signedness, swift_facts_field_width, swift_facts_field_overflow, swift_facts_field_ieee754_binary, swift_facts_field_scalar, swift_facts_field_value_fact, swift_primitive_fact_axis_scalar_classifier, swift_tag_signed, swift_tag_unsigned, swift_tag_bits8, swift_tag_bits16, swift_tag_bits32, swift_tag_bits64, swift_tag_pointer_word, swift_tag_trap_on_overflow, swift_tag_ieee754_binary32, swift_tag_ieee754_binary64, swift_tag_bool_representation, swift_tag_character_extended_grapheme_cluster, swift_tag_string_unicode_text, swift_tag_void_empty_tuple, swift_tag_scalar_int, swift_tag_scalar_float, swift_tag_scalar_bool, swift_tag_scalar_character, swift_tag_scalar_string, swift_tag_scalar_void, swift_inhabitant_int32, swift_inhabitant_field_int32, swift_inhabitant_field_atom, swift_inhabitant_field_facts, swift_token_kw_func, swift_token_kw_return, swift_token_kw_let, swift_token_kw_var, swift_token_kw_if, swift_token_kw_else, swift_token_kw_while, swift_token_kw_for, swift_token_kw_in, swift_token_kw_struct, swift_token_kw_class, swift_token_kw_enum, swift_token_kw_protocol, swift_token_kw_extension, swift_token_kw_import, swift_token_kw_true, swift_token_kw_false, swift_token_ident, swift_token_int_literal, swift_token_string_literal, swift_token_operator, swift_token_arrow, swift_token_equal, swift_token_lbrace, swift_token_rbrace, swift_token_lparen, swift_token_rparen, swift_token_lbracket, swift_token_rbracket, swift_token_comma, swift_token_colon, swift_token_dot, swift_token_semicolon, swift_production_mvp1_fn_add, swift_production_fn_decl, swift_production_typed_param, swift_production_param_list, swift_production_type_expr, swift_production_block, swift_production_stmt, swift_production_return_stmt, swift_production_let_stmt, swift_production_if_stmt, swift_production_while_stmt, swift_production_expr, swift_production_binary_expr, swift_production_call_expr, swift_production_primary_expr, swift_surface_fn_item, swift_surface_typed_param, swift_surface_param_list, swift_surface_type_expr, swift_surface_block, swift_surface_stmt, swift_surface_return_stmt, swift_surface_let_stmt, swift_surface_if_stmt, swift_surface_while_stmt, swift_surface_expr, swift_surface_binary_expr, swift_surface_call_expr, swift_surface_primary_expr, swift_surface_type_int32, swift_surface_bin_add, swift_binding_fn_add, swift_binding_param_x, swift_binding_param_y, swift_binding_ty_int32, swift_binding_op_plus, swift_relation_rule_mvp1_fn_add, swift_mvp1_source_literal, swift_mvp1_source_text_field, swift_mvp1_source_grammar_field, swift_mvp1_concrete_tokens, swift_mvp1_source_text, swift_integer_overflow_trap, swift_bool_representation, swift_character_representation, swift_string_representation, swift_unit_representation, swift_facts_int, swift_facts_int8, swift_facts_int16, swift_facts_int32, swift_facts_int64, swift_facts_uint, swift_facts_uint8, swift_facts_uint16, swift_facts_uint32, swift_facts_uint64, swift_facts_float, swift_facts_double, swift_facts_bool, swift_facts_character, swift_facts_string, swift_facts_void, swift_integer_facts_catalog, swift_float_facts_catalog, swift_nonnumeric_facts_catalog, swift_bool_grounding, swift_atom, swift_named_edge, swift_signedness_node, swift_width_node, swift_float_width_node, swift_overflow_node, swift_scalar_node, swift_nonnumeric_representation_node, swift_nonnumeric_scalar_classifier_node, swift_integer_facts_node, swift_float_facts_node, swift_nonnumeric_surface_spelling, swift_nonnumeric_facts_node, swift_integer_inhabitant_node, swift_inhabitant_int32_node, swift_declared_inhabitants_root, swift_mvp1_selection_policy_node, swift_mvp1_emitted_add_fn_node, swift_mvp1_source_text_authority, swift_concrete_token_class, swift_concrete_token_node, swift_mvp1_positional_token_edge, swift_mvp1_positional_edges_from_token_classes, swift_mvp1_serialize_source_prefix_edges, swift_mvp1_serialize_source_children, swift_mvp1_serialize_source_node, swift_grammar_terminal, swift_grammar_sequence_fold_step, swift_grammar_sequence_from_token_classes, swift_mvp1_grammar_relation_row, swift_relation_token_edges, swift_grammar_relation_row_node, swift_mvp1_translation_rules_node, swift_mvp1_target_model_node, swift_mvp1_binding_spellings, swift_mvp1_target_model, swift_lex_rule, swift_keyword_lex_rule, swift_whitespace_trivia_rule, swift_ident_lex_pattern, swift_ident_lex_rule, swift_int_literal_lex_rule, swift_string_literal_lex_rule, swift_infix_operator_lex_pattern, swift_infix_operator_lex_rule, swift_wave1_lex_rules, swift_wave1_lex, swift_grammar_atom, swift_grammar_nonterminal, swift_grammar_sequence, swift_grammar_choice, swift_grammar_optional, swift_grammar_repeat, swift_grammar_type_expr, swift_grammar_typed_param_expr, swift_grammar_param_list_expr, swift_grammar_binary_operator_expr, swift_grammar_expr_list_expr, swift_grammar_primary_expr, swift_grammar_call_expr, swift_grammar_binary_expr, swift_grammar_expr_expr, swift_grammar_return_stmt_expr, swift_grammar_let_stmt_expr, swift_grammar_if_stmt_expr, swift_grammar_while_stmt_expr, swift_grammar_stmt_expr, swift_grammar_block_stmt_separator_expr, swift_grammar_block_expr, swift_grammar_fn_decl_expr, swift_grammar_production_mvp1_fn_add, swift_grammar_production_fn_decl, swift_grammar_production_typed_param, swift_grammar_production_param_list, swift_grammar_production_type_expr, swift_grammar_production_block, swift_grammar_production_stmt, swift_grammar_production_return_stmt, swift_grammar_production_let_stmt, swift_grammar_production_if_stmt, swift_grammar_production_while_stmt, swift_grammar_production_expr, swift_grammar_production_binary_expr, swift_grammar_production_call_expr, swift_grammar_production_primary_expr, swift_wave1_grammar_root, swift_wave1_grammar, swift_wave1_lex_token_symbol, swift_empty_primitive_spec_facts, swift_primitive_fact_map_4, swift_primitive_fact_map_3, swift_primitive_fact_map_2, swift_primitive_bundle_from_integer_facts, swift_primitive_bundle_from_float_facts, swift_primitive_bundle_from_nonnumeric_facts, swift_primitive_bundles_from_integer_catalog, swift_primitive_bundles_from_float_catalog, swift_primitive_bundles_from_nonnumeric_catalog, swift_wave1_primitive_fact_bundles, swift_integer_catalog_surface_symbol_step, swift_float_catalog_surface_symbol_step, swift_nonnumeric_catalog_surface_symbol_step, swift_integer_catalog_surface_symbol, swift_float_catalog_surface_symbol, swift_nonnumeric_catalog_surface_symbol, swift_catalog_surface_symbol, swift_language_model_canonical_symbols, swift_model_core_wave1, swift_language_model_wave1
 // Consumes: v4.compiler.parse, v4.compiler.tokenize, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
 // Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.
 // Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/
@@ -10,29 +10,43 @@
 module v4.extdeps.languages.swift
 
 import v4.compiler.parse {
+  Choice,
   Grammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
   ModeledGrammar,
+  Nonterminal,
+  Optional,
+  Repeat,
   Sequence,
   Terminal,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
 import v4.compiler.tokenize {
   CharClassPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  DigitChar,
   IdentContinueChar,
   IdentStartChar,
+  KeywordPattern,
   LexPattern,
   LexRule,
   LexRuleSet,
   LexRules,
   LiteralPattern,
   ModeledLexRules,
+  OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
-  TokenRule
+  StringTextChar,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar,
+  lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
@@ -242,25 +256,75 @@ data swift_inhabitant_field_facts: Symbol = swift_inhabitant_field_facts
 
 data swift_token_kw_func: Symbol = swift_token_kw_func
 data swift_token_kw_return: Symbol = swift_token_kw_return
+data swift_token_kw_let: Symbol = swift_token_kw_let
+data swift_token_kw_var: Symbol = swift_token_kw_var
+data swift_token_kw_if: Symbol = swift_token_kw_if
+data swift_token_kw_else: Symbol = swift_token_kw_else
+data swift_token_kw_while: Symbol = swift_token_kw_while
+data swift_token_kw_for: Symbol = swift_token_kw_for
+data swift_token_kw_in: Symbol = swift_token_kw_in
+data swift_token_kw_struct: Symbol = swift_token_kw_struct
+data swift_token_kw_class: Symbol = swift_token_kw_class
+data swift_token_kw_enum: Symbol = swift_token_kw_enum
+data swift_token_kw_protocol: Symbol = swift_token_kw_protocol
+data swift_token_kw_extension: Symbol = swift_token_kw_extension
+data swift_token_kw_import: Symbol = swift_token_kw_import
+data swift_token_kw_true: Symbol = swift_token_kw_true
+data swift_token_kw_false: Symbol = swift_token_kw_false
 data swift_token_ident: Symbol = swift_token_ident
-data swift_token_ty_int32: Symbol = swift_token_ty_int32
-data swift_token_plus: Symbol = swift_token_plus
+data swift_token_int_literal: Symbol = swift_token_int_literal
+data swift_token_string_literal: Symbol = swift_token_string_literal
+data swift_token_operator: Symbol = swift_token_operator
 data swift_token_arrow: Symbol = swift_token_arrow
+data swift_token_equal: Symbol = swift_token_equal
 data swift_token_lbrace: Symbol = swift_token_lbrace
 data swift_token_rbrace: Symbol = swift_token_rbrace
 data swift_token_lparen: Symbol = swift_token_lparen
 data swift_token_rparen: Symbol = swift_token_rparen
+data swift_token_lbracket: Symbol = swift_token_lbracket
+data swift_token_rbracket: Symbol = swift_token_rbracket
 data swift_token_comma: Symbol = swift_token_comma
 data swift_token_colon: Symbol = swift_token_colon
+data swift_token_dot: Symbol = swift_token_dot
+data swift_token_semicolon: Symbol = swift_token_semicolon
 
 data swift_production_mvp1_fn_add: Symbol = swift_production_mvp1_fn_add
+data swift_production_fn_decl: Symbol = swift_production_fn_decl
+data swift_production_typed_param: Symbol = swift_production_typed_param
+data swift_production_param_list: Symbol = swift_production_param_list
+data swift_production_type_expr: Symbol = swift_production_type_expr
+data swift_production_block: Symbol = swift_production_block
+data swift_production_stmt: Symbol = swift_production_stmt
+data swift_production_return_stmt: Symbol = swift_production_return_stmt
+data swift_production_let_stmt: Symbol = swift_production_let_stmt
+data swift_production_if_stmt: Symbol = swift_production_if_stmt
+data swift_production_while_stmt: Symbol = swift_production_while_stmt
+data swift_production_expr: Symbol = swift_production_expr
+data swift_production_binary_expr: Symbol = swift_production_binary_expr
+data swift_production_call_expr: Symbol = swift_production_call_expr
+data swift_production_primary_expr: Symbol = swift_production_primary_expr
 
 data swift_surface_fn_item: Symbol = swift_surface_fn_item
+data swift_surface_typed_param: Symbol = swift_surface_typed_param
+data swift_surface_param_list: Symbol = swift_surface_param_list
+data swift_surface_type_expr: Symbol = swift_surface_type_expr
+data swift_surface_block: Symbol = swift_surface_block
+data swift_surface_stmt: Symbol = swift_surface_stmt
+data swift_surface_return_stmt: Symbol = swift_surface_return_stmt
+data swift_surface_let_stmt: Symbol = swift_surface_let_stmt
+data swift_surface_if_stmt: Symbol = swift_surface_if_stmt
+data swift_surface_while_stmt: Symbol = swift_surface_while_stmt
+data swift_surface_expr: Symbol = swift_surface_expr
+data swift_surface_binary_expr: Symbol = swift_surface_binary_expr
+data swift_surface_call_expr: Symbol = swift_surface_call_expr
+data swift_surface_primary_expr: Symbol = swift_surface_primary_expr
 data swift_surface_type_int32: Symbol = swift_surface_type_int32
 data swift_surface_bin_add: Symbol = swift_surface_bin_add
 data swift_binding_fn_add: Symbol = swift_binding_fn_add
 data swift_binding_param_x: Symbol = swift_binding_param_x
 data swift_binding_param_y: Symbol = swift_binding_param_y
+data swift_binding_ty_int32: Symbol = swift_binding_ty_int32
+data swift_binding_op_plus: Symbol = swift_binding_op_plus
 
 data swift_relation_rule_mvp1_fn_add: Symbol = swift_relation_rule_mvp1_fn_add
 
@@ -275,18 +339,18 @@ fn swift_mvp1_concrete_tokens() -> List<SwiftConcreteSyntaxToken> {
     SwiftFixedToken { token_class: swift_token_lparen },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
     SwiftFixedToken { token_class: swift_token_colon },
-    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
     SwiftFixedToken { token_class: swift_token_comma },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
     SwiftFixedToken { token_class: swift_token_colon },
-    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
     SwiftFixedToken { token_class: swift_token_rparen },
     SwiftFixedToken { token_class: swift_token_arrow },
-    SwiftFixedToken { token_class: swift_token_ty_int32 },
+    SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_ty_int32 },
     SwiftFixedToken { token_class: swift_token_lbrace },
     SwiftFixedToken { token_class: swift_token_kw_return },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_x },
-    SwiftFixedToken { token_class: swift_token_plus },
+    SwiftBoundToken { token_class: swift_token_operator, binding: swift_binding_op_plus },
     SwiftBoundToken { token_class: swift_token_ident, binding: swift_binding_param_y },
     SwiftFixedToken { token_class: swift_token_rbrace }
   ]
@@ -829,12 +893,20 @@ fn swift_mvp1_target_model_node() -> Node {
 fn swift_mvp1_binding_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
-      map_insert(empty_map(), swift_binding_fn_add, "add"),
-      swift_binding_param_x,
-      "x"
+      map_insert(
+        map_insert(
+          map_insert(empty_map(), swift_binding_fn_add, "add"),
+          swift_binding_param_x,
+          "x"
+        ),
+        swift_binding_param_y,
+        "y"
+      ),
+      swift_binding_ty_int32,
+      "Int32"
     ),
-    swift_binding_param_y,
-    "y"
+    swift_binding_op_plus,
+    "+"
   )
 }
 
@@ -854,6 +926,19 @@ fn swift_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+fn swift_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: KeywordPattern { text: text }
+  }
+}
+
+fn swift_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  }
+}
+
 fn swift_ident_lex_pattern() -> LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
@@ -868,21 +953,102 @@ fn swift_ident_lex_rule() -> LexRule {
   }
 }
 
+fn swift_int_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_int_literal,
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+  }
+}
+
+fn swift_string_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_string_literal,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "\"" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "\"" }
+    }
+  }
+}
+
+fn swift_infix_operator_lex_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "==" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "!=" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "<=" },
+        right: ChoicePattern {
+          left: LiteralPattern { text: ">=" },
+          right: ChoicePattern {
+            left: LiteralPattern { text: "+" },
+            right: ChoicePattern {
+              left: LiteralPattern { text: "-" },
+              right: ChoicePattern {
+                left: LiteralPattern { text: "*" },
+                right: ChoicePattern {
+                  left: LiteralPattern { text: "/" },
+                  right: ChoicePattern {
+                    left: LiteralPattern { text: "%" },
+                    right: ChoicePattern {
+                      left: LiteralPattern { text: "<" },
+                      right: LiteralPattern { text: ">" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn swift_infix_operator_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: swift_token_operator,
+    pattern: swift_infix_operator_lex_pattern()
+  }
+}
+
 fn swift_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      swift_lex_rule(token_class: swift_token_kw_func, text: "func "),
-      swift_lex_rule(token_class: swift_token_kw_return, text: "return "),
+      swift_whitespace_trivia_rule(),
+      swift_string_literal_lex_rule(),
+      swift_int_literal_lex_rule(),
       swift_ident_lex_rule(),
-      swift_lex_rule(token_class: swift_token_ty_int32, text: "Int32"),
-      swift_lex_rule(token_class: swift_token_plus, text: " + "),
-      swift_lex_rule(token_class: swift_token_arrow, text: " -> "),
-      swift_lex_rule(token_class: swift_token_lbrace, text: " { "),
-      swift_lex_rule(token_class: swift_token_rbrace, text: " }"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_func, text: "func"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_return, text: "return"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_let, text: "let"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_var, text: "var"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_if, text: "if"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_else, text: "else"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_while, text: "while"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_for, text: "for"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_in, text: "in"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_struct, text: "struct"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_class, text: "class"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_enum, text: "enum"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_protocol, text: "protocol"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_extension, text: "extension"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_import, text: "import"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_true, text: "true"),
+      swift_keyword_lex_rule(token_class: swift_token_kw_false, text: "false"),
+      swift_infix_operator_lex_rule(),
+      swift_lex_rule(token_class: swift_token_arrow, text: "->"),
+      swift_lex_rule(token_class: swift_token_equal, text: "="),
+      swift_lex_rule(token_class: swift_token_lbrace, text: "{"),
+      swift_lex_rule(token_class: swift_token_rbrace, text: "}"),
       swift_lex_rule(token_class: swift_token_lparen, text: "("),
-      swift_lex_rule(token_class: swift_token_rparen, text: ") "),
-      swift_lex_rule(token_class: swift_token_comma, text: ", "),
-      swift_lex_rule(token_class: swift_token_colon, text: ": ")
+      swift_lex_rule(token_class: swift_token_rparen, text: ")"),
+      swift_lex_rule(token_class: swift_token_lbracket, text: "["),
+      swift_lex_rule(token_class: swift_token_rbracket, text: "]"),
+      swift_lex_rule(token_class: swift_token_comma, text: ","),
+      swift_lex_rule(token_class: swift_token_colon, text: ":"),
+      swift_lex_rule(token_class: swift_token_dot, text: "."),
+      swift_lex_rule(token_class: swift_token_semicolon, text: ";")
     ]
   }
 }
@@ -895,6 +1061,258 @@ fn swift_grammar_atom(id: Symbol) -> Node {
   swift_atom(id: id)
 }
 
+fn swift_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+  Nonterminal { production: production }
+}
+
+fn swift_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn swift_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn swift_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn swift_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn swift_grammar_type_expr() -> GrammarExpr {
+  swift_grammar_terminal(token_class: swift_token_ident)
+}
+
+fn swift_grammar_typed_param_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_terminal(token_class: swift_token_ident),
+    right: swift_grammar_sequence(
+      left: swift_grammar_terminal(token_class: swift_token_colon),
+      right: swift_grammar_nonterminal(production: swift_production_type_expr)
+    )
+  )
+}
+
+fn swift_grammar_param_list_expr() -> GrammarExpr {
+  swift_grammar_optional(
+    element: swift_grammar_sequence(
+      left: swift_grammar_nonterminal(production: swift_production_typed_param),
+      right: swift_grammar_repeat(
+        element: swift_grammar_sequence(
+          left: swift_grammar_terminal(token_class: swift_token_comma),
+          right: swift_grammar_nonterminal(production: swift_production_typed_param)
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_binary_operator_expr() -> GrammarExpr {
+  swift_grammar_terminal(token_class: swift_token_operator)
+}
+
+fn swift_grammar_expr_list_expr() -> GrammarExpr {
+  swift_grammar_optional(
+    element: swift_grammar_sequence(
+      left: swift_grammar_nonterminal(production: swift_production_expr),
+      right: swift_grammar_repeat(
+        element: swift_grammar_sequence(
+          left: swift_grammar_terminal(token_class: swift_token_comma),
+          right: swift_grammar_nonterminal(production: swift_production_expr)
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_primary_expr() -> GrammarExpr {
+  swift_grammar_choice(
+    left: swift_grammar_terminal(token_class: swift_token_ident),
+    right: swift_grammar_choice(
+      left: swift_grammar_terminal(token_class: swift_token_int_literal),
+      right: swift_grammar_choice(
+        left: swift_grammar_terminal(token_class: swift_token_string_literal),
+        right: swift_grammar_choice(
+          left: swift_grammar_terminal(token_class: swift_token_kw_true),
+          right: swift_grammar_choice(
+            left: swift_grammar_terminal(token_class: swift_token_kw_false),
+            right: swift_grammar_sequence(
+              left: swift_grammar_terminal(token_class: swift_token_lparen),
+              right: swift_grammar_sequence(
+                left: swift_grammar_nonterminal(production: swift_production_expr),
+                right: swift_grammar_terminal(token_class: swift_token_rparen)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_call_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_nonterminal(production: swift_production_primary_expr),
+    right: swift_grammar_repeat(
+      element: swift_grammar_sequence(
+        left: swift_grammar_terminal(token_class: swift_token_lparen),
+        right: swift_grammar_sequence(
+          left: swift_grammar_expr_list_expr(),
+          right: swift_grammar_terminal(token_class: swift_token_rparen)
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_binary_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_nonterminal(production: swift_production_call_expr),
+    right: swift_grammar_repeat(
+      element: swift_grammar_sequence(
+        left: swift_grammar_binary_operator_expr(),
+        right: swift_grammar_nonterminal(production: swift_production_call_expr)
+      )
+    )
+  )
+}
+
+fn swift_grammar_expr_expr() -> GrammarExpr {
+  swift_grammar_nonterminal(production: swift_production_binary_expr)
+}
+
+fn swift_grammar_return_stmt_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_terminal(token_class: swift_token_kw_return),
+    right: swift_grammar_optional(
+      element: swift_grammar_nonterminal(production: swift_production_expr)
+    )
+  )
+}
+
+fn swift_grammar_let_stmt_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_choice(
+      left: swift_grammar_terminal(token_class: swift_token_kw_let),
+      right: swift_grammar_terminal(token_class: swift_token_kw_var)
+    ),
+    right: swift_grammar_sequence(
+      left: swift_grammar_terminal(token_class: swift_token_ident),
+      right: swift_grammar_sequence(
+        left: swift_grammar_optional(
+          element: swift_grammar_sequence(
+            left: swift_grammar_terminal(token_class: swift_token_colon),
+            right: swift_grammar_nonterminal(production: swift_production_type_expr)
+          )
+        ),
+        right: swift_grammar_optional(
+          element: swift_grammar_sequence(
+            left: swift_grammar_terminal(token_class: swift_token_equal),
+            right: swift_grammar_nonterminal(production: swift_production_expr)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_if_stmt_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_terminal(token_class: swift_token_kw_if),
+    right: swift_grammar_sequence(
+      left: swift_grammar_nonterminal(production: swift_production_expr),
+      right: swift_grammar_sequence(
+        left: swift_grammar_nonterminal(production: swift_production_block),
+        right: swift_grammar_optional(
+          element: swift_grammar_sequence(
+            left: swift_grammar_terminal(token_class: swift_token_kw_else),
+            right: swift_grammar_choice(
+              left: swift_grammar_nonterminal(production: swift_production_block),
+              right: swift_grammar_nonterminal(production: swift_production_if_stmt)
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_while_stmt_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_terminal(token_class: swift_token_kw_while),
+    right: swift_grammar_sequence(
+      left: swift_grammar_nonterminal(production: swift_production_expr),
+      right: swift_grammar_nonterminal(production: swift_production_block)
+    )
+  )
+}
+
+fn swift_grammar_stmt_expr() -> GrammarExpr {
+  swift_grammar_choice(
+    left: swift_grammar_nonterminal(production: swift_production_return_stmt),
+    right: swift_grammar_choice(
+      left: swift_grammar_nonterminal(production: swift_production_let_stmt),
+      right: swift_grammar_choice(
+        left: swift_grammar_nonterminal(production: swift_production_if_stmt),
+        right: swift_grammar_choice(
+          left: swift_grammar_nonterminal(production: swift_production_while_stmt),
+          right: swift_grammar_nonterminal(production: swift_production_expr)
+        )
+      )
+    )
+  )
+}
+
+fn swift_grammar_block_stmt_separator_expr() -> GrammarExpr {
+  swift_grammar_optional(
+    element: swift_grammar_terminal(token_class: swift_token_semicolon)
+  )
+}
+
+fn swift_grammar_block_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_terminal(token_class: swift_token_lbrace),
+    right: swift_grammar_sequence(
+      left: swift_grammar_repeat(
+        element: swift_grammar_sequence(
+          left: swift_grammar_nonterminal(production: swift_production_stmt),
+          right: swift_grammar_block_stmt_separator_expr()
+        )
+      ),
+      right: swift_grammar_terminal(token_class: swift_token_rbrace)
+    )
+  )
+}
+
+fn swift_grammar_fn_decl_expr() -> GrammarExpr {
+  swift_grammar_sequence(
+    left: swift_grammar_terminal(token_class: swift_token_kw_func),
+    right: swift_grammar_sequence(
+      left: swift_grammar_terminal(token_class: swift_token_ident),
+      right: swift_grammar_sequence(
+        left: swift_grammar_terminal(token_class: swift_token_lparen),
+        right: swift_grammar_sequence(
+          left: swift_grammar_nonterminal(production: swift_production_param_list),
+          right: swift_grammar_sequence(
+            left: swift_grammar_terminal(token_class: swift_token_rparen),
+            right: swift_grammar_sequence(
+              left: swift_grammar_optional(
+                element: swift_grammar_sequence(
+                  left: swift_grammar_terminal(token_class: swift_token_arrow),
+                  right: swift_grammar_nonterminal(production: swift_production_type_expr)
+                )
+              ),
+              right: swift_grammar_nonterminal(production: swift_production_block)
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
   GrammarProduction {
     name: swift_production_mvp1_fn_add,
@@ -903,9 +1321,155 @@ fn swift_grammar_production_mvp1_fn_add() -> GrammarProduction {
   }
 }
 
+fn swift_grammar_production_fn_decl() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_fn_decl,
+    expression: swift_grammar_fn_decl_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_fn_item)
+  }
+}
+
+fn swift_grammar_production_typed_param() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_typed_param,
+    expression: swift_grammar_typed_param_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_typed_param)
+  }
+}
+
+fn swift_grammar_production_param_list() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_param_list,
+    expression: swift_grammar_param_list_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_param_list)
+  }
+}
+
+fn swift_grammar_production_type_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_type_expr,
+    expression: swift_grammar_type_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_type_expr)
+  }
+}
+
+fn swift_grammar_production_block() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_block,
+    expression: swift_grammar_block_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_block)
+  }
+}
+
+fn swift_grammar_production_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_stmt,
+    expression: swift_grammar_stmt_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_stmt)
+  }
+}
+
+fn swift_grammar_production_return_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_return_stmt,
+    expression: swift_grammar_return_stmt_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_return_stmt)
+  }
+}
+
+fn swift_grammar_production_let_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_let_stmt,
+    expression: swift_grammar_let_stmt_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_let_stmt)
+  }
+}
+
+fn swift_grammar_production_if_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_if_stmt,
+    expression: swift_grammar_if_stmt_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_if_stmt)
+  }
+}
+
+fn swift_grammar_production_while_stmt() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_while_stmt,
+    expression: swift_grammar_while_stmt_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_while_stmt)
+  }
+}
+
+fn swift_grammar_production_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_expr,
+    expression: swift_grammar_expr_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_expr)
+  }
+}
+
+fn swift_grammar_production_binary_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_binary_expr,
+    expression: swift_grammar_binary_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_binary_expr)
+  }
+}
+
+fn swift_grammar_production_call_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_call_expr,
+    expression: swift_grammar_call_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_call_expr)
+  }
+}
+
+fn swift_grammar_production_primary_expr() -> GrammarProduction {
+  GrammarProduction {
+    name: swift_production_primary_expr,
+    expression: swift_grammar_primary_expr(),
+    emitted: swift_grammar_atom(id: swift_surface_primary_expr)
+  }
+}
+
 fn swift_wave1_grammar_root() -> GrammarRoot {
   let start = swift_grammar_production_mvp1_fn_add()
-  GrammarRoot { start: swift_production_mvp1_fn_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
+  let fn_decl = swift_grammar_production_fn_decl()
+  let typed_param = swift_grammar_production_typed_param()
+  let param_list = swift_grammar_production_param_list()
+  let type_expr = swift_grammar_production_type_expr()
+  let block = swift_grammar_production_block()
+  let stmt = swift_grammar_production_stmt()
+  let return_stmt = swift_grammar_production_return_stmt()
+  let let_stmt = swift_grammar_production_let_stmt()
+  let if_stmt = swift_grammar_production_if_stmt()
+  let while_stmt = swift_grammar_production_while_stmt()
+  let expr = swift_grammar_production_expr()
+  let binary_expr = swift_grammar_production_binary_expr()
+  let call_expr = swift_grammar_production_call_expr()
+  let primary_expr = swift_grammar_production_primary_expr()
+  GrammarRoot {
+    start: swift_production_fn_decl,
+    productions: [
+      start,
+      fn_decl,
+      typed_param,
+      param_list,
+      type_expr,
+      block,
+      stmt,
+      return_stmt,
+      let_stmt,
+      if_stmt,
+      while_stmt,
+      expr,
+      binary_expr,
+      call_expr,
+      primary_expr
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
 }
 
 fn swift_wave1_grammar() -> Grammar {
@@ -913,18 +1477,10 @@ fn swift_wave1_grammar() -> Grammar {
 }
 
 fn swift_wave1_lex_token_symbol(sym: Symbol) -> Bool {
-  sym == swift_token_kw_func ||
-    sym == swift_token_kw_return ||
-    sym == swift_token_ident ||
-    sym == swift_token_ty_int32 ||
-    sym == swift_token_plus ||
-    sym == swift_token_arrow ||
-    sym == swift_token_lbrace ||
-    sym == swift_token_rbrace ||
-    sym == swift_token_lparen ||
-    sym == swift_token_rparen ||
-    sym == swift_token_comma ||
-    sym == swift_token_colon
+  lex_rule_set_token_class_member(
+    rules: swift_wave1_lex_rules(),
+    token_class: sym
+  )
 }
 
 fn swift_empty_primitive_spec_facts() -> Map<Symbol, Node> {
@@ -1152,8 +1708,7 @@ fn swift_language_model_canonical_symbols() -> Set<Symbol> {
     member: fn(sym) {
       swift_catalog_surface_symbol(sym: sym) ||
         swift_wave1_lex_token_symbol(sym: sym) ||
-        sym == swift_surface_fn_item ||
-        sym == swift_production_mvp1_fn_add ||
+        grammar_carries_symbol(grammar: swift_wave1_grammar(), sym: sym) ||
         sym == swift_mvp1_source_literal
     }
   }
