@@ -2,7 +2,7 @@
 // Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, T-11 MVP-1 grammar-data target model.
 // Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, GoIntegerPrimitiveFacts, GoFloatPrimitiveFacts, GoComplexPrimitiveFacts, GoBoolPrimitiveFacts, GoStringPrimitiveFacts, go_*_facts_catalog, go_*_primitive_bundle, go_model_core_wave1, go_bool_grounding, GoGramBuild1State.
 // Consumes: v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
-// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging; current head waiting for fresh review passes.
+// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
