@@ -337,18 +337,60 @@ data kotlin_inhabitant_field_facts: Symbol = kotlin_inhabitant_field_facts
 
 data kotlin_token_kw_fun: Symbol = kotlin_token_kw_fun
 data kotlin_token_kw_return: Symbol = kotlin_token_kw_return
+data kotlin_token_kw_val: Symbol = kotlin_token_kw_val
+data kotlin_token_kw_var: Symbol = kotlin_token_kw_var
+data kotlin_token_kw_if: Symbol = kotlin_token_kw_if
+data kotlin_token_kw_else: Symbol = kotlin_token_kw_else
+data kotlin_token_kw_while: Symbol = kotlin_token_kw_while
+data kotlin_token_kw_true: Symbol = kotlin_token_kw_true
+data kotlin_token_kw_false: Symbol = kotlin_token_kw_false
 data kotlin_token_ident: Symbol = kotlin_token_ident
+data kotlin_token_int_literal: Symbol = kotlin_token_int_literal
+data kotlin_token_string_literal: Symbol = kotlin_token_string_literal
+data kotlin_token_operator: Symbol = kotlin_token_operator
+data kotlin_token_equal: Symbol = kotlin_token_equal
 data kotlin_token_plus: Symbol = kotlin_token_plus
 data kotlin_token_lbrace: Symbol = kotlin_token_lbrace
 data kotlin_token_rbrace: Symbol = kotlin_token_rbrace
 data kotlin_token_lparen: Symbol = kotlin_token_lparen
 data kotlin_token_rparen: Symbol = kotlin_token_rparen
+data kotlin_token_lbracket: Symbol = kotlin_token_lbracket
+data kotlin_token_rbracket: Symbol = kotlin_token_rbracket
 data kotlin_token_comma: Symbol = kotlin_token_comma
 data kotlin_token_colon: Symbol = kotlin_token_colon
+data kotlin_token_dot: Symbol = kotlin_token_dot
+data kotlin_token_semicolon: Symbol = kotlin_token_semicolon
 
 data kotlin_production_mvp1_fn_add: Symbol = kotlin_production_mvp1_fn_add
+data kotlin_production_fn_decl: Symbol = kotlin_production_fn_decl
+data kotlin_production_typed_param: Symbol = kotlin_production_typed_param
+data kotlin_production_param_list: Symbol = kotlin_production_param_list
+data kotlin_production_type_expr: Symbol = kotlin_production_type_expr
+data kotlin_production_block: Symbol = kotlin_production_block
+data kotlin_production_stmt: Symbol = kotlin_production_stmt
+data kotlin_production_return_stmt: Symbol = kotlin_production_return_stmt
+data kotlin_production_value_stmt: Symbol = kotlin_production_value_stmt
+data kotlin_production_if_stmt: Symbol = kotlin_production_if_stmt
+data kotlin_production_while_stmt: Symbol = kotlin_production_while_stmt
+data kotlin_production_expr: Symbol = kotlin_production_expr
+data kotlin_production_binary_expr: Symbol = kotlin_production_binary_expr
+data kotlin_production_call_expr: Symbol = kotlin_production_call_expr
+data kotlin_production_primary_expr: Symbol = kotlin_production_primary_expr
 
 data kotlin_surface_fn_item: Symbol = kotlin_surface_fn_item
+data kotlin_surface_typed_param: Symbol = kotlin_surface_typed_param
+data kotlin_surface_param_list: Symbol = kotlin_surface_param_list
+data kotlin_surface_type_expr: Symbol = kotlin_surface_type_expr
+data kotlin_surface_block: Symbol = kotlin_surface_block
+data kotlin_surface_stmt: Symbol = kotlin_surface_stmt
+data kotlin_surface_return_stmt: Symbol = kotlin_surface_return_stmt
+data kotlin_surface_value_stmt: Symbol = kotlin_surface_value_stmt
+data kotlin_surface_if_stmt: Symbol = kotlin_surface_if_stmt
+data kotlin_surface_while_stmt: Symbol = kotlin_surface_while_stmt
+data kotlin_surface_expr: Symbol = kotlin_surface_expr
+data kotlin_surface_binary_expr: Symbol = kotlin_surface_binary_expr
+data kotlin_surface_call_expr: Symbol = kotlin_surface_call_expr
+data kotlin_surface_primary_expr: Symbol = kotlin_surface_primary_expr
 data kotlin_binding_fn_add: Symbol = kotlin_binding_fn_add
 data kotlin_binding_param_x: Symbol = kotlin_binding_param_x
 data kotlin_binding_param_y: Symbol = kotlin_binding_param_y
@@ -1195,6 +1237,19 @@ fn kotlin_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
+fn kotlin_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule {
+    token_class: token_class,
+    pattern: KeywordPattern { text: text }
+  }
+}
+
+fn kotlin_whitespace_trivia_rule() -> LexRule {
+  TriviaRule {
+    pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } }
+  }
+}
+
 fn kotlin_ident_lex_pattern() -> LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
@@ -1209,28 +1264,365 @@ fn kotlin_ident_lex_rule() -> LexRule {
   }
 }
 
-// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// LiteralPattern.text below (e.g. "fun " not "fun"). Dissolves when T-6 supplies
-// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
+fn kotlin_int_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: kotlin_token_int_literal,
+    pattern: OneOrMorePattern { element: CharClassPattern { class: DigitChar } }
+  }
+}
+
+fn kotlin_string_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: kotlin_token_string_literal,
+    pattern: DelimitedPattern {
+      open: LiteralPattern { text: "\"" },
+      body: RepeatPattern { element: CharClassPattern { class: StringTextChar } },
+      close: LiteralPattern { text: "\"" }
+    }
+  }
+}
+
+fn kotlin_operator_lex_pattern() -> LexPattern {
+  ChoicePattern {
+    left: LiteralPattern { text: "==" },
+    right: ChoicePattern {
+      left: LiteralPattern { text: "!=" },
+      right: ChoicePattern {
+        left: LiteralPattern { text: "<=" },
+        right: ChoicePattern {
+          left: LiteralPattern { text: ">=" },
+          right: ChoicePattern {
+            left: LiteralPattern { text: "+" },
+            right: ChoicePattern {
+              left: LiteralPattern { text: "-" },
+              right: ChoicePattern {
+                left: LiteralPattern { text: "*" },
+                right: ChoicePattern {
+                  left: LiteralPattern { text: "/" },
+                  right: ChoicePattern {
+                    left: LiteralPattern { text: "%" },
+                    right: ChoicePattern {
+                      left: LiteralPattern { text: "<" },
+                      right: LiteralPattern { text: ">" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn kotlin_operator_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: kotlin_token_operator,
+    pattern: kotlin_operator_lex_pattern()
+  }
+}
+
 fn kotlin_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
-      kotlin_lex_rule(token_class: kotlin_token_kw_fun, text: "fun "),
-      kotlin_lex_rule(token_class: kotlin_token_kw_return, text: "return "),
+      kotlin_whitespace_trivia_rule(),
+      kotlin_string_literal_lex_rule(),
+      kotlin_int_literal_lex_rule(),
       kotlin_ident_lex_rule(),
-      kotlin_lex_rule(token_class: kotlin_token_plus, text: " + "),
-      kotlin_lex_rule(token_class: kotlin_token_lbrace, text: " { "),
-      kotlin_lex_rule(token_class: kotlin_token_rbrace, text: " }"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_fun, text: "fun"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_return, text: "return"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_val, text: "val"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_var, text: "var"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_if, text: "if"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_else, text: "else"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_while, text: "while"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_true, text: "true"),
+      kotlin_keyword_lex_rule(token_class: kotlin_token_kw_false, text: "false"),
+      kotlin_operator_lex_rule(),
+      kotlin_lex_rule(token_class: kotlin_token_equal, text: "="),
+      kotlin_lex_rule(token_class: kotlin_token_plus, text: "+"),
+      kotlin_lex_rule(token_class: kotlin_token_lbrace, text: "{"),
+      kotlin_lex_rule(token_class: kotlin_token_rbrace, text: "}"),
       kotlin_lex_rule(token_class: kotlin_token_lparen, text: "("),
       kotlin_lex_rule(token_class: kotlin_token_rparen, text: ")"),
-      kotlin_lex_rule(token_class: kotlin_token_comma, text: ", "),
-      kotlin_lex_rule(token_class: kotlin_token_colon, text: ": ")
+      kotlin_lex_rule(token_class: kotlin_token_lbracket, text: "["),
+      kotlin_lex_rule(token_class: kotlin_token_rbracket, text: "]"),
+      kotlin_lex_rule(token_class: kotlin_token_comma, text: ","),
+      kotlin_lex_rule(token_class: kotlin_token_colon, text: ":"),
+      kotlin_lex_rule(token_class: kotlin_token_dot, text: "."),
+      kotlin_lex_rule(token_class: kotlin_token_semicolon, text: ";")
     ]
   }
 }
 
 fn kotlin_wave1_lex() -> LexRules {
   ModeledLexRules { root: kotlin_wave1_lex_rules() }
+}
+
+fn kotlin_grammar_atom(id: Symbol) -> Node {
+  kotlin_atom(id: id)
+}
+
+fn kotlin_grammar_nonterminal(production: Symbol) -> GrammarExpr {
+  Nonterminal { production: production }
+}
+
+fn kotlin_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn kotlin_grammar_choice(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Choice { left: left, right: right }
+}
+
+fn kotlin_grammar_optional(element: GrammarExpr) -> GrammarExpr {
+  Optional { element: element }
+}
+
+fn kotlin_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
+  Repeat { element: element }
+}
+
+fn kotlin_grammar_type_expr() -> GrammarExpr {
+  kotlin_grammar_terminal(token_class: kotlin_token_ident)
+}
+
+fn kotlin_grammar_typed_param_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_ident),
+    right: kotlin_grammar_sequence(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_colon),
+      right: kotlin_grammar_nonterminal(production: kotlin_production_type_expr)
+    )
+  )
+}
+
+fn kotlin_grammar_param_list_expr() -> GrammarExpr {
+  kotlin_grammar_optional(
+    element: kotlin_grammar_sequence(
+      left: kotlin_grammar_nonterminal(production: kotlin_production_typed_param),
+      right: kotlin_grammar_repeat(
+        element: kotlin_grammar_sequence(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_comma),
+          right: kotlin_grammar_nonterminal(production: kotlin_production_typed_param)
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_expr_list_expr() -> GrammarExpr {
+  kotlin_grammar_optional(
+    element: kotlin_grammar_sequence(
+      left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+      right: kotlin_grammar_repeat(
+        element: kotlin_grammar_sequence(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_comma),
+          right: kotlin_grammar_nonterminal(production: kotlin_production_expr)
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_primary_expr() -> GrammarExpr {
+  kotlin_grammar_choice(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_ident),
+    right: kotlin_grammar_choice(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_int_literal),
+      right: kotlin_grammar_choice(
+        left: kotlin_grammar_terminal(token_class: kotlin_token_string_literal),
+        right: kotlin_grammar_choice(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_kw_true),
+          right: kotlin_grammar_choice(
+            left: kotlin_grammar_terminal(token_class: kotlin_token_kw_false),
+            right: kotlin_grammar_sequence(
+              left: kotlin_grammar_terminal(token_class: kotlin_token_lparen),
+              right: kotlin_grammar_sequence(
+                left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+                right: kotlin_grammar_terminal(token_class: kotlin_token_rparen)
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_call_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_nonterminal(production: kotlin_production_primary_expr),
+    right: kotlin_grammar_repeat(
+      element: kotlin_grammar_sequence(
+        left: kotlin_grammar_terminal(token_class: kotlin_token_lparen),
+        right: kotlin_grammar_sequence(
+          left: kotlin_grammar_expr_list_expr(),
+          right: kotlin_grammar_terminal(token_class: kotlin_token_rparen)
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_binary_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_nonterminal(production: kotlin_production_call_expr),
+    right: kotlin_grammar_repeat(
+      element: kotlin_grammar_sequence(
+        left: kotlin_grammar_terminal(token_class: kotlin_token_operator),
+        right: kotlin_grammar_nonterminal(production: kotlin_production_call_expr)
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_expr_expr() -> GrammarExpr {
+  kotlin_grammar_nonterminal(production: kotlin_production_binary_expr)
+}
+
+fn kotlin_grammar_return_stmt_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_kw_return),
+    right: kotlin_grammar_optional(
+      element: kotlin_grammar_nonterminal(production: kotlin_production_expr)
+    )
+  )
+}
+
+fn kotlin_grammar_value_stmt_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_choice(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_kw_val),
+      right: kotlin_grammar_terminal(token_class: kotlin_token_kw_var)
+    ),
+    right: kotlin_grammar_sequence(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_ident),
+      right: kotlin_grammar_sequence(
+        left: kotlin_grammar_optional(
+          element: kotlin_grammar_sequence(
+            left: kotlin_grammar_terminal(token_class: kotlin_token_colon),
+            right: kotlin_grammar_nonterminal(production: kotlin_production_type_expr)
+          )
+        ),
+        right: kotlin_grammar_optional(
+          element: kotlin_grammar_sequence(
+            left: kotlin_grammar_terminal(token_class: kotlin_token_equal),
+            right: kotlin_grammar_nonterminal(production: kotlin_production_expr)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_if_stmt_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_kw_if),
+    right: kotlin_grammar_sequence(
+      left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+      right: kotlin_grammar_sequence(
+        left: kotlin_grammar_nonterminal(production: kotlin_production_block),
+        right: kotlin_grammar_optional(
+          element: kotlin_grammar_sequence(
+            left: kotlin_grammar_terminal(token_class: kotlin_token_kw_else),
+            right: kotlin_grammar_choice(
+              left: kotlin_grammar_nonterminal(production: kotlin_production_block),
+              right: kotlin_grammar_nonterminal(production: kotlin_production_if_stmt)
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_while_stmt_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_kw_while),
+    right: kotlin_grammar_sequence(
+      left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+      right: kotlin_grammar_nonterminal(production: kotlin_production_block)
+    )
+  )
+}
+
+fn kotlin_grammar_stmt_expr() -> GrammarExpr {
+  kotlin_grammar_choice(
+    left: kotlin_grammar_nonterminal(production: kotlin_production_return_stmt),
+    right: kotlin_grammar_choice(
+      left: kotlin_grammar_nonterminal(production: kotlin_production_value_stmt),
+      right: kotlin_grammar_choice(
+        left: kotlin_grammar_nonterminal(production: kotlin_production_if_stmt),
+        right: kotlin_grammar_choice(
+          left: kotlin_grammar_nonterminal(production: kotlin_production_while_stmt),
+          right: kotlin_grammar_nonterminal(production: kotlin_production_expr)
+        )
+      )
+    )
+  )
+}
+
+fn kotlin_grammar_stmt_separator_expr() -> GrammarExpr {
+  kotlin_grammar_optional(
+    element: kotlin_grammar_terminal(token_class: kotlin_token_semicolon)
+  )
+}
+
+fn kotlin_grammar_block_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_lbrace),
+    right: kotlin_grammar_sequence(
+      left: kotlin_grammar_repeat(
+        element: kotlin_grammar_sequence(
+          left: kotlin_grammar_nonterminal(production: kotlin_production_stmt),
+          right: kotlin_grammar_stmt_separator_expr()
+        )
+      ),
+      right: kotlin_grammar_terminal(token_class: kotlin_token_rbrace)
+    )
+  )
+}
+
+fn kotlin_grammar_fn_decl_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_kw_fun),
+    right: kotlin_grammar_sequence(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_ident),
+      right: kotlin_grammar_sequence(
+        left: kotlin_grammar_terminal(token_class: kotlin_token_lparen),
+        right: kotlin_grammar_sequence(
+          left: kotlin_grammar_nonterminal(production: kotlin_production_param_list),
+          right: kotlin_grammar_sequence(
+            left: kotlin_grammar_terminal(token_class: kotlin_token_rparen),
+            right: kotlin_grammar_sequence(
+              left: kotlin_grammar_optional(
+                element: kotlin_grammar_sequence(
+                  left: kotlin_grammar_terminal(token_class: kotlin_token_colon),
+                  right: kotlin_grammar_nonterminal(production: kotlin_production_type_expr)
+                )
+              ),
+              right: kotlin_grammar_nonterminal(production: kotlin_production_block)
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// Parse-fixture tokens: lexer output from MVP authority source (lexeme + spans via tokenize).
+fn kotlin_mvp1_parse_tokens() -> Outcome<List<Token>> {
+  match tokenize(
+    text: kotlin_mvp1_source_text,
+    file: kotlin_mvp1_parse_fixture_file,
+    rules: kotlin_wave1_lex()
+  ) {
+    Accepted { value: stream, diagnostics: diags } =>
+      Accepted { value: stream.tokens, diagnostics: diags }
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+  }
 }
 
 fn kotlin_wave1_grammar_root() -> GrammarRoot {
