@@ -1,0 +1,352 @@
+// src/v4/extdeps/languages/english.dag
+// Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms.
+// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
+// Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
+// 🟡 feature:english-wave2-vocabulary — scaffold:T-4.19-wave2; dissolve-on: closed vocabulary declared; english_token_word catch-all replaced with per-word keyword rules or typed word set.
+
+module v4.extdeps.languages.english
+
+import v4.extdeps.languages.fidelity { FidelityDisposition }
+import v4.std.grammar {
+  FormalProduction,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  GrammarSchema,
+  GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
+  ModeledGrammar,
+  ParseGrammar,
+  Choice,
+  Nonterminal,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  grammar_formal_nonterminal,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_terminal
+}
+import v4.std.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl
+}
+import v4.std.node { Symbol }
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type Determiner
+  = DefiniteArticle
+  | IndefiniteArticle
+
+
+// 🟢 grounded.
+type FormalNounPhrase {
+  determiner: Determiner
+  head: Symbol
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// Adverbial/intransitive absent: no grammar productions for those forms in wave-1.
+type FormalSentence
+  = SvoSentence   { subject: FormalNounPhrase, verb: Symbol, object: FormalNounPhrase }
+  | CopulaSentence { subject: FormalNounPhrase, copula: Symbol, complement: FormalNounPhrase }
+
+
+// 🟢 grounded.
+type EnglishLanguageModel {
+  language_identity: Symbol
+  core: ModelCore
+  lex: LexRules
+  grammar: ParseGrammar
+}
+
+
+// 🟢 grounded.
+type EnglishLexRules {
+  rules: LexRules
+}
+
+
+// 🟢 grounded.
+type EnglishGrammar {
+  grammar: ParseGrammar
+}
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+type EnglishFidelityFeature
+  = FormalSubsetSvo
+  | FormalSubsetCopula
+  | FormalSubsetAdverbial
+  | FormalSubsetIntransitive
+  | ArticleDeterminer
+  | OutOfSubsetProse
+  | AmbiguousConstruct
+  | MalformedSentence
+
+
+fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition<EnglishFidelityFeature> {
+  match f {
+    FormalSubsetSvo => Modeled
+    FormalSubsetCopula => Modeled
+    FormalSubsetAdverbial => FailClosed { feature: FormalSubsetAdverbial }
+    FormalSubsetIntransitive => FailClosed { feature: FormalSubsetIntransitive }
+    ArticleDeterminer => Modeled
+    OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
+    AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
+    MalformedSentence => FailClosed { feature: MalformedSentence }
+  }
+}
+
+
+data english_token_word: Symbol = english_token_word
+data english_token_definite_article: Symbol = english_token_definite_article
+data english_token_indefinite_article: Symbol = english_token_indefinite_article
+data english_token_copula: Symbol = english_token_copula
+data english_token_period: Symbol = english_token_period
+
+data english_production_sentence: Symbol = english_production_sentence
+data english_production_svo_sentence: Symbol = english_production_svo_sentence
+data english_production_copula_sentence: Symbol = english_production_copula_sentence
+data english_production_article: Symbol = english_production_article
+data english_surface_svo: Symbol = english_surface_svo
+data english_surface_copula: Symbol = english_surface_copula
+data english_surface_sentence: Symbol = english_surface_sentence
+data english_surface_article: Symbol = english_surface_article
+
+data english_language_identity: Symbol = english_language_identity
+
+
+fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+fn english_word_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+// word first (catch-all); keywords after — later rule wins equal-length tie (std/lexing.dag §46).
+fn english_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        english_lex_token(token_class: english_token_word, pattern: english_word_pattern()),
+        english_lex_token(token_class: english_token_period, pattern: LiteralPattern { text: "." }),
+        english_lex_token(token_class: english_token_indefinite_article, pattern: KeywordPattern { text: "a" }),
+        english_lex_token(token_class: english_token_indefinite_article, pattern: KeywordPattern { text: "an" }),
+        english_lex_token(token_class: english_token_definite_article, pattern: KeywordPattern { text: "the" }),
+        english_lex_token(token_class: english_token_copula, pattern: KeywordPattern { text: "is" })
+      ]
+    }
+  }
+}
+
+
+fn english_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+fn english_article_expr() -> GrammarExpr {
+  Choice {
+    left: english_grammar_terminal(token_class: english_token_definite_article),
+    right: english_grammar_terminal(token_class: english_token_indefinite_article)
+  }
+}
+
+fn english_article_nonterminal() -> GrammarExpr {
+  Nonterminal { production: english_production_article }
+}
+
+fn english_svo_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_article_nonterminal(),
+    right: english_grammar_sequence(
+      left: english_grammar_terminal(token_class: english_token_word),
+      right: english_grammar_sequence(
+        left: english_grammar_terminal(token_class: english_token_word),
+        right: english_grammar_sequence(
+          left: english_article_nonterminal(),
+          right: english_grammar_sequence(
+            left: english_grammar_terminal(token_class: english_token_word),
+            right: english_grammar_terminal(token_class: english_token_period)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn english_copula_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_article_nonterminal(),
+    right: english_grammar_sequence(
+      left: english_grammar_terminal(token_class: english_token_word),
+      right: english_grammar_sequence(
+        left: english_grammar_terminal(token_class: english_token_copula),
+        right: english_grammar_sequence(
+          left: english_article_nonterminal(),
+          right: english_grammar_sequence(
+            left: english_grammar_terminal(token_class: english_token_word),
+            right: english_grammar_terminal(token_class: english_token_period)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn english_wave1_grammar() -> ParseGrammar {
+  let article = GrammarProduction {
+    name: english_production_article,
+    expression: english_article_expr(),
+    emitted: grammar_atom(identity: english_surface_article)
+  }
+  let svo = GrammarProduction {
+    name: english_production_svo_sentence,
+    expression: english_svo_sentence_expr(),
+    emitted: grammar_atom(identity: english_surface_svo)
+  }
+  let copula = GrammarProduction {
+    name: english_production_copula_sentence,
+    expression: english_copula_sentence_expr(),
+    emitted: grammar_atom(identity: english_surface_copula)
+  }
+  let sentence = GrammarProduction {
+    name: english_production_sentence,
+    expression: Choice {
+      left: Nonterminal { production: english_production_svo_sentence },
+      right: Nonterminal { production: english_production_copula_sentence }
+    },
+    emitted: grammar_atom(identity: english_surface_sentence)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: english_production_sentence,
+      productions: [sentence, article, svo, copula],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+fn english_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: [],
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+
+fn english_language_model_wave1() -> EnglishLanguageModel {
+  EnglishLanguageModel {
+    language_identity: english_language_identity,
+    core: english_model_core_wave1(),
+    lex: english_wave1_lex(),
+    grammar: english_wave1_grammar()
+  }
+}
+
+fn english_lex_rules_wave1() -> EnglishLexRules {
+  EnglishLexRules {
+    rules: english_wave1_lex()
+  }
+}
+
+fn english_grammar_wave1() -> EnglishGrammar {
+  EnglishGrammar {
+    grammar: english_wave1_grammar()
+  }
+}
+
+
+fn english_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: english_wave1_lex(),
+    grammar: english_wave1_grammar()
+  }
+}
+
+fn english_article_formal_production_definite() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: english_production_article),
+    rhs: [grammar_formal_terminal(identity: english_token_definite_article)]
+  }
+}
+
+fn english_article_formal_production_indefinite() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: english_production_article),
+    rhs: [grammar_formal_terminal(identity: english_token_indefinite_article)]
+  }
+}
+
+fn english_svo_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: english_production_svo_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: english_production_article),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_nonterminal_occurrence(identity: english_production_article),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_terminal(identity: english_token_period)
+    ]
+  }
+}
+
+fn english_copula_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: english_production_copula_sentence),
+    rhs: [
+      grammar_formal_nonterminal_occurrence(identity: english_production_article),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_terminal(identity: english_token_copula),
+      grammar_formal_nonterminal_occurrence(identity: english_production_article),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_terminal(identity: english_token_period)
+    ]
+  }
+}
+
+fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: english_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "the function is a handler.",
+      production: english_copula_formal_production(),
+      expected_parse_surface: grammar_atom(identity: english_surface_copula)
+    }
+  }
+}
