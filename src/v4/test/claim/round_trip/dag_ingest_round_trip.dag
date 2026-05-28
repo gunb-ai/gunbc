@@ -54,9 +54,12 @@ import v4.std.verification {
   Integration,
   manual_claim_anchor
 }
-
-
-data dag_round_trip_fixture_symbol: Symbol = dag_round_trip_fixture_symbol
+// Structural import: ties this claim to the fixture module identity.
+// If fixture/dag_round_trip_mvp1.dag is renamed or its exports change, this import breaks,
+// preventing silent drift.  Full source-text binding is deferred: String = FreeMonoid<Char>
+// where Char = Nat (Peano), making multi-line fixture embedding infeasible in the current
+// substrate. T-38's module-loader will resolve the fixture by module path at eval time.
+import v4.test.fixture.dag_round_trip_mvp1 { dag_round_trip_mvp1_subject }
 data dag_round_trip_lang_axis: Symbol = dag_round_trip_lang_axis
 data dag_round_trip_fixture_axis: Symbol = dag_round_trip_fixture_axis
 data dag_round_trip_lex_axis: Symbol = dag_round_trip_lex_axis
