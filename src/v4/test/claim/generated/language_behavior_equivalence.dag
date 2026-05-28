@@ -9,11 +9,12 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  TestClaimTypedInput,
+  eval_context_with_semantics,
   eval_diagnostic,
   run_test_claim,
   run_test_claim_assert,
-  test_claim_cache_receipt
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
@@ -43,6 +44,7 @@ import v4.std.runtime {
   EnvironmentBindingKey,
   EvaluationEnvironment,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   LoopInterpreter,
   RuntimePrimitiveValue,
   RuntimeValue,
@@ -87,8 +89,13 @@ import v4.test.claim.manual.connective_anchors {
 }
 
 
-data claim_hash_placeholder: Hash = claim_hash_placeholder
-data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
+data lbe_interpretation_pin: Symbol = lbe_interpretation_pin
+data lbe_evaluator_pin: Symbol = lbe_evaluator_pin
+data lbe_allocate_literal_sym: Symbol = lbe_allocate_literal_sym
+data lbe_call_primitive_sym: Symbol = lbe_call_primitive_sym
+data lbe_choose_branch_sym: Symbol = lbe_choose_branch_sym
+data lbe_step_loop_sym: Symbol = lbe_step_loop_sym
+data lbe_bind_value_sym: Symbol = lbe_bind_value_sym
 data lbe_interpretation_rejected: Symbol = lbe_interpretation_rejected
 data lbe_runtime_value_symbol: Symbol = lbe_runtime_value_symbol
 data eval_rejected_lbe_projection_deferred: Symbol = eval_rejected_lbe_projection_deferred
@@ -174,8 +181,19 @@ fn lbe_inferred_tree(root: Node) -> InferredTree {
 }
 
 
+fn lbe_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: lbe_allocate_literal_sym,
+    call_primitive: lbe_call_primitive_sym,
+    choose_branch: lbe_choose_branch_sym,
+    step_loop: lbe_step_loop_sym,
+    bind_value: lbe_bind_value_sym
+  }
+}
+
 fn lbe_eval_context() -> EvalContext {
-  EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: lbe_interpretation_pin,
     interpretation: InterpretationAlgebra {
       value: ValueInterpreter {
         allocate_literal: lbe_allocate_literal
@@ -192,8 +210,9 @@ fn lbe_eval_context() -> EvalContext {
       bind: BindInterpreter {
         bind_value: lbe_bind_value
       }
-    }
-  }
+    },
+    structure_witness: lbe_interpretation_structure_witness()
+  )
 }
 
 
@@ -212,17 +231,16 @@ fn lbe_subject_from_claim(claim: TestClaim) -> TestClaimEvalSubject<Node> {
     claim: claim,
     context: lbe_eval_context(),
     tree: lbe_inferred_tree(root: input),
-    input: TestClaimTypedInput { evaluator_input: input }
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: lbe_evaluator_pin
+    )
   }
 }
 
 
 fn lbe_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
-  run_test_claim(
-    subject: lbe_subject_from_claim(claim: claim),
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  )
+  run_test_claim(subject: lbe_subject_from_claim(claim: claim))
 }
 
 
@@ -247,11 +265,7 @@ fn lbe_rejected_emit_cache_receipt(
   expected: NonEmptyDiagnostics
 ) -> TestClaimCacheReceipt<Node> {
   let claim = lbe_emit_rejection_sentinel_claim(label: label, mock: mock, expected: expected)
-  test_claim_cache_receipt(
-    subject: lbe_subject_from_claim(claim: claim),
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  )
+  test_claim_cache_receipt(subject: lbe_subject_from_claim(claim: claim))
 }
 
 
