@@ -1632,15 +1632,21 @@ fn kotlin_grammar_if_stmt_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: kotlin_token_kw_if),
     right: kotlin_grammar_sequence(
-      left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+      left: kotlin_grammar_terminal(token_class: kotlin_token_lparen),
       right: kotlin_grammar_sequence(
-        left: kotlin_grammar_nonterminal(production: kotlin_production_block),
-        right: kotlin_grammar_optional(
-          element: kotlin_grammar_sequence(
-            left: kotlin_grammar_terminal(token_class: kotlin_token_kw_else),
-            right: kotlin_grammar_choice(
-              left: kotlin_grammar_nonterminal(production: kotlin_production_block),
-              right: kotlin_grammar_nonterminal(production: kotlin_production_if_stmt)
+        left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+        right: kotlin_grammar_sequence(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_rparen),
+          right: kotlin_grammar_sequence(
+            left: kotlin_grammar_nonterminal(production: kotlin_production_block),
+            right: kotlin_grammar_optional(
+              element: kotlin_grammar_sequence(
+                left: kotlin_grammar_terminal(token_class: kotlin_token_kw_else),
+                right: kotlin_grammar_choice(
+                  left: kotlin_grammar_nonterminal(production: kotlin_production_block),
+                  right: kotlin_grammar_nonterminal(production: kotlin_production_if_stmt)
+                )
+              )
             )
           )
         )
@@ -1653,8 +1659,14 @@ fn kotlin_grammar_while_stmt_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: kotlin_token_kw_while),
     right: kotlin_grammar_sequence(
-      left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
-      right: kotlin_grammar_nonterminal(production: kotlin_production_block)
+      left: kotlin_grammar_terminal(token_class: kotlin_token_lparen),
+      right: kotlin_grammar_sequence(
+        left: kotlin_grammar_nonterminal(production: kotlin_production_expr),
+        right: kotlin_grammar_sequence(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_rparen),
+          right: kotlin_grammar_nonterminal(production: kotlin_production_block)
+        )
+      )
     )
   )
 }
