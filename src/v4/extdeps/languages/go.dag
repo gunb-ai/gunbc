@@ -1042,7 +1042,7 @@ fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
 }
 
 fn go_string_element_node() -> Node {
-  go_inhabitant_atom(id: go_surface_spelling_uint8)
+  go_integer_facts_node(facts: go_facts_uint8)
 }
 
 fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
@@ -1112,9 +1112,6 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 }
 
 // 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md
-// T-4 Wave 2b. Go complex values are declared primitive facts, but `std.algebra` does not yet
-// export a dedicated complex algebra constructor. dissolve-on: a complex-specific algebra
-// surface lands in std/algebra and this file wires it into go_model_core_wave1().
 fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   []
 }
