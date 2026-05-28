@@ -1,15 +1,8 @@
 // src/v4/test/claim/lens_application/apply_lens_introspect_rejection_is_advisory.dag
-<<<<<<< HEAD
-// Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness.
-// Status: scaffold — compile-only until application.dag fills.
-=======
 // Scope: T-23 worked claim — Introspect demotes gate rejection to an advisory Violates witness;
 //        pins gate-rejection reason on Violates.diagnostic and advisory Accepted.diagnostics head
 //        (singleton fixture; does not ratchet tail/locus/correction).
-// Owns: claim_apply_lens_introspect_rejection_is_advisory.
-// Consumes: compiler compile, lens_common fixture, std verification.
 // Status: compile-only ratchet — CompileLensIntrospect advisory demotion at compile boundary.
->>>>>>> origin/main
 
 module v4.test.claim.lens_application.apply_lens_introspect_rejection_is_advisory
 

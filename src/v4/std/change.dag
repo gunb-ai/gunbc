@@ -1,10 +1,5 @@
 // src/v4/std/change.dag
 // Scope: change-consequence substrate and recomputation plan carrier.
-<<<<<<< HEAD
-=======
-// Owns: ChangeKind, Change, ChangeSet, DependencyEndpoint, AffectedDependency, AffectedExclusion, AffectedSetEvidence, AffectedSet, RecomputePlan.
-// Consumes: v4.std.collection, v4.std.dependency, v4.std.diagnostic, v4.std.node.
->>>>>>> origin/main
 // Status: Wave-2-A substrate.
 
 module v4.std.change
