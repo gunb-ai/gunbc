@@ -4099,6 +4099,7 @@ pub mod lens_unused_parameters {
 pub mod emit_rust_roundtrip_fixtures;
 pub mod gunbc_ci;
 pub mod v4_ci_component_affected;
+pub mod v4_ci_runner_pool;
 pub mod post_emit_verifier;
 pub mod r1c_e_gates;
 pub mod test_runner;

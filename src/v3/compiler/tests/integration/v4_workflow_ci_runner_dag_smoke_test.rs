@@ -304,6 +304,32 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         m1_step.contains(&format!("run: bash {script_path}")),
         "{CI_YML_PATH}: `{step_name}` must invoke the modeled probe script"
     );
+    assert!(
+        CI_DAG.contains("type SelfHostedRunnerPool"),
+        "{CI_DAG_PATH}: must model self-hosted runner pools (T-24 addendum)"
+    );
+    assert!(
+        CI_DAG.contains("data ci_srv1_pool: SelfHostedRunnerPool")
+            && CI_DAG.contains("runner_count: 20")
+            && CI_DAG.contains("jobserver_token_cap: 25")
+            && CI_DAG.contains("data ci_srv2_pool: SelfHostedRunnerPool")
+            && CI_DAG.contains("runner_count: 30")
+            && CI_DAG.contains("jobserver_token_cap: 36"),
+        "{CI_DAG_PATH}: srv1/srv2 pool rows must match operator spec"
+    );
+    assert!(
+        CI_DAG.contains("data m1_probe_cargo_check_jobs: Int"),
+        "{CI_DAG_PATH}: M1 cargo parallelism must be a derived Int fact"
+    );
+    let m1_jobs = v3_compiler::v4_ci_runner_pool::m1_probe_cargo_check_jobs();
+    assert_eq!(
+        m1_jobs, 4,
+        "Rust transport mirror of m1_probe_cargo_check_jobs must match ci.dag fleet model"
+    );
+    assert!(
+        m1_step.contains(&format!("V4_M1_CARGO_CHECK_JOBS: \"{m1_jobs}\"")),
+        "{CI_YML_PATH}: M1 step must project modeled cargo-check job cap"
+    );
 }
 
 #[test]

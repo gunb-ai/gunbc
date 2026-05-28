@@ -1,0 +1,38 @@
+// src/v4/test/claim/workflow/runner_pool_m1_probe.dag
+// Scope: T-24 self-hosted runner pool + derived M1 cargo-check parallelism (operator srv1/srv2 spec).
+
+module v4.test.claim.workflow.runner_pool_m1_probe
+
+import v4.std.collection { List }
+import v4.std.logic { Bool }
+import v4.workflow.ci {
+  SelfHostedRunnerPool,
+  ci_m1_probe_cargo_check_jobs_from_pools,
+  ci_m1_probe_cargo_fanout_slots,
+  ci_self_hosted_runner_pools,
+  ci_srv1_pool,
+  ci_srv2_pool,
+  m1_probe_cargo_check_jobs
+}
+
+fn runner_pool_srv1_runner_count_holds() -> Bool {
+  ci_srv1_pool.runner_count == 20
+}
+
+fn runner_pool_srv2_jobserver_cap_holds() -> Bool {
+  ci_srv2_pool.jobserver_token_cap == 36
+}
+
+fn runner_pool_m1_fanout_slots_holds() -> Bool {
+  ci_m1_probe_cargo_fanout_slots(pools: ci_self_hosted_runner_pools) == 6
+}
+
+fn runner_pool_m1_cargo_jobs_holds() -> Bool {
+  (m1_probe_cargo_check_jobs == 4)
+    && (ci_m1_probe_cargo_check_jobs_from_pools(pools: ci_self_hosted_runner_pools) == 4)
+}
+
+data runner_pool_srv1_claim_passes: Bool = runner_pool_srv1_runner_count_holds()
+data runner_pool_srv2_claim_passes: Bool = runner_pool_srv2_jobserver_cap_holds()
+data runner_pool_fanout_claim_passes: Bool = runner_pool_m1_fanout_slots_holds()
+data runner_pool_m1_jobs_claim_passes: Bool = runner_pool_m1_cargo_jobs_holds()

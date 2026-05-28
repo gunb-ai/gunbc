@@ -110,6 +110,19 @@ type CiComponentAffected {
   workflow_policy: Bool
 }
 
+// RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra).
+// Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
+type RunnerArch
+  = Arm64
+
+type SelfHostedRunnerPool {
+  host: Symbol
+  arch: RunnerArch
+  core_count: Int
+  runner_count: Int
+  jobserver_token_cap: Int
+}
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
 type LensCiLiveWorkflowSignal {
   smoke_step_name: String
@@ -136,6 +149,29 @@ data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
 data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
 data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
+data ci_srv1_host: Symbol = ci_srv1_host
+data ci_srv2_host: Symbol = ci_srv2_host
+
+data ci_srv1_pool: SelfHostedRunnerPool = {
+  host: ci_srv1_host
+  arch: Arm64
+  core_count: 128
+  runner_count: 20
+  jobserver_token_cap: 25
+}
+
+data ci_srv2_pool: SelfHostedRunnerPool = {
+  host: ci_srv2_host
+  arch: Arm64
+  core_count: 128
+  runner_count: 30
+  jobserver_token_cap: 36
+}
+
+data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
+  ci_srv1_pool,
+  ci_srv2_pool
+]
 
 data lens_ci_required_lenses: List<LensIdV0> = [
   Complexity,
@@ -636,6 +672,7 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
   ci_repo_path_has_prefix(path: changed, prefix: ".github/workflows/")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v3/compiler/src/v4_ci_component_affected")
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v3/compiler/src/v4_ci_runner_pool")
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v3/compiler/src/bin/detect_ci_affected_components")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
@@ -670,3 +707,70 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
     )
   }
 }
+
+
+fn ci_runner_pool_min_jobserver_token_cap(pools: List<SelfHostedRunnerPool>) -> Int {
+  fold(pools, init: ci_srv2_pool.jobserver_token_cap, f: fn(acc, pool) {
+    if pool.jobserver_token_cap < acc {
+      pool.jobserver_token_cap
+    } else {
+      acc
+    }
+  })
+}
+
+
+fn ci_runner_pool_max_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
+  fold(pools, init: 0, f: fn(acc, pool) {
+    if pool.runner_count > acc {
+      pool.runner_count
+    } else {
+      acc
+    }
+  })
+}
+
+
+fn ci_runner_pool_min_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
+  fold(pools, init: ci_srv1_pool.runner_count, f: fn(acc, pool) {
+    if pool.runner_count < acc {
+      pool.runner_count
+    } else {
+      acc
+    }
+  })
+}
+
+
+fn ci_runner_pool_total_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
+  fold(pools, init: 0, f: fn(acc, pool) {
+    acc + pool.runner_count
+  })
+}
+
+
+fn ci_runner_pool_host_count(pools: List<SelfHostedRunnerPool>) -> Int {
+  length(xs: pools)
+}
+
+
+// Modeled concurrent M1 cargo-check fanout across the fleet: spread peer slots across
+// hosts so one probe does not claim more than min(jobserver_token_cap) / fanout_slots.
+fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
+  let min_runners = ci_runner_pool_min_runner_count(pools: pools)
+  let max_runners = ci_runner_pool_max_runner_count(pools: pools)
+  let total_runners = ci_runner_pool_total_runner_count(pools: pools)
+  let hosts = ci_runner_pool_host_count(pools: pools)
+  (total_runners - min_runners) * hosts / (max_runners - min_runners)
+}
+
+
+fn ci_m1_probe_cargo_check_jobs_from_pools(pools: List<SelfHostedRunnerPool>) -> Int {
+  ci_runner_pool_min_jobserver_token_cap(pools: pools)
+    / ci_m1_probe_cargo_fanout_slots(pools: pools)
+}
+
+
+data m1_probe_cargo_check_jobs: Int = ci_m1_probe_cargo_check_jobs_from_pools(
+  pools: ci_self_hosted_runner_pools
+)
