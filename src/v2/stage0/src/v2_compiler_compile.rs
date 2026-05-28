@@ -340,12 +340,27 @@ pub struct DagCollectAcc {
     pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn dag_node_key(node: Rc<Node>) -> String {
+pub fn dag_node_key(mut node: Rc<Node>) -> String {
+    loop {
+        match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                let __tco_0 = target.clone();
+                node = __tco_0;
+                continue;
+            }
+            _ => {
+                break dag_node_provisional_key(node.clone());
+            }
+        }
+    }
+}
+
+pub fn dag_node_provisional_key(node: Rc<Node>) -> String {
     v2_rt::concat(
         v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
-                    v2_rt::concat(node.span.clone().file.clone(), ":".to_string()),
+                    v2_rt::concat(dag_node_fingerprint(node.clone()), "@".to_string()),
                     (node.span.clone().start.clone()).to_string(),
                 ),
                 "..".to_string(),
