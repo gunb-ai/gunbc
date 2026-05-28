@@ -186,6 +186,7 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
     for name in [
         "ci_select_from_rerun_nodes",
         "ci_select_from_affected_set",
+        "ci_component_affected_from_git_diff",
         "test_claim_in_rerun_frontier",
         "ci_all_gate_run_policies_resolve",
     ] {
