@@ -62,8 +62,8 @@ import v4.std.node {
   TypeNode,
   Value,
   Atom,
+  combine_hash,
   content_hash,
-  hash_combine,
   fold_node,
   is_positional,
   well_formed
@@ -234,7 +234,7 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
     xs: test_claim_evaluation_nodes(c: c),
     empty: content_hash(n: test_claim_cache_digest_tag_node(tag: test_claim_cache_claim_digest_tag)),
     cons: fn(acc, n) {
-      hash_combine(a: acc, b: content_hash(n: n))
+      combine_hash(a: acc, b: content_hash(n: n))
     }
   )
 }
@@ -264,7 +264,7 @@ fn int_cache_digest_positive(i: Int) -> Hash {
   if i == 1 {
     test_claim_symbol_digest(sym: test_claim_cache_int_one_tag)
   } else {
-    hash_combine(
+    combine_hash(
       a: test_claim_symbol_digest(sym: test_claim_cache_int_succ_tag),
       b: int_cache_digest_positive(i: i - 1)
     )
@@ -277,12 +277,12 @@ fn int_cache_digest(i: Int) -> Hash {
     test_claim_symbol_digest(sym: test_claim_cache_int_zero_tag)
   } else {
     if i < 0 {
-      hash_combine(
+      combine_hash(
         a: test_claim_symbol_digest(sym: test_claim_cache_int_neg_tag),
         b: int_cache_digest(i: 0 - i)
       )
     } else {
-      hash_combine(
+      combine_hash(
         a: test_claim_symbol_digest(sym: test_claim_cache_int_pos_tag),
         b: int_cache_digest_positive(i: i)
       )
@@ -296,8 +296,8 @@ fn extent_cache_digest(e: Extent) -> Hash {
     WholeFile =>
       test_claim_symbol_digest(sym: test_claim_cache_extent_whole_file_tag)
     ByteRange { start: sa, end: ea } =>
-      hash_combine(
-        a: hash_combine(
+      combine_hash(
+        a: combine_hash(
           a: test_claim_symbol_digest(sym: test_claim_cache_extent_byte_range_tag),
           b: int_cache_digest(i: sa)
         ),
@@ -312,7 +312,7 @@ fn locus_cache_digest(at: Locus) -> Hash {
     NodeLocus { anchor: a } => content_hash(n: a.at)
     PortLocus { anchor: a } => test_claim_symbol_digest(sym: a.at)
     Textual { file: f, extent: e } =>
-      hash_combine(
+      combine_hash(
         a: test_claim_symbol_digest(sym: f),
         b: extent_cache_digest(e: e)
       )
@@ -322,9 +322,9 @@ fn locus_cache_digest(at: Locus) -> Hash {
 
 // Canonical diagnostic digest for cache keys: locus + reason + correction (aligned with diagnostic_eq).
 fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
-  hash_combine(
+  combine_hash(
     a: locus_cache_digest(at: d.at),
-    b: hash_combine(
+    b: combine_hash(
       a: test_claim_symbol_digest(sym: d.reason),
       b: correction_verdict_digest(c: d.correction)
     )
@@ -337,7 +337,7 @@ fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
     xs: d.tail,
     empty: diagnostic_cache_digest(d: d.head),
     cons: fn(acc, diag) {
-      hash_combine(a: acc, b: diagnostic_cache_digest(d: diag))
+      combine_hash(a: acc, b: diagnostic_cache_digest(d: diag))
     }
   )
 }
@@ -348,7 +348,7 @@ fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
   let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
   match c {
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
-      hash_combine(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
+      combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
     _ => nodes_digest
   }
 }
@@ -360,7 +360,7 @@ fn test_claim_symbol_digest(sym: Symbol) -> Hash {
 
 
 fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
-  hash_combine(
+  combine_hash(
     a: test_claim_symbol_digest(sym: w.property),
     b: content_hash(n: w.evidence)
   )
@@ -373,13 +373,13 @@ fn ranking_dimension_digest(d: RankingDimension) -> Hash {
 
 
 fn termination_proof_digest(proof: TerminationProof) -> Hash {
-  hash_combine(
+  combine_hash(
     a: ranking_dimension_digest(d: proof.strict),
     b: fold_list(
       xs: proof.non_increasing,
       empty: test_claim_symbol_digest(sym: test_claim_cache_interpretation_digest_tag),
       cons: fn(acc, d) {
-        hash_combine(a: acc, b: ranking_dimension_digest(d: d))
+        combine_hash(a: acc, b: ranking_dimension_digest(d: d))
       }
     )
   )
@@ -396,10 +396,10 @@ fn descent_witness_digest(d: Witness<TerminationProof>) -> Hash {
 
 fn inferred_facts_digest(facts: InferredFacts) -> Hash {
   let g = facts.grounding
-  hash_combine(
+  combine_hash(
     a: content_hash(n: g.node),
-    b: hash_combine(
-      a: hash_combine(
+    b: combine_hash(
+      a: combine_hash(
         a: structural_property_witness_digest(w: g.witness.structural),
         b: structural_property_witness_digest(w: g.witness.closedness)
       ),
@@ -410,7 +410,7 @@ fn inferred_facts_digest(facts: InferredFacts) -> Hash {
 
 
 fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
-  hash_combine(
+  combine_hash(
     a: content_hash(n: node),
     b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
       Holds { value: facts } => inferred_facts_digest(facts: facts)
@@ -428,7 +428,7 @@ fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
         inferred_node_facts_cache_digest(tree: tree, node: n0)
       },
       step: fn(acc, e, child) {
-        hash_combine(a: acc, b: child)
+        combine_hash(a: acc, b: child)
       }
     }
   )
@@ -436,7 +436,7 @@ fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
 
 
 fn inferred_tree_digest(tree: InferredTree) -> Hash {
-  hash_combine(
+  combine_hash(
     a: content_hash(n: tree.root),
     b: inferred_tree_evaluated_facts_digest(tree: tree)
   )
@@ -449,7 +449,7 @@ fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
 
 
 fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
-  hash_combine(
+  combine_hash(
     a: test_claim_symbol_digest(sym: input.evaluator_pin),
     b: input.evaluator_input_digest
   )
@@ -457,9 +457,9 @@ fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
 
 
 fn test_claim_cache_interpretation_hash<T>(subject: TestClaimEvalSubject<T>) -> Hash {
-  hash_combine(
+  combine_hash(
     a: inferred_tree_digest(tree: subject.tree),
-    b: hash_combine(
+    b: combine_hash(
       a: test_claim_interpretation_pin_digest(context: subject.context),
       b: test_claim_evaluator_digest(input: subject.input)
     )

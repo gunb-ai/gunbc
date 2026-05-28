@@ -28,8 +28,8 @@ import v4.std.node {
   Node,
   Symbol,
   TypeNode,
-  content_hash,
-  hash_combine
+  combine_hash,
+  content_hash
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -336,7 +336,7 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
   match policy {
     Always => ci_symbol_digest(sym: ci_cache_gate_policy_always_tag)
     RequiresJobAttempt { job: job } =>
-      hash_combine(
+      combine_hash(
         a: ci_symbol_digest(sym: ci_cache_gate_policy_requires_job_tag),
         b: ci_symbol_digest(sym: job)
       )
@@ -348,7 +348,7 @@ fn ci_char_cache_digest_positive(c: Char) -> Hash {
   if c == 1 {
     ci_symbol_digest(sym: ci_cache_char_one_tag)
   } else {
-    hash_combine(
+    combine_hash(
       a: ci_symbol_digest(sym: ci_cache_char_succ_tag),
       b: ci_char_cache_digest_positive(c: c - 1)
     )
@@ -361,12 +361,12 @@ fn ci_char_cache_digest(c: Char) -> Hash {
     ci_symbol_digest(sym: ci_cache_char_zero_tag)
   } else {
     if c < 0 {
-      hash_combine(
+      combine_hash(
         a: ci_symbol_digest(sym: ci_cache_char_neg_tag),
         b: ci_char_cache_digest(c: 0 - c)
       )
     } else {
-      hash_combine(
+      combine_hash(
         a: ci_symbol_digest(sym: ci_cache_char_pos_tag),
         b: ci_char_cache_digest_positive(c: c)
       )
@@ -380,7 +380,7 @@ fn ci_string_cache_digest(s: String) -> Hash {
     xs: s,
     empty: ci_symbol_digest(sym: ci_cache_string_empty_tag),
     cons: fn(acc, ch) {
-      hash_combine(a: acc, b: ci_char_cache_digest(c: ch))
+      combine_hash(a: acc, b: ci_char_cache_digest(c: ch))
     }
   )
 }
@@ -406,7 +406,7 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
     LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
     TestCommand => ci_symbol_digest(sym: ci_cache_cmd_test_tag)
     IgnoredTestCommand { test_name: name } =>
-      hash_combine(
+      combine_hash(
         a: ci_symbol_digest(sym: ci_cache_cmd_ignored_test_tag),
         b: ci_string_cache_digest(s: name)
       )
@@ -415,11 +415,11 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
         xs: lenses,
         empty: ci_symbol_digest(sym: ci_cache_cmd_lens_ci_tag),
         cons: fn(acc, lens) {
-          hash_combine(a: acc, b: ci_lens_id_cache_digest(lens: lens))
+          combine_hash(a: acc, b: ci_lens_id_cache_digest(lens: lens))
         }
       )
     BootstrapStageCompile { produces: produces } =>
-      hash_combine(
+      combine_hash(
         a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
         b: ci_symbol_digest(sym: produces)
       )
@@ -429,8 +429,8 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
 
 
 fn ci_job_cache_digest(j: CiJob) -> Hash {
-  hash_combine(
-    a: hash_combine(
+  combine_hash(
+    a: combine_hash(
       a: ci_symbol_digest(sym: j.id),
       b: ci_command_cache_digest(c: j.command)
     ),
@@ -438,7 +438,7 @@ fn ci_job_cache_digest(j: CiJob) -> Hash {
       xs: j.needs,
       empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
       cons: fn(acc, need) {
-        hash_combine(a: acc, b: ci_symbol_digest(sym: need))
+        combine_hash(a: acc, b: ci_symbol_digest(sym: need))
       }
     )
   )
@@ -446,8 +446,8 @@ fn ci_job_cache_digest(j: CiJob) -> Hash {
 
 
 fn ci_gate_cache_digest(g: CiGate) -> Hash {
-  hash_combine(
-    a: hash_combine(
+  combine_hash(
+    a: combine_hash(
       a: ci_symbol_digest(sym: g.id),
       b: ci_symbol_digest(sym: g.job)
     ),
@@ -458,19 +458,19 @@ fn ci_gate_cache_digest(g: CiGate) -> Hash {
 
 // IRT-4 / T-22: canonical CiPipeline content digest for TestClaim cache keys (jobs + gates, order-sensitive).
 fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
-  hash_combine(
+  combine_hash(
     a: fold_list(
       xs: p.jobs,
       empty: ci_symbol_digest(sym: ci_cache_jobs_empty_tag),
       cons: fn(acc, job) {
-        hash_combine(a: acc, b: ci_job_cache_digest(j: job))
+        combine_hash(a: acc, b: ci_job_cache_digest(j: job))
       }
     ),
     b: fold_list(
       xs: p.gates,
       empty: ci_symbol_digest(sym: ci_cache_gates_empty_tag),
       cons: fn(acc, gate) {
-        hash_combine(a: acc, b: ci_gate_cache_digest(g: gate))
+        combine_hash(a: acc, b: ci_gate_cache_digest(g: gate))
       }
     )
   )

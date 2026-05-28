@@ -422,6 +422,12 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
 }
 
 
+// B1 primitive re-export: v2 runtime hash_combine is available in-module but not importable cross-module until wrapped.
+fn combine_hash(a: Hash, b: Hash) -> Hash {
+  hash_combine(a: a, b: b)
+}
+
+
 // 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized after body; other positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
