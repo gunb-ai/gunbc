@@ -50,10 +50,9 @@ import v4.std.collection { List }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
-  PartialitySemanticsDecl,
-  PrimitiveFactBundle
+  PartialitySemanticsDecl
 }
-import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+import v4.std.node { Symbol }
 
 
 // ---------------------------------------------------------------------------
