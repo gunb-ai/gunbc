@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/lean.dag
 // Scope: Lean 4 language model for PROOF-1 termination export.
-// Status: T-4.17 wave-2b inhabitance — AlgebraInhabitanceDecl fill (Signed→CommutativeRing, Unsigned→Semiring, Bool→BooleanAlgebra); wave-2a lex/grammar — FormalProduction flat rhs authority + GrammarSchemaProbe (token-sequence only; #3796 pattern); wave-1 scalar fact-bundles + MVP-1 `def`+`termination_by`; ParseGrammar nested GrammarExpr is CP-1b interim; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+// Status: T-4.17 wave-2b inhabitance — AlgebraInhabitanceDecl fill (Signed→CommutativeRing, Unsigned→CommutativeRing, Bool→BooleanAlgebra); wave-2a lex/grammar — FormalProduction flat rhs authority + GrammarSchemaProbe (token-sequence only; #3796 pattern); wave-1 scalar fact-bundles + MVP-1 `def`+`termination_by`; ParseGrammar nested GrammarExpr is CP-1b interim; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 
 module v4.extdeps.languages.lean
 
@@ -46,8 +46,7 @@ import v4.std.algebra {
   commutative_ring_node,
   fold_list,
   list_append,
-  list_snoc_item,
-  semiring_node
+  list_snoc_item
 }
 import v4.std.text { String }
 import v4.std.model_core {
@@ -417,8 +416,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
 ]
 
 
-data lean_witness_signed_integer_commutative_ring: Symbol = lean_witness_signed_integer_commutative_ring
-data lean_witness_unsigned_integer_semiring: Symbol = lean_witness_unsigned_integer_semiring
+data lean_witness_integer_commutative_ring: Symbol = lean_witness_integer_commutative_ring
 data lean_witness_bool_boolean_algebra: Symbol = lean_witness_bool_boolean_algebra
 data lean_witness_field_representation: Symbol = lean_witness_field_representation
 data lean_witness_field_signedness: Symbol = lean_witness_field_signedness
@@ -799,16 +797,12 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
 
 
 fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Node {
-  let witness_tag = match kind {
-    Signed => lean_witness_signed_integer_commutative_ring
-    Unsigned => lean_witness_unsigned_integer_semiring
-  }
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
-        name: witness_tag,
-        target: lean_inhabitant_atom(id: witness_tag)
+        name: lean_witness_integer_commutative_ring,
+        target: lean_inhabitant_atom(id: lean_witness_integer_commutative_ring)
       ),
       lean_named_edge(
         name: lean_witness_field_representation,
@@ -844,15 +838,12 @@ fn lean_bool_algebra_witness_node() -> Node {
 
 fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> AlgebraInhabitanceDecl {
   let inhabitant = lean_primitive_facts_node(facts: facts)
-  // Lean fixed-precision integers wrap on overflow (two's-complement modular arithmetic
-  // for signed, unsigned modular for unsigned). Wrapping breaks order-compatibility
-  // (a ≤ b does not imply a+c ≤ b+c after wraparound), so neither width class
-  // inhabits OrderedRing. Signed → CommutativeRing (Z/2^n Z); Unsigned → Semiring
-  // (no additive inverse). Anchor: Lean 4 reference §Fixed-Precision Integers.
-  let algebra = match kind {
-    Signed => commutative_ring_node(inhabitant: inhabitant)
-    Unsigned => semiring_node(inhabitant: inhabitant)
-  }
+  // Both signed and unsigned Lean fixed-precision integers use modular arithmetic
+  // (two's-complement / unsigned mod 2^n). Unsigned types expose wrapping subtraction,
+  // so they have an additive inverse in the modular sense and form Z/2^n Z —
+  // CommutativeRing, not merely Semiring. Neither class is OrderedRing: wrapping
+  // breaks a ≤ b → a+c ≤ b+c. Anchor: Lean 4 reference §Fixed-Precision Integers.
+  let algebra = commutative_ring_node(inhabitant: inhabitant)
   AlgebraInhabitanceDecl {
     algebra: algebra,
     inhabitant: inhabitant,
