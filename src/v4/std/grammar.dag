@@ -1,8 +1,9 @@
 // src/v4/std/grammar.dag
-// Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar G=(N,Σ,P,S).
-// Anchor: https://en.wikipedia.org/wiki/Formal_grammar
-// Status: substrate declaration; canonical grounding for formal grammar concepts used by
-//         v4.compiler.parse operational types.
+// Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar
+// Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar
+// Owns: Terminal, Nonterminal, GrammarSymbol, Production, Grammar
+// Consumes: v4.std.node, v4.std.collection
+// Status: single authority per INVARIANTS P2
 
 module v4.std.grammar
 
