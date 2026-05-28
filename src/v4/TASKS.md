@@ -780,9 +780,9 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 
 | # | v4-done clause | Status | Lane | Open work |
 |---:|---|---|---|---|
-| 1 | whole plan minus T-15 | PARTIAL | Side branch | XL tasks still in flight; see graph + operator queue |
-| 2 | compiles `src/v4/compiler/*.dag` end-to-end | CLOSABLE | Lane A | T-37 landed; v2 `--target dag` without SIGTERM |
-| 3 | emits Rust that compiles to a binary | CLOSABLE | Lane A | Unblocked with predicate 2 on `main` |
+| 1 | compiles `src/v4/compiler/*.dag` end-to-end | CLOSABLE | Lane A | T-37 landed; v2 `--target dag` without SIGTERM |
+| 2 | emits Rust that compiles to a binary | CLOSABLE | Lane A | Unblocked with predicate 1 on `main` |
+| 3 | whole plan minus T-15 | PARTIAL | Side branch | XL tasks still in flight; see graph + operator queue |
 | 4 | bit-identical self-host fixed point | PARTIAL | Lane A | `bootstrap_footprint` [#3788]; `bootstrap-content-hash-pins`, T22-EVAL-CACHE-HASHES |
 | 5 | TestClaim suite passes | PAPER-ONLY | Lane A | T-38 — claims compile only; no CI eval harness |
 
