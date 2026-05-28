@@ -1,7 +1,6 @@
 // src/v4/std/grammar.dag
-<<<<<<< HEAD
+// Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar, https://en.wikipedia.org/wiki/Parsing
 // Scope: canonical grammar model shared by compiler stages and target-language specs.
-// Anchor: https://en.wikipedia.org/wiki/Formal_grammar + https://en.wikipedia.org/wiki/Parsing + THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-7.
 // Status: T-7 grammar data carriers; parser implementation remains in v4.compiler.parse.
 
 module v4.std.grammar
@@ -11,6 +10,69 @@ import v4.std.collection { List, Set }
 import v4.std.lexing { LexRules }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
+
+// "What is a terminal symbol?"
+// Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
+// A terminal is a symbol drawn from the terminal alphabet Σ. It cannot appear
+// as the left-hand side of any production rule; it represents an atomic
+// input token that terminates a derivation.
+type FormalTerminal {
+  identity: Symbol
+}
+
+
+// "What is a nonterminal symbol?"
+// A nonterminal is a symbol drawn from the nonterminal set N. It may appear
+// as the left-hand side of a production rule; it represents a syntactic
+// category subject to rewriting.
+type FormalNonterminal {
+  identity: Symbol
+}
+
+
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+// "What is an element of the grammar vocabulary (N ∪ Σ)?"
+// Ref: https://en.wikipedia.org/wiki/Formal_grammar#Formal_definition
+// A grammar symbol is either a terminal or a nonterminal. Sequences of
+// grammar symbols form the right-hand sides of production rules.
+type FormalGrammarSymbol
+  = FormalTerminalOccurrence { terminal: FormalTerminal }
+  | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
+
+
+// "What is a production rule?"
+// Ref: https://en.wikipedia.org/wiki/Production_(computer_science)
+// In a context-free grammar: A → α where A ∈ N and α ∈ (N ∪ Σ)*.
+// The left-hand side is a single nonterminal; the right-hand side is
+// a (possibly empty) sequence of grammar symbols.
+type FormalProduction {
+  lhs: FormalNonterminal
+  rhs: List<FormalGrammarSymbol>
+}
+
+
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
+// 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries four representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
+// "What is a formal grammar?"
+// Ref: https://en.wikipedia.org/wiki/Formal_grammar
+// G = (N, Σ, P, S) — the four-component definition of a formal language:
+//   N  (nonterminals): finite set of nonterminal symbols
+//   Σ  (terminals):    finite set of terminal symbols, disjoint from N
+//   P  (productions):  finite collection of production rules
+//   S  (start):        designated start symbol, S ∈ N
+type FormalGrammar {
+  nonterminals: Set<FormalNonterminal>
+  terminals: Set<FormalTerminal>
+  productions: List<FormalProduction>
+  start: FormalNonterminal
+}
+
+
+// 🟡 gated — feature:grammar-well-formed-witness — witness that a FormalGrammar value satisfies all four invariants: (1) start∈N, (2) each FormalProduction.lhs∈N, (3) each FormalProduction.rhs symbol∈N∪Σ, (4) N∩Σ=∅. Dissolve-on: validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
+type WellFormedFormalGrammar {
+  grammar: FormalGrammar
+}
+
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
@@ -45,15 +107,15 @@ type ValidatedGrammarRoot {
 }
 
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: Grammar converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
-type Grammar
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
+type ParseGrammar
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
 
 
 type GrammarSchema {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
 }
 
 
@@ -237,7 +299,7 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
 }
 
 
-fn grammar_to_node(grammar: Grammar) -> Node {
+fn grammar_to_node(grammar: ParseGrammar) -> Node {
   match grammar {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
@@ -279,76 +341,6 @@ fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
 }
 
 
-fn grammar_carries_symbol(grammar: Grammar, sym: Symbol) -> Bool {
+fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
   grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
-=======
-// Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar
-// Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar
-// Owns: Terminal, Nonterminal, GrammarSymbol, Production, Grammar, WellFormedGrammar
-// Consumes: v4.std.node, v4.std.collection
-// Status: substrate canonical declaration; v4.compiler.parse operational grammar types
-//         gate to converge here under feature:CP-1b-bidirectional-grammar-carrier (TASKS.md T-6/T-7).
-
-module v4.std.grammar
-
-import v4.std.node { Symbol }
-import v4.std.collection { List, Set }
-
-// "What is a terminal symbol?"
-// Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
-// A terminal is a symbol drawn from the terminal alphabet Σ. It cannot appear
-// as the left-hand side of any production rule; it represents an atomic
-// input token that terminates a derivation.
-type Terminal {
-  identity: Symbol
-}
-
-// "What is a nonterminal symbol?"
-// A nonterminal is a symbol drawn from the nonterminal set N. It may appear
-// as the left-hand side of a production rule; it represents a syntactic
-// category subject to rewriting.
-type Nonterminal {
-  identity: Symbol
-}
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// "What is an element of the grammar vocabulary (N ∪ Σ)?"
-// Ref: https://en.wikipedia.org/wiki/Formal_grammar#Formal_definition
-// A grammar symbol is either a terminal or a nonterminal. Sequences of
-// grammar symbols form the right-hand sides of production rules.
-type GrammarSymbol
-  = TerminalOccurrence { terminal: Terminal }
-  | NonterminalOccurrence { nonterminal: Nonterminal }
-
-// "What is a production rule?"
-// Ref: https://en.wikipedia.org/wiki/Production_(computer_science)
-// In a context-free grammar: A → α where A ∈ N and α ∈ (N ∪ Σ)*.
-// The left-hand side is a single nonterminal; the right-hand side is
-// a (possibly empty) sequence of grammar symbols.
-type Production {
-  lhs: Nonterminal
-  rhs: List<GrammarSymbol>
-}
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse grammar types (Grammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
-// 🟡 gated — feature:grammar-well-formed-witness — Grammar carries four representable invalid states: (1) start ∉ nonterminals, (2) Production.lhs not in N, (3) Production.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (Terminal and Nonterminal both carry identity: Symbol). Dissolve-on: consumers require WellFormedGrammar (below) not bare Grammar; bare Grammar becomes internal construction only.
-// "What is a formal grammar?"
-// Ref: https://en.wikipedia.org/wiki/Formal_grammar
-// G = (N, Σ, P, S) — the four-component definition of a formal language:
-//   N  (nonterminals): finite set of nonterminal symbols
-//   Σ  (terminals):    finite set of terminal symbols, disjoint from N
-//   P  (productions):  finite collection of production rules
-//   S  (start):        designated start symbol, S ∈ N
-type Grammar {
-  nonterminals: Set<Nonterminal>
-  terminals: Set<Terminal>
-  productions: List<Production>
-  start: Nonterminal
-}
-
-// 🟡 gated — feature:grammar-well-formed-witness — witness that a Grammar value satisfies all four invariants: (1) start∈N, (2) each Production.lhs∈N, (3) each Production.rhs symbol∈N∪Σ, (4) N∩Σ=∅. Dissolve-on: validate_grammar(g: Grammar) -> Witness<WellFormedGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
-type WellFormedGrammar {
-  grammar: Grammar
-}
->>>>>>> origin/main
