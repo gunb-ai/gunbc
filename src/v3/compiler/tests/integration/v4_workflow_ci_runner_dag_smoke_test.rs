@@ -379,3 +379,47 @@ fn v4_workflow_affected_set_ci_runner_claim_wiring() {
         "{CLAIM_PATH}: receipt predicates must exercise ci selection entrypoints"
     );
 }
+
+#[test]
+fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
+    let module = parse_module(CI_DAG, CI_DAG_PATH);
+    assert!(
+        CI_DAG.contains("| TestClaimCorpusEvalCommand"),
+        "{CI_DAG_PATH}: T-38 dissolution step must declare TestClaimCorpusEvalCommand arm in CiCommand"
+    );
+    assert!(
+        CI_DAG.contains("feature:t38-testclaim-corpus-eval"),
+        "{CI_DAG_PATH}: TestClaimCorpusEvalCommand must carry t38-testclaim-corpus-eval dissolution tag"
+    );
+    assert!(
+        CI_DAG.contains("ci_select_from_affected_set"),
+        "{CI_DAG_PATH}: T-38 dissolution step must reference ci_select_from_affected_set (IRT-1 wiring)"
+    );
+    assert!(
+        CI_DAG.contains("TestClaimCorpusEvalCommand => true"),
+        "{CI_DAG_PATH}: ci_command_authority_ok must accept TestClaimCorpusEvalCommand"
+    );
+    assert!(
+        CI_DAG.contains("testclaim_corpus_eval_execution"),
+        "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_execution job"
+    );
+    assert!(
+        CI_DAG.contains("testclaim_corpus_eval_signal"),
+        "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_signal gate"
+    );
+    assert!(
+        CI_DAG.contains("command: TestClaimCorpusEvalCommand"),
+        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must use TestClaimCorpusEvalCommand"
+    );
+    assert!(
+        CI_DAG.contains("ci_cache_cmd_testclaim_corpus_eval_tag"),
+        "{CI_DAG_PATH}: ci_command_cache_digest must cover TestClaimCorpusEvalCommand"
+    );
+    assert!(
+        module.items.iter().any(|item| matches!(
+            item,
+            SurfaceItem::TypeSum { name, .. } if name == "CiCommand"
+        )),
+        "{CI_DAG_PATH}: CiCommand sum type must exist"
+    );
+}
