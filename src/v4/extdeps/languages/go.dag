@@ -270,6 +270,11 @@ data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
 data go_token_kw_func: Symbol = go_token_kw_func
 data go_token_kw_return: Symbol = go_token_kw_return
 data go_token_ident: Symbol = go_token_ident
+// 🟡 gated — feature:go-predeclared-identifier-binding — Go predeclared
+// identifiers such as `int` are not reserved. Wave 2a treats the MVP `int`
+// type reference as a fixed type token and therefore rejects programs that
+// shadow/use `int` as an ordinary identifier; dissolve-on: T-11 binding facts
+// express predeclared type references over `go_token_ident` without this token.
 data go_token_ty_int: Symbol = go_token_ty_int
 data go_token_lparen: Symbol = go_token_lparen
 data go_token_rparen: Symbol = go_token_rparen
@@ -1481,6 +1486,8 @@ fn go_wave1_lex_rules() -> LexRuleSet {
       go_ident_lex_rule(),
       go_keyword_lex_rule(token_class: go_token_kw_func, text: "func"),
       go_lex_rule(token_class: go_token_lparen, text: "("),
+      // See feature:go-predeclared-identifier-binding above. This is a
+      // fail-closed MVP type-reference token, not a claim that `int` is reserved.
       go_lex_rule(token_class: go_token_ty_int, text: "int"),
       go_lex_rule(token_class: go_token_comma, text: ","),
       go_lex_rule(token_class: go_token_rparen, text: ")"),
