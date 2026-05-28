@@ -6,11 +6,13 @@ module v4.test.claim.manual.go_language_model_anchor
 
 import v4.extdeps.languages.go {
   GoLanguageModel,
+  go_formal_production_mvp1_fn_add,
   go_int_inhabitant_node,
   go_language_model_wave1,
   go_model_core_wave1,
   go_mvp1_target_model_node
 }
+import v4.std.grammar { FormalProduction }
 import v4.std.model_core { ModelCore }
 import v4.std.node { Node }
 
@@ -20,3 +22,4 @@ data go_anchor_wave1: go_anchor_language_model = go_language_model_wave1()
 data go_anchor_int: Node = go_int_inhabitant_node()
 data go_anchor_mvp1: Node = go_mvp1_target_model_node()
 data go_anchor_core: ModelCore = go_model_core_wave1()
+data go_anchor_formal_mvp1: FormalProduction = go_formal_production_mvp1_fn_add()
