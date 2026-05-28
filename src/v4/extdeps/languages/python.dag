@@ -898,20 +898,6 @@ fn python_wave1_formal_productions() -> List<FormalProduction> {
   [python_formal_production_mvp1_fn_add()]
 }
 
-fn python_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn python_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || python_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn python_grammar_production_mvp1_fn_add() -> FormalProduction {
   python_formal_production_mvp1_fn_add()
 }

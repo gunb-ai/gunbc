@@ -1231,20 +1231,6 @@ fn ts_wave2a_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn ts_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn ts_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || ts_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn ts_grammar_production_wave2a_type_number() -> GrammarProduction {
   GrammarProduction {
     name: ts_production_wave2a_type_number,

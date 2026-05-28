@@ -1367,20 +1367,6 @@ fn go_wave1_formal_productions() -> List<FormalProduction> {
   [go_formal_production_mvp1_fn_add()]
 }
 
-fn go_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn go_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || go_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 // 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: src/v4/TASKS.md §T-7.1 / T-4.17 grammar-as-data migration — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
 type GoGramBuild1State
   = GoGramBuild1StateInit

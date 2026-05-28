@@ -1687,20 +1687,6 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn dag_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn dag_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || dag_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }

@@ -2161,20 +2161,6 @@ fn kotlin_wave1_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn kotlin_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn kotlin_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || kotlin_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn kotlin_grammar_atom(id: Symbol) -> Node {
   kotlin_atom(id: id)
 }

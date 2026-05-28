@@ -1446,20 +1446,6 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn wasm_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn wasm_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || wasm_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn wasm_grammar_atom(id: Symbol) -> Node {
   wasm_inhabitant_atom(id: id)
 }

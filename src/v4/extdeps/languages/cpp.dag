@@ -1164,20 +1164,6 @@ fn cpp_wave1_formal_productions() -> List<FormalProduction> {
   [cpp_formal_production_mvp1_fn_add()]
 }
 
-fn cpp_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn cpp_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || cpp_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }

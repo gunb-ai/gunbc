@@ -1429,20 +1429,6 @@ fn swift_wave1_formal_productions() -> List<FormalProduction> {
   ]
 }
 
-fn swift_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
-  production.lhs.identity == lhs
-}
-
-fn swift_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
-  fold_list(
-    xs: productions,
-    empty: false,
-    cons: fn(found, production) {
-      found || swift_formal_production_matches_lhs(production: production, lhs: lhs)
-    }
-  )
-}
-
 fn swift_grammar_atom(id: Symbol) -> Node {
   swift_atom(id: id)
 }
