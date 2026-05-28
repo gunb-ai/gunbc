@@ -132,3 +132,4 @@ fn black_layer(base: BlackConfig, patch: BlackConfigPatch) -> BlackConfig {
     force_exclude: apply_field_patch(base: base.force_exclude, patch: patch.force_exclude),
   }
 }
+
