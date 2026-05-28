@@ -207,7 +207,7 @@ Interpreter + lens dimensions (each needs T-9):
   T-12  lens/complexity.dag + lens/cost.dag      [needs T-9]
   T-13  lens/{parallelism,effect,ownership,idempotency,structural_resolution}.dag   [needs T-9]
   T-17  lens/synthesis.dag + std/report.dag  (cross-algorithm complexity, C7;
-         XL scope, research-tier risk)              [needs T-12 for current-complexity input]
+         XL scope, research-tier risk)              [needs T-12 for current-complexity input] — DONE #3768
   T-18  lens/coverage.dag  (meta-lens: L6/L7/impossible-bug/testgen coverage
          discipline; STRUCTURAL not exhaustive-fixture per TESTING.md)
                                                     [needs T-3, T-4, T-12, T-13]
@@ -957,7 +957,7 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
-### T-17: lens/synthesis.dag + std/report.dag — cross-algorithm complexity (C7)
+### T-17: lens/synthesis.dag + std/report.dag — cross-algorithm complexity (C7)  [DONE #3768]
 
 **File**: 2 files (operator-ratified 2026-05-15 IN: cross-algorithm complexity synthesis lens)
 **Why bundled**: the synthesis lens is the consumer of the Report advisory carrier; both must land together for the lens to have anything to emit.
