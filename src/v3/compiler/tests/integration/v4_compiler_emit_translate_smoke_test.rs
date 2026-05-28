@@ -402,6 +402,18 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         surface_declares_fn(&module, "python_mvp1_target_model"),
         "{PYTHON_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
     );
+    assert!(
+        surface_declares_type(&module, "PythonLanguageModel"),
+        "{PYTHON_LANGUAGE_PATH}: must declare the LanguageModel carrier"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_language_model_wave1"),
+        "{PYTHON_LANGUAGE_PATH}: must expose wave-1 LanguageModel with lex/grammar data"
+    );
+    assert!(
+        surface_declares_fn(&module, "python_wave1_grammar"),
+        "{PYTHON_LANGUAGE_PATH}: must expose ModeledGrammar for bidirectional ingest"
+    );
 }
 
 #[test]
