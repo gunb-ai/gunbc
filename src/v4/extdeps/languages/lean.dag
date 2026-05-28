@@ -14,7 +14,8 @@ import v4.std.algebra {
   fold_list,
   list_append,
   list_snoc_item,
-  ordered_ring_node
+  ordered_ring_node,
+  semiring_node
 }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
@@ -359,6 +360,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
 
 
 data lean_witness_integer_ordered_ring: Symbol = lean_witness_integer_ordered_ring
+data lean_witness_integer_semiring: Symbol = lean_witness_integer_semiring
 data lean_witness_bool_boolean_algebra: Symbol = lean_witness_bool_boolean_algebra
 data lean_witness_field_representation: Symbol = lean_witness_field_representation
 data lean_witness_field_signedness: Symbol = lean_witness_field_signedness
@@ -550,12 +552,16 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
 
 
 fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind) -> Node {
+  let witness_tag = match kind {
+    Signed => lean_witness_integer_ordered_ring
+    Unsigned => lean_witness_integer_semiring
+  }
   Node {
     kind: TypeNode { connective: Conj },
     children: [
       lean_named_edge(
-        name: lean_witness_integer_ordered_ring,
-        target: lean_inhabitant_atom(id: lean_witness_integer_ordered_ring)
+        name: witness_tag,
+        target: lean_inhabitant_atom(id: witness_tag)
       ),
       lean_named_edge(
         name: lean_witness_field_representation,
@@ -585,10 +591,14 @@ fn lean_bool_algebra_witness_node() -> Node {
   }
 }
 
-fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> AlgebraInhabitanceDecl {
+fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind) -> AlgebraInhabitanceDecl {
   let inhabitant = lean_primitive_facts_node(facts: facts)
+  let algebra = match kind {
+    Signed => ordered_ring_node(inhabitant: inhabitant)
+    Unsigned => semiring_node(inhabitant: inhabitant)
+  }
   AlgebraInhabitanceDecl {
-    algebra: ordered_ring_node(inhabitant: inhabitant),
+    algebra: algebra,
     inhabitant: inhabitant,
     witness: lean_integer_algebra_witness_node(facts: facts, kind: kind)
   }
@@ -608,10 +618,10 @@ fn lean_integer_algebra_inhabitance_step(
   facts: LeanPrimitiveFacts
 ) -> List<AlgebraInhabitanceDecl> {
   match facts.scalar {
-    IntScalar { kind, width } =>
+    IntScalar { kind, width: _ } =>
       list_snoc_item(
         xs: acc,
-        item: lean_integer_algebra_inhabitance(facts: facts, kind: kind, width: width)
+        item: lean_integer_algebra_inhabitance(facts: facts, kind: kind)
       )
     BoolScalar => acc
   }
