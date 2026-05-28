@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_complexity/map_id.dag
 // Scope: T-12 worked claim — structural cardinality projects to linear complexity.
-// Owns: map_id_claim.
-// Consumes: lens cost, lens complexity, std diagnostic, std node.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_complexity.map_id

@@ -1,7 +1,5 @@
 // src/v4/extdeps/runtimes/v4_evaluator.dag
 // Scope: Concrete v4 evaluator runtime fact-bundle.
-// Owns: V4EvaluatorRuntime, v4_evaluator_runtime_id, v4_evaluator_runtime_wave1, v4_evaluator_*_wave1 slice accessors.
-// Consumes: v4.std.model_core, v4.std.runtime, v4.std.node.
 // Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; RuntimeTarget wiring staged.
 
 module v4.extdeps.runtimes.v4_evaluator
@@ -25,7 +23,7 @@ import v4.std.model_core {
   ModelCore,
   PrimitiveOperationRef,
   ResourceAccess,
-  wave1_void
+  wave1_model_core
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
 import v4.std.runtime {
@@ -239,7 +237,7 @@ fn v4_eval_wave1_resource_boundary() -> ResourceEffectBoundary {
 }
 
 fn v4_evaluator_model_core_wave1() -> ModelCore {
-  wave1_void()
+  wave1_model_core()
 }
 
 fn v4_evaluator_value_representation_wave1() -> ValueRepresentationModel {

@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/fail_closed_pending_escalation.dag
 // Scope: T-21 IRT-1 worked claim — pending accepted diagnostics escalate fold to FailClosed.
-// Owns: claim_fail_closed_pending_escalation.
-// Consumes: lens affected_set, lens affected_set_examples, std diagnostic, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.fail_closed_pending_escalation

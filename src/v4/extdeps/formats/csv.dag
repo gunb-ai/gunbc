@@ -1,12 +1,11 @@
 // src/v4/extdeps/formats/csv.dag
 // Scope: RFC 4180 CSV; Lane C format slice (TASKS.md T-4.6).
-// Owns: CsvDialect, CsvAxisProfile, CsvDocument, CsvRow, CsvNumericLexemeProfile, CsvUniqueNameProfile, CsvRecordShapeProfile, CsvRfc4180DelimiterProfile, CsvRfc4180QuoteProfile, CsvRfc4180LineTerminatorProfile, CsvRfc4180FieldTextProfile, CsvRfc4180CommaFieldSep, CsvRfc4180DoubleQuoteEnclosure, CsvRfc4180EscapeDoubledQuote, CsvRfc4180RecordLineBreak, CsvRfc4180LastRecordEndingLineBreakOptional, CsvRfc4180HeaderRowOptional, CsvRfc4180NewlineInsideQuotedFieldOnly, CsvRfc4180UnquotedFieldTextdataVsTab, CsvRfc4180EmptyFieldBetweenCommas, CsvRfc4180RegisteredTextCsvMime
-// Consumes: std/node.dag, std/diagnostic.dag, std/collection.dag { Optional }, std/text.dag
 // Status: T-4.6 scaffold — parse/emit, numeric lexeme, unique-name profile axes per TASKS.md T-4.6.
 // Anchor: https://datatracker.ietf.org/doc/html/rfc4180
 
 module v4.extdeps.formats.csv
 
+import v4.compiler.parse { GrammarSchema }
 import v4.std.collection { Optional }
 
 
@@ -139,6 +138,7 @@ type CsvHeaderNamesNotRequiredUniqueByRfc4180Witness {}
 type CsvDuplicateHeaderNamePolicyConsumerDefinedWitness {}
 
 type CsvDocument {
+  grammar_schema: GrammarSchema,
   dialect: CsvDialect,
   numeric_lexeme_profile: CsvNumericLexemeProfile,
   unique_name_profile: CsvUniqueNameProfile,

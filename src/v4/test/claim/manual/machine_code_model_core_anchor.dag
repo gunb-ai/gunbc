@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/machine_code_model_core_anchor.dag
 // Scope: T-4 compile anchor — machine_code.dag ModelCore wave-1 fact bundles.
-// Owns: mc_anchor_model_core, mc_anchor_int32_facts.
-// Consumes: extdeps/languages/machine_code.dag.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.machine_code_model_core_anchor

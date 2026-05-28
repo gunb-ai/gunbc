@@ -1,7 +1,10 @@
 // src/v4/extdeps/formatters/ktfmt.dag
 // Scope: ktfmt configuration model — option space grounded in ktfmt latest README/options and CLI help.
+<<<<<<< HEAD
 // Owns: KtfmtStyle, KtfmtTrailingCommaManagementStrategy, KtfmtPositiveInt, ktfmt_positive_int_validation, make_ktfmt_positive_int, KtfmtConfig, ktfmt_defaults, KtfmtConfigPatch, ktfmt_layer.
 // Consumes: Locus, Outcome, Symbol, Refined, Validation, FieldPatch, apply_field_patch.
+=======
+>>>>>>> origin/main
 // Status: T-4.16 scaffold — full documented ktfmt option surface.
 // Anchor: https://github.com/facebook/ktfmt#options
 

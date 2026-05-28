@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/excluded_propagation_proof.dag
 // Scope: T-21 worked claim — second mark_excluded on the same key appends to Excluded.rest.
-// Owns: claim_excluded_propagation_proof.
-// Consumes: lens affected_set, lens affected_set_examples, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.excluded_propagation_proof

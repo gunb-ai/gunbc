@@ -1,7 +1,10 @@
 // src/v4/extdeps/formatters/gofmt.dag
 // Scope: gofmt configuration carrier (no project config file; no configurable style options).
+<<<<<<< HEAD
 // Owns: GofmtConfig, gofmt_defaults, GofmtConfigPatch, gofmt_layer.
 // Consumes: none.
+=======
+>>>>>>> origin/main
 // Status: T-4.16 scaffold — gofmt doc.go (no style configuration surface).
 // Anchor: https://go.dev/src/cmd/gofmt/doc.go
 

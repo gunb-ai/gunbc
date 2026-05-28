@@ -1,7 +1,5 @@
 // src/v4/std/runtime.dag
 // Scope: Abstract runtime carriers for v4 evaluation.
-// Owns: RuntimeValue, EvaluationEnvironment, ValueRepresentationModel, InterpretationAlgebra, ExecutionSemantics, ResourceEffectBoundary.
-// Consumes: v4.std.collection, v4.std.diagnostic, v4.std.logic, v4.std.machine, v4.std.model_core, v4.std.node.
 // Status: Option-C abstract runtime substrate; concrete runtime bundles live under v4.extdeps.runtimes.*.
 
 module v4.std.runtime

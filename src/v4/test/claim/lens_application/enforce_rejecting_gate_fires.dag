@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_application/enforce_rejecting_gate_fires.dag
 // Scope: T-23 worked claim — Enforce apply_lens surfaces compile_lens_gate_rejected.
-// Owns: claim_enforce_rejecting_gate_fires.
-// Consumes: compiler compile, lens_common fixture, std verification.
 // Status: scaffold — compile-only until application.dag fills.
 
 module v4.test.claim.lens_application.enforce_rejecting_gate_fires

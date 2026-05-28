@@ -1,14 +1,6 @@
 // src/v4/compiler/01_tokenize.dag
 // Scope: generic tokenization over language lex rules.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Owns: LexCharClass, LexPattern, LexRule, LexRuleSet, LexRules, Token, TokenStream,
-//       tokenize_lex_e0_source_not_exhausted, tokenize_lex_e0_source_not_exhausted_diagnostic,
-//       tokenize_lex_e1_unrecognized_char, tokenize_lex_e1_unrecognized_char_diagnostic,
-//       char_in_class, LexMatchResult, LexRuleApply, RepeatState, LexWalkAcc,
-//       lex_match_prefix, lex_match_pattern,
-//       lex_rule_pattern, lex_try_rule, lex_try_rules, lex_walk,
-//       lex_rule_token_class_member, lex_rule_set_token_class_member, tokenize.
-// Consumes: std collection, std diagnostic, std node, std text, std nat, std algebra.
 // Status: T-6 lexer walk realized. Zero Annotation Mandate applied: fold-based lex_walk
 //         (LexWalkAcc over source chars), fold-based RepeatPattern/OneOrMorePattern arms in
 //         lex_match_pattern; lex_string_fuel and lex_repeat_pattern removed. T-22: 0 diagnostics.

@@ -15,9 +15,11 @@ the record body ⇒ 🟡). Coproduct rows already carry 🟢/🟡 dissolution st
 not get a second grounded line. Grounded lines are **not** preserved across strip —
 they are re-injected every run so spacing stays canonical.
 
-`// Owns:` is a **manifest of top-level module symbols** in **file order**: every
-`type`, `data`, and `fn` binding in the `.dag` body (deduped by name), not only headline
-carriers—so regenerated headers stay aligned with actual exports.
+For files in this script's `specs` allowlist, `// Owns:` is a generated manifest
+of top-level module symbols in file order: every `type`, `data`, and `fn`
+binding in the `.dag` body (deduped by name), not only headline carriers.
+Outside the `specs` allowlist, `// Owns:` and `// Consumes:` are ordinary
+parallel ledgers and Practice 9 removes them.
 
 `// Ledger:` lists **slug inventory for the live substrate**: one ledger ref per live sum
 coproduct (from the merge-base tag map) plus **EXTRA** non-coproduct scaffolds
@@ -52,11 +54,6 @@ DATA_RE = re.compile(r"^data\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 FN_RE = re.compile(r"^fn\s+([A-Za-z_][A-Za-z0-9_]*)\b")
 COPRODUCT_TAG_RE = re.compile(
     r"^\s*//\s*[🟢🟡🔴]\s+coproduct dissolution\b",
-)
-INTEGER_CONCRETE_BOUND_SIGN_ZERO_COMMENT = (
-    "// 🟡 needs-more-work — feature:integer-concrete-bound-sign-zero-coherence — "
-    "dissolve-on: IntegerConcreteZero coproduct variant separate from IntegerConcreteBound "
-    "when negative-zero must be structurally unreachable"
 )
 
 # Any `…lexeme`-shaped field typed `String` (partial lexical authority / D3200-style).
@@ -555,7 +552,6 @@ def strip_body_comments(after_module: str) -> str:
         if (
             sl.lstrip().startswith("//")
             and not COPRODUCT_TAG_RE.match(sl)
-            and sl.strip() != INTEGER_CONCRETE_BOUND_SIGN_ZERO_COMMENT
         ):
             continue
         out_lines.append(line)
@@ -623,6 +619,9 @@ def main() -> None:
 
     # Sixth field: operator RULING-1 slice groundedness (emoji-only; ratified in
     # `docs/modeling-discipline.md` Practice 9; ledger doc retired 2026-05-19).
+    # This `specs` allowlist is the only place where `// Owns:` and
+    # `// Consumes:` remain live: strict_deprose_dag regenerates them as part of
+    # its machine-checked header contract.
     # Extdeps language slices 🟡 (Shape A emit/L5/L6 still open per v4-close-interrogation §14); std 🟢.
     specs: list[tuple[str, str, str, str, str, str]] = [
         (

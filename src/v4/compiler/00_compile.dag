@@ -1,18 +1,6 @@
 // src/v4/compiler/00_compile.dag
 // Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
 //       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Owns: CoreNode, RuntimeTarget, CompileMode, CompileOutput, CompileLens, CompileLensMode,
-//       apply_compile_lens, LensGateWitness, Validated, compile_stage_locus_port, compile_pipeline_not_realized,
-//       compile_lens_gate_rejected, compile_eval_not_realized, compile_ingest_staging,
-//       compile_pipeline_not_realized_diagnostic, compile_lens_gate_rejected_diagnostic,
-//       compile_eval_not_realized_diagnostic, apply_compile_lens, run_required_lens_gates,
-//       run_required_lens_gates_on_subtree, compile_inferred, compile, validate_then_compile,
-//       fact_density_hollow_alias_compile_gate, fact_density_lens, always_required_lenses.
-// Consumes: compiler/01_tokenize.dag, compiler/02_parse.dag, compiler/03_normalize.dag,
-//           compiler/03_resolve.dag, compiler/04_infer.dag, compiler/05_emit.dag,
-//           compiler/07_target_carriers.dag, extdeps/languages/dag.dag,
-//           lens/fact_density.dag, std/algebra.dag, std/collection.dag, std/diagnostic.dag,
-//           std/node.dag, std/text.dag, std/witness.dag.
 // Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + Ratified Q11.
 
@@ -22,14 +10,20 @@ module v4.compiler.compile
 
 import v4.compiler.emit { emit }
 import v4.compiler.infer { infer, InferredTree }
+import v4.compiler.name_resolve {
+  Admission,
+  Import,
+  ResolutionSubject,
+  resolve_with_admission
+}
 import v4.compiler.normalize { normalize }
 import v4.compiler.parse { parse }
 import v4.compiler.resolve { resolve }
 import v4.compiler.tokenize { tokenize }
 import v4.compiler.target_carriers { TargetModel, TargetSource }
-import v4.extdeps.languages.dag { dag_language_model_wave1 }
+import v4.extdeps.languages.dag { dag_language_model_wave1, qualified_name_from_module_node }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.algebra { list_append }
+import v4.std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -44,11 +38,23 @@ import v4.std.diagnostic {
   bind_outcome,
   bind_outcome_accepted,
   diagnostics_singleton,
+  diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics
+  outcome_with_diagnostics,
+  rejected_with_pending
+}
+import v4.std.module_batch { ModuleBatch }
+import v4.std.catalog {
+  Entry,
+  catalog_entry_for_name,
+  catalog_from_entries
 }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
+import v4.std.qualified_name {
+  QualifiedName,
+  qualified_name_projection_gated
+}
 import v4.std.text { String }
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -194,7 +200,7 @@ fn append_lens_gate_witness(
     [LensGateWitness { witness: witness }],
     init: witnesses,
     f: fn(acc, item) {
-      list_push(acc, item)
+      list_snoc_item(xs: acc, item: item)
     }
   )
 }
@@ -358,6 +364,65 @@ fn validate_then_compile(
       )
     }
   )
+}
+
+
+fn module_batch_admit_entries(
+  nodes: FreeMonoid<Node>,
+  acc: Outcome<FreeMonoid<Entry>>
+) -> Outcome<FreeMonoid<Entry>> {
+  match nodes {
+    Empty => acc
+    Cons { head: node, tail: rest } =>
+      match acc {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: entries, diagnostics: ad } =>
+          match qualified_name_from_module_node(root: node) {
+            Rejected { diagnostics: r } =>
+              Rejected { diagnostics: rejected_with_pending(pending: ad, rejected: r) }
+            Accepted { value: name, diagnostics: nd } =>
+              module_batch_admit_entries(
+                nodes: rest,
+                acc: Accepted {
+                  value: Cons {
+                    head: Entry { name: name, root: node },
+                    tail: entries
+                  },
+                  diagnostics: diagnostics_merge(outer: ad, inner: nd)
+                }
+              )
+          }
+      }
+  }
+}
+
+
+fn module_batch_catalog_entries(
+  batch: ModuleBatch
+) -> Outcome<FreeMonoid<Entry>> {
+  module_batch_admit_entries(
+    nodes: batch.entries,
+    acc: outcome_accepted(value: Empty)
+  )
+}
+
+
+fn compile_with_batch_projection_gated_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: qualified_name_projection_gated,
+    at: port_locus(port: compile_stage_locus_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+
+fn compile_with_batch(
+  root: QualifiedName,
+  batch: ModuleBatch,
+  imports: FreeMonoid<Import>,
+  target: TargetModel
+) -> Outcome<Validated<CompileOutput>> {
+  outcome_rejected(compile_with_batch_projection_gated_diagnostic())
 }
 
 

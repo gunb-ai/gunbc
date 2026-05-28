@@ -1,14 +1,13 @@
 // src/v4/std/exact_structural_equality_zip_fold_predicate.dag
 // Scope: mechanical exact-structural-equality zip-fold preservation check (leaf — no find_witness import).
 // Anchor: design-v4-compiler-homomorphism.md coercion fold; grounding-worked-examples.md zip-fold.
-// Owns: exact_structural_equality_zip_fold, exact_structural_equality_zip_fold_preservation_holds.
-// Consumes: std node.
 // Status: T-25-tail predicate prover — catamorphic zip-fold over canonical Node shape; decidable, no search.
 
 
 module v4.std.exact_structural_equality_zip_fold_predicate
 
 
+import v4.std.algebra { list_snoc_item }
 import v4.std.node { Edge, Node, NodeFold, fold_node, well_formed }
 fn exact_structural_zip_fold_init(n: Node) -> Node {
   Node {
@@ -19,7 +18,7 @@ fn exact_structural_zip_fold_init(n: Node) -> Node {
 fn exact_structural_zip_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   Node {
     kind: acc.kind,
-    children: list_push(acc.children, Edge { label: edge.label, target: child })
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
   }
 }
 fn exact_structural_zip_fold_algebra() -> NodeFold<Node> {

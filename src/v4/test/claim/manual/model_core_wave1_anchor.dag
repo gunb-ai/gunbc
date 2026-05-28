@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/model_core_wave1_anchor.dag
 // Scope: T-33 wave-1 ModelCore payload contract — Bool primitive, BooleanAlgebra inhabitance, law obligations, and fail-closed unbound axes.
-// Owns: claim_model_core_wave1_payload_contract.
-// Consumes: std/model_core.dag, std/logic.dag, std/algebra.dag, std/verification.dag.
 // Status: manual T-33 acceptance receipt.
 
 module v4.test.claim.manual.model_core_wave1_anchor
@@ -109,6 +107,7 @@ fn wave1_model_core_payload_contract_holds() -> Bool {
   (length(xs: core.primitives) == 1) &&
   (length(xs: core.inhabitance) == 1) &&
   (length(xs: core.laws) == 4) &&
+  (length(xs: core.partiality.operations) == 0) &&
   wave1_model_core_primitives_contract() &&
   wave1_model_core_inhabitance_contract() &&
   wave1_model_core_laws_contract()

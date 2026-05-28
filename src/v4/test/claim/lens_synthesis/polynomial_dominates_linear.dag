@@ -1,8 +1,6 @@
 // src/v4/test/claim/lens_synthesis/polynomial_dominates_linear.dag
 // Scope: T-17 worked claim — quadratic symbolic cost dominates linear lower bound.
-// Owns: claim_polynomial_dominates_linear.
-// Consumes: lens cost, std node, std verification.
-// Status: scaffold — compile-only until T-17 synthesis lens lands.
+// Status: T-17 filled — cost-lattice prerequisite (symbolic_cost_dominates).
 
 module v4.test.claim.lens_synthesis.polynomial_dominates_linear
 

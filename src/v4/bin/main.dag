@@ -1,7 +1,5 @@
 // src/v4/bin/main.dag
 // Scope: v4 bin entry — T-15 authority for the 1-line main.rs include! trampoline (STRUCTURE closed-system inv.2, TASKS T-15, design-pure-bootstrap-zero:210) plus B1 digest operand placeholders.
-// Owns: main_rs_trampoline_authority stub_stage1_emitted_rust_digest_placeholder stub_stage2_emitted_rust_digest_placeholder
-// Consumes: v4.std.node
 // Status: scaffold — trampoline one-liner is authored here (single authority); 05_emit only materializes bytes; digest stubs only until B1 content_hash operands + Equals witness (no premature TestClaim).
 
 module v4.bin.main

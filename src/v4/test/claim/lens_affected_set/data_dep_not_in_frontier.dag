@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/data_dep_not_in_frontier.dag
 // Scope: T-21 negative claim — DataDependsOn is outside the lens frontier.
-// Owns: claim_data_dep_not_in_frontier.
-// Consumes: lens affected_set, std dependency, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.data_dep_not_in_frontier

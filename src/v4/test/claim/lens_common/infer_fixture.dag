@@ -5,8 +5,6 @@
 //   migrations to substrate (e.g. InferredFacts shape changes in
 //   04_infer.dag) need a single edit, not one per claim file
 //   (cost-of-change = 1).
-// Owns: claim_atom_node, claim_canonical_grounding, claim_inferred_facts_witness, claim_inferred_facts, claim_inferred_facts_map, claim_inferred_tree, claim_inferred_facts_for_tree.
-// Consumes: v4.compiler.infer, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.node, v4.std.witness.
 // Status: introduced as Phase-1 ratchet test-claim template (crisp-boar-896).
 
 

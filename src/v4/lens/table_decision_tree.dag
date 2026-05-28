@@ -7,13 +7,6 @@
 // Anchor: docs/design-dissolution-lens.md §5 L1.13.c (status "reserved-
 //         proposed" → promoted-to-substrate (this file) via
 //         node://adhoc-086ab97b-b41 substrate-evolution 5/5).
-// Owns: TableDecisionTreeFact, TableDecisionTreeVerdict.
-// Consumes: v4.std.node (Node, Symbol — actually imported).
-//           Conceptual consumers landing with `TableDissolves` wiring:
-//           v4.std.collection (FiniteSet, TotalMap, TotalPolicy carriers
-//           referenced by the clearing receipt — the lens's *output* names
-//           which substrate carrier should hold the dissolved table),
-//           v4.std.witness (Witness over decision_tree_shape facts).
 // Status: scaffold — carrier types + verdict shape only. Enforcement gated on
 //         (a) `v4.lens.decision_tree_shape` landing (the producer-stage record
 //         that exposes per-branch resolved identity + body-shape facts; same
@@ -33,17 +26,7 @@ module v4.lens.table_decision_tree
 import v4.std.node { Node, Symbol }
 
 
-// 🟢 verdict — fail-closed default; the lens NEVER fires until the producer-
-// stage dependency (decision_tree_shape) lands. The `TableDissolves` variant
-// carries the migration target by typed reference: `key_vocabulary` names
-// the closed coproduct K, and Pattern A (`TotalMap<K, V>`) vs Pattern B
-// (`TotalPolicy<K, Context, RowTemplate>`) is DERIVED at consumption from
-// K's `KeyVocabulary` payload-bearing-ness (docs/design-dissolution-lens.md
-// §5 L1.13.c "Fix-confidence"). Pattern is intentionally NOT stored on the
-// verdict — that would create a parallel authority for a fact already
-// derivable from `key_vocabulary` and admit an inconsistent-state surface
-// (Practice 11 / `feedback_parallel_payload_vs_typed_reference_recurring`:
-// reference + derive at consumption, never copy projected fields).
+// 🟢 verdict — fail-closed until decision_tree_shape lands; TableDissolves carries typed references and derives table pattern at consumption.
 type TableDecisionTreeVerdict
   = Unrealized                    // producer-stage `decision_tree_shape` not available for this locus.
   | NotATable                     // decision-tree present but escape clause fires (structural divergence / partial table / open vocabulary / non-table dispatch).
@@ -62,19 +45,7 @@ type TableDecisionTreeFact {
 }
 
 
-// 🟡 producer-stage projection gated — feature:lens-decision-tree-shape;
-// bind: node://adhoc-086ab97b-b41 (this PR's substrate-evolution 5/5
-// work-item; this scaffold lands the L1.13.c carrier so downstream
-// `decision_tree_shape` work has a typed consumer to bind into).
-// → dissolution successor: substrate-extension follow-up landing
-// `v4.lens.decision_tree_shape` (the per-branch resolved-identity +
-// body-shape record consumed by L1.13.b / L1.13.c / L1.10.c — Facts
-// Flow Forward / P2: one decision-tree-shape index, multiple
-// downstream lens projections). Flips 🟢 when that producer-stage
-// module lands and `table_decision_tree_fact_for_fn` body switches
-// from the `Unrealized` constant to a real `decision_tree_shape`
-// projection. Until then this returns Unrealized for every input —
-// scaffold proves the carrier shape without fabricating a verdict.
+// 🟡 gated — feature:lens-decision-tree-shape — bind node://adhoc-086ab97b-b41 — dissolves when table_decision_tree_fact_for_fn consumes v4.lens.decision_tree_shape instead of Unrealized.
 fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
   TableDecisionTreeFact {
     fn_locus: fn_node,

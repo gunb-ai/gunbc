@@ -1,7 +1,5 @@
 // src/v4/std/catalog.dag
 // Scope: Module catalog carrier for cross-file binding (T-28).
-// Owns: Catalog, Entry; entry lookup; validated catalog constructor.
-// Consumes: std/algebra.dag, std/diagnostic.dag, std/node.dag, std/qualified_name.dag, std/witness.dag.
 // Status: T-28 (bundled into T-8) modeled; primary consumer: compiler/03_name_resolve.dag.
 // Anchor: https://en.wikipedia.org/wiki/Module_(programming)
 
@@ -74,7 +72,7 @@ fn entry_find_state_to_witness(state: EntryFindState) -> Witness<Entry> {
 }
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-entry — bind TODO — v2 compiler cannot infer T=Entry from FreeMonoid<Entry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<Entry> until that limitation is lifted.
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-entry — bind feature:free-monoid-entry-generic-inference — v2 compiler cannot infer T=Entry from FreeMonoid<Entry> for fold_list/zip_eq generic call dispatch; hand-rolls Empty/Cons accumulation; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T; forbidden: fold_list laundering over FreeMonoid<Entry> until that limitation is lifted.
 fn catalog_entry_for_name_fold(
   entries: FreeMonoid<Entry>,
   name: QualifiedName,
@@ -120,7 +118,7 @@ type CatalogBuildState
   | BuildDuplicate
 
 
-// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-entry — bind TODO — same v2 bootstrap limitation as catalog_entry_for_name_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<Entry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
+// 🟡 gated — fold_list bootstrap-limitation interim — feature: fold-list-generic-entry — bind feature:free-monoid-entry-generic-inference — same v2 bootstrap limitation as catalog_entry_for_name_fold; hand-rolls Empty/Cons accumulation over FreeMonoid<Entry>; dissolve-on-arrival: v2 bootstrap fixes FreeMonoid<T> generic type inference for user-defined T.
 fn catalog_build_fold(
   entries: FreeMonoid<Entry>,
   acc: CatalogBuildState

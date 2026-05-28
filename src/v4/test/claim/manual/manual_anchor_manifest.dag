@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/manual_anchor_manifest.dag
 // Scope: Seventeen-row membership over `std/verification.dag` `ManualAnchorKey` (connective_anchors ∪ nat_law_anchors).
-// Owns: seventeen `ManualAnchorKey` data rows (no parallel string table)
-// Consumes: v4.std.verification
 // Status: P2 join — each row's value equals `TestClaim.anchor` on the paired claim (structural discriminant equality).
 
 module v4.test.claim.manual.manual_anchor_manifest

@@ -1,7 +1,10 @@
 // src/v4/extdeps/formatters/google_java_format.dag
 // Scope: google-java-format style selection model — no user-configurable algorithm options.
+<<<<<<< HEAD
 // Owns: GoogleJavaFormatStyle, GoogleJavaFormatConfig, google_java_format_defaults, GoogleJavaFormatConfigPatch, google_java_format_layer.
 // Consumes: v4.std.patch { FieldPatch, apply_field_patch }.
+=======
+>>>>>>> origin/main
 // Status: T-4.16 scaffold — style toggle grounded in google-java-format README.
 // Anchor: https://github.com/google/google-java-format
 

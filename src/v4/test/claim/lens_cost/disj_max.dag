@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_cost/disj_max.dag
 // Scope: T-12 worked claim — disjunctive composition takes the dominant branch cost.
-// Owns: claim_disj_max.
-// Consumes: lens cost, std node, std verification.
 // Status: scaffold — compile-only until T-19/T-22 generated claim execution.
 
 module v4.test.claim.lens_cost.disj_max

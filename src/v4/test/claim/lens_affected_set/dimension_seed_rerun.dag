@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/dimension_seed_rerun.dag
 // Scope: T-21 worked claim — changed dimension seeds a Rerun decision at the replacement node.
-// Owns: claim_dimension_seed_rerun.
-// Consumes: lens affected_set, lens affected_set_examples, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.dimension_seed_rerun

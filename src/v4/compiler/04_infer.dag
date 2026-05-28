@@ -1,7 +1,5 @@
 // src/v4/compiler/04_infer.dag
 // Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Owns: AlgebraRef, InferredFacts, InferredTree, infer, canonical_grounding_for_node, algebra_ref_is_grounded, infer_algebra_ref_ungrounded, infer_algebra_ref_ungrounded_diagnostic.
-// Consumes: v4.compiler.resolve, v4.std.cardinality, v4.std.collection, v4.std.constraints, v4.std.diagnostic, v4.std.node, v4.std.witness.
 // Status: T-9 modeled — coercion substrate in std/coercion.dag. Option B: canonical_grounding_from_inferred_facts fails-closed on bare-Atom algebra references (bridge-symbol guard).
 // Anchor: https://en.wikipedia.org/wiki/Type_inference
 
@@ -9,6 +7,7 @@
 module v4.compiler.infer
 
 
+import v4.std.algebra { list_snoc_item }
 import v4.compiler.resolve { ResolvedTree }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { List, Map }
@@ -104,14 +103,7 @@ type InferredFactsEntry {
 data infer_descent_not_derived: Symbol = infer_descent_not_derived
 data infer_facts_lookup_miss: Symbol = infer_facts_lookup_miss
 data infer_canonical_grounding_incoherent: Symbol = infer_canonical_grounding_incoherent
-// 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26). Guard remains active — fires on bare Atom; zero src/v4 nodes trigger it.
-// Fired when InferredFacts.inhabits.algebra (AlgebraRef.algebra) is a bare Atom.
-// In the current identity-MVP solver, AlgebraRef.algebra = the node itself; for Atom leaf
-// nodes this means the guard fires, making canonical_grounding_for_node unusable for Atom
-// leaves until the solver is upgraded (T-4 Wave 2b / T-2 Node constructors).
-// dissolve-on: constraint solver reads ModelCore.inhabitance (T-4 Wave 2b) and populates
-// AlgebraRef.algebra from grounded algebra Node constructors (T-2); at that point bare-Atom
-// algebra evidence means an unharvested bridge symbol, not a scaffolded identity return.
+// 🟢 SM5-satisfied: v2 bootstrap on src/v4 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
 data infer_algebra_ref_ungrounded: Symbol = infer_algebra_ref_ungrounded
 
 
@@ -140,14 +132,7 @@ fn infer_algebra_ref_ungrounded_diagnostic(node: Node) -> Diagnostic {
 }
 
 
-// 🟡 gated — predicate-dissolution interim (docs/modeling-discipline.md Practice 10)
-// feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded
-// dissolve-on-arrival: std/node.dag or std/model_core.dag exports a canonical structural
-// query for "algebra Node is grounded" (non-bare-Atom TypeNode); until then, this is the
-// only guard site in canonical_grounding_from_inferred_facts.
-// Returns true only when `algebra` is a TypeNode with a non-Atom connective.
-// ComputationNode algebra evidence fails-closed — computation nodes are never valid
-// algebra types; only TypeNode shapes are (Conj, Arrow, Instantiation, etc.).
+// 🟡 gated — feature:infer-algebra-ref-grounding-fold — bind v4.compiler.infer://algebra-ref-grounded — dissolve-on-arrival: std/node.dag or std/model_core.dag exports the canonical grounded-algebra query.
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
     TypeNode { connective: c } =>
@@ -239,7 +224,7 @@ fn concat_inferred_facts_entries(
   b: List<InferredFactsEntry>,
 ) -> List<InferredFactsEntry> {
   fold(b, init: a, f: fn(acc, entry) {
-    list_push(acc, entry)
+    list_snoc_item(xs: acc, item: entry)
   })
 }
 
@@ -304,7 +289,7 @@ fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
         if entry.node == entry.facts.grounding.node {
-          Accepted { value: list_push(ok_entries, entry), diagnostics: d }
+          Accepted { value: list_snoc_item(xs: ok_entries, item: entry), diagnostics: d }
         } else {
           Rejected {
             diagnostics: diagnostics_singleton(

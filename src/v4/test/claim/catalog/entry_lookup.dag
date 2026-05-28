@@ -1,7 +1,5 @@
 // src/v4/test/claim/catalog/entry_lookup.dag
 // Scope: TestClaim corpus for catalog_entry_for_name lookup semantics.
-// Owns: claim rows for unique-entry success, missing-path rejection, duplicate-path rejection.
-// Consumes: v4.std.catalog v4.std.algebra v4.std.node v4.std.qualified_name v4.std.witness v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 
@@ -16,7 +14,7 @@ import v4.std.catalog {
   catalog_entry_for_name
 }
 import v4.std.node { Atom, Node, Symbol, TypeNode }
-import v4.std.qualified_name { QualifiedName }
+import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v4.std.witness { Holds, Violates, Witness }
 import v4.std.verification {
   CompilesClaim,
@@ -51,10 +49,10 @@ fn entry_claim_input(ok: Bool) -> Node {
 
 
 fn name_x() -> QualifiedName {
-  Cons { head: entry_seg_x, tail: Empty }
+  QnCons { head: entry_seg_x, tail: QnEmpty }
 }
 fn name_y() -> QualifiedName {
-  Cons { head: entry_seg_y, tail: Empty }
+  QnCons { head: entry_seg_y, tail: QnEmpty }
 }
 fn entry_x() -> Entry { Entry { name: name_x(), root: entry_root_node() } }
 

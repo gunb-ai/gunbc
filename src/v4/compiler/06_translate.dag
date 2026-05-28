@@ -1,18 +1,10 @@
 // src/v4/compiler/06_translate.dag
 // Scope: Stage 5a — T-10 translate: fold_node + coercion_fold over infer-authored canonical grounding.
-// Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
-//       target_model_edge_declared_inhabitants, target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
-//       target_selection_priority_from_model, coercion_candidates_from_target_model,
-//       target_serialize_source_from_model, grammar_relation_row_for_emitted, token_sequence_to_source,
-//       token_spelling_from_model, lex_rules_literal_for_class, lex_rule_literal_step, node_atom_identity,
-//       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
-//       translate_fold_step, translate_node, translate.
-// Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
-//           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
-//           std/target_model.dag.
 // Status: W-T-11 — Rust MVP-1 grammar-inverse lex walk is exercised by compile-inferred
 // TestClaim; live translate_node/coerce_grounded_node + child reattachment zip-fold;
 // authority_source_text retained on TargetModel as self-host anchor only.
+//         grammar-inverse serialize uses translate_serialize_measure (node_subtree_count +
+//         translation_rules subtree) — no fixed fuel constant.
 // 🟡 gated — feature:T-11-grammar-inverse-serializer-remaining-targets — bind TASKS.md T-11 — dissolve-on: grammar-inverse compile TestClaims for the remaining Shape-A targets and ingest-backed compile once T-7/T-10 source ingest is live; Rust MVP-1 slice is covered by test/claim/manual/mvp1_rust_add_translate.dag. TargetModel.authority_source_text remains self-host anchor only, not emit authority; forbidden: treating host/literal anchor as complete inverse emit.
 // Anchor: docs/design-v4-compiler-homomorphism.md Stage 5a; Ratified Q14.
 
@@ -85,7 +77,7 @@ import v4.std.target_model {
   target_model_edge_translation_rules
 }
 import v4.std.collection { List, Map, empty_map }
-import v4.std.algebra { Empty, fold_list, list_append, list_snoc_item, zip_eq }
+import v4.std.algebra { Empty, fold_list, length, list_append, list_snoc_item, zip_eq }
 import v4.std.logic { Bool }
 import v4.std.text { String }
 type TargetNodeTree = Node
@@ -106,7 +98,67 @@ data translate_binding_spelling_not_found: Symbol = translate_binding_spelling_n
 data translate_concrete_token_class_missing: Symbol = translate_concrete_token_class_missing
 data translate_concrete_token_kind_invalid: Symbol = translate_concrete_token_kind_invalid
 data translate_serialize_recursion_limit_exhausted: Symbol = translate_serialize_recursion_limit_exhausted
-data translate_default_serialize_fuel: Int = 64
+// node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
+fn node_subtree_count(n: Node) -> Int {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(_) { 1 },
+      step: fn(acc, _edge, child_count) { acc + child_count }
+    }
+  )
+}
+fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_bundle_child(target: target, edge_name: target_model_edge_translation_rules),
+    f: fn(rules) {
+      Accepted {
+        value: node_subtree_count(n: rules),
+        diagnostics: None
+      }
+    }
+  )
+}
+fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: node_subtree_count(n: emitted) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
+}
+fn token_item_serialize_measure(item: Node, target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: node_subtree_count(n: item) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
+}
+fn token_list_node_budget(tokens: List<Node>) -> Int {
+  fold_list(
+    xs: tokens,
+    empty: 0,
+    cons: fn(acc, item) { acc + node_subtree_count(n: item) }
+  )
+}
+fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> Outcome<Int> {
+  bind_outcome(
+    o: target_translation_rules_budget(target: target),
+    f: fn(rules_budget) {
+      Accepted {
+        value: length(xs: tokens) + token_list_node_budget(tokens: tokens) + rules_budget + 1,
+        diagnostics: None
+      }
+    }
+  )
+}
 // 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind TASKS.md T-11 —
 // dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
 // concrete tokens from emitted nonterminal nodes before serialization; forbidden:
@@ -470,7 +522,7 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                if zip_eq(a: source_targets, b: row_targets, eq: fn(a, b) { a == b }) {
+                if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(
@@ -719,10 +771,7 @@ fn token_spelling_from_model(target: TargetModel, token: Node) -> Outcome<String
                               bind_outcome(
                                 o: node_atom_identity(node: binding_node),
                                 f: fn(binding) {
-                                  // Bootstrap affordance: v2 bootstrap types Map.lookup as Option<V> (Some/None).
-                                  // Substrate spec: Witness<V> (Holds/Violates) per v4.std.collection.
-                                  // Replace with binding_spellings.lookup(binding) / Holds / Violates when
-                                  // the bootstrap compiler handles Witness<V> generic dispatch (B-LOOKUP-1).
+                                  // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v4.std.collection:27); site: binding_spellings
                                   match map_get(target.binding_spellings, binding) {
                                     Some { value: spelling } =>
                                       Accepted { value: spelling, diagnostics: None }
@@ -777,7 +826,12 @@ fn token_item_to_source_bounded(
   )
 }
 fn token_item_to_source(item: Node, target: TargetModel) -> Outcome<TargetSource> {
-  token_item_to_source_bounded(translate_default_serialize_fuel, item, target)
+  bind_outcome(
+    o: token_item_serialize_measure(item: item, target: target),
+    f: fn(measure) {
+      token_item_to_source_bounded(measure, item, target)
+    }
+  )
 }
 fn token_sequence_to_source_bounded(
   remaining: Int,
@@ -807,7 +861,12 @@ fn token_sequence_to_source_bounded(
   )
 }
 fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<TargetSource> {
-  token_sequence_to_source_bounded(translate_default_serialize_fuel, tokens, target)
+  bind_outcome(
+    o: token_sequence_serialize_measure(tokens: tokens, target: target),
+    f: fn(measure) {
+      token_sequence_to_source_bounded(measure, tokens, target)
+    }
+  )
 }
 // Rust MVP-1 is live through grammar-inverse token_sequence_to_source; remaining targets stay gated by feature:T-11-grammar-inverse-serializer-remaining-targets above. TargetModel.authority_source_text must not substitute for validated emitted Node serialization.
 fn target_serialize_source_from_model_bounded(
@@ -832,7 +891,12 @@ fn target_serialize_source_from_model(
   target: TargetModel,
   emitted: Node
 ) -> Outcome<TargetSource> {
-  target_serialize_source_from_model_bounded(translate_default_serialize_fuel, target, emitted)
+  bind_outcome(
+    o: translate_serialize_measure(target: target, emitted: emitted),
+    f: fn(measure) {
+      target_serialize_source_from_model_bounded(measure, target, emitted)
+    }
+  )
 }
 fn target_bundle_child(target: TargetModel, edge_name: Symbol) -> Outcome<Node> {
   match target.bundle.kind {
@@ -947,10 +1011,7 @@ fn translate_fold_step(
           Accepted {
             value: Node {
               kind: parent.kind,
-              children: list_push(
-                parent.children,
-                Edge { label: edge.label, target: translated_child }
-              )
+              children: list_snoc_item(xs: parent.children, item: Edge { label: edge.label, target: translated_child })
             },
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
           }

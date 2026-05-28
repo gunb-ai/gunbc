@@ -1,7 +1,5 @@
 // src/v4/test/claim/self_host/claim_runner_compiles.dag
 // Scope: scaffold claim — runner shape is parse/compile visible.
-// Owns: claim_runner_compiles.
-// Consumes: v4.compiler.self_host, v4.std.verification, v4.std.diagnostic, v4.std.node.
 // Status: scaffold-against-contract; execution deferred to future substrate.
 
 module v4.test.claim.self_host.claim_runner_compiles

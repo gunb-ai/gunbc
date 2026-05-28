@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/coproduct_exhaustiveness.dag
 // Scope: T-19 DiagnosticExhaustiveness — coproduct-exhaustiveness TestClaim emitted from testgen.
-// Owns: generated_coproduct_exhaustiveness_claim, scheduling witness.
-// Consumes: v4.lens.testgen, v4.std.verification.
 // Status: generated corpus scaffold — dissolves when T-19 codegen emits this module from `testgen_scheduled_coproduct_exhaustiveness_generators()` and the generated-output receipt replaces this checked-in witness file. The generated form must replace all hand-rolled variant-discriminant predicates below with canonical coproduct reflection (not regenerate the same hand-matched patterns); this is the dissolve-on-arrival commitment for all 🟡 predicate-dissolution marks in this file.
 
 module v4.test.claim.generated.coproduct_exhaustiveness

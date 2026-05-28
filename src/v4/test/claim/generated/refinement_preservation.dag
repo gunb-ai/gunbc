@@ -1,7 +1,5 @@
 // src/v4/test/claim/generated/refinement_preservation.dag
 // Scope: T-19 RefinementPreservation — testgen-emitted claim plus concrete refine/refined_base witness.
-// Owns: refinement_preservation_generated_nonempty_list_claim, witness_refinement_preserves_nonempty_list_base.
-// Consumes: v4.lens.testgen, v4.std.refinement, v4.std.verification, v4.test.claim.manual.connective_anchors.
 // Status: generated corpus — claim is testgen_emit output (not a parallel literal); true codegen dissolves this module.
 
 module v4.test.claim.generated.refinement_preservation
