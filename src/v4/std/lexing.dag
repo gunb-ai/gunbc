@@ -1,6 +1,6 @@
 // src/v4/std/lexing.dag
 // Scope: canonical lexical model shared by compiler stages and target-language specs.
-// Anchor: THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-6.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-6.
 // Status: T-6 lexical data carriers; lexer implementation remains in v4.compiler.tokenize.
 
 module v4.std.lexing
@@ -11,7 +11,7 @@ import v4.std.logic { Bool }
 import v4.std.node { Symbol }
 import v4.std.text { Char, String }
 
-// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
+// 🟡 coproduct dissolution — feature:t6-lex-char-class-morphism — consumer:v4.compiler.tokenize.char_in_class — bind TASKS.md T-6 — dissolve-on-arrival: substrate-derived LexCharClass membership morphism replaces per-arm character-range predicates; forbidden: adding LexCharClass arms without the morphism consumer.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -23,7 +23,7 @@ type LexCharClass
   | BlockCommentTextChar
 
 
-// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
+// 🟡 coproduct dissolution — feature:CP-1b-bidirectional-grammar-carrier — consumer:v4.compiler.tokenize.lex_match_pattern/v4.compiler.translate.lex_rules_literal_for_class — bind TASKS.md T-6/T-7/T-10 — dissolve-on-arrival: LexPattern converges with GrammarExpr on one declarative bidirectional concrete-syntax model; forbidden: parallel lexical and grammar production algebras without explicit structural justification.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -38,7 +38,7 @@ type LexPattern
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
+// 🟡 coproduct dissolution — feature:t6-lex-rule-morphism — consumer:v4.compiler.tokenize.lex_try_rule/std.lexing.lex_rule_token_class_member — bind TASKS.md T-6 — dissolve-on-arrival: substrate-derived LexRule fold/projection covers token/trivia rule consumers; forbidden: duplicating LexRule arm matches outside this std query and tokenizer walk.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
@@ -51,7 +51,7 @@ type LexRuleSet {
 }
 
 
-// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk realized.
+// 🟡 coproduct dissolution — feature:t6-lex-rules-language-projection — consumer:v4.compiler.tokenize.tokenize/v4.compiler.target_carriers.TargetModel.lex — bind TASKS.md T-6/T-11 — dissolve-on-arrival: LanguageModel lexical projection carries explicit non-empty rule-set or void-language evidence, replacing VoidLexRules staging; forbidden: treating VoidLexRules as an unbounded default.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }

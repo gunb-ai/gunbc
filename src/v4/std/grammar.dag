@@ -1,6 +1,6 @@
 // src/v4/std/grammar.dag
 // Scope: canonical grammar model shared by compiler stages and target-language specs.
-// Anchor: THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-7.
+// Anchor: https://en.wikipedia.org/wiki/Formal_grammar + https://en.wikipedia.org/wiki/Parsing + THESIS.md "Compiler-std consolidation" + src/v4/TASKS.md T-7.
 // Status: T-7 grammar data carriers; parser implementation remains in v4.compiler.parse.
 
 module v4.std.grammar
