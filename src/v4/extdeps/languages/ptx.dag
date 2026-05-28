@@ -11,7 +11,7 @@ module v4.extdeps.languages.ptx
 
 
 
-import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -274,10 +274,13 @@ fn ptx_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
-fn ptx_ingest_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: ".entry k() {}",
-    production: ptx_entry_kernel_formal_production(),
-    expected_parse_surface: grammar_atom(identity: ptx_surface_entry_kernel)
+fn ptx_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: ptx_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: ".entry k() {}",
+      production: ptx_entry_kernel_formal_production(),
+      expected_parse_surface: grammar_atom(identity: ptx_surface_entry_kernel)
+    }
   }
 }

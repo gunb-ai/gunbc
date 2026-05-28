@@ -18,6 +18,7 @@ import v4.std.grammar {
   GrammarRoot,
   GrammarSchema,
   GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
   ModeledGrammar,
   grammar_atom,
   grammar_empty_sync_tokens,
@@ -997,10 +998,13 @@ fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
-fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: "define void @f() { ret void }",
-    production: llvm_void_function_formal_production(),
-    expected_parse_surface: grammar_atom(identity: llvm_surface_void_function)
+fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: llvm_ir_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "define void @f() { ret void }",
+      production: llvm_void_function_formal_production(),
+      expected_parse_surface: grammar_atom(identity: llvm_surface_void_function)
+    }
   }
 }

@@ -30,7 +30,7 @@ module v4.extdeps.formats.spice
 
 
 import v4.std.diagnostic { Outcome }
-import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.lexing {
   CharClassPattern,
   DigitChar,
@@ -334,10 +334,13 @@ fn spice_format_grammar_schema() -> GrammarSchema {
 }
 
 
-fn spice_format_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: "R1 n1 n2 1",
-    production: spice_resistor_statement_formal_production(),
-    expected_parse_surface: grammar_atom(identity: spice_surface_resistor_statement)
+fn spice_format_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: spice_format_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "R1 n1 n2 1",
+      production: spice_resistor_statement_formal_production(),
+      expected_parse_surface: grammar_atom(identity: spice_surface_resistor_statement)
+    }
   }
 }

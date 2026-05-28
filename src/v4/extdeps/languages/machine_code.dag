@@ -5,7 +5,7 @@
 module v4.extdeps.languages.machine_code
 
 
-import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.lexing {
   CharClassPattern,
   LexPattern,
@@ -621,14 +621,17 @@ fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
-fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: "nop",
-    production: machine_code_wave1_formal_production(
-      production_name: machine_code_production_x86_64_nop,
-      token_class: machine_code_token_x86_64_nop
-    ),
-    expected_parse_surface: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
+fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: machine_code_x86_64_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "nop",
+      production: machine_code_wave1_formal_production(
+        production_name: machine_code_production_x86_64_nop,
+        token_class: machine_code_token_x86_64_nop
+      ),
+      expected_parse_surface: grammar_atom(identity: machine_code_surface_x86_64_nop_instruction)
+    }
   }
 }
 
@@ -655,14 +658,17 @@ fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
-fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: "nop",
-    production: machine_code_wave1_formal_production(
-      production_name: machine_code_production_aarch64_nop,
-      token_class: machine_code_token_aarch64_nop
-    ),
-    expected_parse_surface: grammar_atom(identity: machine_code_surface_aarch64_nop_instruction)
+fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: machine_code_aarch64_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "nop",
+      production: machine_code_wave1_formal_production(
+        production_name: machine_code_production_aarch64_nop,
+        token_class: machine_code_token_aarch64_nop
+      ),
+      expected_parse_surface: grammar_atom(identity: machine_code_surface_aarch64_nop_instruction)
+    }
   }
 }
 
@@ -689,13 +695,16 @@ fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
-fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: "nop",
-    production: machine_code_wave1_formal_production(
-      production_name: machine_code_production_riscv64_nop,
-      token_class: machine_code_token_riscv64_nop
-    ),
-    expected_parse_surface: grammar_atom(identity: machine_code_surface_riscv64_nop_instruction)
+fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: machine_code_riscv64_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "nop",
+      production: machine_code_wave1_formal_production(
+        production_name: machine_code_production_riscv64_nop,
+        token_class: machine_code_token_riscv64_nop
+      ),
+      expected_parse_surface: grammar_atom(identity: machine_code_surface_riscv64_nop_instruction)
+    }
   }
 }

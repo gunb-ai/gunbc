@@ -11,7 +11,7 @@ module v4.extdeps.languages.verilog
 
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, GrammarSchemaProbeBinding, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -892,10 +892,13 @@ fn verilog_ingest_grammar_schema() -> GrammarSchema {
 }
 
 
-fn verilog_ingest_grammar_probe() -> GrammarSchemaProbe {
-  GrammarSchemaProbe {
-    fixture: "module m; endmodule",
-    production: verilog_source_text_module_formal_production(),
-    expected_parse_surface: grammar_atom(identity: verilog_surface_module_decl)
+fn verilog_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: verilog_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "module m; endmodule",
+      production: verilog_source_text_module_formal_production(),
+      expected_parse_surface: grammar_atom(identity: verilog_surface_module_decl)
+    }
   }
 }
