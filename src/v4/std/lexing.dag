@@ -1,0 +1,61 @@
+// src/v4/std/lexing.dag
+// Scope: canonical lexing types — Token, Lexeme, LexCharClass, LexPattern, LexRule, LexRuleSet.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
+// Status: structural LexPattern coproduct and LexCharClass declared here as the v4.std substrate
+//         home; v4.compiler.tokenize carries identical incumbent forms pending consumer migration.
+//         🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when v4.compiler.tokenize
+//         imports from v4.std.lexing and retires its local LexCharClass, LexPattern, LexRule,
+//         and LexRuleSet declarations.
+
+
+module v4.std.lexing
+
+
+import v4.std.collection { List }
+import v4.std.node { Symbol }
+import v4.std.text { Char, String }
+
+
+type Lexeme = String
+
+// 🟡 coproduct dissolution — feature:std-lexing-migrate-t6-incumbent; per-arm lexer morphism witness remains gated.
+type LexCharClass
+  = WhitespaceChar
+  | DigitChar
+  | HexDigitChar
+  | IdentStartChar
+  | IdentContinueChar
+  | StringTextChar
+  | LineCommentTextChar
+  | BlockCommentTextChar
+
+// 🟡 coproduct dissolution — feature:std-lexing-migrate-t6-incumbent; bidirectional grammar carrier convergence remains gated.
+type LexPattern
+  = EmptyPattern
+  | LiteralPattern { text: String }
+  | KeywordPattern { text: String }
+  | CharPattern { char: Char }
+  | CharClassPattern { class: LexCharClass }
+  | SequencePattern { left: LexPattern, right: LexPattern }
+  | ChoicePattern { left: LexPattern, right: LexPattern }
+  | OptionalPattern { element: LexPattern }
+  | RepeatPattern { element: LexPattern }
+  | OneOrMorePattern { element: LexPattern }
+  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
+
+// 🟡 coproduct dissolution — feature:std-lexing-migrate-t6-incumbent; per-arm lexer morphism witness remains gated.
+type LexRule
+  = TokenRule { token_class: Symbol, pattern: LexPattern }
+  | TriviaRule { pattern: LexPattern }
+
+type LexRuleSet {
+  rules: List<LexRule>
+}
+
+type Token {
+  class: Symbol
+  lexeme: Lexeme
+  file: Symbol
+  start: Int
+  end: Int
+}
