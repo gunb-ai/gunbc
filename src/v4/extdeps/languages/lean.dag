@@ -251,13 +251,6 @@ type LeanPrimitiveFacts {
 }
 
 
-// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — bind TASKS.md T-11 —
-// dissolve-on: v4.std.target_model declares shared ConcreteSyntaxToken (FixedToken |
-// BoundToken); this per-target coproduct dissolves when that std carrier lands.
-type LeanConcreteSyntaxToken
-  = LeanFixedToken { token_class: Symbol }
-  | LeanBoundToken { token_class: Symbol, binding: Symbol }
-
 type LeanLanguageModel {
   lex: LexRules
   grammar: ParseGrammar
@@ -391,12 +384,6 @@ data lean_token_kw_termination_by: Symbol = lean_token_kw_termination_by
 data lean_production_mvp1_def_dec: Symbol = lean_production_mvp1_def_dec
 
 data lean_surface_def_item: Symbol = lean_surface_def_item
-data lean_binding_def_dec: Symbol = lean_binding_def_dec
-data lean_binding_param_n: Symbol = lean_binding_param_n
-data lean_binding_measure_n: Symbol = lean_binding_measure_n
-
-data lean_emitted_field_termination: Symbol = lean_emitted_field_termination
-data lean_tag_termination_by_only: Symbol = lean_tag_termination_by_only
 
 data lean_mvp1_source_literal: Symbol = lean_mvp1_source_literal
 
@@ -787,12 +774,7 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: lean_wave1_grammar(), sym: sym) ||
-        sym == lean_mvp1_source_literal ||
-        sym == lean_binding_def_dec ||
-        sym == lean_binding_param_n ||
-        sym == lean_binding_measure_n ||
-        sym == lean_emitted_field_termination ||
-        sym == lean_tag_termination_by_only
+        sym == lean_mvp1_source_literal
     }
   }
 }
