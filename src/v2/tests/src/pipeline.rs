@@ -909,6 +909,59 @@ fn dag_artifact_shares_one_node_record() {
     );
 }
 
+/// Resolved back-links must not split collection identity: key, fingerprint, and
+/// nodes-table record must all refer to the canonical declaration even when the
+/// importer module is collected before the defining module (T-37 / openai-pro RC).
+#[test]
+fn dag_collect_resolved_peel_keeps_canonical_declaration() {
+    let files = &[
+        (
+            "use.dag",
+            "module use\nimport def { T }\n\nfn f(x: T) -> T { x }\n",
+        ),
+        ("def.dag", "module def\ntype T { v: Int }\n"),
+    ];
+    let result = compile_multi_target(files, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+
+    let t_records: Vec<_> = nodes
+        .values()
+        .filter(|v| {
+            v.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|n| n == "T")
+        })
+        .collect();
+    assert_eq!(
+        t_records.len(),
+        1,
+        "type T must appear exactly once in the nodes table (canonical declaration), got {}",
+        t_records.len()
+    );
+
+    let t_id = nodes
+        .iter()
+        .find(|(_, v)| {
+            v.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|n| n == "T")
+        })
+        .map(|(id, _)| id.as_str())
+        .expect("nodes table should contain type T");
+    let ref_needle = format!("\"$ref\": \"{t_id}\"");
+    assert!(
+        content.matches(&ref_needle).count() >= 2,
+        "canonical type T should be cited via $ref from multiple sites"
+    );
+}
+
 #[test]
 fn dag_artifact_multi_module_names_resolve() {
     let files = &[

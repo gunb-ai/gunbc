@@ -708,21 +708,34 @@ pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCo
     }
 }
 
+pub fn dag_collect_canonical_node(mut node: Rc<Node>) -> Rc<Node> {
+    loop {
+        match node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: target, .. }) => {
+                node = target.clone();
+                continue;
+            }
+            _ => break node,
+        }
+    }
+}
+
 pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
-    let key = dag_node_key(node.clone());
-    let fp = dag_node_fingerprint(node.clone());
+    let canonical = dag_collect_canonical_node(node.clone());
+    let key = dag_node_key(canonical.clone());
+    let fp = dag_node_fingerprint(canonical.clone());
     let lookup = v2_rt::map_get(&*acc.seen, key.clone());
     match lookup {
         Some(prior) => {
             if prior.as_str() == fp.as_str() {
                 acc
-            } else if node.span.start == 0 && node.span.end == 0 {
+            } else if canonical.span.start == 0 && canonical.span.end == 0 {
                 Rc::new(DagCollectAcc {
                     seen: acc.seen.clone(),
                     order: acc.order.clone(),
                     collision_errors: v2_rt::rc_list_push(
                         acc.collision_errors.clone(),
-                        dag_node_key_collision_error(key.clone(), node.span.clone()),
+                        dag_node_key_collision_error(key.clone(), canonical.span.clone()),
                     ),
                 })
             } else {
@@ -736,10 +749,10 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
             };
             let acc1 = Rc::new(DagCollectAcc {
                 seen: v2_rt::rc_map_insert(inner.seen, key.clone(), fp),
-                order: v2_rt::rc_list_push(inner.order, node.clone()),
+                order: v2_rt::rc_list_push(inner.order, canonical.clone()),
                 collision_errors: inner.collision_errors,
             });
-            dag_collect_node_tree(node.clone(), acc1)
+            dag_collect_node_tree(canonical.clone(), acc1)
         }
     }
 }

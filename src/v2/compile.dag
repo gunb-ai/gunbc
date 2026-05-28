@@ -277,6 +277,15 @@ fn dag_node_fingerprint(node: Node) -> String {
   }
 }
 
+// Collection authority: peel Resolved so key, fingerprint, order, and tree walk
+// all refer to the same canonical declaration (not the back-link wrapper).
+fn dag_collect_canonical_node(node: Node) -> Node {
+  match node.inferred {
+    Some { value: Resolved { node: target } } => dag_collect_canonical_node(node: target)
+    _ => node
+  }
+}
+
 fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
   let synthetic = span.start == 0 && span.end == 0
   let detail = if synthetic {
@@ -385,17 +394,18 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
 }
 
 fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
-  let key = dag_node_key(node: node)
-  let fp = dag_node_fingerprint(node: node)
+  let canonical = dag_collect_canonical_node(node: node)
+  let key = dag_node_key(node: canonical)
+  let fp = dag_node_fingerprint(node: canonical)
   match map_get(acc.seen, key) {
     Some { value: prior } =>
       if prior == fp {
         acc
-      } else if node.span.start == 0 && node.span.end == 0 {
+      } else if canonical.span.start == 0 && canonical.span.end == 0 {
         DagCollectAcc {
           seen: acc.seen,
           order: acc.order,
-          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: node.span))
+          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: canonical.span))
         }
       } else {
         // Authored span: provisional key may alias; first canonical record wins until v4 content_hash.
@@ -404,10 +414,10 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
     None => {
       let acc1 = DagCollectAcc {
         seen: map_insert(acc.seen, key, fp),
-        order: list_push(acc.order, node),
+        order: list_push(acc.order, canonical),
         collision_errors: acc.collision_errors
       }
-      dag_collect_node_tree(node: node, acc: acc1)
+      dag_collect_node_tree(node: canonical, acc: acc1)
     }
   }
 }
