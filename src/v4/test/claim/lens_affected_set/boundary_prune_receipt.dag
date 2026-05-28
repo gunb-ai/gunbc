@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/boundary_prune_receipt.dag
 // Scope: T-21 worked claim — unchanged-pure boundary edit records BoundaryExclusion.
-// Owns: claim_boundary_prune_receipt.
-// Consumes: lens affected_set, lens affected_set_examples, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.boundary_prune_receipt

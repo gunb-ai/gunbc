@@ -1,15 +1,5 @@
 // src/v4/compiler/06_translate.dag
 // Scope: Stage 5a — T-10 translate: fold_node + coercion_fold over infer-authored canonical grounding.
-// Owns: TargetNodeTree, TargetBundleChildLookup, target_model_edge_selection_policy,
-//       target_model_edge_declared_inhabitants, target_model_edge_serialize_source, target_bundle_child, target_bundle_child_lookup_step,
-//       target_selection_priority_from_model, coercion_candidates_from_target_model,
-//       target_serialize_source_from_model, grammar_relation_row_for_emitted, token_sequence_to_source,
-//       token_spelling_from_model, lex_rules_literal_for_class, lex_rule_literal_step, node_atom_identity,
-//       grammar_inverse_source_validated, translate_grammar_inverse_not_realized, coerce_grounded_node, translate_fold_init,
-//       translate_fold_step, translate_node, translate.
-// Consumes: compiler/04_infer.dag, compiler/07_target_carriers.dag, std/coercion.dag, std/constraints.dag,
-//           std/find_witness.dag, std/diagnostic.dag, std/node.dag, std/witness.dag, std/collection.dag,
-//           std/target_model.dag.
 // Status: W-T-11 — Rust MVP-1 grammar-inverse lex walk is exercised by compile-inferred
 // TestClaim; live translate_node/coerce_grounded_node + child reattachment zip-fold;
 // authority_source_text retained on TargetModel as self-host anchor only.
@@ -532,7 +522,7 @@ fn grammar_serialize_source_matches_row(
             bind_outcome(
               o: conj_positional_targets(parent: tokens_root),
               f: fn(row_targets) {
-                if zip_eq(a: source_targets, b: row_targets, eq: fn(a, b) { a == b }) {
+                if zip_eq(a: source_targets, b: row_targets, eq: fn(x, y) { x == y }) {
                   Accepted { value: serialize_source, diagnostics: None }
                 } else {
                   outcome_rejected(

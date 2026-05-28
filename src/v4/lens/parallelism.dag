@@ -1,7 +1,5 @@
 // src/v4/lens/parallelism.dag
 // Scope: parallelism lens — independence visible in dependency-graph structure (THESIS:208).
-// Owns: ParallelismRelation, ParallelismFact, parallelism_witness.
-// Consumes: v4.std.algebra (bag_eq), v4.std.dependency (ClassifiedDependencyView<C>), v4.std.witness, v4.compiler.infer.
 // Status: T-13 family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; no copied endpoints, no parallel substrate (Practice 11 sub-rule: parallel-payload vs typed-reference).
 
 

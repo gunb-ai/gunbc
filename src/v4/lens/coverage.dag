@@ -1,7 +1,5 @@
 // src/v4/lens/coverage.dag
 // Scope: T-18 meta-lens — expected vs actual TestClaim coverage over substrate slices.
-// Owns: Coverage Coverage<C> L6CoverageKey L7CoverageKey ImpossibleBugCoverageKey TestgenCoverageKey CoverageReading CoverageMissingDiagnosticsFold CoverageSliceProjection CoverageDefectKey CoverageDefectAcceptanceKey CoverageDefectAcceptance SoleImpossibleBugKeyFold coverage_reading coverage_lens coverage_defect_* acceptance rows
-// Consumes: v4.std.node v4.std.nat v4.std.algebra v4.std.diagnostic v4.std.verification v4.extdeps.languages.dag v4.lens.testgen
 // Status: T-18 filled.
 
 module v4.lens.coverage

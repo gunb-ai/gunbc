@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_affected_set/verified_by_in_frontier.dag
 // Scope: T-21 worked claim — VerifiedBy is in the lens frontier kind set.
-// Owns: claim_verified_by_in_frontier.
-// Consumes: lens affected_set, std dependency, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_affected_set.verified_by_in_frontier

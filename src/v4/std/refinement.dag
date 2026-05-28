@@ -1,7 +1,5 @@
 // src/v4/std/refinement.dag
 // Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Owns: Validation, Refined, refine, refined_base.
-// Consumes: std diagnostic, std node.
 // Status: T-25-core modeled.
 // Anchor: https://en.wikipedia.org/wiki/Refinement_type
 

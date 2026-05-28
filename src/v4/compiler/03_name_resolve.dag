@@ -1,11 +1,6 @@
 // src/v4/compiler/03_name_resolve.dag
 //
 // Scope: Stage 3c — Catalog admission for cross-file resolution.
-// Owns: ResolutionSubject; Admission; namespace_for_subject; resolve_with_admission.
-// Consumes: compiler/03_normalize.dag, compiler/03_resolve.dag,
-//           extdeps/languages/dag.dag, std/algebra.dag, std/collection.dag,
-//           std/diagnostic.dag, std/catalog.dag, std/node.dag,
-//           std/qualified_name.dag, std/witness.dag.
 // Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
@@ -43,7 +38,8 @@ import v4.std.node {
   Edge,
   Node,
   Symbol,
-  TypeNode
+  TypeNode,
+  well_formed
 }
 import v4.std.qualified_name { QualifiedName }
 import v4.std.witness { Holds, Violates }
@@ -84,6 +80,7 @@ type AdmissionState
 
 data resolve_import_not_visible: Symbol = resolve_import_not_visible
 data resolve_ambiguous_export: Symbol = resolve_ambiguous_export
+data resolve_reason_malformed_imported_root: Symbol = resolve_reason_malformed_imported_root
 
 
 fn resolve_diagnostic(reason: Symbol) -> Diagnostic {
@@ -173,11 +170,17 @@ fn admit_import_entry(
         ImportVisible =>
           match catalog_entry_for_name(catalog: catalog, name: import_edge.target) {
             Holds { value: entry } =>
-              admit_named_exports(
-                root: entry.root,
-                origin: import_edge.target,
-                state: state
-              )
+              if well_formed(n: entry.root) {
+                admit_named_exports(
+                  root: entry.root,
+                  origin: import_edge.target,
+                  state: state
+                )
+              } else {
+                AdmissionRejected {
+                  diagnostic: resolve_diagnostic(reason: resolve_reason_malformed_imported_root)
+                }
+              }
             Violates { diagnostic: d } =>
               AdmissionRejected { diagnostic: d }
           }

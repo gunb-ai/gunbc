@@ -1,7 +1,5 @@
 // src/v4/std/report.dag
 // Scope: advisory report carrier.
-// Owns: Report, ReportReason, ReportSuggestion, report_reason_to_diagnostic_reason, synthesis_gap_decision_tree_reason, synthesis_gap_information_theoretic_reason.
-// Consumes: std/diagnostic.dag; std/node.dag.
 // Status: T-17 closed ReportReason; T-23 adds ReportSuggestion + diagnostic seam.
 // Anchor: docs/r4-carve-out-routing.md
 

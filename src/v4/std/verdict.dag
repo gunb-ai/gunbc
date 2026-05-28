@@ -1,8 +1,6 @@
 // src/v4/std/verdict.dag
 // Scope: test-run verdict algebra.
 // Anchor: docs/design-v4-compiler-homomorphism.md P3 commitment 6 + T-22 eval runner.
-// Owns: Verdict, verdict_combine, verdict_monoid, verdict_fold.
-// Consumes: v4.std.algebra (is_empty, Magma, Monoid, Semigroup), v4.std.collection (List), v4.std.diagnostic (Diagnostic, Outcome).
 // Status: AI-10 substrate declaration — moves Pass/Fail/Deferred algebra out of 05_eval.dag.
 //
 // ALGEBRA: (Verdict<T>, verdict_combine, Pass) forms a Monoid where:

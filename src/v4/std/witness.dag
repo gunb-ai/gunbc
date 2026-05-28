@@ -1,8 +1,6 @@
 // src/v4/std/witness.dag
 // Scope: fail-closed proof/read carrier + unified witness taxonomy (Pass B).
 // Anchor: docs/design-v4-compiler-homomorphism.md
-// Owns: Witness, StructuralPropertyWitness, HomomorphismWitness.
-// Consumes: std diagnostic, std node.
 // Status: T-3 modeled; Wave-2-BC3 taxonomy extension.
 
 

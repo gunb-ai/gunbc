@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/refinement_nonempty_list.dag
 // Scope: acceptance witness — NonEmptyList resolves as a List refinement Refined<List<T>>, not a separate carrier.
-// Owns: NonEmptyList, refinement_empty_list_reason, witness_non_empty_list.
-// Consumes: std refinement, std collection, std diagnostic, std node.
 // Status: T-25-core acceptance witness; eval T-22.
 
 

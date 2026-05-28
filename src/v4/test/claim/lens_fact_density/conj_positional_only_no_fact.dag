@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_fact_density/conj_positional_only_no_fact.dag
 // Scope: T-30 negative claim — conj with only positional edges stays NoFact.
-// Owns: claim_conj_positional_only_no_fact.
-// Consumes: lens fact_density, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.conj_positional_only_no_fact

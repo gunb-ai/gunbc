@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/solve_constraints_add_mvp.dag
 // Scope: MVP-1 constraint_satisfaction path — solve_constraints Accepted on add-shaped graph root.
-// Owns: fixture_add_constraint_graph, anchor_solve_constraints_add_mvp, claim rows.
-// Consumes: test/claim/manual/infer_ground_add_mvp.dag, std/constraints.dag, std/verification.dag.
 // Status: identity-MVP behavior receipt — solve_constraints Accepted on add root via tracked scaffolds, not full constraint theory.
 
 

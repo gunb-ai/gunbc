@@ -1,7 +1,5 @@
 // src/v4/test/claim/algebra_laws/zip_eq_list_equality.dag
 // Scope: TestClaim corpus for zip_eq two-list structural equality.
-// Owns: claim rows for zip_eq empty/equal/unequal/length-mismatch cases.
-// Consumes: v4.std.algebra v4.std.node v4.std.verification.
 // Status: T-28 behavior receipts; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 

@@ -1,7 +1,5 @@
 // src/v4/std/collection.dag
 // Scope: container carriers grounded in algebraic constructions.
-// Owns: Optional, optional_absent, optional_present, optional_prefer_first_present, optional_present_witness, List, non_empty, list_snoc_item, list_append, Set, FiniteSet, Map, empty_map, map_insert, TotalMap, TotalPolicy.
-// Consumes: std/algebra.dag; std/witness.dag; std/diagnostic.dag; std/node.dag.
 // Status: T-3 modeled.
 // Anchor: https://en.wikipedia.org/wiki/Free_monoid
 // AI-3: non_empty removed (duplicate of v4.std.algebra.non_empty).

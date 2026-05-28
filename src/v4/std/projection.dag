@@ -1,7 +1,5 @@
 // src/v4/std/projection.dag
 // Scope: projection-as-data substrate.
-// Owns: ProjectionKind, Projection.
-// Consumes: v4.std.artifact, v4.std.node.
 // Status: Wave-2-A substrate.
 
 module v4.std.projection

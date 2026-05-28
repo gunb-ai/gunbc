@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/cpp_scalar_grounding_anchor.dag
 // Scope: Compile anchors for C++ scalar groundedness marks.
-// Owns: cpp_anchor_* type aliases that instantiate representative ABI/profile/scalar paths.
-// Consumes: extdeps/cpp_abi.dag, extdeps/languages/cpp.dag.
 // Status: compile-only groundedness testcase.
 
 module v4.test.claim.manual.cpp_scalar_grounding_anchor

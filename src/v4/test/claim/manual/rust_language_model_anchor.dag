@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/rust_language_model_anchor.dag
 // Scope: T-4 compile anchor — rust.dag LanguageModel, inhabitant facts on carrier, MVP target model.
-// Owns: rust_anchor_language_model, rust_anchor_i32_inhabitant, rust_anchor_mvp1_target_model.
-// Consumes: extdeps/languages/rust.dag.
 // Status: compile-only anchor.
 
 module v4.test.claim.manual.rust_language_model_anchor

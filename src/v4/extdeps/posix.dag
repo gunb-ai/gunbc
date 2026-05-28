@@ -1,7 +1,5 @@
 // src/v4/extdeps/posix.dag
 // Scope: POSIX process substrate — command invocation, lifecycle, wait/capture.
-// Owns: ProcessId, ExitCode, SignalNum, POSIX numeric validations/constructors, PosixArgument, PosixEnvironmentName, PosixEnvironmentValue, Command, Termination, TerminatedProcessState, ProcessIdentity, RunningProcess, TerminatedProcess, WaitedTerminatedProcess, CaptureSource, ProcessTable, ProcessResources, CapturedByteStream, CapturedOutputPipes, process request/result/operation carriers.
-// Consumes: AbsolutePath, Filesystem, PosixByteString, Diagnostic, Locus, Outcome, Byte, FreeMonoid, Int, Refined, Validation, List, Map.
 // Status: modeled 2026-05-16; moved from generic process home to POSIX home 2026-05-21.
 
 module v4.extdeps.posix

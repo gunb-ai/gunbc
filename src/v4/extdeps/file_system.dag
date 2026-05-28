@@ -1,7 +1,5 @@
 // src/v4/extdeps/file_system.dag
 // Scope: External file-system resource model + modeled file effects (read/write).
-// Owns: PosixByteString, NamedPathComponent, PathComponent, AbsolutePath, RelativePathHead, RelativePath, FilesystemPath, FileKind, FileKindResolutionPolicy, Filesystem, FileBody, FileResource, FilePath, FileContent, FileRead, FileWrite, FileReadReceipt, FileWriteReceipt, FileReadResult, FileWriteResult, ReadFileRequest, WriteFileRequest, ListDirRequest, FileKindRequest, FileSystemOperations, ModeledFileEffects.
-// Consumes: v4.std.algebra, v4.std.diagnostic, v4.std.machine.
 // Status: scaffold — Wave-2 fail-closed boundary (POSIX substrate retained for posix/testgen consumers).
 
 module v4.extdeps.file_system

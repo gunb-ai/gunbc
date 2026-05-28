@@ -1,7 +1,5 @@
 // src/v4/std/effects.dag
 // Scope: v4 effect algebra — idempotent/breaking partition (structural mirror of src/v3/std/effects.dag terminal carriers).
-// Owns: IdempotentShape BreakingShape EffectShape KeySource IdempotentOperationRef ComposableIdempotentOperationSubject IdempotentOperationSubject idempotent_operation_witness_node idempotent_operation_apply_once idempotent_operation_apply_twice sample_state
-// Consumes: v4.std.node
 // Status: T-19 idempotent-operation generator authority; full OperationEffect port = TASKS T-8.
 
 module v4.std.effects

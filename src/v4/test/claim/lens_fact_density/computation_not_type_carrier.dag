@@ -1,7 +1,5 @@
 // src/v4/test/claim/lens_fact_density/computation_not_type_carrier.dag
 // Scope: T-30 negative claim — computation nodes are NotATypeCarrier.
-// Owns: claim_computation_not_type_carrier.
-// Consumes: lens fact_density, std node, std verification.
 // Status: scaffold — compile-only until T-22 generated claim execution.
 
 module v4.test.claim.lens_fact_density.computation_not_type_carrier

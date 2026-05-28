@@ -1,7 +1,5 @@
 // src/v4/test/claim/manual/verilog_concurrency_anchor.dag
 // Scope: T-4.9 compile anchor — Verilog continuous assignment + posedge always-block concurrency carriers.
-// Owns: verilog_anchor_* concurrency witness rows.
-// Consumes: extdeps/languages/verilog.dag.
 // Status: compile-only IN-B anchor; no sixth Behavior.
 
 module v4.test.claim.manual.verilog_concurrency_anchor
