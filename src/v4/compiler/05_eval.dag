@@ -175,6 +175,9 @@ fn eval_context_v4_evaluator_wave1() -> EvalContext {
 }
 
 
+// Closed registry: structural == on InterpretationAlgebra compares named top-level fn refs
+// (not runtime closure identity). Receipt: v4_evaluator_runtime_anchor interpretation-eq witnesses.
+// 🟡 gated — dissolve-on: Node-projectable InterpretationAlgebra registry keys.
 fn interpretation_registry_semantics_digest(
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra
