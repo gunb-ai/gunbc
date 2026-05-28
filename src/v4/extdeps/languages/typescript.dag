@@ -1,7 +1,11 @@
 // src/v4/extdeps/languages/typescript.dag
 // Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
+<<<<<<< HEAD
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+=======
+// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; wave-2a + MVP-1 grammar declared as `FormalProduction` flat rhs (`ts_wave2a_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; bool canonical-B decl-ref — 🟡 E-6(b) staging.
+>>>>>>> a64dcea90 (WIP: grammarexpr rework)
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
 // Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
@@ -10,6 +14,12 @@ module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
   Choice,
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalNonterminalOccurrence,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -1126,6 +1136,118 @@ fn ts_wave2a_lex() -> LexRules {
 
 fn ts_wave2a_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(rules: ts_wave2a_lex_rules(), token_class: sym)
+}
+
+fn ts_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn ts_formal_nonterminal(production: Symbol) -> FormalGrammarSymbol {
+  FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
+}
+
+fn ts_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: lhs },
+    rhs: rhs
+  }
+}
+
+fn ts_formal_rhs_from_tokens(tokens: List<TsConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: tokens,
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: ts_formal_terminal(token_class: ts_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
+  ts_formal_production(
+    lhs: ts_production_mvp1_fn_add,
+    rhs: ts_formal_rhs_from_tokens(tokens: ts_mvp1_concrete_tokens())
+  )
+}
+
+// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
+fn ts_wave2a_formal_productions() -> List<FormalProduction> {
+  [
+    ts_formal_production(lhs: ts_production_wave2a_type_number, rhs: [ts_formal_terminal(token_class: ts_token_ty_number)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_string, rhs: [ts_formal_terminal(token_class: ts_token_ty_string)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_boolean, rhs: [ts_formal_terminal(token_class: ts_token_ty_boolean)]),
+    ts_formal_production(lhs: ts_production_wave2a_type_void, rhs: [ts_formal_terminal(token_class: ts_token_ty_void)]),
+    ts_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_number)]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_string)]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_boolean)]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_type_annotation,
+      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_type_void)]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_let_decl,
+      rhs: [
+        ts_formal_terminal(token_class: ts_token_kw_let),
+        ts_formal_terminal(token_class: ts_token_ident),
+        ts_formal_terminal(token_class: ts_token_colon),
+        ts_formal_nonterminal(production: ts_production_wave2a_type_annotation),
+        ts_formal_terminal(token_class: ts_token_eq),
+        ts_formal_terminal(token_class: ts_token_ident),
+        ts_formal_terminal(token_class: ts_token_semicolon)
+      ]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_const_decl,
+      rhs: [
+        ts_formal_terminal(token_class: ts_token_kw_const),
+        ts_formal_terminal(token_class: ts_token_ident),
+        ts_formal_terminal(token_class: ts_token_colon),
+        ts_formal_nonterminal(production: ts_production_wave2a_type_annotation),
+        ts_formal_terminal(token_class: ts_token_eq),
+        ts_formal_terminal(token_class: ts_token_ident),
+        ts_formal_terminal(token_class: ts_token_semicolon)
+      ]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_item,
+      rhs: [ts_formal_nonterminal(production: ts_production_mvp1_fn_add)]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_item,
+      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_let_decl)]
+    ),
+    ts_formal_production(
+      lhs: ts_production_wave2a_item,
+      rhs: [ts_formal_nonterminal(production: ts_production_wave2a_const_decl)]
+    ),
+    ts_formal_production_mvp1_fn_add()
+  ]
+}
+
+fn ts_formal_production_matches_lhs(production: FormalProduction, lhs: Symbol) -> Bool {
+  production.lhs.identity == lhs
+}
+
+fn ts_formal_production_list_has_lhs(productions: List<FormalProduction>, lhs: Symbol) -> Bool {
+  fold_list(
+    xs: productions,
+    empty: false,
+    cons: fn(found, production) {
+      found || ts_formal_production_matches_lhs(production: production, lhs: lhs)
+    }
+  )
 }
 
 fn ts_grammar_production_wave2a_type_number() -> GrammarProduction {
