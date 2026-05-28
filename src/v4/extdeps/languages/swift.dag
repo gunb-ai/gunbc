@@ -2272,6 +2272,8 @@ data swift_partial_int_remainder_by_zero: Symbol = swift_partial_int_remainder_b
 data swift_partial_uint_divide_by_zero: Symbol = swift_partial_uint_divide_by_zero
 data swift_partial_uint_remainder_by_zero: Symbol = swift_partial_uint_remainder_by_zero
 data swift_precondition_divisor_nonzero: Symbol = swift_precondition_divisor_nonzero
+data swift_precondition_signed_division_not_min_over_negative_one: Symbol = swift_precondition_signed_division_not_min_over_negative_one
+data swift_partial_signed_min_divide_by_negative_one: Symbol = swift_partial_signed_min_divide_by_negative_one
 
 data swift_precondition_no_overflow: Symbol = swift_precondition_no_overflow
 data swift_partial_int_add_overflow: Symbol = swift_partial_int_add_overflow
@@ -2306,6 +2308,16 @@ fn swift_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
         operation: swift_op_int_rem,
         precondition: swift_precondition_divisor_nonzero,
         reason: swift_partial_int_remainder_by_zero
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_div,
+        precondition: swift_precondition_signed_division_not_min_over_negative_one,
+        reason: swift_partial_signed_min_divide_by_negative_one
+      ),
+      swift_fail_closed_partial_operation(
+        operation: swift_op_int_rem,
+        precondition: swift_precondition_signed_division_not_min_over_negative_one,
+        reason: swift_partial_signed_min_divide_by_negative_one
       ),
       swift_fail_closed_partial_operation(
         operation: swift_op_uint_div,
