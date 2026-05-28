@@ -1779,6 +1779,8 @@ fn dag_language_model_wave1_modeled() -> DagLanguageModel {
 // Trivia rules (whitespace, line comments, block comments) are stripped by the lexer;
 // a round-trip over trivia-bearing source produces trivia-free canonical output.
 // These are DeclaredNormalized, not silent losses — reviewable, not hidden.
+// 🟢 coproduct dissolution · all three trivia variants are terminal: each is exactly one LexRule
+//    mapped to DeclaredNormalized; no additional variants possible under the wave-1 trivia model.
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized
   | DagLineCommentDeclaredNormalized

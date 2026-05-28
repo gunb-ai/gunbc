@@ -25,10 +25,19 @@ import v4.extdeps.languages.dag {
   dag_production_import_decl,
   dag_production_module,
   dag_production_module_header,
+  dag_token_arrow,
+  dag_token_colon,
+  dag_token_dot,
+  dag_token_eq,
   dag_token_ident,
   dag_token_kw_data,
   dag_token_kw_fn,
+  dag_token_kw_import,
   dag_token_kw_module,
+  dag_token_lbrace,
+  dag_token_lparen,
+  dag_token_rbrace,
+  dag_token_rparen,
   dag_wave1_lex_token_symbol,
   dag_whitespace_fidelity
 }
@@ -78,9 +87,18 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
 
 fn dag_round_trip_lex_ready() -> Bool {
   dag_wave1_lex_token_symbol(sym: dag_token_kw_module) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_kw_import) &&
   dag_wave1_lex_token_symbol(sym: dag_token_kw_data) &&
   dag_wave1_lex_token_symbol(sym: dag_token_kw_fn) &&
-  dag_wave1_lex_token_symbol(sym: dag_token_ident)
+  dag_wave1_lex_token_symbol(sym: dag_token_ident) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_dot) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_lbrace) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_rbrace) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_colon) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_eq) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_lparen) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_rparen) &&
+  dag_wave1_lex_token_symbol(sym: dag_token_arrow)
 }
 
 
