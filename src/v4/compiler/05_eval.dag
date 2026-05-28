@@ -111,7 +111,6 @@ import v4.std.verification {
 import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
-  v4_evaluator_interpretation_pin,
   v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_wave1
 }
