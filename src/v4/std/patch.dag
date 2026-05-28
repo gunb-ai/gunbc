@@ -1,0 +1,50 @@
+// src/v4/std/patch.dag
+// Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
+// Owns: FieldPatch, apply_field_patch, compose_field_patch, field_patch_monoid, field_patch_inherit.
+// Consumes: v4.std.algebra { Magma, Semigroup, Monoid }.
+// Status: T-4.16 follow-on — scalar FieldPatch monoid landed; per-record *ConfigPatch projection is 🟡 below.
+// Anchor: https://en.wikipedia.org/wiki/Monoid
+
+module v4.std.patch
+
+import v4.std.algebra { Magma, Semigroup, Monoid }
+
+// 🟡 gated — feature:config-patch-record-projection — bind src/v4/TASKS.md §T-4.16 — dissolve-on-arrival: record-field map derives *ConfigPatch and *_layer from *Config; interim consumer-tagged hand mirrors only while this feature is open; forbidden: untagged mirrors after projection lands.
+// 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
+// FieldPatch<T> = 1 + T: Inherit = absent/identity, Override = present payload.
+type FieldPatch<T>
+  = Override { value: T }
+  | Inherit
+
+
+fn field_patch_inherit<T>() -> FieldPatch<T> {
+  Inherit
+}
+
+
+fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
+  match patch {
+    Override { value: v } => v
+    Inherit => base
+  }
+}
+
+
+fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPatch<T> {
+  match right {
+    Override { value: v } => Override { value: v }
+    Inherit => left
+  }
+}
+
+
+fn field_patch_monoid<T>() -> Monoid<FieldPatch<T>> {
+  Monoid {
+    semigroup: Semigroup {
+      magma: Magma {
+        op: fn(left, right) { compose_field_patch(left: left, right: right) }
+      }
+    },
+    identity: Inherit,
+  }
+}

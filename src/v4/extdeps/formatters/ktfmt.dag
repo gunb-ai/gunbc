@@ -1,7 +1,7 @@
 // src/v4/extdeps/formatters/ktfmt.dag
 // Scope: ktfmt configuration model — option space grounded in ktfmt latest README/options and CLI help.
-// Owns: KtfmtStyle, KtfmtTrailingCommaManagementStrategy, KtfmtPositiveInt, ktfmt_positive_int_validation, make_ktfmt_positive_int, KtfmtConfig, ktfmt_defaults, ktfmt_layer.
-// Consumes: Locus, Outcome, Symbol, Refined, Validation.
+// Owns: KtfmtStyle, KtfmtTrailingCommaManagementStrategy, KtfmtPositiveInt, ktfmt_positive_int_validation, make_ktfmt_positive_int, KtfmtConfig, ktfmt_defaults, KtfmtConfigPatch, ktfmt_layer.
+// Consumes: Locus, Outcome, Symbol, Refined, Validation, FieldPatch, apply_field_patch.
 // Status: T-4.16 scaffold — full documented ktfmt option surface.
 // Anchor: https://github.com/facebook/ktfmt#options
 
@@ -11,6 +11,7 @@ module v4.extdeps.formatters.ktfmt
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
 import v4.std.refinement { Refined, Validation, refine }
+import v4.std.patch { FieldPatch, apply_field_patch }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -100,7 +101,50 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
 }
 
 
-// 🟡 gated — feature: formatter-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: KtfmtConfigPatch type with per-field Override<T>/Inherit arms replaces full-config layering; forbidden: full-config replacement where partial field override is needed.
-fn ktfmt_layer(base: KtfmtConfig, outer: KtfmtConfig) -> KtfmtConfig {
-  outer
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: KtfmtConfigPatch projected from KtfmtConfig field set.
+type KtfmtConfigPatch {
+  style: FieldPatch<KtfmtStyle>
+  max_width: FieldPatch<KtfmtPositiveInt>
+  block_indent: FieldPatch<KtfmtPositiveInt>
+  continuation_indent: FieldPatch<KtfmtPositiveInt>
+  trailing_comma_management_strategy: FieldPatch<KtfmtTrailingCommaManagementStrategy>
+  remove_unused_imports: FieldPatch<Bool>
+  debugging_print_ops_after_formatting: FieldPatch<Bool>
+  dry_run: FieldPatch<Bool>
+  set_exit_if_changed: FieldPatch<Bool>
+  stdin_name: FieldPatch<String>
+  enable_editorconfig: FieldPatch<Bool>
+  quiet: FieldPatch<Bool>
+  editorconfig_max_line_length: FieldPatch<KtfmtPositiveInt>
+  editorconfig_indent_size: FieldPatch<KtfmtPositiveInt>
+  editorconfig_tab_width: FieldPatch<KtfmtPositiveInt>
+  editorconfig_ij_kotlin_indent_size: FieldPatch<KtfmtPositiveInt>
+  editorconfig_ij_continuation_indent_size: FieldPatch<KtfmtPositiveInt>
+  editorconfig_ij_kotlin_continuation_indent_size: FieldPatch<KtfmtPositiveInt>
+  editorconfig_ktfmt_trailing_comma_management_strategy: FieldPatch<KtfmtTrailingCommaManagementStrategy>
+}
+
+
+fn ktfmt_layer(base: KtfmtConfig, patch: KtfmtConfigPatch) -> KtfmtConfig {
+  KtfmtConfig {
+    style: apply_field_patch(base: base.style, patch: patch.style),
+    max_width: apply_field_patch(base: base.max_width, patch: patch.max_width),
+    block_indent: apply_field_patch(base: base.block_indent, patch: patch.block_indent),
+    continuation_indent: apply_field_patch(base: base.continuation_indent, patch: patch.continuation_indent),
+    trailing_comma_management_strategy: apply_field_patch(base: base.trailing_comma_management_strategy, patch: patch.trailing_comma_management_strategy),
+    remove_unused_imports: apply_field_patch(base: base.remove_unused_imports, patch: patch.remove_unused_imports),
+    debugging_print_ops_after_formatting: apply_field_patch(base: base.debugging_print_ops_after_formatting, patch: patch.debugging_print_ops_after_formatting),
+    dry_run: apply_field_patch(base: base.dry_run, patch: patch.dry_run),
+    set_exit_if_changed: apply_field_patch(base: base.set_exit_if_changed, patch: patch.set_exit_if_changed),
+    stdin_name: apply_field_patch(base: base.stdin_name, patch: patch.stdin_name),
+    enable_editorconfig: apply_field_patch(base: base.enable_editorconfig, patch: patch.enable_editorconfig),
+    quiet: apply_field_patch(base: base.quiet, patch: patch.quiet),
+    editorconfig_max_line_length: apply_field_patch(base: base.editorconfig_max_line_length, patch: patch.editorconfig_max_line_length),
+    editorconfig_indent_size: apply_field_patch(base: base.editorconfig_indent_size, patch: patch.editorconfig_indent_size),
+    editorconfig_tab_width: apply_field_patch(base: base.editorconfig_tab_width, patch: patch.editorconfig_tab_width),
+    editorconfig_ij_kotlin_indent_size: apply_field_patch(base: base.editorconfig_ij_kotlin_indent_size, patch: patch.editorconfig_ij_kotlin_indent_size),
+    editorconfig_ij_continuation_indent_size: apply_field_patch(base: base.editorconfig_ij_continuation_indent_size, patch: patch.editorconfig_ij_continuation_indent_size),
+    editorconfig_ij_kotlin_continuation_indent_size: apply_field_patch(base: base.editorconfig_ij_kotlin_continuation_indent_size, patch: patch.editorconfig_ij_kotlin_continuation_indent_size),
+    editorconfig_ktfmt_trailing_comma_management_strategy: apply_field_patch(base: base.editorconfig_ktfmt_trailing_comma_management_strategy, patch: patch.editorconfig_ktfmt_trailing_comma_management_strategy),
+  }
 }
