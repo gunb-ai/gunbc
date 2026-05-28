@@ -1,0 +1,59 @@
+// src/v4/std/grammar.dag
+// Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar G=(N,Σ,P,S).
+// Anchor: https://en.wikipedia.org/wiki/Formal_grammar
+// Status: substrate declaration; canonical grounding for formal grammar concepts used by
+//         v4.compiler.parse operational types.
+
+module v4.std.grammar
+
+import v4.std.node { Symbol }
+import v4.std.collection { List, Set }
+
+// "What is a terminal symbol?"
+// Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
+// A terminal is a symbol drawn from the terminal alphabet Σ. It cannot appear
+// as the left-hand side of any production rule; it represents an atomic
+// input token that terminates a derivation.
+type Terminal {
+  identity: Symbol
+}
+
+// "What is a nonterminal symbol?"
+// A nonterminal is a symbol drawn from the nonterminal set N. It may appear
+// as the left-hand side of a production rule; it represents a syntactic
+// category subject to rewriting.
+type Nonterminal {
+  identity: Symbol
+}
+
+// "What is an element of the grammar vocabulary (N ∪ Σ)?"
+// Ref: https://en.wikipedia.org/wiki/Formal_grammar#Formal_definition
+// A grammar symbol is either a terminal or a nonterminal. Sequences of
+// grammar symbols form the right-hand sides of production rules.
+type GrammarSymbol
+  = TerminalOccurrence { terminal: Terminal }
+  | NonterminalOccurrence { nonterminal: Nonterminal }
+
+// "What is a production rule?"
+// Ref: https://en.wikipedia.org/wiki/Production_(computer_science)
+// In a context-free grammar: A → α where A ∈ N and α ∈ (N ∪ Σ)*.
+// The left-hand side is a single nonterminal; the right-hand side is
+// a (possibly empty) sequence of grammar symbols.
+type Production {
+  lhs: Nonterminal
+  rhs: List<GrammarSymbol>
+}
+
+// "What is a formal grammar?"
+// Ref: https://en.wikipedia.org/wiki/Formal_grammar
+// G = (N, Σ, P, S) — the four-component definition of a formal language:
+//   N  (nonterminals): finite set of nonterminal symbols
+//   Σ  (terminals):    finite set of terminal symbols, disjoint from N
+//   P  (productions):  finite collection of production rules
+//   S  (start):        designated start symbol, S ∈ N
+type Grammar {
+  nonterminals: Set<Nonterminal>
+  terminals: Set<Terminal>
+  productions: List<Production>
+  start: Nonterminal
+}
