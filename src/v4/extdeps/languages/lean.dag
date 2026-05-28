@@ -18,6 +18,7 @@ import v4.std.grammar {
   Sequence,
   Terminal,
   grammar_atom,
+  grammar_carries_symbol,
   grammar_empty_sync_tokens,
   grammar_formal_nonterminal,
   grammar_formal_terminal
@@ -785,16 +786,11 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
     member: fn(sym) {
       lean_catalog_surface_symbol(sym: sym) ||
         lean_wave1_lex_token_symbol(sym: sym) ||
-        sym == lean_surface_def_item ||
-        sym == lean_production_mvp1_def_dec ||
+        grammar_carries_symbol(grammar: lean_wave1_grammar(), sym: sym) ||
         sym == lean_mvp1_source_literal ||
         sym == lean_binding_def_dec ||
         sym == lean_binding_param_n ||
         sym == lean_binding_measure_n ||
-        sym == lean_token_name_dec ||
-        sym == lean_token_name_n ||
-        sym == lean_token_type_int32 ||
-        sym == lean_token_numeric_literal ||
         sym == lean_emitted_field_termination ||
         sym == lean_tag_termination_by_only
     }
