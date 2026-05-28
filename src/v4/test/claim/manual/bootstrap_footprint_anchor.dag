@@ -28,7 +28,8 @@ import v4.workflow.bootstrap {
   bootstrap_source_snapshot_root,
   pinned_v4_fixed_point_hash,
   pinned_v4_fixed_point_hash_pin,
-  seed_capability_language_model
+  seed_capability_language_model,
+  v4_stage0_hash
 }
 
 data bootstrap_footprint_anchor_fail_atom: Symbol = bootstrap_footprint_anchor_fail_atom
@@ -92,6 +93,29 @@ fn bootstrap_footprint_non_canonical_violates() -> Bool {
   }
 }
 
+fn bootstrap_footprint_anchor_bad_content_hash_projection_inputs() -> BootstrapProjectionInputs {
+  BootstrapProjectionInputs {
+    snapshot: BootstrapSourceSnapshot {
+      root: bootstrap_source_snapshot_root(),
+      language_model: seed_capability_language_model(),
+      content_hash: BootstrapHashPin {
+        digest: v4_stage0_hash,
+        pin: pinned_v4_fixed_point_hash_pin
+      }
+    },
+    target_model: rust_mvp1_target_model(),
+    runtime_model: v4_evaluator_runtime_wave1()
+  }
+}
+
+fn bootstrap_footprint_bad_content_hash_violates() -> Bool {
+  let bad_inputs = bootstrap_footprint_anchor_bad_content_hash_projection_inputs()
+  match bootstrap_footprint(inputs: bad_inputs) {
+    Holds { value: _ } => false
+    Violates { diagnostic: d } => d.reason == bootstrap_footprint_not_realized
+  }
+}
+
 data claim_bootstrap_footprint_canonical_holds: TestClaim = CompilesClaim {
   label: "T-20 bootstrap_footprint: canonical projection inputs return Holds with closure_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -104,6 +128,14 @@ data claim_bootstrap_footprint_non_canonical_violates: TestClaim = CompilesClaim
   label: "T-20 bootstrap_footprint: non-canonical projection inputs fail closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_non_canonical_violates()),
+  expected_value: bootstrap_footprint_anchor_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_bootstrap_footprint_bad_content_hash_violates: TestClaim = CompilesClaim {
+  label: "T-20 bootstrap_footprint: mismatched snapshot content_hash fails closed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: bootstrap_footprint_anchor_claim_input(ok: bootstrap_footprint_bad_content_hash_violates()),
   expected_value: bootstrap_footprint_anchor_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
