@@ -1,7 +1,7 @@
 // src/v4/extdeps/languages/wasm.dag
 // Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.
-// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-1 grammar declared as `FormalProduction` flat rhs (`wasm_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
+// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).
 // Anchor: https://webassembly.github.io/spec/core/types.html#number-types
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
@@ -1287,7 +1287,6 @@ fn wasm_formal_production_mvp1_fn_add() -> FormalProduction {
   )
 }
 
-// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn wasm_wave1_formal_productions() -> List<FormalProduction> {
   [
     wasm_formal_production(lhs: wasm_production_value_type, rhs: [wasm_formal_terminal(token_class: wasm_token_type_i32)]),
