@@ -650,7 +650,9 @@ pub fn dag_collect_nodes_list(
     nodes
         .iter()
         .cloned()
-        .fold(acc, |a: Rc<DagCollectAcc>, n: Rc<Node>| dag_collect_insert(n.clone(), a))
+        .fold(acc, |a: Rc<DagCollectAcc>, n: Rc<Node>| {
+            dag_collect_insert(n.clone(), a)
+        })
 }
 
 pub fn dag_collect_optional_node(
@@ -753,7 +755,9 @@ pub fn dag_collect_from_module(
         .clone()
         .iter()
         .cloned()
-        .fold(acc, |a: Rc<DagCollectAcc>, item: Rc<Node>| dag_collect_insert(item.clone(), a))
+        .fold(acc, |a: Rc<DagCollectAcc>, item: Rc<Node>| {
+            dag_collect_insert(item.clone(), a)
+        })
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
