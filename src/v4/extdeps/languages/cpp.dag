@@ -2,7 +2,7 @@
 // Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
 // Owns: Cpp*SurfaceSpelling, Cpp*PrimitiveFacts, CppScalar, CppLanguageModel, cpp_*_facts_catalog, cpp_model_core_wave1, cpp_bool_grounding, CppGramBuild1State.
 // Consumes: v4.std.logic.Bool, bool_boolean_algebra; v4.std.algebra.BooleanAlgebra/fold_list; v4.std.model_core; v4.extdeps.cpp_abi.CppTargetProfile.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance for integer catalog (ordered_ring_node) and bool (boolean_algebra_node); C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
+// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; Wave 2b inhabitance: signed integer catalog → ordered_ring_node, unsigned integer catalog → commutative_semiring_node (modulo overflow facts), bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows (INVARIANTS P5).
 // Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
 
 module v4.extdeps.languages.cpp
@@ -27,6 +27,7 @@ import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,
   boolean_algebra_node,
+  commutative_semiring_node,
   Empty,
   fold_list,
   list_append,
@@ -258,6 +259,7 @@ data cpp_mvp1_source_grammar_field: Symbol = serialize_source_field_source_gramm
 data cpp_mvp1_source_text: String = "int add(int x, int y) { return x + y; }"
 
 data cpp_witness_ordered_ring_integer: Symbol = cpp_witness_ordered_ring_integer
+data cpp_witness_commutative_semiring_integer: Symbol = cpp_witness_commutative_semiring_integer
 data cpp_witness_bool_boolean_algebra: Symbol = cpp_witness_bool_boolean_algebra
 
 fn cpp_mvp1_concrete_tokens() -> List<CppConcreteSyntaxToken> {
@@ -445,7 +447,7 @@ fn cpp_unsigned_integer_facts(
   }
 }
 
-fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
+fn cpp_signed_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
   [
     cpp_signed_integer_facts(
       spelling: SignedChar,
@@ -471,7 +473,12 @@ fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFa
       spelling: LongLongInt,
       surface_spelling: cpp_surface_spelling_long_long_int,
       target_profile: target_profile
-    ),
+    )
+  ]
+}
+
+fn cpp_unsigned_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
+  [
     cpp_unsigned_integer_facts(
       spelling: UnsignedChar,
       surface_spelling: cpp_surface_spelling_unsigned_char,
@@ -498,6 +505,13 @@ fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFa
       target_profile: target_profile
     )
   ]
+}
+
+fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFacts> {
+  list_append(
+    left: cpp_signed_integer_facts_catalog(target_profile: target_profile),
+    right: cpp_unsigned_integer_facts_catalog(target_profile: target_profile)
+  )
 }
 
 fn cpp_character_facts_catalog(target_profile: Node) -> List<CppCharacterPrimitiveFacts> {
@@ -777,11 +791,11 @@ fn cpp_wave1_primitive_fact_bundles(
   )
 }
 
-fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
+fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts, witness: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      cpp_named_edge(name: cpp_witness_ordered_ring_integer, target: cpp_atom(id: cpp_witness_ordered_ring_integer)),
+      cpp_named_edge(name: witness, target: cpp_atom(id: witness)),
       cpp_named_edge(name: cpp_field_surface_spelling, target: cpp_atom(id: facts.surface_spelling)),
       cpp_named_edge(name: cpp_field_width_selection, target: facts.width_fact),
       cpp_named_edge(name: cpp_field_scalar, target: facts.signedness_fact),
@@ -791,12 +805,27 @@ fn cpp_integer_algebra_witness_node(facts: CppIntegerPrimitiveFacts) -> Node {
   }
 }
 
-fn cpp_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn cpp_signed_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = cpp_integer_facts_node(facts: facts)
   AlgebraInhabitanceDecl {
     algebra: ordered_ring_node(inhabitant: inhabitant),
     inhabitant: inhabitant,
-    witness: cpp_integer_algebra_witness_node(facts: facts)
+    witness: cpp_integer_algebra_witness_node(
+      facts: facts,
+      witness: cpp_witness_ordered_ring_integer
+    )
+  }
+}
+
+fn cpp_unsigned_integer_algebra_inhabitance(facts: CppIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = cpp_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: commutative_semiring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: cpp_integer_algebra_witness_node(
+      facts: facts,
+      witness: cpp_witness_commutative_semiring_integer
+    )
   }
 }
 
@@ -820,13 +849,30 @@ fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> AlgebraInhabita
   }
 }
 
-fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
   fold_list(
-    xs: cpp_integer_facts_catalog(target_profile: target_profile),
+    xs: cpp_signed_integer_facts_catalog(target_profile: target_profile),
     empty: Empty,
     cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: cpp_integer_algebra_inhabitance(facts: facts))
+      list_snoc_item(xs: acc, item: cpp_signed_integer_algebra_inhabitance(facts: facts))
     }
+  )
+}
+
+fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: cpp_unsigned_integer_facts_catalog(target_profile: target_profile),
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: cpp_unsigned_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: cpp_signed_integer_algebra_inhabitance_decls(target_profile: target_profile),
+    right: cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: target_profile)
   )
 }
 
