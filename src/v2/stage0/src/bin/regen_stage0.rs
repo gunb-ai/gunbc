@@ -508,6 +508,8 @@ fn patch_bootstrap_dag_collect_text(text: &str) -> Result<String, String> {
         return Ok(text.to_string());
     }
 
+    let pending_start =
+        "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectPending";
     let key_start = "pub fn dag_node_key";
     let inferred_start = "pub fn inferred_fingerprint";
     let fingerprint_start = "pub fn dag_node_fingerprint";
@@ -515,7 +517,12 @@ fn patch_bootstrap_dag_collect_text(text: &str) -> Result<String, String> {
     let collect_start = "pub fn dag_collect_nodes_list";
     let build_key_start = "pub fn build_dag_key_to_id";
 
-    let mut patched = strip_between(text, key_start, inferred_start)?;
+    let mut patched = if text.contains("pub struct DagCollectPending") {
+        strip_between(text, pending_start, key_start)?
+    } else {
+        text.to_string()
+    };
+    patched = strip_between(&patched, key_start, inferred_start)?;
     patched = strip_between(&patched, fingerprint_start, collision_start)?;
     patched = strip_between(&patched, collect_start, build_key_start)?;
 
@@ -836,6 +843,13 @@ pub struct DagCollectAcc {
     pub seen: (),
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagCollectPending {
+    pub anchor: (),
+    pub key: String,
+    pub fp: String,
+}
+
 pub fn dag_node_key(node: ()) -> String {
     "k".to_string()
 }
@@ -873,6 +887,10 @@ pub fn build_dag_key_to_id(order: ()) -> () {
 }
 "#;
         let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
+        assert!(
+            !patched.contains("pub struct DagCollectPending"),
+            "DagCollectPending helper struct must be stripped from generated compile.rs"
+        );
         for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
             assert!(
                 !patched.contains(&format!("pub fn {symbol}(")),
