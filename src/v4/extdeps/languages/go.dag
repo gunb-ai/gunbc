@@ -165,14 +165,6 @@ type GoGrammarRelationRow {
   tokens: List<GoConcreteSyntaxToken>
 }
 
-// Wave 2a accepts the shared identifier character classes as an explicit
-// subset. Go's full identifier grammar is Unicode letter/digit based; this
-// gate dissolves when std.lexing exports language-specific Unicode classes.
-type GoIdentifierLexicalScope
-{
-  subset_gate: Symbol
-}
-
 type GoLanguageModel {
   lex: LexRules
   grammar: ParseGrammar
@@ -264,7 +256,6 @@ data go_language_model_surface_id: Symbol = go_language_model_surface_id
 data go_surface_fn_item: Symbol = go_surface_fn_item
 data go_surface_type_int: Symbol = go_surface_type_int
 data go_surface_bin_add: Symbol = go_surface_bin_add
-data go_wave2a_identifier_ascii_subset_gate: Symbol = go_wave2a_identifier_ascii_subset_gate
 
 data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
@@ -1439,23 +1430,17 @@ fn go_whitespace_trivia_rule() -> LexRule {
 // identifier classes and rejects outside-subset identifiers via lexer no-match;
 // dissolve-on: std.lexing exports Go Unicode identifier classes and this
 // pattern consumes them.
-fn go_ident_lex_pattern(scope: GoIdentifierLexicalScope) -> LexPattern {
+fn go_ident_lex_pattern() -> LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
-fn go_wave2a_identifier_scope() -> GoIdentifierLexicalScope {
-  GoIdentifierLexicalScope {
-    subset_gate: go_wave2a_identifier_ascii_subset_gate
-  }
-}
-
 fn go_ident_lex_rule() -> LexRule {
   TokenRule {
     token_class: go_token_ident,
-    pattern: go_ident_lex_pattern(scope: go_wave2a_identifier_scope())
+    pattern: go_ident_lex_pattern()
   }
 }
 
