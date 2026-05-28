@@ -35,12 +35,15 @@ import v4.compiler.tokenize {
   LexRule,
   LexRuleSet,
   LexRules,
+  KeywordPattern,
   LiteralPattern,
   ModeledLexRules,
   OptionalPattern,
   RepeatPattern,
   SequencePattern,
   TokenRule,
+  TriviaRule,
+  WhitespaceChar,
   lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
@@ -956,7 +959,16 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
     rules: [
       wasm_lex_rule(token_class: wasm_token_lparen, text: "("),
       wasm_lex_rule(token_class: wasm_token_rparen, text: ")"),
-      wasm_lex_rule(token_class: wasm_token_kw_module, text: "module "),
+      TriviaRule {
+        pattern: SequencePattern {
+          left: CharClassPattern { class: WhitespaceChar },
+          right: RepeatPattern { element: CharClassPattern { class: WhitespaceChar } }
+        }
+      },
+      TokenRule {
+        token_class: wasm_token_kw_module,
+        pattern: KeywordPattern { text: "module" }
+      },
       wasm_lex_rule(token_class: wasm_token_kw_func, text: "func "),
       wasm_ident_lex_rule(),
       wasm_lex_rule(token_class: wasm_token_param_list, text: " (param i32 i32) "),
