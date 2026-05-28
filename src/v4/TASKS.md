@@ -165,11 +165,7 @@ Substrate / extdeps fan-out:
    "Out of scope for the initial single-target compiler.")
 
 Test + bootstrap substrate (schedule early — every later task benefits):
-  T-19  lens/testgen.dag                 [needs T-1, T-2, T-3 — DISPATCHABLE: all deps done; no dispatch issued 2026-05-28]
-        Produces TestClaim corpus from substrate; manual TestClaims in
-        test/claim/manual/ serve as anti-regression contract until
-        T-19 implementation lands. Every later task benefits from
-        testgen-derived test coverage instead of hand-authoring.
+  T-19  lens/testgen.dag                 [DONE]
   T-20  workflow/bootstrap.dag           [needs T-1; grows incrementally]
         Bootstrap orchestration AS DATA (seed-once → self-host →
         fixed-point). v2 interprets it. Scaffold-early (the parse-
@@ -981,7 +977,8 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 
 ---
 
-### T-19: lens/testgen.dag — producer of TestClaim corpus from substrate
+### T-19: lens/testgen.dag — producer of TestClaim corpus from substrate  [DONE]
+**Status:** Landed on main (#3636). Filed by nimble-bee-438.
 
 **File**: `src/v4/lens/testgen.dag` (operator-ratified 2026-05-15: testgen as substrate fold; scheduled early — parallel fill — so the test corpus exists before the compiler stages need it)
 **Why early**: per operator "i want testgen to be working fairly early — for the compiler itself". Scheduling it early (parallel fill, deps clear after T-3) means T-6+ tasks consume testgen-derived TestClaims rather than hand-authoring.
@@ -1004,8 +1001,6 @@ All 5 artifacts share ONE Node tree (per gate #28 omni_layers_share_one_node_tre
 **Bootstrap pragma** (per operator: "manual authoring is fine as well"):
 - After T-1 (`std/node.dag`) lands: hand-author 5-10 TestClaims in `test/claim/manual/` covering type-construction for the 6 connectives + 5 behaviors. Validates schema + shape immediately.
 - After T-2 (`std/algebra.dag`) lands: hand-author algebra-law TestClaims for at least Magma/Monoid.
-- After T-19 implementation: testgen produces same set programmatically; manual claims become regression anchors.
-
 **Phase-1.5 scaffolding — forward dissolution (INVARIANTS P2)**:
 - **`manual_anchor_manifest.dag` — P2 join (single authority):** `ManualAnchorKey` is defined **once** in `std/verification.dag` (closed 12 live anchors + **`ManualAnchorAbsent`** for claims outside this set). Manifest rows and manual **`TestClaim`** literals use the **same discriminant values** — mechanical join is **tag equality** on `ManualAnchorKey` (no parallel `String` slug tables). **`TestClaim.classification`** and **`TestClaim.kind`** remain sole authority for tier×layer and assert form. Testgen scheduling arm (`type_construction` vs `algebra_law` …) is implied by variant name prefix until M2 can read claims or carry a single non-duplicated discriminant if needed.
 - **`TestClaimCoproductVariant` — 🟡 `feature:testclaim-coproduct-reflection` gate (coproduct-exhaustiveness):** the current generated `DiagnosticExhaustiveness` slice needs a typed `omitted_variant` key, but v4 cannot yet project the arm-key set directly from the canonical `TestClaim` coproduct. This is a tracked T-19 bridge, not a terminal source of truth. **Owning follow-up:** land the T-19 coproduct-reflection primitive/consumer that reads the `TestClaim` variant set structurally and emits per-arm generated TestClaims. **Dissolve-on-arrival:** in that same follow-up, delete `TestClaimCoproductVariant`, make `GeneratedCoproductExhaustiveness` consume the reflected arm key, and keep the generated corpus witness proving every reflected arm schedules/emits from the canonical `TestClaim` type.
