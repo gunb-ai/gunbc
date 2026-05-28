@@ -21,11 +21,8 @@ import v4.std.grammar {
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   FormalGrammarSymbol,
-<<<<<<< HEAD
   FormalNonterminal,
   FormalNonterminalOccurrence,
-=======
->>>>>>> origin/main
   FormalProduction,
   FormalTerminal,
   FormalTerminalOccurrence,
@@ -958,14 +955,6 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-<<<<<<< HEAD
-fn python_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: lhs },
-    rhs: rhs
-  }
-}
-
 // 🟡 gated — feature:python-formal-symbol-to-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
 // interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
 // dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
@@ -1090,8 +1079,6 @@ fn python_formal_productions_to_grammar_production(
   }
 }
 
-=======
->>>>>>> origin/main
 fn python_formal_production_mvp1_fn_add() -> FormalProduction {
   grammar_formal_production(
     lhs: python_production_mvp1_fn_add,
@@ -1305,7 +1292,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
     productions: [
       python_grammar_production_mvp1_fn_add(),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_fn_def,
           rhs: [
             grammar_formal_terminal(identity: python_token_kw_def),
@@ -1321,7 +1308,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
       ),
       // Left-biased Choice: longer/recursive suite alt must precede single-stmt alt.
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_suite,
           rhs: [
             grammar_formal_nonterminal_occurrence(identity: python_production_stmt),
@@ -1329,7 +1316,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
           ]
         ),
         alts: [
-          python_formal_production(
+          grammar_formal_production(
             lhs: python_production_suite,
             rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_stmt)]
           )
@@ -1337,16 +1324,16 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_suite
       ),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_stmt,
           rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_assign_stmt)]
         ),
         alts: [
-          python_formal_production(
+          grammar_formal_production(
             lhs: python_production_stmt,
             rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_if_stmt)]
           ),
-          python_formal_production(
+          grammar_formal_production(
             lhs: python_production_stmt,
             rhs: [grammar_formal_nonterminal_occurrence(identity: python_production_return_stmt)]
           )
@@ -1354,7 +1341,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_stmt
       ),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_assign_stmt,
           rhs: [
             grammar_formal_terminal(identity: python_token_ident),
@@ -1368,7 +1355,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
       // colon_if_suite_indent carries ":\n        " (layout boundary); if-body return uses
       // kw_return+primary alt (no leading newline) so token/grammar paths stay consistent.
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_if_stmt,
           rhs: [
             grammar_formal_terminal(identity: python_token_newline_if_stmt),
@@ -1381,7 +1368,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_if_stmt
       ),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_return_stmt,
           rhs: [
             grammar_formal_terminal(identity: python_token_newline_return_inner),
@@ -1389,14 +1376,14 @@ fn python_wave1_grammar_root() -> GrammarRoot {
           ]
         ),
         alts: [
-          python_formal_production(
+          grammar_formal_production(
             lhs: python_production_return_stmt,
             rhs: [
               grammar_formal_terminal(identity: python_token_newline_return_outer),
               grammar_formal_nonterminal_occurrence(identity: python_production_primary)
             ]
           ),
-          python_formal_production(
+          grammar_formal_production(
             lhs: python_production_return_stmt,
             rhs: [
               grammar_formal_terminal(identity: python_token_kw_return),
@@ -1407,7 +1394,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_return_stmt
       ),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_comparison,
           rhs: [
             grammar_formal_nonterminal_occurrence(identity: python_production_additive),
@@ -1419,18 +1406,18 @@ fn python_wave1_grammar_root() -> GrammarRoot {
       ),
       // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_comparison_tail,
           rhs: [
             grammar_formal_terminal(identity: python_token_greater),
             grammar_formal_nonterminal_occurrence(identity: python_production_additive)
           ]
         ),
-        alts: [python_formal_production(lhs: python_production_comparison_tail, rhs: Empty)],
+        alts: [grammar_formal_production(lhs: python_production_comparison_tail, rhs: Empty)],
         emitted: python_surface_comparison_tail
       ),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_additive,
           rhs: [
             grammar_formal_nonterminal_occurrence(identity: python_production_primary),
@@ -1442,7 +1429,7 @@ fn python_wave1_grammar_root() -> GrammarRoot {
       ),
       // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_additive_tail,
           rhs: [
             grammar_formal_terminal(identity: python_token_plus),
@@ -1450,16 +1437,16 @@ fn python_wave1_grammar_root() -> GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: python_production_additive_tail)
           ]
         ),
-        alts: [python_formal_production(lhs: python_production_additive_tail, rhs: Empty)],
+        alts: [grammar_formal_production(lhs: python_production_additive_tail, rhs: Empty)],
         emitted: python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(
-        head: python_formal_production(
+        head: grammar_formal_production(
           lhs: python_production_primary,
           rhs: [grammar_formal_terminal(identity: python_token_ident)]
         ),
         alts: [
-          python_formal_production(
+          grammar_formal_production(
             lhs: python_production_primary,
             rhs: [grammar_formal_terminal(identity: python_token_int_literal)]
           )
