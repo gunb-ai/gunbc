@@ -962,6 +962,67 @@ fn dag_collect_resolved_peel_keeps_canonical_declaration() {
     );
 }
 
+/// Typed expression nodes must keep their own nodes-table identity (codex RC):
+/// `inferred: Resolved(type)` on ExprVar must not collapse refs to the type declaration.
+#[test]
+fn dag_collect_typed_expression_keeps_own_identity() {
+    let source = "module expr_id\n\nfn id(x: Int) -> Int { x }\n";
+    let result = compile_dag_named("expr_id.dag", source, RenderTarget::Dag);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "dag-artifact.json");
+    let artifact: Value =
+        serde_json::from_str(&content).expect("dag artifact should be valid JSON");
+    let nodes = artifact
+        .get("nodes")
+        .and_then(Value::as_object)
+        .expect("dag artifact should have a nodes object");
+
+    let int_records: Vec<_> = nodes
+        .values()
+        .filter(|v| {
+            v.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|n| n == "Int")
+        })
+        .collect();
+    assert_eq!(int_records.len(), 1, "kernel Int should appear once in nodes table");
+
+    let expr_var_records: Vec<_> = nodes.values().filter(|v| {
+        v.get("expr_data")
+            .and_then(|e| e.get("kind"))
+            .and_then(Value::as_str)
+            == Some("ExprVar")
+    }).collect();
+    assert!(
+        !expr_var_records.is_empty(),
+        "ExprVar nodes must remain distinct records, not fold into type refs"
+    );
+
+    let int_id = nodes
+        .iter()
+        .find(|(_, v)| {
+            v.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|n| n == "Int")
+        })
+        .map(|(id, _)| id.as_str())
+        .expect("Int record id");
+    let var_id = nodes
+        .iter()
+        .find(|(_, v)| {
+            v.get("expr_data")
+                .and_then(|e| e.get("kind"))
+                .and_then(Value::as_str)
+                == Some("ExprVar")
+        })
+        .map(|(id, _)| id.as_str())
+        .expect("ExprVar record id");
+    assert_ne!(
+        int_id, var_id,
+        "expression use site must not share nodes-table id with inferred Int type"
+    );
+}
+
 #[test]
 fn dag_artifact_multi_module_names_resolve() {
     let files = &[
