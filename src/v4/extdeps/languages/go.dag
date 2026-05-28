@@ -165,7 +165,9 @@ type GoGrammarRelationRow {
 // subset. Go's full identifier grammar is Unicode letter/digit based; this
 // gate dissolves when std.lexing exports language-specific Unicode classes.
 type GoIdentifierLexicalScope
-  = GoIdentifierAsciiSubsetFailClosed
+{
+  subset_gate: Symbol
+}
 
 type GoLanguageModel {
   lex: LexRules
@@ -1424,17 +1426,16 @@ fn go_lex_rule(token_class: Symbol, text: String) -> LexRule {
 // dissolve-on: std.lexing exports Go Unicode identifier classes and this
 // pattern consumes them.
 fn go_ident_lex_pattern(scope: GoIdentifierLexicalScope) -> LexPattern {
-  match scope {
-    GoIdentifierAsciiSubsetFailClosed =>
-      SequencePattern {
-        left: CharClassPattern { class: IdentStartChar },
-        right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
-      }
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
 
 fn go_wave2a_identifier_scope() -> GoIdentifierLexicalScope {
-  GoIdentifierAsciiSubsetFailClosed
+  GoIdentifierLexicalScope {
+    subset_gate: go_wave2a_identifier_ascii_subset_gate
+  }
 }
 
 fn go_ident_lex_rule() -> LexRule {
