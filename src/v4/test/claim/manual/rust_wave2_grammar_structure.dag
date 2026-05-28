@@ -6,6 +6,7 @@ module v4.test.claim.manual.rust_wave2_grammar_structure
 
 import v4.extdeps.languages.rust {
   RustLanguageModel,
+  rust_formal_production_list_has_lhs,
   rust_language_model_wave2,
   rust_production_block,
   rust_production_fn_item,
@@ -18,6 +19,7 @@ import v4.extdeps.languages.rust {
   rust_production_type,
   rust_token_kw_else,
   rust_token_kw_let,
+  rust_wave2_formal_productions,
   rust_wave2_lex_rules
 }
 import v4.std.grammar { grammar_carries_symbol }
@@ -25,8 +27,12 @@ import v4.std.lexing { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
 
 fn rust_wave2_grammar_structure_satisfied(lm: RustLanguageModel) -> Bool {
+  let formal = rust_wave2_formal_productions()
   lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_let) &&
     lex_rule_set_token_class_member(rules: rust_wave2_lex_rules(), token_class: rust_token_kw_else) &&
+    rust_formal_production_list_has_lhs(productions: formal, lhs: rust_production_fn_item) &&
+    rust_formal_production_list_has_lhs(productions: formal, lhs: rust_production_if_expr) &&
+    rust_formal_production_list_has_lhs(productions: formal, lhs: rust_production_type) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_fn_item) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_typed_param) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: rust_production_param_list) &&
