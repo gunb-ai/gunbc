@@ -440,6 +440,20 @@ fn v4_python_language_model_declares_wave2b_algebra_inhabitance() {
             "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must declare `{name}`"
         );
     }
+    for name in [
+        "python_complex_algebra_witness_node",
+        "python_singleton_algebra_witness_node",
+        "python_complex_algebra_inhabitance",
+        "python_singleton_algebra_inhabitance",
+        "python_complex_algebra_inhabitance_decls",
+        "python_singleton_algebra_inhabitance_decls",
+    ] {
+        assert_eq!(
+            surface_fn_count(&module, name),
+            0,
+            "{PYTHON_LANGUAGE_PATH}: Python Wave 2b must not declare faithful algebra inhabitance for deferred complex/singleton facts via `{name}`"
+        );
+    }
 }
 
 #[test]
@@ -807,15 +821,23 @@ fn assert_imports_shared_token_kinds(
 }
 
 fn surface_declares_fn(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
-    module.items.iter().any(|item| match item {
-        SurfaceItem::Fn {
-            name: item_name, ..
-        }
-        | SurfaceItem::FnExternalBody {
-            name: item_name, ..
-        } => item_name == name,
-        _ => false,
-    })
+    surface_fn_count(module, name) > 0
+}
+
+fn surface_fn_count(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> usize {
+    module
+        .items
+        .iter()
+        .filter(|item| match item {
+            SurfaceItem::Fn {
+                name: item_name, ..
+            }
+            | SurfaceItem::FnExternalBody {
+                name: item_name, ..
+            } => item_name == name,
+            _ => false,
+        })
+        .count()
 }
 
 fn surface_declares_data(module: &v3_compiler::parse_surface::SurfaceModule, name: &str) -> bool {
