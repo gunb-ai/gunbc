@@ -10,6 +10,7 @@ import v4.compiler.eval {
   Inputs,
   TestClaimRun,
   eval,
+  eval_context_with_semantics,
   eval_diagnostic,
   eval_test_claim_subject,
   run_test_claim
@@ -55,6 +56,7 @@ import v4.std.runtime {
   EvaluationFrame,
   RuntimeIdentity,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   LoopInterpreter,
   RuntimePrimitive,
   RuntimePrimitiveValue,
@@ -107,11 +109,13 @@ data eval_mvp2_witness_symbol: Symbol = eval_mvp2_witness_symbol
 data eval_mvp2_descent_not_derived: Symbol = eval_mvp2_descent_not_derived
 data eval_mvp2_args_not_two_literals: Symbol = eval_mvp2_args_not_two_literals
 data eval_mvp2_descent_dimension: Symbol = eval_mvp2_descent_dimension
-// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
-data eval_mvp2_claim_hash: Hash = eval_mvp2_claim_hash
-data eval_mvp2_interpretation_hash: Hash = eval_mvp2_interpretation_hash
-
-
+data eval_mvp2_interpretation_pin: Symbol = eval_mvp2_interpretation_pin
+data eval_mvp2_evaluator_pin: Symbol = eval_mvp2_evaluator_pin
+data eval_mvp2_allocate_literal_sym: Symbol = eval_mvp2_allocate_literal_sym
+data eval_mvp2_call_primitive_sym: Symbol = eval_mvp2_call_primitive_sym
+data eval_mvp2_choose_branch_sym: Symbol = eval_mvp2_choose_branch_sym
+data eval_mvp2_step_loop_sym: Symbol = eval_mvp2_step_loop_sym
+data eval_mvp2_bind_value_sym: Symbol = eval_mvp2_bind_value_sym
 fn eval_mvp2_byte() -> Byte {
   Byte { bits: [true] }
 }
@@ -367,10 +371,22 @@ data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
 }
 
 
-fn eval_mvp2_context() -> EvalContext {
-  EvalContext {
-    interpretation: eval_mvp2_interpretation_algebra()
+fn eval_mvp2_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: eval_mvp2_allocate_literal_sym,
+    call_primitive: eval_mvp2_call_primitive_sym,
+    choose_branch: eval_mvp2_choose_branch_sym,
+    step_loop: eval_mvp2_step_loop_sym,
+    bind_value: eval_mvp2_bind_value_sym
   }
+}
+
+fn eval_mvp2_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: eval_mvp2_interpretation_pin,
+    interpretation: eval_mvp2_interpretation_algebra(),
+    structure_witness: eval_mvp2_interpretation_structure_witness()
+  )
 }
 
 
@@ -387,8 +403,7 @@ data run_eval_mvp2_test_claim_route: TestClaimRun<Node, RuntimeValue> = run_test
   subject: eval_test_claim_subject(
     claim: claim_eval_mvp2_test_claim_route,
     context: eval_mvp2_context(),
-    tree: eval_mvp2_inferred_tree()
-  ),
-  claim_hash: eval_mvp2_claim_hash,
-  interpretation_hash: eval_mvp2_interpretation_hash
+    tree: eval_mvp2_inferred_tree(),
+    evaluator_pin: eval_mvp2_evaluator_pin
+  )
 )

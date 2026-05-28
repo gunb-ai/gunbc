@@ -1,0 +1,106 @@
+// src/v4/test/claim/manual/lean_mvp1_grammar_claim.dag
+// Scope: T-4.17 wave-2a behavior receipt — lean PROOF-1 MVP grammar validates and parse_production accepts the fixture token-class sequence (position-distinct literal classes; no parse-stage binding projection).
+// Status: T-22 runner deferred — execution pending T-22 complexity fix.
+
+module v4.test.claim.manual.lean_mvp1_grammar_claim
+
+import v4.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production,
+  parse_stage_locus_port
+}
+import v4.compiler.tokenize { tokenize }
+import v4.extdeps.languages.lean {
+  lean_mvp1_parse_fixture_file,
+  lean_mvp1_source_text,
+  lean_production_mvp1_def_dec,
+  lean_wave1_grammar_root,
+  lean_wave1_lex
+}
+import v4.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
+import v4.std.grammar { ParseTree }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.logic { Bool }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data lean_claim_bool_true: Symbol = lean_claim_bool_true
+data lean_claim_bool_false: Symbol = lean_claim_bool_false
+
+fn lean_claim_bool_atom(b: Bool) -> Node {
+  match b {
+    true =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: lean_claim_bool_true } },
+        children: []
+      }
+    false =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: lean_claim_bool_false } },
+        children: []
+      }
+  }
+}
+
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 —
+// dissolve-on: T-22 claim runner evaluates Outcome fixtures directly without Bool projection.
+fn lean_mvp1_grammar_validates_fixture() -> Bool {
+  let at = port_locus(port: parse_stage_locus_port)
+  match grammar_validate_for_parse(root: lean_wave1_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// 🟡 predicate dissolution — feature:T-22-outcome-to-bool-claim-bridge — bind TASKS.md T-22 —
+// dissolve-on: T-22 claim runner evaluates Outcome<ParseTree> directly without Bool projection.
+fn lean_mvp1_grammar_parse_accepted() -> Bool {
+  match lean_mvp1_grammar_parse_fixture() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn lean_mvp1_grammar_parse_fixture() -> Outcome<ParseTree> {
+  let at = port_locus(port: parse_stage_locus_port)
+  match tokenize(
+    text: lean_mvp1_source_text,
+    file: lean_mvp1_parse_fixture_file,
+    rules: lean_wave1_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar_validate_for_parse(root: lean_wave1_grammar_root(), at: at) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: validated, diagnostics: _ } =>
+          parse_production(
+            tokens: stream.tokens,
+            validated: validated,
+            production_name: lean_production_mvp1_def_dec
+          )
+      }
+  }
+}
+
+data claim_lean_mvp1_grammar_validates: TestClaim = EqualsClaim {
+  label: "lean_wave1_grammar_root passes grammar_validate_for_parse",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean_claim_bool_atom(b: lean_mvp1_grammar_validates_fixture()),
+  rhs: lean_claim_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_lean_mvp1_grammar_parses_mvp_tokens: TestClaim = EqualsClaim {
+  label: "lean PROOF-1 MVP parse_production accepts lexer token-class output for def+termination_by fixture",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: lean_claim_bool_atom(b: lean_mvp1_grammar_parse_accepted()),
+  rhs: lean_claim_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

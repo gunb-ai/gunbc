@@ -13,6 +13,8 @@ import v4.compiler.infer {
   inferred_facts_descent,
   inferred_facts_resolved_type
 }
+import v4.std.algebra { fold_list }
+import v4.std.cardinality { RankingDimension, TerminationProof }
 import v4.std.collection { List, Map, list_nth }
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
@@ -21,6 +23,7 @@ import v4.std.runtime {
   EvaluationEnvironment,
   EvaluationFrame,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   Raise,
   Return,
   RuntimeAggregate,
@@ -59,15 +62,28 @@ import v4.std.node {
   Transform,
   TypeNode,
   Value,
+  Atom,
+  bag_hash_digest,
+  combine_hash,
+  content_hash,
+  byte_offset_cache_digest,
   fold_node,
   is_positional,
   well_formed
 }
 import v4.std.diagnostic {
   AmbiguousIntent,
+  ByteRange,
   Correction,
   Diagnostic,
+  Extent,
+  Locus,
+  NodeLocus,
   NoCorrectionReason,
+  NonEmptyDiagnostics,
+  PortLocus,
+  Textual,
+  WholeFile,
   node_locus,
   Outcome,
   Unavailable,
@@ -75,7 +91,10 @@ import v4.std.diagnostic {
   None,
   Rejected,
   ShortCircuit,
+  Suggested,
   StageDiagnosticPolicy,
+  UserInputBoundary,
+  ExternalContractUnknown,
   absorb_outcome_diagnostics,
   append_outcome_value,
   bind_outcome,
@@ -93,13 +112,30 @@ import v4.std.verification {
   EqualsClaim,
   RoundTripClaim,
   TestClaim,
+  TestClaimCompilesClaimVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
+  test_claim_coproduct_variant,
+  test_claim_evaluation_nodes,
   test_claim_input
 }
-import v4.std.witness { Holds, Violates, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
+  v4_evaluator_interpretation_structure_witness,
   v4_evaluator_interpretation_wave1,
+  v4_evaluator_runtime_id,
   v4_evaluator_runtime_wave1
+}
+
+
+// P2/P3: registered triple — runtime_identity, registry semantics_digest, structure witness (derived fn-ref symbols).
+type InterpretationCacheAuthority {
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  semantics_digest: Hash,
+  structure_witness: InterpretationStructureWitness
 }
 
 
@@ -109,15 +145,100 @@ type Inputs {
 }
 
 
-// RULING-1: pretty-much-done — explicit runtime interpretation authority.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
 type EvalContext {
-  interpretation: InterpretationAlgebra
+  cache_authority: InterpretationCacheAuthority
 }
 
 
-// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands.
+// P2/P3: semantics_digest is registry-only; structure_witness Symbols name each interpreter fn ref (co-located with algebra literals).
+fn eval_context_with_semantics(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> EvalContext {
+  EvalContext {
+    cache_authority: InterpretationCacheAuthority {
+      runtime_identity: runtime_identity,
+      interpretation: interpretation,
+      semantics_digest: interpretation_registry_semantics_digest(
+        runtime_identity: runtime_identity,
+        interpretation: interpretation,
+        structure_witness: structure_witness
+      ),
+      structure_witness: structure_witness
+    }
+  }
+}
+
+
+// Closed registry entry: v4_evaluator_runtime_id <-> v4_evaluator_interpretation_wave1 only.
+fn eval_context_v4_evaluator_wave1() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: v4_evaluator_runtime_id,
+    interpretation: v4_evaluator_interpretation_wave1(),
+    structure_witness: v4_evaluator_interpretation_structure_witness()
+  )
+}
+
+
+// Closed registry: structural == on InterpretationAlgebra compares named top-level fn refs
+// (not runtime closure identity). Receipt: v4_evaluator_runtime_anchor interpretation-eq witnesses.
+// 🟡 gated — dissolve-on: Node-projectable InterpretationAlgebra registry keys.
+fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitness) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: combine_hash(
+        a: test_claim_symbol_digest(sym: w.allocate_literal),
+        b: test_claim_symbol_digest(sym: w.call_primitive)
+      ),
+      b: test_claim_symbol_digest(sym: w.choose_branch)
+    ),
+    b: combine_hash(
+      a: test_claim_symbol_digest(sym: w.step_loop),
+      b: test_claim_symbol_digest(sym: w.bind_value)
+    )
+  )
+}
+
+
+fn interpretation_structure_witness_digest(
+  runtime_identity: Symbol,
+  structure_witness: InterpretationStructureWitness
+) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: runtime_identity),
+    b: interpretation_structure_witness_slots_digest(w: structure_witness)
+  )
+}
+
+
+fn interpretation_registry_semantics_digest(
+  runtime_identity: Symbol,
+  interpretation: InterpretationAlgebra,
+  structure_witness: InterpretationStructureWitness
+) -> Hash {
+  if runtime_identity == v4_evaluator_runtime_id {
+    if interpretation == v4_evaluator_interpretation_wave1() {
+      test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
+    } else {
+      test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
+    }
+  } else {
+    interpretation_structure_witness_slots_digest(w: structure_witness)
+  }
+}
+
+
+fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
+  context.cache_authority.interpretation
+}
+
+
+// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; cache digests derive from evaluator_input at the cache-key boundary (monomorphic digest fns per T), not a parallel stored digest field.
 type TestClaimTypedInput<T> {
   evaluator_input: T
+  evaluator_pin: Symbol
 }
 
 
@@ -130,21 +251,23 @@ type TestClaimEvalSubject<T> {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: B1 content_hash of the whole TestClaim evaluation subgraph replaces staging placeholders; forbidden: caller-supplied hash parameters acting as cache-validating authority before B1 content_hash lands.
-type TestClaimCacheKeyStagingPlaceholder {
-  claim_hash: Hash
-  interpretation_hash: Hash
-}
-
-
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: cache key derived from content_hash(eval_subject); hash_staging is NOT cache-validating authority until B1 lands.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
-  hash_staging: TestClaimCacheKeyStagingPlaceholder
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: receipt keyed by derived content_hash; forbidden: treating hash_staging as authoritative cache boundary.
+fn test_claim_cache_key_claim_hash<T>(key: TestClaimCacheKey<T>) -> Hash {
+  test_claim_claim_hash_digest(c: key.eval_subject.claim)
+}
+
+
+fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -> Hash {
+  test_claim_cache_interpretation_hash_node(subject: key.eval_subject)
+}
+
+
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, registered interpretation authority, evaluator pin / Node input).
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -173,20 +296,423 @@ type EvalProgress
   | Interpreted
 
 
-fn test_claim_cache_receipt<T>(
-  subject: TestClaimEvalSubject<T>,
-  claim_hash: Hash,
-  interpretation_hash: Hash
-) -> TestClaimCacheReceipt<T> {
-  TestClaimCacheReceipt {
-    key: TestClaimCacheKey {
-      eval_subject: subject,
-      hash_staging: TestClaimCacheKeyStagingPlaceholder {
-        claim_hash: claim_hash,
-        interpretation_hash: interpretation_hash
+data test_claim_cache_claim_digest_tag: Symbol = test_claim_cache_claim_digest_tag
+data test_claim_cache_interpretation_digest_tag: Symbol = test_claim_cache_interpretation_digest_tag
+data test_claim_no_correction_user_input_boundary_tag: Symbol = test_claim_no_correction_user_input_boundary_tag
+data test_claim_no_correction_ambiguous_intent_tag: Symbol = test_claim_no_correction_ambiguous_intent_tag
+data test_claim_no_correction_external_contract_unknown_tag: Symbol = test_claim_no_correction_external_contract_unknown_tag
+data test_claim_cache_extent_whole_file_tag: Symbol = test_claim_cache_extent_whole_file_tag
+data test_claim_cache_extent_byte_range_tag: Symbol = test_claim_cache_extent_byte_range_tag
+data test_claim_cache_correction_suggested_tag: Symbol = test_claim_cache_correction_suggested_tag
+data test_claim_cache_correction_unavailable_tag: Symbol = test_claim_cache_correction_unavailable_tag
+data test_claim_cache_locus_node_tag: Symbol = test_claim_cache_locus_node_tag
+data test_claim_cache_locus_port_tag: Symbol = test_claim_cache_locus_port_tag
+data test_claim_cache_locus_textual_tag: Symbol = test_claim_cache_locus_textual_tag
+data test_claim_cache_diagnostic_tail_bag_empty_tag: Symbol = test_claim_cache_diagnostic_tail_bag_empty_tag
+data test_claim_cache_termination_non_increasing_empty_tag: Symbol = test_claim_cache_termination_non_increasing_empty_tag
+data test_claim_cache_variant_compiles_tag: Symbol = test_claim_cache_variant_compiles_tag
+data test_claim_cache_variant_diagnostic_tag: Symbol = test_claim_cache_variant_diagnostic_tag
+data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equals_tag
+data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
+data test_claim_cache_interpretation_semantics_mismatch_tag: Symbol = test_claim_cache_interpretation_semantics_mismatch_tag
+data test_claim_cache_interpretation_registry_unbound_tag: Symbol = test_claim_cache_interpretation_registry_unbound_tag
+data test_claim_cache_interpretation_cache_ineligible_tag: Symbol = test_claim_cache_interpretation_cache_ineligible_tag
+data test_claim_cache_interpretation_registered_tag: Symbol = test_claim_cache_interpretation_registered_tag
+data test_claim_cache_witness_holds_tag: Symbol = test_claim_cache_witness_holds_tag
+data test_claim_cache_witness_violates_tag: Symbol = test_claim_cache_witness_violates_tag
+fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin
+  }
+}
+
+
+fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: tag } },
+    children: []
+  }
+}
+
+
+fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
+  fold_list(
+    xs: test_claim_evaluation_nodes(c: c),
+    empty: content_hash(n: test_claim_cache_digest_tag_node(tag: test_claim_cache_claim_digest_tag)),
+    cons: fn(acc, n) {
+      combine_hash(a: acc, b: content_hash(n: n))
+    }
+  )
+}
+
+
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
+fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
+  match reason {
+    UserInputBoundary =>
+      test_claim_symbol_digest(sym: test_claim_no_correction_user_input_boundary_tag)
+    AmbiguousIntent =>
+      test_claim_symbol_digest(sym: test_claim_no_correction_ambiguous_intent_tag)
+    ExternalContractUnknown =>
+      test_claim_symbol_digest(sym: test_claim_no_correction_external_contract_unknown_tag)
+  }
+}
+
+
+fn correction_verdict_digest(c: Correction) -> Hash {
+  match c {
+    Suggested { node: n } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_correction_suggested_tag),
+        b: content_hash(n: n)
+      )
+    Unavailable { reason: r } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_correction_unavailable_tag),
+        b: no_correction_reason_digest(reason: r)
+      )
+  }
+}
+
+
+// ByteRange offsets use O(log |i|) base-256 `byte_offset_cache_digest` (not Peano on |i|).
+fn byte_range_offset_cache_digest(i: Int) -> Hash {
+  byte_offset_cache_digest(i: i)
+}
+
+
+fn extent_cache_digest(e: Extent) -> Hash {
+  match e {
+    WholeFile =>
+      test_claim_symbol_digest(sym: test_claim_cache_extent_whole_file_tag)
+    ByteRange { start: sa, end: ea } =>
+      combine_hash(
+        a: combine_hash(
+          a: test_claim_symbol_digest(sym: test_claim_cache_extent_byte_range_tag),
+          b: byte_range_offset_cache_digest(i: sa)
+        ),
+        b: byte_range_offset_cache_digest(i: ea)
+      )
+  }
+}
+
+
+fn locus_cache_digest(at: Locus) -> Hash {
+  match at {
+    NodeLocus { anchor: a } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_locus_node_tag),
+        b: content_hash(n: a.at)
+      )
+    PortLocus { anchor: a } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_locus_port_tag),
+        b: test_claim_symbol_digest(sym: a.at)
+      )
+    Textual { file: f, extent: e } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_locus_textual_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: f),
+          b: extent_cache_digest(e: e)
+        )
+      )
+  }
+}
+
+
+// Canonical diagnostic digest for cache keys: locus + reason + correction (aligned with diagnostic_eq).
+fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
+  combine_hash(
+    a: locus_cache_digest(at: d.at),
+    b: combine_hash(
+      a: test_claim_symbol_digest(sym: d.reason),
+      b: correction_verdict_digest(c: d.correction)
+    )
+  )
+}
+
+
+fn diagnostic_tail_bag_cache_digest(xs: List<Diagnostic>) -> Hash {
+  bag_hash_digest(
+    empty: test_claim_symbol_digest(sym: test_claim_cache_diagnostic_tail_bag_empty_tag),
+    xs: map(xs, diag => diagnostic_cache_digest(d: diag))
+  )
+}
+
+
+fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
+  combine_hash(
+    a: diagnostic_cache_digest(d: d.head),
+    b: diagnostic_tail_bag_cache_digest(xs: d.tail)
+  )
+}
+
+
+fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
+  match test_claim_coproduct_variant(c: c) {
+    TestClaimCompilesClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_compiles_tag)
+    TestClaimDiagnosticClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_diagnostic_tag)
+    TestClaimEqualsClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_equals_tag)
+    TestClaimRoundTripClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_roundtrip_tag)
+  }
+}
+
+
+fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
+  let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
+  match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      nodes_digest
+    DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
+      combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      nodes_digest
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      nodes_digest
+  }
+}
+
+
+// IRT-4 claim_hash: assertion-shape variant tag, evaluation-node frontier, and diagnostic authority.
+fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
+  combine_hash(
+    a: test_claim_variant_cache_digest(c: c),
+    b: test_claim_claim_body_cache_digest(c: c)
+  )
+}
+
+
+fn test_claim_symbol_digest(sym: Symbol) -> Hash {
+  content_hash(n: test_claim_cache_digest_tag_node(tag: sym))
+}
+
+
+fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: w.property),
+    b: content_hash(n: w.evidence)
+  )
+}
+
+
+fn ranking_dimension_digest(d: RankingDimension) -> Hash {
+  test_claim_symbol_digest(sym: d.measured)
+}
+
+
+fn termination_proof_digest(proof: TerminationProof) -> Hash {
+  combine_hash(
+    a: ranking_dimension_digest(d: proof.strict),
+    b: fold_list(
+      xs: proof.non_increasing,
+      empty: test_claim_symbol_digest(sym: test_claim_cache_termination_non_increasing_empty_tag),
+      cons: fn(acc, d) {
+        combine_hash(a: acc, b: ranking_dimension_digest(d: d))
+      }
+    )
+  )
+}
+
+
+fn witness_cache_holds_digest(payload: Hash) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: test_claim_cache_witness_holds_tag),
+    b: payload
+  )
+}
+
+
+fn witness_cache_violates_digest(diag: Diagnostic) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: test_claim_cache_witness_violates_tag),
+    b: diagnostic_cache_digest(d: diag)
+  )
+}
+
+
+fn descent_witness_digest(d: Witness<TerminationProof>) -> Hash {
+  match d {
+    Holds { value: proof } =>
+      witness_cache_holds_digest(payload: termination_proof_digest(proof: proof))
+    Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
+  }
+}
+
+
+fn inferred_facts_digest(facts: InferredFacts) -> Hash {
+  let g = facts.grounding
+  combine_hash(
+    a: content_hash(n: g.node),
+    b: combine_hash(
+      a: combine_hash(
+        a: structural_property_witness_digest(w: g.witness.structural),
+        b: structural_property_witness_digest(w: g.witness.closedness)
+      ),
+      b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+    )
+  )
+}
+
+
+fn inferred_node_facts_cache_digest(tree: InferredTree, node: Node) -> Hash {
+  combine_hash(
+    a: content_hash(n: node),
+    b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
+      Holds { value: facts } =>
+        witness_cache_holds_digest(payload: inferred_facts_digest(facts: facts))
+      Violates { diagnostic: diag } => witness_cache_violates_digest(diag: diag)
+    }
+  )
+}
+
+
+fn inferred_tree_evaluated_facts_digest(tree: InferredTree) -> Hash {
+  fold_node(
+    n: tree.root,
+    algebra: NodeFold {
+      init: fn(n0) {
+        inferred_node_facts_cache_digest(tree: tree, node: n0)
+      },
+      step: fn(acc, e, child) {
+        combine_hash(a: acc, b: child)
       }
     }
+  )
+}
+
+
+fn inferred_tree_digest(tree: InferredTree) -> Hash {
+  combine_hash(
+    a: content_hash(n: tree.root),
+    b: inferred_tree_evaluated_facts_digest(tree: tree)
+  )
+}
+
+
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
+type InterpretationCacheDigestAuthority
+  = InterpretationCacheRegistered {
+      runtime_identity: Symbol,
+      semantics_witness: Hash
+    }
+  | InterpretationCacheIneligible {
+      runtime_identity: Symbol,
+      registry_witness: Hash,
+      structure_digest: Hash
+    }
+
+
+fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
+  let authority = context.cache_authority
+  let registry_witness = interpretation_registry_semantics_digest(
+    runtime_identity: authority.runtime_identity,
+    interpretation: authority.interpretation,
+    structure_witness: authority.structure_witness
+  )
+  let registered_semantics = test_claim_symbol_digest(sym: v4_evaluator_runtime_id)
+  let registry_mismatch = test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
+  if authority.runtime_identity == v4_evaluator_runtime_id
+    && authority.interpretation == v4_evaluator_interpretation_wave1()
+    && authority.semantics_digest == registered_semantics
+    && registry_witness == registered_semantics
+    && registry_witness != registry_mismatch {
+    InterpretationCacheRegistered {
+      runtime_identity: authority.runtime_identity,
+      semantics_witness: registry_witness
+    }
+  } else {
+    InterpretationCacheIneligible {
+      runtime_identity: authority.runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: interpretation_structure_witness_digest(
+        runtime_identity: authority.runtime_identity,
+        structure_witness: authority.structure_witness
+      )
+    }
   }
+}
+
+
+fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAuthority) -> Hash {
+  match auth {
+    InterpretationCacheRegistered {
+      runtime_identity: runtime_identity,
+      semantics_witness: semantics_witness
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_interpretation_registered_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: runtime_identity),
+          b: semantics_witness
+        )
+      )
+    InterpretationCacheIneligible {
+      runtime_identity: runtime_identity,
+      registry_witness: registry_witness,
+      structure_digest: structure_digest
+    } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag),
+        b: combine_hash(
+          a: combine_hash(
+            a: test_claim_symbol_digest(sym: runtime_identity),
+            b: registry_witness
+          ),
+          b: structure_digest
+        )
+      )
+  }
+}
+
+
+fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
+  interpretation_cache_digest_authority_hash(
+    auth: test_claim_interpretation_cache_digest_authority(context: context)
+  )
+}
+
+
+fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+  content_hash(n: input.evaluator_input)
+}
+
+
+fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
+  combine_hash(
+    a: test_claim_symbol_digest(sym: input.evaluator_pin),
+    b: test_claim_evaluator_input_digest_node(input: input)
+  )
+}
+
+
+fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>) -> Hash {
+  combine_hash(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: combine_hash(
+      a: test_claim_interpretation_cache_digest(context: subject.context),
+      b: test_claim_evaluator_digest_node(input: subject.input)
+    )
+  )
+}
+
+
+fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
+  TestClaimCacheReceipt {
+    key: TestClaimCacheKey {
+      eval_subject: subject
+    }
+  }
+}
+
+
+fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
+  test_claim_cache_receipt_node(subject: subject)
 }
 
 
@@ -1071,30 +1597,23 @@ fn aggregate_verdicts<T>(rs: List<Verdict<T>>, at: Node) -> Verdict<T> {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — claim_hash/interpretation_hash are staging placeholders, NOT cache-validating authority; dissolve-on: B1 content_hash derivation replaces caller-supplied hashes.
 fn run_test_claim(
-  subject: TestClaimEvalSubject<Node>,
-  claim_hash: Hash,
-  interpretation_hash: Hash
+  subject: TestClaimEvalSubject<Node>
 ) -> TestClaimRun<Node, RuntimeValue> {
   let actual = eval(
     tree: subject.tree,
-    interpretation: subject.context.interpretation,
+    interpretation: eval_context_interpretation(context: subject.context),
     inputs: Inputs { root: subject.input.evaluator_input }
   )
   let at = test_claim_input(c: subject.claim)
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash,
-      interpretation_hash: interpretation_hash
-    ),
+    cache: test_claim_cache_receipt_node(subject: subject),
     verdict: aggregate_verdicts(
       rs: [
         run_test_claim_runtime_assert(
           claim: subject.claim,
           tree: subject.tree,
-          interpretation: subject.context.interpretation,
+          interpretation: eval_context_interpretation(context: subject.context),
           actual: actual,
           at: at
         )
@@ -1108,12 +1627,17 @@ fn run_test_claim(
 fn eval_test_claim_subject(
   claim: TestClaim,
   context: EvalContext,
-  tree: InferredTree
+  tree: InferredTree,
+  evaluator_pin: Symbol
 ) -> TestClaimEvalSubject<Node> {
+  let input = test_claim_input(c: claim)
   TestClaimEvalSubject {
     claim: claim,
     context: context,
     tree: tree,
-    input: TestClaimTypedInput { evaluator_input: test_claim_input(c: claim) }
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: evaluator_pin
+    )
   }
 }
