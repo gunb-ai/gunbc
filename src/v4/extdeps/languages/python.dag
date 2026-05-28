@@ -1074,7 +1074,7 @@ fn python_formal_production_alts(
   head: FormalProduction,
   alts: List<FormalProduction>
 ) -> List<FormalProduction> {
-  list_append(xs: [head], ys: alts)
+  list_append(left: [head], right: alts)
 }
 
 fn python_formal_productions_to_grammar_production(
