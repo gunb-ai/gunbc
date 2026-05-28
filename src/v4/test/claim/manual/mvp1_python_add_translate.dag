@@ -298,6 +298,7 @@ data mvp1_python_emit_receipt: Outcome<TargetSource> = anchor_mvp1_python_emit_a
 data mvp1_python_compile_inferred_receipt: Outcome<CompileOutput> = anchor_mvp1_python_compile_inferred_accepts()
 
 
+// Project emit Outcome<TargetSource> to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_python_emit_claim_outcome() -> Outcome<Node> {
   match mvp1_python_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
@@ -319,6 +320,7 @@ fn mvp1_python_emit_claim_outcome() -> Outcome<Node> {
 }
 
 
+// Project compile Output to Outcome<Node> for TestClaim assert; Rejected diagnostics preserved.
 fn mvp1_python_compile_inferred_claim_outcome() -> Outcome<Node> {
   match mvp1_python_compile_inferred_receipt {
     Accepted { value: compile_result, diagnostics: d } =>
@@ -371,6 +373,8 @@ data claim_mvp1_python_compile_inferred_add_fn_accepts: TestClaim = CompilesClai
 }
 
 
+// T-22 TestClaimRun receipt — structural assert over projected emit Outcome<Node> via run_test_claim_assert (Verdict<Node>).
+// 🟡 gated — feature:W-T-10-mvp1-emit-outcome-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<TargetSource> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_python_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_python_emit_add_fn_accepts,
   context: infer_receipt_context(),
@@ -392,6 +396,8 @@ data run_mvp1_python_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRu
 }
 
 
+// T-22 TestClaimRun receipt — structural assert over projected compile Outcome<Node> via run_test_claim_assert (Verdict<Node>).
+// 🟡 gated — feature:W-T-11-mvp1-compile-output-testclaim — bind TASKS.md T-22 — dissolve-on: Outcome<CompileOutput> eval runner replaces structural projection; forbidden: CompilesClaim sentinel-node bridge that drops Rejected diagnostics.
 data subject_mvp1_python_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEvalSubject {
   claim: claim_mvp1_python_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
