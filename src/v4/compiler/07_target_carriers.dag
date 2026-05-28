@@ -1,25 +1,15 @@
 // src/v4/compiler/07_target_carriers.dag
-// Scope: Shared compile-stage language/target carriers — breaks compile ↔ emit import cycle.
-// Status: Wave-5-A — single authority for target projection carriers.
+// Scope: Shared compile-stage language/source aliases — breaks compile ↔ emit import cycle.
+// Status: Wave-5-A — TargetModel authority lives in v4.std.target_model.
 // Anchor: docs/design-v4-compiler-homomorphism.md
 
 
 module v4.compiler.target_carriers
 
 
-import v4.compiler.tokenize { LexRules, VoidLexRules }
-import v4.std.collection { Map, empty_map }
-import v4.std.node { Node, Symbol }
+import v4.std.node { Node }
 import v4.std.text { String }
 
 type LanguageModel = Node
-
-type TargetModelBundle {
-  bundle: Node
-  lex: LexRules
-  binding_spellings: Map<Symbol, String>
-  authority_source_text: String
-}
-type TargetModel = TargetModelBundle
 
 type TargetSource = String

@@ -5,8 +5,8 @@
 
 module v4.extdeps.languages.kotlin
 
-import v4.compiler.parse {
-  Grammar,
+import v4.std.grammar {
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -16,7 +16,7 @@ import v4.compiler.parse {
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
@@ -28,12 +28,9 @@ import v4.compiler.tokenize {
   ModeledLexRules,
   RepeatPattern,
   SequencePattern,
-  Token,
   TokenRule,
-  lex_rule_set_token_class_member,
-  tokenize
+  lex_rule_set_token_class_member
 }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
@@ -47,7 +44,7 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
-import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
@@ -151,7 +148,7 @@ type KotlinNonNumericPrimitiveFacts {
 
 type KotlinLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
@@ -894,7 +891,7 @@ fn kotlin_mvp1_return_add_expr_node() -> Node {
   }
 }
 
-// Grammar-as-data function item: name, param bindings, Int signature, return `x + y` expression facts.
+// ParseGrammar-as-data function item: name, param bindings, Int signature, return `x + y` expression facts.
 fn kotlin_mvp1_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1223,19 +1220,6 @@ fn kotlin_wave1_lex() -> LexRules {
   ModeledLexRules { root: kotlin_wave1_lex_rules() }
 }
 
-// Parse-fixture tokens: lexer output from MVP authority source (lexeme + spans via tokenize).
-fn kotlin_mvp1_parse_tokens() -> Outcome<List<Token>> {
-  match tokenize(
-    text: kotlin_mvp1_source_text,
-    file: kotlin_mvp1_parse_fixture_file,
-    rules: kotlin_wave1_lex()
-  ) {
-    Accepted { value: stream, diagnostics: diags } =>
-      Accepted { value: stream.tokens, diagnostics: diags }
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-  }
-}
-
 fn kotlin_wave1_grammar_root() -> GrammarRoot {
   let start = kotlin_grammar_production_mvp1_fn_add()
   GrammarRoot {
@@ -1245,7 +1229,7 @@ fn kotlin_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-fn kotlin_wave1_grammar() -> Grammar {
+fn kotlin_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: kotlin_wave1_grammar_root() }
 }
 

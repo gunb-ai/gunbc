@@ -16,62 +16,37 @@ import v4.std.algebra { Cons, Empty, ListTailResult, TailAbsent, TailFound, fold
 import v4.std.text { Char, CharAbsent, CharFound, String, string_head, string_is_empty, string_tail }
 import v4.std.nat { Nat, nat_lte, nat_gte }
 import v4.std.logic { Bool }
-
-// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
-type LexCharClass
-  = WhitespaceChar
-  | DigitChar
-  | HexDigitChar
-  | IdentStartChar
-  | IdentContinueChar
-  | StringTextChar
-  | LineCommentTextChar
-  | BlockCommentTextChar
-
-
-// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
-type LexPattern
-  = EmptyPattern
-  | LiteralPattern { text: String }
-  | KeywordPattern { text: String }
-  | CharPattern { char: Char }
-  | CharClassPattern { class: LexCharClass }
-  | SequencePattern { left: LexPattern, right: LexPattern }
-  | ChoicePattern { left: LexPattern, right: LexPattern }
-  | OptionalPattern { element: LexPattern }
-  | RepeatPattern { element: LexPattern }
-  | OneOrMorePattern { element: LexPattern }
-  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
-
-
-// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
-type LexRule
-  = TokenRule { token_class: Symbol, pattern: LexPattern }
-  | TriviaRule { pattern: LexPattern }
-
-
-// Maximal munch: lex_try_rules selects the accepting rule with the longest lexeme;
-// equal-length ties prefer the later rule (specific literals/keywords after ident).
-type LexRuleSet {
-  rules: List<LexRule>
-}
-
-
-// 🟡 coproduct dissolution — CP-1b item 13d; modeled rule data is present, generic lexical walk realized.
-type LexRules
-  = VoidLexRules
-  | ModeledLexRules { root: LexRuleSet }
-
-
-type Token {
-  class: Symbol
-  lexeme: String
-  file: Symbol
-  start: Int
-  end: Int
-}
-type TokenStream {
-  tokens: List<Token>
+import v4.std.lexing {
+  BlockCommentTextChar,
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  DigitChar,
+  EmptyPattern,
+  HexDigitChar,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexCharClass,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LineCommentTextChar,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern,
+  StringTextChar,
+  Token,
+  TokenRule,
+  TokenStream,
+  TriviaRule,
+  VoidLexRules,
+  WhitespaceChar
 }
 
 // 🟡 coproduct dissolution — CP-1b item 13e; per-pattern match result; dissolves when LexPattern converges with GrammarExpr on single bidirectional grammar carrier.
@@ -87,25 +62,6 @@ type LexRuleApply
 
 data tokenize_lex_e0_source_not_exhausted: Symbol = tokenize_lex_e0_source_not_exhausted
 data tokenize_lex_e1_unrecognized_char: Symbol = tokenize_lex_e1_unrecognized_char
-
-
-fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
-  match rule {
-    TokenRule { token_class: c, pattern: _ } => c == token_class
-    TriviaRule { pattern: _ } => false
-  }
-}
-
-
-fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
-  fold_list(
-    xs: rules.rules,
-    empty: false,
-    cons: fn(acc, rule) {
-      acc || lex_rule_token_class_member(rule: rule, token_class: token_class)
-    }
-  )
-}
 
 
 fn tokenize_lex_e0_source_not_exhausted_diagnostic(at: Locus) -> Diagnostic {

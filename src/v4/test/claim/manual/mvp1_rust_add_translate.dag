@@ -56,7 +56,8 @@ import v4.extdeps.languages.rust {
   rust_tag_two_complement_wrap
 }
 import v4.compiler.infer { InferredFacts, InferredTree }
-import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetSource }
+import v4.std.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
   claim_hash_placeholder,

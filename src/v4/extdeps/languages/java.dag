@@ -5,9 +5,9 @@
 
 module v4.extdeps.languages.java
 
-import v4.compiler.parse {
+import v4.std.grammar {
   Choice,
-  Grammar,
+  ParseGrammar,
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -21,7 +21,7 @@ import v4.compiler.parse {
   grammar_empty_sync_tokens,
   grammar_production_to_node
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
   IdentStartChar,
@@ -50,7 +50,7 @@ import v4.std.model_core {
   primitive_fact_axis_width
 }
 import v4.std.witness { Holds, Violates }
-import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model { TargetModel }
 import v4.std.target_model {
   concrete_syntax_token_field_binding,
   concrete_syntax_token_field_class,
@@ -144,7 +144,7 @@ type OverflowAction
 
 type JavaLanguageModel {
   lex: LexRules
-  grammar: Grammar
+  grammar: ParseGrammar
   language_identity: Symbol
   canonical_symbols: Set<Symbol>
   core: ModelCore
@@ -1030,7 +1030,7 @@ fn java_wave1_grammar_root() -> GrammarRoot {
   GrammarRoot { start: java_production_mvp1_method_add, productions: [start], sync_tokens: grammar_empty_sync_tokens() }
 }
 
-fn java_wave1_grammar() -> Grammar {
+fn java_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: java_wave1_grammar_root() }
 }
 
@@ -1450,7 +1450,7 @@ fn java_wave2_grammar_root() -> GrammarRoot {
   }
 }
 
-fn java_wave2_grammar() -> Grammar {
+fn java_wave2_grammar() -> ParseGrammar {
   ModeledGrammar { root: java_wave2_grammar_root() }
 }
 

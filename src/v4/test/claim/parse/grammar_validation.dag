@@ -8,18 +8,20 @@
 module v4.test.claim.parse.grammar_validation
 
 
-import v4.compiler.tokenize { Token }
-import v4.compiler.parse {
+import v4.std.lexing { Token }
+import v4.std.grammar {
   GrammarProduction,
   GrammarRoot,
   Nonterminal,
   Optional,
-  ParseSyncState,
   ParseTree,
   Sequence,
   Terminal,
   grammar_atom,
-  grammar_empty_sync_tokens,
+  grammar_empty_sync_tokens
+}
+import v4.compiler.parse {
+  ParseSyncState,
   grammar_has_duplicate_productions,
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,

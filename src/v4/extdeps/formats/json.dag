@@ -6,7 +6,7 @@
 
 module v4.extdeps.formats.json
 
-import v4.compiler.parse { GrammarSchema }
+import v4.std.grammar { GrammarSchema }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.

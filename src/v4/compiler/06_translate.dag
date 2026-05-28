@@ -12,7 +12,8 @@
 module v4.compiler.translate
 
 
-import v4.compiler.target_carriers { TargetModel, TargetSource }
+import v4.compiler.target_carriers { TargetSource }
+import v4.std.target_model { TargetModel }
 import v4.compiler.infer { InferredTree, canonical_grounding_for_node }
 import v4.std.coercion {
   CoercionCandidateSet,
@@ -52,7 +53,7 @@ import v4.std.node {
   fold_node,
   well_formed
 }
-import v4.compiler.tokenize {
+import v4.std.lexing {
   LexRules,
   LexRule,
   LexPattern,
