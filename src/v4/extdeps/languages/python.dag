@@ -967,7 +967,9 @@ fn python_formal_mvp1_fn_add_rhs() -> List<FormalGrammarSymbol> {
   )
 }
 
-// Operational shim: derive GrammarExpr from FormalProduction authority (not maintained in parallel).
+// 🟡 gated — feature:python-formal-symbol-to-grammar-expr-shim — bind TASKS.md T-7 / CP-1b —
+// interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
+// dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
 fn python_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
   match sym {
     FormalTerminalOccurrence { terminal: terminal } =>
