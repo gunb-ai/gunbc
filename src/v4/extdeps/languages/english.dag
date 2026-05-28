@@ -230,19 +230,29 @@ fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExp
   Sequence { left: left, right: right }
 }
 
-// svo_sentence → article noun verb article noun period
-// Subject NP carries an article, consistent with FormalNounPhrase.determiner.
+// article_expr → definite_article | indefinite_article
+// Both Determiner arms have distinct token classes; Choice here gives the
+// grammar authority to populate either arm without guessing.
+fn english_article_expr() -> GrammarExpr {
+  Choice {
+    left: english_grammar_terminal(token_class: english_token_definite_article),
+    right: english_grammar_terminal(token_class: english_token_indefinite_article)
+  }
+}
+
+// svo_sentence → article word word article word period
+// Positions: [subj-det] [subj-head] [verb] [obj-det] [obj-head] [.]
 fn english_svo_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
-    left: english_grammar_terminal(token_class: english_token_article),
+    left: english_article_expr(),
     right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: english_token_noun),
+      left: english_grammar_terminal(token_class: english_token_word),
       right: english_grammar_sequence(
-        left: english_grammar_terminal(token_class: english_token_verb),
+        left: english_grammar_terminal(token_class: english_token_word),
         right: english_grammar_sequence(
-          left: english_grammar_terminal(token_class: english_token_article),
+          left: english_article_expr(),
           right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: english_token_noun),
+            left: english_grammar_terminal(token_class: english_token_word),
             right: english_grammar_terminal(token_class: english_token_period)
           )
         )
@@ -251,18 +261,19 @@ fn english_svo_sentence_expr() -> GrammarExpr {
   )
 }
 
-// copula_sentence → np copula np period  (e.g. "the function is a handler.")
+// copula_sentence → article word copula article word period
+// e.g. "the function is a handler."
 fn english_copula_sentence_expr() -> GrammarExpr {
   english_grammar_sequence(
-    left: english_grammar_terminal(token_class: english_token_article),
+    left: english_article_expr(),
     right: english_grammar_sequence(
-      left: english_grammar_terminal(token_class: english_token_noun),
+      left: english_grammar_terminal(token_class: english_token_word),
       right: english_grammar_sequence(
         left: english_grammar_terminal(token_class: english_token_copula),
         right: english_grammar_sequence(
-          left: english_grammar_terminal(token_class: english_token_article),
+          left: english_article_expr(),
           right: english_grammar_sequence(
-            left: english_grammar_terminal(token_class: english_token_noun),
+            left: english_grammar_terminal(token_class: english_token_word),
             right: english_grammar_terminal(token_class: english_token_period)
           )
         )
@@ -355,15 +366,17 @@ fn english_ingest_grammar_schema() -> GrammarSchema {
   }
 }
 
+// Formal productions use definite_article as the representative article
+// terminal; the grammar uses Choice so either article class is accepted.
 fn english_svo_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: english_production_svo_sentence),
     rhs: [
-      grammar_formal_terminal(identity: english_token_article),
-      grammar_formal_terminal(identity: english_token_noun),
-      grammar_formal_terminal(identity: english_token_verb),
-      grammar_formal_terminal(identity: english_token_article),
-      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_definite_article),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_terminal(identity: english_token_word),
+      grammar_formal_terminal(identity: english_token_indefinite_article),
+      grammar_formal_terminal(identity: english_token_word),
       grammar_formal_terminal(identity: english_token_period)
     ]
   }
@@ -373,20 +386,22 @@ fn english_copula_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: english_production_copula_sentence),
     rhs: [
-      grammar_formal_terminal(identity: english_token_article),
-      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_definite_article),
+      grammar_formal_terminal(identity: english_token_word),
       grammar_formal_terminal(identity: english_token_copula),
-      grammar_formal_terminal(identity: english_token_article),
-      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_indefinite_article),
+      grammar_formal_terminal(identity: english_token_word),
       grammar_formal_terminal(identity: english_token_period)
     ]
   }
 }
 
-// Probe: "the function is a handler." — a valid copula-form sentence
-// in the declared formal subset.  Out-of-subset prose (e.g. a paragraph
-// of narrative text) must produce a Diagnostic, never a fabricated parse
-// (see T-4.11 conformance claim).
+// Probe: "the function is a handler." tokenizes as:
+//   definite_article("the") word("function") copula("is")
+//   indefinite_article("a") word("handler") period(".")
+// which matches copula_sentence_expr exactly.
+// Out-of-subset prose must produce a Diagnostic, never a fabricated parse
+// (T-4.11 conformance claim).
 fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
     schema: english_ingest_grammar_schema(),
