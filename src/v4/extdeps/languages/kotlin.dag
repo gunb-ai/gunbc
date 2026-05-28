@@ -347,9 +347,18 @@ data kotlin_token_kw_false: Symbol = kotlin_token_kw_false
 data kotlin_token_ident: Symbol = kotlin_token_ident
 data kotlin_token_int_literal: Symbol = kotlin_token_int_literal
 data kotlin_token_string_literal: Symbol = kotlin_token_string_literal
-data kotlin_token_operator: Symbol = kotlin_token_operator
 data kotlin_token_equal: Symbol = kotlin_token_equal
 data kotlin_token_plus: Symbol = kotlin_token_plus
+data kotlin_token_minus: Symbol = kotlin_token_minus
+data kotlin_token_star: Symbol = kotlin_token_star
+data kotlin_token_slash: Symbol = kotlin_token_slash
+data kotlin_token_percent: Symbol = kotlin_token_percent
+data kotlin_token_eq_eq: Symbol = kotlin_token_eq_eq
+data kotlin_token_bang_eq: Symbol = kotlin_token_bang_eq
+data kotlin_token_lt: Symbol = kotlin_token_lt
+data kotlin_token_gt: Symbol = kotlin_token_gt
+data kotlin_token_lt_eq: Symbol = kotlin_token_lt_eq
+data kotlin_token_gt_eq: Symbol = kotlin_token_gt_eq
 data kotlin_token_lbrace: Symbol = kotlin_token_lbrace
 data kotlin_token_rbrace: Symbol = kotlin_token_rbrace
 data kotlin_token_lparen: Symbol = kotlin_token_lparen
@@ -1394,44 +1403,6 @@ fn kotlin_string_literal_lex_rule() -> LexRule {
   }
 }
 
-fn kotlin_operator_lex_pattern() -> LexPattern {
-  ChoicePattern {
-    left: LiteralPattern { text: "==" },
-    right: ChoicePattern {
-      left: LiteralPattern { text: "!=" },
-      right: ChoicePattern {
-        left: LiteralPattern { text: "<=" },
-        right: ChoicePattern {
-          left: LiteralPattern { text: ">=" },
-          right: ChoicePattern {
-            left: LiteralPattern { text: "-" },
-            right: ChoicePattern {
-              left: LiteralPattern { text: "*" },
-              right: ChoicePattern {
-                left: LiteralPattern { text: "/" },
-                right: ChoicePattern {
-                  left: LiteralPattern { text: "%" },
-                  right: ChoicePattern {
-                    left: LiteralPattern { text: "<" },
-                    right: LiteralPattern { text: ">" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-
-fn kotlin_operator_lex_rule() -> LexRule {
-  TokenRule {
-    token_class: kotlin_token_operator,
-    pattern: kotlin_operator_lex_pattern()
-  }
-}
-
 fn kotlin_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -1448,8 +1419,17 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
       kotlin_keyword_lex_rule(token_class: kotlin_token_kw_while, text: "while"),
       kotlin_keyword_lex_rule(token_class: kotlin_token_kw_true, text: "true"),
       kotlin_keyword_lex_rule(token_class: kotlin_token_kw_false, text: "false"),
-      kotlin_operator_lex_rule(),
+      kotlin_lex_rule(token_class: kotlin_token_eq_eq, text: "=="),
+      kotlin_lex_rule(token_class: kotlin_token_bang_eq, text: "!="),
+      kotlin_lex_rule(token_class: kotlin_token_lt_eq, text: "<="),
+      kotlin_lex_rule(token_class: kotlin_token_gt_eq, text: ">="),
       kotlin_lex_rule(token_class: kotlin_token_plus, text: "+"),
+      kotlin_lex_rule(token_class: kotlin_token_minus, text: "-"),
+      kotlin_lex_rule(token_class: kotlin_token_star, text: "*"),
+      kotlin_lex_rule(token_class: kotlin_token_slash, text: "/"),
+      kotlin_lex_rule(token_class: kotlin_token_percent, text: "%"),
+      kotlin_lex_rule(token_class: kotlin_token_lt, text: "<"),
+      kotlin_lex_rule(token_class: kotlin_token_gt, text: ">"),
       kotlin_lex_rule(token_class: kotlin_token_equal, text: "="),
       kotlin_lex_rule(token_class: kotlin_token_lbrace, text: "{"),
       kotlin_lex_rule(token_class: kotlin_token_rbrace, text: "}"),
@@ -1575,15 +1555,46 @@ fn kotlin_grammar_call_expr() -> GrammarExpr {
   )
 }
 
+fn kotlin_grammar_binary_operator_expr() -> GrammarExpr {
+  kotlin_grammar_choice(
+    left: kotlin_grammar_terminal(token_class: kotlin_token_plus),
+    right: kotlin_grammar_choice(
+      left: kotlin_grammar_terminal(token_class: kotlin_token_minus),
+      right: kotlin_grammar_choice(
+        left: kotlin_grammar_terminal(token_class: kotlin_token_star),
+        right: kotlin_grammar_choice(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_slash),
+          right: kotlin_grammar_choice(
+            left: kotlin_grammar_terminal(token_class: kotlin_token_percent),
+            right: kotlin_grammar_choice(
+              left: kotlin_grammar_terminal(token_class: kotlin_token_eq_eq),
+              right: kotlin_grammar_choice(
+                left: kotlin_grammar_terminal(token_class: kotlin_token_bang_eq),
+                right: kotlin_grammar_choice(
+                  left: kotlin_grammar_terminal(token_class: kotlin_token_lt),
+                  right: kotlin_grammar_choice(
+                    left: kotlin_grammar_terminal(token_class: kotlin_token_gt),
+                    right: kotlin_grammar_choice(
+                      left: kotlin_grammar_terminal(token_class: kotlin_token_lt_eq),
+                      right: kotlin_grammar_terminal(token_class: kotlin_token_gt_eq)
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn kotlin_grammar_binary_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_nonterminal(production: kotlin_production_call_expr),
     right: kotlin_grammar_repeat(
       element: kotlin_grammar_sequence(
-        left: kotlin_grammar_choice(
-          left: kotlin_grammar_terminal(token_class: kotlin_token_plus),
-          right: kotlin_grammar_terminal(token_class: kotlin_token_operator)
-        ),
+        left: kotlin_grammar_binary_operator_expr(),
         right: kotlin_grammar_nonterminal(production: kotlin_production_call_expr)
       )
     )
