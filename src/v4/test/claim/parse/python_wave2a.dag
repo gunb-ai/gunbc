@@ -5,8 +5,9 @@
 
 module v4.test.claim.parse.python_wave2a
 
+import v4.std.grammar { ParseTree }
 import v4.compiler.tokenize { tokenize }
-import v4.compiler.parse { ParseTree, parse }
+import v4.compiler.parse { parse }
 import v4.extdeps.languages.python {
   python_wave2a_non_mvp_source,
   python_wave1_lex,
@@ -50,8 +51,8 @@ fn python_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
     rules: python_wave1_lex()
   ) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: tokens, diagnostics: _ } =>
-      parse(tokens: tokens, grammar: python_wave1_grammar())
+    Accepted { value: stream, diagnostics: _ } =>
+      parse(tokens: stream.tokens, grammar: python_wave1_grammar())
   }
 }
 
