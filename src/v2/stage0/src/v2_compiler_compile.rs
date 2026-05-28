@@ -707,38 +707,37 @@ pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCo
 }
 
 pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
-    {
-        let key = dag_node_key(node.clone());
-        let fp = dag_node_fingerprint(node.clone());
-        match v2_rt::map_get(&acc.seen.clone(), key.clone()) {
-            Some(prior) => {
-                if (prior.clone().as_str() == fp.as_str()) {
-                    acc.clone()
-                } else {
-                    if ((node.span.clone().start.clone() == 0)
-                        && (node.span.clone().end.clone() == 0))
-                    {
-                        Rc::new(DagCollectAcc {
-                            seen: acc.seen.clone(),
-                            order: acc.order.clone(),
-                            collision_errors: v2_rt::rc_list_push(
-                                acc.collision_errors.clone(),
-                                dag_node_key_collision_error(key.clone(), node.span.clone()),
-                            ),
-                        })
-                    } else {
-                        acc.clone()
-                    }
-                }
+    let key = dag_node_key(node.clone());
+    let fp = dag_node_fingerprint(node.clone());
+    let lookup = v2_rt::map_get(&*acc.seen, key.clone());
+    match lookup {
+        Some(prior) => {
+            if prior.as_str() == fp.as_str() {
+                acc
+            } else if node.span.start == 0 && node.span.end == 0 {
+                Rc::new(DagCollectAcc {
+                    seen: acc.seen.clone(),
+                    order: acc.order.clone(),
+                    collision_errors: v2_rt::rc_list_push(
+                        acc.collision_errors.clone(),
+                        dag_node_key_collision_error(key.clone(), node.span.clone()),
+                    ),
+                })
+            } else {
+                acc
             }
-            None => {
-                let acc1 = Rc::new(DagCollectAcc {
-                    seen: v2_rt::rc_map_insert(acc.seen.clone(), key.clone(), fp),
-                    order: v2_rt::rc_list_push(acc.order.clone(), node.clone()),
-                    collision_errors: acc.collision_errors.clone(),
-                });
-                dag_collect_node_tree(node.clone(), acc1)
-            }
+        }
+        None => {
+            let inner = match Rc::try_unwrap(acc) {
+                Ok(i) => i,
+                Err(rc) => (*rc).clone(),
+            };
+            let acc1 = Rc::new(DagCollectAcc {
+                seen: v2_rt::rc_map_insert(inner.seen, key.clone(), fp),
+                order: v2_rt::rc_list_push(inner.order, node.clone()),
+                collision_errors: inner.collision_errors,
+            });
+            dag_collect_node_tree(node.clone(), acc1)
         }
     }
 }
