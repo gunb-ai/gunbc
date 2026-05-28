@@ -1,5 +1,5 @@
 // src/v4/test/claim/lens_effect/effect_depends_on.dag
-// Scope: T-13 worked claim — every dependency kind classifies as the signature-deferred marker `EffectClassification` (B3 — dependency kind is not the effect authority; the per-edge slot routes to the signature via `tree.facts.lookup`).
+// Scope: T-13 worked claim — signature-deferred `EffectClassification` projection; witness envelope is Violates until signature-derived effect kinds land (#3468); projection fact still matches expected.
 // Owns: effect_depends_on_claim.
 // Consumes: lens effect, std dependency, lens_common fixture.
 // Status: T-13 family-ratchet claim shape (Phase-1 substrate migration).
@@ -11,6 +11,7 @@ import v4.compiler.infer { InferredFacts, InferredTree }
 import v4.lens.effect {
   EffectClassification,
   EffectFact,
+  effect_fact,
   effect_fact_eq,
   effect_witness
 }
@@ -21,7 +22,7 @@ import v4.std.dependency {
 }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Edge, Named, Node, Symbol, TypeNode }
-import v4.std.witness { Holds, Witness }
+import v4.std.witness { Violates, Witness }
 import v4.test.claim.lens_common.infer_fixture {
   claim_atom_node,
   claim_inferred_facts,
@@ -83,8 +84,14 @@ data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {
 
 fn effect_depends_on_claim_holds() -> Bool {
   match effect_depends_on_claim.actual {
-    Holds { value: actual } =>
-      effect_fact_eq(a: actual, b: effect_depends_on_claim.expected)
+    Violates { diagnostic: _ } =>
+      effect_fact_eq(
+        a: effect_fact(
+          tree: effect_depends_on_claim.input,
+          dependencies: [effect_dependency]
+        ),
+        b: effect_depends_on_claim.expected
+      )
     _ => false
   }
 }

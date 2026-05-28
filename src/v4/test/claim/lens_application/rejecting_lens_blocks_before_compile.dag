@@ -55,9 +55,7 @@ fn rejecting_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data rejecting_lens: CompileLens = CompileLens {
-  gate: rejecting_lens_gate
-}
+data rejecting_lens: CompileLens = CompileLens { gate: rejecting_lens_gate }
 
 fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
   match validate_then_compile(

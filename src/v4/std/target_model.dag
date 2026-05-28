@@ -2,7 +2,7 @@
 // Scope: TargetModel Conj-bundle edge keys + grammar-relation protocol symbols.
 // Owns: target_model_edge_selection_policy, target_model_edge_declared_inhabitants,
 //       target_model_edge_translation_rules, target_model_edge_serialize_source, grammar_relation_field_*,
-//       concrete_syntax_token_field_*, serialize_source_field_*.
+//       concrete_syntax_token_field_*, concrete_syntax_token_kind_*, serialize_source_field_*.
 // Consumes: v4.std.node.
 // Status: single authority per INVARIANTS P2 — consumers import; do not redeclare.
 
@@ -20,5 +20,11 @@ data grammar_relation_field_tokens: Symbol = grammar_relation_field_tokens
 data concrete_syntax_token_field_kind: Symbol = concrete_syntax_token_field_kind
 data concrete_syntax_token_field_class: Symbol = concrete_syntax_token_field_class
 data concrete_syntax_token_field_binding: Symbol = concrete_syntax_token_field_binding
+// 🟡 gated — feature:T-11-typed-concrete-syntax-token-variants — bind TASKS.md T-11 —
+// dissolve-on: target_model.dag declares a typed ConcreteSyntaxToken coproduct (FixedToken |
+// BoundToken) and emit_fixed_token/emit_bound_token in dag.dag produce typed values; the
+// Symbol-equality discriminators below dissolve into structural pattern matching.
+data concrete_syntax_token_kind_fixed: Symbol = concrete_syntax_token_kind_fixed
+data concrete_syntax_token_kind_bound: Symbol = concrete_syntax_token_kind_bound
 data serialize_source_field_source_text: Symbol = serialize_source_field_source_text
 data serialize_source_field_source_grammar: Symbol = serialize_source_field_source_grammar
