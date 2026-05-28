@@ -1,9 +1,9 @@
 // src/v4/std/lexing.dag
-// Grounds in: https://en.wikipedia.org/wiki/Lexical_analysis
-// Scope: canonical lexing types — Token, Lexeme, LexRule, LexPattern, LexRuleSet
-// Owns: Token, Lexeme, LexPattern, LexRule, LexRuleSet
-// Consumes: v4.std.node { Symbol }, v4.std.collection { List }, v4.std.text { String }
-// Status: single authority per INVARIANTS P2
+// Scope: canonical lexing types — Token, Lexeme, LexPattern, LexRule, LexRuleSet.
+// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
+// Status: substrate home (model-before-implement). T-6 incumbent forms remain in v4.compiler.tokenize
+//         (LexPattern 11-variant, LexRule TokenRule|TriviaRule, Token+spans). 🟡 feature:std-lexing-migrate-t6-incumbent;
+//         dissolves when v4.compiler.tokenize imports these types and retires its local declarations.
 
 
 module v4.std.lexing
@@ -14,52 +14,21 @@ import v4.std.node { Symbol }
 import v4.std.text { String }
 
 
-// -- Lexeme ------------------------------------------------------------------
-// The raw character sequence in source that a lex rule recognizes.
-// Ref: Wikipedia "Lexical analysis" § Lexeme:
-//   "a sequence of characters in the source program that matches the pattern
-//    for a token."
-// Coincides with String (FreeMonoid<Char>); declared here as a named role alias
-// so downstream types can express intent. Evidence of coincidence: both denote
-// a sequence of characters — no spec facts are dropped.
 type Lexeme = String
 
-
-// -- LexPattern --------------------------------------------------------------
-// The pattern a lex rule matches against source text — a literal string or
-// regex string describing the form lexemes of a token class can take.
-// Ref: Wikipedia "Lexical analysis" § Pattern.
 type LexPattern {
   text: String
 }
 
-
-// -- LexRule -----------------------------------------------------------------
-// A single lex rule: a (LexPattern, token_class) pair. The tokenizer applies
-// each rule in order and emits a Token when the pattern matches.
-// Ref: Wikipedia "Lexical analysis" § Tokenization.
 type LexRule {
   pattern: LexPattern
   token_class: Symbol
 }
 
-
-// -- LexRuleSet --------------------------------------------------------------
-// An ordered collection of LexRule entries for one tokenization context.
-// Rule order determines priority when patterns overlap.
-// Ref: Wikipedia "Lexical analysis" § Tokenization.
 type LexRuleSet {
   rules: List<LexRule>
 }
 
-
-// -- Token -------------------------------------------------------------------
-// The semantic unit emitted by the tokenizer: a token class plus the lexeme
-// that was matched.
-// Ref: Wikipedia "Lexical analysis" § Token:
-//   "a pair consisting of a token name and an optional attribute value."
-//   token name     → class (the terminal symbol / category identifier)
-//   attribute value → lexeme (the raw matched character sequence)
 type Token {
   class: Symbol
   lexeme: Lexeme
