@@ -1789,27 +1789,31 @@ fn dag_language_model_wave1_modeled() -> DagLanguageModel {
 // this function rejects at the extdeps/ boundary rather than returning a fabricated QualifiedName (P3).
 // 🟡 traverse-dissolution interim (docs/modeling-discipline.md Practice 10) — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node; the nested Rejected/Accepted propagation inherits the same carrier threading constraint; forbidden: re-inlining the ladder after Q4 resolves.
 fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
-  match find_named_child(root: root, name: dag_surface_module_header_qualified_name) {
+  match find_named_child(root: root, name: dag_surface_module_header) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: qn_node, diagnostics: _ } =>
-      match qualified_name_from_node(root: qn_node) {
+    Accepted { value: _, diagnostics: _ } =>
+      match find_named_child(root: root, name: dag_surface_module_header_qualified_name) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-        Accepted { value: qn, diagnostics: _ } =>
-          match qn {
-            QnEmpty => outcome_rejected(Diagnostic {
-              reason: qualified_name_structure_invalid,
-              at: node_locus(node: root),
-              correction: Unavailable { reason: ExternalContractUnknown }
-            })
-            QnCons { head: _, tail: _ } =>
-              if qualified_name_for_all(qn: qn, predicate: fn(sym) { sym != dag_token_ident }) {
-                outcome_accepted(value: qn)
-              } else {
-                outcome_rejected(Diagnostic {
-                  reason: qualified_name_projection_gated,
+        Accepted { value: qn_node, diagnostics: _ } =>
+          match qualified_name_from_node(root: qn_node) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: qn, diagnostics: _ } =>
+              match qn {
+                QnEmpty => outcome_rejected(Diagnostic {
+                  reason: qualified_name_structure_invalid,
                   at: node_locus(node: root),
                   correction: Unavailable { reason: ExternalContractUnknown }
                 })
+                QnCons { head: _, tail: _ } =>
+                  if qualified_name_for_all(qn: qn, predicate: fn(sym) { sym != dag_token_ident }) {
+                    outcome_accepted(value: qn)
+                  } else {
+                    outcome_rejected(Diagnostic {
+                      reason: qualified_name_projection_gated,
+                      at: node_locus(node: root),
+                      correction: Unavailable { reason: ExternalContractUnknown }
+                    })
+                  }
               }
           }
       }

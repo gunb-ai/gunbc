@@ -36,11 +36,13 @@ data qualified_name_projection_gated: Symbol = qualified_name_projection_gated
 data qualified_name_structure_invalid: Symbol = qualified_name_structure_invalid
 
 
+// 🟡 gated — free-monoid-alias bootstrap-limitation interim — feature: free-monoid-qualified-name-alias — bind feature:free-monoid-entry-generic-inference — dissolve-on: QualifiedName becomes FreeMonoid<Symbol> — replace with FreeMonoid singleton (Cons { head: sym, tail: Empty }); forbidden: treating this as permanent API separate from FreeMonoid<Symbol>.
 fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
   QnCons { head: sym, tail: QnEmpty }
 }
 
 
+// 🟡 gated — free-monoid-alias bootstrap-limitation interim — feature: free-monoid-qualified-name-alias — bind feature:free-monoid-entry-generic-inference — dissolve-on: QualifiedName becomes FreeMonoid<Symbol> — replace with built-in structural equality or zip_eq over FreeMonoid<Symbol>; forbidden: treating this hand-rolled equality as permanent API separate from FreeMonoid equality.
 fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
   match a {
     QnEmpty => match b { QnEmpty => true  QnCons { head: _, tail: _ } => false }
@@ -53,6 +55,7 @@ fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
 }
 
 
+// 🟡 gated — free-monoid-alias bootstrap-limitation interim — feature: free-monoid-qualified-name-alias — bind feature:free-monoid-entry-generic-inference — dissolve-on: QualifiedName becomes FreeMonoid<Symbol> — replace with for_all(xs: qn, predicate: predicate) over FreeMonoid<Symbol>; forbidden: treating this hand-rolled traversal as permanent API separate from FreeMonoid for_all.
 fn qualified_name_for_all(qn: QualifiedName, predicate: fn(Symbol) -> Bool) -> Bool {
   match qn {
     QnEmpty => true
