@@ -981,6 +981,12 @@ fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   }
 }
 
+// 🟡 gated — feature:python-formal-grammar-expr-shim-fold-state — bind TASKS.md T-7 / operator
+// fold_non_empty_right review — dissolve-on: std-derived FormalProduction→GrammarExpr fold
+// replaces these operational lowering carriers in the same commit train.
+// 🟡 gated — feature:python-formal-rhs-to-expr-shim-fold — bind TASKS.md T-7 / CP-1b —
+// interim fold carrier for FormalProduction.rhs → GrammarExpr Sequence lowering only;
+// dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type PythonFormalRhsToExprState
   = PythonFormalRhsToExprUninitialized
   | PythonFormalRhsToExprReady { expr: GrammarExpr }
@@ -1006,6 +1012,9 @@ fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarE
   }
 }
 
+// 🟡 gated — feature:python-formal-alt-choice-shim-fold — bind TASKS.md T-7 / CP-1b —
+// interim fold carrier for multi-alt FormalProduction lhs → GrammarExpr Choice lowering only;
+// dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type PythonFormalAltChoiceState
   = PythonFormalAltChoiceUninitialized
   | PythonFormalAltChoiceReady { expr: GrammarExpr }
@@ -1342,6 +1351,8 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         ],
         emitted: python_surface_assign_stmt
       ),
+      // colon_if_suite_indent carries ":\n        " (layout boundary); if-body return uses
+      // kw_return+primary alt (no leading newline) so token/grammar paths stay consistent.
       python_formal_productions_to_grammar_production(
         name: python_production_if_stmt,
         prods: [
@@ -1371,6 +1382,13 @@ fn python_wave1_grammar_root() -> GrammarRoot {
             lhs: python_production_return_stmt,
             rhs: [
               python_formal_sym_terminal(symbol: python_token_newline_return_outer),
+              python_formal_sym_nonterminal(symbol: python_production_primary)
+            ]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_return_stmt,
+            rhs: [
+              python_formal_sym_terminal(symbol: python_token_kw_return),
               python_formal_sym_nonterminal(symbol: python_production_primary)
             ]
           )
