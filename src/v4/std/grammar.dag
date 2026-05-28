@@ -1,7 +1,7 @@
 // src/v4/std/grammar.dag
 // Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar
 // Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar
-// Owns: Terminal, Nonterminal, GrammarSymbol, Production, Grammar
+// Owns: Terminal, Nonterminal, GrammarSymbol, Production, Grammar, WellFormedGrammar
 // Consumes: v4.std.node, v4.std.collection
 // Status: substrate canonical declaration; v4.compiler.parse operational grammar types
 //         gate to converge here under feature:CP-1b-bidirectional-grammar-carrier (TASKS.md T-6/T-7).
