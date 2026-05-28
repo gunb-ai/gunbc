@@ -54,8 +54,6 @@ import v4.std.node { Symbol }
 
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// NoDeterminer absent: wave-1 grammar mandates an article on every NP.
-// DefiniteArticle ↔ english_token_definite_article; IndefiniteArticle ↔ english_token_indefinite_article.
 type Determiner
   = DefiniteArticle
   | IndefiniteArticle
@@ -97,9 +95,6 @@ type EnglishGrammar {
 
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// UnknownVocabulary / NounSpelling / VerbSpelling absent: wave-1 word rule
-// accepts any identifier — no valid disposition to declare until a closed
-// vocabulary exists (wave-2 gate above).
 type EnglishFidelityFeature
   = FormalSubsetSvo
   | FormalSubsetCopula
@@ -125,7 +120,6 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
 }
 
 
-// Noun and verb are lexically identical; role is determined by grammar position.
 data english_token_word: Symbol = english_token_word
 data english_token_definite_article: Symbol = english_token_definite_article
 data english_token_indefinite_article: Symbol = english_token_indefinite_article
