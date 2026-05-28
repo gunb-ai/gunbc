@@ -443,6 +443,7 @@ fn scalar_int_materialization_cap() -> Int {
 
 
 // Bounded Peano succ-chain on |i| (ArithmeticSubtract OneStep); fails closed above cap.
+// Lossy above cap: every i > cap maps to `canonical_tag_scalar_int_out_of_cap` (ByteRange offsets collide).
 fn scalar_int_hash_nonneg_digits(i: Int) -> Hash {
   if i > scalar_int_materialization_cap() {
     atom_identity_hash(s: canonical_tag_scalar_int_out_of_cap)
