@@ -20,7 +20,7 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
-import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model { TargetModel }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
   BooleanAlgebra,

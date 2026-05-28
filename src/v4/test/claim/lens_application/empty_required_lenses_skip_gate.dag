@@ -12,7 +12,7 @@ import v4.compiler.compile {
   compile_lens_gate_rejected,
   validate_then_compile
 }
-import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model { TargetModel }
 import v4.std.lexing { VoidLexRules }
 import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }

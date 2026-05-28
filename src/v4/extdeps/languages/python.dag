@@ -24,7 +24,7 @@ import v4.std.lexing {
   ModeledLexRules,
   TokenRule
 }
-import v4.compiler.target_carriers { TargetModel }
+import v4.std.target_model { TargetModel }
 import v4.std.collection { List, Map, empty_map, map_insert }
 import v4.std.model_core {
   AlgebraInhabitanceDecl,
