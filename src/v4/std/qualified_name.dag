@@ -37,12 +37,27 @@ data qualified_name_structure_invalid: Symbol = qualified_name_structure_invalid
 
 
 fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
-  Cons { head: sym, tail: Empty }
+  QnCons { head: sym, tail: QnEmpty }
 }
 
 
 fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
-  zip_eq(a: a, b: b, eq: fn(x, y) { x == y })
+  match a {
+    QnEmpty => match b { QnEmpty => true  QnCons { head: _, tail: _ } => false }
+    QnCons { head: ha, tail: ta } =>
+      match b {
+        QnEmpty => false
+        QnCons { head: hb, tail: tb } => ha == hb && qualified_name_eq(a: ta, b: tb)
+      }
+  }
+}
+
+
+fn qualified_name_for_all(qn: QualifiedName, predicate: fn(Symbol) -> Bool) -> Bool {
+  match qn {
+    QnEmpty => true
+    QnCons { head: h, tail: t } => predicate(h) && qualified_name_for_all(qn: t, predicate: predicate)
+  }
 }
 
 
@@ -51,17 +66,17 @@ fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
 // Tracks head and tail independently so the step function is order-independent:
 // Conj uses LabeledEdges discipline — labels are the authority, storage order is not.
 type QnFoldStatus
-  = QnFoldInit                              // initial: neither edge yet seen
-  | QnFoldHeadSeen { sym: Symbol }          // head Atom seen; tail edge pending
-  | QnFoldTailSeen { tail: QualifiedName }  // tail spine seen; head edge pending
-  | QnFoldDone { qn: QualifiedName }        // both edges seen and combined; or leaf result
-  | QnFoldError { diag: Diagnostic }        // structural error; propagated up
+  = QnFoldInit                             // initial: neither edge yet seen
+  | QnFoldHeadSeen { sym: Symbol }         // head Atom seen; tail edge pending
+  | QnFoldTailSeen { tail: QualifiedName } // tail spine seen; head edge pending
+  | QnFoldDone { qn: QualifiedName }       // both edges seen and combined; or leaf result
+  | QnFoldError { diag: Diagnostic }       // structural error; propagated up
 
 fn qn_fold_init(n: Node) -> QnFoldStatus {
   match n.kind {
     TypeNode { connective: Conj } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: Empty }
+        QnFoldDone { qn: QnEmpty }
       } else if count(n.children) == 2 {
         QnFoldInit
       } else {
@@ -73,7 +88,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
       }
     TypeNode { connective: Atom { identity: sym } } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: Cons { head: sym, tail: Empty } }
+        QnFoldDone { qn: QnCons { head: sym, tail: QnEmpty } }
       } else {
         QnFoldError { diag: Diagnostic {
           reason: qualified_name_structure_invalid,
@@ -103,10 +118,10 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
                     match child_qn {
-                      Cons { head: sym, tail: Empty } =>
+                      QnCons { head: sym, tail: QnEmpty } =>
                         match acc {
                           QnFoldInit => QnFoldHeadSeen { sym: sym }
-                          QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                          QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: QnCons { head: sym, tail: tail_qn } }
                           _ => QnFoldError { diag: Diagnostic {
                             reason: qualified_name_structure_invalid,
                             at: node_locus(node: edge.target),
@@ -130,7 +145,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                   TypeNode { connective: Conj } =>
                     match acc {
                       QnFoldInit => QnFoldTailSeen { tail: child_qn }
-                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
+                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: QnCons { head: sym, tail: child_qn } }
                       _ => QnFoldError { diag: Diagnostic {
                         reason: qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),

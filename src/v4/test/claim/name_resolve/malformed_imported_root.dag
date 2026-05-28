@@ -24,7 +24,7 @@ import v4.std.algebra { Cons, Empty }
 import v4.std.catalog { Catalog, Entry }
 import v4.std.collection { empty_map }
 import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
-import v4.std.qualified_name { QualifiedName }
+import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
 import v4.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -69,7 +69,7 @@ fn malformed_root_node() -> Node {
 
 
 fn malformed_entry_name() -> QualifiedName {
-  Cons { head: malformed_seg, tail: Empty }
+  QnCons { head: malformed_seg, tail: QnEmpty }
 }
 
 
