@@ -2384,7 +2384,8 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
     rust_formal_production(
       lhs: rust_production_expr,
       rhs: [rust_formal_nonterminal(production: rust_production_expr_without_block)]
-    )
+    ),
+    rust_formal_production_mvp1_fn_add()
   ]
 }
 
