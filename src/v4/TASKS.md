@@ -271,7 +271,7 @@ Close-the-loop + late substrate:
 ### Bootstrap execution convergence — additional T-15 gates (2026-05-28)
 
 The compiler pipeline (T-1…T-11, T-36) is necessary but not sufficient for
-T-15 to close. Three gaps had no workers and gate the close condition (dispatch
+T-15 to close. Three gaps have no workers and gate the close condition (dispatch
 ledger: `docs/audit/t15-per-task-dispatch-ledger.md`):
 
 **T-37 → bridge dissolution.** `scripts/v4-bootstrap-resolve-posture-gate.sh`
@@ -289,10 +289,17 @@ substrate) done (#3770). T-22 (eval interpreter) substantially authored. CI
 wiring — a step that invokes T-22 eval on the claim corpus and surfaces
 `TestClaimRun` witness vs Violates — is the gap.
 
-**T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` scaffold
-is on `main`; the full step sequence (seed→stage0→stage1→fixed-point assertion)
-is not authored. T-15 consumes the completed file for fixed-point validation;
-T-24 consumes it for bootstrap CI interaction.
+**T-20 fill → fixed-point validation.** `src/v4/workflow/bootstrap.dag` step
+sequence IS authored (header: "Status: filled — compiler-of-record is the
+self-hosting structural fact; structural gate only"). Two scaffold placeholders
+remain before T-15 can consume it as a real fixed-point proof:
+(1) `bootstrap_footprint` (line 190) returns `Violates` pending
+`feature:t21-bootstrap-footprint-fold` — dissolves when T-21's affected-set/
+content-hash fold reads the projection input closure; T-21 merged (#3747), so
+this scaffold is now dispatchable.
+(2) `bootstrap-content-hash-pins` (line 3 header) — placeholder `Hash` data
+aliases dissolve on T-15 B1 content_hash supplying computed merkle digests.
+No dispatch against either placeholder today.
 
 ---
 
@@ -2198,3 +2205,71 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
 
 **Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
+
+---
+
+### T-37 — v2 DAG artifact serializer fix  [SCHEDULED]
+
+**File**: `src/v2/compile.dag` — the `.dag` authority for v2's artifact emission;
+`Dag =>` arm dispatches `emit_dag_artifact` at `src/v2/compile.dag:179`. The
+generated Rust in `target/` is compile output, not the fix surface.
+**Why this is a T-15 gate**: `scripts/v4-bootstrap-resolve-posture-gate.sh` is a
+CI bridge that passes on SIGTERM (exit 143/124) when v2 `--target dag` OOM-kills
+before writing any output. The bridge's own dissolution condition is "v4 emit
+reaches `compiled:` without SIGTERM." T-15 cannot close while this bridge
+silently masks full-compile failure — it would pass trivially forever.
+
+**Current state** (`src/v2/compile.dag` v0.2.0): the DAG backend already uses a
+memoized collection fold (`DagCollectAcc { seen: Map<String, String>, order: List<Node> }`)
+that visits each `Node` once and emits `$ref` JSON for subsequent references. The
+audit doc (`docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`) described
+the old recursive-by-value behavior; v0.2.0 is the reference-fold rewrite. The
+remaining gap is that `dag_node_key` uses provisional span-based keys rather than
+v4 content_hash (gated on B1 — see `DagNodeId` `🟡` gate in the file). If the
+OOM persists with v0.2.0 on current `main`, the repro command from the audit doc
+is the diagnostic entry point. If v0.2.0 already clears the SIGTERM, T-37 is
+bridge-dissolution bookkeeping only (confirm `compiled:` appears, delete the
+bridge script, update CI).
+
+**Dependencies**: `[schedulable now — work is in src/v2/compile.dag; no T-## prerequisite]`
+
+**Dissolution**: bridge script dissolves when `v4 emit reaches 'compiled:' without SIGTERM` — the dissolution condition is in the script header. After T-37 lands and the bridge dissolves, the resolve-posture fallback becomes unnecessary and should be removed from CI.
+
+**Reference**: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md` — full reproduction, scope checks, design proposal
+
+---
+
+### T-38 — TestClaim execution harness  [SCHEDULED]
+
+**File**: CI integration in `src/v4/workflow/ci.dag` (T-24) or `src/v4/workflow/bootstrap.dag` (T-20) — owned by whichever fill PR wires T-22 eval into the CI step sequence
+**Why this is a T-15 gate**: T-15's close condition includes "TestClaim suite passes."
+That condition is not checkable today. `src/v4/test/claim/manual/*.dag` (38+
+files) compile and type-check against `std/verification.dag` shape — they are NOT
+evaluated. `scripts/check-v4-host-eval-receipt.py` is a string-match bridge over
+emitted Rust source; it does not invoke the evaluator or verify `AssertKind`
+verdicts.
+
+**Dissolution condition** (from script header verbatim): "delete when the modeled
+T-22 runner executes `eval_runtime_mvp.dag` on main CI and reports the same
+`RuntimeValue` witness through `TestClaimRun` or workflow-as-data, with no
+scripts-owned generated-Rust receipt standing between the claim and the gate."
+
+**Current state (2026-05-28)**:
+- T-34 (runtime substrate — `std/runtime.dag + extdeps/runtimes/*.dag`) done (#3770)
+- T-22 (`compiler/05_eval.dag` — the interpreter) substantially authored at 1121 lines; open scaffold gates are feature-flagged on B1 `content_hash` and not independently dispatchable
+- Gap: no CI step invokes T-22 eval on the claim corpus; no `TestClaimRun` report surfaces in CI output; the bridge script is the only receipt
+
+**Scope**: the CI-wiring half is the bottleneck. T-22 authoring is substantially
+done. T-38 closes when:
+1. A CI step runs T-22 eval over `src/v4/test/claim/manual/*.dag` (the corpus)
+2. Results surface as `TestClaimRun` verdict or equivalent workflow-as-data output
+3. `scripts/check-v4-host-eval-receipt.py` is deleted (its dissolution condition holds)
+
+**Dependencies**: `[needs T-22 runnable end-to-end; T-34 done #3770]`
+T-22's open scaffold gates (`feature:T22-EVAL-CACHE-HASHES`) are gated on B1
+`content_hash`, which is a T-15 era concern — the claim corpus evaluation itself
+does not require them. T-38 can dispatch against T-22's current surface without
+waiting for the cache-hash feature gate.
+
+**Scope**: M (bounded — T-22 authoring substantially done; T-34 done; CI wiring
+and the `TestClaimRun` report surface are the remaining work)

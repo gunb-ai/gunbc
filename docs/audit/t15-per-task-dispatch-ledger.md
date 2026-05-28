@@ -33,7 +33,7 @@ Chain: **T-37 → T-38 → T-20-fill → T-24 → T-16 → T-36 → T-15**
 |---|---|---|---|---|---|---|
 | **T-37** | **yes** (no prereqs) | — | — | none | **UNASSIGNED** | 2, 3 |
 | **T-38** | after T-22 runnable | — | — | T-37 trustworthy bridge; T-22 eval surface | **UNASSIGNED** | 5 |
-| **T-20-fill** | **yes** (scaffold on main) | — | — | none for fill start | **UNASSIGNED** | 3, 4 |
+| **T-20-fill** | **partial** | — | — | `bootstrap_footprint` + B1 content_hash pins (see TASKS.md convergence §) | **UNASSIGNED** | 3, 4 |
 | **T-24** | partial (T-21/T-23/T-10 done) | — | — | **T-20-fill** | **BLOCKED** | 3, 5 |
 | **T-16** | no | — | — | T-24 + T-11 + extdeps demo deps | **BLOCKED** | 1, 3 |
 | **T-36** | no | — | — | T-16 (per PM lane ordering) | **BLOCKED** | 1, 4 |
@@ -44,7 +44,7 @@ Chain: **T-37 → T-38 → T-20-fill → T-24 → T-16 → T-36 → T-15**
 - T-37: pure v2 Rust; fix shape in `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md`. Dissolves `scripts/v4-bootstrap-resolve-posture-gate.sh` SIGTERM pass-through.
 - T-38: 40 manual claims compile only; `scripts/check-v4-host-eval-receipt.py` is string-match bridge. T-34 done (#3770). T-22 ~1121 lines authored.
 - T-24: T-21 merged (#3747), T-23 merged (#3702), T-10 merged; **T-20-fill is the gating dep** for close (not just prep).
-- TASKS.md T-37/T-38 formal entries: **pending** merge of PR #3783 (planning); ledger tracks dispatch regardless.
+- TASKS.md `### T-37` / `### T-38` bodies on main (PR #3783); ledger tracks operator dispatch only.
 
 ---
 
