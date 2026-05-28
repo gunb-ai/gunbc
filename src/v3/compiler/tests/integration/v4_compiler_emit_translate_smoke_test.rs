@@ -793,9 +793,9 @@ fn expr_string_literal_eq(expr: &SurfaceExpr, expected: &str) -> bool {
         } => value == expected,
         SurfaceExpr::Call { args, .. }
         | SurfaceExpr::PathCall { args, .. }
-        | SurfaceExpr::Operator { args, .. } => args
-            .iter()
-            .any(|arg| expr_string_literal_eq(arg, expected)),
+        | SurfaceExpr::Operator { args, .. } => {
+            args.iter().any(|arg| expr_string_literal_eq(arg, expected))
+        }
         SurfaceExpr::Lambda { body, .. } => expr_string_literal_eq(body, expected),
         SurfaceExpr::If {
             cond,
@@ -807,14 +807,15 @@ fn expr_string_literal_eq(expr: &SurfaceExpr, expected: &str) -> bool {
                 || expr_string_literal_eq(then_branch, expected)
                 || expr_string_literal_eq(else_branch, expected)
         }
-        SurfaceExpr::Match { scrutinee, arms, .. } => {
+        SurfaceExpr::Match {
+            scrutinee, arms, ..
+        } => {
             expr_string_literal_eq(scrutinee, expected)
                 || arms
                     .iter()
                     .any(|arm| expr_string_literal_eq(&arm.body, expected))
         }
-        SurfaceExpr::Record { fields, .. }
-        | SurfaceExpr::VariantRecord { fields, .. } => fields
+        SurfaceExpr::Record { fields, .. } | SurfaceExpr::VariantRecord { fields, .. } => fields
             .iter()
             .any(|field| expr_string_literal_eq(&field.value, expected)),
         SurfaceExpr::List { elements, .. } => elements
