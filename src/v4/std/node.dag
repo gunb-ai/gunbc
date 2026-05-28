@@ -429,116 +429,36 @@ fn combine_hash(a: Hash, b: Hash) -> Hash {
 
 
 data canonical_tag_scalar_int_zero: Symbol = canonical_tag_scalar_int_zero
+data canonical_tag_scalar_int_one: Symbol = canonical_tag_scalar_int_one
 data canonical_tag_scalar_int_neg: Symbol = canonical_tag_scalar_int_neg
 data canonical_tag_scalar_int_pos: Symbol = canonical_tag_scalar_int_pos
-data canonical_tag_scalar_int_nibble_0: Symbol = canonical_tag_scalar_int_nibble_0
-data canonical_tag_scalar_int_nibble_1: Symbol = canonical_tag_scalar_int_nibble_1
-data canonical_tag_scalar_int_nibble_2: Symbol = canonical_tag_scalar_int_nibble_2
-data canonical_tag_scalar_int_nibble_3: Symbol = canonical_tag_scalar_int_nibble_3
-data canonical_tag_scalar_int_nibble_4: Symbol = canonical_tag_scalar_int_nibble_4
-data canonical_tag_scalar_int_nibble_5: Symbol = canonical_tag_scalar_int_nibble_5
-data canonical_tag_scalar_int_nibble_6: Symbol = canonical_tag_scalar_int_nibble_6
-data canonical_tag_scalar_int_nibble_7: Symbol = canonical_tag_scalar_int_nibble_7
-data canonical_tag_scalar_int_nibble_8: Symbol = canonical_tag_scalar_int_nibble_8
-data canonical_tag_scalar_int_nibble_9: Symbol = canonical_tag_scalar_int_nibble_9
-data canonical_tag_scalar_int_nibble_a: Symbol = canonical_tag_scalar_int_nibble_a
-data canonical_tag_scalar_int_nibble_b: Symbol = canonical_tag_scalar_int_nibble_b
-data canonical_tag_scalar_int_nibble_c: Symbol = canonical_tag_scalar_int_nibble_c
-data canonical_tag_scalar_int_nibble_d: Symbol = canonical_tag_scalar_int_nibble_d
-data canonical_tag_scalar_int_nibble_e: Symbol = canonical_tag_scalar_int_nibble_e
-data canonical_tag_scalar_int_nibble_f: Symbol = canonical_tag_scalar_int_nibble_f
-data canonical_tag_scalar_int_nibble_out_of_domain: Symbol = canonical_tag_scalar_int_nibble_out_of_domain
-data canonical_tag_scalar_int_byte: Symbol = canonical_tag_scalar_int_byte
+data canonical_tag_scalar_int_succ: Symbol = canonical_tag_scalar_int_succ
+data canonical_tag_scalar_int_out_of_cap: Symbol = canonical_tag_scalar_int_out_of_cap
 
 
-fn scalar_int_nibble_digest(n: Int) -> Hash {
-  if n == 0 {
-    atom_identity_hash(s: canonical_tag_scalar_int_nibble_0)
+// P4: numerically aligned with dsl/std/termination.dag `peano_literal_materialization_cap()` until v4 imports that authority.
+fn scalar_int_materialization_cap() -> Int {
+  256
+}
+
+
+// Bounded Peano succ-chain on |i| (ArithmeticSubtract OneStep); fails closed above cap.
+fn scalar_int_hash_nonneg_digits(i: Int) -> Hash {
+  if i > scalar_int_materialization_cap() {
+    atom_identity_hash(s: canonical_tag_scalar_int_out_of_cap)
   } else {
-    if n == 1 {
-      atom_identity_hash(s: canonical_tag_scalar_int_nibble_1)
+    if i == 0 {
+      atom_identity_hash(s: canonical_tag_scalar_int_zero)
     } else {
-      if n == 2 {
-        atom_identity_hash(s: canonical_tag_scalar_int_nibble_2)
+      if i == 1 {
+        atom_identity_hash(s: canonical_tag_scalar_int_one)
       } else {
-        if n == 3 {
-          atom_identity_hash(s: canonical_tag_scalar_int_nibble_3)
-        } else {
-          if n == 4 {
-            atom_identity_hash(s: canonical_tag_scalar_int_nibble_4)
-          } else {
-            if n == 5 {
-              atom_identity_hash(s: canonical_tag_scalar_int_nibble_5)
-            } else {
-              if n == 6 {
-                atom_identity_hash(s: canonical_tag_scalar_int_nibble_6)
-              } else {
-                if n == 7 {
-                  atom_identity_hash(s: canonical_tag_scalar_int_nibble_7)
-                } else {
-                  if n == 8 {
-                    atom_identity_hash(s: canonical_tag_scalar_int_nibble_8)
-                  } else {
-                    if n == 9 {
-                      atom_identity_hash(s: canonical_tag_scalar_int_nibble_9)
-                    } else {
-                      if n == 10 {
-                        atom_identity_hash(s: canonical_tag_scalar_int_nibble_a)
-                      } else {
-                        if n == 11 {
-                          atom_identity_hash(s: canonical_tag_scalar_int_nibble_b)
-                        } else {
-                          if n == 12 {
-                            atom_identity_hash(s: canonical_tag_scalar_int_nibble_c)
-                          } else {
-                            if n == 13 {
-                              atom_identity_hash(s: canonical_tag_scalar_int_nibble_d)
-                            } else {
-                              if n == 14 {
-                                atom_identity_hash(s: canonical_tag_scalar_int_nibble_e)
-                              } else {
-                                if n == 15 {
-                                  atom_identity_hash(s: canonical_tag_scalar_int_nibble_f)
-                                } else {
-                                  atom_identity_hash(s: canonical_tag_scalar_int_nibble_out_of_domain)
-                                }
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+        combine_hash(
+          a: atom_identity_hash(s: canonical_tag_scalar_int_succ),
+          b: scalar_int_hash_nonneg_digits(i: i - 1)
+        )
       }
     }
-  }
-}
-
-
-fn scalar_int_byte_digest(b: Int) -> Hash {
-  combine_hash(
-    a: atom_identity_hash(s: canonical_tag_scalar_int_byte),
-    b: combine_hash(
-      a: scalar_int_nibble_digest(n: b - (b / 16) * 16),
-      b: scalar_int_nibble_digest(n: b / 16)
-    )
-  )
-}
-
-
-fn scalar_int_le_digits_digest(i: Int) -> Hash {
-  if i == 0 {
-    atom_identity_hash(s: canonical_tag_scalar_int_zero)
-  } else {
-    combine_hash(
-      a: scalar_int_byte_digest(b: i - (i / 256) * 256),
-      b: scalar_int_le_digits_digest(i: i / 256)
-    )
   }
 }
 
@@ -546,12 +466,11 @@ fn scalar_int_le_digits_digest(i: Int) -> Hash {
 fn scalar_int_hash_nonneg(i: Int) -> Hash {
   combine_hash(
     a: atom_identity_hash(s: canonical_tag_scalar_int_pos),
-    b: scalar_int_le_digits_digest(i: i)
+    b: scalar_int_hash_nonneg_digits(i: i)
   )
 }
 
 
-// O(log |i|) scalar Int digest via base-256 little-endian bytes (not Peano unary on |i|).
 fn scalar_int_hash(i: Int) -> Hash {
   if i < 0 {
     combine_hash(
