@@ -1072,9 +1072,6 @@ fn swift_wave1_lex() -> LexRules {
 }
 
 
-fn grammar_formal_nonterminal_occurrence(production: Symbol) -> FormalGrammarSymbol {
-  FormalNonterminalOccurrence { nonterminal: FormalNonterminal { identity: production } }
-}
 
 fn swift_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
   FormalProduction {
@@ -1090,7 +1087,7 @@ fn swift_formal_rhs_from_tokens(tokens: List<SwiftConcreteSyntaxToken>) -> List<
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(token_class: swift_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: swift_concrete_token_class(token: token))
       )
     }
   )
@@ -1105,323 +1102,323 @@ fn swift_formal_production_mvp1_fn_add() -> FormalProduction {
 
 fn swift_wave1_formal_productions() -> List<FormalProduction> {
   [
-    swift_formal_production(lhs: swift_production_type_expr, rhs: [grammar_formal_terminal(token_class: swift_token_ident)]),
+    swift_formal_production(lhs: swift_production_type_expr, rhs: [grammar_formal_terminal(identity: swift_token_ident)]),
     swift_formal_production(
       lhs: swift_production_typed_param,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_colon),
-        grammar_formal_nonterminal_occurrence(production: swift_production_type_expr)
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_type_expr)
       ]
     ),
     swift_formal_production(lhs: swift_production_param_list, rhs: []),
     swift_formal_production(
       lhs: swift_production_param_list,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_typed_param)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_typed_param)]
     ),
     swift_formal_production(
       lhs: swift_production_param_list,
       rhs: [
-        grammar_formal_nonterminal_occurrence(production: swift_production_typed_param),
-        grammar_formal_terminal(token_class: swift_token_comma),
-        grammar_formal_nonterminal_occurrence(production: swift_production_typed_param),
-        grammar_formal_nonterminal_occurrence(production: swift_production_param_list_suffix)
+        grammar_formal_nonterminal_occurrence(identity: swift_production_typed_param),
+        grammar_formal_terminal(identity: swift_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_param_list_suffix)
       ]
     ),
     swift_formal_production(lhs: swift_production_param_list_suffix, rhs: []),
     swift_formal_production(
       lhs: swift_production_param_list_suffix,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_comma),
-        grammar_formal_nonterminal_occurrence(production: swift_production_typed_param),
-        grammar_formal_nonterminal_occurrence(production: swift_production_param_list_suffix)
+        grammar_formal_terminal(identity: swift_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_typed_param),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_param_list_suffix)
       ]
     ),
-    swift_formal_production(lhs: swift_production_primary_expr, rhs: [grammar_formal_terminal(token_class: swift_token_ident)]),
+    swift_formal_production(lhs: swift_production_primary_expr, rhs: [grammar_formal_terminal(identity: swift_token_ident)]),
     swift_formal_production(
       lhs: swift_production_primary_expr,
-      rhs: [grammar_formal_terminal(token_class: swift_token_int_literal)]
+      rhs: [grammar_formal_terminal(identity: swift_token_int_literal)]
     ),
     swift_formal_production(
       lhs: swift_production_primary_expr,
-      rhs: [grammar_formal_terminal(token_class: swift_token_string_literal)]
+      rhs: [grammar_formal_terminal(identity: swift_token_string_literal)]
     ),
     swift_formal_production(
       lhs: swift_production_primary_expr,
-      rhs: [grammar_formal_terminal(token_class: swift_token_kw_true)]
+      rhs: [grammar_formal_terminal(identity: swift_token_kw_true)]
     ),
     swift_formal_production(
       lhs: swift_production_primary_expr,
-      rhs: [grammar_formal_terminal(token_class: swift_token_kw_false)]
+      rhs: [grammar_formal_terminal(identity: swift_token_kw_false)]
     ),
     swift_formal_production(
       lhs: swift_production_primary_expr,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_lparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_terminal(token_class: swift_token_rparen)
+        grammar_formal_terminal(identity: swift_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_terminal(identity: swift_token_rparen)
       ]
     ),
     swift_formal_production(lhs: swift_production_expr_list, rhs: []),
     swift_formal_production(
       lhs: swift_production_expr_list,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_expr)]
     ),
     swift_formal_production(
       lhs: swift_production_expr_list,
       rhs: [
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_terminal(token_class: swift_token_comma),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr_list_suffix)
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_terminal(identity: swift_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr_list_suffix)
       ]
     ),
     swift_formal_production(lhs: swift_production_expr_list_suffix, rhs: []),
     swift_formal_production(
       lhs: swift_production_expr_list_suffix,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_comma),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr_list_suffix)
+        grammar_formal_terminal(identity: swift_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr_list_suffix)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_call_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_primary_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_primary_expr)]
     ),
     swift_formal_production(
       lhs: swift_production_call_expr,
       rhs: [
-        grammar_formal_nonterminal_occurrence(production: swift_production_primary_expr),
-        grammar_formal_terminal(token_class: swift_token_lparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr_list),
-        grammar_formal_terminal(token_class: swift_token_rparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_call_suffix)
+        grammar_formal_nonterminal_occurrence(identity: swift_production_primary_expr),
+        grammar_formal_terminal(identity: swift_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr_list),
+        grammar_formal_terminal(identity: swift_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_call_suffix)
       ]
     ),
     swift_formal_production(lhs: swift_production_call_suffix, rhs: []),
     swift_formal_production(
       lhs: swift_production_call_suffix,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_lparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr_list),
-        grammar_formal_terminal(token_class: swift_token_rparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_call_suffix)
+        grammar_formal_terminal(identity: swift_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr_list),
+        grammar_formal_terminal(identity: swift_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_call_suffix)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_binary_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_call_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_call_expr)]
     ),
     swift_formal_production(
       lhs: swift_production_binary_expr,
       rhs: [
-        grammar_formal_nonterminal_occurrence(production: swift_production_call_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_binary_suffix)
+        grammar_formal_nonterminal_occurrence(identity: swift_production_call_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_binary_suffix)
       ]
     ),
     swift_formal_production(lhs: swift_production_binary_suffix, rhs: []),
     swift_formal_production(
       lhs: swift_production_binary_suffix,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_operator),
-        grammar_formal_nonterminal_occurrence(production: swift_production_call_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_binary_suffix)
+        grammar_formal_terminal(identity: swift_token_operator),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_call_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_binary_suffix)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_expr,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_binary_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_binary_expr)]
     ),
-    swift_formal_production(lhs: swift_production_return_stmt, rhs: [grammar_formal_terminal(token_class: swift_token_kw_return)]),
+    swift_formal_production(lhs: swift_production_return_stmt, rhs: [grammar_formal_terminal(identity: swift_token_kw_return)]),
     swift_formal_production(
       lhs: swift_production_return_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_return),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr)
+        grammar_formal_terminal(identity: swift_token_kw_return),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_let),
-        grammar_formal_terminal(token_class: swift_token_ident)
+        grammar_formal_terminal(identity: swift_token_kw_let),
+        grammar_formal_terminal(identity: swift_token_ident)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_var),
-        grammar_formal_terminal(token_class: swift_token_ident)
+        grammar_formal_terminal(identity: swift_token_kw_var),
+        grammar_formal_terminal(identity: swift_token_ident)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_let),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_colon),
-        grammar_formal_nonterminal_occurrence(production: swift_production_type_expr)
+        grammar_formal_terminal(identity: swift_token_kw_let),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_type_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_var),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_colon),
-        grammar_formal_nonterminal_occurrence(production: swift_production_type_expr)
+        grammar_formal_terminal(identity: swift_token_kw_var),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_type_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_let),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_equal),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr)
+        grammar_formal_terminal(identity: swift_token_kw_let),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_var),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_equal),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr)
+        grammar_formal_terminal(identity: swift_token_kw_var),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_let),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_colon),
-        grammar_formal_nonterminal_occurrence(production: swift_production_type_expr),
-        grammar_formal_terminal(token_class: swift_token_equal),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr)
+        grammar_formal_terminal(identity: swift_token_kw_let),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_type_expr),
+        grammar_formal_terminal(identity: swift_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_let_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_var),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_colon),
-        grammar_formal_nonterminal_occurrence(production: swift_production_type_expr),
-        grammar_formal_terminal(token_class: swift_token_equal),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr)
+        grammar_formal_terminal(identity: swift_token_kw_var),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_colon),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_type_expr),
+        grammar_formal_terminal(identity: swift_token_equal),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_if_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_if),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block)
+        grammar_formal_terminal(identity: swift_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_if_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_if),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block),
-        grammar_formal_terminal(token_class: swift_token_kw_else),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block)
+        grammar_formal_terminal(identity: swift_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block),
+        grammar_formal_terminal(identity: swift_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_if_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_if),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block),
-        grammar_formal_terminal(token_class: swift_token_kw_else),
-        grammar_formal_nonterminal_occurrence(production: swift_production_if_stmt)
+        grammar_formal_terminal(identity: swift_token_kw_if),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block),
+        grammar_formal_terminal(identity: swift_token_kw_else),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_if_stmt)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_while_stmt,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_while),
-        grammar_formal_nonterminal_occurrence(production: swift_production_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block)
+        grammar_formal_terminal(identity: swift_token_kw_while),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_return_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_return_stmt)]
     ),
     swift_formal_production(
       lhs: swift_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_let_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_let_stmt)]
     ),
     swift_formal_production(
       lhs: swift_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_if_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_if_stmt)]
     ),
     swift_formal_production(
       lhs: swift_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_while_stmt)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_while_stmt)]
     ),
     swift_formal_production(
       lhs: swift_production_stmt,
-      rhs: [grammar_formal_nonterminal_occurrence(production: swift_production_expr)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: swift_production_expr)]
     ),
     swift_formal_production(
       lhs: swift_production_block,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_lbrace),
-        grammar_formal_terminal(token_class: swift_token_rbrace)
+        grammar_formal_terminal(identity: swift_token_lbrace),
+        grammar_formal_terminal(identity: swift_token_rbrace)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_block,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_lbrace),
-        grammar_formal_nonterminal_occurrence(production: swift_production_stmt),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block_stmt_sep_opt),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block_stmt_suffix),
-        grammar_formal_terminal(token_class: swift_token_rbrace)
+        grammar_formal_terminal(identity: swift_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_stmt),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block_stmt_sep_opt),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block_stmt_suffix),
+        grammar_formal_terminal(identity: swift_token_rbrace)
       ]
     ),
     swift_formal_production(lhs: swift_production_block_stmt_suffix, rhs: []),
     swift_formal_production(
       lhs: swift_production_block_stmt_suffix,
       rhs: [
-        grammar_formal_nonterminal_occurrence(production: swift_production_stmt),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block_stmt_sep_opt),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block_stmt_suffix)
+        grammar_formal_nonterminal_occurrence(identity: swift_production_stmt),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block_stmt_sep_opt),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block_stmt_suffix)
       ]
     ),
     swift_formal_production(lhs: swift_production_block_stmt_sep_opt, rhs: []),
     swift_formal_production(
       lhs: swift_production_block_stmt_sep_opt,
-      rhs: [grammar_formal_terminal(token_class: swift_token_semicolon)]
+      rhs: [grammar_formal_terminal(identity: swift_token_semicolon)]
     ),
     swift_formal_production(
       lhs: swift_production_fn_decl,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_func),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_lparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_param_list),
-        grammar_formal_terminal(token_class: swift_token_rparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block)
+        grammar_formal_terminal(identity: swift_token_kw_func),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_param_list),
+        grammar_formal_terminal(identity: swift_token_rparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block)
       ]
     ),
     swift_formal_production(
       lhs: swift_production_fn_decl,
       rhs: [
-        grammar_formal_terminal(token_class: swift_token_kw_func),
-        grammar_formal_terminal(token_class: swift_token_ident),
-        grammar_formal_terminal(token_class: swift_token_lparen),
-        grammar_formal_nonterminal_occurrence(production: swift_production_param_list),
-        grammar_formal_terminal(token_class: swift_token_rparen),
-        grammar_formal_terminal(token_class: swift_token_arrow),
-        grammar_formal_nonterminal_occurrence(production: swift_production_type_expr),
-        grammar_formal_nonterminal_occurrence(production: swift_production_block)
+        grammar_formal_terminal(identity: swift_token_kw_func),
+        grammar_formal_terminal(identity: swift_token_ident),
+        grammar_formal_terminal(identity: swift_token_lparen),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_param_list),
+        grammar_formal_terminal(identity: swift_token_rparen),
+        grammar_formal_terminal(identity: swift_token_arrow),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_type_expr),
+        grammar_formal_nonterminal_occurrence(identity: swift_production_block)
       ]
     ),
     swift_formal_production_mvp1_fn_add()

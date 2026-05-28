@@ -1350,7 +1350,7 @@ fn go_formal_rhs_from_tokens(tokens: List<GoConcreteSyntaxToken>) -> List<Formal
     xs: tokens,
     empty: Empty,
     cons: fn(acc, token) {
-      list_snoc_item(xs: acc, item: grammar_formal_terminal(token_class: go_concrete_token_class(token: token)))
+      list_snoc_item(xs: acc, item: grammar_formal_terminal(identity: go_concrete_token_class(token: token)))
     }
   )
 }

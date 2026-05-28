@@ -863,11 +863,6 @@ fn python_mvp1_serialize_source_node() -> Node {
   }
 }
 
-fn grammar_formal_terminal(token_class: Symbol) -> FormalGrammarSymbol {
-  FormalTerminalOccurrence {
-    terminal: FormalTerminal { identity: token_class }
-  }
-}
 
 fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
@@ -876,7 +871,7 @@ fn python_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(token_class: python_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: python_concrete_token_class(token: token))
       )
     }
   )

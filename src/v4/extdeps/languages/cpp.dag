@@ -1139,7 +1139,7 @@ fn cpp_formal_rhs_from_tokens(tokens: List<CppConcreteSyntaxToken>) -> List<Form
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
-        item: grammar_formal_terminal(token_class: cpp_concrete_token_class(token: token))
+        item: grammar_formal_terminal(identity: cpp_concrete_token_class(token: token))
       )
     }
   )
