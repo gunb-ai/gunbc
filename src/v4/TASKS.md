@@ -1535,9 +1535,7 @@ to `QualifiedName`, add the projection.
    module header Node produced by `emit_module_header_emitted_node`. Looks up
    the `dag_surface_module_header_qualified_name` edge from `root` and delegates
    to `qualified_name_from_node`. `extdeps/` may import `std/`, so the
-   layering invariant is preserved. `std/module_batch.dag` and
-   `compiler/00_compile.dag` both call `qualified_name_from_node` directly
-   (batch entries are fold_list_node Nodes, not header Nodes).
+   layering invariant is preserved.
 
    Once this two-function surface exists, `Entry { name: QualifiedName, root: Node }`
    is a denormalized pair — name is projectable from root on the `Accepted`
