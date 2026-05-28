@@ -1,9 +1,10 @@
 // src/v4/std/lexing.dag
-// Scope: canonical lexing types — Token, Lexeme, LexPattern, LexRule, LexRuleSet.
+// Scope: canonical lexing types — Token, Lexeme, LexCharClass, LexPattern, LexRule, LexRuleSet.
 // Anchor: https://en.wikipedia.org/wiki/Lexical_analysis
-// Status: substrate home. LexPattern is a simplified placeholder (see 🟡 below); incumbent structural
-//         forms remain in v4.compiler.tokenize (LexPattern 11-variant coproduct:33-44, LexRule sum, Token+spans).
-//         🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when richer shapes relocate here.
+// Status: structural LexPattern coproduct and LexCharClass declared here as the v4.std substrate
+//         home; v4.compiler.tokenize carries identical incumbent forms pending consumer migration.
+//         🟡 feature:std-lexing-migrate-t6-incumbent; dissolves when v4.compiler.tokenize
+//         imports from v4.std.lexing and retires its local LexCharClass/LexPattern declarations.
 
 
 module v4.std.lexing
@@ -11,17 +12,37 @@ module v4.std.lexing
 
 import v4.std.collection { List }
 import v4.std.node { Symbol }
-import v4.std.text { String }
+import v4.std.text { Char, String }
 
 
 type Lexeme = String
 
-// 🟡 feature:std-lexing-regex-substrate — {text:String} placeholder; structural carrier is the 11-variant LexPattern coproduct in v4.compiler.tokenize:33-44; do not retire T-6 LexPattern until a proper algebraic carrier lands here.
-type LexPattern {
-  text: String
-}
+// 🟡 coproduct dissolution — CP-1b item 13a; lexical data is modeled, per-arm lexer morphism witness remains gated.
+type LexCharClass
+  = WhitespaceChar
+  | DigitChar
+  | HexDigitChar
+  | IdentStartChar
+  | IdentContinueChar
+  | StringTextChar
+  | LineCommentTextChar
+  | BlockCommentTextChar
 
-// 🟡 coproduct dissolution — mirrors T-6 TokenRule|TriviaRule shape (v4.compiler.tokenize:48-50).
+// 🟡 coproduct dissolution — CP-1b item 13b; declarative parse/emit pattern data is modeled, bidirectional grammar carrier convergence remains gated.
+type LexPattern
+  = EmptyPattern
+  | LiteralPattern { text: String }
+  | KeywordPattern { text: String }
+  | CharPattern { char: Char }
+  | CharClassPattern { class: LexCharClass }
+  | SequencePattern { left: LexPattern, right: LexPattern }
+  | ChoicePattern { left: LexPattern, right: LexPattern }
+  | OptionalPattern { element: LexPattern }
+  | RepeatPattern { element: LexPattern }
+  | OneOrMorePattern { element: LexPattern }
+  | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
+
+// 🟡 coproduct dissolution — CP-1b item 13c; token/trivia rule data is modeled, per-arm lexer morphism witness remains gated.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
