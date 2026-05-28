@@ -1,6 +1,6 @@
 // src/v4/extdeps/languages/ptx.dag
 // Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).
-// Owns: ParamScope, SharedScope, StateSpace, BarrierScope, ThreadAxis, ThreadCoordSource, BitsWidth, IntegerWidth, FloatWidth, RegisterScalarKind, RegisterStateSpace, RegisterScalar, Dim3, ThreadHierarchyShape, ThreadCoord, PtxCost, ptx_token_kw_entry, ptx_token_ident, ptx_token_lparen, ptx_token_rparen, ptx_token_lbrace, ptx_token_rbrace, ptx_production_entry_kernel, ptx_surface_entry_kernel, ptx_lex_token, ptx_grammar_terminal, ptx_grammar_sequence, ptx_identifier_pattern, ptx_wave1_lex, ptx_entry_kernel_expr, ptx_wave1_grammar, ptx_ingest_grammar_schema, ptx_ingest_grammar_probe
+// Owns: ParamScope, SharedScope, StateSpace, BarrierScope, ThreadAxis, ThreadCoordSource, BitsWidth, IntegerWidth, FloatWidth, RegisterScalarKind, RegisterStateSpace, RegisterScalar, Dim3, ThreadHierarchyShape, ThreadCoord, PtxCost, ptx_token_kw_entry, ptx_token_ident, ptx_token_lparen, ptx_token_rparen, ptx_token_lbrace, ptx_token_rbrace, ptx_production_entry_kernel, ptx_surface_entry_kernel, ptx_lex_token, ptx_grammar_terminal, ptx_grammar_sequence, ptx_identifier_pattern, ptx_wave1_lex, ptx_entry_kernel_expr, ptx_wave1_grammar, ptx_entry_kernel_formal_production, ptx_ingest_grammar_schema, ptx_ingest_grammar_probe
 // Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).
 // Status: import v4.std.nat Nat; v4.std.cardinality PositiveUpperBoundedNat.
 // Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
@@ -12,7 +12,7 @@ module v4.extdeps.languages.ptx
 
 
 
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -252,6 +252,21 @@ fn ptx_wave1_grammar() -> ParseGrammar {
 }
 
 
+fn ptx_entry_kernel_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: ptx_production_entry_kernel),
+    rhs: [
+      grammar_formal_terminal(identity: ptx_token_kw_entry),
+      grammar_formal_terminal(identity: ptx_token_ident),
+      grammar_formal_terminal(identity: ptx_token_lparen),
+      grammar_formal_terminal(identity: ptx_token_rparen),
+      grammar_formal_terminal(identity: ptx_token_lbrace),
+      grammar_formal_terminal(identity: ptx_token_rbrace)
+    ]
+  }
+}
+
+
 fn ptx_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: ptx_wave1_lex(),
@@ -264,6 +279,7 @@ fn ptx_ingest_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: ptx_ingest_grammar_schema(),
     fixture: ".entry k() {}",
+    production: ptx_entry_kernel_formal_production(),
     expected_parse_surface: grammar_atom(identity: ptx_surface_entry_kernel)
   }
 }

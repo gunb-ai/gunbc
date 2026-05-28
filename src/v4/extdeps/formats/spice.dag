@@ -30,7 +30,7 @@ module v4.extdeps.formats.spice
 
 
 import v4.std.diagnostic { Outcome }
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
+import v4.std.grammar { FormalProduction, ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens, grammar_formal_nonterminal, grammar_formal_terminal }
 import v4.std.lexing {
   CharClassPattern,
   DigitChar,
@@ -313,6 +313,19 @@ fn spice_wave1_grammar() -> ParseGrammar {
 }
 
 
+fn spice_resistor_statement_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: spice_production_resistor_statement),
+    rhs: [
+      grammar_formal_terminal(identity: spice_token_ident),
+      grammar_formal_terminal(identity: spice_token_ident),
+      grammar_formal_terminal(identity: spice_token_ident),
+      grammar_formal_terminal(identity: spice_token_value)
+    ]
+  }
+}
+
+
 fn spice_format_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: spice_wave1_lex(),
@@ -325,6 +338,7 @@ fn spice_format_grammar_probe() -> GrammarSchemaProbe {
   GrammarSchemaProbe {
     schema: spice_format_grammar_schema(),
     fixture: "R1 n1 n2 1",
+    production: spice_resistor_statement_formal_production(),
     expected_parse_surface: grammar_atom(identity: spice_surface_resistor_statement)
   }
 }
