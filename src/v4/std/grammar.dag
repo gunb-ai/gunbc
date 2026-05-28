@@ -52,7 +52,7 @@ type FormalProduction {
 
 
 // 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
-// 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries four representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
+// 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries five representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol), (5) N or Σ infinite (Set<T> is a predicate fn(T)->Bool; finiteness not enforced by the type). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
 // "What is a formal grammar?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar
 // G = (N, Σ, P, S) — the four-component definition of a formal language:
@@ -68,7 +68,7 @@ type FormalGrammar {
 }
 
 
-// 🟡 gated — feature:grammar-well-formed-witness — witness that a FormalGrammar value satisfies all four invariants: (1) start∈N, (2) each FormalProduction.lhs∈N, (3) each FormalProduction.rhs symbol∈N∪Σ, (4) N∩Σ=∅. Dissolve-on: validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
+// 🟡 gated — feature:grammar-well-formed-witness — witness that a FormalGrammar value satisfies all five invariants: (1) start∈N, (2) each FormalProduction.lhs∈N, (3) each FormalProduction.rhs symbol∈N∪Σ, (4) N∩Σ=∅, (5) N and Σ are finite (Set<T> is a predicate; finiteness requires an explicit cardinality proof). Dissolve-on: validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
 type WellFormedFormalGrammar {
   grammar: FormalGrammar
 }
