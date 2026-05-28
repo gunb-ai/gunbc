@@ -457,7 +457,7 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         "{PYTHON_LANGUAGE_PATH}: must expose the MVP-1 TargetModel"
     );
     assert!(
-        surface_declares_fn(&module, "python_formal_mvp1_fn_add_rhs"),
+        surface_declares_fn(&module, "python_formal_rhs_from_token_classes"),
         "{PYTHON_LANGUAGE_PATH}: must build MVP-1 grammar production RHS as a flat formal-symbol list"
     );
     assert!(
