@@ -228,6 +228,10 @@ fn dag_node_key(node: Node) -> String {
 
 // Resolved on expression nodes is ordinary type inference (ExprVar, calls, etc.).
 // Only NoExprData identity shells (type/import back-links) share the declaration anchor.
+// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
+// dissolve-on: DagNode exposes a modeled identity-shell fact (or anchor walk is structurally
+// total on shells) so collection does not match expr_data × InferredNode here;
+// forbidden: permanent cross-pass is_* over Node storage shape outside canonical query surface.
 fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
   match node.expr_data {
     NoExprData =>

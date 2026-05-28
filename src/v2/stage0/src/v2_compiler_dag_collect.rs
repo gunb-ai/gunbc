@@ -13,6 +13,7 @@ use crate::v2_std_core::InferredNode::Resolved;
 use crate::v2_std_core::{InferredNode, MatchPattern, Node};
 use std::rc::Rc;
 
+// 🟡 predicate dissolution — mirrors compile.dag disposition (T-37-dag-collect-identity-anchor).
 pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
     match (*node.expr_data).clone() {
         NoExprData => match node.inferred.clone().as_deref().cloned() {
