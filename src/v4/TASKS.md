@@ -1240,7 +1240,7 @@ structured RFC 3986 URI carriers (`Url`, `UriReference`, …), and
 **Residual (not T-26):** RFC 3986 validated-component refinements in `std/network.dag`
 are now unblocked (T-25-core gate open); tracked as `feature:network-validated-components`
 (T-26 follow-on). OpenAPI path verbs stay
-`OpenApiHttpMethod` (OAS eight-verb closed set vs broader `HttpMethod`) per
+`OpenApiAdmittedHttpMethod` (OAS eight-verb closed set vs broader `HttpMethod`) per
 DECISIONS **T-4.6-P4-OpenApiHttpMethod**.
 
 ### T-27 — extdeps version / semver / edition lattice  [DROPPED]
