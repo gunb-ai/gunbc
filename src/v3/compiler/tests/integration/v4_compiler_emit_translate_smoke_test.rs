@@ -13,27 +13,17 @@
 //!
 //! **PR receipt (P5 Mechanism (b)):** this harness + matching `EXPECTED_HAND_AUTHORED_TEST`
 //! line in `sg0_census_test.rs` + INVARIANTS §SG-0 hand-authored integration test receipts row
-<<<<<<< HEAD
 //! land in the same PR. **This PR (+0 census paths):** structural serialize-measure ratchet
 //! on `06_translate.dag` via parsed-surface `fn`/`import`/`data` inventory in
 //! `v4_translate_dag_dispatches_token_sequence_items`; fail-closed semantics exercised by
 //! `run_mvp1_serialize_rejects_missing_translation_rules` in `mvp1_rust_add_translate.dag`
 //! (not host `str::contains` probes). **PR #3798 (+0 census paths):** extends
 //! `v4_python_language_model_declares_t11_translation_rules` for T-4.17 python wave-2a
-//! LanguageModel / lex/grammar surface on `python.dag`. See INVARIANTS.md row
-//! `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt and T-PB-B deferral lane.
-=======
-//! land in the same PR. **This PR (+0 census paths):** expands the existing harness (no new
-//! census path) to ratchet T-11 grammar-inverse compile-inferred TestClaim parse/import receipts
-//! for python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`) via
-//! `v4_mvp1_python_add_claim_tokenizes_and_parses`, `v4_mvp1_go_add_claim_tokenizes_and_parses`,
-//! `v4_mvp1_cpp_add_claim_tokenizes_and_parses`, `v4_mvp1_typescript_add_claim_tokenizes_and_parses`,
-//! and `v4_mvp1_shape_a_add_claims_import_compile_inferred`; dissolves
-//! `feature:T-11-grammar-inverse-serializer-remaining-targets` status mark in `06_translate.dag`.
+//! LanguageModel / lex/grammar surface on `python.dag`. **PR #3840 (+0 census paths):**
+//! adds T-11 grammar-inverse compile-inferred TestClaim parse/import receipts for
+//! python/go/cpp/typescript Shape-A MVP-1 add-fn fixtures (`mvp1_*_add_translate.dag`).
 //! See INVARIANTS.md row `v4_compiler_emit_translate_smoke_test.rs` for the checkable receipt
-//! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
->>>>>>> origin/main
-//!
+//! and **ROADMAP.md** § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.//!
 //! **Dissolution:** remove when translate/emit/MVP-1 surfaces are exercised only by `.dag`
 //! `TestClaim` rows / a generated harness without this per-file Rust probe (or when
 //! `compile_to_dag` over v4 compiler modules resolves imports without substrate collision).
