@@ -1404,19 +1404,16 @@ fn kotlin_operator_lex_pattern() -> LexPattern {
         right: ChoicePattern {
           left: LiteralPattern { text: ">=" },
           right: ChoicePattern {
-            left: LiteralPattern { text: "+" },
+            left: LiteralPattern { text: "-" },
             right: ChoicePattern {
-              left: LiteralPattern { text: "-" },
+              left: LiteralPattern { text: "*" },
               right: ChoicePattern {
-                left: LiteralPattern { text: "*" },
+                left: LiteralPattern { text: "/" },
                 right: ChoicePattern {
-                  left: LiteralPattern { text: "/" },
+                  left: LiteralPattern { text: "%" },
                   right: ChoicePattern {
-                    left: LiteralPattern { text: "%" },
-                    right: ChoicePattern {
-                      left: LiteralPattern { text: "<" },
-                      right: LiteralPattern { text: ">" }
-                    }
+                    left: LiteralPattern { text: "<" },
+                    right: LiteralPattern { text: ">" }
                   }
                 }
               }
@@ -1804,7 +1801,7 @@ fn kotlin_wave1_lex_token_symbol(sym: Symbol) -> Bool {
 fn kotlin_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
-        kotlin_catalog_surface_symbol(sym: sym) ||
+      kotlin_catalog_surface_symbol(sym: sym) ||
         kotlin_wave1_lex_token_symbol(sym: sym) ||
         grammar_carries_symbol(grammar: kotlin_wave1_grammar(), sym: sym) ||
         sym == kotlin_surface_fn_item ||
