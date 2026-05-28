@@ -1499,52 +1499,96 @@ fn python_catalog_surface_spelling_eq(sym: Symbol, spelling: Symbol) -> Bool {
   sym == spelling
 }
 
+fn python_catalog_surface_fold_false() -> Bool {
+  false
+}
+
+fn python_integer_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonIntegerPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
 fn python_integer_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
     xs: python_integer_facts_catalog,
-    empty: false,
+    empty: python_catalog_surface_fold_false(),
     cons: fn(acc, facts) {
-      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+      python_integer_catalog_surface_step(sym: sym, acc: acc, facts: facts)
     }
   )
+}
+
+fn python_float_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonFloatPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn python_float_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
     xs: python_float_facts_catalog,
-    empty: false,
+    empty: python_catalog_surface_fold_false(),
     cons: fn(acc, facts) {
-      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+      python_float_catalog_surface_step(sym: sym, acc: acc, facts: facts)
     }
   )
+}
+
+fn python_complex_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonComplexPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn python_complex_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
     xs: python_complex_facts_catalog,
-    empty: false,
+    empty: python_catalog_surface_fold_false(),
     cons: fn(acc, facts) {
-      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+      python_complex_catalog_surface_step(sym: sym, acc: acc, facts: facts)
     }
   )
+}
+
+fn python_bool_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonBoolPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn python_bool_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
     xs: python_bool_facts_catalog,
-    empty: false,
+    empty: python_catalog_surface_fold_false(),
     cons: fn(acc, facts) {
-      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+      python_bool_catalog_surface_step(sym: sym, acc: acc, facts: facts)
     }
   )
+}
+
+fn python_singleton_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: PythonSingletonPrimitiveFacts
+) -> Bool {
+  acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
 }
 
 fn python_singleton_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
     xs: python_singleton_facts_catalog,
-    empty: false,
+    empty: python_catalog_surface_fold_false(),
     cons: fn(acc, facts) {
-      acc || python_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+      python_singleton_catalog_surface_step(sym: sym, acc: acc, facts: facts)
     }
   )
 }
