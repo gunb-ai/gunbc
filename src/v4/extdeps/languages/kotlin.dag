@@ -28,12 +28,9 @@ import v4.std.lexing {
   ModeledLexRules,
   RepeatPattern,
   SequencePattern,
-  Token,
   TokenRule,
-  lex_rule_set_token_class_member,
-  tokenize
+  lex_rule_set_token_class_member
 }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
   EffectSemanticsDecl,
@@ -1221,19 +1218,6 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
 
 fn kotlin_wave1_lex() -> LexRules {
   ModeledLexRules { root: kotlin_wave1_lex_rules() }
-}
-
-// Parse-fixture tokens: lexer output from MVP authority source (lexeme + spans via tokenize).
-fn kotlin_mvp1_parse_tokens() -> Outcome<List<Token>> {
-  match tokenize(
-    text: kotlin_mvp1_source_text,
-    file: kotlin_mvp1_parse_fixture_file,
-    rules: kotlin_wave1_lex()
-  ) {
-    Accepted { value: stream, diagnostics: diags } =>
-      Accepted { value: stream.tokens, diagnostics: diags }
-    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-  }
 }
 
 fn kotlin_wave1_grammar_root() -> GrammarRoot {

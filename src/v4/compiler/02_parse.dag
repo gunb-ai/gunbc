@@ -27,6 +27,7 @@ import v4.std.grammar {
   ModeledGrammar,
   Nonterminal,
   Optional,
+  ParseTree,
   Repeat,
   Sequence,
   Terminal,
@@ -36,8 +37,6 @@ import v4.std.grammar {
   grammar_to_node
 }
 
-
-type ParseTree = Node
 
 // 🟡 coproduct dissolution — feature:T-8-parse-result-projection; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult

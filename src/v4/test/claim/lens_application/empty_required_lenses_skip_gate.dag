@@ -13,7 +13,7 @@ import v4.compiler.compile {
   validate_then_compile
 }
 import v4.compiler.target_carriers { TargetModel }
-import v4.compiler.tokenize { VoidLexRules }
+import v4.std.lexing { VoidLexRules }
 import v4.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v4.std.logic { Bool }
 import v4.std.algebra { Empty }

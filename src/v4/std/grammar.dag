@@ -56,6 +56,9 @@ type GrammarSchema {
 }
 
 
+type ParseTree = Node
+
+
 type GrammarSymbolFoldState {
   found: Bool
 }
