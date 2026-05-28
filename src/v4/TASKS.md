@@ -2222,7 +2222,7 @@ bridge script, update CI).
 
 **Dependencies**: `[schedulable now — work is in src/v2/compile.dag; no T-## prerequisite]`
 
-**Dissolution**: bridge script dissolves when `v4 emit reaches 'compiled:' without SIGTERM` — the dissolution condition is in the script header. After T-37 lands and the bridge dissolves, the resolve-posture fallback becomes unnecessary and should be removed from CI.
+**Dissolution**: LANDED on `main` via #3791 — `v4 emit reaches 'compiled:' without SIGTERM` (royal-carp-716 probe). Resolve-posture bridge script removal from CI is the follow-up bookkeeping item named in the script header.
 
 **Reference**: `docs/audit/v2-dag-artifact-zip-fold-hang-2026-05-21.md` — full reproduction, scope checks, design proposal
 
