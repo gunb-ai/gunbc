@@ -5,14 +5,9 @@
 
 module v4.extdeps.languages.kotlin
 
-<<<<<<< HEAD
 import v4.std.grammar {
   ParseGrammar,
-=======
-import v4.compiler.parse {
   Choice,
-  Grammar,
->>>>>>> 8b778f642 (WIP: T-4.17 Wave 2a: kotlin lex/grammar data fill (deps T-6/T-7/T-4; cpp/java)
   GrammarExpr,
   GrammarProduction,
   GrammarRoot,
@@ -43,18 +38,11 @@ import v4.std.lexing {
   OneOrMorePattern,
   RepeatPattern,
   SequencePattern,
-<<<<<<< HEAD
-  TokenRule,
-  lex_rule_set_token_class_member
-=======
   StringTextChar,
-  Token,
   TokenRule,
   TriviaRule,
   WhitespaceChar,
-  lex_rule_set_token_class_member,
-  tokenize
->>>>>>> 8b778f642 (WIP: T-4.17 Wave 2a: kotlin lex/grammar data fill (deps T-6/T-7/T-4; cpp/java)
+  lex_rule_set_token_class_member
 }
 import v4.std.collection { List, Map, Set, empty_map, map_insert }
 import v4.std.model_core {
