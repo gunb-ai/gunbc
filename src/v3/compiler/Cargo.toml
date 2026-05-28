@@ -93,3 +93,7 @@ path = "src/bin/r1c_e_emit_gates.rs"
 [[bin]]
 name = "gunbc-ci"
 path = "src/bin/gunbc_ci.rs"
+
+[[bin]]
+name = "detect-ci-affected-components"
+path = "src/bin/detect_ci_affected_components.rs"

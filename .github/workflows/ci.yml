@@ -83,7 +83,7 @@ jobs:
       run: git fetch origin main:refs/remotes/origin/main
     - name: Detect affected components
       id: detect
-      run: bash scripts/detect-affected-components.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
+      run: cargo run -p v3-compiler --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
