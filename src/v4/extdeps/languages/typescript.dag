@@ -3,7 +3,7 @@
 // Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.
 // Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.
 // Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/
-// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
+// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW, SL-T4-WAVE2B-TS-LAW-KEY.
 // 🟡
 
 module v4.extdeps.languages.typescript
@@ -1286,10 +1286,6 @@ fn ts_language_model_wave2a() -> TsLanguageModel {
 }
 
 
-// ── Wave 2b: string primitive fact-bundle ─────────────────────────────────────
-// Anchor: ECMA-262 §6.1.4 — TypeScript `string` = ordered sequence of zero or
-// more 16-bit unsigned integer values (UTF-16 code units). Concatenation forms a
-// free monoid with empty sequence as identity.
 
 // 🟢 grounded.
 type TsStringPrimitiveFacts {
@@ -1418,10 +1414,7 @@ fn ts_wave2b_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 }
 
 
-// ── Wave 2b: algebra law obligations ─────────────────────────────────────────
-// 🟡 needs-more-work — feature:model-core-law-expression-carrier — scaffold:T-33-wave2 ·
-// law-kind coproduct is a bounded schedule key; dissolve-on: std/algebra exports typed law
-// Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+// 🟡 coproduct dissolution · SL-T4-WAVE2B-TS-LAW-KEY.
 type TsModelCoreLawKey
   = TsLawNumberIeee754Rounding
   | TsLawNumberNanInfCarriedByIeee754
@@ -1678,9 +1671,6 @@ fn ts_model_core_law_obligations() -> List<AlgebraLawObligation> {
 }
 
 
-// ── Wave 2b: effects ──────────────────────────────────────────────────────────
-// TypeScript arithmetic + string operations are pure value expressions (no I/O,
-// no observable side effects). ECMA-262 §6.1 — all scalar operations return values.
 
 data ts_effect_signature_pure_value: Symbol = ts_effect_signature_pure_value
 data ts_op_number_add: Symbol = ts_op_number_add
@@ -1735,9 +1725,6 @@ fn ts_effect_semantics_wave2b() -> EffectSemanticsDecl {
 }
 
 
-// ── Wave 2b: partiality ───────────────────────────────────────────────────────
-// bigint division and remainder by zero throw RangeError (ECMA-262 §13.14.3).
-// number division by zero is NOT partial — IEEE-754 returns Infinity/NaN (§6.1.6.1).
 
 data ts_partial_bigint_divide_by_zero: Symbol = ts_partial_bigint_divide_by_zero
 data ts_partial_bigint_remainder_by_zero: Symbol = ts_partial_bigint_remainder_by_zero
@@ -1773,7 +1760,6 @@ fn ts_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
 }
 
 
-// ── Wave 2b: entry points ─────────────────────────────────────────────────────
 
 fn ts_model_core_wave2b() -> ModelCore {
   ModelCore {

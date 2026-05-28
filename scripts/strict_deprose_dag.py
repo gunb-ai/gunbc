@@ -271,6 +271,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
         # T-11 MVP-1 grammar-relation token carrier (absent at merge-base).
         out["TsConcreteSyntaxToken"] = ("🟢", "CP-3229-GREEN-TERMINAL")
         out["TsGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
+        # T-4 Wave 2b law-kind coproduct (absent at merge-base; scaffold:T-4-wave-2b).
+        out["TsModelCoreLawKey"] = ("🟡", "SL-T4-WAVE2B-TS-LAW-KEY")
     if rel == "src/v4/extdeps/languages/rust.dag":
         out["RustGramBuild1State"] = ("🟡", "SL-T11-GRAMMAR-FROM-TOKEN-ROW")
     if rel == "src/v4/extdeps/languages/python.dag":
@@ -615,10 +617,10 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/typescript.dag",
-            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric primitive fact-bundles and ModelCore wave-1.",
+            "// Scope: TypeScript 5.9 + ECMA-262 ES2025 numeric+string primitive fact-bundles, ModelCore wave-1 (primitives+inhabitance), wave-2b (laws+effects+partiality+string).",
             "// Anchor: https://www.typescriptlang.org/docs/handbook/2/everyday-types.html — ECMA-262 https://tc39.es/ecma262/2025/multipage/",
             "// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.model_core, v4.std.target_model, v4.std.text.",
-            "// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) fact-bundles; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.",
+            "// Status: T-4 typescript slice — ECMA `number` (IEEE-754 binary64) + `bigint` (exact unbounded ℤ) + `string` (UTF-16 code unit sequence, §6.1.4) fact-bundles; wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` primitives from `ts_numeric_facts_catalog` via fold; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref — 🟡 E-6(b) staging.",
             "// 🟡",
         ),
         (
