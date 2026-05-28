@@ -913,8 +913,8 @@ fn wasm_float_special_lex_pattern() -> LexPattern {
     right: wasm_lex_choice(
       left: LiteralPattern { text: "inf" },
       right: wasm_lex_choice(
-        left: LiteralPattern { text: "nan" },
-        right: wasm_nan_payload_lex_pattern()
+        left: wasm_nan_payload_lex_pattern(),
+        right: LiteralPattern { text: "nan" }
       )
     )
   )
