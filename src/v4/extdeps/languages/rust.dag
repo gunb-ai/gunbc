@@ -10,7 +10,6 @@ import v4.std.grammar {
   grammar_formal_nonterminal_occurrence,
   Choice,
   FormalGrammarSymbol,
-  FormalNonterminal,
   FormalNonterminalOccurrence,
   FormalProduction,
   FormalTerminal,
@@ -1478,13 +1477,6 @@ fn rust_grammar_atom(id: Symbol) -> Node {
 
 
 
-fn rust_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
-  FormalProduction {
-    lhs: FormalNonterminal { identity: lhs },
-    rhs: rhs
-  }
-}
-
 fn rust_formal_rhs_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1499,7 +1491,7 @@ fn rust_formal_rhs_from_tokens(tokens: List<RustConcreteSyntaxToken>) -> List<Fo
 }
 
 fn rust_formal_production_mvp1_fn_add() -> FormalProduction {
-  rust_formal_production(
+  grammar_formal_production(
     lhs: rust_production_mvp1_fn_add,
     rhs: rust_formal_rhs_from_tokens(tokens: rust_mvp1_concrete_tokens())
   )
@@ -2176,8 +2168,8 @@ fn rust_wave2_lex() -> LexRules {
 // Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn rust_wave2_formal_productions() -> List<FormalProduction> {
   [
-    rust_formal_production(lhs: rust_production_type, rhs: [grammar_formal_terminal(identity: rust_token_ty_i32)]),
-    rust_formal_production(
+    grammar_formal_production(lhs: rust_production_type, rhs: [grammar_formal_terminal(identity: rust_token_ty_i32)]),
+    grammar_formal_production(
       lhs: rust_production_typed_param,
       rhs: [
         grammar_formal_terminal(identity: rust_token_ident),
@@ -2185,12 +2177,12 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_type)
       ]
     ),
-    rust_formal_production(lhs: rust_production_param_list, rhs: []),
-    rust_formal_production(
+    grammar_formal_production(lhs: rust_production_param_list, rhs: []),
+    grammar_formal_production(
       lhs: rust_production_param_list,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_typed_param)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_param_list,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: rust_production_typed_param),
@@ -2199,8 +2191,8 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_param_list_suffix)
       ]
     ),
-    rust_formal_production(lhs: rust_production_param_list_suffix, rhs: []),
-    rust_formal_production(
+    grammar_formal_production(lhs: rust_production_param_list_suffix, rhs: []),
+    grammar_formal_production(
       lhs: rust_production_param_list_suffix,
       rhs: [
         grammar_formal_terminal(identity: rust_token_comma),
@@ -2208,7 +2200,7 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_param_list_suffix)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_fn_item,
       rhs: [
         grammar_formal_terminal(identity: rust_token_kw_fn),
@@ -2221,12 +2213,12 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_block)
       ]
     ),
-    rust_formal_production(lhs: rust_production_primary_expr, rhs: [grammar_formal_terminal(identity: rust_token_ident)]),
-    rust_formal_production(
+    grammar_formal_production(lhs: rust_production_primary_expr, rhs: [grammar_formal_terminal(identity: rust_token_ident)]),
+    grammar_formal_production(
       lhs: rust_production_primary_expr,
       rhs: [grammar_formal_terminal(identity: rust_token_int_literal)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_primary_expr,
       rhs: [
         grammar_formal_terminal(identity: rust_token_lparen),
@@ -2234,11 +2226,11 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: rust_token_rparen)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_additive_expr,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_primary_expr)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_additive_expr,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr),
@@ -2246,11 +2238,11 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_primary_expr)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_comparison_expr,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_comparison_expr,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr),
@@ -2258,33 +2250,33 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_additive_expr)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_return_expr,
       rhs: [grammar_formal_terminal(identity: rust_token_kw_return)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_return_expr,
       rhs: [
         grammar_formal_terminal(identity: rust_token_kw_return),
         grammar_formal_nonterminal_occurrence(identity: rust_production_expr)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_without_block,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_return_expr)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_without_block,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_comparison_expr)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_block,
       rhs: [
         grammar_formal_terminal(identity: rust_token_lbrace),
         grammar_formal_terminal(identity: rust_token_rbrace)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_block,
       rhs: [
         grammar_formal_terminal(identity: rust_token_lbrace),
@@ -2292,7 +2284,7 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: rust_token_rbrace)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_block,
       rhs: [
         grammar_formal_terminal(identity: rust_token_lbrace),
@@ -2300,7 +2292,7 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: rust_token_rbrace)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_block,
       rhs: [
         grammar_formal_terminal(identity: rust_token_lbrace),
@@ -2309,15 +2301,15 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: rust_token_rbrace)
       ]
     ),
-    rust_formal_production(lhs: rust_production_stmts, rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_stmt)]),
-    rust_formal_production(
+    grammar_formal_production(lhs: rust_production_stmts, rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_stmt)]),
+    grammar_formal_production(
       lhs: rust_production_stmts,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: rust_production_stmts),
         grammar_formal_nonterminal_occurrence(identity: rust_production_stmt)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_let_stmt,
       rhs: [
         grammar_formal_terminal(identity: rust_token_kw_let),
@@ -2327,41 +2319,41 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: rust_token_semicolon)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_stmt,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: rust_production_expr_without_block),
         grammar_formal_terminal(identity: rust_token_semicolon)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_stmt,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_with_block)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_stmt,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: rust_production_expr_with_block),
         grammar_formal_terminal(identity: rust_token_semicolon)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_stmt,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_let_stmt)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_stmt,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_stmt)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_with_block,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_if_expr)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr_with_block,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_block)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_if_expr,
       rhs: [
         grammar_formal_terminal(identity: rust_token_kw_if),
@@ -2369,7 +2361,7 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_block)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_if_expr,
       rhs: [
         grammar_formal_terminal(identity: rust_token_kw_if),
@@ -2379,7 +2371,7 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_block)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_if_expr,
       rhs: [
         grammar_formal_terminal(identity: rust_token_kw_if),
@@ -2389,11 +2381,11 @@ fn rust_wave2_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: rust_production_if_expr)
       ]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_with_block)]
     ),
-    rust_formal_production(
+    grammar_formal_production(
       lhs: rust_production_expr,
       rhs: [grammar_formal_nonterminal_occurrence(identity: rust_production_expr_without_block)]
     ),
