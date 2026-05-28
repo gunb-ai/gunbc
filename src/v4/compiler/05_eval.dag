@@ -110,6 +110,11 @@ import v4.std.verification {
   EqualsClaim,
   RoundTripClaim,
   TestClaim,
+  TestClaimCompilesClaimVariant,
+  TestClaimDiagnosticClaimVariant,
+  TestClaimEqualsClaimVariant,
+  TestClaimRoundTripClaimVariant,
+  test_claim_coproduct_variant,
   test_claim_evaluation_nodes,
   test_claim_input
 }
@@ -207,6 +212,10 @@ data test_claim_cache_locus_node_tag: Symbol = test_claim_cache_locus_node_tag
 data test_claim_cache_locus_port_tag: Symbol = test_claim_cache_locus_port_tag
 data test_claim_cache_locus_textual_tag: Symbol = test_claim_cache_locus_textual_tag
 data test_claim_cache_diagnostic_tail_bag_empty_tag: Symbol = test_claim_cache_diagnostic_tail_bag_empty_tag
+data test_claim_cache_variant_compiles_tag: Symbol = test_claim_cache_variant_compiles_tag
+data test_claim_cache_variant_diagnostic_tag: Symbol = test_claim_cache_variant_diagnostic_tag
+data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equals_tag
+data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -379,14 +388,36 @@ fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
 }
 
 
-// IRT-4 claim_hash: evaluation-node frontier plus diagnostic authority absent from node-only frontiers.
-fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
+fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
+  match test_claim_coproduct_variant(c: c) {
+    TestClaimCompilesClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_compiles_tag)
+    TestClaimDiagnosticClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_diagnostic_tag)
+    TestClaimEqualsClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_equals_tag)
+    TestClaimRoundTripClaimVariant =>
+      test_claim_symbol_digest(sym: test_claim_cache_variant_roundtrip_tag)
+  }
+}
+
+
+fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
   let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
   match c {
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
       combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
     _ => nodes_digest
   }
+}
+
+
+// IRT-4 claim_hash: assertion-shape variant tag, evaluation-node frontier, and diagnostic authority.
+fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
+  combine_hash(
+    a: test_claim_variant_cache_digest(c: c),
+    b: test_claim_claim_body_cache_digest(c: c)
+  )
 }
 
 

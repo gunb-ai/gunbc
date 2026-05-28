@@ -30,6 +30,7 @@ import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
+  EqualsClaim,
   ManualAnchorAbsent,
   TestClaim,
   TestClassification,
@@ -156,6 +157,28 @@ fn tcc_cache_diagnostic_claim(expected_reason: Symbol) -> TestClaim {
       }
     )
   }
+}
+
+fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
+  let node_x = tcc_cache_root()
+  let node_y = tcc_cache_pass_node()
+  test_claim_claim_hash_digest(
+    c: CompilesClaim {
+      label: "manual/test_claim_cache: compiles shape",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: node_x,
+      expected_value: node_y
+    }
+  ) != test_claim_claim_hash_digest(
+    c: EqualsClaim {
+      label: "manual/test_claim_cache: equals shape",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      lhs: node_x,
+      rhs: node_y
+    }
+  )
 }
 
 fn tcc_cache_diagnostic_reason_claim_hash_differs() -> Bool {
@@ -301,6 +324,14 @@ data claim_test_claim_cache_evaluator_input_digest_differs: TestClaim = Compiles
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_evaluator_input_digest_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_variant_shape_claim_hash_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: TestClaim coproduct variant participates in claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_compiles_equals_same_nodes_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
