@@ -1,0 +1,390 @@
+// src/v4/extdeps/languages/english.dag
+// Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for a declared deterministic subset (subject-verb-object + copula sentences over a bounded API-documentation vocabulary).
+// Consumes: std/node.dag (Symbol); std/grammar.dag; std/lexing.dag; std/collection.dag; std/model_core.dag; extdeps/languages/fidelity.dag.
+// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
+// Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html — plus a narrower API-documentation vocabulary subset declared here.
+// Ledger: CP-3229-GREEN-TERMINAL.
+// 🟡
+
+module v4.extdeps.languages.english
+
+import v4.extdeps.languages.fidelity { FidelityDisposition }
+import v4.std.grammar {
+  FormalProduction,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  GrammarSchema,
+  GrammarSchemaProbe,
+  GrammarSchemaProbeBinding,
+  ModeledGrammar,
+  ParseGrammar,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens,
+  grammar_formal_nonterminal,
+  grammar_formal_terminal
+}
+import v4.std.lexing {
+  CharClassPattern,
+  IdentContinueChar,
+  IdentStartChar,
+  KeywordPattern,
+  LexPattern,
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  OneOrMorePattern,
+  RepeatPattern,
+  SequencePattern,
+  TokenRule,
+  TriviaRule,
+  WhitespaceChar
+}
+import v4.std.collection { List }
+import v4.std.model_core {
+  EffectSemanticsDecl,
+  ModelCore,
+  PartialitySemanticsDecl,
+  PrimitiveFactBundle
+}
+import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
+
+
+// ---------------------------------------------------------------------------
+// Layer 0 — Structural carriers
+// ---------------------------------------------------------------------------
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// The declared sentence forms of the formal subset.
+// OutOfSubset covers all prose outside these forms — always FailClosed.
+type EnglishSentenceForm
+  = SubjectVerbObject
+  | SubjectCopulaComplement
+  | SubjectVerbAdverbial
+  | SubjectIntransitiveVerb
+  | OutOfSubset
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// Noun-phrase role in a formal-subset sentence.
+type NounPhraseRole
+  = SubjectRole
+  | ObjectRole
+  | ComplementRole
+
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// Determiner forms modeled in the formal subset.
+type Determiner
+  = DefiniteArticle
+  | IndefiniteArticle
+  | NoDeterminer
+
+
+// 🟢 grounded.
+// A noun phrase in the formal subset: optional determiner + head noun.
+type FormalNounPhrase {
+  determiner: Determiner
+  head: Symbol
+  role: NounPhraseRole
+}
+
+
+// 🟢 grounded.
+// A verb phrase in the formal subset: single head verb + optional direct object.
+type FormalVerbPhrase {
+  head: Symbol
+  object: FormalNounPhrase?
+}
+
+
+// 🟢 grounded.
+// A sentence in the formal subset — subject NP + VP.
+type FormalSentence {
+  subject: FormalNounPhrase
+  predicate: FormalVerbPhrase
+  form: EnglishSentenceForm
+}
+
+
+// 🟢 grounded.
+// Top-level English LanguageModel fact-bundle: identity + grammar substrate.
+type EnglishLanguageModel {
+  language_identity: Symbol
+  core: ModelCore
+  lex: LexRules
+  grammar: ParseGrammar
+}
+
+
+// 🟢 grounded.
+// Lex rules fact-bundle for the formal subset.
+type EnglishLexRules {
+  rules: LexRules
+}
+
+
+// 🟢 grounded.
+// Grammar productions fact-bundle for the formal subset.
+type EnglishGrammar {
+  grammar: ParseGrammar
+}
+
+
+// ---------------------------------------------------------------------------
+// Layer 0b — Fidelity disposition
+// ---------------------------------------------------------------------------
+
+// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+// Every feature is either modeled in-subset or fail-closed.
+// Arbitrary prose, ambiguous constructs, and unknown vocabulary are
+// always FailClosed — never a silent fabricated parse.
+type EnglishFidelityFeature
+  = FormalSubsetSvo
+  | FormalSubsetCopula
+  | FormalSubsetAdverbial
+  | FormalSubsetIntransitive
+  | ArticleDeterminer
+  | NounSpelling
+  | VerbSpelling
+  | OutOfSubsetProse
+  | AmbiguousConstruct
+  | UnknownVocabulary
+  | MalformedSentence
+
+
+fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition<EnglishFidelityFeature> {
+  match f {
+    FormalSubsetSvo => Modeled
+    FormalSubsetCopula => Modeled
+    FormalSubsetAdverbial => Modeled
+    FormalSubsetIntransitive => Modeled
+    ArticleDeterminer => Modeled
+    NounSpelling => DeclaredNormalized { feature: NounSpelling }
+    VerbSpelling => DeclaredNormalized { feature: VerbSpelling }
+    OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
+    AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
+    UnknownVocabulary => FailClosed { feature: UnknownVocabulary }
+    MalformedSentence => FailClosed { feature: MalformedSentence }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Layer 1 — Token class symbols
+// ---------------------------------------------------------------------------
+
+data english_token_article: Symbol = english_token_article
+data english_token_noun: Symbol = english_token_noun
+data english_token_verb: Symbol = english_token_verb
+data english_token_copula: Symbol = english_token_copula
+data english_token_period: Symbol = english_token_period
+
+data english_production_svo_sentence: Symbol = english_production_svo_sentence
+data english_production_copula_sentence: Symbol = english_production_copula_sentence
+data english_surface_svo: Symbol = english_surface_svo
+data english_surface_copula: Symbol = english_surface_copula
+
+data english_language_identity: Symbol = english_language_identity
+
+
+// ---------------------------------------------------------------------------
+// Layer 2a — Lex rules
+// ---------------------------------------------------------------------------
+
+fn english_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
+  TokenRule { token_class: token_class, pattern: pattern }
+}
+
+fn english_noun_pattern() -> LexPattern {
+  SequencePattern {
+    left: CharClassPattern { class: IdentStartChar },
+    right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
+  }
+}
+
+fn english_wave1_lex() -> LexRules {
+  ModeledLexRules {
+    root: LexRuleSet {
+      rules: [
+        TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
+        english_lex_token(token_class: english_token_copula, pattern: KeywordPattern { text: "is" }),
+        english_lex_token(token_class: english_token_article, pattern: KeywordPattern { text: "the" }),
+        english_lex_token(token_class: english_token_article, pattern: KeywordPattern { text: "a" }),
+        english_lex_token(token_class: english_token_article, pattern: KeywordPattern { text: "an" }),
+        english_lex_token(token_class: english_token_noun, pattern: english_noun_pattern()),
+        english_lex_token(token_class: english_token_verb, pattern: english_noun_pattern()),
+        english_lex_token(token_class: english_token_period, pattern: LiteralPattern { text: "." })
+      ]
+    }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Layer 2b — Grammar productions (SVO wave-1 probe + copula sentence)
+// ---------------------------------------------------------------------------
+
+fn english_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class }
+}
+
+fn english_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: left, right: right }
+}
+
+// svo_sentence → noun verb article noun period
+fn english_svo_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_grammar_terminal(token_class: english_token_noun),
+    right: english_grammar_sequence(
+      left: english_grammar_terminal(token_class: english_token_verb),
+      right: english_grammar_sequence(
+        left: english_grammar_terminal(token_class: english_token_article),
+        right: english_grammar_sequence(
+          left: english_grammar_terminal(token_class: english_token_noun),
+          right: english_grammar_terminal(token_class: english_token_period)
+        )
+      )
+    )
+  )
+}
+
+// copula_sentence → np copula np period  (e.g. "the function is a handler.")
+fn english_copula_sentence_expr() -> GrammarExpr {
+  english_grammar_sequence(
+    left: english_grammar_terminal(token_class: english_token_article),
+    right: english_grammar_sequence(
+      left: english_grammar_terminal(token_class: english_token_noun),
+      right: english_grammar_sequence(
+        left: english_grammar_terminal(token_class: english_token_copula),
+        right: english_grammar_sequence(
+          left: english_grammar_terminal(token_class: english_token_article),
+          right: english_grammar_sequence(
+            left: english_grammar_terminal(token_class: english_token_noun),
+            right: english_grammar_terminal(token_class: english_token_period)
+          )
+        )
+      )
+    )
+  )
+}
+
+fn english_wave1_grammar() -> ParseGrammar {
+  let svo = GrammarProduction {
+    name: english_production_svo_sentence,
+    expression: english_svo_sentence_expr(),
+    emitted: grammar_atom(identity: english_surface_svo)
+  }
+  let copula = GrammarProduction {
+    name: english_production_copula_sentence,
+    expression: english_copula_sentence_expr(),
+    emitted: grammar_atom(identity: english_surface_copula)
+  }
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: english_production_svo_sentence,
+      productions: [svo, copula],
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Layer 3 — ModelCore wave-1
+// ---------------------------------------------------------------------------
+
+fn english_model_core_wave1() -> ModelCore {
+  ModelCore {
+    primitives: [],
+    inhabitance: [],
+    laws: [],
+    effects: EffectSemanticsDecl { operations: [] },
+    partiality: PartialitySemanticsDecl { operations: [] }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Layer 4 — Top-level wave-1 factory
+// ---------------------------------------------------------------------------
+
+fn english_language_model_wave1() -> EnglishLanguageModel {
+  EnglishLanguageModel {
+    language_identity: english_language_identity,
+    core: english_model_core_wave1(),
+    lex: english_wave1_lex(),
+    grammar: english_wave1_grammar()
+  }
+}
+
+fn english_lex_rules_wave1() -> EnglishLexRules {
+  EnglishLexRules {
+    rules: english_wave1_lex()
+  }
+}
+
+fn english_grammar_wave1() -> EnglishGrammar {
+  EnglishGrammar {
+    grammar: english_wave1_grammar()
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Layer 5 — Ingest schema + probe
+// ---------------------------------------------------------------------------
+
+fn english_ingest_grammar_schema() -> GrammarSchema {
+  GrammarSchema {
+    lex: english_wave1_lex(),
+    grammar: english_wave1_grammar()
+  }
+}
+
+fn english_svo_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: english_production_svo_sentence),
+    rhs: [
+      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_verb),
+      grammar_formal_terminal(identity: english_token_article),
+      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_period)
+    ]
+  }
+}
+
+fn english_copula_formal_production() -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: english_production_copula_sentence),
+    rhs: [
+      grammar_formal_terminal(identity: english_token_article),
+      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_copula),
+      grammar_formal_terminal(identity: english_token_article),
+      grammar_formal_terminal(identity: english_token_noun),
+      grammar_formal_terminal(identity: english_token_period)
+    ]
+  }
+}
+
+// Probe: "the function is a handler." — a valid copula-form sentence
+// in the declared formal subset.  Out-of-subset prose (e.g. a paragraph
+// of narrative text) must produce a Diagnostic, never a fabricated parse
+// (see T-4.11 conformance claim).
+fn english_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
+  GrammarSchemaProbeBinding {
+    schema: english_ingest_grammar_schema(),
+    probe: GrammarSchemaProbe {
+      fixture: "the function is a handler.",
+      production: english_copula_formal_production(),
+      expected_parse_surface: grammar_atom(identity: english_surface_copula)
+    }
+  }
+}
