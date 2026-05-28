@@ -33,6 +33,7 @@ import v4.std.node {
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
+import v4.std.text { Char, String }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.algebra {
   count_equal,
@@ -313,6 +314,12 @@ data ci_cache_lens_provenance_tag: Symbol = ci_cache_lens_provenance_tag
 data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
 data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
 data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
+data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
+data ci_cache_char_zero_tag: Symbol = ci_cache_char_zero_tag
+data ci_cache_char_one_tag: Symbol = ci_cache_char_one_tag
+data ci_cache_char_pos_tag: Symbol = ci_cache_char_pos_tag
+data ci_cache_char_neg_tag: Symbol = ci_cache_char_neg_tag
+data ci_cache_char_succ_tag: Symbol = ci_cache_char_succ_tag
 
 
 fn ci_symbol_digest(sym: Symbol) -> Hash {
@@ -337,6 +344,48 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 }
 
 
+fn ci_char_cache_digest_positive(c: Char) -> Hash {
+  if c == 1 {
+    ci_symbol_digest(sym: ci_cache_char_one_tag)
+  } else {
+    hash_combine(
+      a: ci_symbol_digest(sym: ci_cache_char_succ_tag),
+      b: ci_char_cache_digest_positive(c: c - 1)
+    )
+  }
+}
+
+
+fn ci_char_cache_digest(c: Char) -> Hash {
+  if c == 0 {
+    ci_symbol_digest(sym: ci_cache_char_zero_tag)
+  } else {
+    if c < 0 {
+      hash_combine(
+        a: ci_symbol_digest(sym: ci_cache_char_neg_tag),
+        b: ci_char_cache_digest(c: 0 - c)
+      )
+    } else {
+      hash_combine(
+        a: ci_symbol_digest(sym: ci_cache_char_pos_tag),
+        b: ci_char_cache_digest_positive(c: c)
+      )
+    }
+  }
+}
+
+
+fn ci_string_cache_digest(s: String) -> Hash {
+  fold_list(
+    xs: s,
+    empty: ci_symbol_digest(sym: ci_cache_string_empty_tag),
+    cons: fn(acc, ch) {
+      hash_combine(a: acc, b: ci_char_cache_digest(c: ch))
+    }
+  )
+}
+
+
 fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
   match lens {
     Complexity => ci_symbol_digest(sym: ci_cache_lens_complexity_tag)
@@ -356,8 +405,11 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
   match c {
     LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
     TestCommand => ci_symbol_digest(sym: ci_cache_cmd_test_tag)
-    IgnoredTestCommand { test_name: _ } =>
-      ci_symbol_digest(sym: ci_cache_cmd_ignored_test_tag)
+    IgnoredTestCommand { test_name: name } =>
+      hash_combine(
+        a: ci_symbol_digest(sym: ci_cache_cmd_ignored_test_tag),
+        b: ci_string_cache_digest(s: name)
+      )
     LensCiCommand { required_lenses: lenses } =>
       fold_list(
         xs: lenses,

@@ -63,6 +63,7 @@ import v4.std.node {
   Value,
   Atom,
   content_hash,
+  hash_combine,
   fold_node,
   is_positional,
   well_formed
