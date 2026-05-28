@@ -60,6 +60,8 @@ import v4.std.verification {
 // where Char = Nat (Peano), making multi-line fixture embedding infeasible in the current
 // substrate. T-38's module-loader will resolve the fixture by module path at eval time.
 import v4.test.fixture.dag_round_trip_mvp1 { dag_round_trip_mvp1_subject }
+
+
 data dag_round_trip_lang_axis: Symbol = dag_round_trip_lang_axis
 data dag_round_trip_fixture_axis: Symbol = dag_round_trip_fixture_axis
 data dag_round_trip_lex_axis: Symbol = dag_round_trip_lex_axis
@@ -132,7 +134,7 @@ fn dag_round_trip_input_node() -> Node {
       ),
       dag_round_trip_edge(
         name: dag_round_trip_fixture_axis,
-        target: dag_round_trip_atom(s: dag_round_trip_fixture_symbol)
+        target: dag_round_trip_atom(s: dag_round_trip_mvp1_subject)
       ),
       dag_round_trip_edge(
         name: dag_round_trip_lex_axis,
