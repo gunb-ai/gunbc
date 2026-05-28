@@ -63,6 +63,7 @@ import v4.std.node {
   Value,
   Atom,
   combine_hash,
+  combine_hash_commutative,
   content_hash,
   fold_node,
   is_positional,
@@ -198,7 +199,14 @@ data test_claim_cache_int_zero_tag: Symbol = test_claim_cache_int_zero_tag
 data test_claim_cache_int_one_tag: Symbol = test_claim_cache_int_one_tag
 data test_claim_cache_int_pos_tag: Symbol = test_claim_cache_int_pos_tag
 data test_claim_cache_int_neg_tag: Symbol = test_claim_cache_int_neg_tag
-data test_claim_cache_int_succ_tag: Symbol = test_claim_cache_int_succ_tag
+data test_claim_cache_int_even_tag: Symbol = test_claim_cache_int_even_tag
+data test_claim_cache_int_odd_tag: Symbol = test_claim_cache_int_odd_tag
+data test_claim_cache_correction_suggested_tag: Symbol = test_claim_cache_correction_suggested_tag
+data test_claim_cache_correction_unavailable_tag: Symbol = test_claim_cache_correction_unavailable_tag
+data test_claim_cache_locus_node_tag: Symbol = test_claim_cache_locus_node_tag
+data test_claim_cache_locus_port_tag: Symbol = test_claim_cache_locus_port_tag
+data test_claim_cache_locus_textual_tag: Symbol = test_claim_cache_locus_textual_tag
+data test_claim_cache_diagnostic_tail_bag_empty_tag: Symbol = test_claim_cache_diagnostic_tail_bag_empty_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -251,8 +259,16 @@ fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
 
 fn correction_verdict_digest(c: Correction) -> Hash {
   match c {
-    Suggested { node: n } => content_hash(n: n)
-    Unavailable { reason: r } => no_correction_reason_digest(reason: r)
+    Suggested { node: n } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_correction_suggested_tag),
+        b: content_hash(n: n)
+      )
+    Unavailable { reason: r } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_correction_unavailable_tag),
+        b: no_correction_reason_digest(reason: r)
+      )
   }
 }
 
@@ -261,10 +277,17 @@ fn int_cache_digest_positive(i: Int) -> Hash {
   if i == 1 {
     test_claim_symbol_digest(sym: test_claim_cache_int_one_tag)
   } else {
-    combine_hash(
-      a: test_claim_symbol_digest(sym: test_claim_cache_int_succ_tag),
-      b: int_cache_digest_positive(i: i - 1)
-    )
+    if i % 2 == 0 {
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_int_even_tag),
+        b: int_cache_digest_positive(i: i / 2)
+      )
+    } else {
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_int_odd_tag),
+        b: int_cache_digest_positive(i: (i - 1) / 2)
+      )
+    }
   }
 }
 
@@ -306,12 +329,23 @@ fn extent_cache_digest(e: Extent) -> Hash {
 
 fn locus_cache_digest(at: Locus) -> Hash {
   match at {
-    NodeLocus { anchor: a } => content_hash(n: a.at)
-    PortLocus { anchor: a } => test_claim_symbol_digest(sym: a.at)
+    NodeLocus { anchor: a } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_locus_node_tag),
+        b: content_hash(n: a.at)
+      )
+    PortLocus { anchor: a } =>
+      combine_hash(
+        a: test_claim_symbol_digest(sym: test_claim_cache_locus_port_tag),
+        b: test_claim_symbol_digest(sym: a.at)
+      )
     Textual { file: f, extent: e } =>
       combine_hash(
-        a: test_claim_symbol_digest(sym: f),
-        b: extent_cache_digest(e: e)
+        a: test_claim_symbol_digest(sym: test_claim_cache_locus_textual_tag),
+        b: combine_hash(
+          a: test_claim_symbol_digest(sym: f),
+          b: extent_cache_digest(e: e)
+        )
       )
   }
 }
@@ -329,13 +363,24 @@ fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
 }
 
 
-fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
+fn diagnostic_tail_bag_cache_digest(xs: List<Diagnostic>) -> Hash {
   fold_list(
-    xs: d.tail,
-    empty: diagnostic_cache_digest(d: d.head),
+    xs: xs,
+    empty: test_claim_symbol_digest(sym: test_claim_cache_diagnostic_tail_bag_empty_tag),
     cons: fn(acc, diag) {
-      combine_hash(a: acc, b: diagnostic_cache_digest(d: diag))
+      combine_hash_commutative(
+        a: acc,
+        b: diagnostic_cache_digest(d: diag)
+      )
     }
+  )
+}
+
+
+fn non_empty_diagnostics_cache_digest(d: NonEmptyDiagnostics) -> Hash {
+  combine_hash(
+    a: diagnostic_cache_digest(d: d.head),
+    b: diagnostic_tail_bag_cache_digest(xs: d.tail)
   )
 }
 

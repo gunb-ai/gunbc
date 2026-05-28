@@ -428,6 +428,16 @@ fn combine_hash(a: Hash, b: Hash) -> Hash {
 }
 
 
+// Order-insensitive pair combine for bag/multiset cache digests (lexicographic tie-break on digest carriers).
+fn combine_hash_commutative(a: Hash, b: Hash) -> Hash {
+  if a < b {
+    combine_hash(a: a, b: b)
+  } else {
+    combine_hash(a: b, b: a)
+  }
+}
+
+
 // 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized after body; other positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
