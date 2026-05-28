@@ -176,8 +176,8 @@ fn lbe_inferred_tree(root: Node) -> InferredTree {
 
 
 fn lbe_eval_context() -> EvalContext {
-  EvalContext {
-    interpretation_pin: lbe_interpretation_pin,
+  eval_context_registered(
+    runtime_identity: lbe_interpretation_pin,
     interpretation: InterpretationAlgebra {
       value: ValueInterpreter {
         allocate_literal: lbe_allocate_literal
@@ -195,7 +195,7 @@ fn lbe_eval_context() -> EvalContext {
         bind_value: lbe_bind_value
       }
     }
-  }
+  )
 }
 
 

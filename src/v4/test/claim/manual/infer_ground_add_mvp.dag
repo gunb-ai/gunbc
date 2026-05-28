@@ -237,10 +237,10 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 
 
 fn infer_receipt_context() -> EvalContext {
-  EvalContext {
-    interpretation: infer_receipt_interpretation(),
-    interpretation_pin: infer_receipt_interpretation_pin
-  }
+  eval_context_registered(
+    runtime_identity: infer_receipt_interpretation_pin,
+    interpretation: infer_receipt_interpretation()
+  )
 }
 
 
