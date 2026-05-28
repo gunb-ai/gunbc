@@ -128,11 +128,12 @@ import v4.extdeps.runtimes.v4_evaluator {
 }
 
 
-// P2/P3: registered triple — runtime_identity plus semantics_digest witness for InterpretationAlgebra.
+// P2/P3: registered triple — runtime_identity, registry semantics_digest, corpus binding_digest (ineligible cache separation).
 type InterpretationCacheAuthority {
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
-  semantics_digest: Hash
+  semantics_digest: Hash,
+  binding_digest: Hash
 }
 
 
