@@ -46,7 +46,6 @@ import v4.std.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v4.std.collection { List }
 import v4.std.model_core {
   EffectSemanticsDecl,
   ModelCore,
