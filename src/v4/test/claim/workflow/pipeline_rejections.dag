@@ -295,7 +295,8 @@ fn pipeline_rejection_claim(label: String, input: Node, expected_reason: Symbol)
 fn pipeline_claim_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: pipeline_interpretation_pin,
-    interpretation: pipeline_interpretation()
+    interpretation: pipeline_interpretation(),
+    interpretation_binding_tag: pipeline_interpretation_semantics_tag
   )
 }
 

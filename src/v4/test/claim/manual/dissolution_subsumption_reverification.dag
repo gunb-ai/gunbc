@@ -441,7 +441,8 @@ fn subsumption_inferred_tree(root: Node) -> InferredTree {
 fn subsumption_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: subsumption_interpretation_pin,
-    interpretation: subsumption_interpretation()
+    interpretation: subsumption_interpretation(),
+    interpretation_binding_tag: subsumption_interpretation_semantics_tag
   )
 }
 

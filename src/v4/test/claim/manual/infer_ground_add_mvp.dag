@@ -240,7 +240,8 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 fn infer_receipt_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: infer_receipt_interpretation_pin,
-    interpretation: infer_receipt_interpretation()
+    interpretation: infer_receipt_interpretation(),
+    interpretation_binding_tag: infer_receipt_interpretation_semantics_tag
   )
 }
 

@@ -370,6 +370,7 @@ fn ci_string_cache_digest(s: String) -> Hash {
 }
 
 
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of LensIdV0) replaces ci_lens_id_cache_digest; interim hand-rolled coproduct fold for CiPipeline cache only.
 fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
   match lens {
     Complexity => ci_symbol_digest(sym: ci_cache_lens_complexity_tag)

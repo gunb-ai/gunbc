@@ -149,10 +149,11 @@ type EvalContext {
 }
 
 
-// P2/P3: semantics_digest is registry-only — callers must not supply a parallel witness.
+// P2/P3: semantics_digest is registry-only; interpretation_binding_tag is corpus binding witness (not registry authority).
 fn eval_context_with_semantics(
   runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra
+  interpretation: InterpretationAlgebra,
+  interpretation_binding_tag: Symbol
 ) -> EvalContext {
   EvalContext {
     cache_authority: InterpretationCacheAuthority {
@@ -161,7 +162,8 @@ fn eval_context_with_semantics(
       semantics_digest: interpretation_registry_semantics_digest(
         runtime_identity: runtime_identity,
         interpretation: interpretation
-      )
+      ),
+      binding_digest: test_claim_symbol_digest(sym: interpretation_binding_tag)
     }
   }
 }
@@ -171,7 +173,8 @@ fn eval_context_with_semantics(
 fn eval_context_v4_evaluator_wave1() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: v4_evaluator_runtime_id,
-    interpretation: v4_evaluator_interpretation_wave1()
+    interpretation: v4_evaluator_interpretation_wave1(),
+    interpretation_binding_tag: v4_evaluator_runtime_id
   )
 }
 
@@ -312,6 +315,7 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
 }
 
 
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
 fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
   match reason {
     UserInputBoundary =>
@@ -562,7 +566,8 @@ type InterpretationCacheDigestAuthority
     }
   | InterpretationCacheIneligible {
       runtime_identity: Symbol,
-      registry_witness: Hash
+      registry_witness: Hash,
+      binding_digest: Hash
     }
 
 
@@ -584,7 +589,8 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
   } else {
     InterpretationCacheIneligible {
       runtime_identity: authority.runtime_identity,
-      registry_witness: registry_witness
+      registry_witness: registry_witness,
+      binding_digest: authority.binding_digest
     }
   }
 }
@@ -605,13 +611,17 @@ fn interpretation_cache_digest_authority_hash(auth: InterpretationCacheDigestAut
       )
     InterpretationCacheIneligible {
       runtime_identity: runtime_identity,
-      registry_witness: registry_witness
+      registry_witness: registry_witness,
+      binding_digest: binding_digest
     } =>
       combine_hash(
         a: test_claim_symbol_digest(sym: test_claim_cache_interpretation_cache_ineligible_tag),
         b: combine_hash(
-          a: test_claim_symbol_digest(sym: runtime_identity),
-          b: registry_witness
+          a: combine_hash(
+            a: test_claim_symbol_digest(sym: runtime_identity),
+            b: registry_witness
+          ),
+          b: binding_digest
         )
       )
   }

@@ -204,13 +204,15 @@ fn tcc_cache_ineligible_interpretation_digest_differs() -> Bool {
   let digest_a = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
       runtime_identity: tcc_cache_ineligible_pin_a,
-      interpretation: eval_default_interpretation()
+      interpretation: eval_default_interpretation(),
+      interpretation_binding_tag: tcc_cache_ineligible_pin_a
     )
   )
   let digest_b = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
       runtime_identity: tcc_cache_ineligible_pin_b,
-      interpretation: eval_default_interpretation()
+      interpretation: eval_default_interpretation(),
+      interpretation_binding_tag: tcc_cache_ineligible_pin_b
     )
   )
   digest_a != digest_b

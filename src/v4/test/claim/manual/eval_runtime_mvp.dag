@@ -369,7 +369,8 @@ data witness_eval_mvp2_add_accepts_five: Bool = match eval_mvp2_actual() {
 fn eval_mvp2_context() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: eval_mvp2_interpretation_pin,
-    interpretation: eval_mvp2_interpretation_algebra()
+    interpretation: eval_mvp2_interpretation_algebra(),
+    interpretation_binding_tag: eval_mvp2_interpretation_semantics_tag
   )
 }
 

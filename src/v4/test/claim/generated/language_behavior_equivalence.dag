@@ -195,7 +195,8 @@ fn lbe_eval_context() -> EvalContext {
       bind: BindInterpreter {
         bind_value: lbe_bind_value
       }
-    }
+    },
+    interpretation_binding_tag: lbe_interpretation_semantics_tag
   )
 }
 
