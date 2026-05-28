@@ -256,6 +256,8 @@ data java_production_block_statement: Symbol = java_production_block_statement
 data java_production_statement: Symbol = java_production_statement
 data java_production_return_statement: Symbol = java_production_return_statement
 data java_production_local_variable_declaration: Symbol = java_production_local_variable_declaration
+data java_production_local_variable_declaration_statement: Symbol =
+  java_production_local_variable_declaration_statement
 data java_production_expression: Symbol = java_production_expression
 data java_production_additive_expression: Symbol = java_production_additive_expression
 data java_production_multiplicative_expression: Symbol = java_production_multiplicative_expression
@@ -278,6 +280,8 @@ data java_surface_block_statement: Symbol = java_surface_block_statement
 data java_surface_statement: Symbol = java_surface_statement
 data java_surface_return_statement: Symbol = java_surface_return_statement
 data java_surface_local_variable_declaration: Symbol = java_surface_local_variable_declaration
+data java_surface_local_variable_declaration_statement: Symbol =
+  java_surface_local_variable_declaration_statement
 data java_surface_expression: Symbol = java_surface_expression
 data java_surface_additive_expression: Symbol = java_surface_additive_expression
 data java_surface_multiplicative_expression: Symbol = java_surface_multiplicative_expression

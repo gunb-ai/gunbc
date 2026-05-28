@@ -1,6 +1,6 @@
 // src/v4/test/claim/manual/java_wave2_grammar_structure.dag
 // Scope: Wave-2 Java grammar structural receipt — key JLS productions are registered and reachable.
-// Owns: java_wave2_grammar_structure_ready.
+// Owns: java_wave2_grammar_structure_ready (data), java_wave2_grammar_structure_satisfied (fn).
 // Consumes: extdeps/languages/java.dag, v4.compiler.parse.
 // Status: manual structural TestClaim input for wave-2 grammar contracts.
 
@@ -23,7 +23,7 @@ import v4.compiler.parse { grammar_carries_symbol }
 import v4.compiler.tokenize { lex_rule_set_token_class_member }
 import v4.std.logic { Bool }
 
-fn java_wave2_grammar_structure_ready(lm: JavaLanguageModel) -> Bool {
+fn java_wave2_grammar_structure_satisfied(lm: JavaLanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: java_wave2_lex_rules(), token_class: java_token_kw_void) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_result) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_method_declarator) &&
@@ -34,4 +34,5 @@ fn java_wave2_grammar_structure_ready(lm: JavaLanguageModel) -> Bool {
     grammar_carries_symbol(grammar: lm.grammar, sym: java_production_return_statement)
 }
 
-data java_wave2_grammar_structure_ready: Bool = java_wave2_grammar_structure_ready(lm: java_language_model_wave2())
+data java_wave2_grammar_structure_ready: Bool =
+  java_wave2_grammar_structure_satisfied(lm: java_language_model_wave2())
