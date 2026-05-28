@@ -1,7 +1,9 @@
 // src/v4/extdeps/languages/dag.dag
 //
 // Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired.
+// Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired;
+//   wave-1 grammar declared as FormalProduction flat rhs (dag_wave1_formal_productions);
+//   GrammarExpr/GrammarRoot below remain operational parse scaffold until CP-1b convergence.
 // Anchor: docs/v3-spec.md
 
 module v4.extdeps.languages.dag
