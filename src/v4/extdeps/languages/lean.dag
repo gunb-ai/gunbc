@@ -799,8 +799,8 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
 
 fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind) -> Node {
   let witness_tag = match kind {
-    Signed => lean_witness_integer_ordered_ring
-    Unsigned => lean_witness_integer_semiring
+    Signed => lean_witness_signed_integer_commutative_ring
+    Unsigned => lean_witness_unsigned_integer_semiring
   }
   Node {
     kind: TypeNode { connective: Conj },
@@ -839,8 +839,13 @@ fn lean_bool_algebra_witness_node() -> Node {
 
 fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts, kind: LeanIntKind) -> AlgebraInhabitanceDecl {
   let inhabitant = lean_primitive_facts_node(facts: facts)
+  // Lean fixed-precision integers wrap on overflow (two's-complement modular arithmetic
+  // for signed, unsigned modular for unsigned). Wrapping breaks order-compatibility
+  // (a ≤ b does not imply a+c ≤ b+c after wraparound), so neither width class
+  // inhabits OrderedRing. Signed → CommutativeRing (Z/2^n Z); Unsigned → Semiring
+  // (no additive inverse). Anchor: Lean 4 reference §Fixed-Precision Integers.
   let algebra = match kind {
-    Signed => ordered_ring_node(inhabitant: inhabitant)
+    Signed => commutative_ring_node(inhabitant: inhabitant)
     Unsigned => semiring_node(inhabitant: inhabitant)
   }
   AlgebraInhabitanceDecl {
