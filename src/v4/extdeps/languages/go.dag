@@ -18,9 +18,9 @@ import v4.std.grammar {
   ParseGrammar,
   Sequence,
   Terminal,
+  formal_production_to_node,
   grammar_carries_symbol,
-  grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_empty_sync_tokens
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -164,7 +164,7 @@ type GoConcreteSyntaxToken
   | GoBoundToken { token_class: Symbol, binding: Symbol }
 
 type GoGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   tokens: List<GoConcreteSyntaxToken>
 }
 
@@ -1368,7 +1368,7 @@ fn go_grammar_production_mvp1_fn_add() -> GrammarProduction {
 
 fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
   GoGrammarRelationRow {
-    production: go_grammar_production_mvp1_fn_add(),
+    production: go_formal_production_mvp1_fn_add(),
     tokens: go_mvp1_concrete_tokens()
   }
 }
@@ -1387,7 +1387,7 @@ fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      go_named_edge(name: grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      go_named_edge(name: grammar_relation_field_production, target: formal_production_to_node(production: row.production)),
       go_named_edge(name: grammar_relation_field_emitted, target: row.production.emitted),
       go_named_edge(
         name: grammar_relation_field_tokens,

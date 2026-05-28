@@ -10,6 +10,11 @@ module v4.extdeps.languages.swift
 
 import v4.std.grammar {
   Choice,
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -20,9 +25,9 @@ import v4.std.grammar {
   Repeat,
   Sequence,
   Terminal,
+  formal_production_to_node,
   grammar_carries_symbol,
-  grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_empty_sync_tokens
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -193,7 +198,7 @@ type SwiftConcreteSyntaxToken
 
 // 🟢 grounded.
 type SwiftGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<SwiftConcreteSyntaxToken>
 }
@@ -790,6 +795,30 @@ fn swift_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
+fn swift_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn swift_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: swift_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: swift_formal_terminal_symbol(token_class: swift_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn swift_formal_production_mvp1_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: swift_production_mvp1_fn_add },
+    rhs: swift_formal_rhs_from_token_classes()
+  }
+}
+
 fn swift_grammar_sequence_fold_step(acc: GrammarExpr, token: SwiftConcreteSyntaxToken) -> GrammarExpr {
   let token_class = swift_concrete_token_class(token: token)
   if token_class == swift_token_kw_func {
@@ -814,7 +843,7 @@ fn swift_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn swift_mvp1_grammar_relation_row() -> SwiftGrammarRelationRow {
   SwiftGrammarRelationRow {
-    production: swift_grammar_production_mvp1_fn_add(),
+    production: swift_formal_production_mvp1_fn_add(),
     emitted: swift_mvp1_emitted_add_fn_node(),
     tokens: swift_mvp1_concrete_tokens()
   }
@@ -839,7 +868,7 @@ fn swift_grammar_relation_row_node(row: SwiftGrammarRelationRow) -> Node {
     children: [
       swift_named_edge(
         name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
+        target: formal_production_to_node(production: row.production)
       ),
       swift_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       swift_named_edge(

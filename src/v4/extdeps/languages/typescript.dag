@@ -10,6 +10,11 @@ module v4.extdeps.languages.typescript
 
 import v4.std.grammar {
   Choice,
+  FormalGrammarSymbol,
+  FormalNonterminal,
+  FormalProduction,
+  FormalTerminal,
+  FormalTerminalOccurrence,
   ParseGrammar,
   GrammarExpr,
   GrammarProduction,
@@ -18,9 +23,9 @@ import v4.std.grammar {
   Nonterminal,
   Sequence,
   Terminal,
+  formal_production_to_node,
   grammar_carries_symbol,
-  grammar_empty_sync_tokens,
-  grammar_production_to_node
+  grammar_empty_sync_tokens
 }
 import v4.std.lexing {
   CharClassPattern,
@@ -144,7 +149,7 @@ type TsConcreteSyntaxToken
 
 // 🟢 grounded.
 type TsGrammarRelationRow {
-  production: GrammarProduction
+  production: FormalProduction
   emitted: Node
   tokens: List<TsConcreteSyntaxToken>
 }
@@ -583,6 +588,30 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class }
 }
 
+fn ts_formal_terminal_symbol(token_class: Symbol) -> FormalGrammarSymbol {
+  FormalTerminalOccurrence { terminal: FormalTerminal { identity: token_class } }
+}
+
+fn ts_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
+  fold_list(
+    xs: ts_mvp1_concrete_tokens(),
+    empty: Empty,
+    cons: fn(acc, token) {
+      list_snoc_item(
+        xs: acc,
+        item: ts_formal_terminal_symbol(token_class: ts_concrete_token_class(token: token))
+      )
+    }
+  )
+}
+
+fn ts_formal_production_mvp1_fn_add() -> FormalProduction {
+  FormalProduction {
+    lhs: FormalNonterminal { identity: ts_production_mvp1_fn_add },
+    rhs: ts_formal_rhs_from_token_classes()
+  }
+}
+
 // 🟡 coproduct dissolution — SL-T11-GRAMMAR-FROM-TOKEN-ROW — feature:t11-grammar-from-token-row — bind task: src/v4/TASKS.md#t-11-emit-per-target-specialization — owner:T-11 target-model grammar rows — dissolve-on-arrival: replace the fold1 accumulator with a std fold_non_empty/list-to-sequence helper once that helper lands and T-11 grammar rows consume it; forbidden: hand-authoring token-class sequence trees beside the *_mvp1_concrete_tokens source.
 type TsGramBuild1State
   = TsGramBuild1StateInit
@@ -616,7 +645,7 @@ fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
 
 fn ts_mvp1_grammar_relation_row() -> TsGrammarRelationRow {
   TsGrammarRelationRow {
-    production: ts_grammar_production_mvp1_fn_add(),
+    production: ts_formal_production_mvp1_fn_add(),
     emitted: ts_mvp1_emitted_add_fn_node(),
     tokens: ts_mvp1_concrete_tokens()
   }
@@ -641,7 +670,7 @@ fn ts_grammar_relation_row_node(row: TsGrammarRelationRow) -> Node {
     children: [
       ts_named_edge(
         name: grammar_relation_field_production,
-        target: grammar_production_to_node(production: row.production)
+        target: formal_production_to_node(production: row.production)
       ),
       ts_named_edge(name: grammar_relation_field_emitted, target: row.emitted),
       ts_named_edge(
