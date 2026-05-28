@@ -128,6 +128,7 @@ type PrettierFormattingOptions {
 }
 
 
+// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierOverrideOptions projected from PrettierFormattingOptions field set plus parser override field.
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
   print_width: FieldPatch<Int>
