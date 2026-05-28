@@ -1,8 +1,8 @@
 // src/v4/extdeps/languages/english.dag
-// Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for a declared deterministic subset (subject-verb-object + copula sentences over a bounded API-documentation vocabulary).
+// Scope: Controlled English (CE) formal-subset language model — wave-1 structural carriers + wave-2a lex rules and grammar productions for article-led SVO and copula sentence forms.
 // Consumes: std/node.dag (Symbol); std/grammar.dag; std/lexing.dag; std/collection.dag; std/model_core.dag; extdeps/languages/fidelity.dag.
-// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.
-// Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html — plus a narrower API-documentation vocabulary subset declared here.
+// Status: T-4.19 (operator-ratified 2026-05-27); wave-1 type carriers + wave-2a lex + grammar + probe; fail-closed on out-of-subset prose.  Wave-1 word rule accepts any identifier; vocabulary bounding (UnknownVocabulary enforcement) is deferred to wave-2 — see dissolution note on UnknownVocabulary below.
+// Anchor: Attempto Controlled English (ACE) grammar — http://attempto.ifi.uzh.ch/site/docs/ace_nutshell.html
 // Ledger: CP-3229-GREEN-TERMINAL.
 // 🟡
 
@@ -152,6 +152,10 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     VerbSpelling => DeclaredNormalized { feature: VerbSpelling }
     OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
     AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
+    // 🟡 dissolution — wave-1 word rule accepts any identifier; vocabulary bounding
+    // requires a closed keyword set or a separate validation layer not yet declared.
+    // Dissolve: declare a closed word vocabulary and replace english_token_word with
+    // per-word keyword rules (or a typed word set), then promote to Modeled.
     UnknownVocabulary => FailClosed { feature: UnknownVocabulary }
     MalformedSentence => FailClosed { feature: MalformedSentence }
   }
@@ -294,8 +298,7 @@ fn english_wave1_grammar() -> ParseGrammar {
     emitted: grammar_atom(identity: english_surface_copula)
   }
   // Top-level start production: sentence → svo_sentence | copula_sentence.
-  // A single start symbol ensures both SVO and copula arms are reachable from
-  // the declared grammar root (finding 3 — start must dominate all productions).
+  // Single start symbol ensures both arms are reachable from the grammar root.
   let sentence = GrammarProduction {
     name: english_production_sentence,
     expression: Choice {
