@@ -105,28 +105,31 @@ if [[ ! -s "$artifact" ]]; then
   exit 1
 fi
 
-node_names="${out}/dag-node-names.txt"
-jq -r '.nodes[] | .name' "$artifact" > "$node_names"
+module_names="${out}/dag-module-names.txt"
+item_names="${out}/dag-item-registry-keys.txt"
+jq -e 'has("modules") and has("item_registry_keys") and has("files")' "$artifact" >/dev/null
+jq -r '.modules[] | .module["$ref"] as $id | .nodes[$id].name' "$artifact" > "$module_names"
+jq -r '.item_registry_keys[]' "$artifact" > "$item_names"
 
-require_node() {
+require_module() {
   local name="$1"
-  if ! grep -Fx "$name" "$node_names" >/dev/null; then
-    echo "error: dag artifact missing node name: $name" >&2
+  if ! grep -Fx "$name" "$module_names" >/dev/null; then
+    echo "error: dag artifact missing module: $name" >&2
     exit 1
   fi
 }
 
-require_artifact_text() {
-  local text="$1"
-  if ! grep -F "$text" "$artifact" >/dev/null; then
-    echo "error: dag artifact missing text: $text" >&2
+require_item() {
+  local name="$1"
+  if ! grep -Fx "$name" "$item_names" >/dev/null; then
+    echo "error: dag artifact missing item_registry_key: $name" >&2
     exit 1
   fi
 }
 
 for file in "${manual_files[@]}"; do
   stem="$(basename "$file" .dag)"
-  require_node "v4.test.claim.manual.${stem}"
+  require_module "v4.test.claim.manual.${stem}"
 done
 
 mapfile -t run_rows < <(
@@ -140,7 +143,7 @@ if [[ "${#run_rows[@]}" -eq 0 ]]; then
 fi
 
 for row in "${run_rows[@]}"; do
-  require_node "$row"
+  require_item "$row"
 done
 
 for name in \
@@ -150,13 +153,13 @@ for name in \
   eval_test_claim_subject \
   run_test_claim_assert
 do
-  require_node "$name"
+  require_item "$name"
 done
 
-require_artifact_text "run_test_claim_runtime_assert"
+require_item "run_test_claim_runtime_assert"
 
-require_node "v4.test.claim.manual.eval_runtime_mvp"
-require_node "claim_eval_mvp2_test_claim_route"
-require_node "run_eval_mvp2_test_claim_route"
+require_module "v4.test.claim.manual.eval_runtime_mvp"
+require_item "claim_eval_mvp2_test_claim_route"
+require_item "run_eval_mvp2_test_claim_route"
 
 echo "T-22 TestClaim corpus structural bridge PASS: ${#manual_files[@]} manual .dag files compiled; ${#run_rows[@]} TestClaimRun rows present; rust emit clean; no TestClaim verdicts evaluated."
