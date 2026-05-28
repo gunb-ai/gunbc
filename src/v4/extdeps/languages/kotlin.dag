@@ -429,7 +429,7 @@ fn kotlin_mvp1_concrete_token_tail() -> List<KotlinConcreteSyntaxToken> {
     KotlinFixedToken { token_class: kotlin_token_lbrace },
     KotlinFixedToken { token_class: kotlin_token_kw_return },
     KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_x },
-    KotlinFixedToken { token_class: kotlin_token_operator },
+    KotlinFixedToken { token_class: kotlin_token_plus },
     KotlinBoundToken { token_class: kotlin_token_ident, binding: kotlin_binding_param_y },
     KotlinFixedToken { token_class: kotlin_token_rbrace }
   ]
@@ -1452,6 +1452,7 @@ fn kotlin_wave1_lex_rules() -> LexRuleSet {
       kotlin_keyword_lex_rule(token_class: kotlin_token_kw_true, text: "true"),
       kotlin_keyword_lex_rule(token_class: kotlin_token_kw_false, text: "false"),
       kotlin_operator_lex_rule(),
+      kotlin_lex_rule(token_class: kotlin_token_plus, text: "+"),
       kotlin_lex_rule(token_class: kotlin_token_equal, text: "="),
       kotlin_lex_rule(token_class: kotlin_token_lbrace, text: "{"),
       kotlin_lex_rule(token_class: kotlin_token_rbrace, text: "}"),
@@ -1582,7 +1583,10 @@ fn kotlin_grammar_binary_expr() -> GrammarExpr {
     left: kotlin_grammar_nonterminal(production: kotlin_production_call_expr),
     right: kotlin_grammar_repeat(
       element: kotlin_grammar_sequence(
-        left: kotlin_grammar_terminal(token_class: kotlin_token_operator),
+        left: kotlin_grammar_choice(
+          left: kotlin_grammar_terminal(token_class: kotlin_token_plus),
+          right: kotlin_grammar_terminal(token_class: kotlin_token_operator)
+        ),
         right: kotlin_grammar_nonterminal(production: kotlin_production_call_expr)
       )
     )
@@ -1688,8 +1692,25 @@ fn kotlin_grammar_stmt_expr() -> GrammarExpr {
 }
 
 fn kotlin_grammar_stmt_separator_expr() -> GrammarExpr {
+  kotlin_grammar_terminal(token_class: kotlin_token_semicolon)
+}
+
+fn kotlin_grammar_stmt_tail_expr() -> GrammarExpr {
+  kotlin_grammar_sequence(
+    left: kotlin_grammar_stmt_separator_expr(),
+    right: kotlin_grammar_nonterminal(production: kotlin_production_stmt)
+  )
+}
+
+fn kotlin_grammar_stmt_list_expr() -> GrammarExpr {
   kotlin_grammar_optional(
-    element: kotlin_grammar_terminal(token_class: kotlin_token_semicolon)
+    element: kotlin_grammar_sequence(
+      left: kotlin_grammar_nonterminal(production: kotlin_production_stmt),
+      right: kotlin_grammar_sequence(
+        left: kotlin_grammar_repeat(element: kotlin_grammar_stmt_tail_expr()),
+        right: kotlin_grammar_optional(element: kotlin_grammar_stmt_separator_expr())
+      )
+    )
   )
 }
 
@@ -1697,12 +1718,7 @@ fn kotlin_grammar_block_expr() -> GrammarExpr {
   kotlin_grammar_sequence(
     left: kotlin_grammar_terminal(token_class: kotlin_token_lbrace),
     right: kotlin_grammar_sequence(
-      left: kotlin_grammar_repeat(
-        element: kotlin_grammar_sequence(
-          left: kotlin_grammar_nonterminal(production: kotlin_production_stmt),
-          right: kotlin_grammar_stmt_separator_expr()
-        )
-      ),
+      left: kotlin_grammar_stmt_list_expr(),
       right: kotlin_grammar_terminal(token_class: kotlin_token_rbrace)
     )
   )
