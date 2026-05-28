@@ -1069,14 +1069,31 @@ fn python_formal_productions_to_grammar_expr(prods: List<FormalProduction>) -> G
   )
 }
 
+type PythonFormalProductionsFirstState
+  = PythonFormalProductionsFirstAbsent
+  | PythonFormalProductionsFirstPresent { prod: FormalProduction }
+
+fn python_formal_productions_first_fallback() -> FormalProduction {
+  python_formal_authority_prod(
+    lhs: python_production_primary,
+    rhs: Empty
+  )
+}
+
 fn python_formal_productions_first(prods: List<FormalProduction>) -> FormalProduction {
-  match prods {
-    Empty =>
-      python_formal_authority_prod(
-        lhs: python_production_primary,
-        rhs: Empty
-      )
-    Cons { head: head, tail: _ } => head
+  match fold_list(
+    xs: prods,
+    empty: PythonFormalProductionsFirstAbsent,
+    cons: fn(state, prod) {
+      match state {
+        PythonFormalProductionsFirstAbsent =>
+          PythonFormalProductionsFirstPresent { prod: prod }
+        PythonFormalProductionsFirstPresent { prod: _ } => state
+      }
+    }
+  ) {
+    PythonFormalProductionsFirstAbsent => python_formal_productions_first_fallback()
+    PythonFormalProductionsFirstPresent { prod: head } => head
   }
 }
 
@@ -1301,7 +1318,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
     productions: [
       python_grammar_production_mvp1_fn_add(),
       python_formal_productions_to_grammar_production(
-        name: python_production_fn_def,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_fn_def,
@@ -1318,7 +1334,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_fn_item
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_suite,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_suite,
@@ -1335,7 +1350,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_suite
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_stmt,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_stmt,
@@ -1353,7 +1367,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_stmt
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_assign_stmt,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_assign_stmt,
@@ -1369,7 +1382,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
       // colon_if_suite_indent carries ":\n        " (layout boundary); if-body return uses
       // kw_return+primary alt (no leading newline) so token/grammar paths stay consistent.
       python_formal_productions_to_grammar_production(
-        name: python_production_if_stmt,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_if_stmt,
@@ -1384,7 +1396,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_if_stmt
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_return_stmt,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_return_stmt,
@@ -1411,7 +1422,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_return_stmt
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_comparison,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_comparison,
@@ -1424,7 +1434,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_comparison
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_comparison_tail,
         prods: [
           python_formal_authority_prod(lhs: python_production_comparison_tail, rhs: Empty),
           python_formal_authority_prod(
@@ -1438,7 +1447,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_comparison_tail
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_additive,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_additive,
@@ -1451,7 +1459,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_additive
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_additive_tail,
         prods: [
           python_formal_authority_prod(lhs: python_production_additive_tail, rhs: Empty),
           python_formal_authority_prod(
@@ -1466,7 +1473,6 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         emitted: python_surface_additive_tail
       ),
       python_formal_productions_to_grammar_production(
-        name: python_production_primary,
         prods: [
           python_formal_authority_prod(
             lhs: python_production_primary,
