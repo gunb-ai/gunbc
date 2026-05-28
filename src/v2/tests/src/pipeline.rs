@@ -2003,7 +2003,7 @@ fn complexity_self_analysis_subset() {
     // Self-compile complexity analysis requires the release binary
     // (debug mode OOMs on ~1600 functions). Use the subprocess approach.
     let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/v2-compiler");
+    let stage0_bin = ws.join("target/release/gunbc");
     if !stage0_bin.exists() {
         eprintln!(
             "skipping: release binary not found (run `cargo build --release -p v2-compiler` first)"

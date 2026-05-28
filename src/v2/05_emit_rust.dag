@@ -6766,7 +6766,9 @@ fn emit_main_rs(workflow_funcs: List<WorkflowFunc>, modules: List<TypedModule>, 
     }
   }
   let mod_uses = emit_main_mod_uses(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline, crate_name: crate_name)
-  let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs)
+  let binary_name = if has_pipeline { "gunbc" } else { crate_name }
+  let cli_about = if has_pipeline { "A causal compiler: write .dag, get Rust/Python/Go." } else { "" }
+  let cli_struct = emit_cli_struct(workflow_funcs: workflow_funcs, binary_name: binary_name, about: cli_about)
   let subcommand_enum = emit_subcommand_enum(workflow_funcs: workflow_funcs, has_pipeline: has_pipeline)
   let pipeline_fns = if has_pipeline { emit_main_pipeline_fns(crate_name: crate_name) } else { "" }
   let main_fn = emit_main_fn(workflow_funcs: workflow_funcs, has_services: has_services, has_pipeline: has_pipeline, crate_name: crate_name)
@@ -6811,10 +6813,11 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
 }
 
 // Emit the top-level CLI struct with clap derives.
-fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>) -> String {
+fn emit_cli_struct(workflow_funcs: List<WorkflowFunc>, binary_name: String, about: String) -> String {
+  let about_attr = if about != "" { concat(", about = \"", about, "\"") } else { "" }
   concat(
     "#[derive(Parser)]\n",
-    "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n",
+    "#[command(name = \"", binary_name, "\"", about_attr, ")]\n",
     "struct Cli {\n",
     "    #[command(subcommand)]\n",
     "    command: Commands,\n",

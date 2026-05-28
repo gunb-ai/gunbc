@@ -201,13 +201,13 @@ jobs:
     # receipt-only stub so required check names stay stable (see main ci.yml commentary).
     # MVP-1 + v4 bootstrap share the v2-compiler binary; workflow_policy PRs that
     # touch gate wiring must still build/run the MVP-1 and host-eval receipts.
-    - name: Cache v2-compiler binary (v4 bootstrap / host eval gate)
+    - name: Cache gunbc binary (v4 bootstrap / host eval gate)
       if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
       id: v4-v2-bin
       uses: actions/cache@v4
       with:
-        path: target/release/v2-compiler
-        key: v2-compiler-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
+        path: target/release/gunbc
+        key: gunbc-bin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('src/v2/stage0/src/**', 'src/v2/stage0/Cargo.toml', 'Cargo.toml', '**/Cargo.lock', 'rust-toolchain.toml') }}
     - name: Build v2 compiler (v4 bootstrap / host eval gate)
       if: (needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true') && steps.v4-v2-bin.outputs.cache-hit != 'true'
       run: cargo build -p v2-compiler --release
@@ -224,7 +224,7 @@ jobs:
         cp src/v4/workflow/ci.dag "${entry_root}/v4/workflow/ci.dag"
         cp -R src/v4/. "${deps_root}/"
         rm "${deps_root}/workflow/ci.dag"
-        target/release/v2-compiler compile --source-root "${entry_root}" --source-root "${deps_root}" --output-dir "${RUNNER_TEMP}/v4-lens-ci-rust" --target rust
+        target/release/gunbc compile --source-root "${entry_root}" --source-root "${deps_root}" --output-dir "${RUNNER_TEMP}/v4-lens-ci-rust" --target rust
     # M1: full-tree --target rust + rustc gap surface (TASKS.md T-24; r3 gates #98/#100 bridge).
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
     # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; non-blocking).

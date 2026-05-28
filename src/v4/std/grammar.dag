@@ -215,6 +215,14 @@ fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbo
 }
 
 
+fn grammar_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+  FormalProduction {
+    lhs: grammar_formal_nonterminal(identity: lhs),
+    rhs: rhs
+  }
+}
+
+
 fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
   Node {
     kind: TypeNode {
