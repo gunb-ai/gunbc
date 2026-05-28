@@ -279,6 +279,7 @@ fn dag_node_fingerprint(node: Node) -> String {
 
 // Collection authority: peel Resolved so key, fingerprint, order, and tree walk
 // all refer to the same canonical declaration (not the back-link wrapper).
+// Terminates at a non-Resolved node (resolver must not emit Resolved→Resolved cycles).
 fn dag_collect_canonical_node(node: Node) -> Node {
   match node.inferred {
     Some { value: Resolved { node: target } } => dag_collect_canonical_node(node: target)

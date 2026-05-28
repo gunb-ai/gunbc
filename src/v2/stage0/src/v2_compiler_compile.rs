@@ -708,6 +708,7 @@ pub fn dag_collect_node_tree(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCo
     }
 }
 
+// Peel terminates at a non-Resolved node (resolver must not emit Resolved→Resolved cycles).
 pub fn dag_collect_canonical_node(mut node: Rc<Node>) -> Rc<Node> {
     loop {
         match node.inferred.clone().as_deref().cloned() {
