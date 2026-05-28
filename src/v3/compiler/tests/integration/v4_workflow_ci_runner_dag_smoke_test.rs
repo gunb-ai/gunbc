@@ -397,8 +397,12 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
          as the IRT-1 narrowing authority (checks the new dissolution comment, not the pre-existing helper)"
     );
     assert!(
-        CI_DAG.contains("TestClaimCorpusEvalCommand => true"),
-        "{CI_DAG_PATH}: ci_command_authority_ok must accept TestClaimCorpusEvalCommand"
+        CI_DAG.contains("fn_name == ci_testclaim_corpus_selection_fn"),
+        "{CI_DAG_PATH}: ci_command_authority_ok must enforce selection_fn == ci_testclaim_corpus_selection_fn (not unconditional true)"
+    );
+    assert!(
+        CI_DAG.contains("data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set"),
+        "{CI_DAG_PATH}: ci_testclaim_corpus_selection_fn must be declared as ci_select_from_affected_set (IRT-1 P2 single authority)"
     );
     assert!(
         CI_DAG.contains("testclaim_corpus_eval_execution"),
@@ -409,8 +413,8 @@ fn v4_workflow_ci_t38_dissolution_step_modeled_and_wired() {
         "{CI_DAG_PATH}: ci_pipeline must include testclaim_corpus_eval_signal gate"
     );
     assert!(
-        CI_DAG.contains("command: TestClaimCorpusEvalCommand"),
-        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must use TestClaimCorpusEvalCommand"
+        CI_DAG.contains("command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn }"),
+        "{CI_DAG_PATH}: testclaim_corpus_eval_execution job must bind selection_fn to the canonical authority"
     );
     assert!(
         CI_DAG.contains("ci_cache_cmd_testclaim_corpus_eval_tag"),

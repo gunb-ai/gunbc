@@ -73,8 +73,8 @@ type CiCommand
   | LensCiCommand { required_lenses: List<LensIdV0> }
   | BootstrapStageCompile { produces: Symbol }
   | M1RustEmitProbeCommand
-  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step (scripts/v4-testclaim-corpus-gate.sh) when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; ci_select_from_affected_set narrows roster to content_hash frontier before evaluation — forbidden: bypassing affected-set selection or running full corpus unconditionally.
-  | TestClaimCorpusEvalCommand
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set) — forbidden: setting selection_fn to any other symbol or bypassing narrowing to run full corpus unconditionally.
+  | TestClaimCorpusEvalCommand { selection_fn: Symbol }
 
 type CiJob {
   id: Symbol
@@ -118,6 +118,7 @@ type M1CiLiveWorkflowSignal {
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
 data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
+data ci_testclaim_corpus_selection_fn: Symbol = ci_select_from_affected_set
 data testclaim_corpus_eval_execution: Symbol = testclaim_corpus_eval_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
@@ -166,7 +167,7 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
     },
     CiJob {
       id: testclaim_corpus_eval_execution,
-      command: TestClaimCorpusEvalCommand,
+      command: TestClaimCorpusEvalCommand { selection_fn: ci_testclaim_corpus_selection_fn },
       needs: [v2_compile_src_v4]
     }
   ],
@@ -314,7 +315,8 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     LensCiCommand { required_lenses } => lens_registry_ids_resolve(lens_ids: required_lenses)
     BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
     M1RustEmitProbeCommand => true
-    TestClaimCorpusEvalCommand => true
+    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
+      fn_name == ci_testclaim_corpus_selection_fn
   }
 }
 
@@ -425,7 +427,11 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
         b: ci_symbol_digest(sym: produces)
       )
     M1RustEmitProbeCommand => ci_symbol_digest(sym: ci_cache_cmd_m1_probe_tag)
-    TestClaimCorpusEvalCommand => ci_symbol_digest(sym: ci_cache_cmd_testclaim_corpus_eval_tag)
+    TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_cmd_testclaim_corpus_eval_tag),
+        b: ci_symbol_digest(sym: fn_name)
+      )
   }
 }
 
