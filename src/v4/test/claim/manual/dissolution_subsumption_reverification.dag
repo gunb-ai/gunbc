@@ -459,7 +459,8 @@ data run_rust_language_model_emit_mechanical_reverification_claim: TestClaimRun<
     context: subsumption_context(),
     tree: subsumption_inferred_tree(
       root: subsumption_receipt_node(row: rust_language_model_emit_subsumption)
-    )
+    ),
+    evaluator_pin: subsumption_evaluator_pin
   )
 )
 
@@ -521,6 +522,7 @@ data run_rust_language_model_emit_subsumption_reverifies: TestClaimRun<Node, Run
     context: subsumption_context(),
     tree: subsumption_inferred_tree(
       root: mechanical_reverification_verdict_node(v: verdict_rust_language_model_emit_subsumption)
-    )
+    ),
+    evaluator_pin: subsumption_evaluator_pin
   )
 )

@@ -9,11 +9,11 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  TestClaimTypedInput,
   eval_diagnostic,
   run_test_claim,
   run_test_claim_assert,
-  test_claim_cache_receipt
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
