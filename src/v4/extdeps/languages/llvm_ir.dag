@@ -11,7 +11,7 @@ module v4.extdeps.languages.llvm_ir
 
 
 import v4.extdeps.languages.fidelity { FidelityDisposition }
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -867,8 +867,6 @@ data llvm_token_rbrace: Symbol = llvm_token_rbrace
 data llvm_token_kw_ret: Symbol = llvm_token_kw_ret
 data llvm_production_void_function: Symbol = llvm_production_void_function
 data llvm_surface_void_function: Symbol = llvm_surface_void_function
-data llvm_t4_18_probe_ingest_fixture_define_void_f_ret_void: Symbol = llvm_t4_18_probe_ingest_fixture_define_void_f_ret_void
-data llvm_t4_18_probe_ingest_consumer_parse_testclaim_receipt: Symbol = llvm_t4_18_probe_ingest_consumer_parse_testclaim_receipt
 
 
 fn llvm_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
@@ -965,5 +963,14 @@ fn llvm_ir_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: llvm_wave1_lex(),
     grammar: llvm_ir_wave1_grammar()
+  }
+}
+
+
+fn llvm_ir_ingest_grammar_probe() -> GrammarSchemaProbe {
+  GrammarSchemaProbe {
+    schema: llvm_ir_ingest_grammar_schema(),
+    fixture: "define void @f() { ret void }",
+    expected_surface: grammar_atom(identity: llvm_surface_void_function)
   }
 }

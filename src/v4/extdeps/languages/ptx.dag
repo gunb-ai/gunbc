@@ -12,7 +12,7 @@ module v4.extdeps.languages.ptx
 
 
 
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -174,8 +174,6 @@ data ptx_token_lbrace: Symbol = ptx_token_lbrace
 data ptx_token_rbrace: Symbol = ptx_token_rbrace
 data ptx_production_entry_kernel: Symbol = ptx_production_entry_kernel
 data ptx_surface_entry_kernel: Symbol = ptx_surface_entry_kernel
-data ptx_t4_18_probe_ingest_fixture_entry_k: Symbol = ptx_t4_18_probe_ingest_fixture_entry_k
-data ptx_t4_18_probe_ingest_consumer_parse_testclaim_receipt: Symbol = ptx_t4_18_probe_ingest_consumer_parse_testclaim_receipt
 
 
 fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
@@ -258,5 +256,14 @@ fn ptx_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: ptx_wave1_lex(),
     grammar: ptx_wave1_grammar()
+  }
+}
+
+
+fn ptx_ingest_grammar_probe() -> GrammarSchemaProbe {
+  GrammarSchemaProbe {
+    schema: ptx_ingest_grammar_schema(),
+    fixture: ".entry k() {}",
+    expected_surface: grammar_atom(identity: ptx_surface_entry_kernel)
   }
 }

@@ -12,7 +12,7 @@ module v4.extdeps.languages.verilog
 
 import v4.std.nat { Nat }
 import v4.std.node { Symbol }
-import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
+import v4.std.grammar { ParseGrammar, GrammarExpr, GrammarProduction, GrammarRoot, GrammarSchema, GrammarSchemaProbe, ModeledGrammar, grammar_atom, grammar_empty_sync_tokens }
 import v4.std.lexing {
   CharClassPattern,
   IdentContinueChar,
@@ -802,8 +802,6 @@ data verilog_token_ident: Symbol = verilog_token_ident
 data verilog_token_semicolon: Symbol = verilog_token_semicolon
 data verilog_production_source_text_module: Symbol = verilog_production_source_text_module
 data verilog_surface_module_decl: Symbol = verilog_surface_module_decl
-data verilog_t4_18_probe_ingest_fixture_module_m_endmodule: Symbol = verilog_t4_18_probe_ingest_fixture_module_m_endmodule
-data verilog_t4_18_probe_ingest_consumer_parse_testclaim_receipt: Symbol = verilog_t4_18_probe_ingest_consumer_parse_testclaim_receipt
 
 
 fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
@@ -878,5 +876,14 @@ fn verilog_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: verilog_wave1_lex(),
     grammar: verilog_wave1_grammar()
+  }
+}
+
+
+fn verilog_ingest_grammar_probe() -> GrammarSchemaProbe {
+  GrammarSchemaProbe {
+    schema: verilog_ingest_grammar_schema(),
+    fixture: "module m; endmodule",
+    expected_surface: grammar_atom(identity: verilog_surface_module_decl)
   }
 }
