@@ -82,8 +82,37 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v2_std_core.rs",
 ];
 
-const HAND_MAINTAINED_STAGE0_FILES: &[&str] =
-    &["cli_run.rs", "rest_transport_facts.rs", "v2_interpreter.rs"];
+const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
+    "cli_run.rs",
+    "rest_transport_facts.rs",
+    "v2_compiler_dag_collect.rs",
+    "v2_interpreter.rs",
+];
+
+const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v2_compiler_dag_collect::{
+    collect_dag_nodes, dag_collect_from_module, dag_collect_insert, dag_collect_inferred,
+    dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
+    dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
+    dag_node_is_resolved_identity_shell, dag_node_key,
+};
+
+"#;
+
+/// Symbols delegated to `v2_compiler_dag_collect`; fresh codegen must not retain local `pub fn`.
+const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
+    "collect_dag_nodes",
+    "dag_collect_from_module",
+    "dag_collect_insert",
+    "dag_collect_inferred",
+    "dag_collect_match_pattern",
+    "dag_collect_node_tree",
+    "dag_collect_nodes_list",
+    "dag_collect_optional_node",
+    "dag_node_collection_anchor",
+    "dag_node_fingerprint",
+    "dag_node_is_resolved_identity_shell",
+    "dag_node_key",
+];
 
 const GENERATED_METHOD_TEMPLATE_PROJECTION_DAG: &str = r#"module generated.method_template_projection
 
@@ -170,6 +199,7 @@ fn run() -> Result<(), String> {
     let emitted = compile_stage0(&workspace)?;
     write_emitted_crate(&fresh_dir, &emitted)?;
     copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))?;
+    patch_bootstrap_dag_collect(&fresh_dir.join("src"))?;
     patch_cargo_toml_for_generated_crate(&fresh_dir)?;
     rustfmt_generated_crate(&fresh_dir)?;
     assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))?;
@@ -430,6 +460,97 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
         }
     }
     Ok(())
+}
+
+/// Delegate DAG collect + identity-key helpers to hand-maintained bootstrap module.
+fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
+    let lib_path = src_dir.join("lib.rs");
+    let mut lib_text =
+        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    if !lib_text.contains("pub mod v2_compiler_dag_collect;") {
+        // Insert after complexity so `cargo fmt` order matches committed lib.rs.
+        lib_text = lib_text.replace(
+            "pub mod v2_compiler_complexity;\n",
+            "pub mod v2_compiler_complexity;\npub mod v2_compiler_dag_collect;\n",
+        );
+        fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
+    }
+
+    let compile_path = src_dir.join("v2_compiler_compile.rs");
+    let text = fs::read_to_string(&compile_path)
+        .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
+    let patched = patch_bootstrap_dag_collect_text(&text)?;
+    fs::write(&compile_path, patched).map_err(|e| format!("write {}: {e}", compile_path.display()))
+}
+
+fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
+    let mut duplicates = Vec::new();
+    for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
+        // Use `(` so `dag_node_key` does not match `dag_node_key_collision_error`.
+        let marker = format!("pub fn {symbol}(");
+        if text.contains(&marker) {
+            duplicates.push(*symbol);
+        }
+    }
+    if duplicates.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "patch_bootstrap_dag_collect: delegated symbol(s) still defined locally after patch: {}",
+            duplicates.join(", ")
+        ))
+    }
+}
+
+/// Patch in-memory compile.rs text (for unit tests).
+fn patch_bootstrap_dag_collect_text(text: &str) -> Result<String, String> {
+    if text.contains("pub use crate::v2_compiler_dag_collect") {
+        return Ok(text.to_string());
+    }
+
+    let pending_start =
+        "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectPending";
+    let key_start = "pub fn dag_node_key";
+    let inferred_start = "pub fn inferred_fingerprint";
+    let fingerprint_start = "pub fn dag_node_fingerprint";
+    let collision_start = "pub fn dag_node_key_collision_error";
+    let collect_start = "pub fn dag_collect_nodes_list";
+    let build_key_start = "pub fn build_dag_key_to_id";
+
+    let mut patched = if text.contains("pub struct DagCollectPending") {
+        strip_between(text, pending_start, key_start)?
+    } else {
+        text.to_string()
+    };
+    patched = strip_between(&patched, key_start, inferred_start)?;
+    patched = strip_between(&patched, fingerprint_start, collision_start)?;
+    patched = strip_between(&patched, collect_start, build_key_start)?;
+
+    let insert_after = "}\n\npub fn inferred_fingerprint";
+    if !patched.contains(insert_after) {
+        return Err("patch_bootstrap_dag_collect_text: missing DagCollectAcc anchor".to_string());
+    }
+    patched = patched.replace(
+        insert_after,
+        &format!("}}\n\n{BOOTSTRAP_DAG_COLLECT_USE}pub fn inferred_fingerprint"),
+    );
+    assert_no_local_delegated_fns(&patched)?;
+    Ok(patched)
+}
+
+fn strip_between(text: &str, start_marker: &str, end_marker: &str) -> Result<String, String> {
+    let start_idx = text
+        .find(start_marker)
+        .ok_or_else(|| format!("strip_between: missing start `{start_marker}`"))?;
+    let end_idx = text
+        .find(end_marker)
+        .ok_or_else(|| format!("strip_between: missing end `{end_marker}`"))?;
+    if end_idx <= start_idx {
+        return Err(format!(
+            "strip_between: `{end_marker}` must follow `{start_marker}`"
+        ));
+    }
+    Ok(format!("{}{}", &text[..start_idx], &text[end_idx..]))
 }
 
 fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
@@ -713,5 +834,69 @@ mod tests {
             .expect("clock before unix epoch")
             .as_nanos();
         env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
+    }
+
+    #[test]
+    fn patch_bootstrap_dag_collect_strips_all_delegated_symbols() {
+        let emitted = r#"
+pub struct DagCollectAcc {
+    pub seen: (),
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagCollectPending {
+    pub anchor: (),
+    pub key: String,
+    pub fp: String,
+}
+
+pub fn dag_node_key(node: ()) -> String {
+    "k".to_string()
+}
+
+pub fn dag_node_is_resolved_identity_shell(node: ()) -> bool {
+    false
+}
+
+pub fn dag_node_collection_anchor(node: ()) -> () {
+    node
+}
+
+pub fn inferred_fingerprint(value: Option<()>) -> String {
+    "none".to_string()
+}
+
+pub fn dag_node_fingerprint(node: ()) -> String {
+    "fp".to_string()
+}
+
+pub fn dag_node_key_collision_error(key: String, span: ()) -> () {
+    ()
+}
+
+pub fn dag_collect_nodes_list(nodes: (), acc: ()) -> () {
+    acc
+}
+
+pub fn collect_dag_nodes(typed: ()) -> () {
+    ()
+}
+
+pub fn build_dag_key_to_id(order: ()) -> () {
+    ()
+}
+"#;
+        let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
+        assert!(
+            !patched.contains("pub struct DagCollectPending"),
+            "DagCollectPending helper struct must be stripped from generated compile.rs"
+        );
+        for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
+            assert!(
+                !patched.contains(&format!("pub fn {symbol}(")),
+                "local definition remained for {symbol}"
+            );
+        }
+        assert!(patched.contains("pub use crate::v2_compiler_dag_collect"));
     }
 }
