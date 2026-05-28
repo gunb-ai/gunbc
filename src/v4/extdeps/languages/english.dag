@@ -120,21 +120,19 @@ type EnglishGrammar {
 // ---------------------------------------------------------------------------
 
 // 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-// Features with wave-1 grammar authority → Modeled or DeclaredNormalized.
-// Features with no grammar production → FailClosed (grammar simply won't match them).
-// UnknownVocabulary is NOT a feature here: the wave-1 word rule accepts any
-// identifier, so unknown vocabulary is not fail-closed in practice.  Declaring
-// it FailClosed while the grammar accepts it would be a false claim.  The arm
-// is deferred to wave-2 when a closed vocabulary is declared; until then the
-// feature has no authority and no disposition.
+// Arms declare only features with a clear wave-1 disposition.
+// Features deferred (no valid disposition in wave-1):
+//   UnknownVocabulary — word rule accepts any identifier; neither Modeled
+//     nor FailClosed is honest.  Deferred to wave-2 closed vocabulary.
+//   NounSpelling / VerbSpelling — no spelling-specific lex/grammar authority
+//     beyond the generic word rule; spelling is covered by FormalSubsetSvo /
+//     FormalSubsetCopula.  No distinct disposition to declare.
 type EnglishFidelityFeature
   = FormalSubsetSvo
   | FormalSubsetCopula
   | FormalSubsetAdverbial
   | FormalSubsetIntransitive
   | ArticleDeterminer
-  | NounSpelling
-  | VerbSpelling
   | OutOfSubsetProse
   | AmbiguousConstruct
   | MalformedSentence
@@ -147,8 +145,6 @@ fn english_feature_disposition(f: EnglishFidelityFeature) -> FidelityDisposition
     FormalSubsetAdverbial => FailClosed { feature: FormalSubsetAdverbial }
     FormalSubsetIntransitive => FailClosed { feature: FormalSubsetIntransitive }
     ArticleDeterminer => Modeled
-    NounSpelling => Modeled
-    VerbSpelling => Modeled
     OutOfSubsetProse => FailClosed { feature: OutOfSubsetProse }
     AmbiguousConstruct => FailClosed { feature: AmbiguousConstruct }
     MalformedSentence => FailClosed { feature: MalformedSentence }
