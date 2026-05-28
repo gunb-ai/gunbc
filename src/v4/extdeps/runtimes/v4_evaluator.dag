@@ -55,6 +55,7 @@ import v4.std.runtime {
 import v4.std.witness { Violates, Witness }
 
 data v4_evaluator_runtime_id: Symbol = v4_evaluator_runtime_id
+data v4_evaluator_interpretation_pin: Symbol = v4_evaluator_interpretation_pin
 data v4_eval_wave1_unit_type_symbol: Symbol = v4_eval_wave1_unit_type_symbol
 data v4_eval_wave1_boundary_operation_symbol: Symbol = v4_eval_wave1_boundary_operation_symbol
 data v4_eval_wave1_boundary_effect_symbol: Symbol = v4_eval_wave1_boundary_effect_symbol

@@ -10,11 +10,11 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  TestClaimTypedInput,
   aggregate_verdicts,
   eval_diagnostic,
   eval_rejected_roundtrip_deferred,
-  test_claim_cache_receipt
+  test_claim_cache_receipt,
+  test_claim_typed_input_pinned
 }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
 import v4.compiler.infer {
@@ -169,6 +169,7 @@ data pipeline_extdeps: Symbol = pipeline_extdeps
 data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
+data pipeline_interpretation_pin: Symbol = pipeline_interpretation_pin
 // 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
 
 

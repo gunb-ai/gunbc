@@ -14,7 +14,15 @@ import v4.compiler.infer {
   inferred_facts_resolved_type
 }
 import v4.std.algebra { fold_list }
-import v4.std.collection { List, Map, list_nth }
+import v4.std.cardinality { RankingDimension, TerminationProof }
+import v4.std.collection {
+  List,
+  Map,
+  Optional,
+  list_nth,
+  optional_absent,
+  optional_present
+}
 import v4.std.verdict { Verdict, verdict_fold }
 import v4.std.runtime {
   EnvironmentBindingKey,
@@ -96,12 +104,14 @@ import v4.std.verification {
   EqualsClaim,
   RoundTripClaim,
   TestClaim,
+  diagnostic_evaluation_nodes,
   test_claim_evaluation_nodes,
   test_claim_input
 }
-import v4.std.witness { Holds, Violates, Witness }
+import v4.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v4.extdeps.runtimes.v4_evaluator {
   V4EvaluatorRuntime,
+  v4_evaluator_interpretation_pin,
   v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_wave1
 }
@@ -113,15 +123,18 @@ type Inputs {
 }
 
 
-// RULING-1: pretty-much-done — explicit runtime interpretation authority.
+// RULING-1: pretty-much-done — explicit runtime interpretation authority; interpretation_pin is the IRT-4 boundary until InterpretationAlgebra is Node-projectable.
 type EvalContext {
   interpretation: InterpretationAlgebra
+  interpretation_pin: Symbol
 }
 
 
-// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands.
+// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; evaluator_pin / evaluator_subgraph carry IRT-4 boundaries for non-Node evaluator_input.
 type TestClaimTypedInput<T> {
   evaluator_input: T
+  evaluator_pin: Symbol
+  evaluator_subgraph: Optional<Node>
 }
 
 
@@ -134,7 +147,7 @@ type TestClaimEvalSubject<T> {
 }
 
 
-// 🟢 TERMINAL — B1 content_hash of TestClaim evaluation nodes (IRT-4 / TASKS.md T-22).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived boundaries until projection lands.
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
   claim_hash: Hash
@@ -142,7 +155,7 @@ type TestClaimCacheKey<T> {
 }
 
 
-// 🟢 TERMINAL — receipt keyed by derived content_hash facts on eval_subject (IRT-4).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, interpretation_pin, evaluator pin/subgraph).
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
@@ -172,6 +185,26 @@ type EvalProgress
 
 
 data test_claim_cache_claim_digest_tag: Symbol = test_claim_cache_claim_digest_tag
+data test_claim_cache_interpretation_digest_tag: Symbol = test_claim_cache_interpretation_digest_tag
+data test_claim_cache_evaluator_digest_tag: Symbol = test_claim_cache_evaluator_digest_tag
+
+
+fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin,
+    evaluator_subgraph: Present { value: evaluator_input }
+  }
+}
+
+
+fn test_claim_typed_input_pinned<T>(evaluator_input: T, evaluator_pin: Symbol) -> TestClaimTypedInput<T> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin,
+    evaluator_subgraph: Absent
+  }
+}
 
 
 fn test_claim_cache_digest_tag_node(tag: Symbol) -> Node {
@@ -193,8 +226,100 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
 }
 
 
+fn test_claim_symbol_digest(sym: Symbol) -> Hash {
+  content_hash(n: test_claim_cache_digest_tag_node(tag: sym))
+}
+
+
+fn structural_property_witness_digest(w: StructuralPropertyWitness) -> Hash {
+  hash_combine(
+    a: test_claim_symbol_digest(sym: w.property),
+    b: content_hash(n: w.evidence)
+  )
+}
+
+
+fn ranking_dimension_digest(d: RankingDimension) -> Hash {
+  test_claim_symbol_digest(sym: d.measured)
+}
+
+
+fn termination_proof_digest(proof: TerminationProof) -> Hash {
+  hash_combine(
+    a: ranking_dimension_digest(d: proof.strict),
+    b: fold_list(
+      xs: proof.non_increasing,
+      empty: test_claim_symbol_digest(sym: test_claim_cache_interpretation_digest_tag),
+      cons: fn(acc, d) {
+        hash_combine(a: acc, b: ranking_dimension_digest(d: d))
+      }
+    )
+  )
+}
+
+
+fn descent_witness_digest(d: Witness<TerminationProof>) -> Hash {
+  match d {
+    Holds { value: proof } => termination_proof_digest(proof: proof)
+    Violates { diagnostic: diag } =>
+      fold_list(
+        xs: diagnostic_evaluation_nodes(d: diag),
+        empty: test_claim_symbol_digest(sym: diag.reason),
+        cons: fn(acc, n) {
+          hash_combine(a: acc, b: content_hash(n: n))
+        }
+      )
+  }
+}
+
+
+fn inferred_facts_digest(facts: InferredFacts) -> Hash {
+  let g = facts.grounding
+  hash_combine(
+    a: content_hash(n: g.node),
+    b: hash_combine(
+      a: hash_combine(
+        a: structural_property_witness_digest(w: g.witness.structural),
+        b: structural_property_witness_digest(w: g.witness.closedness)
+      ),
+      b: descent_witness_digest(d: inferred_facts_descent(facts: facts))
+    )
+  )
+}
+
+
+fn inferred_tree_digest(tree: InferredTree) -> Hash {
+  let root_hash = content_hash(n: tree.root)
+  match inferred_facts_witness_for_eval(tree: tree, node: tree.root) {
+    Holds { value: facts } =>
+      hash_combine(a: root_hash, b: inferred_facts_digest(facts: facts))
+    Violates { diagnostic: _ } => root_hash
+  }
+}
+
+
+fn test_claim_interpretation_pin_digest(context: EvalContext) -> Hash {
+  test_claim_symbol_digest(sym: context.interpretation_pin)
+}
+
+
+fn test_claim_evaluator_digest<T>(input: TestClaimTypedInput<T>) -> Hash {
+  let pin_hash = test_claim_symbol_digest(sym: input.evaluator_pin)
+  match input.evaluator_subgraph {
+    Present { value: n } => hash_combine(a: pin_hash, b: content_hash(n: n))
+    Absent => pin_hash
+  }
+}
+
+
 fn test_claim_cache_interpretation_hash<T>(subject: TestClaimEvalSubject<T>) -> Hash {
-  content_hash(n: subject.tree.root)
+  hash_combine(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: hash_combine(
+      a: test_claim_interpretation_pin_digest(context: subject.context),
+      b: test_claim_evaluator_digest(input: subject.input)
+    )
+  )
 }
 
 
@@ -1122,10 +1247,14 @@ fn eval_test_claim_subject(
   context: EvalContext,
   tree: InferredTree
 ) -> TestClaimEvalSubject<Node> {
+  let input = test_claim_input(c: claim)
   TestClaimEvalSubject {
     claim: claim,
     context: context,
     tree: tree,
-    input: TestClaimTypedInput { evaluator_input: test_claim_input(c: claim) }
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: v4_evaluator_interpretation_pin
+    )
   }
 }
