@@ -7,7 +7,7 @@
 # TestClaimRun surface.
 #
 # Usage: from repo root, with v2-compiler already built:
-#   V2_COMPILER=target/release/v2-compiler bash scripts/v2-run-preflight.sh
+#   V2_COMPILER=target/release/gunbc bash scripts/v2-run-preflight.sh
 #
 # When the caller has already run `v2-compiler compile` on src/v4, set
 # V2_PREFLIGHT_SKIP_COMPILE=1 to skip the redundant full-graph compile.
@@ -20,7 +20,7 @@ cd "$root"
 if [[ "${V2_PREFLIGHT_SKIP_COMPILE:-0}" == "1" ]]; then
   echo "=== v2-run-preflight: compile skipped (V2_PREFLIGHT_SKIP_COMPILE=1; prior step already compiled src/v4) ==="
 else
-  bin="${V2_COMPILER:-target/release/v2-compiler}"
+  bin="${V2_COMPILER:-target/release/gunbc}"
   if [[ ! -x "$bin" ]]; then
     echo "error: v2-compiler not found at $bin (build with: cargo build -p v2-compiler --release)" >&2
     exit 1

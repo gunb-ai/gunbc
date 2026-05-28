@@ -11,8 +11,9 @@ import v4.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
-  TestClaimTypedInput,
-  test_claim_cache_receipt
+  eval_context_with_semantics,
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
 }
 import v4.std.verdict { Verdict, Fail, Pass }
 import v4.compiler.infer {
@@ -68,6 +69,7 @@ import v4.std.runtime {
   EnvironmentBindingKey,
   EvaluationEnvironment,
   InterpretationAlgebra,
+  InterpretationStructureWitness,
   LoopInterpreter,
   RuntimePrimitive,
   RuntimePrimitiveValue,
@@ -87,11 +89,12 @@ data infer_receipt_extdeps: Symbol = infer_receipt_extdeps
 data infer_receipt_runtime_value_symbol: Symbol = infer_receipt_runtime_value_symbol
 data infer_receipt_input_infer_add_mvp: Symbol = infer_receipt_input_infer_add_mvp
 data infer_receipt_input_descent_witness: Symbol = infer_receipt_input_descent_witness
-// 🟡 cache-hash scaffold — T22-EVAL-CACHE-HASHES
-data claim_hash_placeholder: Hash = claim_hash_placeholder
-data interpretation_hash_placeholder: Hash = interpretation_hash_placeholder
-
-
+data infer_receipt_interpretation_pin: Symbol = infer_receipt_interpretation_pin
+data infer_receipt_allocate_literal_sym: Symbol = infer_receipt_allocate_literal_sym
+data infer_receipt_call_primitive_sym: Symbol = infer_receipt_call_primitive_sym
+data infer_receipt_choose_branch_sym: Symbol = infer_receipt_choose_branch_sym
+data infer_receipt_step_loop_sym: Symbol = infer_receipt_step_loop_sym
+data infer_receipt_bind_value_sym: Symbol = infer_receipt_bind_value_sym
 // Receipt bridge: polarity-specific carriers (no broad Outcome<Node> after TestClaim split).
 // 🟡 coproduct dissolution — LB-P4-3212 — feature: infer-receipt-testclaim-bridge — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: direct TestClaim constructors per receipt row (forbidden: Outcome<Node> bridge that drops diagnostics).
 type InferReceiptCase
@@ -239,10 +242,22 @@ fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
 }
 
 
-fn infer_receipt_context() -> EvalContext {
-  EvalContext {
-    interpretation: infer_receipt_interpretation()
+fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: infer_receipt_allocate_literal_sym,
+    call_primitive: infer_receipt_call_primitive_sym,
+    choose_branch: infer_receipt_choose_branch_sym,
+    step_loop: infer_receipt_step_loop_sym,
+    bind_value: infer_receipt_bind_value_sym
   }
+}
+
+fn infer_receipt_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: infer_receipt_interpretation_pin,
+    interpretation: infer_receipt_interpretation(),
+    structure_witness: infer_receipt_interpretation_structure_witness()
+  )
 }
 
 
@@ -261,11 +276,23 @@ fn infer_receipt_empty_tree(root: Node) -> InferredTree {
 
 
 fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
+  let input = infer_receipt_case_input(case: case)
   TestClaimEvalSubject {
     claim: infer_receipt_claim(case: case),
     context: infer_receipt_context(),
-    tree: infer_receipt_empty_tree(root: infer_receipt_case_input(case: case)),
-    input: TestClaimTypedInput { evaluator_input: infer_receipt_case_input(case: case) }
+    tree: infer_receipt_empty_tree(root: input),
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: infer_receipt_case_pin(case: case)
+    )
+  }
+}
+
+
+fn infer_receipt_case_pin(case: InferReceiptCase) -> Symbol {
+  match case {
+    InferDiagnosticReceiptCase { input_symbol: sym, label: _, input: _, expected_rejection: _ } => sym
+    InferCompilesReceiptCase { input_symbol: sym, label: _, input: _, expected_value: _ } => sym
   }
 }
 
@@ -285,11 +312,7 @@ fn infer_add_mvp_receipt_run(
 ) -> TestClaimRun<Node, InferredTree> {
   let actual = anchor_infer_add_mvp()
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash_placeholder,
-      interpretation_hash: interpretation_hash_placeholder
-    ),
+    cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
         match actual {
@@ -323,11 +346,7 @@ fn infer_descent_witness_receipt_run(
 ) -> TestClaimRun<Node, Node> {
   let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
   TestClaimRun {
-    cache: test_claim_cache_receipt(
-      subject: subject,
-      claim_hash: claim_hash_placeholder,
-      interpretation_hash: interpretation_hash_placeholder
-    ),
+    cache: test_claim_cache_receipt(subject: subject),
     verdict: match test_claim_expected_outcome(c: subject.claim) {
       Accepted { value: expected, diagnostics: _ } =>
         if outcome_node_eq(a: actual, b: expected) {

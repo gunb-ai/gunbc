@@ -17353,7 +17353,17 @@ pub fn emit_main_rs(
             has_pipeline.clone(),
             crate_name.clone(),
         );
-        let cli_struct = emit_cli_struct(workflow_funcs.clone());
+        let binary_name = if has_pipeline.clone() {
+            "gunbc".to_string()
+        } else {
+            crate_name.clone()
+        };
+        let cli_about = if has_pipeline.clone() {
+            "A causal compiler: write .dag, get Rust/Python/Go.".to_string()
+        } else {
+            "".to_string()
+        };
+        let cli_struct = emit_cli_struct(workflow_funcs.clone(), binary_name, cli_about);
         let subcommand_enum = emit_subcommand_enum(workflow_funcs.clone(), has_pipeline.clone());
         let pipeline_fns = if has_pipeline.clone() {
             emit_main_pipeline_fns(crate_name.clone())
@@ -17462,8 +17472,58 @@ pub fn emit_main_mod_uses(
     }
 }
 
-pub fn emit_cli_struct(workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>) -> String {
-    v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"v2-compiled\", about = \"Generated CLI from DAG compiler\")]\n".to_string()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    dry_run: bool,\n".to_string()), "}".to_string())
+pub fn emit_cli_struct(
+    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    binary_name: String,
+    about: String,
+) -> String {
+    {
+        let about_attr = if (about.clone().as_str() != "".to_string().as_str()) {
+            v2_rt::concat(
+                v2_rt::concat(", about = \"".to_string(), about.clone()),
+                "\"".to_string(),
+            )
+        } else {
+            "".to_string()
+        };
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                v2_rt::concat(
+                                                    v2_rt::concat(
+                                                        "#[derive(Parser)]\n".to_string(),
+                                                        "#[command(name = \"".to_string(),
+                                                    ),
+                                                    binary_name,
+                                                ),
+                                                "\"".to_string(),
+                                            ),
+                                            about_attr,
+                                        ),
+                                        ")]\n".to_string(),
+                                    ),
+                                    "struct Cli {\n".to_string(),
+                                ),
+                                "    #[command(subcommand)]\n".to_string(),
+                            ),
+                            "    command: Commands,\n".to_string(),
+                        ),
+                        "    /// Run in dry-run mode (mock all service calls)\n".to_string(),
+                    ),
+                    "    #[arg(long, global = true)]\n".to_string(),
+                ),
+                "    dry_run: bool,\n".to_string(),
+            ),
+            "}".to_string(),
+        )
+    }
 }
 
 pub fn emit_subcommand_enum(

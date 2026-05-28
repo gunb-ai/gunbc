@@ -812,7 +812,7 @@ Once T-15 lands and stays green, all four failure modes are impossible-by-constr
 - TestClaim suite passes
 - Hand-authored Rust is **not the editable authority** — proven by REPRODUCTION, not a count (A3): rebuild-from-(.dag + frozen-pinned seed)-only reproduces the pinned hash; the seed's own hash matches its pin. (The old "count = 0" phrasing was the gameable v3 proxy — replaced. The machine-emitted trampoline is build-dir-transient, never authority.) The check is an early-surfacing amplifier run per-PR on the affected set, not an un-gameability claim.
 
-**Close-status (2026-05-28, `main@e568b17e4`):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix on `main`. **P5 bridge removal still OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header). Predicate **3 PARTIAL** (T-33 [#3787] on `main`; P1-KEYSTONE [#3752](https://github.com/gunb-ai/gunbc/pull/3752) open); **4 PARTIAL** (T22-EVAL-CACHE-HASHES [#3794](https://github.com/gunb-ai/gunbc/pull/3794)); **5 PARTIAL** — [#3803](https://github.com/gunb-ai/gunbc/pull/3803) landed the **structural** corpus CI bridge (`scripts/v4-testclaim-corpus-gate.sh`; `test/claim/manual` + `TestClaimRun` surface pinned); **not CLOSABLE** until modeled T-22 eval + structured verdicts in CI per §T-38 (:281, :2287). **Landed:** [#3803](https://github.com/gunb-ai/gunbc/pull/3803) T-38 structural bridge; [#3807](https://github.com/gunb-ai/gunbc/pull/3807) std/lexing+grammar. **Operator queue:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3794](https://github.com/gunb-ai/gunbc/pull/3794) T22-EVAL-CACHE-HASHES, [#3796](https://github.com/gunb-ai/gunbc/pull/3796) T-4.18 (merge-ready). **Lane A:** structural bridge landed [#3803]; runner bar still open (§T-38).
+**Close-status (2026-05-28, `main@678bb8bbd`):** predicates **1–2 CLOSABLE** on trigger (b) — [#3791](https://github.com/gunb-ai/gunbc/pull/3791) serializer fix on `main`. **P5 bridge removal still OPEN** (`scripts/v4-bootstrap-resolve-posture-gate.sh` + `ci.yml:249` until script + CI step deleted per header). Predicate **3 PARTIAL** (T-4 feeder: T-33 [#3787] + P1-KEYSTONE [#3752](https://github.com/gunb-ai/gunbc/pull/3752) on `main`; T-4 Wave 2 work continues); **4 PARTIAL** (T22-EVAL-CACHE-HASHES [#3794](https://github.com/gunb-ai/gunbc/pull/3794) open); **5 PARTIAL** — [#3803](https://github.com/gunb-ai/gunbc/pull/3803) structural corpus CI bridge on `main`; modeled T-22 eval + structured verdicts still open per §T-38 (:281, :2287). **Landed this batch:** [#3752](https://github.com/gunb-ai/gunbc/pull/3752) P1-KEYSTONE, [#3796](https://github.com/gunb-ai/gunbc/pull/3796) T-4.18. **Operator queue:** [#3794](https://github.com/gunb-ai/gunbc/pull/3794) T22-EVAL-CACHE-HASHES. **Lane A:** structural bridge [#3803] on `main`; runner bar open (§T-38).
 
 ### T-4.6: extdeps/formats/* (json/yaml/csv/toml/json_schema/openapi/sql)
 
@@ -2208,7 +2208,7 @@ Parallel fill — adjacent to T-15 (self-host fixed-point gate) and T-20
 
 ---
 
-### T-36 — Omni ingest demo: round-trip fidelity claim  [SCHEDULED]
+### T-36 — Omni ingest demo: round-trip fidelity claim  [IN PROGRESS — PR open]
 
 **File**: `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` (new)
 **Why**: `ingest = emit⁻¹` (C5, THESIS §B2-OMNI) is the central bidirectionality property.
@@ -2229,6 +2229,8 @@ T-6 fills the tokenizer, T-7 fills the parser — but without a checked executab
 - Fail-closed: if ingest cannot represent any part of the input — ambiguity, unsupported syntax — the claim must produce a Diagnostic, not silently pass
 
 **Sequencing:** dispatch after T-10 merges (T-8/T-9/T-10 are prerequisites for the executable round-trip; fixture authoring may begin after T-6/T-7 as prep). Unblocks T-15 (self-host fixed-point validation needs a working round-trip before the fixed-point loop is meaningful).
+
+**Close-status (2026-05-28):** PR open (session/loyal-ram-545). Fixture landed at `src/v4/test/fixture/dag_round_trip_mvp1.dag` (wave-1 surface: module + import + data + fn). C5 fidelity disposition added to `dag.dag` (`DagTriviaNormalization` coproduct: whitespace, line-comment, block-comment all `DeclaredNormalized`). `RoundTripClaim` wired at `src/v4/test/claim/round_trip/dag_ingest_round_trip.dag` referencing C5 facts from dag.dag only. Eval path for `RoundTripClaim` remains `Deferred` in `05_eval.dag` — execution blocked on T-38.
 
 ---
 

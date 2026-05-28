@@ -1,0 +1,418 @@
+// src/v4/test/claim/manual/test_claim_cache_digest_sensitivity.dag
+// Scope: T-22 cache receipt — interpretation_hash distinguishes facts diagnostics and Node evaluator_input.
+// Status: CompilesClaim receipts; execution deferred until T-22 runner subsumes manual rows.
+
+module v4.test.claim.manual.test_claim_cache_digest_sensitivity
+
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  eval_context_v4_evaluator_wave1,
+  eval_context_with_semantics,
+  eval_default_interpretation,
+  test_claim_cache_interpretation_hash_node,
+  test_claim_claim_hash_digest,
+  test_claim_interpretation_cache_digest,
+  test_claim_no_correction_ambiguous_intent_tag,
+  test_claim_typed_input_node
+}
+import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_interpretation_structure_witness }
+import v4.compiler.infer { InferredTree }
+import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
+import v4.std.collection { List, Map }
+import v4.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  Suggested,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus,
+  port_locus
+}
+import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, byte_offset_cache_digest }
+import v4.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v4.std.witness { Violates }
+
+data tcc_cache_root_sym: Symbol = tcc_cache_root_sym
+data tcc_cache_eval_a_sym: Symbol = tcc_cache_eval_a_sym
+data tcc_cache_eval_b_sym: Symbol = tcc_cache_eval_b_sym
+data tcc_cache_facts_diag_a: Symbol = tcc_cache_facts_diag_a
+data tcc_cache_facts_diag_b: Symbol = tcc_cache_facts_diag_b
+data tcc_cache_expected_diag_a: Symbol = tcc_cache_expected_diag_a
+data tcc_cache_expected_diag_b: Symbol = tcc_cache_expected_diag_b
+data tcc_cache_interpretation_pin: Symbol = tcc_cache_interpretation_pin
+data tcc_cache_interpretation_semantics_tag: Symbol = tcc_cache_interpretation_semantics_tag
+data tcc_cache_evaluator_pin: Symbol = tcc_cache_evaluator_pin
+data tcc_cache_pass_sym: Symbol = tcc_cache_pass_sym
+data tcc_cache_fail_sym: Symbol = tcc_cache_fail_sym
+data tcc_cache_tail_diag_b: Symbol = tcc_cache_tail_diag_b
+data tcc_cache_tail_diag_c: Symbol = tcc_cache_tail_diag_c
+data tcc_cache_ineligible_pin_a: Symbol = tcc_cache_ineligible_pin_a
+data tcc_cache_ineligible_pin_b: Symbol = tcc_cache_ineligible_pin_b
+
+fn tcc_cache_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: tcc_cache_pass_sym } },
+    children: []
+  }
+}
+
+fn tcc_cache_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: tcc_cache_fail_sym } },
+    children: []
+  }
+}
+
+fn tcc_cache_root() -> Node {
+  claim_atom_node(s: tcc_cache_root_sym)
+}
+
+fn tcc_cache_eval_node_a() -> Node {
+  claim_atom_node(s: tcc_cache_eval_a_sym)
+}
+
+fn tcc_cache_eval_node_b() -> Node {
+  claim_atom_node(s: tcc_cache_eval_b_sym)
+}
+
+fn tcc_cache_facts_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: tcc_cache_root()),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn tcc_cache_tree_facts_violates(reason: Symbol) -> InferredTree {
+  InferredTree {
+    root: tcc_cache_root(),
+    facts: Map {
+      lookup: fn(_) {
+        Violates { diagnostic: tcc_cache_facts_diagnostic(reason: reason) }
+      }
+    }
+  }
+}
+
+fn tcc_cache_eval_context() -> EvalContext {
+  eval_context_v4_evaluator_wave1()
+}
+
+fn tcc_cache_stub_claim() -> TestClaim {
+  CompilesClaim {
+    label: "manual/test_claim_cache: digest sensitivity scaffold",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    input: tcc_cache_pass_node(),
+    expected_value: tcc_cache_pass_node()
+  }
+}
+
+fn tcc_cache_subject(
+  tree: InferredTree,
+  evaluator_input: Node
+) -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: tcc_cache_stub_claim(),
+    context: tcc_cache_eval_context(),
+    tree: tree,
+    input: test_claim_typed_input_node(
+      evaluator_input: evaluator_input,
+      evaluator_pin: tcc_cache_evaluator_pin
+    )
+  }
+}
+
+fn tcc_cache_facts_diagnostic_digest_differs() -> Bool {
+  let tree_a = tcc_cache_tree_facts_violates(reason: tcc_cache_facts_diag_a)
+  let tree_b = tcc_cache_tree_facts_violates(reason: tcc_cache_facts_diag_b)
+  let hash_a = test_claim_cache_interpretation_hash_node(
+    subject: tcc_cache_subject(tree: tree_a, evaluator_input: tcc_cache_eval_node_a())
+  )
+  let hash_b = test_claim_cache_interpretation_hash_node(
+    subject: tcc_cache_subject(tree: tree_b, evaluator_input: tcc_cache_eval_node_a())
+  )
+  hash_a != hash_b
+}
+
+fn tcc_cache_diagnostic_claim(expected_reason: Symbol) -> TestClaim {
+  DiagnosticClaim {
+    label: "manual/test_claim_cache: diagnostic claim hash scaffold",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    input: tcc_cache_root(),
+    expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: expected_reason,
+        at: node_locus(node: tcc_cache_root()),
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    )
+  }
+}
+
+fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
+  let node_x = tcc_cache_root()
+  let node_y = tcc_cache_pass_node()
+  test_claim_claim_hash_digest(
+    c: CompilesClaim {
+      label: "manual/test_claim_cache: compiles shape",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: node_x,
+      expected_value: node_y
+    }
+  ) != test_claim_claim_hash_digest(
+    c: EqualsClaim {
+      label: "manual/test_claim_cache: equals shape",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      lhs: node_x,
+      rhs: node_y
+    }
+  )
+}
+
+fn tcc_cache_diagnostic_reason_claim_hash_differs() -> Bool {
+  test_claim_claim_hash_digest(c: tcc_cache_diagnostic_claim(expected_reason: tcc_cache_expected_diag_a)) !=
+    test_claim_claim_hash_digest(c: tcc_cache_diagnostic_claim(expected_reason: tcc_cache_expected_diag_b))
+}
+
+fn tcc_cache_evaluator_input_digest_differs() -> Bool {
+  let tree = tcc_cache_tree_facts_violates(reason: tcc_cache_facts_diag_a)
+  let hash_a = test_claim_cache_interpretation_hash_node(
+    subject: tcc_cache_subject(tree: tree, evaluator_input: tcc_cache_eval_node_a())
+  )
+  let hash_b = test_claim_cache_interpretation_hash_node(
+    subject: tcc_cache_subject(tree: tree, evaluator_input: tcc_cache_eval_node_b())
+  )
+  hash_a != hash_b
+}
+
+fn tcc_cache_ineligible_interpretation_digest_differs() -> Bool {
+  let digest_a = test_claim_interpretation_cache_digest(
+    context: eval_context_with_semantics(
+      runtime_identity: tcc_cache_ineligible_pin_a,
+      interpretation: eval_default_interpretation(),
+      structure_witness: v4_evaluator_interpretation_structure_witness()
+    )
+  )
+  let digest_b = test_claim_interpretation_cache_digest(
+    context: eval_context_with_semantics(
+      runtime_identity: tcc_cache_ineligible_pin_b,
+      interpretation: eval_default_interpretation(),
+      structure_witness: v4_evaluator_interpretation_structure_witness()
+    )
+  )
+  digest_a != digest_b
+}
+
+// 256^9 - 1 — largest offset representable within byte_offset_cache_digest_max_limbs (9 base-256 limbs).
+data tcc_cache_byte_offset_exact_ceiling: Int = 68719476735
+// 256^9 — first offset that exhausts the limb budget with nonzero remainder.
+data tcc_cache_byte_offset_over_ceiling: Int = 68719476736
+
+fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_exact_ceiling) !=
+    byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling)
+}
+
+fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnostic>) -> TestClaim {
+  DiagnosticClaim {
+    label: label_suffix,
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    classification: TestClassification { tier: Tier1, layer: Unit },
+    input: tcc_cache_root(),
+    expected_rejection: NonEmptyDiagnostics {
+      head: Diagnostic {
+        reason: tcc_cache_expected_diag_a,
+        at: node_locus(node: tcc_cache_root()),
+        correction: Unavailable { reason: AmbiguousIntent }
+      },
+      tail: tail
+    }
+  }
+}
+
+fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
+  let diag_b = Diagnostic {
+    reason: tcc_cache_tail_diag_b,
+    at: node_locus(node: tcc_cache_root()),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+  let diag_c = Diagnostic {
+    reason: tcc_cache_tail_diag_c,
+    at: node_locus(node: tcc_cache_root()),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+  test_claim_claim_hash_digest(
+    c: tcc_cache_diagnostic_tail_bag_claim(
+      label_suffix: "manual/test_claim_cache: tail order ab",
+      tail: [diag_b, diag_c]
+    )
+  ) == test_claim_claim_hash_digest(
+    c: tcc_cache_diagnostic_tail_bag_claim(
+      label_suffix: "manual/test_claim_cache: tail order ba",
+      tail: [diag_c, diag_b]
+    )
+  )
+}
+
+fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
+  let ambiguous_tag_node = claim_atom_node(s: test_claim_no_correction_ambiguous_intent_tag)
+  test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: suggested vs unavailable correction domain",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: node_locus(node: tcc_cache_root()),
+          correction: Suggested { node: ambiguous_tag_node }
+        }
+      )
+    }
+  ) != test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: unavailable ambiguous intent correction",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: node_locus(node: tcc_cache_root()),
+          correction: Unavailable { reason: AmbiguousIntent }
+        }
+      )
+    }
+  )
+}
+
+fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
+  test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: node locus domain",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: node_locus(node: tcc_cache_root()),
+          correction: Unavailable { reason: AmbiguousIntent }
+        }
+      )
+    }
+  ) != test_claim_claim_hash_digest(
+    c: DiagnosticClaim {
+      label: "manual/test_claim_cache: port locus domain",
+      anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+      classification: TestClassification { tier: Tier1, layer: Unit },
+      input: tcc_cache_root(),
+      expected_rejection: diagnostics_singleton(
+        d: Diagnostic {
+          reason: tcc_cache_expected_diag_a,
+          at: port_locus(port: tcc_cache_root_sym),
+          correction: Unavailable { reason: AmbiguousIntent }
+        }
+      )
+    }
+  )
+}
+
+fn tcc_cache_sensitivity_claim_input(ok: Bool) -> Node {
+  if ok {
+    tcc_cache_pass_node()
+  } else {
+    tcc_cache_fail_node()
+  }
+}
+
+data claim_test_claim_cache_facts_diagnostic_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: same root, distinct facts diagnostics yield distinct interpretation_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_facts_diagnostic_digest_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_evaluator_input_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: Node evaluator_input content_hash participates in interpretation_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_evaluator_input_digest_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_variant_shape_claim_hash_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: TestClaim coproduct variant participates in claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_compiles_equals_same_nodes_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_diagnostic_reason_claim_hash_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: DiagnosticClaim expected reason participates in claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_reason_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_diagnostic_tail_bag_order_invariant: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: DiagnosticClaim tail bag order does not change claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_tail_permutation_claim_hash_invariant()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_correction_variant_domain: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: Correction coproduct domain tags separate claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_correction_variant_domain_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_locus_variant_domain: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: Locus coproduct domain tags separate claim_hash",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_locus_variant_domain_claim_hash_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_ineligible_interpretation_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: cache-ineligible interpretations separate by runtime_identity",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_ineligible_interpretation_digest_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_ceiling_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: byte_offset exact ceiling does not alias over-ceiling remainder",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling()
+  ),
+  expected_value: tcc_cache_pass_node()
+}

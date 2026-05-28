@@ -18,7 +18,7 @@
 # execution remains owned by the T-38 modeled runner closeout.
 #
 # Env:
-#   V2_COMPILER             - v2-compiler binary (default: target/release/v2-compiler)
+#   V2_COMPILER             - v2-compiler binary (default: target/release/gunbc)
 #   V4_TESTCLAIM_OUT        - dag artifact output dir (default: $RUNNER_TEMP/v4-testclaim-corpus or /tmp)
 #   V4_TESTCLAIM_LOG        - dag compiler log path (default: ${OUT}.log)
 #   V4_TESTCLAIM_RUST_OUT   - rust emit output dir (default: ${OUT}-rust)
@@ -30,7 +30,7 @@ set -euo pipefail
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root"
 
-bin="${V2_COMPILER:-target/release/v2-compiler}"
+bin="${V2_COMPILER:-target/release/gunbc}"
 if [[ ! -x "$bin" ]]; then
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
   exit 1
