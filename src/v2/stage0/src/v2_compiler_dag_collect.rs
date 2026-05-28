@@ -1,17 +1,14 @@
 // Bootstrap hand-maintained: O(N) DAG node collection + provisional identity keys.
-// Semantic source: src/v2/compile.dag (dag_node_*, dag_collect_*). Not emitted by
-// regen_stage0 because stage0 codegen does not yet emit owned-fold for DagCollectAcc.
-// regen_stage0 patches v2_compiler_compile.rs to `pub use` this module.
+// Semantic source: src/v2/compile.dag (dag_node_*, dag_collect_*). Stage0 codegen does
+// not yet emit owned-fold for DagCollectAcc; regen_stage0 delegates here via pub use.
 
-use crate::v2_compiler_compile::DagCollectAcc;
-use crate::v2_compiler_compile::{
-    dag_node_key_collision_error, dag_node_surface_fingerprint, module_imports,
-};
+use crate::v2_compiler_compile::{dag_node_key_collision_error, dag_node_surface_fingerprint, DagCollectAcc};
+use crate::v2_std_core::module_imports;
 use crate::v2_rt;
 use crate::v2_std_core::ExprData::NoExprData;
 use crate::v2_std_core::InferredNode::Resolved;
 use crate::v2_std_core::MatchPattern;
-use crate::v2_std_core::{ErrorNode, InferredNode, Node, ResolvedGraph, SourceSpan, TypedModule};
+use crate::v2_std_core::{InferredNode, MatchPattern, Node, ResolvedGraph, TypedModule};
 use std::rc::Rc;
 
 pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
