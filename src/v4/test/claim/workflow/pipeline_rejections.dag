@@ -12,7 +12,9 @@ import v4.compiler.eval {
   TestClaimRun,
   aggregate_verdicts,
   eval_diagnostic,
-  eval_rejected_roundtrip_deferred,
+  eval_rejected_roundtrip_deferred
+}
+import v4.workflow.ci {
   test_claim_cache_receipt_pinned,
   test_claim_typed_input_ci_pipeline
 }

@@ -125,7 +125,6 @@ import v4.extdeps.runtimes.v4_evaluator {
   v4_evaluator_interpretation_wave1,
   v4_evaluator_runtime_wave1
 }
-import v4.workflow.ci { CiPipeline, ci_pipeline_cache_digest }
 
 
 // RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
@@ -212,17 +211,6 @@ data test_claim_cache_variant_diagnostic_tag: Symbol = test_claim_cache_variant_
 data test_claim_cache_variant_equals_tag: Symbol = test_claim_cache_variant_equals_tag
 data test_claim_cache_variant_roundtrip_tag: Symbol = test_claim_cache_variant_roundtrip_tag
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
-  TestClaimTypedInput {
-    evaluator_input: evaluator_input,
-    evaluator_pin: evaluator_pin
-  }
-}
-
-
-fn test_claim_typed_input_ci_pipeline(
-  evaluator_input: CiPipeline,
-  evaluator_pin: Symbol
-) -> TestClaimTypedInput<CiPipeline> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
     evaluator_pin: evaluator_pin
@@ -482,23 +470,10 @@ fn test_claim_evaluator_input_digest_node(input: TestClaimTypedInput<Node>) -> H
 }
 
 
-fn test_claim_evaluator_input_digest_ci_pipeline(input: TestClaimTypedInput<CiPipeline>) -> Hash {
-  ci_pipeline_cache_digest(p: input.evaluator_input)
-}
-
-
 fn test_claim_evaluator_digest_node(input: TestClaimTypedInput<Node>) -> Hash {
   combine_hash(
     a: test_claim_symbol_digest(sym: input.evaluator_pin),
     b: test_claim_evaluator_input_digest_node(input: input)
-  )
-}
-
-
-fn test_claim_evaluator_digest_ci_pipeline(input: TestClaimTypedInput<CiPipeline>) -> Hash {
-  combine_hash(
-    a: test_claim_symbol_digest(sym: input.evaluator_pin),
-    b: test_claim_evaluator_input_digest_ci_pipeline(input: input)
   )
 }
 
@@ -514,34 +489,12 @@ fn test_claim_cache_interpretation_hash_node(subject: TestClaimEvalSubject<Node>
 }
 
 
-fn test_claim_cache_interpretation_hash_ci_pipeline(subject: TestClaimEvalSubject<CiPipeline>) -> Hash {
-  combine_hash(
-    a: inferred_tree_digest(tree: subject.tree),
-    b: combine_hash(
-      a: test_claim_interpretation_pin_digest(context: subject.context),
-      b: test_claim_evaluator_digest_ci_pipeline(input: subject.input)
-    )
-  )
-}
-
-
 fn test_claim_cache_receipt_node(subject: TestClaimEvalSubject<Node>) -> TestClaimCacheReceipt<Node> {
   TestClaimCacheReceipt {
     key: TestClaimCacheKey {
       eval_subject: subject,
       claim_hash: test_claim_claim_hash_digest(c: subject.claim),
       interpretation_hash: test_claim_cache_interpretation_hash_node(subject: subject)
-    }
-  }
-}
-
-
-fn test_claim_cache_receipt_pinned(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimCacheReceipt<CiPipeline> {
-  TestClaimCacheReceipt {
-    key: TestClaimCacheKey {
-      eval_subject: subject,
-      claim_hash: test_claim_claim_hash_digest(c: subject.claim),
-      interpretation_hash: test_claim_cache_interpretation_hash_ci_pipeline(subject: subject)
     }
   }
 }

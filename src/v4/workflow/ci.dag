@@ -25,6 +25,16 @@ import v4.lens.affected_set {
   affected_set_rerun_nodes
 }
 import v4.std.change { AffectedSet }
+import v4.compiler.eval {
+  EvalContext,
+  TestClaimCacheKey,
+  TestClaimCacheReceipt,
+  TestClaimEvalSubject,
+  TestClaimTypedInput,
+  inferred_tree_digest,
+  test_claim_claim_hash_digest,
+  test_claim_interpretation_pin_digest
+}
 import v4.std.node {
   Atom,
   Hash,
@@ -33,7 +43,7 @@ import v4.std.node {
   TypeNode,
   combine_hash,
   content_hash,
-  scalar_char_hash
+  scalar_int_hash
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -344,7 +354,7 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 
 
 fn ci_char_cache_digest(c: Char) -> Hash {
-  scalar_char_hash(c: c)
+  scalar_int_hash(i: c)
 }
 
 
@@ -447,6 +457,47 @@ fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
       }
     )
   )
+}
+
+
+fn test_claim_typed_input_ci_pipeline(
+  evaluator_input: CiPipeline,
+  evaluator_pin: Symbol
+) -> TestClaimTypedInput<CiPipeline> {
+  TestClaimTypedInput {
+    evaluator_input: evaluator_input,
+    evaluator_pin: evaluator_pin
+  }
+}
+
+
+fn ci_test_claim_evaluator_digest(input: TestClaimTypedInput<CiPipeline>) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: input.evaluator_pin),
+    b: ci_pipeline_cache_digest(p: input.evaluator_input)
+  )
+}
+
+
+fn ci_test_claim_cache_interpretation_hash(subject: TestClaimEvalSubject<CiPipeline>) -> Hash {
+  combine_hash(
+    a: inferred_tree_digest(tree: subject.tree),
+    b: combine_hash(
+      a: test_claim_interpretation_pin_digest(context: subject.context),
+      b: ci_test_claim_evaluator_digest(input: subject.input)
+    )
+  )
+}
+
+
+fn test_claim_cache_receipt_pinned(subject: TestClaimEvalSubject<CiPipeline>) -> TestClaimCacheReceipt<CiPipeline> {
+  TestClaimCacheReceipt {
+    key: TestClaimCacheKey {
+      eval_subject: subject,
+      claim_hash: test_claim_claim_hash_digest(c: subject.claim),
+      interpretation_hash: ci_test_claim_cache_interpretation_hash(subject: subject)
+    }
+  }
 }
 
 
