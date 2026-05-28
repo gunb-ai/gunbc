@@ -1607,6 +1607,7 @@ fn go_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
+// 🟡 needs-more-work · E-6(b) bounded-exception · scaffold feature:go-language-model-consumer · dissolve-on: GoLanguageModel registry/T-11 consumes `go_language_model_wave1()` as the Go target carrier.
 fn go_language_model_wave1() -> GoLanguageModel {
   GoLanguageModel {
     lex: go_wave1_lex(),
