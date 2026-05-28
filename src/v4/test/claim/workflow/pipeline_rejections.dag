@@ -170,7 +170,6 @@ data inferred_type_symbol: Symbol = inferred_type_symbol
 data inferred_algebra_symbol: Symbol = inferred_algebra_symbol
 data inferred_descent_not_derived: Symbol = inferred_descent_not_derived
 data pipeline_interpretation_pin: Symbol = pipeline_interpretation_pin
-// 🟡 typed-input bridge scaffold — T22-EVAL-TYPED-INPUT-BRIDGE
 
 
 fn pipeline_symbol_node(s: Symbol) -> Node {
