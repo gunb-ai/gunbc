@@ -11,11 +11,7 @@ import v4.std.algebra {
 }
 import v4.compiler.target_carriers { LanguageModel, TargetModel }
 import v4.extdeps.languages.rust { rust_mvp1_target_model }
-import v4.extdeps.runtimes.v4_evaluator {
-  V4EvaluatorRuntime,
-  v4_evaluator_runtime_id,
-  v4_evaluator_runtime_wave1
-}
+import v4.extdeps.runtimes.v4_evaluator { V4EvaluatorRuntime, v4_evaluator_runtime_wave1 }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
 import v4.std.witness { Holds, Violates, Witness }
 
@@ -238,7 +234,7 @@ fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) ->
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
     && (inputs.snapshot.language_model == seed_capability_language_model())
     && (inputs.target_model == rust_mvp1_target_model())
-    && (inputs.runtime_model.runtime_identity == v4_evaluator_runtime_id)
+    && (inputs.runtime_model == v4_evaluator_runtime_wave1())
 }
 
 // 🟡 needs-more-work — feature:t21-footprint-snapshot-walk — scaffold:T-32 Phase 1 · dissolve-on: deeper snapshot walk PR lands; constructs remain four frozen-submodel subset carriers until snapshot Node walk derives them.
