@@ -127,6 +127,12 @@ type GrammarSchemaProbe {
 }
 
 
+type GrammarSchemaProbeBinding {
+  schema: GrammarSchema
+  probe: GrammarSchemaProbe
+}
+
+
 type ParseTree = Node
 
 
