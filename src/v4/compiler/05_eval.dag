@@ -467,9 +467,14 @@ fn test_claim_variant_cache_digest(c: TestClaim) -> Hash {
 fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
   let nodes_digest = test_claim_evaluation_nodes_digest(c: c)
   match c {
+    CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
+      nodes_digest
     DiagnosticClaim { expected_rejection: e, label: _, anchor: _, classification: _, input: _ } =>
       combine_hash(a: nodes_digest, b: non_empty_diagnostics_cache_digest(d: e))
-    _ => nodes_digest
+    EqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } =>
+      nodes_digest
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      nodes_digest
   }
 }
 

@@ -16,6 +16,7 @@ import v4.compiler.eval {
   test_claim_no_correction_ambiguous_intent_tag,
   test_claim_typed_input_node
 }
+import v4.extdeps.runtimes.v4_evaluator { v4_evaluator_interpretation_structure_witness }
 import v4.compiler.infer { InferredTree }
 import v4.test.claim.lens_common.infer_fixture { claim_atom_node }
 import v4.std.collection { List, Map }
@@ -29,7 +30,7 @@ import v4.std.diagnostic {
   node_locus,
   port_locus
 }
-import v4.std.node { Atom, Hash, Node, Symbol, TypeNode }
+import v4.std.node { Atom, Hash, Node, Symbol, TypeNode, byte_offset_cache_digest }
 import v4.std.verification {
   CompilesClaim,
   DiagnosticClaim,
@@ -205,17 +206,27 @@ fn tcc_cache_ineligible_interpretation_digest_differs() -> Bool {
     context: eval_context_with_semantics(
       runtime_identity: tcc_cache_ineligible_pin_a,
       interpretation: eval_default_interpretation(),
-      interpretation_binding_tag: tcc_cache_ineligible_pin_a
+      structure_witness: v4_evaluator_interpretation_structure_witness()
     )
   )
   let digest_b = test_claim_interpretation_cache_digest(
     context: eval_context_with_semantics(
       runtime_identity: tcc_cache_ineligible_pin_b,
       interpretation: eval_default_interpretation(),
-      interpretation_binding_tag: tcc_cache_ineligible_pin_b
+      structure_witness: v4_evaluator_interpretation_structure_witness()
     )
   )
   digest_a != digest_b
+}
+
+// 256^9 - 1 — largest offset representable within byte_offset_cache_digest_max_limbs (9 base-256 limbs).
+data tcc_cache_byte_offset_exact_ceiling: Int = 68719476735
+// 256^9 — first offset that exhausts the limb budget with nonzero remainder.
+data tcc_cache_byte_offset_over_ceiling: Int = 68719476736
+
+fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
+  byte_offset_cache_digest(i: tcc_cache_byte_offset_exact_ceiling) !=
+    byte_offset_cache_digest(i: tcc_cache_byte_offset_over_ceiling)
 }
 
 fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnostic>) -> TestClaim {
@@ -393,5 +404,15 @@ data claim_test_claim_cache_ineligible_interpretation_digest_differs: TestClaim 
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_ineligible_interpretation_digest_differs()),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_ceiling_digest_differs: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: byte_offset exact ceiling does not alias over-ceiling remainder",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling()
+  ),
   expected_value: tcc_cache_pass_node()
 }
