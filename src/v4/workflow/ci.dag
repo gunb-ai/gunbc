@@ -73,6 +73,8 @@ type CiCommand
   | LensCiCommand { required_lenses: List<LensIdV0> }
   | BootstrapStageCompile { produces: Symbol }
   | M1RustEmitProbeCommand
+  // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step (scripts/v4-testclaim-corpus-gate.sh) when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; ci_select_from_affected_set narrows roster to content_hash frontier before evaluation — forbidden: bypassing affected-set selection or running full corpus unconditionally.
+  | TestClaimCorpusEvalCommand
 
 type CiJob {
   id: Symbol
@@ -116,9 +118,11 @@ type M1CiLiveWorkflowSignal {
 data v2_compile_src_v4: Symbol = v2_compile_src_v4
 data lens_ci_registry_execution: Symbol = lens_ci_registry_execution
 data m1_rust_emit_probe_execution: Symbol = m1_rust_emit_probe_execution
+data testclaim_corpus_eval_execution: Symbol = testclaim_corpus_eval_execution
 data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
 data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
+data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
 
 data lens_ci_required_lenses: List<LensIdV0> = [
   Complexity,
@@ -159,6 +163,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: m1_rust_emit_probe_execution,
       command: M1RustEmitProbeCommand,
       needs: [v2_compile_src_v4]
+    },
+    CiJob {
+      id: testclaim_corpus_eval_execution,
+      command: TestClaimCorpusEvalCommand,
+      needs: [v2_compile_src_v4]
     }
   ],
   gates: [
@@ -176,6 +185,11 @@ data ci_pipeline: Outcome<CiPipeline> = ci_pipeline_well_formed(p: CiPipeline {
       id: m1_rust_emit_probe_signal,
       job: m1_rust_emit_probe_execution,
       run_policy: Always
+    },
+    CiGate {
+      id: testclaim_corpus_eval_signal,
+      job: testclaim_corpus_eval_execution,
+      run_policy: RequiresJobAttempt { job: v2_compile_src_v4 }
     }
   ]
 })
@@ -300,6 +314,7 @@ fn ci_command_authority_ok(c: CiCommand) -> Bool {
     LensCiCommand { required_lenses } => lens_registry_ids_resolve(lens_ids: required_lenses)
     BootstrapStageCompile { produces: pr } => bootstrap_stage_output(plan: bootstrap_plan, s: pr)
     M1RustEmitProbeCommand => true
+    TestClaimCorpusEvalCommand => true
   }
 }
 
@@ -315,6 +330,7 @@ data ci_cache_cmd_ignored_test_tag: Symbol = ci_cache_cmd_ignored_test_tag
 data ci_cache_cmd_lens_ci_tag: Symbol = ci_cache_cmd_lens_ci_tag
 data ci_cache_cmd_bootstrap_compile_tag: Symbol = ci_cache_cmd_bootstrap_compile_tag
 data ci_cache_cmd_m1_probe_tag: Symbol = ci_cache_cmd_m1_probe_tag
+data ci_cache_cmd_testclaim_corpus_eval_tag: Symbol = ci_cache_cmd_testclaim_corpus_eval_tag
 data ci_cache_gate_policy_always_tag: Symbol = ci_cache_gate_policy_always_tag
 data ci_cache_gate_policy_requires_job_tag: Symbol = ci_cache_gate_policy_requires_job_tag
 data ci_cache_jobs_empty_tag: Symbol = ci_cache_jobs_empty_tag
