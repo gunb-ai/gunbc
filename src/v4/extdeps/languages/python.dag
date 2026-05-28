@@ -981,9 +981,6 @@ fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
   }
 }
 
-// 🟡 gated — feature:python-formal-grammar-expr-shim-fold-state — bind TASKS.md T-7 / operator
-// fold_non_empty_right review — dissolve-on: std-derived FormalProduction→GrammarExpr fold
-// replaces these operational lowering carriers in the same commit train.
 // 🟡 gated — feature:python-formal-rhs-to-expr-shim-fold — bind TASKS.md T-7 / CP-1b —
 // interim fold carrier for FormalProduction.rhs → GrammarExpr Sequence lowering only;
 // dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
