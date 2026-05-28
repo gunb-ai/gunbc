@@ -3,7 +3,8 @@
 // Scope: canonical formal grammar types — Terminal, Nonterminal, Production, Grammar
 // Owns: Terminal, Nonterminal, GrammarSymbol, Production, Grammar
 // Consumes: v4.std.node, v4.std.collection
-// Status: single authority per INVARIANTS P2
+// Status: substrate canonical declaration; v4.compiler.parse operational grammar types
+//         gate to converge here under feature:CP-1b-bidirectional-grammar-carrier (TASKS.md T-6/T-7).
 
 module v4.std.grammar
 
@@ -27,6 +28,7 @@ type Nonterminal {
   identity: Symbol
 }
 
+// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 // "What is an element of the grammar vocabulary (N ∪ Σ)?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar#Formal_definition
 // A grammar symbol is either a terminal or a nonterminal. Sequences of
@@ -45,6 +47,8 @@ type Production {
   rhs: List<GrammarSymbol>
 }
 
+// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — bind TASKS.md T-6/T-7 — dissolve-on: v4.compiler.parse grammar types (Grammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
+// 🟡 N∩Σ disjointness — feature:grammar-disjointness-witness — Terminal and Nonterminal both carry identity: Symbol; a value with the same Symbol can appear in both nonterminals and terminals sets, making N∩Σ overlap representable. Dissolve-on: branded identity types (TerminalId ≠ NonterminalId) or a WellFormedGrammar witness carrying structural proof that nonterminals ∩ terminals = ∅.
 // "What is a formal grammar?"
 // Ref: https://en.wikipedia.org/wiki/Formal_grammar
 // G = (N, Σ, P, S) — the four-component definition of a formal language:
