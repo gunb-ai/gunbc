@@ -142,7 +142,7 @@ type Inputs {
 }
 
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_registered.
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_registered / eval_context_with_semantics.
 type EvalContext {
   cache_authority: InterpretationCacheAuthority
 }
