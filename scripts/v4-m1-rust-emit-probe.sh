@@ -113,12 +113,16 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   if [[ -n "${GITHUB_ACTIONS:-}" && -z "$rustc_timeout" ]]; then
     rustc_timeout=600
   fi
+  # Cap parallelism: many concurrent CI runs each fan out rustc workers through
+  # ctrl-build wrappers; without a cap the aggregate process count can reach swap
+  # on shared self-hosted runners (incident 2026-05-28).
+  cargo_check_jobs="${V4_M1_CARGO_CHECK_JOBS:-4}"
   set +e
   if [[ -n "$rustc_timeout" ]]; then
     timeout --preserve-status "$rustc_timeout" \
-      "$cargo_bin" check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
+      "$cargo_bin" check --jobs "$cargo_check_jobs" --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
   else
-    "$cargo_bin" check --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
+    "$cargo_bin" check --jobs "$cargo_check_jobs" --manifest-path "$out/Cargo.toml" 2>&1 | tee "$rustc_log"
   fi
   rustc_status=${PIPESTATUS[0]}
   set -e
