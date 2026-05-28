@@ -12,6 +12,9 @@ import v4.lens.registry {
   Idempotency,
   LensIdV0,
   Parallelism,
+  Provenance,
+  StructuralResolution,
+  TableDecisionTree,
   UnusedParameters,
   lens_registry_ids_resolve
 }
@@ -464,7 +467,7 @@ fn ci_gate_cache_digest(g: CiGate) -> Hash {
 }
 
 
-// IRT-4 / T-22: canonical CiPipeline content digest for TestClaim cache keys (jobs + gates, order-sensitive).
+// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: content_hash(Node projection of CiPipeline) replaces this hand-rolled coproduct digest fold; interim TestClaim pinned-evaluator cache authority only.
 fn ci_pipeline_cache_digest(p: CiPipeline) -> Hash {
   combine_hash(
     a: fold_list(
