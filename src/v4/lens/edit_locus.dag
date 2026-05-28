@@ -7,7 +7,7 @@
 module v4.lens.edit_locus
 
 import v4.compiler.infer { InferredTree }
-import v4.lens.affected_set { AffectedSetReading, affected_set }
+import v4.lens.affected_set { AffectedSetReading, affected_set_reading }
 import v4.std.algebra { Cons, Empty, FreeMonoid, count_equal, length, list_append }
 import v4.std.collection { List }
 import v4.std.diagnostic {
@@ -191,7 +191,7 @@ fn affected_set_reading_from_git_diff(
     bindings: bindings
   ) {
     Holds { value: locus } =>
-      Holds { value: affected_set(graph: graph, edit_locus: locus) }
+      Holds { value: affected_set_reading(graph: graph, edit_locus: locus) }
     Violates { diagnostic: d } =>
       Violates { diagnostic: d }
   }

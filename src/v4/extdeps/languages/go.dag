@@ -1,6 +1,12 @@
 // src/v4/extdeps/languages/go.dag
 // Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, T-11 MVP-1 grammar-data target model.
+<<<<<<< HEAD
 // Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance/laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+=======
+// Owns: SignedIntWidth, UnsignedIntWidth, GoFloatWidth, GoComplexWidth, GoScalarKind, GoScalar, GoChannelDirection, GoExportLocus, GoExportStatus, GoChannel, GoCost, GoBuiltinIntegerArithmeticOverflow, GoIntegerOverflowDisposition, GoIntegerPrimitiveFacts, GoFloatPrimitiveFacts, GoComplexPrimitiveFacts, GoBoolPrimitiveFacts, GoStringPrimitiveFacts, go_*_facts_catalog, go_*_primitive_bundle, go_model_core_wave1, go_bool_grounding, GoGramBuild1State.
+// Consumes: v4.std.collection, v4.std.model_core, v4.std.node, v4.std.logic, v4.std.algebra.
+// Status: T-4 go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; inhabitance populated via `go_model_core_inhabitance_decls()`; laws/effects/partiality empty (wave-2+); `go_model_core_wave1` is 🟡 E-6(b) consumer-less until GoLanguageModel lands (T-11); bool canonical-B decl-ref — 🟡 E-6(b) staging.
+>>>>>>> origin/main
 // Anchor: https://go.dev/ref/spec
 
 module v4.extdeps.languages.go
@@ -23,6 +29,7 @@ import v4.compiler.tokenize {
 import v4.compiler.target_carriers { TargetModel }
 import v4.std.collection { List, Map, empty_map, map_insert }
 import v4.std.model_core {
+  AlgebraInhabitanceDecl,
   EffectSemanticsDecl,
   ModelCore,
   PartialitySemanticsDecl,
@@ -53,7 +60,17 @@ import v4.std.target_model {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.witness { Holds, Violates }
-import v4.std.algebra { BooleanAlgebra, Empty, fold_list, list_append, list_snoc_item }
+import v4.std.algebra {
+  BooleanAlgebra,
+  approximate_field_node,
+  boolean_algebra_node,
+  Empty,
+  fold_list,
+  free_monoid_node,
+  list_append,
+  list_snoc_item,
+  ordered_ring_node
+}
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -221,6 +238,10 @@ data go_inhabitant_int: Symbol = go_inhabitant_int
 data go_inhabitant_field_atom: Symbol = go_inhabitant_field_atom
 data go_inhabitant_field_facts: Symbol = go_inhabitant_field_facts
 data go_inhabitant_field_int: Symbol = go_inhabitant_field_int
+data go_witness_integer_ordered_ring: Symbol = go_witness_integer_ordered_ring
+data go_witness_float_approximate_field: Symbol = go_witness_float_approximate_field
+data go_witness_bool_boolean_algebra: Symbol = go_witness_bool_boolean_algebra
+data go_witness_string_free_monoid: Symbol = go_witness_string_free_monoid
 
 data go_token_kw_func: Symbol = go_token_kw_func
 data go_token_kw_return: Symbol = go_token_kw_return
@@ -952,6 +973,200 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
+fn go_integer_algebra_witness_node(facts: GoIntegerPrimitiveFacts) -> Node {
+  match facts {
+    GoSignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width: _,
+      encoding: _,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_witness_integer_ordered_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ]
+    }
+    GoUnsignedIntegerPrimitiveFacts {
+      surface_spelling: _,
+      width: _,
+      encoding: _,
+      std_projection
+    } => Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        go_named_edge(
+          name: go_witness_integer_ordered_ring,
+          target: go_inhabitant_atom(id: go_witness_integer_ordered_ring)
+        ),
+        go_named_edge(
+          name: go_facts_field_std_projection,
+          target: go_inhabitant_atom(id: std_projection)
+        )
+      ]
+    }
+  }
+}
+
+fn go_float_algebra_witness_node(facts: GoFloatPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_float_approximate_field,
+        target: go_inhabitant_atom(id: go_witness_float_approximate_field)
+      ),
+      go_named_edge(
+        name: go_facts_field_ieee754_binary,
+        target: go_inhabitant_atom(id: facts.ieee754_binary)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_bool_algebra_witness_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_bool_boolean_algebra,
+        target: go_inhabitant_atom(id: go_witness_bool_boolean_algebra)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: go_facts_bool.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_string_algebra_witness_node(facts: GoStringPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      go_named_edge(
+        name: go_witness_string_free_monoid,
+        target: go_inhabitant_atom(id: go_witness_string_free_monoid)
+      ),
+      go_named_edge(
+        name: go_facts_field_encoding,
+        target: go_inhabitant_atom(id: facts.encoding)
+      ),
+      go_named_edge(
+        name: go_facts_field_std_projection,
+        target: go_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
+fn go_string_element_node() -> Node {
+  go_integer_facts_node(facts: go_facts_uint8)
+}
+
+fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_integer_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: ordered_ring_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_integer_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_float_algebra_inhabitance(facts: GoFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_float_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: approximate_field_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_float_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
+  let inhabitant = go_bool_facts_node(facts: go_facts_bool)
+  AlgebraInhabitanceDecl {
+    algebra: boolean_algebra_node(inhabitant: inhabitant),
+    inhabitant: inhabitant,
+    witness: go_bool_algebra_witness_node()
+  }
+}
+
+fn go_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_integer_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_integer_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_float_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_float_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> AlgebraInhabitanceDecl {
+  let inhabitant = go_string_facts_node(facts: facts)
+  AlgebraInhabitanceDecl {
+    algebra: free_monoid_node(inhabitant: go_string_element_node()),
+    inhabitant: inhabitant,
+    witness: go_string_algebra_witness_node(facts: facts)
+  }
+}
+
+fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  fold_list(
+    xs: go_string_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(xs: acc, item: go_string_algebra_inhabitance(facts: facts))
+    }
+  )
+}
+
+// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — tracked in src/v4/TASKS.md
+fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  []
+}
+
+fn go_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  [
+    go_bool_algebra_inhabitance()
+  ]
+}
+
+fn go_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: go_integer_algebra_inhabitance_decls(),
+          right: go_float_algebra_inhabitance_decls()
+        ),
+        right: go_bool_algebra_inhabitance_decls()
+      ),
+      right: go_string_algebra_inhabitance_decls()
+    ),
+    right: go_complex_algebra_inhabitance_decls()
+  )
+}
+
 // 🟡 needs-more-work — feature:go-language-model-wave1-consumer — E-6(b) bounded
 // exception — scaffold: T-4 go slice has no GoLanguageModel carrier yet (lex / grammar /
 // MVP are T-11 rust-first specialization follow-on). Dissolve-on: GoLanguageModel lands and
@@ -959,7 +1174,7 @@ fn go_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
 fn go_model_core_wave1() -> ModelCore {
   ModelCore {
     primitives: go_wave1_primitive_fact_bundles(),
-    inhabitance: [],
+    inhabitance: go_model_core_inhabitance_decls(),
     laws: [],
     effects: EffectSemanticsDecl { operations: [] },
     partiality: PartialitySemanticsDecl { operations: [] }

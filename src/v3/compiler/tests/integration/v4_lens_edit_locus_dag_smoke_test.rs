@@ -89,8 +89,12 @@ fn v4_lens_edit_locus_module_authority_and_entrypoints() {
         "{EDIT_LOCUS_PATH}: module path"
     );
     assert!(
-        import_includes_name(&module, &["v4", "lens", "affected_set"], "affected_set"),
-        "{EDIT_LOCUS_PATH}: must import affected_set"
+        import_includes_name(
+            &module,
+            &["v4", "lens", "affected_set"],
+            "affected_set_reading"
+        ),
+        "{EDIT_LOCUS_PATH}: must import affected_set_reading"
     );
     assert!(
         surface_declares_fn(&module, "resolve_edit_locus"),

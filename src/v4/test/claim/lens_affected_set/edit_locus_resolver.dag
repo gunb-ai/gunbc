@@ -21,7 +21,8 @@ import v4.std.witness { Holds, Violates, Witness }
 import v4.test.claim.lens_affected_set.node_precision {
   affected_set_claim_tree,
   affected_set_mid,
-  affected_set_mid_to_leaf_dependency
+  affected_set_mid_to_leaf_frontier_dependency,
+  affected_set_root_to_mid_frontier_dependency
 }
 
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v4/lens/affected_set.dag"
@@ -83,8 +84,8 @@ fn edit_locus_affected_set_wire_holds() -> Bool {
   ) {
     Holds { value: reading } =>
       (reading.edit_locus == affected_set_mid)
-        && (length(xs: reading.affected) == 2)
-        && (reading.dependencies == [affected_set_mid_to_leaf_dependency])
+        && (length(xs: reading.affected) == 3)
+        && (reading.dependencies == [affected_set_root_to_mid_frontier_dependency, affected_set_mid_to_leaf_frontier_dependency])
     Violates { diagnostic: _ } => false
   }
 }
