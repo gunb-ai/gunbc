@@ -531,18 +531,26 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 
 fn test_claim_interpretation_cache_digest(context: EvalContext) -> Hash {
   let authority = context.cache_authority
-  let witness = interpretation_registry_semantics_digest(
+  let registry_witness = interpretation_registry_semantics_digest(
     runtime_identity: authority.runtime_identity,
     interpretation: authority.interpretation
   )
-  combine_hash(
-    a: test_claim_symbol_digest(sym: authority.runtime_identity),
-    b: if authority.semantics_digest == witness {
-      authority.semantics_digest
-    } else {
-      test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
-    }
-  )
+  if registry_witness == authority.semantics_digest {
+    combine_hash(
+      a: test_claim_symbol_digest(sym: authority.runtime_identity),
+      b: authority.semantics_digest
+    )
+  } else if authority.semantics_digest
+    != test_claim_symbol_digest(sym: test_claim_cache_interpretation_registry_unbound_tag)
+    && authority.semantics_digest
+      != test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag) {
+    combine_hash(
+      a: test_claim_symbol_digest(sym: authority.runtime_identity),
+      b: authority.semantics_digest
+    )
+  } else {
+    test_claim_symbol_digest(sym: test_claim_cache_interpretation_semantics_mismatch_tag)
+  }
 }
 
 
