@@ -16,9 +16,9 @@ import v4.compiler.compile {
 import v4.compiler.eval {
   TestClaimEvalSubject,
   TestClaimRun,
-  TestClaimTypedInput,
   run_test_claim_assert,
-  test_claim_cache_receipt
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
 }
 import v4.compiler.translate {
   target_serialize_source_from_model,
@@ -60,9 +60,8 @@ import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model { TargetModel }
 import v4.test.claim.lens_common.infer_fixture { claim_inferred_facts_witness }
 import v4.test.claim.manual.infer_ground_add_mvp {
-  claim_hash_placeholder,
   infer_receipt_context,
-  interpretation_hash_placeholder
+  infer_receipt_input_infer_add_mvp
 }
 import v4.std.cardinality { TerminationProof, termination_proof_witness_for_node }
 import v4.std.collection { Map, empty_map }
@@ -487,16 +486,15 @@ data subject_mvp1_emit_add_fn_accepts: TestClaimEvalSubject<Node> = TestClaimEva
   claim: claim_mvp1_emit_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
 data run_mvp1_emit_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_emit_add_fn_accepts,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_emit_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_emit_add_fn_accepts,
     actual: mvp1_emit_claim_outcome(),
@@ -511,16 +509,15 @@ data subject_mvp1_compile_inferred_add_fn_accepts: TestClaimEvalSubject<Node> = 
   claim: claim_mvp1_compile_inferred_add_fn_accepts,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
 data run_mvp1_compile_inferred_add_fn_accepts: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_compile_inferred_add_fn_accepts,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_compile_inferred_add_fn_accepts),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_compile_inferred_add_fn_accepts,
     actual: mvp1_compile_inferred_claim_outcome(),
@@ -566,16 +563,15 @@ data subject_mvp1_serialize_rejects_missing_translation_rules: TestClaimEvalSubj
   claim: claim_mvp1_serialize_rejects_missing_translation_rules,
   context: infer_receipt_context(),
   tree: mvp1_rust_inferred_tree,
-  input: TestClaimTypedInput { evaluator_input: mvp1_rust_emitted_root }
+  input: test_claim_typed_input_node(
+    evaluator_input: mvp1_rust_emitted_root,
+    evaluator_pin: infer_receipt_input_infer_add_mvp
+  )
 }
 
 
 data run_mvp1_serialize_rejects_missing_translation_rules: TestClaimRun<Node, Node> = TestClaimRun {
-  cache: test_claim_cache_receipt(
-    subject: subject_mvp1_serialize_rejects_missing_translation_rules,
-    claim_hash: claim_hash_placeholder,
-    interpretation_hash: interpretation_hash_placeholder
-  ),
+  cache: test_claim_cache_receipt(subject: subject_mvp1_serialize_rejects_missing_translation_rules),
   verdict: run_test_claim_assert(
     claim: claim_mvp1_serialize_rejects_missing_translation_rules,
     actual: mvp1_serialize_reject_claim_outcome(),
