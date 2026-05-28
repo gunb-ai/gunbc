@@ -553,7 +553,7 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 }
 
 
-// P2/P3: interpretation cache key component is a coproduct — not a bare Hash sentinel.
+// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
 type InterpretationCacheDigestAuthority
   = InterpretationCacheRegistered {
       runtime_identity: Symbol,

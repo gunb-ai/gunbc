@@ -461,7 +461,7 @@ fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
 fn byte_offset_byte_digest(b: Int) -> Hash {
   combine_hash(
     a: atom_identity_hash(s: canonical_tag_byte_offset_byte),
-    b: byte_limb_hash_peano_digest(i: b)
+    b: byte_limb_hash_peano_digest(limb: b)
   )
 }
 
