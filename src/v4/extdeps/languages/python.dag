@@ -1333,18 +1333,19 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         ],
         emitted: python_surface_fn_item
       ),
+      // Left-biased Choice: longer/recursive suite alt must precede single-stmt alt.
       python_formal_productions_to_grammar_production(
         prods: [
-          python_formal_authority_prod(
-            lhs: python_production_suite,
-            rhs: [python_formal_sym_nonterminal(symbol: python_production_stmt)]
-          ),
           python_formal_authority_prod(
             lhs: python_production_suite,
             rhs: [
               python_formal_sym_nonterminal(symbol: python_production_stmt),
               python_formal_sym_nonterminal(symbol: python_production_suite)
             ]
+          ),
+          python_formal_authority_prod(
+            lhs: python_production_suite,
+            rhs: [python_formal_sym_nonterminal(symbol: python_production_stmt)]
           )
         ],
         emitted: python_surface_suite
@@ -1433,16 +1434,17 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         ],
         emitted: python_surface_comparison
       ),
+      // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
         prods: [
-          python_formal_authority_prod(lhs: python_production_comparison_tail, rhs: Empty),
           python_formal_authority_prod(
             lhs: python_production_comparison_tail,
             rhs: [
               python_formal_sym_terminal(symbol: python_token_greater),
               python_formal_sym_nonterminal(symbol: python_production_additive)
             ]
-          )
+          ),
+          python_formal_authority_prod(lhs: python_production_comparison_tail, rhs: Empty)
         ],
         emitted: python_surface_comparison_tail
       ),
@@ -1458,9 +1460,9 @@ fn python_wave1_grammar_root() -> GrammarRoot {
         ],
         emitted: python_surface_additive
       ),
+      // Left-biased Choice: consuming alt before empty tail alt.
       python_formal_productions_to_grammar_production(
         prods: [
-          python_formal_authority_prod(lhs: python_production_additive_tail, rhs: Empty),
           python_formal_authority_prod(
             lhs: python_production_additive_tail,
             rhs: [
@@ -1468,7 +1470,8 @@ fn python_wave1_grammar_root() -> GrammarRoot {
               python_formal_sym_nonterminal(symbol: python_production_primary),
               python_formal_sym_nonterminal(symbol: python_production_additive_tail)
             ]
-          )
+          ),
+          python_formal_authority_prod(lhs: python_production_additive_tail, rhs: Empty)
         ],
         emitted: python_surface_additive_tail
       ),

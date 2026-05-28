@@ -400,10 +400,19 @@ fn v4_python_language_model_declares_t11_translation_rules() {
         ),
         "{PYTHON_LANGUAGE_PATH}: Python grammar rows must consume the shared FormalProduction Node projection"
     );
-    for name in ["GrammarExpr", "Sequence", "Terminal"] {
+    // Bounded FormalProduction → GrammarExpr operational parse shim (CP-1b interim):
+    // grammar rows import projection carriers only for python_formal_productions_to_grammar_expr.
+    for name in [
+        "GrammarExpr",
+        "Sequence",
+        "Terminal",
+        "Choice",
+        "Nonterminal",
+        "Optional",
+    ] {
         assert!(
-            !import_includes_name(&module, &["v4", "std", "grammar"], name),
-            "{PYTHON_LANGUAGE_PATH}: Python grammar rows must not import legacy nested GrammarExpr helper `{name}`"
+            import_includes_name(&module, &["v4", "std", "grammar"], name),
+            "{PYTHON_LANGUAGE_PATH}: operational parse shim must import `{name}` from v4.std.grammar"
         );
     }
     assert!(
