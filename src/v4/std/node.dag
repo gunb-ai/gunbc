@@ -606,14 +606,16 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
         }
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: within_ceiling_digest,
-        boundary_tag: boundary_tag
+        boundary_tag: boundary_tag,
+        residual_quotient: residual_quotient
       } =>
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: combine_hash(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: within_ceiling_digest
           ),
-          boundary_tag: boundary_tag
+          boundary_tag: boundary_tag,
+          residual_quotient: quotient
         }
       ByteOffsetOverCeiling {
         within_ceiling_digest: within_ceiling_digest,
@@ -624,7 +626,8 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
             a: byte_offset_byte_digest(b: quotient - (quotient / 256) * 256),
             b: within_ceiling_digest
           ),
-          boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable
+          boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+          residual_quotient: quotient
         }
     }
   }
@@ -652,14 +655,16 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
           }
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: peel_within_ceiling_digest,
-          boundary_tag: boundary_tag
+          boundary_tag: boundary_tag,
+          residual_quotient: residual_quotient
         } =>
           ByteOffsetCacheDigestIneligible {
             within_ceiling_digest: combine_hash(
               a: prefix,
               b: peel_within_ceiling_digest
             ),
-            boundary_tag: boundary_tag
+            boundary_tag: boundary_tag,
+            residual_quotient: tail
           }
         ByteOffsetOverCeiling {
           within_ceiling_digest: peel_within_ceiling_digest,
@@ -667,16 +672,19 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
         } =>
           ByteOffsetCacheDigestIneligible {
             within_ceiling_digest: combine_hash(a: prefix, b: peel_within_ceiling_digest),
-            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable
+            boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+            residual_quotient: tail
           }
       }
     ByteOffsetCacheDigestIneligible {
       within_ceiling_digest: within_ceiling_digest,
-      boundary_tag: boundary_tag
+      boundary_tag: boundary_tag,
+      residual_quotient: residual_quotient
     } =>
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: within_ceiling_digest,
-        boundary_tag: boundary_tag
+        boundary_tag: boundary_tag,
+        residual_quotient: residual_quotient
       }
   }
 }
@@ -688,13 +696,15 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
       ByteOffsetCacheEligible { digest: digest }
     ByteOffsetCacheDigestIneligible {
       within_ceiling_digest: within_ceiling_digest,
-      boundary_tag: boundary_tag
+      boundary_tag: boundary_tag,
+      residual_quotient: residual_quotient
     } =>
       ByteOffsetCacheIneligible {
         boundary_tag: boundary_tag,
-        witness: byte_offset_cache_digest_ineligible_hash(
+        witness: byte_offset_cache_digest_ineligible_witness_digest(
           within_ceiling_digest: within_ceiling_digest,
-          boundary_tag: boundary_tag
+          boundary_tag: boundary_tag,
+          quotient: residual_quotient
         )
       }
     ByteOffsetOverCeiling {
@@ -704,16 +714,18 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
       match byte_offset_cache_digest_overflow_tail_authority(quotient: quotient) {
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: tail_within_ceiling_digest,
-          boundary_tag: boundary_tag
+          boundary_tag: boundary_tag,
+          residual_quotient: residual_quotient
         } =>
           ByteOffsetCacheIneligible {
             boundary_tag: boundary_tag,
-            witness: byte_offset_cache_digest_ineligible_hash(
+            witness: byte_offset_cache_digest_ineligible_witness_digest(
               within_ceiling_digest: combine_hash(
                 a: within_ceiling_digest,
                 b: tail_within_ceiling_digest
               ),
-              boundary_tag: boundary_tag
+              boundary_tag: boundary_tag,
+              quotient: residual_quotient
             )
           }
         ByteOffsetWithinCeiling { digest: tail_digest } =>
@@ -732,12 +744,13 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
         } =>
           ByteOffsetCacheIneligible {
             boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
-            witness: byte_offset_cache_digest_ineligible_hash(
+            witness: byte_offset_cache_digest_ineligible_witness_digest(
               within_ceiling_digest: combine_hash(
                 a: within_ceiling_digest,
                 b: tail_within_ceiling_digest
               ),
-              boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable
+              boundary_tag: canonical_tag_byte_offset_overflow_residual_unrepresentable,
+              quotient: quotient
             )
           }
       }
@@ -790,14 +803,16 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
         }
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: within_ceiling_digest,
-        boundary_tag: boundary_tag
+        boundary_tag: boundary_tag,
+        residual_quotient: residual_quotient
       } =>
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: combine_hash(
             a: byte_offset_byte_digest(b: i - (i / 256) * 256),
             b: within_ceiling_digest
           ),
-          boundary_tag: boundary_tag
+          boundary_tag: boundary_tag,
+          residual_quotient: residual_quotient
         }
     }
   }
@@ -835,14 +850,16 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
         }
       ByteOffsetCacheDigestIneligible {
         within_ceiling_digest: within_ceiling_digest,
-        boundary_tag: boundary_tag
+        boundary_tag: boundary_tag,
+        residual_quotient: residual_quotient
       } =>
         ByteOffsetCacheDigestIneligible {
           within_ceiling_digest: combine_hash(
             a: atom_identity_hash(s: canonical_tag_byte_offset_neg),
             b: within_ceiling_digest
           ),
-          boundary_tag: boundary_tag
+          boundary_tag: boundary_tag,
+          residual_quotient: residual_quotient
         }
     }
   } else {
