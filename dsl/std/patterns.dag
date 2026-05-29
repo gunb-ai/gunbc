@@ -104,23 +104,6 @@ fn eq(a: String, b: String) -> Bool {
 // }
 
 // =====================================================================
-// UPSERT<T> canon (operator 2026-05-29; compiler stray-audit receipt)
-// =====================================================================
-// **Principle:** every operational "do this" in gunbc is an upsert — never a
-// blind write. The shape is fractal (same four steps at every scale):
-//
-//   1. **verify-first** — read current state; decide whether work is needed.
-//   2. **satisfy-dependencies-recursively** — each dependency is itself upsert<T>.
-//   3. **create-if-missing** — materialize only when verify says absent/wrong.
-//   4. **cache-on-content** — memoize by content identity (hash / structural eq),
-//      not by call count or wall clock.
-//
-// DSL patterns (`ensure`, `upsert`, `content_upsert`) and Rust compiler paths
-// (`ensure_optional_match_disj`, `regen_bootstrap --verify`,
-// `cached_compile_outcome`) must all exhibit this sequence. A function named
-// `apply_*` / `register_*` that overwrites without a verify step is a stray.
-//
-// =====================================================================
 // Composition Patterns
 // =====================================================================
 // Each pattern wires fundamental steps (or caller-supplied steps)
