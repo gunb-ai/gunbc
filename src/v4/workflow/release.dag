@@ -325,6 +325,7 @@ fn release_acyclic(jobs: List<ReleaseJob>) -> Bool {
   length(xs: release_kahn_fixpoint(jobs: jobs)) == 0
 }
 
+// 🟡 matrix-row validator dissolution — RELEASE_TODO §5 Phase 1 — dissolve-on-arrival: declared platform coproduct or YamlStatic `release_build_matrix` emission replaces tag-keyed OR over `cross`+`target`; forbidden: new supported platform rows without disposition.
 fn release_matrix_targets_well_formed(rows: List<ReleaseMatrixRow>) -> Bool {
   unique(xs: release_matrix_row_targets(rows: rows), eq: fn(left, right) { left == right })
     && length(xs: rows) == 4

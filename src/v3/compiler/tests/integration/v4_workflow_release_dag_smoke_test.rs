@@ -147,6 +147,7 @@ fn v4_workflow_release_semantics_modeled() {
     );
     assert!(
         RELEASE_DAG.contains("🟡 coproduct dissolution")
+            && RELEASE_DAG.contains("🟡 matrix-row validator dissolution")
             && RELEASE_DAG.contains("type ReleaseCommand"),
         "{RELEASE_DAG_PATH}: ReleaseCommand must carry Practice-4 coproduct dissolution mark"
     );
