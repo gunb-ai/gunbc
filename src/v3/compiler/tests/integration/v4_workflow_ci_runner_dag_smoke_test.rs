@@ -281,8 +281,12 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     let m1_step = workflow_step_block(CI_YML, step_name);
     assert!(
-        m1_step.contains("if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'"),
-        "{CI_YML_PATH}: `{step_name}` must run for v4 and workflow-policy changes"
+        m1_step.contains("if: needs.affected.outputs.v4 == 'true'"),
+        "{CI_YML_PATH}: `{step_name}` must run only when v4 is affected (workflow_policy uses binding smoke, not full-tree emit)"
+    );
+    assert!(
+        workflow_step_block(CI_YML, "M1 probe timeout fail-closed").contains("failure_class"),
+        "{CI_YML_PATH}: must fail-closed when M1 probe times out (non_blocking is for emitter/rustc gaps only)"
     );
     if non_blocking {
         assert!(

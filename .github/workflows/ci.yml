@@ -224,13 +224,31 @@ jobs:
     # M1: full-tree --target rust + rustc gap surface (TASKS.md T-24; r3 gates #98/#100 bridge).
     # Modeled authority: src/v4/workflow/ci.dag `m1_rust_emit_probe_signal` +
     # `m1_ci_live_workflow_signal` (feature:project-github-actions-landed; non-blocking).
+    # Full-tree emit is v4-surface only (workflow_policy uses binding smoke, not 280-module emit).
     - name: M1 v4 full-tree rust emit probe (v2 emit + cargo check)
-      if: needs.affected.outputs.v4 == 'true' || needs.affected.outputs.workflow_policy == 'true'
+      id: m1_rust_emit_probe
+      if: needs.affected.outputs.v4 == 'true'
       continue-on-error: true
       timeout-minutes: 20
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
       run: bash scripts/v4-m1-rust-emit-probe.sh
+    # Modeled non_blocking covers rustc/emitter gaps only — timeouts must fail the job.
+    - name: M1 probe timeout fail-closed
+      if: always() && needs.affected.outputs.v4 == 'true' && steps.m1_rust_emit_probe.outcome == 'failure'
+      run: |
+        set -euo pipefail
+        fc="${{ steps.m1_rust_emit_probe.outputs.failure_class }}"
+        completed="${{ steps.m1_rust_emit_probe.outputs.probe_completed }}"
+        if [[ "$fc" == "timeout" ]]; then
+          echo "::error::M1 rust emit probe timed out (failure_class=timeout)" >&2
+          exit 1
+        fi
+        if [[ "$completed" != "true" ]]; then
+          echo "::error::M1 rust emit probe step failed without completing (likely workflow step timeout SIGTERM)" >&2
+          exit 1
+        fi
+        echo "::notice::M1 probe step failed for non-blocking emitter/rustc gap surfacing (failure_class=${fc:-unknown})"
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'
       id: v4_bootstrap_compile

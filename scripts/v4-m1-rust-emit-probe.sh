@@ -14,8 +14,13 @@
 #   V4_M1_RUST_EMIT_LOG       — v2 compile log (default: ${OUT}.compile.log)
 #   V4_M1_RUSTC_LOG           — cargo check log (default: ${OUT}.rustc.log)
 #   V4_M1_RUST_EMIT_PROBE_STRICT — if 1, exit non-zero when compile or rustc fails
+#   V4_M1_COMPILE_TIMEOUT_SECS — optional timeout for v2 full-tree emit (CI: 480)
 #   V4_M1_RUSTC_TIMEOUT_SECS  — optional timeout for cargo check (CI: 600)
 #   V4_M1_CARGO_CHECK_JOBS    — parallelism cap for cargo check (default: 4)
+#
+# GitHub Actions outputs (when GITHUB_OUTPUT is set):
+#   probe_completed — "true" when the script reached the summary (not SIGTERM'd mid-flight)
+#   failure_class   — ok | timeout | compile_failed | rustc_failed | skipped | error
 
 set -euo pipefail
 
@@ -38,6 +43,21 @@ compile_log="${V4_M1_RUST_EMIT_LOG:-${out}.compile.log}"
 rustc_log="${V4_M1_RUSTC_LOG:-${out}.rustc.log}"
 summary="${out}.m1-probe-summary.txt"
 strict="${V4_M1_RUST_EMIT_PROBE_STRICT:-0}"
+probe_failure_class="ok"
+probe_completed="false"
+
+gha_output() {
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "probe_completed=${probe_completed}" >> "$GITHUB_OUTPUT"
+    echo "failure_class=${probe_failure_class}" >> "$GITHUB_OUTPUT"
+  fi
+}
+
+is_timeout_status() {
+  local status="$1"
+  # timeout(1): 124; SIGTERM: 143; SIGKILL: 137
+  [[ "$status" -eq 124 || "$status" -eq 143 || "$status" -eq 137 ]]
+}
 
 if [[ ! -x "$bin" ]]; then
   echo "error: v2-compiler not found at $bin (build v2-compiler --release first)" >&2
@@ -45,11 +65,16 @@ if [[ ! -x "$bin" ]]; then
     exit 1
   fi
   echo "::notice title=M1 rust emit probe::skipped — v2-compiler missing"
+  probe_failure_class="skipped"
+  probe_completed="true"
+  gha_output
   exit 0
 fi
 
 rm -rf "$out"
 mkdir -p "$(dirname "$compile_log")"
+
+trap 'gha_output' EXIT
 
 emit_notice() {
   local title="$1"
@@ -62,11 +87,24 @@ emit_notice() {
   fi
 }
 
-echo "=== M1: v2-compiler compile --target rust src/v4 ==="
+echo "=== M1: v2-compiler compile --target rust src/v4 (full source-root; content-hash cache TBD) ==="
+compile_timeout="${V4_M1_COMPILE_TIMEOUT_SECS:-}"
+if [[ -n "${GITHUB_ACTIONS:-}" && -z "$compile_timeout" ]]; then
+  compile_timeout=480
+fi
 set +e
-"$bin" compile --source-root src/v4 --output-dir "$out" --target rust 2>&1 | tee "$compile_log"
+if [[ -n "$compile_timeout" ]]; then
+  timeout --preserve-status "$compile_timeout" \
+    "$bin" compile --source-root src/v4 --output-dir "$out" --target rust 2>&1 | tee "$compile_log"
+else
+  "$bin" compile --source-root src/v4 --output-dir "$out" --target rust 2>&1 | tee "$compile_log"
+fi
 compile_status=${PIPESTATUS[0]}
 set -e
+if is_timeout_status "$compile_status"; then
+  probe_failure_class="timeout"
+  echo "::error::M1 v2 full-tree rust emit timed out (exit ${compile_status})" >&2
+fi
 
 compiled_receipt=""
 if [[ -f "$compile_log" ]]; then
@@ -126,6 +164,10 @@ if [[ "$compile_status" -eq 0 && -f "$out/Cargo.toml" ]]; then
   fi
   rustc_status=${PIPESTATUS[0]}
   set -e
+  if is_timeout_status "$rustc_status"; then
+    probe_failure_class="timeout"
+    echo "::error::M1 cargo check on emitted tree timed out (exit ${rustc_status})" >&2
+  fi
 else
   if [[ "$compile_status" -ne 0 ]]; then
     rustc_skip_reason="compile_failed (exit ${compile_status})"
@@ -199,6 +241,25 @@ fi
 
 echo "=== M1 probe summary written to ${summary} ==="
 
+probe_completed="true"
+
+if [[ "$probe_failure_class" != "timeout" ]]; then
+  if [[ "$compile_status" -ne 0 ]]; then
+    probe_failure_class="compile_failed"
+  elif [[ "$rustc_attempted" == "true" && "${rustc_status:-0}" -ne 0 ]]; then
+    probe_failure_class="rustc_failed"
+  else
+    probe_failure_class="ok"
+  fi
+fi
+
+# Infrastructure failures (timeout/kill) are never swallowed — even when the workflow
+# step is continue-on-error for emitter/rustc gap surfacing (modeled non_blocking).
+if [[ "$probe_failure_class" == "timeout" ]]; then
+  gha_output
+  exit 124
+fi
+
 if [[ "$strict" == "1" ]]; then
   if [[ "$compile_status" -ne 0 ]]; then
     exit "$compile_status"
@@ -212,4 +273,5 @@ if [[ "$strict" == "1" ]]; then
   fi
 fi
 
+gha_output
 exit 0
