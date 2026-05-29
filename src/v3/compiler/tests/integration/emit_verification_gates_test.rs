@@ -49,6 +49,7 @@ fn compile_fixture(fixture: &ProgramFixture) -> v3_compiler::Dag {
     }
 }
 
+#[allow(dead_code)] // used by `#[ignore]` toolchain tests below
 fn fixture_supports_target(fixture: &ProgramFixture, target: EmitVerificationTarget) -> bool {
     match target {
         EmitVerificationTarget::Rust => true,
