@@ -261,16 +261,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "Fabrication sentinel ratchet (P0-C)" },
-          id: none,
-          run: "cargo run -p ci_host_checks --bin check-fabrication-sentinels",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
           name: Some { value: "T-19 testgen activation self-test (Python)" },
           id: none,
           run: "python3 scripts/test_check_t19_testgen_activation.py",

@@ -116,6 +116,7 @@ type CiCommand
   | M1RustEmitProbeCommand
   // 🟡 gated — feature:t38-testclaim-corpus-eval — bind src/v4/TASKS.md T-38 — dissolve-on-arrival: delete scripts/v4-testclaim-corpus-gate.sh and the paired CI step when the modeled runner evaluates src/v4/test/claim/manual/*.dag via T-22 eval and emits structured TestClaimRun verdicts; selection_fn must equal ci_testclaim_corpus_selection_fn (ci_select_from_affected_set) — forbidden: setting selection_fn to any other symbol or bypassing narrowing to run full corpus unconditionally.
   | TestClaimCorpusEvalCommand { selection_fn: Symbol }
+  // 🟡 gated — feature:discipline-policy-p0c-fabrication — bind docs/design-ci-dag-overhaul.md A8 — dissolve-on-arrival: DisciplinePolicyCommand + host eval for fabrication_sentinel_p0c.dag (replaces deleted scripts/check-fabrication-sentinels.sh); forbidden: tools/ci_host_checks or cargo-run YAML mirrors.
 
 type CiJob {
   id: Symbol
@@ -1225,7 +1226,6 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
     || changed == "src/v4/workflow/ci.dag"
     || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci/")
     || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_affected_components")
-    || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_host_checks")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
 }

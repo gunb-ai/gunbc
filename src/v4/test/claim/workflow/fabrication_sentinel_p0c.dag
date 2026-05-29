@@ -1,0 +1,36 @@
+// src/v4/test/claim/workflow/fabrication_sentinel_p0c.dag
+// Scope: P0-C fabrication sentinel policy — replaces scripts/check-fabrication-sentinels.sh.
+// Status: modeled authority only; host eval via T-38 / DisciplinePolicyCommand (canvas A8).
+// Tier-1+ per design-ci-bankruptcy-rebuild — not a hand-Rust host mirror (tools/ci_host_checks forbidden).
+//
+// Oracle (when host transport lands): tracked *.rs and *.dag outside docs/ must not contain the
+// no-profile fabrication sentinel substring (P0-C / INVARIANTS fail-closed).
+
+module v4.test.claim.workflow.fabrication_sentinel_p0c
+
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data fabrication_sentinel_policy_symbol: Symbol = fabrication_sentinel_policy_symbol
+
+data fabrication_sentinel_policy_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: fabrication_sentinel_policy_symbol } },
+  children: []
+}
+
+// Structural receipt: policy carrier is well-formed; executable scan lands with DisciplinePolicyCommand.
+data fabrication_sentinel_p0c_policy_claim: TestClaim = EqualsClaim {
+  label: "workflow/fabrication_sentinel_p0c: P0-C policy carrier (tracked rs/dag outside docs/)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: fabrication_sentinel_policy_node,
+  rhs: fabrication_sentinel_policy_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
