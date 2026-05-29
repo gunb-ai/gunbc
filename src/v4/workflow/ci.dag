@@ -257,9 +257,7 @@ data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
 data ci_workflow_file: Symbol = ci_workflow_file
-data ci_runner_pool_m1_witness_violation: Symbol = ci_runner_pool_m1_witness_violation
 data ci_runner_pool_non_positive_capacity: Symbol = ci_runner_pool_non_positive_capacity
-data ci_runner_pool_non_positive_fanout: Symbol = ci_runner_pool_non_positive_fanout
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
@@ -669,8 +667,8 @@ fn ci_changed_path_affects_v3(changed: RepoPath) -> Bool {
 fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
   ci_repo_path_has_prefix(path: changed, prefix: "src/v4/")
     || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-mvp1")
-    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-m1")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-mvp1/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-m1/")
     || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-testclaim-")
     || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
     || changed == "Cargo.toml"
