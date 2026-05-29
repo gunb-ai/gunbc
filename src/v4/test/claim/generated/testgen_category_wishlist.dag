@@ -221,7 +221,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
     slot: RefinementPreservation {
       subject: RefinementPreservationSubject {
-        refined: refined_discharge(base: [stub_empty_conj]),
+        refined: refinement_preservation_stub_refined(xs: [stub_empty_conj]),
         original: [stub_empty_conj],
       },
     }

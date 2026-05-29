@@ -50,7 +50,7 @@ fn positive_int_authoritative_literal_matches_accepted(
 ) -> Bool {
   match literal {
     Accepted { value: literal_value, diagnostics: _ } =>
-      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+      positive_int_value(p: literal_value) == positive_int_value(p: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -61,7 +61,7 @@ fn non_negative_int_authoritative_literal_matches_accepted(
 ) -> Bool {
   match literal {
     Accepted { value: literal_value, diagnostics: _ } =>
-      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+      non_negative_int_value(p: literal_value) == non_negative_int_value(p: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -72,7 +72,7 @@ fn at_least_minus_one_int_authoritative_literal_matches_accepted(
 ) -> Bool {
   match literal {
     Accepted { value: literal_value, diagnostics: _ } =>
-      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+      at_least_minus_one_int_value(p: literal_value) == at_least_minus_one_int_value(p: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -83,7 +83,7 @@ fn at_least_minus_two_int_authoritative_literal_matches_accepted(
 ) -> Bool {
   match literal {
     Accepted { value: literal_value, diagnostics: _ } =>
-      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+      at_least_minus_two_int_value(p: literal_value) == at_least_minus_two_int_value(p: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -94,7 +94,7 @@ fn exact_one_int_authoritative_literal_matches_accepted(
 ) -> Bool {
   match literal {
     Accepted { value: literal_value, diagnostics: _ } =>
-      refined_base(r: literal_value.refined) == refined_base(r: accepted.refined)
+      exact_one_int_value(p: literal_value) == exact_one_int_value(p: accepted)
     Rejected { diagnostics: _ } => false
   }
 }
