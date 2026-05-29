@@ -1205,9 +1205,13 @@ fn ci_runner_pool_fleet_capacities_valid() -> Bool {
 data m1_probe_cargo_check_jobs: Int = 4
 
 
-// Receipt: out-of-byte-range Char projections stay distinguishable under evaluator-input content_hash.
-data ci_char_projection_out_of_range_injective_ok: Bool =
+fn ci_char_projection_out_of_range_injective_witness() -> Bool {
   content_hash(n: ci_char_projection_node(c: int_add(a: 255, b: 1))) !=
     content_hash(n: ci_char_projection_node(c: int_add(a: 255, b: 2)))
     && content_hash(n: ci_char_projection_node(c: int_negate(i: 1))) !=
       content_hash(n: ci_char_projection_node(c: int_negate(i: 2)))
+}
+
+
+// Receipt: out-of-byte-range Char projections stay distinguishable under evaluator-input content_hash.
+data ci_char_projection_out_of_range_injective_ok: Bool = ci_char_projection_out_of_range_injective_witness()
