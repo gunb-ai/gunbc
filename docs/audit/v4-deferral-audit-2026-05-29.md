@@ -125,9 +125,12 @@ fields when `unstable_features=false`. The note itself flags that the
 substrate gap is **`Option<T>` carriers for unstable fields** so absence is
 representable. Until then, the emit-side obligation is a guard.
 
-**Status of upstream:** `std/option.dag` exists, but migration of each
-unstable field to `Option<T>` has not been done. The substrate is present;
-the migration is in-scope T-4.16 work.
+**Status of upstream:** the optional carrier exists as
+`v4.std.collection.Optional<T>` (`src/v4/std/collection.dag:20`;
+**not** a separate `std/option.dag`, which does not exist —
+corrected per inline review 2026-05-29). Migration of each unstable
+rustfmt field to `Optional<T>` has not been done; the substrate is
+present, the migration is in-scope T-4.16 work.
 
 **Classification:** **UNNECESSARY.** The migration is intra-task. The
 deferred "emit-side guard" is a workaround for not doing the carrier
@@ -184,7 +187,27 @@ intra-task slicing):
   draft mis-read this as stale. **The bind is correctly active.**
 
 **Long-tail classification:** **NECESSARY** across the long tail
-(`t19-claim-anchor-split` included — corrected per above).
+(`t19-claim-anchor-split` included — corrected per above), **with two
+additional UNNECESSARY exceptions surfaced by inline review 2026-05-29
+(@briansrls on PR #3880):**
+
+* `feature:rustfmt-macro-name-refinement`
+  (`extdeps/formatters/rustfmt.dag:136`) — bind `T-25-core`, landed.
+  `Refined<String>` substrate exists; predicate is "valid Rust macro
+  ident, not `*`". Belongs in the dissolve-now set.
+* `feature:rustfmt-version-string-refinement`
+  (`extdeps/formatters/rustfmt.dag:146`) — bind `T-25-core`, landed.
+  `Refined<String>` substrate exists; predicate is "published semver
+  version string". Belongs in the dissolve-now set.
+
+Both are caught by the same §1.1 / §1.5 substrate-status correction
+(T-25-core IS landed via PR #3354); the original long-tail sample
+missed them because the §B inspection list omitted `refinement.dag`
+(action §A8). They are folded into action **§A1** (rename to "DISSOLVE
+all landed-T-25-core formatter refinement gates"): now 63 +
+1 (`rustfmt-ignore-path-refinement`) + 1 (`rustfmt-macro-name-refinement`)
++ 1 (`rustfmt-version-string-refinement`) = **66 sites** dissolvable
+against the landed `std/refinement.dag` substrate.
 
 ---
 
@@ -283,8 +306,8 @@ deferral inside a "staging" noun.
 
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
-| `🟡 gated — feature:*` distinct gates | 97 | 92 | **5** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity) |
-| `🟡 gated` annotation occurrences | 282 | ~213 | **~69** (§1.1 alone is 63 sites) |
+| `🟡 gated — feature:*` distinct gates | 97 | 90 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
+| `🟡 gated` annotation occurrences | 282 | ~211 | **~71** (§1.1 alone is 63 sites; +2 long-tail T-25-core binds surfaced by inline review) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
@@ -303,7 +326,7 @@ The misclassifications cluster in **two places**:
 2.  **Four T-4.16 "follow-on" gates** that are intra-task slicing, not
     upstream reorder (§1.3, §1.4, §1.5, §1.6). All four can land in
     T-4.16's current dispatch against substrate that exists today
-    (Witness, Option<T>, Refined<B>).
+    (Witness, `v4.std.collection.Optional<T>`, Refined<B>).
 
 One labelling defect: **§1.8** (`swift-format-rules-carrier`) — bind
 points at "T-4.16 follow-on" but the real upstream is a v4-language Map
@@ -341,8 +364,8 @@ labelling defect: work is open, bind names a closed task.
   * `rustfmt-deprecated-alias` (1 site) — author the canonical-wins
     precedence predicate over `RustfmtConfig`.
   * `rustfmt-unstable-option-validity` (1 site) — migrate unstable
-    rustfmt fields to `Option<T>` (substrate present in
-    `std/option.dag`).
+    rustfmt fields to `Optional<T>` (substrate present as
+    `v4.std.collection.Optional<T>` in `std/collection.dag:20`).
   * `rustfmt-ignore-path-refinement` (1 site) — replace
     `List<String>` with `List<Refined<String>>` against landed
     `std/refinement.dag` (cross-ref §A1).
@@ -371,7 +394,8 @@ labelling defect: work is open, bind names a closed task.
 * Counts are raw `grep` populations; per-annotation sites of a single gate
   name collapse to one classification row.
 * "Substrate present?" was checked by direct file inspection of
-  `src/v4/std/` (`patch.dag`, `option.dag`, `witness.dag`) and by `git log`
+  `src/v4/std/` (`patch.dag`, `collection.dag` for `Optional<T>`,
+  `witness.dag`) and by `git log`
   status of T-tasks named in bind lines. **Original draft omitted
   `refinement.dag` from this list** — fixed in §A8; the §1.1 and §1.5
   rows were corrected after cursor review surfaced the gap.
