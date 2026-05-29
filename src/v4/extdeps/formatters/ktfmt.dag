@@ -8,7 +8,7 @@ module v4.extdeps.formatters.ktfmt
 
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
-import v4.std.refinement { Refined, Validation, refine }
+import v4.std.refinement { Refined, Validation, refine, refined_discharge }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 
 
@@ -76,9 +76,9 @@ type KtfmtConfig {
 
 data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   style: KtfmtMetaStyle,
-  max_width: Refined { base: 100 },
-  block_indent: Refined { base: 2 },
-  continuation_indent: Refined { base: 4 },
+  max_width: refined_discharge(base: 100),
+  block_indent: refined_discharge(base: 2),
+  continuation_indent: refined_discharge(base: 4),
   trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
   remove_unused_imports: true,
   debugging_print_ops_after_formatting: false,
@@ -89,12 +89,12 @@ data ktfmt_defaults: KtfmtConfig = KtfmtConfig {
   enable_editorconfig: false,
   quiet: false,
 
-  editorconfig_max_line_length: Refined { base: 100 },
-  editorconfig_indent_size: Refined { base: 2 },
-  editorconfig_tab_width: Refined { base: 2 },
-  editorconfig_ij_kotlin_indent_size: Refined { base: 2 },
-  editorconfig_ij_continuation_indent_size: Refined { base: 4 },
-  editorconfig_ij_kotlin_continuation_indent_size: Refined { base: 4 },
+  editorconfig_max_line_length: refined_discharge(base: 100),
+  editorconfig_indent_size: refined_discharge(base: 2),
+  editorconfig_tab_width: refined_discharge(base: 2),
+  editorconfig_ij_kotlin_indent_size: refined_discharge(base: 2),
+  editorconfig_ij_continuation_indent_size: refined_discharge(base: 4),
+  editorconfig_ij_kotlin_continuation_indent_size: refined_discharge(base: 4),
   editorconfig_ktfmt_trailing_comma_management_strategy: KtfmtTrailingCommaOnlyAdd,
 }
 

@@ -9,7 +9,7 @@ module v4.extdeps.formatters.lean4_format
 
 import v4.std.diagnostic { Locus, Outcome }
 import v4.std.node { Symbol }
-import v4.std.refinement { Refined, Validation, refine }
+import v4.std.refinement { Refined, Validation, refine, refined_discharge }
 import v4.std.patch { ConfigPatchRecord, config_patch_layer }
 
 
@@ -65,8 +65,8 @@ type Lean4FormatConfig {
 
 
 data lean4_format_defaults: Lean4FormatConfig = Lean4FormatConfig {
-  format_width: Refined { base: 120 },
-  format_indent: Refined { base: 2 },
+  format_width: refined_discharge(base: 120),
+  format_indent: refined_discharge(base: 2),
   format_unicode: true,
   pp_oneline: false,
   lake_lean_options: [],

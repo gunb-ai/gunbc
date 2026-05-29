@@ -1,6 +1,6 @@
 // src/v4/std/refinement.dag
 // Scope: value-predicate refinement substrate — base type plus fail-closed validation obligation discharged at a named constructor boundary.
-// Status: T-25-core modeled.
+// Status: T-25-core modeled; opaque Refined<B> carrier + hoisted int refinement factories (§A1 substrate).
 // Anchor: https://en.wikipedia.org/wiki/Refinement_type
 
 
@@ -20,6 +20,7 @@ import v4.std.diagnostic {
   diagnostics_singleton,
   port_locus
 }
+import v4.std.integer { Int }
 import v4.std.node { Symbol }
 
 
@@ -37,8 +38,50 @@ type Validation<B> {
 }
 
 
-type Refined<B> {
+type RefinedBody<B> {
   base: B
+}
+
+
+// Opaque generic carrier: inhabit only via refine (fail-closed) or refined_discharge_outcome (catalog receipt).
+// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
+// construction only via refine / refined_discharge_outcome; forbidden: bare Refined { body: RefinedBody { base } }.
+type Refined<B> {
+  body: RefinedBody<B>
+}
+
+
+fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
+  let admits = by.admits
+  if admits(base) {
+    Accepted {
+      value: Refined { body: RefinedBody { base: base } },
+      diagnostics: None
+    }
+  } else {
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: Diagnostic {
+          reason: by.reason,
+          at: at,
+          correction: Unavailable { reason: UserInputBoundary }
+        }
+      )
+    }
+  }
+}
+
+
+// Catalog discharge: unwrap only an Accepted refine receipt (witness-proved at catalog rows).
+fn refined_discharge_outcome<B>(receipt: Outcome<Refined<B>>) -> Refined<B> {
+  match receipt {
+    Accepted { value: refined, diagnostics: _ } => refined
+  }
+}
+
+
+fn refined_base<B>(r: Refined<B>) -> B {
+  r.body.base
 }
 
 
@@ -102,70 +145,91 @@ data exact_one_int_validation: Validation<Int> = Validation {
 }
 
 
-// Nominal external-spec carriers — distinct record types so ≥1 / ≥0 / ≥-1 / ≥-2 / ==1
-// obligations are not interchangeable Refined<Int> aliases (posix.dag pattern).
+type PositiveIntRep {
+  value: Int
+}
+
+
+// Nominal ≥1 int — predicate-indexed rep; not interchangeable with other int refinements.
 // 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare PositiveInt { refined: Refined { base } }.
+// construction only via make_* / *_discharge_outcome; forbidden: bare PositiveInt { rep: PositiveIntRep { value } }.
 type PositiveInt {
-  refined: Refined<Int>
+  rep: PositiveIntRep
 }
 
 
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare NonNegativeInt { refined: Refined { base } }.
+type NonNegativeIntRep {
+  value: Int
+}
+
+
 type NonNegativeInt {
-  refined: Refined<Int>
+  rep: NonNegativeIntRep
 }
 
 
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare AtLeastMinusOneInt { refined: Refined { base } }.
+type AtLeastMinusOneIntRep {
+  value: Int
+}
+
+
 type AtLeastMinusOneInt {
-  refined: Refined<Int>
+  rep: AtLeastMinusOneIntRep
 }
 
 
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare AtLeastMinusTwoInt { refined: Refined { base } }.
+type AtLeastMinusTwoIntRep {
+  value: Int
+}
+
+
 type AtLeastMinusTwoInt {
-  refined: Refined<Int>
+  rep: AtLeastMinusTwoIntRep
 }
 
 
-// 🟡 gated — feature:refinement-opaque-carrier — bind T-25-tail — dissolve-on-arrival:
-// construction only via make_*; forbidden: bare ExactOneInt { refined: Refined { base } }.
+type ExactOneIntRep {
+  value: Int
+}
+
+
 type ExactOneInt {
-  refined: Refined<Int>
+  rep: ExactOneIntRep
 }
 
 
-fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
-  let admits = by.admits
-  if admits(base) {
-    Accepted { value: Refined { base: base }, diagnostics: None }
-  } else {
-    Rejected {
-      diagnostics: diagnostics_singleton(
-        d: Diagnostic {
-          reason: by.reason,
-          at: at,
-          correction: Unavailable { reason: UserInputBoundary }
-        }
-      )
-    }
-  }
+fn positive_int_value(p: PositiveInt) -> Int {
+  p.rep.value
 }
 
 
-fn refined_base<B>(r: Refined<B>) -> B {
-  r.base
+fn non_negative_int_value(p: NonNegativeInt) -> Int {
+  p.rep.value
+}
+
+
+fn at_least_minus_one_int_value(p: AtLeastMinusOneInt) -> Int {
+  p.rep.value
+}
+
+
+fn at_least_minus_two_int_value(p: AtLeastMinusTwoInt) -> Int {
+  p.rep.value
+}
+
+
+fn exact_one_int_value(p: ExactOneInt) -> Int {
+  p.rep.value
 }
 
 
 fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
   match refine(base: value, by: positive_int_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: PositiveInt { refined: refined }, diagnostics: diagnostics }
+    Accepted { value: _, diagnostics: diagnostics } =>
+      Accepted {
+        value: PositiveInt { rep: PositiveIntRep { value: value } },
+        diagnostics: diagnostics
+      }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
@@ -173,8 +237,11 @@ fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
 
 fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
   match refine(base: value, by: non_negative_int_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: NonNegativeInt { refined: refined }, diagnostics: diagnostics }
+    Accepted { value: _, diagnostics: diagnostics } =>
+      Accepted {
+        value: NonNegativeInt { rep: NonNegativeIntRep { value: value } },
+        diagnostics: diagnostics
+      }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
@@ -182,8 +249,11 @@ fn make_non_negative_int(value: Int, at: Locus) -> Outcome<NonNegativeInt> {
 
 fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOneInt> {
   match refine(base: value, by: at_least_minus_one_int_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: AtLeastMinusOneInt { refined: refined }, diagnostics: diagnostics }
+    Accepted { value: _, diagnostics: diagnostics } =>
+      Accepted {
+        value: AtLeastMinusOneInt { rep: AtLeastMinusOneIntRep { value: value } },
+        diagnostics: diagnostics
+      }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
@@ -191,8 +261,11 @@ fn make_at_least_minus_one_int(value: Int, at: Locus) -> Outcome<AtLeastMinusOne
 
 fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwoInt> {
   match refine(base: value, by: at_least_minus_two_int_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: AtLeastMinusTwoInt { refined: refined }, diagnostics: diagnostics }
+    Accepted { value: _, diagnostics: diagnostics } =>
+      Accepted {
+        value: AtLeastMinusTwoInt { rep: AtLeastMinusTwoIntRep { value: value } },
+        diagnostics: diagnostics
+      }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
@@ -200,9 +273,47 @@ fn make_at_least_minus_two_int(value: Int, at: Locus) -> Outcome<AtLeastMinusTwo
 
 fn make_exact_one_int(value: Int, at: Locus) -> Outcome<ExactOneInt> {
   match refine(base: value, by: exact_one_int_validation, at: at) {
-    Accepted { value: refined, diagnostics } =>
-      Accepted { value: ExactOneInt { refined: refined }, diagnostics: diagnostics }
+    Accepted { value: _, diagnostics: diagnostics } =>
+      Accepted {
+        value: ExactOneInt { rep: ExactOneIntRep { value: value } },
+        diagnostics: diagnostics
+      }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+  }
+}
+
+
+fn positive_int_discharge_outcome(receipt: Outcome<PositiveInt>) -> PositiveInt {
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn non_negative_int_discharge_outcome(receipt: Outcome<NonNegativeInt>) -> NonNegativeInt {
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn at_least_minus_one_int_discharge_outcome(receipt: Outcome<AtLeastMinusOneInt>) -> AtLeastMinusOneInt {
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn at_least_minus_two_int_discharge_outcome(receipt: Outcome<AtLeastMinusTwoInt>) -> AtLeastMinusTwoInt {
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+  }
+}
+
+
+fn exact_one_int_discharge_outcome(receipt: Outcome<ExactOneInt>) -> ExactOneInt {
+  match receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
   }
 }
 
@@ -232,7 +343,6 @@ fn make_exact_one_int_at_authoritative(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Authoritative catalog literal boundary — partial; returns Outcome (fail-closed).
 fn positive_int_authoritative_literal(value: Int) -> Outcome<PositiveInt> {
   make_positive_int_at_authoritative(value: value)
 }

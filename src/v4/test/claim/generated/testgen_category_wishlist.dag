@@ -55,7 +55,7 @@ import v4.std.verification {
   generated_claim_anchor,
   manual_claim_anchor
 }
-import v4.std.refinement { Refined }
+import v4.std.refinement { Refined, refined_discharge }
 import v4.test.claim.manual.connective_anchors { stub_empty_conj }
 
 
@@ -184,7 +184,7 @@ fn dispatched_refinement_preservation_generator() -> Generator<TestgenConcept> {
     anchor: manual_claim_anchor(anchor: ManualRefinementNonEmptyListBase),
     slot: RefinementPreservation {
       subject: RefinementPreservationSubject {
-        refined: Refined { base: [stub_empty_conj] },
+        refined: refined_discharge(base: [stub_empty_conj]),
         original: [stub_empty_conj],
       },
     }
