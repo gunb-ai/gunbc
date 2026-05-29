@@ -639,7 +639,9 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     for name in ["CiBuildProfile", "CiSchedulePolicy"] {
         assert!(
             module.items.iter().any(|item| match item {
-                SurfaceItem::TypeSum { name: item_name, .. } => item_name == name,
+                SurfaceItem::TypeSum {
+                    name: item_name, ..
+                } => item_name == name,
                 _ => false,
             }),
             "{CI_DAG_PATH}: must model bankruptcy Tier-0 enum `{name}`"
