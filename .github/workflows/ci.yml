@@ -59,9 +59,10 @@ jobs:
       run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: cargo fmt --all --check
       run: cargo fmt --all --check
-  # Affected-set detection — drives gating of v2/v3 jobs (frozen components
-  # only run their heavy CI when their source is touched, or on push-to-main
-  # for trunk verification). Cheap (~30s); other jobs depend on its outputs.
+  # Affected-set detection — drives gating of v2/v3/v4 jobs (path buckets modeled in
+  # `src/v4/workflow/ci.dag`; host transport `detect-ci-affected-components` in
+  # `tools/ci_affected_components`, outside v3-compiler so v3=false can emit without
+  # compiling the frozen v3 package). First run on a cold runner compiles this tiny crate only.
   affected:
     if: github.event.pull_request.draft != true
     runs-on: [self-hosted, linux, arm64]
@@ -72,18 +73,29 @@ jobs:
       v4: ${{ steps.detect.outputs.v4 }}
       workflow_policy: ${{ steps.detect.outputs.workflow_policy }}
     steps:
+    - name: Isolate toolchain dirs (srv1/srv2 shared-$HOME concurrent-rustup race)
+      run: |
+        echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+        echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
     - name: Clear inherited GitHub auth header (shared runner HOME)
       run: git config --global --unset-all http.https://github.com/.extraheader || true
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+    - name: Setup Rust
+      uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+      with:
+        cache: false
+        rustflags: ''
+    - name: Pin global rustup default (isolated RUSTUP_HOME has no default toolchain)
+      run: rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
     - name: Fetch main for diff base
       if: github.event_name == 'pull_request'
       run: git fetch origin main:refs/remotes/origin/main
     - name: Detect affected components
       id: detect
-      run: bash scripts/detect-affected-components.sh "${{ github.event_name }}" "$GITHUB_OUTPUT"
+      run: cargo run -p ci_affected_components --bin detect-ci-affected-components -- "${{ github.event_name }}" "$GITHUB_OUTPUT"
   ci:
     if: github.event.pull_request.draft != true
     needs: [affected]
@@ -230,6 +242,7 @@ jobs:
       timeout-minutes: 20
       env:
         V4_M1_RUST_EMIT_OUT: ${{ runner.temp }}/v4-rust-emit
+        V4_M1_CARGO_CHECK_JOBS: "4"
       run: bash scripts/v4-m1-rust-emit-probe.sh
     - name: v2 → v4 bootstrap compile (fail-closed full)
       if: needs.affected.outputs.v4 == 'true'

@@ -3077,6 +3077,15 @@ fn dag_block_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
 }
 
 
+// 🟢 coproduct dissolution — module-header metadata edge names are fixed facts declared
+// alongside dag_surface_module_header / dag_surface_module_header_qualified_name; Named
+// edges bearing these symbols are structural header metadata, not declared exports.
+fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
+  (name == dag_surface_module_header)
+    || (name == dag_surface_module_header_qualified_name)
+}
+
+
 // Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
 // the declared QualifiedName by walking dag_surface_module_header_qualified_name to the fold_list_node
 // sub-node, then delegating to qualified_name_from_node in std/.

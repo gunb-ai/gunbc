@@ -1,6 +1,8 @@
 // src/v4/workflow/ci.dag
-// Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection; ci.yml projection deferred.
-// Status: filled — declarative core + eager well-formedness + T-21/T-24 affected-set TestClaim selection (structural v2 gate only) + T-38 dissolution step declared (TestClaimCorpusEvalCommand job/gate/cache-digest; IRT-1 call site — ci_select_from_affected_set narrows roster to content_hash frontier — lands with dissolution PR that replaces scripts/v4-testclaim-corpus-gate.sh).
+// Scope: CI pipeline AS DATA; gunbc job/gate DAG + eager well-formedness; Wave-0 TestClaim roster selection.
+// Wave-0 partial close (this PR): T-21/T-24 affected-set authority, detect-affected-components.sh dissolution, runner-pool/M1 facts modeled.
+// T-24 CI/YAML authority bridge (emitter wired, hand-authored ci.yml deleted) remains open per src/v4/TASKS.md §T-24 — interim hand ci.yml edits are transport wiring only, not YAML-authority dissolution.
+// Status: filled — declarative core + eager well-formedness + T-21/T-24 component affected-set (dissolves scripts/detect-affected-components.sh via `ci_component_affected_from_git_diff` + `detect-ci-affected-components` host transport) + T-21/T-24 TestClaim roster selection + T-38 dissolution step declared (TestClaimCorpusEvalCommand job/gate/cache-digest; IRT-1 call site — ci_select_from_affected_set narrows roster to content_hash frontier — lands with dissolution PR that replaces scripts/v4-testclaim-corpus-gate.sh).
 
 module v4.workflow.ci
 
@@ -24,6 +26,7 @@ import v4.lens.affected_set {
   RerunNodeSetProduced,
   affected_set_rerun_nodes
 }
+import v4.lens.edit_locus { GitDiffNameOnly, RepoPath }
 import v4.std.change { AffectedSet }
 import v4.compiler.eval {
   EvalContext,
@@ -43,17 +46,21 @@ import v4.std.node {
   TypeNode,
   combine_hash,
   content_hash,
-  byte_offset_cache_digest
+  ByteOffsetCacheEligible,
+  ByteOffsetCacheIneligible,
+  byte_offset_cache_key
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.text { Char, String }
-import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
 import v4.std.algebra {
+  any,
   count_equal,
   count_where,
   filter,
   for_all,
+  is_prefix_of,
   length,
   unique
 }
@@ -62,7 +69,15 @@ import v4.std.verification {
   test_claim_ci_selection_fail_closed,
   test_claim_evaluation_touches_rerun_frontier
 }
-import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
+import v4.workflow.bootstrap {
+  BootstrapHashPin,
+  BootstrapPlan,
+  CompileStage,
+  FixptStage1Stage2,
+  bootstrap_plan,
+  bootstrap_stage_output,
+  v4_stage0_binary
+}
 
 
 // 🟡 coproduct dissolution — LB-P4-3213
@@ -98,6 +113,31 @@ type CiPipeline {
   gates: List<CiGate>
 }
 
+// RULING-1: 🟢 pretty-much-done — GitHub Actions `affected` job outputs (v2/v3/v4/workflow_policy).
+// Structural replacement for scripts/detect-affected-components.sh (T-21/T-24); host transport:
+// `cargo run -p ci_affected_components --bin detect-ci-affected-components` (must stay aligned with these predicates).
+type CiComponentAffected {
+  v2: Bool
+  v3: Bool
+  v4: Bool
+  workflow_policy: Bool
+}
+
+// RULING-1: 🟢 pretty-much-done — host `git diff --name-only` read outcome (T-24 / INVARIANTS P3).
+// `Rejected` selects the superset `ci_component_affected_fail_closed` (all flags true).
+// Uses canonical `Outcome<GitDiffNameOnly>` from std.diagnostic (Practice 10 — no parallel read carrier).
+// RULING-1: 🟢 pretty-much-done — self-hosted fleet substrate (operator 2026-05-28: srv1/srv2 Ampere Altra / Arm64).
+// Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
+// Fleet arch is a closed operator fact as `arch: Symbol` (not a sum type — avoids Lens-CI coproduct resolution).
+// 🟡 gated — feature:formatter-int-refinement — bind T-25-core — dissolve-on-arrival: replace annotated Int fields with Refined<Int> via T-25-core refine substrate; each field's ≥1 annotation becomes the validation predicate; forbidden: UInt/Nat for config literals (Peano representation makes integer data nodes impractical).
+type SelfHostedRunnerPool {
+  host: Symbol
+  arch: Symbol
+  core_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1 (operator fleet spec)
+  runner_count: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+  jobserver_token_cap: Int // 🟡 gated: formatter-int-refinement — must be ≥1
+}
+
 // 🟡 gated — live-workflow projection interim (docs/r3-program-plan.md gates #98 `ci_yml_hand_authority_dissolved` and #100 `project_github_actions_landed`) — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: emitted/projected GitHub Actions workflow reads `ci_pipeline`/`LensCiCommand` directly and this step-name carrier is deleted; forbidden: adding signal/job/policy facts here instead of projecting them from `ci_pipeline`.
 type LensCiLiveWorkflowSignal {
   smoke_step_name: String
@@ -124,6 +164,30 @@ data structural_v2_compile: Symbol = structural_v2_compile
 data lens_ci_registry_signal: Symbol = lens_ci_registry_signal
 data m1_rust_emit_probe_signal: Symbol = m1_rust_emit_probe_signal
 data testclaim_corpus_eval_signal: Symbol = testclaim_corpus_eval_signal
+data ci_srv1_host: Symbol = ci_srv1_host
+data ci_srv2_host: Symbol = ci_srv2_host
+data ci_runner_arch_arm64: Symbol = ci_runner_arch_arm64
+
+data ci_srv1_pool: SelfHostedRunnerPool = {
+  host: ci_srv1_host
+  arch: ci_runner_arch_arm64
+  core_count: 128
+  runner_count: 20
+  jobserver_token_cap: 25
+}
+
+data ci_srv2_pool: SelfHostedRunnerPool = {
+  host: ci_srv2_host
+  arch: ci_runner_arch_arm64
+  core_count: 128
+  runner_count: 30
+  jobserver_token_cap: 36
+}
+
+data ci_self_hosted_runner_pools: List<SelfHostedRunnerPool> = [
+  ci_srv1_pool,
+  ci_srv2_pool
+]
 
 data lens_ci_required_lenses: List<LensIdV0> = [
   Complexity,
@@ -347,6 +411,9 @@ data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
 data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
 data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
 data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
+data ci_cache_char_byte_offset_ineligible_tag: Symbol = ci_cache_char_byte_offset_ineligible_tag
+data ci_cache_bootstrap_consumes_empty_tag: Symbol = ci_cache_bootstrap_consumes_empty_tag
+data ci_cache_bootstrap_plan_rejected_tag: Symbol = ci_cache_bootstrap_plan_rejected_tag
 
 
 fn ci_symbol_digest(sym: Symbol) -> Hash {
@@ -373,7 +440,20 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 
 // v4.std.text Char = Nat (scalar); use O(log |c|) base-256 digest, not Peano scalar_int_hash.
 fn ci_char_cache_digest(c: Char) -> Hash {
-  byte_offset_cache_digest(i: c)
+  match byte_offset_cache_key(i: c) {
+    ByteOffsetCacheEligible { digest: digest } => digest
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_char_byte_offset_ineligible_tag),
+        b: combine_hash(
+          a: ci_symbol_digest(sym: boundary_tag),
+          b: witness
+        )
+      )
+  }
 }
 
 
@@ -404,6 +484,77 @@ fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
 }
 
 
+fn ci_symbol_list_cache_digest(xs: List<Symbol>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: ci_symbol_digest(sym: ci_cache_bootstrap_consumes_empty_tag),
+    cons: fn(acc, sym) {
+      combine_hash(a: acc, b: ci_symbol_digest(sym: sym))
+    }
+  )
+}
+
+
+fn ci_bootstrap_hash_pin_cache_digest(pin: BootstrapHashPin) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: pin.pin),
+    b: pin.digest
+  )
+}
+
+
+fn ci_compile_stage_cache_digest(stage: CompileStage) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: ci_symbol_digest(sym: stage.produces),
+      b: ci_symbol_digest(sym: stage.compiled_by)
+    ),
+    b: combine_hash(
+      a: ci_bootstrap_hash_pin_cache_digest(pin: stage.produces_hash),
+      b: ci_symbol_list_cache_digest(xs: stage.consumes)
+    )
+  )
+}
+
+
+fn ci_fixpt_stage_cache_digest(fixpt: FixptStage1Stage2) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: ci_symbol_digest(sym: fixpt.left),
+      b: ci_symbol_digest(sym: fixpt.right)
+    ),
+    b: combine_hash(
+      a: combine_hash(
+        a: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.left_hash),
+        b: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.right_hash)
+      ),
+      b: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.pinned_hash)
+    )
+  )
+}
+
+
+// IRT-4: bootstrap_plan is the authority ci_command_authority_ok uses for BootstrapStageCompile.
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — consumer:ci_command_cache_digest BootstrapStageCompile — dissolve-on: content_hash(Node projection of BootstrapPlan) replaces ci_bootstrap_plan_cache_digest manual field mirror below.
+fn ci_bootstrap_plan_cache_digest() -> Hash {
+  match bootstrap_plan {
+    Accepted { value: plan, diagnostics: _ } =>
+      combine_hash(
+        a: combine_hash(
+          a: ci_compile_stage_cache_digest(stage: plan.seed),
+          b: ci_compile_stage_cache_digest(stage: plan.self0)
+        ),
+        b: combine_hash(
+          a: ci_compile_stage_cache_digest(stage: plan.self1),
+          b: ci_fixpt_stage_cache_digest(fixpt: plan.fixpt)
+        )
+      )
+    Rejected { diagnostics: _ } =>
+      ci_symbol_digest(sym: ci_cache_bootstrap_plan_rejected_tag)
+  }
+}
+
+
 fn ci_command_cache_digest(c: CiCommand) -> Hash {
   match c {
     LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
@@ -423,8 +574,11 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
       )
     BootstrapStageCompile { produces: produces } =>
       combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
-        b: ci_symbol_digest(sym: produces)
+        a: combine_hash(
+          a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
+          b: ci_symbol_digest(sym: produces)
+        ),
+        b: ci_bootstrap_plan_cache_digest()
       )
     M1RustEmitProbeCommand => ci_symbol_digest(sym: ci_cache_cmd_m1_probe_tag)
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
@@ -588,3 +742,100 @@ fn ci_select_from_affected_set(roster: List<TestClaim>, affected: AffectedSet) -
     rerun: affected_set_rerun_nodes(affected_set_value: affected)
   )
 }
+
+
+fn ci_repo_path_has_prefix(path: RepoPath, prefix: RepoPath) -> Bool {
+  is_prefix_of(prefix: prefix, xs: path, eq: fn(left, right) { left == right })
+}
+
+
+fn ci_changed_path_affects_v2(changed: RepoPath) -> Bool {
+  ci_repo_path_has_prefix(path: changed, prefix: "src/v2/")
+    || changed == "Cargo.toml"
+    || changed == "Cargo.lock"
+}
+
+
+fn ci_changed_path_affects_v3(changed: RepoPath) -> Bool {
+  ci_repo_path_has_prefix(path: changed, prefix: "src/v3/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "dsl/")
+}
+
+
+fn ci_changed_path_affects_v4(changed: RepoPath) -> Bool {
+  ci_repo_path_has_prefix(path: changed, prefix: "src/v4/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "fixtures/v4-mvp1/")
+    || changed == "scripts/v4-mvp1-e2e-gate.sh"
+    || changed == "scripts/v4-m1-rust-emit-probe.sh"
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-mvp1")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-m1")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/v4-testclaim-")
+    || ci_repo_path_has_prefix(path: changed, prefix: "dsl/std/")
+    || changed == "Cargo.toml"
+    || changed == "Cargo.lock"
+}
+
+
+fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
+  ci_repo_path_has_prefix(path: changed, prefix: ".github/workflows/")
+    || changed == "src/v4/workflow/ci.dag"
+    || ci_repo_path_has_prefix(path: changed, prefix: "src/v4/workflow/ci/")
+    || ci_repo_path_has_prefix(path: changed, prefix: "tools/ci_affected_components")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/check-workflow-path-regex-inventory")
+    || ci_repo_path_has_prefix(path: changed, prefix: "scripts/workflow-path-regex-forbidden-substrings")
+}
+
+
+fn ci_component_affected_fail_closed() -> CiComponentAffected {
+  CiComponentAffected {
+    v2: true
+    v3: true
+    v4: true
+    workflow_policy: true
+  }
+}
+
+
+fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponentAffected {
+  CiComponentAffected {
+    v2: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2),
+    v3: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v3),
+    v4: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v4),
+    workflow_policy: any(
+      xs: git_diff.changed_paths,
+      predicate: ci_changed_path_affects_workflow_policy
+    )
+  }
+}
+
+
+fn ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>) -> CiComponentAffected {
+  match outcome {
+    Accepted { value: git_diff, diagnostics: _ } =>
+      ci_component_affected_from_git_diff(git_diff: git_diff)
+    Rejected { diagnostics: _ } => ci_component_affected_fail_closed()
+  }
+}
+
+
+fn ci_int_positive(n: Int) -> Bool {
+  n >= 1
+}
+
+
+fn ci_runner_pool_capacity_valid(pool: SelfHostedRunnerPool) -> Bool {
+  ci_int_positive(n: pool.core_count)
+    && ci_int_positive(n: pool.runner_count)
+    && ci_int_positive(n: pool.jobserver_token_cap)
+}
+
+
+fn ci_runner_pool_fleet_capacities_valid() -> Bool {
+  for_all(xs: ci_self_hosted_runner_pools, predicate: ci_runner_pool_capacity_valid)
+}
+
+
+// RULING-1: 🟢 operator fact — M1 rust-emit probe `cargo check --jobs` cap (operator 2026-05-28).
+// Wave-0: explicit constant, not fleet-derived (jobserver÷runner allocation rule unpublished).
+// ci_srv1_pool/ci_srv2_pool retain host capacity facts for YamlStatic projection follow-on (T-24/#98).
+data m1_probe_cargo_check_jobs: Int = 4
