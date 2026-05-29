@@ -1,4 +1,4 @@
-# Hand-synced projection of src/v4/workflow/release.dag (RELEASE_TODO.md §5 Phase 1).
+# Hand-synced projection of src/v4/workflow/release.dag (RELEASE_TODO.md §5 Phase 1a).
 # Semantic authority: src/v4/workflow/release.dag — update the model first, then mirror here.
 # YamlStatic `release_pipeline → release.yml` deferred (same posture as ci.dag / TASKS T-24).
 name: release
@@ -29,15 +29,27 @@ jobs:
           - target: x86_64-unknown-linux-musl
             runner: ubuntu-24.04
             cross: true
+            artifact_basename: gunbc-x86_64-unknown-linux-musl
           - target: aarch64-unknown-linux-musl
             runner: ubuntu-24.04
             cross: true
+            artifact_basename: gunbc-aarch64-unknown-linux-musl
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             cross: false
+            artifact_basename: gunbc-x86_64-apple-darwin
           - target: aarch64-apple-darwin
             runner: macos-14
             cross: false
+            artifact_basename: gunbc-aarch64-apple-darwin
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+            cross: false
+            artifact_basename: gunbc-x86_64-pc-windows-msvc.exe
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            cross: false
+            artifact_basename: gunbc-aarch64-pc-windows-msvc.exe
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -58,26 +70,32 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq binutils-aarch64-linux-gnu
       - name: Build gunbc
+        shell: bash
         run: |
           set -eux
           if [ "${{ matrix.cross }}" = "true" ]; then
             cross build --release -p v2-compiler --bin gunbc --target '${{ matrix.target }}'
             bin="target/${{ matrix.target }}/release/gunbc"
           else
-            cargo build --release -p v2-compiler --bin gunbc
-            bin="target/release/gunbc"
+            cargo build --release -p v2-compiler --bin gunbc --target '${{ matrix.target }}'
+            if [ '${{ runner.os }}' = 'Windows' ]; then
+              bin="target/${{ matrix.target }}/release/gunbc.exe"
+            else
+              bin="target/${{ matrix.target }}/release/gunbc"
+            fi
           fi
           mkdir -p dist
-          cp "$bin" "dist/gunbc-${{ matrix.target }}"
+          cp "$bin" "dist/${{ matrix.artifact_basename }}"
           case '${{ matrix.target }}' in
-            aarch64-unknown-linux-musl) aarch64-linux-gnu-strip "dist/gunbc-${{ matrix.target }}" ;;
-            *) strip "dist/gunbc-${{ matrix.target }}" ;;
+            aarch64-unknown-linux-musl) aarch64-linux-gnu-strip "dist/${{ matrix.artifact_basename }}" ;;
+            *-pc-windows-msvc) ;;
+            *) strip "dist/${{ matrix.artifact_basename }}" ;;
           esac
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gunbc-${{ matrix.target }}
-          path: dist/gunbc-${{ matrix.target }}
+          name: ${{ matrix.artifact_basename }}
+          path: dist/${{ matrix.artifact_basename }}
           if-no-files-found: error
 
   release:
@@ -95,20 +113,8 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Stage release assets
-        run: |
-          set -eux
-          cp install.sh dist/install.sh
-          cp scripts/release-target-triples.sh dist/release-target-triples.sh
-          mkdir -p dist/scripts
-          cp scripts/release-target-triples.sh dist/scripts/release-target-triples.sh
-          chmod +x dist/install.sh
-          ls -la dist dist/scripts
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # `dist/*` does not match nested paths; stage step puts target authority under dist/scripts/.
-          files: |
-            dist/*
-            dist/scripts/*
+          files: dist/*
           generate_release_notes: true
