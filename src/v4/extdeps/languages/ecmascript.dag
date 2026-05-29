@@ -476,6 +476,26 @@ fn ecmascript_boolean_facts_node(facts: EcmascriptBooleanPrimitiveFacts) -> Node
   }
 }
 
+fn ecmascript_symbol_facts_node(facts: EcmascriptSymbolPrimitiveFacts) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ecmascript_named_edge(
+        name: ecmascript_facts_field_surface_spelling,
+        target: ecmascript_inhabitant_atom(id: facts.surface_spelling)
+      ),
+      ecmascript_named_edge(
+        name: ecmascript_facts_field_encoding,
+        target: ecmascript_inhabitant_atom(id: facts.encoding)
+      ),
+      ecmascript_named_edge(
+        name: ecmascript_facts_field_std_projection,
+        target: ecmascript_inhabitant_atom(id: facts.std_projection)
+      )
+    ]
+  }
+}
+
 fn ecmascript_string_facts_node(facts: EcmascriptStringPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -567,6 +587,23 @@ fn ecmascript_boolean_spec_facts(facts: EcmascriptBooleanPrimitiveFacts) -> Map<
   }
 }
 
+fn ecmascript_symbol_spec_facts(facts: EcmascriptSymbolPrimitiveFacts) -> Map<Symbol, Node> {
+  Map {
+    lookup: fn(axis) {
+      match axis {
+        primitive_fact_axis_surface_spelling =>
+          Holds { value: ecmascript_inhabitant_atom(id: facts.surface_spelling) }
+        primitive_fact_axis_encoding =>
+          Holds { value: ecmascript_inhabitant_atom(id: facts.encoding) }
+        _ =>
+          Violates {
+            diagnostic: primitive_fact_axis_unbound_diagnostic(axis: axis)
+          }
+      }
+    }
+  }
+}
+
 fn ecmascript_string_spec_facts(facts: EcmascriptStringPrimitiveFacts) -> Map<Symbol, Node> {
   Map {
     lookup: fn(axis) {
@@ -628,6 +665,15 @@ fn ecmascript_primitive_bundle_from_boolean_facts(
   }
 }
 
+fn ecmascript_primitive_bundle_from_symbol_facts(
+  facts: EcmascriptSymbolPrimitiveFacts
+) -> PrimitiveFactBundle {
+  PrimitiveFactBundle {
+    substrate_carrier: ecmascript_symbol_facts_node(facts: facts),
+    spec_facts: ecmascript_symbol_spec_facts(facts: facts)
+  }
+}
+
 fn ecmascript_primitive_bundle_from_string_facts(
   facts: EcmascriptStringPrimitiveFacts
 ) -> PrimitiveFactBundle {
@@ -685,6 +731,19 @@ fn ecmascript_primitive_bundles_from_boolean_catalog() -> List<PrimitiveFactBund
   )
 }
 
+fn ecmascript_primitive_bundles_from_symbol_catalog() -> List<PrimitiveFactBundle> {
+  fold_list(
+    xs: ecmascript_symbol_facts_catalog,
+    empty: Empty,
+    cons: fn(acc, facts) {
+      list_snoc_item(
+        xs: acc,
+        item: ecmascript_primitive_bundle_from_symbol_facts(facts: facts)
+      )
+    }
+  )
+}
+
 fn ecmascript_primitive_bundles_from_string_catalog() -> List<PrimitiveFactBundle> {
   fold_list(
     xs: ecmascript_string_facts_catalog,
@@ -716,12 +775,15 @@ fn ecmascript_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     left: list_append(
       left: list_append(
         left: list_append(
-          left: ecmascript_primitive_bundles_from_number_catalog(),
-          right: ecmascript_primitive_bundles_from_bigint_catalog()
+          left: list_append(
+            left: ecmascript_primitive_bundles_from_number_catalog(),
+            right: ecmascript_primitive_bundles_from_bigint_catalog()
+          ),
+          right: ecmascript_primitive_bundles_from_boolean_catalog()
         ),
-        right: ecmascript_primitive_bundles_from_boolean_catalog()
+        right: ecmascript_primitive_bundles_from_string_catalog()
       ),
-      right: ecmascript_primitive_bundles_from_string_catalog()
+      right: ecmascript_primitive_bundles_from_symbol_catalog()
     ),
     right: ecmascript_primitive_bundles_from_singleton_catalog()
   )
@@ -1601,6 +1663,24 @@ fn ecmascript_string_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
+fn ecmascript_symbol_catalog_surface_step(
+  sym: Symbol,
+  acc: Bool,
+  facts: EcmascriptSymbolPrimitiveFacts
+) -> Bool {
+  acc || ecmascript_catalog_surface_spelling_eq(sym: sym, spelling: facts.surface_spelling)
+}
+
+fn ecmascript_symbol_catalog_surface_symbol(sym: Symbol) -> Bool {
+  fold_list(
+    xs: ecmascript_symbol_facts_catalog,
+    empty: ecmascript_catalog_surface_fold_false(),
+    cons: fn(acc, facts) {
+      ecmascript_symbol_catalog_surface_step(sym: sym, acc: acc, facts: facts)
+    }
+  )
+}
+
 fn ecmascript_singleton_catalog_surface_step(
   sym: Symbol,
   acc: Bool,
@@ -1624,6 +1704,7 @@ fn ecmascript_catalog_surface_symbol(sym: Symbol) -> Bool {
     ecmascript_bigint_catalog_surface_symbol(sym: sym) ||
     ecmascript_boolean_catalog_surface_symbol(sym: sym) ||
     ecmascript_string_catalog_surface_symbol(sym: sym) ||
+    ecmascript_symbol_catalog_surface_symbol(sym: sym) ||
     ecmascript_singleton_catalog_surface_symbol(sym: sym)
 }
 
