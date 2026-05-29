@@ -1,6 +1,6 @@
 // src/v4/compiler/03_name_resolve.dag
 //
-// Scope: Stage 3c — Catalog admission for cross-file resolution.
+// Scope: Stage 3c — module-root admission for cross-file resolution.
 // Status: T-28-B modeled — graph admission is outside K-1 single-tree resolver.
 // Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
 
@@ -107,6 +107,8 @@ type ModuleRootNameFindState
 
 data resolve_import_not_visible: Symbol = resolve_import_not_visible
 data resolve_ambiguous_export: Symbol = resolve_ambiguous_export
+data resolve_module_not_found: Symbol = resolve_module_not_found
+data resolve_duplicate_module_name: Symbol = resolve_duplicate_module_name
 data resolve_reason_malformed_imported_root: Symbol = resolve_reason_malformed_imported_root
 
 
@@ -381,22 +383,15 @@ fn admit_import_entry(
             diagnostics: resolve_diagnostics(reason: resolve_import_not_visible)
           }
         ImportVisible =>
-          match catalog_entry_for_name(catalog: catalog, name: import_edge.target) {
-            Holds { value: entry } =>
-              if well_formed(n: entry.root) {
-                admit_named_exports(
-                  root: entry.root,
-                  origin: import_edge.target,
-                  state: state
-                )
-              } else {
-                AdmissionRejected {
-                  diagnostic: resolve_diagnostic(reason: resolve_reason_malformed_imported_root)
-                }
-              }
-            Violates { diagnostic: d } =>
-              AdmissionRejected { diagnostic: d }
-          }
+          admit_import_root_find(
+            found: module_root_for_name_fold(
+              roots: roots,
+              name: import_edge.target,
+              acc: ModuleRootNotFound
+            ),
+            origin: import_edge.target,
+            state: state
+          )
       }
   }
 }
