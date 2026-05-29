@@ -81,9 +81,10 @@ import v4.workflow.bootstrap {
 }
 
 
-// Tier-0 integrity scheduling (docs/design-ci-bankruptcy-rebuild.md §2–3).
+// RULING-1: 🟢 pretty-much-done — Tier-0 CI build profile (bankruptcy I2–I4; docs/design-ci-bankruptcy-rebuild.md §2).
 type CiBuildProfile = Smoke | Release | FixedPointMatrix
 
+// RULING-1: 🟢 pretty-much-done — when a CiJob runs relative to host push policy (bankruptcy I3/I4 scheduling).
 type CiSchedulePolicy = PullRequest | MainPush | Nightly
 
 // 🟡 coproduct dissolution — LB-P4-3213
@@ -922,6 +923,7 @@ fn ci_component_affected_is_fail_closed(affected: CiComponentAffected) -> Bool {
     && affected.v3
     && affected.v4
     && affected.workflow_policy
+    && affected.release_distribution
 }
 
 
@@ -930,6 +932,7 @@ fn ci_component_mask_intersects(mask: CiComponentAffected, affected: CiComponent
     || (mask.v3 && affected.v3)
     || (mask.v4 && affected.v4)
     || (mask.workflow_policy && affected.workflow_policy)
+    || (mask.release_distribution && affected.release_distribution)
 }
 
 
@@ -941,6 +944,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: false
         v4: false
         workflow_policy: false
+        release_distribution: false
       }
     BootstrapStageCompile { produces: _ } =>
       CiComponentAffected {
@@ -948,6 +952,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: false
         v4: true
         workflow_policy: false
+        release_distribution: false
       }
     V3DeterminismCommand { profile: _ } =>
       CiComponentAffected {
@@ -955,6 +960,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: true
         v4: false
         workflow_policy: false
+        release_distribution: false
       }
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } =>
       CiComponentAffected {
@@ -962,6 +968,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: true
         v4: false
         workflow_policy: false
+        release_distribution: false
       }
     LensCiCommand { required_lenses: _ } =>
       CiComponentAffected {
@@ -969,6 +976,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: true
         v4: true
         workflow_policy: true
+        release_distribution: false
       }
     V4T15SelfHostFixedPointCommand =>
       CiComponentAffected {
@@ -976,13 +984,15 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: true
         v4: true
         workflow_policy: true
+        release_distribution: true
       }
     M1RustEmitProbeCommand =>
       CiComponentAffected {
         v2: false
         v3: false
         v4: true
-        workflow_policy: false
+        workflow_policy: true
+        release_distribution: false
       }
     TestClaimCorpusEvalCommand { selection_fn: _ } =>
       CiComponentAffected {
@@ -990,6 +1000,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
         v3: false
         v4: true
         workflow_policy: true
+        release_distribution: true
       }
     LintCommand => ci_component_affected_fail_closed()
     TestCommand => ci_component_affected_fail_closed()
@@ -1083,7 +1094,8 @@ fn ci_select_ci_jobs_needs_closure(jobs: List[CiJob], selected: List[CiJob]) -> 
 }
 
 
-fn ci_select_ci_jobs_from_affected_set(
+// Precondition: `pipeline` is the Accepted value of `ci_pipeline_well_formed` (acyclic needs, resolved symbols).
+fn ci_select_ci_jobs_from_jobs(
   jobs: List[CiJob],
   affected: CiComponentAffected,
   schedule: CiSchedulePolicy
@@ -1095,6 +1107,19 @@ fn ci_select_ci_jobs_from_affected_set(
     }
   )
   ci_select_ci_jobs_needs_closure(jobs: jobs, selected: initial)
+}
+
+
+fn ci_select_ci_jobs_from_affected_set(
+  pipeline: CiPipeline,
+  affected: CiComponentAffected,
+  schedule: CiSchedulePolicy
+) -> List[CiJob] {
+  ci_select_ci_jobs_from_jobs(
+    jobs: pipeline.jobs,
+    affected: affected,
+    schedule: schedule
+  )
 }
 
 

@@ -728,9 +728,24 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
     );
     let binding_step = workflow_step_block(CI_YML, CI_MODEL_YAML_BINDING_STEP_NAME);
     assert!(
-        binding_step.contains(BANKRUPTCY_TIER0_BINDING_TEST_FILTER),
-        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must execute the bankruptcy D3 ratchet \
-         (`{BANKRUPTCY_TIER0_BINDING_TEST_FILTER}` with --exact) so legacy job reintroduction fails CI"
+        binding_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {M1_BINDING_TEST_FILTER} -- --exact --quiet"
+        )),
+        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run M1 binding with one TESTNAME per cargo invocation"
+    );
+    assert!(
+        binding_step.contains(&format!(
+            "cargo test -p v3-compiler --test integration {BANKRUPTCY_TIER0_BINDING_TEST_FILTER} -- --exact --quiet"
+        )),
+        "{CI_YML_PATH}: `{CI_MODEL_YAML_BINDING_STEP_NAME}` must run bankruptcy D3 ratchet as a separate cargo invocation"
+    );
+    assert!(
+        CI_DAG.contains("fn ci_select_ci_jobs_from_affected_set(\n  pipeline: CiPipeline,"),
+        "{CI_DAG_PATH}: job selector must take well-formed CiPipeline (not bare job list)"
+    );
+    assert!(
+        CI_DAG.contains("release_distribution && affected.release_distribution"),
+        "{CI_DAG_PATH}: ci_component_mask_intersects must include release_distribution axis"
     );
 }
 
