@@ -250,9 +250,18 @@ data ts_binding_fn_add: Symbol = ts_binding_fn_add
 data ts_binding_param_x: Symbol = ts_binding_param_x
 data ts_binding_param_y: Symbol = ts_binding_param_y
 
+data ts_binding_wave2a_let_name: Symbol = ts_binding_wave2a_let_name
+data ts_binding_wave2a_let_rhs: Symbol = ts_binding_wave2a_let_rhs
+data ts_binding_wave2a_const_name: Symbol = ts_binding_wave2a_const_name
+data ts_binding_wave2a_const_rhs: Symbol = ts_binding_wave2a_const_rhs
+
 data ts_relation_rule_mvp1_fn_add: Symbol = ts_relation_rule_mvp1_fn_add
+data ts_relation_rule_wave2a_let_decl: Symbol = ts_relation_rule_wave2a_let_decl
+data ts_relation_rule_wave2a_const_decl: Symbol = ts_relation_rule_wave2a_const_decl
 
 data ts_mvp1_source_literal: Symbol = ts_mvp1_source_literal
+data ts_wave2a_let_source_literal: Symbol = ts_wave2a_let_source_literal
+data ts_wave2a_const_source_literal: Symbol = ts_wave2a_const_source_literal
 data ts_mvp1_source_text_field: Symbol = serialize_source_field_source_text
 data ts_mvp1_source_grammar_field: Symbol = serialize_source_field_source_grammar
 
@@ -281,6 +290,9 @@ fn ts_mvp1_concrete_tokens() -> List<TsConcreteSyntaxToken> {
   ]
 }
 data ts_mvp1_source_text: String = "function add(x: number, y: number): number { return x + y; }"
+
+data ts_wave2a_let_source_text: String = "let x: number = y;"
+data ts_wave2a_const_source_text: String = "const c: number = y;"
 
 data ts_facts_number: TsNumberPrimitiveFacts = TsNumberPrimitiveFacts {
   surface_spelling: ts_surface_spelling_number,
@@ -717,6 +729,217 @@ fn ts_mvp1_target_model() -> TargetModel {
     lex: ts_wave1_lex(),
     binding_spellings: ts_mvp1_binding_spellings(),
     authority_source_text: ts_mvp1_source_text_authority()
+  }
+}
+
+fn ts_wave2a_let_concrete_tokens() -> List<TsConcreteSyntaxToken> {
+  [
+    TsFixedToken { token_class: ts_token_kw_let },
+    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_wave2a_let_name },
+    TsFixedToken { token_class: ts_token_colon },
+    TsFixedToken { token_class: ts_token_ty_number },
+    TsFixedToken { token_class: ts_token_eq },
+    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_wave2a_let_rhs },
+    TsFixedToken { token_class: ts_token_semicolon }
+  ]
+}
+
+fn ts_wave2a_const_concrete_tokens() -> List<TsConcreteSyntaxToken> {
+  [
+    TsFixedToken { token_class: ts_token_kw_const },
+    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_wave2a_const_name },
+    TsFixedToken { token_class: ts_token_colon },
+    TsFixedToken { token_class: ts_token_ty_number },
+    TsFixedToken { token_class: ts_token_eq },
+    TsBoundToken { token_class: ts_token_ident, binding: ts_binding_wave2a_const_rhs },
+    TsFixedToken { token_class: ts_token_semicolon }
+  ]
+}
+
+fn ts_wave2a_let_emitted_node() -> Node {
+  ts_grammar_atom(id: ts_surface_let_decl)
+}
+
+fn ts_wave2a_const_emitted_node() -> Node {
+  ts_grammar_atom(id: ts_surface_const_decl)
+}
+
+fn ts_wave2a_grammar_relation_row(
+  production: GrammarProduction,
+  emitted: Node,
+  tokens: List<TsConcreteSyntaxToken>
+) -> TsGrammarRelationRow {
+  TsGrammarRelationRow {
+    production: production,
+    emitted: emitted,
+    tokens: tokens
+  }
+}
+
+fn ts_wave2a_let_grammar_relation_row() -> TsGrammarRelationRow {
+  ts_wave2a_grammar_relation_row(
+    production: ts_grammar_production_wave2a_let_decl(),
+    emitted: ts_wave2a_let_emitted_node(),
+    tokens: ts_wave2a_let_concrete_tokens()
+  )
+}
+
+fn ts_wave2a_const_grammar_relation_row() -> TsGrammarRelationRow {
+  ts_wave2a_grammar_relation_row(
+    production: ts_grammar_production_wave2a_const_decl(),
+    emitted: ts_wave2a_const_emitted_node(),
+    tokens: ts_wave2a_const_concrete_tokens()
+  )
+}
+
+fn ts_wave2a_serialize_source_prefix_edges(
+  source_literal: Symbol,
+  production: Symbol
+) -> List<Edge> {
+  [
+    ts_named_edge(
+      name: ts_mvp1_source_text_field,
+      target: ts_inhabitant_atom(id: source_literal)
+    ),
+    ts_named_edge(
+      name: ts_mvp1_source_grammar_field,
+      target: ts_inhabitant_atom(id: production)
+    )
+  ]
+}
+
+fn ts_wave2a_serialize_source_node(
+  source_literal: Symbol,
+  production: Symbol,
+  tokens: List<TsConcreteSyntaxToken>
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: list_append(
+      left: ts_wave2a_serialize_source_prefix_edges(
+        source_literal: source_literal,
+        production: production
+      ),
+      right: ts_relation_token_edges(tokens: tokens)
+    )
+  }
+}
+
+fn ts_wave2a_let_serialize_source_node() -> Node {
+  ts_wave2a_serialize_source_node(
+    source_literal: ts_wave2a_let_source_literal,
+    production: ts_production_wave2a_let_decl,
+    tokens: ts_wave2a_let_concrete_tokens()
+  )
+}
+
+fn ts_wave2a_const_serialize_source_node() -> Node {
+  ts_wave2a_serialize_source_node(
+    source_literal: ts_wave2a_const_source_literal,
+    production: ts_production_wave2a_const_decl,
+    tokens: ts_wave2a_const_concrete_tokens()
+  )
+}
+
+fn ts_wave2a_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: ts_relation_rule_mvp1_fn_add,
+        target: ts_grammar_relation_row_node(row: ts_mvp1_grammar_relation_row())
+      ),
+      ts_named_edge(
+        name: ts_relation_rule_wave2a_let_decl,
+        target: ts_grammar_relation_row_node(row: ts_wave2a_let_grammar_relation_row())
+      ),
+      ts_named_edge(
+        name: ts_relation_rule_wave2a_const_decl,
+        target: ts_grammar_relation_row_node(row: ts_wave2a_const_grammar_relation_row())
+      )
+    ]
+  }
+}
+
+fn ts_wave2a_let_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ts_binding_wave2a_let_name, "x"),
+    ts_binding_wave2a_let_rhs,
+    "y"
+  )
+}
+
+fn ts_wave2a_const_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ts_binding_wave2a_const_name, "c"),
+    ts_binding_wave2a_const_rhs,
+    "y"
+  )
+}
+
+fn ts_wave2a_let_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: target_model_edge_selection_policy,
+        target: ts_mvp1_selection_policy_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_declared_inhabitants_root()
+      ),
+      ts_named_edge(
+        name: target_model_edge_translation_rules,
+        target: ts_wave2a_translation_rules_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_serialize_source,
+        target: ts_wave2a_let_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn ts_wave2a_const_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      ts_named_edge(
+        name: target_model_edge_selection_policy,
+        target: ts_mvp1_selection_policy_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_declared_inhabitants,
+        target: ts_declared_inhabitants_root()
+      ),
+      ts_named_edge(
+        name: target_model_edge_translation_rules,
+        target: ts_wave2a_translation_rules_node()
+      ),
+      ts_named_edge(
+        name: target_model_edge_serialize_source,
+        target: ts_wave2a_const_serialize_source_node()
+      )
+    ]
+  }
+}
+
+fn ts_wave2a_let_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_wave2a_let_target_model_node(),
+    lex: ts_wave2a_lex(),
+    binding_spellings: ts_wave2a_let_binding_spellings(),
+    authority_source_text: ts_wave2a_let_source_text
+  }
+}
+
+fn ts_wave2a_const_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_wave2a_const_target_model_node(),
+    lex: ts_wave2a_lex(),
+    binding_spellings: ts_wave2a_const_binding_spellings(),
+    authority_source_text: ts_wave2a_const_source_text
   }
 }
 
