@@ -827,9 +827,7 @@ fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
   let max_runners = ci_runner_pool_max_runner_count(pools: pools)
   let total_runners = ci_runner_pool_total_runner_count(pools: pools)
   let hosts = ci_runner_pool_host_count(pools: pools)
-  (total_runners - min_runners)
-    * hosts
-    / ci_runner_pool_runner_spread(max_runners: max_runners, min_runners: min_runners)
+  (total_runners - min_runners) * hosts / ci_runner_pool_runner_spread(max_runners: max_runners, min_runners: min_runners)
 }
 
 
