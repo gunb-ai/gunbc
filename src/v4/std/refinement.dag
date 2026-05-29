@@ -160,7 +160,6 @@ fn refine<B>(base: B, by: Validation<B>, at: Locus) -> Outcome<Refined<B>> {
 fn refined_base<B>(r: Refined<B>) -> B {
   r.base
 }
-<<<<<<< HEAD
 
 
 fn make_positive_int(value: Int, at: Locus) -> Outcome<PositiveInt> {
@@ -306,4 +305,3 @@ fn refine_ordered_iteration<B>(base: B, ordering: IterationOrdering, at: Locus) 
       }
   }
 }
->>>>>>> e00167f01 (v4(determinism PR-3): IterationOrdering refinement + naming_the_leak diagnostic in std/refinement.dag)
