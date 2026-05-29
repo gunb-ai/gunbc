@@ -114,7 +114,7 @@ import v4.std.algebra {
 import v4.std.text { String }
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// JLS has no unsigned integral primitives; `Unsigned` arm mirrors rust.dag carrier shape for v2 compile (never cataloged).
+// `Unsigned` arm is cataloged for `char` (JLS §4.2.1 — 16-bit unsigned UTF-16 code unit); signed integrals use `Signed`.
 type JavaIntKind
   = Signed
   | Unsigned
