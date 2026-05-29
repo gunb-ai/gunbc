@@ -897,11 +897,13 @@ type WorkflowPipelinePlanBoundPassReceipt {
 }
 
 
+// Reads original `run.verdict` (not `workflow_pipeline_pass_gate` output): pass_gate rewraps `Fail.actual` as `Accepted { value: run }`.
 fn workflow_pipeline_receipt_failure_diagnostics(
   run: TestClaimRun<CiPipeline, CiPipeline>
 ) -> List<Diagnostic> {
   match run.verdict {
     Fail { actual: Rejected { diagnostics: ds } } => ds
+    // Fallback when verdict is not `Fail/Rejected` (e.g. unexpected Pass on receipt path).
     _ =>
       diagnostics_singleton(d: ci_diagnostic(reason: ci_bootstrap_authority_violation))
   }
