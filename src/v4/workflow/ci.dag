@@ -965,7 +965,7 @@ fn ci_job_component_mask(j: CiJob) -> CiComponentAffected {
     V3SelfHostFixedPointCommand { profile: _, schedule: _ } =>
       CiComponentAffected {
         v2: false
-        v3: true
+        v3: false
         v4: false
         workflow_policy: false
         release_distribution: false
