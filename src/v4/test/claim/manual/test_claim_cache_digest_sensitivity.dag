@@ -407,6 +407,12 @@ fn tcc_cache_byte_offset_exhausted_residual_29_double_digest_differs() -> Bool {
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_29())))
 }
 
+// Interim magnitude ceiling through shift 28 (256^37 vs 2·256^37 post-ceiling residual 256^28 band).
+fn tcc_cache_byte_offset_exhausted_residual_37_double_digest_differs() -> Bool {
+  byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_pow_37())) !=
+    byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_37())))
+}
+
 fn tcc_cache_runtime_unit() -> RuntimeValue {
   RuntimeUnit {
     value: RuntimeUnitValue { unit_type: v4_eval_wave1_unit_type_node() }
@@ -765,6 +771,16 @@ data claim_test_claim_cache_byte_offset_exhausted_residual_29_double: TestClaim 
   classification: TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_29_double_digest_differs()
+  ),
+  expected_value: tcc_cache_pass_node()
+}
+
+data claim_test_claim_cache_byte_offset_exhausted_residual_37_double: TestClaim = CompilesClaim {
+  label: "manual/test_claim_cache: exhausted-residual 256^37 vs 2*256^37 do not alias",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  classification: TestClassification { tier: Tier1, layer: Unit },
+  input: tcc_cache_sensitivity_claim_input(
+    ok: tcc_cache_byte_offset_exhausted_residual_37_double_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
