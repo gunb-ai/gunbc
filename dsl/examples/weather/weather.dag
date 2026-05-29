@@ -2,7 +2,7 @@
 // pattern matching, and list pipelines — compiles to Rust with zero hand glue.
 //
 // Gate (from repo root, after `cargo build --release -p v2-compiler --bin gunbc`):
-//   gunbc compile \
+//   ./target/release/gunbc compile \
 //     --source-root dsl/examples/weather \
 //     --source-root dsl/std \
 //     --output-dir /tmp/weather-out \

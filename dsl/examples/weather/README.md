@@ -26,7 +26,7 @@ Then compile and type-check the emitted crate:
 
 ```bash
 OUT=/tmp/weather-out
-gunbc compile \
+./target/release/gunbc compile \
   --source-root dsl/examples/weather \
   --source-root dsl/std \
   --output-dir "$OUT" \
