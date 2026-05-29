@@ -263,7 +263,7 @@ data gunbc_ci_github_actions_workflow: Workflow = {
         }, RunStep {
           name: Some { value: "Fabrication sentinel ratchet (P0-C)" },
           id: none,
-          run: "bash scripts/check-fabrication-sentinels.sh",
+          run: "cargo run -p ci_host_checks --bin check-fabrication-sentinels",
           shell: Bash,
           env: none,
           working_directory: none,
