@@ -114,8 +114,7 @@ fn release_matrix_row_targets(rows: List<ReleaseMatrixRow>) -> List<String> {
 // Published GH Release asset triples (`gunbc-{target}`) — projection of `release_build_matrix`
 // row targets (single modeled source). Shell `scripts/release-target-triples.sh` mirrors this
 // list for curl|sh install until install targets derive from `.dag` eval.
-data release_published_target_triples: List<String> =
-  release_matrix_row_targets(rows: release_build_matrix)
+data release_published_target_triples: List<String> = release_matrix_row_targets(rows: release_build_matrix)
 
 data release_matrix_build_execution: Symbol = release_matrix_build_execution
 data release_publish_execution: Symbol = release_publish_execution
