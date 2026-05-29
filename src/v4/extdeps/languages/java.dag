@@ -97,8 +97,6 @@ import v4.std.node {
 }
 import v4.std.logic { Bool, bool_boolean_algebra }
 import v4.std.algebra {
-  approximate_field_node,
-  approximate_field_type_node,
   BooleanAlgebra,
   boolean_algebra_node,
   boolean_algebra_type_node,
@@ -370,8 +368,6 @@ type JavaModelCoreLawKey
   | JavaLawIntegerMulCommutativeModular
   | JavaLawIntegerDistributiveModular
   | JavaLawIntegerModularWrap
-  | JavaLawFloatIeee754Rounding
-  | JavaLawFloatNanInfCarriedByIeee754
   | JavaLawBoolBoundedLattice
   | JavaLawBoolComplement
 
@@ -381,13 +377,10 @@ data java_law_kind_integer_mul_associative_modular: Symbol = java_law_kind_integ
 data java_law_kind_integer_mul_commutative_modular: Symbol = java_law_kind_integer_mul_commutative_modular
 data java_law_kind_integer_distributive_modular: Symbol = java_law_kind_integer_distributive_modular
 data java_law_kind_integer_modular_wrap: Symbol = java_law_kind_integer_modular_wrap
-data java_law_kind_float_ieee754_rounding: Symbol = java_law_kind_float_ieee754_rounding
-data java_law_kind_float_nan_inf_carried_by_ieee754: Symbol = java_law_kind_float_nan_inf_carried_by_ieee754
 data java_law_kind_bool_bounded_lattice: Symbol = java_law_kind_bool_bounded_lattice
 data java_law_kind_bool_complement: Symbol = java_law_kind_bool_complement
 
 data java_witness_integer_commutative_semiring_modular: Symbol = java_witness_integer_commutative_semiring_modular
-data java_witness_float_approximate_field: Symbol = java_witness_float_approximate_field
 data java_witness_bool_boolean_algebra: Symbol = java_witness_bool_boolean_algebra
 
 data java_effect_signature_pure_value: Symbol = java_effect_signature_pure_value
@@ -519,6 +512,11 @@ data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
   java_facts_float,
   java_facts_double,
 ]
+
+// JLS §15.20.1 — float/double relational ops are boolean-valued with NaN unordered; std
+// `ApproximateField` bundles an Ordering-valued compare. Float primitive facts stay in
+// `ModelCore.primitives`; AlgebraInhabitanceDecl/laws withheld until std exports a
+// NaN-aware float arithmetic carrier (kotlin.dag char / go.dag complex precedent).
 
 // §4.2 boolean only — char is integral (integer catalog); void is declared-inhabitant-only (not ModelCore).
 data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
@@ -2096,26 +2094,6 @@ fn java_wrapping_integer_algebra_witness_node(facts: JavaIntegerPrimitiveFacts) 
   }
 }
 
-fn java_float_algebra_witness_node(facts: JavaFloatPrimitiveFacts) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      java_named_edge(
-        name: java_witness_float_approximate_field,
-        target: java_symbol_node(id: java_witness_float_approximate_field)
-      ),
-      java_named_edge(
-        name: java_facts_field_ieee754_binary,
-        target: java_symbol_node(id: facts.ieee754_binary)
-      ),
-      java_named_edge(
-        name: java_facts_field_std_projection,
-        target: java_symbol_node(id: facts.std_projection)
-      )
-    ]
-  }
-}
-
 fn java_bool_algebra_witness_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -2141,15 +2119,6 @@ fn java_wrapping_integer_algebra_inhabitance(facts: JavaIntegerPrimitiveFacts) -
   }
 }
 
-fn java_float_algebra_inhabitance(facts: JavaFloatPrimitiveFacts) -> AlgebraInhabitanceDecl {
-  let inhabitant = java_float_facts_node(facts: facts)
-  AlgebraInhabitanceDecl {
-    algebra: approximate_field_node(inhabitant: inhabitant),
-    inhabitant: inhabitant,
-    witness: java_float_algebra_witness_node(facts: facts)
-  }
-}
-
 fn java_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = java_noninteger_facts_node(facts: java_facts_boolean)
   AlgebraInhabitanceDecl {
@@ -2169,16 +2138,6 @@ fn java_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-fn java_float_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  fold_list(
-    xs: java_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_snoc_item(xs: acc, item: java_float_algebra_inhabitance(facts: facts))
-    }
-  )
-}
-
 fn java_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   [
     java_bool_algebra_inhabitance()
@@ -2187,10 +2146,7 @@ fn java_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
 
 fn java_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   list_append(
-    left: list_append(
-      left: java_integer_algebra_inhabitance_decls(),
-      right: java_float_algebra_inhabitance_decls()
-    ),
+    left: java_integer_algebra_inhabitance_decls(),
     right: java_bool_algebra_inhabitance_decls()
   )
 }
@@ -2203,8 +2159,6 @@ fn java_law_kind_symbol(key: JavaModelCoreLawKey) -> Symbol {
     JavaLawIntegerMulCommutativeModular => java_law_kind_integer_mul_commutative_modular
     JavaLawIntegerDistributiveModular => java_law_kind_integer_distributive_modular
     JavaLawIntegerModularWrap => java_law_kind_integer_modular_wrap
-    JavaLawFloatIeee754Rounding => java_law_kind_float_ieee754_rounding
-    JavaLawFloatNanInfCarriedByIeee754 => java_law_kind_float_nan_inf_carried_by_ieee754
     JavaLawBoolBoundedLattice => java_law_kind_bool_bounded_lattice
     JavaLawBoolComplement => java_law_kind_bool_complement
   }
@@ -2287,30 +2241,6 @@ fn java_wrapping_integer_law_obligations(facts: JavaIntegerPrimitiveFacts) -> Li
   ]
 }
 
-fn java_float_law_obligations(facts: JavaFloatPrimitiveFacts) -> List<AlgebraLawObligation> {
-  let witness = java_float_algebra_witness_node(facts: facts)
-  let inhabitant = java_float_facts_node(facts: facts)
-  let algebra = approximate_field_type_node(inhabitant: inhabitant)
-  [
-    java_model_core_law_obligation(
-      witness: witness,
-      law: java_model_core_law_node(
-        witness: witness,
-        algebra: algebra,
-        key: JavaLawFloatIeee754Rounding
-      )
-    ),
-    java_model_core_law_obligation(
-      witness: witness,
-      law: java_model_core_law_node(
-        witness: witness,
-        algebra: algebra,
-        key: JavaLawFloatNanInfCarriedByIeee754
-      )
-    )
-  ]
-}
-
 fn java_bool_algebra_laws() -> List<AlgebraLawObligation> {
   let witness = java_bool_algebra_witness_node()
   let inhabitant = java_noninteger_facts_node(facts: java_facts_boolean)
@@ -2345,22 +2275,9 @@ fn java_integer_algebra_laws() -> List<AlgebraLawObligation> {
   )
 }
 
-fn java_float_algebra_laws() -> List<AlgebraLawObligation> {
-  fold_list(
-    xs: java_float_facts_catalog,
-    empty: Empty,
-    cons: fn(acc, facts) {
-      list_append(left: acc, right: java_float_law_obligations(facts: facts))
-    }
-  )
-}
-
 fn java_model_core_law_obligations() -> List<AlgebraLawObligation> {
   list_append(
-    left: list_append(
-      left: java_integer_algebra_laws(),
-      right: java_float_algebra_laws()
-    ),
+    left: java_integer_algebra_laws(),
     right: java_bool_algebra_laws()
   )
 }
