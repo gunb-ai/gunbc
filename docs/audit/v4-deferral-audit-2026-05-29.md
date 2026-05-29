@@ -334,7 +334,8 @@ deferral inside a "staging" noun.
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
 
 **Headline — REVISED:** the v4 deferral ledger has **one large unnecessary
-cluster** — `formatter-int-refinement` (63 sites · 9 formatter files)
+cluster** — `formatter-int-refinement` (63 sites · 9 formatter files;
+the broader landed-T-25-core dissolve-now set is 66 sites — see §A1)
 should have dissolved when T-25-core (`std/refinement.dag`) landed in
 PR #3354. Prose deferrals and the long tail of feature gates remain
 honest. Combined with the four smaller T-4.16 follow-on gates (§1.3, §1.4,
@@ -359,10 +360,14 @@ labelling defect: work is open, bind names a closed task.
 
 ## §A. Action items
 
-* **§A1 — DISSOLVE `formatter-int-refinement` (63 sites)** against the
-  landed `std/refinement.dag` substrate. Replace each annotated `Int`
-  field with `Refined<Int>` + the per-field `Validation<Int>` predicate.
-  Reference patterns: `extdeps/posix.dag` ProcessId/ExitCode wrappers and
+* **§A1 — DISSOLVE all landed-T-25-core formatter refinement gates
+  (66 sites total)** against the landed `std/refinement.dag` substrate.
+  Breakdown matches §1.9: 63 × `formatter-int-refinement` field sites +
+  1 × `rustfmt-ignore-path-refinement` + 1 × `rustfmt-macro-name-refinement`
+  + 1 × `rustfmt-version-string-refinement`. Replace each annotated
+  `Int` / `String` field with `Refined<Int>` / `Refined<String>` plus the
+  per-field `Validation<*>` predicate. Reference patterns:
+  `extdeps/posix.dag` ProcessId/ExitCode wrappers and
   `extdeps/formatters/ktfmt.dag:29`. **This is the largest single
   dissolution available** in the v4 corpus today.
 * **§A2 — re-bind `lean4-option-closed-set`** from `T-4.16 follow-on` →
