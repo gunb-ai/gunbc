@@ -932,26 +932,41 @@ fn kotlin_ordered_ring_integer_facts_node(facts: KotlinOrderedRingIntegerFacts) 
   )
 }
 
+fn kotlin_ordered_ring_integer_algebra_witness_body(
+  overflow: KotlinIntegerOverflowUnspecified,
+  representation: KotlinRuntimeRepresentation
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      kotlin_named_edge(
+        name: kotlin_witness_integer_ordered_ring,
+        target: kotlin_atom(id: kotlin_witness_integer_ordered_ring)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_overflow,
+        target: kotlin_overflow_node(overflow: overflow)
+      ),
+      kotlin_named_edge(
+        name: kotlin_facts_field_representation,
+        target: kotlin_runtime_representation_node(representation: representation)
+      )
+    ]
+  }
+}
+
 fn kotlin_integer_algebra_witness_node(facts: KotlinOrderedRingIntegerFacts) -> Node {
   match facts {
-    KotlinOrderedRingIntFacts { overflow, representation }
-    | KotlinOrderedRingLongFacts { overflow, representation } => Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        kotlin_named_edge(
-          name: kotlin_witness_integer_ordered_ring,
-          target: kotlin_atom(id: kotlin_witness_integer_ordered_ring)
-        ),
-        kotlin_named_edge(
-          name: kotlin_facts_field_overflow,
-          target: kotlin_overflow_node(overflow: overflow)
-        ),
-        kotlin_named_edge(
-          name: kotlin_facts_field_representation,
-          target: kotlin_runtime_representation_node(representation: representation)
-        )
-      ]
-    }
+    KotlinOrderedRingIntFacts { overflow, representation } =>
+      kotlin_ordered_ring_integer_algebra_witness_body(
+        overflow: overflow,
+        representation: representation
+      )
+    KotlinOrderedRingLongFacts { overflow, representation } =>
+      kotlin_ordered_ring_integer_algebra_witness_body(
+        overflow: overflow,
+        representation: representation
+      )
   }
 }
 
