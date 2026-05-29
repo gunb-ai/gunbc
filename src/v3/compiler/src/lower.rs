@@ -3789,24 +3789,20 @@ fn materialize_algebra_machine_width_width_nat(
 
 /// Record-field map for `ConfigPatchRecord<Config>`: each `name: T` in `Config` becomes
 /// `name: FieldPatch<T>` in the patch record (T-4.16 `config-patch-record-projection`).
-fn materialize_config_patch_record_connective(
+fn materialize_config_patch_record_from_config_decl(
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
     local: &HashMap<String, DeclarationId>,
-    args: &[TypeAngleArg],
+    config_ty: DeclarationId,
     span: &SourceSpan,
 ) -> Option<TypeConnective> {
-    if args.len() != 1 {
-        return None;
-    }
-    let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
     let mut subst = LowerSubstStack::default();
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, config_ty, &mut subst)?;
     let children = match &dag.declaration(conj_id).connective {
         TypeConnective::Conj { children } => children.clone(),
         _ => return None,
     };
-    let field_patch_tpl = dag.declaration_by_name("FieldPatch")?.id;
+    let field_patch_tpl = v4_std_patch_named_declaration(dag, "FieldPatch")?;
     let field_patch_param = template_param_id(dag, field_patch_tpl, 0)?;
     let patch_children: Vec<Field> = children
         .into_iter()
@@ -3844,12 +3840,79 @@ fn materialize_config_patch_record_connective(
     })
 }
 
+fn materialize_config_patch_record_connective(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    args: &[TypeAngleArg],
+    span: &SourceSpan,
+) -> Option<TypeConnective> {
+    if args.len() != 1 {
+        return None;
+    }
+    let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
+    materialize_config_patch_record_from_config_decl(dag, symbols, local, config_ty, span)
+}
+
+fn config_patch_record_decl_for_config(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    config_decl: DeclarationId,
+    span: &SourceSpan,
+) -> Option<DeclarationId> {
+    let connective =
+        materialize_config_patch_record_from_config_decl(dag, symbols, local, config_decl, span)?;
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective,
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span.clone(),
+    });
+    Some(id)
+}
+
 fn declaration_named(dag: &Dag, decl_id: DeclarationId, expected: &str) -> bool {
     dag.declaration(decl_id).name.as_deref() == Some(expected)
 }
 
-/// Surface `Parameterized` names must resolve through `local` / `symbols` to the
-/// canonical imported template before name-keyed lower hooks run (T-4.16).
+const V4_STD_PATCH_DAG_SUFFIX: &str = "v4/std/patch.dag";
+
+fn declaration_authority_is_v4_std_patch(dag: &Dag, decl_id: DeclarationId) -> bool {
+    dag.declaration(decl_id)
+        .span
+        .file
+        .replace('\\', "/")
+        .ends_with(V4_STD_PATCH_DAG_SUFFIX)
+}
+
+/// Unique top-level declaration authored in `src/v4/std/patch.dag` (fail-closed on homographs).
+fn v4_std_patch_named_declaration(dag: &Dag, name: &str) -> Option<DeclarationId> {
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| {
+            decl.name.as_deref() == Some(name) && declaration_authority_is_v4_std_patch(dag, decl.id)
+        })
+        .map(|decl| decl.id)
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|id| id.raw());
+    match matches.as_slice() {
+        [only] => Some(*only),
+        _ => None,
+    }
+}
+
+/// Surface `Parameterized` names must resolve to the canonical `v4.std.patch` template id.
 fn surface_parameterized_name_resolves_to_template(
     dag: &Dag,
     symbols: &HashMap<String, DeclarationId>,
@@ -3857,13 +3920,20 @@ fn surface_parameterized_name_resolves_to_template(
     surface_name: &str,
     expected_template_name: &str,
 ) -> bool {
-    let Some(&template_id) = local
+    let Some(canonical) = v4_std_patch_named_declaration(dag, expected_template_name) else {
+        return false;
+    };
+    let Some(&resolved) = local
         .get(surface_name)
         .or_else(|| symbols.get(surface_name))
     else {
         return false;
     };
-    declaration_named(dag, template_id, expected_template_name)
+    resolved == canonical
+}
+
+fn callable_is_v4_std_patch_config_patch_layer(dag: &Dag, decl_id: DeclarationId) -> bool {
+    v4_std_patch_named_declaration(dag, "config_patch_layer") == Some(decl_id)
 }
 
 fn config_patch_layer_args_diagnostic(span: &SourceSpan) -> Diagnostic {
@@ -3960,7 +4030,7 @@ fn config_patch_layer_expansion_symbols(
     dag: &Dag,
     symbols: &HashMap<String, DeclarationId>,
 ) -> Option<HashMap<String, DeclarationId>> {
-    let apply_field_patch = dag.declaration_by_name("apply_field_patch")?.id;
+    let apply_field_patch = v4_std_patch_named_declaration(dag, "apply_field_patch")?;
     let mut expansion_symbols = symbols.clone();
     expansion_symbols.insert("apply_field_patch".to_string(), apply_field_patch);
     Some(expansion_symbols)
@@ -4019,7 +4089,7 @@ fn try_lower_config_patch_layer_invocation(
     symbols: &HashMap<String, DeclarationId>,
     expected_decl: Option<DeclarationId>,
 ) -> Option<PortId> {
-    if !declaration_named(dag, base_target_decl, "config_patch_layer") {
+    if !callable_is_v4_std_patch_config_patch_layer(dag, base_target_decl) {
         return None;
     }
     let config_decl = match expected_decl {
@@ -4067,6 +4137,63 @@ fn try_lower_config_patch_layer_invocation(
             },
         ));
     };
+    if !matches!(
+        base_operand,
+        SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. }
+    ) || !matches!(
+        patch_operand,
+        SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. }
+    ) {
+        return Some(unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "config_patch_layer operands must be variables or paths".to_string(),
+                span: span.clone(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
+            },
+        ));
+    }
+    let patch_record_decl = match config_patch_record_decl_for_config(
+        dag, symbols, local, config_decl, span,
+    ) {
+        Some(decl) => decl,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_record_materialization_failed_diagnostic(span),
+            ));
+        }
+    };
+    let base_port = lower_expr(
+        base_operand,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        Some(config_decl),
+    );
+    if matches!(
+        dag.port(base_port).state(),
+        crate::dag::PortState::Unresolved
+    ) {
+        return Some(base_port);
+    }
+    let patch_port = lower_expr(
+        patch_operand,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        Some(patch_record_decl),
+    );
+    if matches!(
+        dag.port(patch_port).state(),
+        crate::dag::PortState::Unresolved
+    ) {
+        return Some(patch_port);
+    }
     let mut record_fields: Vec<SurfaceRecordField> = Vec::with_capacity(children.len());
     for field in children {
         let value = match surface_apply_field_patch_from_operands(
@@ -7869,7 +7996,7 @@ fn lower_fn_item_expr_body(
     // `config_patch_layer` is expanded at call sites (`try_lower_config_patch_layer_invocation`).
     // Do not lower the surface stub body (`base`) — that would silently discard `patch` on any
     // invocation path that bypasses the interceptor.
-    if name == "config_patch_layer" {
+    if callable_is_v4_std_patch_config_patch_layer(dag, fn_decl_id) {
         let body_span = surface_expr_span(body).clone();
         let err_port = dag.alloc_port(None);
         dag.mark_unresolved(
@@ -11747,6 +11874,10 @@ mod tests {
 
     fn test_span() -> SourceSpan {
         SourceSpan::new("lower_decl_ref_test.v3", 0, 0)
+    }
+
+    fn test_v4_std_patch_span() -> SourceSpan {
+        SourceSpan::new("src/v4/std/patch.dag", 0, 100)
     }
 
     fn push_test_declaration(
