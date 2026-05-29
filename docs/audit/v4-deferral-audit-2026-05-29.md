@@ -35,8 +35,8 @@ snapshot** under an explicit one-shot operator directive (2026-05-29). It is
 
 1.  Enumerate every marker. Three populations:
     * **gate vocabulary** — `🟡 gated — feature:NAME — bind X — dissolve-on Y`.
-      279 occurrences across the corpus collapse to a small set of distinct
-      `feature:` gate names (130 distinct per §0 population A); one row per gate.
+      280 occurrences across the corpus collapse to a small set of distinct
+      `feature:` + `consumer:` gate names (140 distinct per §0 Population A); one row per gate.
     * **needs-more-work** — 53 `🟡 needs-more-work` markers. Each carries a
       `bind T-X — dissolve-on:` rider; classified by upstream task.
     * **prose-level deferrals** in `TASKS.md`, `src/v4/DECISIONS.md`,
@@ -82,7 +82,7 @@ where §1.1 cited the C′ value (63) while §1.3 cited the C value (7);
 **§1.1 now reads "66" under C** for single-authority consistency.
 
 **Last reproduced 2026-05-29 against `origin/main` @ `df91abc2b`:**
-populations A=**130**, B=279.
+populations A=**140**, B=**280**.
 
 **Corrected per inline review 2026-05-29:** the original audit cited
 A=97, derived from `feature:[a-z]` (no-space form only). Inline review
@@ -111,7 +111,7 @@ rows across 4 formatter files") use **population C** — they count
 per-field shorthand annotations like `🟡 gated: formatter-int-refinement`,
 not just the `feature:` header declarations. §1.9's distribution table
 uses **population A** — distinct `feature:NAME` declarations only, which
-is why formatter-int-refinement contributes 1 to the 130 there but 66 to
+is why formatter-int-refinement contributes 1 to the 140 there but 66 to
 §1.1's site count. Both numbers are correct for their respective
 populations.
 
@@ -124,12 +124,12 @@ are the audit's canonical commands.
 
 ## §1. Gate vocabulary — `🟡 gated — feature:NAME`
 
-**130 distinct gate names** appear in the corpus (corrected 2026-05-29
+**140 distinct gate names** appear in the corpus (corrected 2026-05-29
 per inline review — see §0 for the unified spaced+unspaced grep that
 yields this; the original 97 figure missed 33 spaced-form gates
 including `formatter-int-refinement` itself). **§1.1–§1.8 tabulate 8
 representative gates** (5 multi-site: §1.1–§1.4 + the 13-site §1.2;
-3 singletons: §1.6–§1.8); **§1.9 summarizes the remaining 122
+3 singletons: §1.6–§1.8); **§1.9 summarizes the remaining 132
 gates**, which contain both un-tabulated multi-site gates (at 2–9
 sites each) **and** the bulk of the singleton tail. See §1.9 for the
 full site-count distribution table.
@@ -271,7 +271,7 @@ not a T-4.16 follow-on; it is a v4-language-level substrate gap.
 Recommend retagging the bind to `bind v4-lang:map-primitive`
 (action §A3).
 
-### §1.9  Long-tail gates — remaining 122 distinct gates
+### §1.9  Long-tail gates — remaining 132 distinct gates
 
 **Census (regenerated 2026-05-29 from unified spaced+unspaced grep
 per inline review):** the original draft cited 97 distinct gates from
@@ -453,7 +453,7 @@ under-counted the route by omitting §1.2 and §1.3.
 
 | Population | Sites | NECESSARY | UNNECESSARY |
 | --- | ---: | ---: | ---: |
-| `🟡 gated — feature:*` distinct gates | 140 (full scope incl. docs/) | 133 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
+| `🟡 gated — feature:*`+`consumer:*` distinct gates (Population A) | 140 (full scope incl. docs/) | 133 | **7** (§1.1 formatter-int-refinement, §1.3 cross-field, §1.4 deprecated-alias, §1.5 ignore-path-refinement, §1.6 unstable-option-validity, §1.9 rustfmt-macro-name-refinement, §1.9 rustfmt-version-string-refinement) |
 | `🟡 gated` annotation occurrences (Population C, all forms, full scope) | 280 | ~200 | **~80** (§1.1 = 66 + §1.3 = 7 + §1.4 = 3 + §1.5 = 1 + §1.6 = 1 + 2 long-tail T-25-core binds = 80; all derived from §0 Population C — single authority) |
 | `🟡 needs-more-work` | 53 | 36 | 17 (§A5 testgen RULING-1 mis-tag, design-open not substrate-blocked) |
 | Prose deferrals (TASKS / docs) | ~25 | ~25 | 0 |
@@ -520,7 +520,8 @@ labelling defect: work is open, bind names a closed task.
     formatter files — rustfmt, ktfmt, black, clang_format) — author
     `*ConfigValidation` witnesses for rustfmt / ktfmt / black against
     existing Witness substrate.
-  * `rustfmt-deprecated-alias` (1 site) — author the canonical-wins
+  * `rustfmt-deprecated-alias` (3 annotation rows under Population C: 1
+    `feature:` header + 2 field annotations) — author the canonical-wins
     precedence predicate over `RustfmtConfig`.
   * `rustfmt-unstable-option-validity` (1 site) — migrate unstable
     rustfmt fields to `Optional<T>` (substrate present as
