@@ -28,7 +28,10 @@ struct BoundedPipeCapture {
     truncated: bool,
 }
 
-fn drain_reader_bounded(mut r: impl Read, max_stored: usize) -> std::io::Result<BoundedPipeCapture> {
+fn drain_reader_bounded(
+    mut r: impl Read,
+    max_stored: usize,
+) -> std::io::Result<BoundedPipeCapture> {
     let mut buf = Vec::new();
     let mut truncated = false;
     let mut scratch = [0u8; DRAIN_CHUNK_BYTES];
@@ -135,12 +138,10 @@ pub fn host_command_output(
         .take()
         .ok_or_else(|| format!("{label}: internal error: stderr not piped"))?;
 
-    let stdout_handle = std::thread::spawn(move || {
-        drain_reader_bounded(&mut stdout, CAPTURE_MAX_STDOUT_BYTES)
-    });
-    let stderr_handle = std::thread::spawn(move || {
-        drain_reader_bounded(&mut stderr, CAPTURE_MAX_STDERR_BYTES)
-    });
+    let stdout_handle =
+        std::thread::spawn(move || drain_reader_bounded(&mut stdout, CAPTURE_MAX_STDOUT_BYTES));
+    let stderr_handle =
+        std::thread::spawn(move || drain_reader_bounded(&mut stderr, CAPTURE_MAX_STDERR_BYTES));
 
     let status = match child_wait_bounded(&mut child, wall) {
         Ok(s) => s,

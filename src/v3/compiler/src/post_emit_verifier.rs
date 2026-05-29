@@ -232,9 +232,9 @@ pub fn run_post_emit_verifier(
     let label = format!("post_emit_verifier `{}`", binding.command);
     let output = bounded_host_command::host_command_output(&label, DEFAULT_WALL_TIMEOUT, command)
         .map_err(|err| VerifierRunError::InvocationFailed {
-            command: binding.command.clone(),
-            io_error: err,
-        })?;
+        command: binding.command.clone(),
+        io_error: err,
+    })?;
 
     let exit_code = output.status.code();
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
