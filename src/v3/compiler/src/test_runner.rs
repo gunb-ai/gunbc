@@ -675,6 +675,12 @@ fn l5_rust_emit_output_int(program_dag: &Dag, claim_file: &str) -> Result<i64, S
         .map_err(|e| format!("L5 rust_emit_output: create {}: {e}", src_path.display()))?;
     file.write_all(rust_src.as_bytes())
         .map_err(|e| format!("L5 rust_emit_output: write {}: {e}", src_path.display()))?;
+    crate::post_emit_verifier::verify_emitted_source_file(
+        program_dag,
+        crate::post_emit_verifier::EmitVerificationTarget::Rust,
+        &src_path,
+    )
+    .map_err(|e| format!("L5 rust_emit_output: {e}"))?;
 
     let mut rustc = Command::new("rustc");
     rustc
@@ -727,6 +733,12 @@ fn l5_python_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
         .map_err(|e| format!("L5 python_emit_output: create {}: {e}", src_path.display()))?;
     file.write_all(python_src.as_bytes())
         .map_err(|e| format!("L5 python_emit_output: write {}: {e}", src_path.display()))?;
+    crate::post_emit_verifier::verify_emitted_source_file(
+        program_dag,
+        crate::post_emit_verifier::EmitVerificationTarget::Python,
+        &src_path,
+    )
+    .map_err(|e| format!("L5 python_emit_output: {e}"))?;
     let mut run_cmd = Command::new("python3");
     run_cmd
         .arg(&src_path)
@@ -758,6 +770,12 @@ fn l5_go_emit_output_int(program_dag: &Dag) -> Result<i64, String> {
         .map_err(|e| format!("L5 go_emit_output: create {}: {e}", src_path.display()))?;
     file.write_all(go_src.as_bytes())
         .map_err(|e| format!("L5 go_emit_output: write {}: {e}", src_path.display()))?;
+    crate::post_emit_verifier::verify_emitted_source_file(
+        program_dag,
+        crate::post_emit_verifier::EmitVerificationTarget::Go,
+        &src_path,
+    )
+    .map_err(|e| format!("L5 go_emit_output: {e}"))?;
     let mut run_cmd = Command::new("go");
     run_cmd
         .arg("run")

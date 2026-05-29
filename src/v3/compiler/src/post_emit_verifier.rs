@@ -37,11 +37,44 @@
 //! Rust branch inside this runner — same discipline as
 //! `pattern_bindings` / `output_policy`.
 
+use std::fmt;
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
 
 use crate::dag::{DeclarationId, FieldValue, LiteralBits};
+use crate::emit::{emit_go_text, emit_python_text, emit_rust_text};
 use crate::Dag;
+
+/// R3 Shape-A emission targets whose `CleanEmissionContract.post_emit_verifier`
+/// is the authority for "emitted source is acceptable to the target toolchain."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitVerificationTarget {
+    Rust,
+    Go,
+    Python,
+}
+
+impl EmitVerificationTarget {
+    pub const ALL: &'static [EmitVerificationTarget] =
+        &[Self::Rust, Self::Go, Self::Python];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Rust => "rust",
+            Self::Go => "go",
+            Self::Python => "python",
+        }
+    }
+
+    fn default_source_filename(self) -> &'static str {
+        match self {
+            Self::Rust => "main.rs",
+            Self::Go => "main.go",
+            Self::Python => "main.py",
+        }
+    }
+}
 
 /// Typed read of `data <target>_clean_emission.post_emit_verifier`.
 /// Every field here is a structural declaration on the contract that
@@ -227,6 +260,112 @@ pub fn run_post_emit_verifier(
         });
     }
     Ok(())
+}
+
+impl fmt::Display for VerifierRunError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VerifierRunError::InvocationFailed { command, io_error } => {
+                write!(f, "failed to invoke `{command}`: {io_error}")
+            }
+            VerifierRunError::WrongExitCode {
+                expected,
+                actual,
+                stdout,
+                stderr,
+            } => write!(
+                f,
+                "verifier exit {actual:?} != expected {expected}; stdout:\n{stdout}\nstderr:\n{stderr}"
+            ),
+            VerifierRunError::PolicyViolation {
+                policy,
+                stdout,
+                stderr,
+            } => write!(
+                f,
+                "verifier output policy {policy:?} violated; stdout:\n{stdout}\nstderr:\n{stderr}"
+            ),
+        }
+    }
+}
+
+/// Resolve the cached `*_clean_emission` declaration for a Shape-A target.
+pub fn clean_emission_spec(
+    dag: &Dag,
+    target: EmitVerificationTarget,
+) -> Result<DeclarationId, VerifierParseError> {
+    let spec = match target {
+        EmitVerificationTarget::Rust => dag.rust_clean_emission_spec(),
+        EmitVerificationTarget::Go => dag.go_clean_emission_spec(),
+        EmitVerificationTarget::Python => dag.python_clean_emission_spec(),
+    };
+    spec.ok_or(VerifierParseError::MissingDeclaration)
+}
+
+/// Run the target's declared `post_emit_verifier` against an on-disk source file.
+pub fn verify_emitted_source_file(
+    dag: &Dag,
+    target: EmitVerificationTarget,
+    source_path: &Path,
+) -> Result<(), VerifierRunError> {
+    let spec = clean_emission_spec(dag, target)?;
+    let binding = parse_post_emit_verifier(dag, spec)?;
+    run_post_emit_verifier(&binding, source_path)
+}
+
+/// Emit `program_dag` for `target`, write the source into `scratch_dir`, and
+/// apply the contract's `post_emit_verifier`. `program_dag` must be a
+/// `compile_to_dag` result (bootstrap carries clean-emission specs).
+pub fn verify_program_emitted_source(
+    program_dag: &Dag,
+    target: EmitVerificationTarget,
+    scratch_dir: &Path,
+    file_stem: &str,
+) -> Result<(), String> {
+    let emitted = emit_text_for_target(program_dag, target)?;
+    std::fs::create_dir_all(scratch_dir)
+        .map_err(|e| format!("create scratch {}: {e}", scratch_dir.display()))?;
+    let filename = format!("{file_stem}_{}", target.default_source_filename());
+    let src_path = scratch_dir.join(filename);
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("create {}: {e}", src_path.display()))?;
+    file.write_all(emitted.as_bytes())
+        .map_err(|e| format!("write {}: {e}", src_path.display()))?;
+    verify_emitted_source_file(program_dag, target, &src_path)
+        .map_err(|e| format!("{} post_emit_verifier for `{file_stem}`: {e}", target.label()))
+}
+
+/// Every Shape-A target must accept the emitted source for `program_dag`.
+pub fn verify_program_emitted_source_all_targets(
+    program_dag: &Dag,
+    scratch_dir: &Path,
+    file_stem: &str,
+) -> Result<(), String> {
+    let mut failures = Vec::new();
+    for &target in EmitVerificationTarget::ALL {
+        if let Err(msg) = verify_program_emitted_source(program_dag, target, scratch_dir, file_stem)
+        {
+            failures.push(msg);
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    }
+}
+
+fn emit_text_for_target(
+    program_dag: &Dag,
+    target: EmitVerificationTarget,
+) -> Result<String, String> {
+    match target {
+        EmitVerificationTarget::Rust => emit_rust_text(program_dag).map_err(|e| format!("{e:?}")),
+        EmitVerificationTarget::Go => emit_go_text(program_dag).map_err(|e| format!("{e:?}")),
+        EmitVerificationTarget::Python => {
+            emit_python_text(program_dag).map_err(|e| format!("{e:?}"))
+        }
+    }
 }
 
 fn require_string(
