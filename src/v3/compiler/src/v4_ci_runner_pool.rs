@@ -35,6 +35,9 @@ pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] = [CI_SRV1_POOL, CI_SRV2_POOL];
 
 pub fn ci_runner_pool_min_jobserver_token_cap(pools: &[SelfHostedRunnerPool]) -> u32 {
+    if pools.is_empty() {
+        return 0;
+    }
     pools
         .iter()
         .map(|p| p.jobserver_token_cap)
@@ -43,10 +46,16 @@ pub fn ci_runner_pool_min_jobserver_token_cap(pools: &[SelfHostedRunnerPool]) ->
 }
 
 pub fn ci_runner_pool_max_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
+    if pools.is_empty() {
+        return 0;
+    }
     pools.iter().map(|p| p.runner_count).max().unwrap_or(0)
 }
 
 pub fn ci_runner_pool_min_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
+    if pools.is_empty() {
+        return 0;
+    }
     pools.iter().map(|p| p.runner_count).min().unwrap_or(0)
 }
 
@@ -121,5 +130,13 @@ mod tests {
     #[test]
     fn runner_spread_fail_closed_when_max_equals_min() {
         assert_eq!(ci_runner_pool_runner_spread(20, 20), 1);
+    }
+
+    #[test]
+    fn min_folds_return_zero_for_empty_pool_list() {
+        let empty: &[SelfHostedRunnerPool] = &[];
+        assert_eq!(ci_runner_pool_min_jobserver_token_cap(empty), 0);
+        assert_eq!(ci_runner_pool_min_runner_count(empty), 0);
+        assert_eq!(ci_runner_pool_max_runner_count(empty), 0);
     }
 }

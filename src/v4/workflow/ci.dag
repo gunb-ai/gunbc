@@ -49,7 +49,8 @@ import v4.std.node {
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
 import v4.std.text { Char, String }
-import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, None, diagnostics_singleton}
+import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
+import v4.std.integer { int_mul, int_div }
 import v4.std.algebra {
   count_equal,
   count_where,
@@ -112,10 +113,9 @@ type CiComponentAffected {
 
 // RULING-1: 🟢 pretty-much-done — host `git diff --name-only` read outcome (T-24 / INVARIANTS P3).
 // `ReadFailClosed` selects the superset `ci_component_affected_fail_closed` (all flags true).
-type CiGitDiffReadOutcome {
-  ReadOk: GitDiffNameOnly
-  ReadFailClosed: Diagnostic
-}
+type CiGitDiffReadOutcome
+  = ReadOk { git_diff: GitDiffNameOnly }
+  | ReadFailClosed { diagnostic: Diagnostic }
 
 data ci_git_diff_read_fail_closed_reason: Symbol = ci_git_diff_read_fail_closed_reason
 
@@ -123,6 +123,7 @@ data ci_git_diff_read_fail_closed_reason: Symbol = ci_git_diff_read_fail_closed_
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 type RunnerArch
   = Arm64
+  | RunnerArchUnknown
 
 type SelfHostedRunnerPool {
   host: Symbol
@@ -259,6 +260,18 @@ data ci_dangling_reference: Symbol = ci_dangling_reference
 data ci_dependency_cycle: Symbol = ci_dependency_cycle
 data ci_bootstrap_authority_violation: Symbol = ci_bootstrap_authority_violation
 data ci_workflow_file: Symbol = ci_workflow_file
+data ci_int_min_fold_sentinel: Int = 999999999
+
+fn ci_int_div_totalizing(a: Int, b: Int) -> Int {
+  match int_div(
+    a: a,
+    b: b,
+    at: Textual { file: ci_workflow_file, extent: WholeFile }
+  ) {
+    Accepted { value: quotient, diagnostics: _ } => quotient
+    Rejected { diagnostics: _ } => 1
+  }
+}
 
 fn ci_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
@@ -767,35 +780,47 @@ data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_hol
 
 
 fn ci_runner_pool_min_jobserver_token_cap(pools: List<SelfHostedRunnerPool>) -> Int {
-  fold(pools, init: ci_srv2_pool.jobserver_token_cap, f: fn(acc, pool) {
-    if pool.jobserver_token_cap < acc {
-      pool.jobserver_token_cap
-    } else {
-      acc
-    }
-  })
+  if length(xs: pools) == 0 {
+    0
+  } else {
+    fold(pools, init: ci_int_min_fold_sentinel, f: fn(acc, pool) {
+      if pool.jobserver_token_cap < acc {
+        pool.jobserver_token_cap
+      } else {
+        acc
+      }
+    })
+  }
 }
 
 
 fn ci_runner_pool_max_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
-  fold(pools, init: 0, f: fn(acc, pool) {
-    if pool.runner_count > acc {
-      pool.runner_count
-    } else {
-      acc
-    }
-  })
+  if length(xs: pools) == 0 {
+    0
+  } else {
+    fold(pools, init: 0, f: fn(acc, pool) {
+      if pool.runner_count > acc {
+        pool.runner_count
+      } else {
+        acc
+      }
+    })
+  }
 }
 
 
 fn ci_runner_pool_min_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
-  fold(pools, init: ci_srv1_pool.runner_count, f: fn(acc, pool) {
-    if pool.runner_count < acc {
-      pool.runner_count
-    } else {
-      acc
-    }
-  })
+  if length(xs: pools) == 0 {
+    0
+  } else {
+    fold(pools, init: ci_int_min_fold_sentinel, f: fn(acc, pool) {
+      if pool.runner_count < acc {
+        pool.runner_count
+      } else {
+        acc
+      }
+    })
+  }
 }
 
 
@@ -827,12 +852,18 @@ fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
   let max_runners = ci_runner_pool_max_runner_count(pools: pools)
   let total_runners = ci_runner_pool_total_runner_count(pools: pools)
   let hosts = ci_runner_pool_host_count(pools: pools)
-  (total_runners - min_runners) * hosts / ci_runner_pool_runner_spread(max_runners: max_runners, min_runners: min_runners)
+  ci_int_div_totalizing(
+    a: int_mul(a: total_runners - min_runners, b: hosts),
+    b: ci_runner_pool_runner_spread(max_runners: max_runners, min_runners: min_runners)
+  )
 }
 
 
 fn ci_m1_probe_cargo_check_jobs_from_pools(pools: List<SelfHostedRunnerPool>) -> Int {
-  ci_runner_pool_min_jobserver_token_cap(pools: pools) / ci_int_at_least_one(n: ci_m1_probe_cargo_fanout_slots(pools: pools))
+  ci_int_div_totalizing(
+    a: ci_runner_pool_min_jobserver_token_cap(pools: pools),
+    b: ci_int_at_least_one(n: ci_m1_probe_cargo_fanout_slots(pools: pools))
+  )
 }
 
 

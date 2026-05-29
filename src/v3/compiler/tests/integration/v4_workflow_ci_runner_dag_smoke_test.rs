@@ -40,6 +40,45 @@ const CI_WORKFLOW_POLICY_PREFIXES: &[&str] = &[
     "scripts/workflow-path-regex-forbidden-substrings",
 ];
 
+const CI_V2_PREFIXES: &[&str] = &["src/v2/"];
+const CI_V2_EXACT_PATHS: &[&str] = &["Cargo.toml", "Cargo.lock"];
+const CI_V3_PREFIXES: &[&str] = &["src/v3/", "dsl/"];
+const CI_V4_PREFIXES: &[&str] = &[
+    "src/v4/",
+    "fixtures/v4-mvp1/",
+    "scripts/v4-mvp1",
+    "scripts/v4-m1",
+    "scripts/v4-testclaim-",
+    "dsl/std/",
+];
+const CI_V4_EXACT_PATHS: &[&str] = &["Cargo.toml", "Cargo.lock"];
+
+fn assert_ci_dag_rust_prefix_parity(prefixes: &[&str]) {
+    for prefix in prefixes {
+        assert!(
+            CI_DAG.contains(&format!("prefix: \"{prefix}\"")),
+            "{CI_DAG_PATH}: authority must declare prefix `{prefix}`"
+        );
+        assert!(
+            V4_CI_COMPONENT_AFFECTED_RS.contains(&format!("\"{prefix}\"")),
+            "v4_ci_component_affected.rs mirror must declare prefix `{prefix}`"
+        );
+    }
+}
+
+fn assert_ci_dag_rust_exact_path_parity(paths: &[&str]) {
+    for path in paths {
+        assert!(
+            CI_DAG.contains(&format!("changed == \"{path}\"")),
+            "{CI_DAG_PATH}: authority must declare exact path `{path}`"
+        );
+        assert!(
+            V4_CI_COMPONENT_AFFECTED_RS.contains(&format!("\"{path}\"")),
+            "v4_ci_component_affected.rs mirror must declare exact path `{path}`"
+        );
+    }
+}
+
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
     let tokens =
         tokenize_for_test(source, path).unwrap_or_else(|e| panic!("{path}: tokenize: {e:?}"));
@@ -247,16 +286,16 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
 
 #[test]
 fn v4_workflow_ci_workflow_policy_prefixes_align_rust_mirror() {
-    for prefix in CI_WORKFLOW_POLICY_PREFIXES {
-        assert!(
-            CI_DAG.contains(&format!("prefix: \"{prefix}\"")),
-            "{CI_DAG_PATH}: workflow_policy authority must declare prefix `{prefix}`"
-        );
-        assert!(
-            V4_CI_COMPONENT_AFFECTED_RS.contains(&format!("\"{prefix}\"")),
-            "v4_ci_component_affected.rs mirror must declare prefix `{prefix}`"
-        );
-    }
+    assert_ci_dag_rust_prefix_parity(CI_WORKFLOW_POLICY_PREFIXES);
+}
+
+#[test]
+fn v4_workflow_ci_component_bucket_prefixes_align_rust_mirror() {
+    assert_ci_dag_rust_prefix_parity(CI_V2_PREFIXES);
+    assert_ci_dag_rust_prefix_parity(CI_V3_PREFIXES);
+    assert_ci_dag_rust_prefix_parity(CI_V4_PREFIXES);
+    assert_ci_dag_rust_exact_path_parity(CI_V2_EXACT_PATHS);
+    assert_ci_dag_rust_exact_path_parity(CI_V4_EXACT_PATHS);
 }
 
 #[test]
