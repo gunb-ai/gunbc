@@ -7,7 +7,7 @@
 module v4.extdeps.formatters.prettier
 
 import v4.std.collection { List }
-import v4.std.patch { FieldPatch, apply_field_patch }
+import v4.std.patch { ConfigPatchRecord, FieldPatch, apply_field_patch, config_patch_layer }
 
 
 // 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
@@ -126,7 +126,7 @@ type PrettierFormattingOptions {
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierOverrideOptions projected from PrettierFormattingOptions field set plus parser override field.
+// 🟡 gated — feature:prettier-override-options-hand-mirror — bind T-4.16 follow-on — dissolve-on-arrival: project PrettierOverrideOptions from PrettierFormattingOptions field set plus parser override field (extra `parser` beyond formatting options; not derivable from `ConfigPatchRecord<PrettierFormattingOptions>` alone).
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
   print_width: FieldPatch<Int>
@@ -201,64 +201,15 @@ data prettier_defaults: PrettierConfig = PrettierConfig {
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierFormattingOptionsPatch projected from PrettierFormattingOptions field set.
-type PrettierFormattingOptionsPatch {
-  print_width: FieldPatch<Int>
-  tab_width: FieldPatch<Int>
-  use_tabs: FieldPatch<Bool>
-  semi: FieldPatch<Bool>
-  single_quote: FieldPatch<Bool>
-  quote_props: FieldPatch<PrettierQuoteProps>
-  jsx_single_quote: FieldPatch<Bool>
-  trailing_comma: FieldPatch<PrettierTrailingComma>
-  bracket_spacing: FieldPatch<Bool>
-  object_wrap: FieldPatch<PrettierObjectWrap>
-  bracket_same_line: FieldPatch<Bool>
-  arrow_parens: FieldPatch<PrettierArrowParens>
-  require_pragma: FieldPatch<Bool>
-  insert_pragma: FieldPatch<Bool>
-  check_ignore_pragma: FieldPatch<Bool>
-  prose_wrap: FieldPatch<PrettierProseWrap>
-  html_whitespace_sensitivity: FieldPatch<PrettierHtmlWhitespaceSensitivity>
-  vue_indent_script_and_style: FieldPatch<Bool>
-  single_attribute_per_line: FieldPatch<Bool>
-  end_of_line: FieldPatch<PrettierEndOfLine>
-  embedded_language_formatting: FieldPatch<PrettierEmbeddedLanguageFormatting>
-  experimental_ternaries: FieldPatch<Bool>
-  experimental_operator_position: FieldPatch<PrettierExperimentalOperatorPosition>
-}
+type PrettierFormattingOptionsPatch = ConfigPatchRecord<PrettierFormattingOptions>
 
 
 fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patch: PrettierFormattingOptionsPatch) -> PrettierFormattingOptions {
-  PrettierFormattingOptions {
-    print_width: apply_field_patch(base: base.print_width, patch: patch.print_width),
-    tab_width: apply_field_patch(base: base.tab_width, patch: patch.tab_width),
-    use_tabs: apply_field_patch(base: base.use_tabs, patch: patch.use_tabs),
-    semi: apply_field_patch(base: base.semi, patch: patch.semi),
-    single_quote: apply_field_patch(base: base.single_quote, patch: patch.single_quote),
-    quote_props: apply_field_patch(base: base.quote_props, patch: patch.quote_props),
-    jsx_single_quote: apply_field_patch(base: base.jsx_single_quote, patch: patch.jsx_single_quote),
-    trailing_comma: apply_field_patch(base: base.trailing_comma, patch: patch.trailing_comma),
-    bracket_spacing: apply_field_patch(base: base.bracket_spacing, patch: patch.bracket_spacing),
-    object_wrap: apply_field_patch(base: base.object_wrap, patch: patch.object_wrap),
-    bracket_same_line: apply_field_patch(base: base.bracket_same_line, patch: patch.bracket_same_line),
-    arrow_parens: apply_field_patch(base: base.arrow_parens, patch: patch.arrow_parens),
-    require_pragma: apply_field_patch(base: base.require_pragma, patch: patch.require_pragma),
-    insert_pragma: apply_field_patch(base: base.insert_pragma, patch: patch.insert_pragma),
-    check_ignore_pragma: apply_field_patch(base: base.check_ignore_pragma, patch: patch.check_ignore_pragma),
-    prose_wrap: apply_field_patch(base: base.prose_wrap, patch: patch.prose_wrap),
-    html_whitespace_sensitivity: apply_field_patch(base: base.html_whitespace_sensitivity, patch: patch.html_whitespace_sensitivity),
-    vue_indent_script_and_style: apply_field_patch(base: base.vue_indent_script_and_style, patch: patch.vue_indent_script_and_style),
-    single_attribute_per_line: apply_field_patch(base: base.single_attribute_per_line, patch: patch.single_attribute_per_line),
-    end_of_line: apply_field_patch(base: base.end_of_line, patch: patch.end_of_line),
-    embedded_language_formatting: apply_field_patch(base: base.embedded_language_formatting, patch: patch.embedded_language_formatting),
-    experimental_ternaries: apply_field_patch(base: base.experimental_ternaries, patch: patch.experimental_ternaries),
-    experimental_operator_position: apply_field_patch(base: base.experimental_operator_position, patch: patch.experimental_operator_position),
-  }
+  config_patch_layer(base: base, patch: patch)
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch feature:config-patch-record-projection — dissolve-on-arrival: PrettierConfigPatch projected from PrettierConfig field set (options + overrides).
+// 🟡 gated — feature:prettier-nested-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: model `options` as `FieldPatch<PrettierFormattingOptions>` (or nested patch substrate) so `PrettierConfigPatch = ConfigPatchRecord<PrettierConfig>`; until then hand `prettier_layer` composes nested `PrettierFormattingOptionsPatch` + scalar `overrides`.
 type PrettierConfigPatch {
   options: PrettierFormattingOptionsPatch
   overrides: FieldPatch<List<PrettierOverrideEntry>>
