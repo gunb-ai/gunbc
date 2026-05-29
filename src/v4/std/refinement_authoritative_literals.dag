@@ -17,171 +17,384 @@ import v4.std.refinement {
   make_exact_one_int_at_authoritative,
   make_non_negative_int_at_authoritative,
   make_positive_int_at_authoritative,
-  positive_int_authoritative_constant,
-  non_negative_int_authoritative_constant,
-  at_least_minus_one_int_authoritative_constant,
-  at_least_minus_two_int_authoritative_constant,
-  exact_one_int_authoritative_constant,
 }
 import v4.std.diagnostic { Accepted, Rejected }
 
 
-// Per-catalog `data` rows (fixed value: N) — not Int->Carrier totalizers. Rejected arms preserve
-// the Outcome boundary via *_authoritative_constant (substrate authoring fault if reached for
-// witnessed catalog values). Acceptance tied per literal in refinement_formatter_literals_accept.dag.
+// Per-catalog `data` rows (fixed value: N). Rejected arms call nullary catalog_fault helpers that
+// re-run make_* for the same constant (both arms unify as the nominal carrier). Catalog values
+// are witnessed accepted in refinement_formatter_literals_accept.dag; persistent reject is a
+// substrate authoring fault (no Outcome-as-carrier, no Int->Carrier totalizer).
 // 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
+
+fn authoritative_at_least_minus_one_int_minus_1_catalog_fault() -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: -1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_catalog_fault()
+  }
+}
+
+fn authoritative_at_least_minus_one_int_0_catalog_fault() -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: 0) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_catalog_fault()
+  }
+}
+
+fn authoritative_at_least_minus_two_int_minus_2_catalog_fault() -> AtLeastMinusTwoInt {
+  match make_at_least_minus_two_int_at_authoritative(value: -2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_catalog_fault()
+  }
+}
+
+fn authoritative_exact_one_int_1_catalog_fault() -> ExactOneInt {
+  match make_exact_one_int_at_authoritative(value: 1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_exact_one_int_1_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_0_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 0) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_0_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_2_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_2_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_4_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 4) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_4_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_8_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 8) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_8_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_10_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 10) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_10_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_18_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 18) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_18_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_19_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 19) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_19_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_35_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 35) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_35_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_50_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 50) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_50_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_60_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 60) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_60_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_80_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 80) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_80_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_120_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 120) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_120_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_150_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 150) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_150_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_300_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 300) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_300_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_500_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 500) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_500_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1000_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1000) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_catalog_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1000000_catalog_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1000000) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_2_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_2_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_4_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 4) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_4_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_8_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 8) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_8_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_10_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 10) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_10_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_60_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 60) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_60_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_70_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 70) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_70_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_80_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 80) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_80_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_88_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 88) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_88_catalog_fault()
+  }
+}
+
+fn authoritative_positive_int_100_catalog_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 100) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_100_catalog_fault()
+  }
+}
 
 data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: -1) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => at_least_minus_one_int_authoritative_constant(base: -1)
+  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_catalog_fault()
 }
 
 data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: 0) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => at_least_minus_one_int_authoritative_constant(base: 0)
+  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_catalog_fault()
 }
 
 data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = match make_at_least_minus_two_int_at_authoritative(value: -2) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => at_least_minus_two_int_authoritative_constant(base: -2)
+  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_catalog_fault()
 }
 
 data authoritative_exact_one_int_1: ExactOneInt = match make_exact_one_int_at_authoritative(value: 1) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => exact_one_int_authoritative_constant(base: 1)
+  Rejected { diagnostics: _ } => authoritative_exact_one_int_1_catalog_fault()
 }
 
 data authoritative_non_negative_int_0: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 0) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 0)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_0_catalog_fault()
 }
 
 data authoritative_non_negative_int_1: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 1)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_1_catalog_fault()
 }
 
 data authoritative_non_negative_int_2: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 2) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 2)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_2_catalog_fault()
 }
 
 data authoritative_non_negative_int_4: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 4) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 4)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_4_catalog_fault()
 }
 
 data authoritative_non_negative_int_8: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 8) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 8)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_8_catalog_fault()
 }
 
 data authoritative_non_negative_int_10: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 10) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 10)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_10_catalog_fault()
 }
 
 data authoritative_non_negative_int_18: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 18) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 18)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_18_catalog_fault()
 }
 
 data authoritative_non_negative_int_19: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 19) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 19)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_19_catalog_fault()
 }
 
 data authoritative_non_negative_int_35: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 35) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 35)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_35_catalog_fault()
 }
 
 data authoritative_non_negative_int_50: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 50) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 50)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_50_catalog_fault()
 }
 
 data authoritative_non_negative_int_60: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 60) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 60)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_60_catalog_fault()
 }
 
 data authoritative_non_negative_int_80: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 80) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 80)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_80_catalog_fault()
 }
 
 data authoritative_non_negative_int_120: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 120) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 120)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_120_catalog_fault()
 }
 
 data authoritative_non_negative_int_150: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 150) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 150)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_150_catalog_fault()
 }
 
 data authoritative_non_negative_int_300: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 300) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 300)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_300_catalog_fault()
 }
 
 data authoritative_non_negative_int_500: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 500) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 500)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_500_catalog_fault()
 }
 
 data authoritative_non_negative_int_1000: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 1000)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_catalog_fault()
 }
 
 data authoritative_non_negative_int_1000000: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000000) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => non_negative_int_authoritative_constant(base: 1000000)
+  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_catalog_fault()
 }
 
 data authoritative_positive_int_2: PositiveInt = match make_positive_int_at_authoritative(value: 2) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 2)
+  Rejected { diagnostics: _ } => authoritative_positive_int_2_catalog_fault()
 }
 
 data authoritative_positive_int_4: PositiveInt = match make_positive_int_at_authoritative(value: 4) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 4)
+  Rejected { diagnostics: _ } => authoritative_positive_int_4_catalog_fault()
 }
 
 data authoritative_positive_int_8: PositiveInt = match make_positive_int_at_authoritative(value: 8) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 8)
+  Rejected { diagnostics: _ } => authoritative_positive_int_8_catalog_fault()
 }
 
 data authoritative_positive_int_10: PositiveInt = match make_positive_int_at_authoritative(value: 10) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 10)
+  Rejected { diagnostics: _ } => authoritative_positive_int_10_catalog_fault()
 }
 
 data authoritative_positive_int_60: PositiveInt = match make_positive_int_at_authoritative(value: 60) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 60)
+  Rejected { diagnostics: _ } => authoritative_positive_int_60_catalog_fault()
 }
 
 data authoritative_positive_int_70: PositiveInt = match make_positive_int_at_authoritative(value: 70) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 70)
+  Rejected { diagnostics: _ } => authoritative_positive_int_70_catalog_fault()
 }
 
 data authoritative_positive_int_80: PositiveInt = match make_positive_int_at_authoritative(value: 80) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 80)
+  Rejected { diagnostics: _ } => authoritative_positive_int_80_catalog_fault()
 }
 
 data authoritative_positive_int_88: PositiveInt = match make_positive_int_at_authoritative(value: 88) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 88)
+  Rejected { diagnostics: _ } => authoritative_positive_int_88_catalog_fault()
 }
 
 data authoritative_positive_int_100: PositiveInt = match make_positive_int_at_authoritative(value: 100) {
   Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => positive_int_authoritative_constant(base: 100)
+  Rejected { diagnostics: _ } => authoritative_positive_int_100_catalog_fault()
 }
