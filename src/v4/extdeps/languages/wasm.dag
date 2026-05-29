@@ -228,6 +228,11 @@ data wasm_token_type_f64: Symbol = wasm_token_type_f64
 data wasm_token_int_numeric_literal: Symbol = wasm_token_int_numeric_literal
 data wasm_token_float_numeric_literal: Symbol = wasm_token_float_numeric_literal
 data wasm_token_localidx_literal: Symbol = wasm_token_localidx_literal
+data wasm_token_u32_literal: Symbol = wasm_token_u32_literal
+data wasm_token_labelidx_literal: Symbol = wasm_token_labelidx_literal
+data wasm_token_funcidx_literal: Symbol = wasm_token_funcidx_literal
+data wasm_token_kw_br_if: Symbol = wasm_token_kw_br_if
+data wasm_token_kw_call: Symbol = wasm_token_kw_call
 data wasm_token_i32_numeric_literal: Symbol = wasm_token_i32_numeric_literal
 data wasm_token_i64_numeric_literal: Symbol = wasm_token_i64_numeric_literal
 data wasm_token_f32_numeric_literal: Symbol = wasm_token_f32_numeric_literal
@@ -291,7 +296,16 @@ data wasm_production_f32_numeric_literal: Symbol = wasm_production_f32_numeric_l
 data wasm_production_f64_numeric_literal: Symbol = wasm_production_f64_numeric_literal
 data wasm_production_numeric_const_instr: Symbol = wasm_production_numeric_const_instr
 data wasm_production_numeric_binop_instr: Symbol = wasm_production_numeric_binop_instr
-data wasm_production_localidx: Symbol = wasm_production_localidx
+data wasm_production_localidx_numeric: Symbol = wasm_production_localidx_numeric
+data wasm_production_localidx_named: Symbol = wasm_production_localidx_named
+data wasm_production_labelidx_numeric: Symbol = wasm_production_labelidx_numeric
+data wasm_production_labelidx_named: Symbol = wasm_production_labelidx_named
+data wasm_production_funcidx_numeric: Symbol = wasm_production_funcidx_numeric
+data wasm_production_funcidx_named: Symbol = wasm_production_funcidx_named
+data wasm_production_wave2a_instr: Symbol = wasm_production_wave2a_instr
+data wasm_production_wave2a_text_fragment: Symbol = wasm_production_wave2a_text_fragment
+data wasm_production_control_br_if: Symbol = wasm_production_control_br_if
+data wasm_production_control_call: Symbol = wasm_production_control_call
 data wasm_production_mvp1_module_fn_suffix: Symbol = wasm_production_mvp1_module_fn_suffix
 
 data wasm_surface_fn_item: Symbol = wasm_surface_fn_item
@@ -307,6 +321,12 @@ data wasm_surface_f64_numeric_literal: Symbol = wasm_surface_f64_numeric_literal
 data wasm_surface_numeric_const_instr: Symbol = wasm_surface_numeric_const_instr
 data wasm_surface_numeric_binop_instr: Symbol = wasm_surface_numeric_binop_instr
 data wasm_surface_localidx: Symbol = wasm_surface_localidx
+data wasm_surface_labelidx: Symbol = wasm_surface_labelidx
+data wasm_surface_funcidx: Symbol = wasm_surface_funcidx
+data wasm_surface_control_br_if: Symbol = wasm_surface_control_br_if
+data wasm_surface_control_call: Symbol = wasm_surface_control_call
+data wasm_surface_wave2a_instr: Symbol = wasm_surface_wave2a_instr
+data wasm_surface_wave2a_text_fragment: Symbol = wasm_surface_wave2a_text_fragment
 data wasm_binding_fn_add: Symbol = wasm_binding_fn_add
 data wasm_binding_localidx_0: Symbol = wasm_binding_localidx_0
 data wasm_binding_localidx_1: Symbol = wasm_binding_localidx_1
@@ -341,9 +361,9 @@ fn wasm_mvp1_concrete_tokens() -> List<WasmConcreteSyntaxToken> {
     WasmFixedToken { token_class: wasm_token_type_i32 },
     WasmFixedToken { token_class: wasm_token_rparen },
     WasmFixedToken { token_class: wasm_token_local_get },
-    WasmBoundToken { token_class: wasm_token_localidx_literal, binding: wasm_binding_localidx_0 },
+    WasmBoundToken { token_class: wasm_token_u32_literal, binding: wasm_binding_localidx_0 },
     WasmFixedToken { token_class: wasm_token_local_get },
-    WasmBoundToken { token_class: wasm_token_localidx_literal, binding: wasm_binding_localidx_1 },
+    WasmBoundToken { token_class: wasm_token_u32_literal, binding: wasm_binding_localidx_1 },
     WasmFixedToken { token_class: wasm_token_i32_add },
     WasmFixedToken { token_class: wasm_token_rparen }
   ]
@@ -635,9 +655,9 @@ fn wasm_f64_numeric_literal_node() -> Node {
   )
 }
 
-fn wasm_localidx_node(token_class: Symbol) -> Node {
+fn wasm_idx_numeric_carrier_node(surface: Symbol, token_class: Symbol) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: wasm_surface_localidx } },
+    kind: TypeNode { connective: Atom { identity: surface } },
     children: [
       wasm_named_edge(
         name: wasm_numeric_immediate_field_token_class,
@@ -655,8 +675,16 @@ fn wasm_localidx_node(token_class: Symbol) -> Node {
   }
 }
 
-fn wasm_localidx_operand_node() -> Node {
-  wasm_localidx_node(token_class: wasm_token_localidx_literal)
+fn wasm_idx_named_carrier_node(surface: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: surface } },
+    children: [
+      wasm_named_edge(
+        name: wasm_numeric_immediate_field_token_class,
+        target: wasm_inhabitant_atom(id: wasm_token_ident)
+      )
+    ]
+  }
 }
 
 fn wasm_declared_inhabitants_root() -> Node {
@@ -1161,6 +1189,13 @@ fn wasm_float_numeric_literal_lex_rule() -> LexRule {
   )
 }
 
+fn wasm_u32_literal_lex_rule() -> LexRule {
+  wasm_numeric_literal_lex_rule(
+    token_class: wasm_token_u32_literal,
+    pattern: wasm_u32_lex_pattern()
+  )
+}
+
 fn wasm_localidx_literal_lex_rule() -> LexRule {
   wasm_numeric_literal_lex_rule(
     token_class: wasm_token_localidx_literal,
@@ -1231,6 +1266,7 @@ fn wasm_wave1_lex_rules() -> LexRuleSet {
       wasm_lex_rule(token_class: wasm_token_type_f64, text: "f64"),
       wasm_int_numeric_literal_lex_rule(),
       wasm_float_numeric_literal_lex_rule(),
+      wasm_u32_literal_lex_rule(),
       wasm_localidx_literal_lex_rule(),
       wasm_i32_numeric_literal_lex_rule(),
       wasm_i64_numeric_literal_lex_rule(),
@@ -1321,8 +1357,8 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
     grammar_formal_production(lhs: wasm_production_value_type, rhs: [grammar_formal_terminal(identity: wasm_token_type_i64)]),
     grammar_formal_production(lhs: wasm_production_value_type, rhs: [grammar_formal_terminal(identity: wasm_token_type_f32)]),
     grammar_formal_production(lhs: wasm_production_value_type, rhs: [grammar_formal_terminal(identity: wasm_token_type_f64)]),
-    grammar_formal_production(lhs: wasm_production_localidx, rhs: [grammar_formal_terminal(identity: wasm_token_localidx_literal)]),
-    grammar_formal_production(lhs: wasm_production_localidx, rhs: [grammar_formal_terminal(identity: wasm_token_ident)]),
+    grammar_formal_production(lhs: wasm_production_localidx_numeric, rhs: [grammar_formal_terminal(identity: wasm_token_u32_literal)]),
+    grammar_formal_production(lhs: wasm_production_localidx_named, rhs: [grammar_formal_terminal(identity: wasm_token_ident)]),
     grammar_formal_production(lhs: wasm_production_i32_numeric_literal, rhs: [grammar_formal_terminal(identity: wasm_token_i32_numeric_literal)]),
     grammar_formal_production(lhs: wasm_production_i64_numeric_literal, rhs: [grammar_formal_terminal(identity: wasm_token_i64_numeric_literal)]),
     grammar_formal_production(lhs: wasm_production_f32_numeric_literal, rhs: [grammar_formal_terminal(identity: wasm_token_f32_numeric_literal)]),
@@ -1460,7 +1496,11 @@ fn wasm_wave1_formal_productions() -> List<FormalProduction> {
     ),
     grammar_formal_production(
       lhs: wasm_production_text_fragment,
-      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_localidx)]
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_localidx_numeric)]
+    ),
+    grammar_formal_production(
+      lhs: wasm_production_text_fragment,
+      rhs: [grammar_formal_nonterminal_occurrence(identity: wasm_production_localidx_named)]
     ),
     grammar_formal_production(
       lhs: wasm_production_text_fragment,
@@ -1506,11 +1546,11 @@ fn wasm_grammar_mvp1_fn_add_expr() -> GrammarExpr {
                           right: wasm_grammar_sequence(
                             left: wasm_grammar_terminal(token_class: wasm_token_local_get),
                             right: wasm_grammar_sequence(
-                              left: Nonterminal { production: wasm_production_localidx },
+                              left: wasm_grammar_localidx_expr(),
                               right: wasm_grammar_sequence(
                                 left: wasm_grammar_terminal(token_class: wasm_token_local_get),
                                 right: wasm_grammar_sequence(
-                                  left: Nonterminal { production: wasm_production_localidx },
+                                  left: wasm_grammar_localidx_expr(),
                                   right: wasm_grammar_sequence(
                                     left: wasm_grammar_terminal(token_class: wasm_token_i32_add),
                                     right: wasm_grammar_terminal(token_class: wasm_token_rparen)
@@ -1556,8 +1596,22 @@ fn wasm_grammar_value_type_expr() -> GrammarExpr {
 
 fn wasm_grammar_localidx_expr() -> GrammarExpr {
   wasm_grammar_choice(
-    left: wasm_grammar_terminal(token_class: wasm_token_localidx_literal),
-    right: wasm_grammar_terminal(token_class: wasm_token_ident)
+    left: Nonterminal { production: wasm_production_localidx_numeric },
+    right: Nonterminal { production: wasm_production_localidx_named }
+  )
+}
+
+fn wasm_grammar_labelidx_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: Nonterminal { production: wasm_production_labelidx_numeric },
+    right: Nonterminal { production: wasm_production_labelidx_named }
+  )
+}
+
+fn wasm_grammar_funcidx_expr() -> GrammarExpr {
+  wasm_grammar_choice(
+    left: Nonterminal { production: wasm_production_funcidx_numeric },
+    right: Nonterminal { production: wasm_production_funcidx_named }
   )
 }
 
@@ -1665,10 +1719,13 @@ fn wasm_grammar_text_fragment_expr() -> GrammarExpr {
       right: wasm_grammar_choice(
         left: Nonterminal { production: wasm_production_value_type },
         right: wasm_grammar_choice(
-          left: Nonterminal { production: wasm_production_localidx },
+          left: Nonterminal { production: wasm_production_localidx_numeric },
           right: wasm_grammar_choice(
-            left: Nonterminal { production: wasm_production_numeric_const_instr },
-            right: Nonterminal { production: wasm_production_numeric_binop_instr }
+            left: Nonterminal { production: wasm_production_localidx_named },
+            right: wasm_grammar_choice(
+              left: Nonterminal { production: wasm_production_numeric_const_instr },
+              right: Nonterminal { production: wasm_production_numeric_binop_instr }
+            )
           )
         )
       )
@@ -1732,11 +1789,60 @@ fn wasm_grammar_production_f64_numeric_literal() -> GrammarProduction {
   }
 }
 
-fn wasm_grammar_production_localidx() -> GrammarProduction {
+fn wasm_grammar_production_localidx_numeric() -> GrammarProduction {
   GrammarProduction {
-    name: wasm_production_localidx,
-    expression: wasm_grammar_localidx_expr(),
-    emitted: wasm_localidx_operand_node()
+    name: wasm_production_localidx_numeric,
+    expression: wasm_grammar_terminal(token_class: wasm_token_u32_literal),
+    emitted: wasm_idx_numeric_carrier_node(
+      surface: wasm_surface_localidx,
+      token_class: wasm_token_localidx_literal
+    )
+  }
+}
+
+fn wasm_grammar_production_localidx_named() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_localidx_named,
+    expression: wasm_grammar_terminal(token_class: wasm_token_ident),
+    emitted: wasm_idx_named_carrier_node(surface: wasm_surface_localidx)
+  }
+}
+
+fn wasm_grammar_production_labelidx_numeric() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_labelidx_numeric,
+    expression: wasm_grammar_terminal(token_class: wasm_token_u32_literal),
+    emitted: wasm_idx_numeric_carrier_node(
+      surface: wasm_surface_labelidx,
+      token_class: wasm_token_labelidx_literal
+    )
+  }
+}
+
+fn wasm_grammar_production_labelidx_named() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_labelidx_named,
+    expression: wasm_grammar_terminal(token_class: wasm_token_ident),
+    emitted: wasm_idx_named_carrier_node(surface: wasm_surface_labelidx)
+  }
+}
+
+fn wasm_grammar_production_funcidx_numeric() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_funcidx_numeric,
+    expression: wasm_grammar_terminal(token_class: wasm_token_u32_literal),
+    emitted: wasm_idx_numeric_carrier_node(
+      surface: wasm_surface_funcidx,
+      token_class: wasm_token_funcidx_literal
+    )
+  }
+}
+
+fn wasm_grammar_production_funcidx_named() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_funcidx_named,
+    expression: wasm_grammar_terminal(token_class: wasm_token_ident),
+    emitted: wasm_idx_named_carrier_node(surface: wasm_surface_funcidx)
   }
 }
 
@@ -1765,7 +1871,12 @@ fn wasm_wave1_grammar_root() -> GrammarRoot {
   let i64_numeric_literal = wasm_grammar_production_i64_numeric_literal()
   let f32_numeric_literal = wasm_grammar_production_f32_numeric_literal()
   let f64_numeric_literal = wasm_grammar_production_f64_numeric_literal()
-  let localidx = wasm_grammar_production_localidx()
+  let localidx_numeric = wasm_grammar_production_localidx_numeric()
+  let localidx_named = wasm_grammar_production_localidx_named()
+  let labelidx_numeric = wasm_grammar_production_labelidx_numeric()
+  let labelidx_named = wasm_grammar_production_labelidx_named()
+  let funcidx_numeric = wasm_grammar_production_funcidx_numeric()
+  let funcidx_named = wasm_grammar_production_funcidx_named()
   let numeric_const = wasm_grammar_production_numeric_const_instr()
   let numeric_binop = wasm_grammar_production_numeric_binop_instr()
   GrammarRoot {
@@ -1779,7 +1890,12 @@ fn wasm_wave1_grammar_root() -> GrammarRoot {
       i64_numeric_literal,
       f32_numeric_literal,
       f64_numeric_literal,
-      localidx,
+      localidx_numeric,
+      localidx_named,
+      labelidx_numeric,
+      labelidx_named,
+      funcidx_numeric,
+      funcidx_named,
       numeric_const,
       numeric_binop
     ],
