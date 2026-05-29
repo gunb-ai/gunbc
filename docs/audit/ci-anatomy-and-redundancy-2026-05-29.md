@@ -228,6 +228,17 @@ Explicit computations that overlap across steps (same PR, often same workflow ru
 | B05 | P2 | `self_host_ratchet` / DB-8 steps | `continue-on-error: true` on staged checks | Informational staging | Track in DB-8 lane |
 | B06 | P2 | `v3` integration | Zero-test filter still runs libtest setup | #846 hot-fix — pays compile, runs 0 tests | Restore when per-test ≤2s |
 
+### 5.1 Infra compounding factor (operator, separate lane — 2026-05-29)
+
+**Not a modeled-CI defect;** operator is fixing infra independently. Observed M1 **20m cap / exit 143** on some runs is **compound**:
+
+| Layer | Cause | Owner |
+|-------|--------|-------|
+| **(a) Modeled debt** | M1 probe runs unconditionally; static cache tag; fail-open on timeout (B01–B03) | CI overhaul lane (#3886 **A9**, **A1**) |
+| **(b) srv2 jobserver** | `ctrl-jobserver` crash-loop on srv2: `/var/lib/ctrl/jobserver/host.fifo` is a **directory** (FIFO on srv1). Daemon cannot seed tokens → no jobserver on srv2 → `MAKEFLAGS=--jobserver-auth=fifo:…` points at non-FIFO → **emit stalls** until step timeout. srv2 is token-starved, not CPU-bound. | Operator infra fix |
+
+**(b)** can turn an already-unconditional full-tree emit (a) into a timeout even before merkle skip lands; **merkle + frontier skip (A9)** remains required so the probe is not invoked when `src/v4` is unchanged. **B01 fail-closed** is still required regardless of whether timeout is infra or compute.
+
 ---
 
 ## 6. Dependency-modeled fix (Table B)
