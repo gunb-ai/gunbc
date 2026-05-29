@@ -1,16 +1,17 @@
 //! **Layer:** integration
 //!
-//! RELEASE_TODO.md §5 Phase 1: `src/v4/workflow/release.dag` is semantic authority;
+//! RELEASE_TODO.md §5 Phase 1a: `src/v4/workflow/release.dag` is semantic authority;
 //! `.github/workflows/release.yml` is a hand-synced projection until YamlStatic emission lands
-//! (same deferral posture as `v4.workflow.ci` / T-24).
+//! (same deferral posture as `v4.workflow.ci` / T-24). Install surfaces live in `install.dag`
+//! (Phase 1b).
 //!
 //! **TESTING.md:** M1(2.7) tokenize/parse gate; full `compile_to_dag` import merge deferred.
 //!
 //! **ROADMAP:** `_internal/ROADMAP_OPS.md` § **Nine lanes** row **T-PB-B** / `pb_rust_tests_outside_residual_zero`.
-//! **TASKS.md** RELEASE_TODO §5 Phase 1 (`src/v4/workflow/release.dag` + hand-synced release.yml).
+//! **TASKS.md** RELEASE_TODO §5 Phase 1a (`src/v4/workflow/release.dag` + hand-synced release.yml).
 //!
-//! **Dissolution:** remove when release pipeline + install target selection are exercised only by
-//! `.dag` `TestClaim` rows / YamlStatic emission without this hand-Rust parse harness.
+//! **Dissolution:** remove when release pipeline is exercised only by `.dag` `TestClaim` rows /
+//! YamlStatic emission without this hand-Rust parse harness.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem, SurfaceLiteral, SurfaceRecordField};
@@ -20,11 +21,6 @@ const RELEASE_DAG: &str = include_str!("../../../../v4/workflow/release.dag");
 const RELEASE_DAG_PATH: &str = "src/v4/workflow/release.dag";
 const RELEASE_YML: &str = include_str!("../../../../../.github/workflows/release.yml");
 const RELEASE_YML_PATH: &str = ".github/workflows/release.yml";
-const RELEASE_TARGET_SCRIPT: &str =
-    include_str!("../../../../../scripts/release-target-triples.sh");
-const RELEASE_TARGET_SCRIPT_PATH: &str = "scripts/release-target-triples.sh";
-const INSTALL_SH: &str = include_str!("../../../../../install.sh");
-const INSTALL_SH_PATH: &str = "install.sh";
 const V2_COMPILER_CARGO_TOML: &str = include_str!("../../../../v2/stage0/Cargo.toml");
 const V2_COMPILER_CARGO_TOML_PATH: &str = "src/v2/stage0/Cargo.toml";
 
@@ -33,6 +29,17 @@ const RELEASE_PUBLISHED_TARGETS: &[&str] = &[
     "aarch64-unknown-linux-musl",
     "x86_64-apple-darwin",
     "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
+];
+
+const RELEASE_PUBLISHED_ARTIFACTS: &[&str] = &[
+    "gunbc-x86_64-unknown-linux-musl",
+    "gunbc-aarch64-unknown-linux-musl",
+    "gunbc-x86_64-apple-darwin",
+    "gunbc-aarch64-apple-darwin",
+    "gunbc-x86_64-pc-windows-msvc.exe",
+    "gunbc-aarch64-pc-windows-msvc.exe",
 ];
 
 fn parse_module(source: &str, path: &str) -> v3_compiler::parse_surface::SurfaceModule {
@@ -100,11 +107,6 @@ fn workflow_contains_targets(workflow_yml: &str, targets: &[&str]) {
             "{RELEASE_YML_PATH}: must reference matrix target `{target}`"
         );
     }
-    // Hand-synced release.yml uses strategy.matrix (not four static artifact names).
-    assert!(
-        workflow_yml.contains("gunbc-${{ matrix.target }}"),
-        "{RELEASE_YML_PATH}: artifact path/name must use gunbc-${{ matrix.target }}"
-    );
 }
 
 #[test]
@@ -129,8 +131,16 @@ fn v4_workflow_release_semantics_modeled() {
         "{RELEASE_DAG_PATH}: darwin builds must use NativeDarwinGunbcBuild"
     );
     assert!(
-        RELEASE_DAG.contains("| PublishGitHubRelease { bundle_install_sh: Bool }"),
+        RELEASE_DAG.contains("| NativeWindowsGunbcBuild { target: String }"),
+        "{RELEASE_DAG_PATH}: windows builds must use NativeWindowsGunbcBuild"
+    );
+    assert!(
+        RELEASE_DAG.contains("| PublishGitHubRelease"),
         "{RELEASE_DAG_PATH}: publish job must model GH Release upload"
+    );
+    assert!(
+        !RELEASE_DAG.contains("bundle_install_sh"),
+        "{RELEASE_DAG_PATH}: Phase 1a must not bundle install.sh (install.dag Phase 1b)"
     );
     assert!(
         RELEASE_DAG.contains("YamlStatic `release_pipeline →"),
@@ -141,8 +151,16 @@ fn v4_workflow_release_semantics_modeled() {
         "{RELEASE_DAG_PATH}: must declare published target triple authority"
     );
     assert!(
+        RELEASE_DAG.contains("data release_published_artifact_names: List<String> ="),
+        "{RELEASE_DAG_PATH}: must declare published artifact basename authority (`.exe` policy)"
+    );
+    assert!(
         RELEASE_DAG.contains("release_matrix_row_targets(rows: release_build_matrix)"),
         "{RELEASE_DAG_PATH}: published triples must project from release_build_matrix (single source)"
+    );
+    assert!(
+        RELEASE_DAG.contains("release_matrix_row_artifact_basenames(rows: release_build_matrix)"),
+        "{RELEASE_DAG_PATH}: published artifact names must project from matrix artifact_basename"
     );
     assert!(
         RELEASE_DAG.contains("import v4.std.node { Symbol }"),
@@ -155,9 +173,8 @@ fn v4_workflow_release_semantics_modeled() {
         "{RELEASE_DAG_PATH}: ReleaseCommand must carry Practice-4 coproduct dissolution mark"
     );
     assert!(
-        RELEASE_DAG.contains("release_build_musl_x86")
-            && RELEASE_DAG.contains("aarch64-unknown-linux-musl")
-            && RELEASE_DAG.contains("aarch64-apple-darwin"),
+        RELEASE_DAG.contains("release_build_windows_x86")
+            && RELEASE_DAG.contains("aarch64-pc-windows-msvc"),
         "{RELEASE_DAG_PATH}: release_pipeline must model one build job per release_build_matrix row"
     );
     assert!(
@@ -187,59 +204,39 @@ fn v4_workflow_release_semantics_modeled() {
             "{RELEASE_DAG_PATH}: release_build_matrix must include `{target}`"
         );
     }
+    for artifact in RELEASE_PUBLISHED_ARTIFACTS {
+        assert!(
+            RELEASE_DAG.contains(artifact),
+            "{RELEASE_DAG_PATH}: release_build_matrix must model artifact basename `{artifact}`"
+        );
+    }
 }
 
 #[test]
-fn v4_workflow_release_target_authority_single_writer() {
+fn v4_workflow_release_published_authority_single_writer() {
     for target in RELEASE_PUBLISHED_TARGETS {
-        assert!(
-            RELEASE_DAG.contains(target),
-            "{RELEASE_DAG_PATH}: `release_published_target_triples` must include `{target}`"
-        );
         assert!(
             RELEASE_YML.contains(target),
             "{RELEASE_YML_PATH}: matrix must include `{target}`"
         );
+    }
+    for artifact in RELEASE_PUBLISHED_ARTIFACTS {
         assert!(
-            RELEASE_TARGET_SCRIPT.contains(target),
-            "{RELEASE_TARGET_SCRIPT_PATH}: shell authority must include `{target}`"
+            RELEASE_YML.contains(artifact),
+            "{RELEASE_YML_PATH}: matrix must include modeled artifact basename `{artifact}`"
+        );
+        assert!(
+            RELEASE_YML.contains(&format!("artifact_basename: {artifact}")),
+            "{RELEASE_YML_PATH}: artifact basename must be explicit matrix field `{artifact}`"
         );
     }
     assert!(
-        INSTALL_SH.contains("scripts/release-target-triples.sh"),
-        "{INSTALL_SH_PATH}: must load scripts/release-target-triples.sh"
+        RELEASE_YML.contains("dist/${{ matrix.artifact_basename }}"),
+        "{RELEASE_YML_PATH}: build/upload must use modeled artifact_basename (not hardcoded .exe branch)"
     );
     assert!(
-        INSTALL_SH.contains("detect_release_target"),
-        "{INSTALL_SH_PATH}: must delegate target detection to shell authority"
-    );
-    assert!(
-        RELEASE_TARGET_SCRIPT.contains("release_published_target_lookup"),
-        "{RELEASE_TARGET_SCRIPT_PATH}: detect_release_target must resolve triples from RELEASE_PUBLISHED_TARGET_TRIPLES by string (not matrix row index)"
-    );
-    assert!(
-        !RELEASE_TARGET_SCRIPT.contains("idx=1")
-            && !RELEASE_TARGET_SCRIPT.contains("idx=2")
-            && !RELEASE_TARGET_SCRIPT.contains("idx=3")
-            && !RELEASE_TARGET_SCRIPT.contains("idx=4"),
-        "{RELEASE_TARGET_SCRIPT_PATH}: OS/arch detection must not bind to positional matrix indices (reorder-safe P2)"
-    );
-    assert!(
-        !RELEASE_TARGET_SCRIPT.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),
-        "{RELEASE_TARGET_SCRIPT_PATH}: must not re-author triple literals outside the published list"
-    );
-    assert!(
-        INSTALL_SH.contains("releases/download/${VERSION}/")
-            && INSTALL_SH.contains("releases/latest/download/"),
-        "{INSTALL_SH_PATH}: target authority curl fallback must use same GH Release channel as binary"
-    );
-    assert!(
-        !INSTALL_SH.contains("./scripts/release-target-triples.sh"),
-        "{INSTALL_SH_PATH}: must not source cwd ./scripts before release channel (P2 single authority)"
-    );
-    assert!(
-        !INSTALL_SH.contains("printf '%s\\n' 'x86_64-unknown-linux-musl'"),
-        "{INSTALL_SH_PATH}: must not embed a parallel OS/arch → triple mapping"
+        !RELEASE_YML.contains("install.sh"),
+        "{RELEASE_YML_PATH}: Phase 1a must not bundle install.sh"
     );
 }
 
@@ -253,13 +250,11 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
     let aarch64_strip_step = expr_string(record_body_field(live, "aarch64_strip_step_name"));
     let build_step = expr_string(record_body_field(live, "build_gunbc_step_name"));
     let upload_step = expr_string(record_body_field(live, "upload_artifact_step_name"));
-    let stage_step = expr_string(record_body_field(live, "stage_install_sh_step_name"));
     let publish_step = expr_string(record_body_field(live, "create_release_step_name"));
     let gh_action = expr_string(record_body_field(live, "gh_release_action"));
     let cargo_package = expr_string(record_body_field(live, "cargo_package"));
     let cargo_bin = expr_string(record_body_field(live, "cargo_bin"));
     let cross_version = expr_string(record_body_field(live, "cross_version"));
-    let install_sh = expr_string(record_body_field(live, "install_sh_bundle_name"));
 
     assert!(
         RELEASE_YML.contains(&format!("name: {workflow_name}")),
@@ -317,27 +312,6 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
         "{RELEASE_YML_PATH}: must upload matrix artifacts"
     );
     assert!(
-        RELEASE_YML.contains(&format!("- name: {stage_step}")),
-        "{RELEASE_YML_PATH}: must stage release assets"
-    );
-    assert!(
-        RELEASE_YML.contains(&format!("cp {install_sh} dist/{install_sh}")),
-        "{RELEASE_YML_PATH}: publish bundle must include modeled install.sh"
-    );
-    assert!(
-        RELEASE_YML
-            .contains("scripts/release-target-triples.sh dist/scripts/release-target-triples.sh"),
-        "{RELEASE_YML_PATH}: publish bundle must ship target-authority script beside install.sh"
-    );
-    assert!(
-        RELEASE_YML.contains("scripts/release-target-triples.sh dist/release-target-triples.sh"),
-        "{RELEASE_YML_PATH}: publish bundle must ship flat target-authority asset for releases/latest/download"
-    );
-    assert!(
-        RELEASE_YML.contains("dist/*") && RELEASE_YML.contains("dist/scripts/*"),
-        "{RELEASE_YML_PATH}: gh-release upload globs must include nested dist/scripts/ assets"
-    );
-    assert!(
         RELEASE_YML.contains(&format!("- name: {publish_step}")),
         "{RELEASE_YML_PATH}: must create GitHub Release"
     );
@@ -351,19 +325,23 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
     );
     assert!(
         RELEASE_DAG.contains("release_matrix_row_tuple_well_formed"),
-        "{RELEASE_DAG_PATH}: matrix well-formedness must validate (target, runner, cross) tuples"
+        "{RELEASE_DAG_PATH}: matrix well-formedness must validate (target, runner, cross, artifact_basename) tuples"
     );
     const RELEASE_MATRIX_YML_ROW_SNIPPETS: &[&str] = &[
-        "target: x86_64-unknown-linux-musl\n            runner: ubuntu-24.04\n            cross: true",
-        "target: aarch64-unknown-linux-musl\n            runner: ubuntu-24.04\n            cross: true",
-        "target: x86_64-apple-darwin\n            runner: macos-15-intel\n            cross: false",
-        "target: aarch64-apple-darwin\n            runner: macos-14\n            cross: false",
+        "target: x86_64-unknown-linux-musl\n            runner: ubuntu-24.04\n            cross: true\n            artifact_basename: gunbc-x86_64-unknown-linux-musl",
+        "target: aarch64-unknown-linux-musl\n            runner: ubuntu-24.04\n            cross: true\n            artifact_basename: gunbc-aarch64-unknown-linux-musl",
+        "target: x86_64-apple-darwin\n            runner: macos-15-intel\n            cross: false\n            artifact_basename: gunbc-x86_64-apple-darwin",
+        "target: aarch64-apple-darwin\n            runner: macos-14\n            cross: false\n            artifact_basename: gunbc-aarch64-apple-darwin",
+        "target: x86_64-pc-windows-msvc\n            runner: windows-2022\n            cross: false\n            artifact_basename: gunbc-x86_64-pc-windows-msvc.exe",
+        "target: aarch64-pc-windows-msvc\n            runner: windows-11-arm\n            cross: false\n            artifact_basename: gunbc-aarch64-pc-windows-msvc.exe",
     ];
     const RELEASE_MATRIX_DAG_ROW_SNIPPETS: &[&str] = &[
-        "target: \"x86_64-unknown-linux-musl\"\n    runner: \"ubuntu-24.04\"\n    cross: true",
-        "target: \"aarch64-unknown-linux-musl\"\n    runner: \"ubuntu-24.04\"\n    cross: true",
-        "target: \"x86_64-apple-darwin\"\n    runner: \"macos-15-intel\"\n    cross: false",
-        "target: \"aarch64-apple-darwin\"\n    runner: \"macos-14\"\n    cross: false",
+        "target: \"x86_64-unknown-linux-musl\"\n    runner: \"ubuntu-24.04\"\n    cross: true\n    artifact_basename: \"gunbc-x86_64-unknown-linux-musl\"",
+        "target: \"aarch64-unknown-linux-musl\"\n    runner: \"ubuntu-24.04\"\n    cross: true\n    artifact_basename: \"gunbc-aarch64-unknown-linux-musl\"",
+        "target: \"x86_64-apple-darwin\"\n    runner: \"macos-15-intel\"\n    cross: false\n    artifact_basename: \"gunbc-x86_64-apple-darwin\"",
+        "target: \"aarch64-apple-darwin\"\n    runner: \"macos-14\"\n    cross: false\n    artifact_basename: \"gunbc-aarch64-apple-darwin\"",
+        "target: \"x86_64-pc-windows-msvc\"\n    runner: \"windows-2022\"\n    cross: false\n    artifact_basename: \"gunbc-x86_64-pc-windows-msvc.exe\"",
+        "target: \"aarch64-pc-windows-msvc\"\n    runner: \"windows-11-arm\"\n    cross: false\n    artifact_basename: \"gunbc-aarch64-pc-windows-msvc.exe\"",
     ];
     for (yml_snippet, dag_snippet) in RELEASE_MATRIX_YML_ROW_SNIPPETS
         .iter()
@@ -371,7 +349,7 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
     {
         assert!(
             RELEASE_YML.contains(yml_snippet) && RELEASE_DAG.contains(dag_snippet),
-            "{RELEASE_YML_PATH}: matrix row tuple must match {RELEASE_DAG_PATH} (target+runner+cross)"
+            "{RELEASE_YML_PATH}: matrix row tuple must match {RELEASE_DAG_PATH} (target+runner+cross+artifact_basename)"
         );
     }
     assert!(

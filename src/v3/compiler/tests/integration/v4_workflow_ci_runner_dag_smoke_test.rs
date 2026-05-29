@@ -98,14 +98,6 @@ const CI_AFFECTED_BEHAVIORAL_FIXTURES: &[CiAffectedFixture] = &[
         release_distribution: true,
     },
     CiAffectedFixture {
-        path: "install.sh",
-        v2: false,
-        v3: false,
-        v4: false,
-        workflow_policy: false,
-        release_distribution: true,
-    },
-    CiAffectedFixture {
         path: "Cargo.lock",
         v2: true,
         v3: false,
