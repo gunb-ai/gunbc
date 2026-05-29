@@ -190,18 +190,31 @@ type ProtoWireProfileFacts {
 }
 
 
-// 🟢 coproduct dissolution — protobuf-wire-field-value.
-type ProtoWireFieldValue
-  = ProtoWireVarintValue { lexeme: String }
-  | ProtoWireFixed32Value { octets_lexeme: String }
-  | ProtoWireFixed64Value { octets_lexeme: String }
-  | ProtoWireLengthDelimitedValue { payload_lexeme: String }
-
-
-type ProtoWireFieldRecord {
-  key: ProtoFieldKey,
-  value: ProtoWireFieldValue,
-}
+// 🟢 coproduct dissolution — protobuf-wire-field-record.
+// Tag wire type and payload shape are one arm — illegal cross-products (e.g. StartGroup + varint lexeme) are unrepresentable.
+type ProtoWireFieldRecord
+  = ProtoWireVarintField {
+      field_number: NonZeroNat,
+      lexeme: String,
+    }
+  | ProtoWireFixed32Field {
+      field_number: NonZeroNat,
+      octets_lexeme: String,
+    }
+  | ProtoWireFixed64Field {
+      field_number: NonZeroNat,
+      octets_lexeme: String,
+    }
+  | ProtoWireLengthDelimitedField {
+      field_number: NonZeroNat,
+      payload_lexeme: String,
+    }
+  | ProtoWireStartGroupField {
+      field_number: NonZeroNat,
+    }
+  | ProtoWireEndGroupField {
+      field_number: NonZeroNat,
+    }
 
 
 type ProtoWireMessage {

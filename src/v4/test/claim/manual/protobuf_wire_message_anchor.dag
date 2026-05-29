@@ -5,7 +5,6 @@
 module v4.test.claim.manual.protobuf_wire_message_anchor
 
 import v4.extdeps.formats.protobuf {
-  ProtoFieldKey,
   ProtoFixed32LittleEndianFourOctetsWitness,
   ProtoFixed64LittleEndianEightOctetsWitness,
   ProtoLengthDelimitedPrefixVarintLengthWitness,
@@ -18,12 +17,10 @@ import v4.extdeps.formats.protobuf {
   ProtoWireDocument,
   ProtoWireEncodingFacts,
   ProtoWireFieldRecord,
-  ProtoWireLengthDelimited,
-  ProtoWireLengthDelimitedValue,
+  ProtoWireLengthDelimitedField,
   ProtoWireMessage,
   ProtoWireProfileFacts,
-  ProtoWireVarint,
-  ProtoWireVarintValue,
+  ProtoWireVarintField,
 }
 import v4.std.cardinality { NonZeroNat }
 import v4.std.collection { List }
@@ -36,21 +33,15 @@ data protobuf_anchor_wire_field_number_one: NonZeroNat = NonZeroNat { prev: Succ
 data protobuf_anchor_wire_field_number_two: NonZeroNat = NonZeroNat { prev: Succ { prev: Succ { prev: Zero } } }
 
 
-data protobuf_anchor_wire_record_page_number: ProtoWireFieldRecord = ProtoWireFieldRecord {
-  key: ProtoFieldKey {
-    field_number: protobuf_anchor_wire_field_number_one,
-    wire_type: ProtoWireVarint,
-  },
-  value: ProtoWireVarintValue { lexeme: "1" },
+data protobuf_anchor_wire_record_page_number: ProtoWireFieldRecord = ProtoWireVarintField {
+  field_number: protobuf_anchor_wire_field_number_one,
+  lexeme: "1",
 }
 
 
-data protobuf_anchor_wire_record_query: ProtoWireFieldRecord = ProtoWireFieldRecord {
-  key: ProtoFieldKey {
-    field_number: protobuf_anchor_wire_field_number_two,
-    wire_type: ProtoWireLengthDelimited,
-  },
-  value: ProtoWireLengthDelimitedValue { payload_lexeme: "search" },
+data protobuf_anchor_wire_record_query: ProtoWireFieldRecord = ProtoWireLengthDelimitedField {
+  field_number: protobuf_anchor_wire_field_number_two,
+  payload_lexeme: "search",
 }
 
 
