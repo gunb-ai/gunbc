@@ -10,8 +10,8 @@ import v4.std.collection { List }
 import v4.std.diagnostic { Outcome }
 import v4.std.patch { ConfigPatchRecord, FieldPatch, apply_field_patch, config_patch_layer }
 import v4.std.refinement {
-  PositiveInt,
-  positive_int_authoritative_literal,
+  NonNegativeInt,
+  non_negative_int_authoritative_literal,
 }
 
 
@@ -105,8 +105,8 @@ type PrettierParser
 
 
 type PrettierFormattingOptions {
-  print_width: Outcome<PositiveInt>
-  tab_width: Outcome<PositiveInt>
+  print_width: Outcome<NonNegativeInt> // upstream range start 0 (prettier core-options.evaluate.js)
+  tab_width: Outcome<NonNegativeInt> // upstream range start 0 (prettier core-options.evaluate.js)
   use_tabs: Bool
   semi: Bool
   single_quote: Bool
@@ -134,8 +134,8 @@ type PrettierFormattingOptions {
 // 🟡 gated — feature:prettier-override-options-hand-mirror — bind T-4.16 follow-on — dissolve-on-arrival: project PrettierOverrideOptions from PrettierFormattingOptions field set plus parser override field (extra `parser` beyond formatting options; not derivable from `ConfigPatchRecord<PrettierFormattingOptions>` alone).
 type PrettierOverrideOptions {
   parser: FieldPatch<PrettierParser>
-  print_width: FieldPatch<Outcome<PositiveInt>>
-  tab_width: FieldPatch<Outcome<PositiveInt>>
+  print_width: FieldPatch<Outcome<NonNegativeInt>>
+  tab_width: FieldPatch<Outcome<NonNegativeInt>>
   use_tabs: FieldPatch<Bool>
   semi: FieldPatch<Bool>
   single_quote: FieldPatch<Bool>
@@ -174,8 +174,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: positive_int_authoritative_literal(value: 80),
-  tab_width: positive_int_authoritative_literal(value: 2),
+  print_width: non_negative_int_authoritative_literal(value: 80),
+  tab_width: non_negative_int_authoritative_literal(value: 2),
   use_tabs: false,
   semi: true,
   single_quote: false,
