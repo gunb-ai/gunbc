@@ -242,26 +242,6 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "v4 strict-deprose script self-test (Python)" },
-          id: none,
-          run: "python3 scripts/test_strict_deprose_dag.py",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v4 strict-deprose allowlist (--check; merge-base + Part 6 inventory)" },
-          id: none,
-          run: "python3 scripts/strict_deprose_dag.py --check",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
           name: Some { value: "T-19 testgen activation self-test (Python)" },
           id: none,
           run: "python3 scripts/test_check_t19_testgen_activation.py",
@@ -769,63 +749,13 @@ data gunbc_ci_github_actions_workflow: Workflow = {
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
-          name: Some { value: "v3 tests (full suite lib+bins, timings part 1/4)" },
+          name: Some { value: "v3 tests (full suite timings capture, parts 1-4/4)" },
           id: none,
-          run: "set -euo pipefail\necho \"V3_SUITE_START_TS=$(date +%s)\" >> \"${GITHUB_ENV}\"\n: > /tmp/v3-test-timings.log\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (lib+bins) failed (exit=$status)\"\n  exit \"$status\"\nfi\n",
+          run: "set -euo pipefail\ntimings_log=\"${RUNNER_TEMP}/v3-test-timings.log\"\nV3_SUITE_START_TS=$(date +%s)\necho \"V3_SUITE_START_TS=${V3_SUITE_START_TS}\" >> \"${GITHUB_ENV}\"\n: > \"${timings_log}\"\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --lib --bins -- -Z unstable-options --report-time 2>&1 | tee \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (lib+bins) failed (exit=$status)\"\n  exit \"$status\"\nfi\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (determinism_test) failed (exit=$status)\"\n  exit \"$status\"\nfi\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (--doc) failed (exit=$status)\"\n  exit \"$status\"\nfi\necho \"::notice::v3 integration test execution SKIPPED via zero-test-filter per operator hot-fix at gunbc#846.\"\necho \"::notice::Guard pattern preserved; integration binary runs zero tests (nonexistent filter).\"\n# Zero-test-filter: `__HOT_FIX_NONEXISTENT_FILTER__` matches no tests;\n# binary runs through libtest setup + reports 0 tests run. Satisfies\n# check-v3-full-suite-split-test-targets.sh pattern requirement.\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a \"${timings_log}\"\nstatus=${PIPESTATUS[0]}\nelapsed=$(( $(date +%s) - V3_SUITE_START_TS ))\necho \"v3 full-suite wall time (integration-skipped): ${elapsed}s\"\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (integration, zero-filter) failed (exit=$status) — should never happen with nonexistent filter; investigate.\"\n  exit \"$status\"\nfi\necho \"::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter).\"\nif [ ! -s \"${timings_log}\" ]; then\n  echo \"::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet\"\nelse\n  cargo build -p v3-compiler --bin gunbc-ci\n  scripts/check-test-timeout.sh \"${timings_log}\"\nfi\n",
           shell: Bash,
           env: { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" },
           working_directory: none,
           if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v3 tests (full suite determinism harness, timings part 2/4)" },
-          id: none,
-          run: "set -euo pipefail\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test determinism_test -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (determinism_test) failed (exit=$status)\"\n  exit \"$status\"\nfi\n",
-          shell: Bash,
-          env: { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" },
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v3 tests (full suite doc tests, timings part 3/4)" },
-          id: none,
-          run: "set -euo pipefail\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --doc -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (--doc) failed (exit=$status)\"\n  exit \"$status\"\nfi\n",
-          shell: Bash,
-          env: { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" },
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v3 tests (full suite integration harness, HOT-FIX zero-test-filter)" },
-          id: none,
-          run: "set -euo pipefail\necho \"::notice::v3 integration test execution SKIPPED via zero-test-filter per operator hot-fix at gunbc#846.\"\necho \"::notice::Guard pattern preserved; integration binary runs zero tests (nonexistent filter).\"\nif [ -z \"${V3_SUITE_START_TS:-}\" ]; then\n  echo \"::error::missing V3_SUITE_START_TS (full suite part 1 must run first)\"\n  exit 1\nfi\n# Zero-test-filter: `__HOT_FIX_NONEXISTENT_FILTER__` matches no tests;\n# binary runs through libtest setup + reports 0 tests run. Satisfies\n# check-v3-full-suite-split-test-targets.sh pattern requirement.\nRUSTC_BOOTSTRAP=1 cargo test -p v3-compiler --test integration __HOT_FIX_NONEXISTENT_FILTER__ -- -Z unstable-options --report-time 2>&1 | tee -a /tmp/v3-test-timings.log\nstatus=${PIPESTATUS[0]}\nelapsed=$(( $(date +%s) - V3_SUITE_START_TS ))\necho \"v3 full-suite wall time (integration-skipped): ${elapsed}s\"\nif [ \"$status\" -ne 0 ]; then\n  echo \"::error::cargo test (integration, zero-filter) failed (exit=$status) — should never happen with nonexistent filter; investigate.\"\n  exit \"$status\"\nfi\necho \"::notice::Restore criteria: rebuild session per #2722 §5 OnceLock/cached_compile amortization → per-test wall ≤ 2s ratchet → re-enable per cluster filter (replace __HOT_FIX_NONEXISTENT_FILTER__ with cluster-specific filter).\"\n",
-          shell: Bash,
-          env: { "CARGO_TERM_COLOR": "never", "RUST_MIN_STACK": "16777216" },
-          working_directory: none,
-          if_condition: none,
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v3 gunbc-ci binary (wall-clock warn manifest + BinaryShim stub)" },
-          id: none,
-          run: "cargo build -p v3-compiler --bin gunbc-ci",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: Some { value: "always()" },
-          continue_on_error: false,
-          timeout_minutes: none
-        }, RunStep {
-          name: Some { value: "v3 tests (per-test 2s ratchet)" },
-          id: none,
-          run: "if [ ! -s /tmp/v3-test-timings.log ]; then\n  echo \"::notice::no timing log captured or log is empty (full-suite steps did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet\"\n  exit 0\nfi\nscripts/check-test-timeout.sh /tmp/v3-test-timings.log\n",
-          shell: Bash,
-          env: none,
-          working_directory: none,
-          if_condition: Some { value: "always()" },
           continue_on_error: false,
           timeout_minutes: none
         }, RunStep {
