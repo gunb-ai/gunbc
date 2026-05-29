@@ -116,15 +116,25 @@ fn extract_fn_body<'a>(source: &'a str, fn_name: &str) -> &'a str {
     &source[start..after + fn_body_end(rest)]
 }
 
+fn literals_after_marker(line: &str, marker: &str) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    let mut search = line;
+    while let Some(idx) = search.find(marker) {
+        let rest = &search[idx + marker.len()..];
+        if let Some(end) = rest.find('"') {
+            out.insert(rest[..end].to_string());
+            search = &rest[end + 1..];
+        } else {
+            break;
+        }
+    }
+    out
+}
+
 fn dag_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
     for line in body.lines() {
-        if let Some(idx) = line.find("prefix: \"") {
-            let rest = &line[idx + 9..];
-            if let Some(end) = rest.find('"') {
-                out.insert(rest[..end].to_string());
-            }
-        }
+        out.extend(literals_after_marker(line, "prefix: \""));
     }
     out
 }
@@ -132,12 +142,7 @@ fn dag_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
 fn rust_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
     for line in body.lines() {
-        if let Some(idx) = line.find(".starts_with(\"") {
-            let rest = &line[idx + 14..];
-            if let Some(end) = rest.find('"') {
-                out.insert(rest[..end].to_string());
-            }
-        }
+        out.extend(literals_after_marker(line, ".starts_with(\""));
     }
     out
 }
@@ -145,12 +150,7 @@ fn rust_prefix_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> 
 fn dag_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
     for line in body.lines() {
-        if let Some(idx) = line.find("changed == \"") {
-            let rest = &line[idx + 12..];
-            if let Some(end) = rest.find('"') {
-                out.insert(rest[..end].to_string());
-            }
-        }
+        out.extend(literals_after_marker(line, "changed == \""));
     }
     out
 }
@@ -158,12 +158,7 @@ fn dag_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<Strin
 fn rust_exact_path_literals_in_fn(body: &str) -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
     for line in body.lines() {
-        if let Some(idx) = line.find("path == \"") {
-            let rest = &line[idx + 9..];
-            if let Some(end) = rest.find('"') {
-                out.insert(rest[..end].to_string());
-            }
-        }
+        out.extend(literals_after_marker(line, "path == \""));
     }
     out
 }
