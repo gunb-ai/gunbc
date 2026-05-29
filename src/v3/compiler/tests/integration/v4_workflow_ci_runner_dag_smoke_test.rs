@@ -400,6 +400,14 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
         "{CI_DAG_PATH}: must model self-hosted runner pools (T-24 addendum)"
     );
     assert!(
+        !CI_DAG.contains("RunnerArchUnknown"),
+        "{CI_DAG_PATH}: runner arch must be closed Arm64 fleet fact, not an open fallback enum"
+    );
+    assert!(
+        CI_DAG.contains("type RunnerArch = Arm64"),
+        "{CI_DAG_PATH}: runner arch must be a closed single-variant coproduct"
+    );
+    assert!(
         CI_DAG.contains("data ci_srv1_pool: SelfHostedRunnerPool")
             && CI_DAG.contains("runner_count: 20")
             && CI_DAG.contains("jobserver_token_cap: 25")
