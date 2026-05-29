@@ -1,16 +1,13 @@
 // src/v4/test/claim/manual/protobuf_field_label_anchor.dag
-// Scope: Compile anchors for ProtoFieldLabel coproduct arms.
+// Scope: Compile anchors for Proto2SingularLabel coproduct arms (proto2 singular only).
 // Status: compile-only groundedness testcase.
 
 module v4.test.claim.manual.protobuf_field_label_anchor
 
-import v4.extdeps.formats.protobuf { ProtoFieldLabel }
+import v4.extdeps.formats.protobuf { Proto2SingularLabel }
 
 
-data protobuf_anchor_label_optional: ProtoFieldLabel = ProtoLabelOptional
+data protobuf_anchor_proto2_label_optional: Proto2SingularLabel = Proto2LabelOptional
 
 
-data protobuf_anchor_label_required: ProtoFieldLabel = ProtoLabelRequired
-
-
-data protobuf_anchor_label_repeated: ProtoFieldLabel = ProtoLabelRepeated
+data protobuf_anchor_proto2_label_required: Proto2SingularLabel = Proto2LabelRequired

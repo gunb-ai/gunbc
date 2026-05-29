@@ -1,0 +1,37 @@
+// src/v4/test/claim/manual/protobuf_map_key_type_anchor.dag
+// Scope: Compile anchors for ProtoMapKeyType coproduct arms (map key grammar subset).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_map_key_type_anchor
+
+import v4.extdeps.formats.protobuf { ProtoMapKeyType }
+
+
+data protobuf_anchor_map_key_int32: ProtoMapKeyType = ProtoMapKeyInt32
+
+
+data protobuf_anchor_map_key_int64: ProtoMapKeyType = ProtoMapKeyInt64
+
+
+data protobuf_anchor_map_key_uint32: ProtoMapKeyType = ProtoMapKeyUint32
+
+
+data protobuf_anchor_map_key_uint64: ProtoMapKeyType = ProtoMapKeyUint64
+
+
+data protobuf_anchor_map_key_sint32: ProtoMapKeyType = ProtoMapKeySint32
+
+
+data protobuf_anchor_map_key_sint64: ProtoMapKeyType = ProtoMapKeySint64
+
+
+data protobuf_anchor_map_key_fixed32: ProtoMapKeyType = ProtoMapKeyFixed32
+
+
+data protobuf_anchor_map_key_fixed64: ProtoMapKeyType = ProtoMapKeyFixed64
+
+
+data protobuf_anchor_map_key_bool: ProtoMapKeyType = ProtoMapKeyBool
+
+
+data protobuf_anchor_map_key_string: ProtoMapKeyType = ProtoMapKeyString

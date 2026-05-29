@@ -1,0 +1,13 @@
+// src/v4/test/claim/manual/protobuf_proto3_singular_presence_anchor.dag
+// Scope: Compile anchors for Proto3SingularPresence coproduct arms.
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_proto3_singular_presence_anchor
+
+import v4.extdeps.formats.protobuf { Proto3SingularPresence }
+
+
+data protobuf_anchor_proto3_singular_implicit: Proto3SingularPresence = Proto3SingularImplicit
+
+
+data protobuf_anchor_proto3_singular_explicit_optional: Proto3SingularPresence = Proto3SingularExplicitOptional

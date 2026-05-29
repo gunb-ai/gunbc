@@ -1,14 +1,16 @@
 // src/v4/extdeps/formats/protobuf.dag
-// Scope: Protocol Buffers schema-IDL (.proto language, proto2/proto3) + binary wire-format encoding model — declarative only.
+// Scope: Protocol Buffers schema-IDL subset (proto2/proto3 messages, enums, maps, oneofs) + binary wire-format encoding — declarative only.
 // Status: protobuf modeling lane — schema + wire axes; parse/emit deferred (T-6/T-7/T-10).
 // Anchor: https://protobuf.dev/programming-guides/proto/ (language guide)
 // Anchor: https://protobuf.dev/programming-guides/encoding/ (wire format)
+// Anchor: https://protobuf.dev/reference/protobuf/proto3-spec/ (map key types, field grammar)
 
 module v4.extdeps.formats.protobuf
 
 import v4.std.cardinality { NonZeroNat }
 import v4.std.collection { List, Optional }
 import v4.std.grammar { GrammarSchema }
+import v4.std.nat { Nat, Zero }
 
 
 // ── Schema-IDL axis (proto2 / proto3) ─────────────────────────────────────────
@@ -17,6 +19,20 @@ import v4.std.grammar { GrammarSchema }
 type ProtoSyntax
   = ProtoSyntaxProto2
   | ProtoSyntaxProto3
+
+
+// Message/oneof field numbers: 1 … 536870911 (2^29 − 1); distinct from enum numeric values.
+type ProtoFieldNumber {
+  value: NonZeroNat,
+}
+
+
+// Enum numeric values: signed int32 domain (proto3 requires first value = 0).
+// 🟢 coproduct dissolution — protobuf-enum-value-number.
+type ProtoEnumValueNumber
+  = ProtoEnumValueZero
+  | ProtoEnumValuePositive { value: NonZeroNat }
+  | ProtoEnumValueNegative { lexeme: String }
 
 
 // 🟢 coproduct dissolution — protobuf-scalar-type.
@@ -38,11 +54,31 @@ type ProtoScalarType
   | ProtoBytes
 
 
-// 🟢 coproduct dissolution — protobuf-field-label.
-type ProtoFieldLabel
-  = ProtoLabelOptional
-  | ProtoLabelRequired
-  | ProtoLabelRepeated
+// Map keys: integral types, bool, string only (proto2/proto3 map grammar).
+// 🟢 coproduct dissolution — protobuf-map-key-type.
+type ProtoMapKeyType
+  = ProtoMapKeyInt32
+  | ProtoMapKeyInt64
+  | ProtoMapKeyUint32
+  | ProtoMapKeyUint64
+  | ProtoMapKeySint32
+  | ProtoMapKeySint64
+  | ProtoMapKeyFixed32
+  | ProtoMapKeyFixed64
+  | ProtoMapKeyBool
+  | ProtoMapKeyString
+
+
+// 🟢 coproduct dissolution — protobuf-proto2-singular-label.
+type Proto2SingularLabel
+  = Proto2LabelOptional
+  | Proto2LabelRequired
+
+
+// 🟢 coproduct dissolution — protobuf-proto3-singular-presence.
+type Proto3SingularPresence
+  = Proto3SingularImplicit
+  | Proto3SingularExplicitOptional
 
 
 // 🟢 coproduct dissolution — protobuf-type-reference.
@@ -54,37 +90,50 @@ type ProtoTypeReference
 
 // 🟢 coproduct dissolution — protobuf-field-definition.
 type ProtoFieldDefinition
-  = ProtoSingularField {
-      number: NonZeroNat,
+  = ProtoProto2SingularField {
+      number: ProtoFieldNumber,
       name: String,
       type_ref: ProtoTypeReference,
-      label: ProtoFieldLabel,
+      label: Proto2SingularLabel,
+    }
+  | ProtoProto3SingularField {
+      number: ProtoFieldNumber,
+      name: String,
+      type_ref: ProtoTypeReference,
+      presence: Proto3SingularPresence,
+    }
+  | ProtoRepeatedField {
+      number: ProtoFieldNumber,
+      name: String,
+      type_ref: ProtoTypeReference,
     }
   | ProtoMapField {
-      number: NonZeroNat,
+      number: ProtoFieldNumber,
       name: String,
-      key_type: ProtoScalarType,
+      key_type: ProtoMapKeyType,
       value_type: ProtoTypeReference,
     }
 
 
-// 🟢 coproduct dissolution — protobuf-oneof-member.
-type ProtoOneofMember {
+// Oneof field grammar: unlabeled type name = number (no map/repeated/optional/required).
+// 🟢 coproduct dissolution — protobuf-oneof-field.
+type ProtoOneofField {
+  number: ProtoFieldNumber,
   name: String,
-  field: ProtoFieldDefinition,
+  type_ref: ProtoTypeReference,
 }
 
 
 type ProtoOneofDefinition {
   name: String,
-  members: List<ProtoOneofMember>,
+  members: List<ProtoOneofField>,
 }
 
 
 // 🟢 coproduct dissolution — protobuf-enum-value.
 type ProtoEnumValue {
   name: String,
-  number: NonZeroNat,
+  number: ProtoEnumValueNumber,
 }
 
 
@@ -95,8 +144,8 @@ type ProtoEnumDefinition {
 
 
 type ProtoReservedRange {
-  start: NonZeroNat,
-  end: Optional<NonZeroNat>,
+  start: ProtoFieldNumber,
+  end: Optional<ProtoFieldNumber>,
 }
 
 
@@ -149,7 +198,7 @@ type ProtoWireType
 
 
 type ProtoFieldKey {
-  field_number: NonZeroNat,
+  field_number: ProtoFieldNumber,
   wire_type: ProtoWireType,
 }
 
@@ -191,29 +240,28 @@ type ProtoWireProfileFacts {
 
 
 // 🟢 coproduct dissolution — protobuf-wire-field-record.
-// Tag wire type and payload shape are one arm — illegal cross-products (e.g. StartGroup + varint lexeme) are unrepresentable.
 type ProtoWireFieldRecord
   = ProtoWireVarintField {
-      field_number: NonZeroNat,
+      field_number: ProtoFieldNumber,
       lexeme: String,
     }
   | ProtoWireFixed32Field {
-      field_number: NonZeroNat,
+      field_number: ProtoFieldNumber,
       octets_lexeme: String,
     }
   | ProtoWireFixed64Field {
-      field_number: NonZeroNat,
+      field_number: ProtoFieldNumber,
       octets_lexeme: String,
     }
   | ProtoWireLengthDelimitedField {
-      field_number: NonZeroNat,
+      field_number: ProtoFieldNumber,
       payload_lexeme: String,
     }
   | ProtoWireStartGroupField {
-      field_number: NonZeroNat,
+      field_number: ProtoFieldNumber,
     }
   | ProtoWireEndGroupField {
-      field_number: NonZeroNat,
+      field_number: ProtoFieldNumber,
     }
 
 
@@ -240,3 +288,6 @@ type ProtoDocument {
 // 🟡 gated — feature: T-10 emit pipeline-stage substrate (TASKS T-10) — SL-3229-T4-FORMAT-T6T7 (emit half).
 // 🟡 gated — feature: proto-text-format parse/emit (protobuf text format; distinct from binary wire) — SL-3229-PROTOBUF-TEXT-FORMAT.
 // 🟡 gated — feature: schema_to_type derivation (given ProtoFileDefinition, generate .dag types) — SL-3229-PROTOBUF-SCHEMA-TO-TYPE.
+// 🟡 gated — feature: protobuf service/RPC definitions (service/method/streaming grammar) — SL-3229-PROTOBUF-SERVICE-RPC.
+// 🟡 gated — feature: protobuf extensions and custom options — SL-3229-PROTOBUF-EXTENSIONS.
+// 🟡 gated — feature: protobuf editions syntax — SL-3229-PROTOBUF-EDITIONS.
