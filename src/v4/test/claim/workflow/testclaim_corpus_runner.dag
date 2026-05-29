@@ -30,7 +30,7 @@ module v4.test.claim.workflow.testclaim_corpus_runner
 
 
 import v4.compiler.eval { TestClaimRun }
-import v4.std.algebra { count_where, fold_list, length }
+import v4.std.algebra { count_where, length }
 import v4.std.collection { List }
 import v4.std.logic { Bool }
 import v4.std.node { Node }
@@ -44,7 +44,8 @@ import v4.std.verification {
   TestClaim
 }
 import v4.test.claim.manual.manual_corpus_roster {
-  manual_corpus_node_runtime_value_runs
+  ManualCorpusRow,
+  manual_corpus_node_runtime_value_rows
 }
 
 
@@ -129,26 +130,22 @@ fn corpus_report_total(r: CorpusEvalReport) -> Int {
 }
 
 
-fn corpus_entry_from_node_runtime_value(
-  run: TestClaimRun<Node, RuntimeValue>
+fn corpus_entry_from_node_runtime_value_row(
+  row: ManualCorpusRow<RuntimeValue>
 ) -> CorpusEvalEntry {
   CorpusEvalEntry {
-    claim: run.cache.key.eval_subject.claim,
-    verdict: run.verdict
+    claim: row.claim,
+    verdict: row.run.verdict
   }
 }
 
 
-fn corpus_entries_from_node_runtime_value_runs(
-  runs: List<TestClaimRun<Node, RuntimeValue>>
+fn corpus_entries_from_node_runtime_value_rows(
+  rows: List<ManualCorpusRow<RuntimeValue>>
 ) -> List<CorpusEvalEntry> {
-  fold_list(
-    xs: runs,
-    empty: [],
-    cons: fn(acc, run) {
-      concat([corpus_entry_from_node_runtime_value(run: run)], acc)
-    }
-  )
+  fold(rows, init: [], f: fn(acc, row) {
+    concat([corpus_entry_from_node_runtime_value_row(row: row)], acc)
+  })
 }
 
 
@@ -159,8 +156,8 @@ fn corpus_entries_from_node_runtime_value_runs(
 // authority stays in the model.
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   CorpusEvalReport {
-    entries: corpus_entries_from_node_runtime_value_runs(
-      runs: manual_corpus_node_runtime_value_runs
+    entries: corpus_entries_from_node_runtime_value_rows(
+      rows: manual_corpus_node_runtime_value_rows
     )
   }
 }

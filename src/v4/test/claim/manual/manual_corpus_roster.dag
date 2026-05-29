@@ -24,19 +24,44 @@ import v4.compiler.eval { TestClaimRun }
 import v4.std.collection { List }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
+import v4.std.verification { TestClaim }
 import v4.test.claim.manual.dissolution_subsumption_reverification {
+  claim_rust_language_model_emit_mechanical_reverification,
+  claim_rust_language_model_emit_subsumption_reverifies,
   run_rust_language_model_emit_mechanical_reverification_claim,
   run_rust_language_model_emit_subsumption_reverifies
 }
-import v4.test.claim.manual.eval_runtime_mvp { run_eval_mvp2_test_claim_route }
+import v4.test.claim.manual.eval_runtime_mvp {
+  claim_eval_mvp2_test_claim_route,
+  run_eval_mvp2_test_claim_route
+}
+
+
+// A labeled corpus row pairs the canonical TestClaim (single authority for
+// label/anchor/classification — Codex review point 2: no String mirror) with
+// the produced TestClaimRun. The pair is inseparable at roster declaration
+// time: the run was computed from a subject built around the same claim, so
+// carrying both fields here is fact-flow-forward, not duplication.
+type ManualCorpusRow<A> {
+  claim: TestClaim
+  run: TestClaimRun<Node, A>
+}
 
 
 // Wedge roster: TestClaimRun rows whose actual-type parameter is RuntimeValue.
 // All three rows route through v4.compiler.eval.eval (T-22) on Node-typed
-// inputs. Per-row label/claim live on the TestClaim reachable via
-// run.cache.key.eval_subject.claim (single authority — no roster-side mirror).
-data manual_corpus_node_runtime_value_runs: List<TestClaimRun<Node, RuntimeValue>> = [
-  run_eval_mvp2_test_claim_route,
-  run_rust_language_model_emit_mechanical_reverification_claim,
-  run_rust_language_model_emit_subsumption_reverifies
+// inputs.
+data manual_corpus_node_runtime_value_rows: List<ManualCorpusRow<RuntimeValue>> = [
+  ManualCorpusRow {
+    claim: claim_eval_mvp2_test_claim_route,
+    run: run_eval_mvp2_test_claim_route
+  },
+  ManualCorpusRow {
+    claim: claim_rust_language_model_emit_mechanical_reverification,
+    run: run_rust_language_model_emit_mechanical_reverification_claim
+  },
+  ManualCorpusRow {
+    claim: claim_rust_language_model_emit_subsumption_reverifies,
+    run: run_rust_language_model_emit_subsumption_reverifies
+  }
 ]
