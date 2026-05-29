@@ -92,6 +92,7 @@ import v4.workflow.bootstrap {
   BootstrapPlan,
   CompileStage,
   FixptStage1Stage2,
+  bootstrap_hash_pin_projection_node,
   bootstrap_plan,
   bootstrap_stage_output,
   v4_stage0_binary
@@ -457,6 +458,7 @@ data ci_projection_fixpt_left_hash_edge: Symbol = ci_projection_fixpt_left_hash_
 data ci_projection_fixpt_right_hash_edge: Symbol = ci_projection_fixpt_right_hash_edge
 data ci_projection_fixpt_pinned_hash_edge: Symbol = ci_projection_fixpt_pinned_hash_edge
 data ci_projection_hash_pin_edge: Symbol = ci_projection_hash_pin_edge
+data ci_projection_string_char_edge: Symbol = ci_projection_string_char_edge
 data ci_projection_command_produces_edge: Symbol = ci_projection_command_produces_edge
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
@@ -502,16 +504,6 @@ fn ci_symbol_list_projection_node(xs: List<Symbol>) -> Node {
 }
 
 
-fn ci_bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      ci_named_edge(name: ci_projection_hash_pin_edge, target: ci_atom(sym: pin.pin))
-    ]
-  }
-}
-
-
 fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -520,7 +512,7 @@ fn ci_compile_stage_projection_node(stage: CompileStage) -> Node {
       ci_named_edge(name: ci_projection_compile_stage_compiled_by_edge, target: ci_atom(sym: stage.compiled_by)),
       ci_named_edge(
         name: ci_projection_compile_stage_produces_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: stage.produces_hash)
+        target: bootstrap_hash_pin_projection_node(pin: stage.produces_hash)
       ),
       ci_named_edge(
         name: ci_projection_compile_stage_consumes_edge,
@@ -539,15 +531,15 @@ fn ci_fixpt_stage_projection_node(fixpt: FixptStage1Stage2) -> Node {
       ci_named_edge(name: ci_projection_fixpt_right_edge, target: ci_atom(sym: fixpt.right)),
       ci_named_edge(
         name: ci_projection_fixpt_left_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.left_hash)
+        target: bootstrap_hash_pin_projection_node(pin: fixpt.left_hash)
       ),
       ci_named_edge(
         name: ci_projection_fixpt_right_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.right_hash)
+        target: bootstrap_hash_pin_projection_node(pin: fixpt.right_hash)
       ),
       ci_named_edge(
         name: ci_projection_fixpt_pinned_hash_edge,
-        target: ci_bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash)
+        target: bootstrap_hash_pin_projection_node(pin: fixpt.pinned_hash)
       )
     ]
   }
@@ -614,11 +606,69 @@ fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
 }
 
 
+fn ci_char_projection_node(c: Char) -> Node {
+  match byte_offset_cache_key(i: c) {
+    ByteOffsetCacheEligible { digest: digest } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_string_char_edge,
+            target: bootstrap_hash_pin_projection_node(
+              pin: BootstrapHashPin { digest: digest, pin: ci_cache_char_byte_offset_ineligible_tag }
+            )
+          )
+        ]
+      }
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(
+            name: ci_projection_string_char_edge,
+            target: combine_hash(
+              a: ci_atom(sym: boundary_tag),
+              b: witness
+            )
+          )
+        ]
+      }
+  }
+}
+
+
+fn ci_string_projection_node(s: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: fold_list(
+      xs: s,
+      empty: Empty,
+      cons: fn(acc, ch) {
+        list_snoc_item(
+          xs: acc,
+          item: Edge { label: Positional, target: ci_char_projection_node(c: ch) }
+        )
+      }
+    )
+  }
+}
+
+
 fn ci_command_projection_node(c: CiCommand) -> Node {
   match c {
     LintCommand => ci_atom(sym: ci_cache_cmd_lint_tag)
     TestCommand => ci_atom(sym: ci_cache_cmd_test_tag)
-    IgnoredTestCommand { test_name: _ } => ci_atom(sym: ci_cache_cmd_ignored_test_tag)
+    IgnoredTestCommand { test_name: name } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          ci_named_edge(name: ci_projection_command_test_name_edge, target: ci_atom(sym: ci_cache_cmd_ignored_test_tag)),
+          ci_named_edge(name: ci_projection_command_test_name_edge, target: ci_string_projection_node(s: name))
+        ]
+      }
     LensCiCommand { required_lenses: lenses } =>
       Node {
         kind: TypeNode { connective: Conj },

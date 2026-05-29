@@ -210,6 +210,60 @@ fn bootstrap_projection_snapshot_content_hash_pin_node(pin: Symbol) -> Node {
   }
 }
 
+data bootstrap_projection_hash_pin_slot_edge: Symbol = bootstrap_projection_hash_pin_slot_edge
+data bootstrap_projection_hash_digest_slot_edge: Symbol = bootstrap_projection_hash_digest_slot_edge
+data bootstrap_projection_hash_digest_unknown_tag: Symbol = bootstrap_projection_hash_digest_unknown_tag
+
+
+fn bootstrap_hash_digest_identity_atom(digest: Hash) -> Node {
+  if digest == v4_stage0_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: v4_stage0_hash } },
+      children: []
+    }
+  } else if digest == v4_stage1_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: v4_stage1_hash } },
+      children: []
+    }
+  } else if digest == v4_stage2_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: v4_stage2_hash } },
+      children: []
+    }
+  } else if digest == pinned_v4_fixed_point_hash {
+    Node {
+      kind: TypeNode { connective: Atom { identity: pinned_v4_fixed_point_hash } },
+      children: []
+    }
+  } else {
+    Node {
+      kind: TypeNode { connective: Atom { identity: bootstrap_projection_hash_digest_unknown_tag } },
+      children: []
+    }
+  }
+}
+
+
+fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: bootstrap_projection_hash_pin_slot_edge },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: pin.pin } },
+          children: []
+        }
+      },
+      Edge {
+        label: Named { name: bootstrap_projection_hash_digest_slot_edge },
+        target: bootstrap_hash_digest_identity_atom(digest: pin.digest)
+      }
+    ]
+  }
+}
+
 // Phase-1 closure: Node-projectable projection facts (B1 content_hash). BootstrapHashPin.digest
 // (Hash), TargetModel non-bundle fields, and V4EvaluatorRuntime fields beyond runtime_identity
 // are enforced by bootstrap_projection_inputs_well_formed equality against canonical wave-1
