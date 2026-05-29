@@ -234,7 +234,7 @@ This canvas **does not** redefine T-24/C4 in prose alone. It **ratifies** a two-
 | Task | Relationship |
 |------|----------------|
 | **T-21** | **Scheduling authority** for this overhaul |
-| **T-24** | **Phase 1:** A0–A14 (S2′); **Phase 2:** A15 Shape-B — **[DONE] only after A15** (Q-R1/Q-R6) |
+| **T-24** | **Phase 1a/1b:** B1 Tier-0 then B2 (A3–A14 opt-in); **Phase 2:** A15 Shape-B — **[DONE] only after A15** (Q-R1/Q-R6) |
 | **T-38** | **A0 active now** (Q-R2); neat-wren-762 owns harness + host effects |
 | **T-15** | CI schedules self-host `TestCommand`; Lane C owns implementation |
 | **T-10/T-23** | Unchanged lens split |

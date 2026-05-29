@@ -93,8 +93,8 @@ ci_pipeline
 
 | Node | Runs when | Must NOT run when |
 |------|-----------|------------------|
-| I3 v3 determinism | Frontier intersects `src/v3/compiler/**` (or explicit policy) | Docs-only PR |
-| I4 v3 self-host FP | `MainPush` **or** frontier hit (pick one policy; default: **frontier OR main**, not both always) | Unchanged v3 subgraph (IRT-4 reuse) |
+| I3 v3 determinism | Frontier intersects `src/v3/compiler/**` only | Docs-only PR; **minimal** matrix (not full legacy `v3` job) |
+| I4 v3 self-host FP | Frontier hit **or** `MainPush` — **minimal** release fixed-point only | Unchanged v3 subgraph (IRT-4 reuse); **transitional** until v3 lane is deleted |
 | I6 M1 probe | Frontier intersects `src/v4/**` merkle | Unchanged v4 subgraph |
 | I7 T-15 | Frontier intersects compiler closure **or** release pin bump | Every PR full self-host if seed unchanged |
 
@@ -106,8 +106,8 @@ ci_pipeline
 
 **Rebuild:** `V3DeterminismCommand` + `V3SelfHostFixedPointCommand` as **`CiJob`s** inside `ci_pipeline`, with:
 
-- `schedule_policy: MainPush` and/or frontier predicate (operator choice in ratification)
-- `build_profile: Release` only for the fixed-point arm (determinism may use lighter matrix on PR)
+- **Operator (2026-05-29):** run **minimal** I3/I4 when v3 frontier is hit; `MainPush` may run the same arms — **not** both redundantly on the same commit. v3 is **transitional** (v3 deletion expected); do not expand v3 CI surface beyond minimal fixed-point + determinism.
+- `build_profile: Release` for I4 only; lighter profile acceptable for I3 on PR where sufficient.
 - **No second job** — interpreter executes selected arms once
 
 ---
@@ -169,7 +169,7 @@ Promote from audit with **measured wall** (warm-cache methodology per #3881):
 1. Tier-0 commands exist in `ci.dag` with declared `content_hash` inputs and IRT-4 reuse demonstrated (hermetic test: unchanged PR → cache hit).
 2. No standalone `self_host_ratchet`, `v3`, `v4` policy jobs; **no** `scripts/check-*` on the **Tier-0 critical path** (deletion of script files = Phase 1b / A6–A8, not B1).
 3. v3 fixed-point + v4 T-15 + M1 probe **fail-closed**; no `continue-on-error` on Tier-0.
-4. Warm-cache wall for a docs-only PR: target **&lt; 2 min** total interpreter path (operator-set; measure after B1).
+4. Warm-cache wall (operator 2026-05-29): **docs-only PR → ~instant** (witness + affected + IRT-4 cache hits only); **code-touch PR → &lt; 1 min** total interpreter path on warm cache. Measure after B1; fail the lane if not met.
 
 **Not required for B1:** full discipline port, Shape-B emission, all audit Table B rows.
 
