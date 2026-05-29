@@ -1,0 +1,283 @@
+// src/v4/test/claim/parse/wasm_wave2a.dag
+// Scope: TestClaim rows for Wasm Wave 2a lex/grammar via wasm_language_model_wave2().
+// Status: T-22 runner deferred — execution pending T-22 complexity fix; see TODO on parse_accepted helper.
+
+module v4.test.claim.parse.wasm_wave2a
+
+import v4.std.grammar { ParseTree }
+import v4.compiler.tokenize { tokenize }
+import v4.compiler.parse { parse }
+import v4.extdeps.languages.wasm {
+  wasm_wave2_lex,
+  wasm_wave2_grammar,
+  wasm_wave2_source_text
+}
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.logic { Bool }
+import v4.std.text { String }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+
+data wasm_wave2a_file: Symbol = wasm_wave2a_file
+data wasm_wave2a_bool_true: Symbol = wasm_wave2a_bool_true
+data wasm_wave2a_bool_false: Symbol = wasm_wave2a_bool_false
+
+data wasm_wave2a_br_if_numeric_source: String = "br_if 0"
+data wasm_wave2a_call_named_source: String = "call $add"
+data wasm_wave2a_local_set_source: String = "local.set 0"
+data wasm_wave2a_local_tee_named_source: String = "local.tee $tmp"
+data wasm_wave2a_memarg_source: String = "i32.load offset=4 align=8"
+data wasm_wave2a_br_if_hex_source: String = "br_if 0x10"
+data wasm_wave2a_memarg_hex_source: String = "i32.load offset=0x10 align=0x8"
+data wasm_wave2a_i32_const_signed_source: String = "i32.const -1"
+data wasm_wave2a_i64_const_signed_source: String = "i64.const -1"
+data wasm_wave2a_export_escaped_source: String = "(export \"a\\22b\" (func $add))"
+data wasm_wave2a_export_punct_source: String = "(export \"a b.c\" (func $add))"
+data wasm_wave2a_export_func_numeric_source: String = "(export \"f\" (func 0))"
+data wasm_wave2a_export_table_numeric_source: String = "(export \"t\" (table 0))"
+data wasm_wave2a_export_memory_numeric_source: String = "(export \"m\" (memory 0))"
+data wasm_wave2a_export_global_numeric_source: String = "(export \"g\" (global 0))"
+data wasm_wave2a_module_local_set_source: String = "(module (func $f (param i32 i32) (result i32) local.set 0 local.get 0))"
+
+fn wasm_wave2a_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: wasm_wave2a_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: wasm_wave2a_bool_false } }, children: [] }
+  }
+}
+
+// TODO(T-22): wasm_wave2a_parse_accepted is test-local scaffolding — Outcome<T> cannot be compared
+// directly in EqualsClaim today. Canonical accepted/rejected claim forms for Outcome should live in
+// std/verification.dag; matches rust_wave2a/kotlin_wave2a/from_node.dag until that lands.
+fn wasm_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn wasm_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
+  match tokenize(
+    text: text,
+    file: wasm_wave2a_file,
+    rules: wasm_wave2_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: wasm_wave2_grammar())
+  }
+}
+
+fn wasm_wave2a_tokenize_and_parse_module() -> Outcome<ParseTree> {
+  wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2_source_text)
+}
+
+data claim_wasm_wave2a_export_module_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a lex/grammar accepts exported module authority fixture",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(out: wasm_wave2a_tokenize_and_parse_module())
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_br_if_numeric_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts br_if with numeric labelidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_br_if_numeric_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_call_named_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts call with symbolic funcidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_call_named_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_local_set_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts local.set with numeric localidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_local_set_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_local_tee_named_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts local.tee with symbolic localidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_local_tee_named_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_memarg_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts memory load with offset/align memarg",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_memarg_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_br_if_hex_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts br_if with hexadecimal labelidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_br_if_hex_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_memarg_hex_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts memory load with hexadecimal memarg",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_memarg_hex_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_i32_const_signed_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts i32.const with signed integer literal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_i32_const_signed_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_i64_const_signed_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts i64.const with signed integer literal",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_i64_const_signed_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_export_escaped_string_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts export name with WAT string escape",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_export_escaped_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_export_punctuation_string_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts export name with space and punctuation plain chars",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_export_punct_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_export_func_numeric_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts export with numeric funcidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_export_func_numeric_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_export_memory_numeric_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts export with numeric memory idx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_export_memory_numeric_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_export_table_numeric_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts export with numeric tableidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_export_table_numeric_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_export_global_numeric_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts export with numeric globalidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_export_global_numeric_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_module_local_set_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a module body accepts function with wave2 local.set instruction",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_bool_atom(
+    b: wasm_wave2a_parse_accepted(
+      out: wasm_wave2a_tokenize_and_parse_source(text: wasm_wave2a_module_local_set_source)
+    )
+  ),
+  rhs: wasm_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
