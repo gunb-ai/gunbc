@@ -84,12 +84,12 @@ fn arbitrary_program_fixtures_pass_post_emit_verifier_all_targets() {
 #[ignore = "requires rustc on PATH"]
 fn arbitrary_program_fixtures_pass_rust_post_emit_verifier() {
     for fixture in PROGRAM_FIXTURES {
-        if !fixture_supports_emit_verification_target(fixture.name, EmitVerificationTarget::Rust) {
+        if !fixture_supports_post_emit_target(fixture.name, EmitTarget::Rust) {
             continue;
         }
         let dag = compile_fixture(fixture);
         let scratch = scratch_dir(&format!("{}_rust", fixture.name));
-        verify_program_emitted_source(&dag, EmitVerificationTarget::Rust, &scratch, fixture.name)
+        verify_program_emitted_source(&dag, EmitTarget::Rust, &scratch, fixture.name)
             .unwrap_or_else(|e| panic!("fixture `{}`: {e}", fixture.name));
         let _ = std::fs::remove_dir_all(&scratch);
     }
@@ -97,8 +97,8 @@ fn arbitrary_program_fixtures_pass_rust_post_emit_verifier() {
 
 #[test]
 fn emit_verification_target_labels_are_stable() {
-    assert_eq!(EmitVerificationTarget::Rust.label(), "rust");
-    assert_eq!(EmitVerificationTarget::Go.label(), "go");
-    assert_eq!(EmitVerificationTarget::Python.label(), "python");
-    assert_eq!(EmitVerificationTarget::ALL.len(), 3);
+    assert_eq!(post_emit_target_label(EmitTarget::Rust), "rust");
+    assert_eq!(post_emit_target_label(EmitTarget::Go), "go");
+    assert_eq!(post_emit_target_label(EmitTarget::Python), "python");
+    assert_eq!(SHAPE_A_POST_EMIT_TARGETS.len(), 3);
 }
