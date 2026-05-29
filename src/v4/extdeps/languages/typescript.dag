@@ -752,19 +752,11 @@ fn ts_type_alias_task_token_nodes() -> List<Node> {
   ]
 }
 
-fn ts_type_alias_task_grammar_relation_row() -> TsGrammarRelationRow {
-  TsGrammarRelationRow {
-    production: ts_formal_production_type_alias_task(),
-    emitted: ts_type_alias_task_emitted_node(),
-    tokens: []
-  }
-}
-
 fn ts_type_alias_task_grammar_relation_row_node() -> Node {
   grammar_relation_row_to_node(
     row: derive_grammar_relation_row(
-      production: ts_type_alias_task_grammar_relation_row().production,
-      emitted: ts_type_alias_task_grammar_relation_row().emitted
+      production: ts_formal_production_type_alias_task(),
+      emitted: ts_type_alias_task_emitted_node()
     ),
     tokens: Node {
       kind: TypeNode { connective: Conj },
