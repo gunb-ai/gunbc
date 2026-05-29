@@ -57,31 +57,32 @@ fn verdict_monoid<T>() -> Monoid<Verdict<T>> {
     identity: Pass
   }
 }
-// Canonical per-variant classification predicates for Verdict<T>. Workflow
-// callers that need to discriminate Pass vs Fail vs Deferred (e.g. for
-// `count_where` tallies in a corpus runner) consume these single-authority
-// predicates rather than re-deriving the variant set via inline `match`,
-// per docs/modeling-discipline.md predicate-dissolution.
-fn verdict_is_pass<T>(v: Verdict<T>) -> Bool {
+// Tally of Verdict<T> populations by variant. Carries genuinely distinct
+// per-variant work (different field increments in `verdict_tally_add`),
+// so it is the canonical surface for "how many Pass / Fail / Deferred"
+// over a list — NOT per-variant `is_*` Bool predicates (which would be
+// unconditional predicate-dissolution triggers in std/ per
+// docs/modeling-discipline.md).
+type VerdictTally {
+  pass: Int
+  fail: Int
+  deferred: Int
+}
+data verdict_tally_empty: VerdictTally = VerdictTally { pass: 0, fail: 0, deferred: 0 }
+fn verdict_tally_add<T>(t: VerdictTally, v: Verdict<T>) -> VerdictTally {
   match v {
-    Pass => true
-    Fail { actual: _ } => false
-    Deferred { actual: _, diagnostic: _ } => false
+    Pass => VerdictTally { pass: t.pass + 1, fail: t.fail, deferred: t.deferred }
+    Fail { actual: _ } => VerdictTally { pass: t.pass, fail: t.fail + 1, deferred: t.deferred }
+    Deferred { actual: _, diagnostic: _ } => VerdictTally { pass: t.pass, fail: t.fail, deferred: t.deferred + 1 }
   }
 }
-fn verdict_is_fail<T>(v: Verdict<T>) -> Bool {
-  match v {
-    Pass => false
-    Fail { actual: _ } => true
-    Deferred { actual: _, diagnostic: _ } => false
-  }
+fn verdict_tally<T>(vs: List<Verdict<T>>) -> VerdictTally {
+  fold(vs, init: verdict_tally_empty, f: fn(acc, v) {
+    verdict_tally_add(t: acc, v: v)
+  })
 }
-fn verdict_is_deferred<T>(v: Verdict<T>) -> Bool {
-  match v {
-    Pass => false
-    Fail { actual: _ } => false
-    Deferred { actual: _, diagnostic: _ } => true
-  }
+fn verdict_tally_total(t: VerdictTally) -> Int {
+  t.pass + t.fail + t.deferred
 }
 // Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
 // Fail-closed on empty list: the caller supplies the empty_verdict to enforce

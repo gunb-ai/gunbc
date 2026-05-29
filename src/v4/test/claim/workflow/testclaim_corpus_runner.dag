@@ -30,16 +30,16 @@ module v4.test.claim.workflow.testclaim_corpus_runner
 
 
 import v4.compiler.eval { TestClaimRun }
-import v4.std.algebra { count_where, length }
+import v4.std.algebra { length }
 import v4.std.collection { List }
-import v4.std.logic { Bool }
 import v4.std.node { Node }
 import v4.std.runtime { RuntimeValue }
 import v4.std.verdict {
   Verdict,
-  verdict_is_deferred,
-  verdict_is_fail,
-  verdict_is_pass
+  VerdictTally,
+  verdict_tally,
+  verdict_tally_empty,
+  verdict_tally_add
 }
 import v4.std.verification {
   CompilesClaim,
@@ -88,37 +88,31 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
 }
 
 
-// Per-entry verdict predicates delegate to the canonical Verdict<T>
-// predicates in v4.std.verdict — no per-variant match in workflow code
-// (docs/modeling-discipline.md predicate-dissolution: the closed Verdict
-// coproduct stays single authority for Pass / Fail / Deferred classification).
-fn corpus_entry_is_pass(e: CorpusEvalEntry) -> Bool {
-  verdict_is_pass(v: e.verdict)
-}
-
-
-fn corpus_entry_is_fail(e: CorpusEvalEntry) -> Bool {
-  verdict_is_fail(v: e.verdict)
-}
-
-
-fn corpus_entry_is_deferred(e: CorpusEvalEntry) -> Bool {
-  verdict_is_deferred(v: e.verdict)
+// Single-authority count surface: derive a `VerdictTally` by folding
+// `verdict_tally_add` over the entries' verdicts (canonical std/verdict
+// tally — genuinely distinct per-variant work, no per-variant Bool
+// helpers). The pass / fail / deferred / total projections all read off
+// the tally so counts cannot diverge from entries (M4) and no per-variant
+// match lives outside `verdict_tally_add` (predicate-dissolution clean).
+fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
+  fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
+    verdict_tally_add(t: acc, v: e.verdict)
+  })
 }
 
 
 fn corpus_report_pass_count(r: CorpusEvalReport) -> Int {
-  count_where(xs: r.entries, predicate: corpus_entry_is_pass)
+  corpus_report_tally(r: r).pass
 }
 
 
 fn corpus_report_fail_count(r: CorpusEvalReport) -> Int {
-  count_where(xs: r.entries, predicate: corpus_entry_is_fail)
+  corpus_report_tally(r: r).fail
 }
 
 
 fn corpus_report_deferred_count(r: CorpusEvalReport) -> Int {
-  count_where(xs: r.entries, predicate: corpus_entry_is_deferred)
+  corpus_report_tally(r: r).deferred
 }
 
 
