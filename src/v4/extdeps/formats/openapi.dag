@@ -13,22 +13,39 @@ import v4.extdeps.coordination {
   ConsistencyGuarantee,
   ConvergeBound,
   CoordinationBind,
+  CoordinationEffectObligation,
   EndpointRef,
   ExchangePattern,
   Http,
+  ImmediateSettlement,
+  NoReplicaConvergence,
+  RequiredConvergeBound,
+  RequiredSettleBound,
   SettlementGuarantee,
   SettleBound,
   WireContract,
   WireContractFacts,
-  coordination_effect_obligation,
-  wire_contract_consistency_from_obligation,
-  wire_contract_settlement_from_obligation
+  coordination_effect_obligation
 }
 import v4.extdeps.formats.json { JsonDocument, JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }
 import v4.extdeps.formats.yaml { YamlDocument }
 import v4.std.collection { Optional }
+import v4.std.diagnostic {
+  Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  None,
+  Outcome,
+  Rejected,
+  Textual,
+  Unavailable,
+  WholeFile,
+  diagnostics_merge,
+  diagnostics_singleton
+}
 import v4.std.nat { Nat }
+import v4.std.node { Symbol }
 import v4.std.network {
   DELETE,
   GET,
@@ -549,29 +566,67 @@ type OpenApiOperationWireContractFacts {
   path_template: OpenApiPathTemplateKey,
 }
 
-fn openapi_operation_exchange_authority() -> ExchangePattern {
-  coordination_effect_obligation(effect: Http).required_exchange
+data openapi_wire_contract_file: Symbol = openapi_wire_contract_file
+
+data openapi_http_bounded_settlement_not_admitted: Symbol = openapi_http_bounded_settlement_not_admitted
+
+data openapi_http_bounded_consistency_not_admitted: Symbol = openapi_http_bounded_consistency_not_admitted
+
+fn openapi_wire_contract_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: Textual { file: openapi_wire_contract_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
 }
 
-fn openapi_operation_settlement_authority() -> SettlementGuarantee<SettleBound> {
-  wire_contract_settlement_from_obligation(
-    settlement: coordination_effect_obligation(effect: Http).required_settlement
-  )
+fn openapi_http_obligation() -> CoordinationEffectObligation {
+  coordination_effect_obligation(effect: Http)
 }
 
-fn openapi_operation_consistency_authority() -> ConsistencyGuarantee<ConvergeBound> {
-  wire_contract_consistency_from_obligation(
-    consistency: coordination_effect_obligation(effect: Http).required_consistency
-  )
+fn openapi_http_settlement_from_obligation(
+  settlement: SettlementGuarantee<RequiredSettleBound>
+) -> Outcome<SettlementGuarantee<SettleBound>> {
+  match settlement {
+    ImmediateSettlement => Accepted { value: ImmediateSettlement, diagnostics: None }
+    SettlesWithin { bound: _ } => Rejected {
+      diagnostics: diagnostics_singleton(
+        d: openapi_wire_contract_diagnostic(reason: openapi_http_bounded_settlement_not_admitted)
+      )
+    }
+  }
 }
 
-fn openapi_http_wire_contract_facts(from: EndpointRef, to: EndpointRef) -> WireContractFacts {
-  WireContractFacts {
-    from: from,
-    to: to,
-    exchange: openapi_operation_exchange_authority(),
-    settlement: openapi_operation_settlement_authority(),
-    consistency: openapi_operation_consistency_authority()
+fn openapi_http_consistency_from_obligation(
+  consistency: ConsistencyGuarantee<RequiredConvergeBound>
+) -> Outcome<ConsistencyGuarantee<ConvergeBound>> {
+  match consistency {
+    NoReplicaConvergence => Accepted { value: NoReplicaConvergence, diagnostics: None }
+    EventuallyConsistent { bound: _ } => Rejected {
+      diagnostics: diagnostics_singleton(
+        d: openapi_wire_contract_diagnostic(reason: openapi_http_bounded_consistency_not_admitted)
+      )
+    }
+  }
+}
+
+fn openapi_http_wire_contract_facts(from: EndpointRef, to: EndpointRef) -> Outcome<WireContractFacts> {
+  let obligation = openapi_http_obligation()
+  match openapi_http_settlement_from_obligation(settlement: obligation.required_settlement) {
+    Accepted { value: settlement, diagnostics: settle_diags } => match openapi_http_consistency_from_obligation(consistency: obligation.required_consistency) {
+      Accepted { value: consistency, diagnostics: consist_diags } => Accepted {
+        value: WireContractFacts {
+          from: from,
+          to: to,
+          exchange: obligation.required_exchange,
+          settlement: settlement,
+          consistency: consistency
+        },
+        diagnostics: diagnostics_merge(outer: settle_diags, inner: consist_diags)
+      }
+      Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
+    }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
@@ -580,11 +635,17 @@ fn openapi_operation_wire_contract_facts(
   to: EndpointRef,
   admitted_method: OpenApiAdmittedHttpMethod,
   path_template: OpenApiPathTemplateKey
-) -> OpenApiOperationWireContractFacts {
-  OpenApiOperationWireContractFacts {
-    coordination: openapi_http_wire_contract_facts(from: from, to: to),
-    admitted_method: admitted_method,
-    path_template: path_template
+) -> Outcome<OpenApiOperationWireContractFacts> {
+  match openapi_http_wire_contract_facts(from: from, to: to) {
+    Accepted { value: coordination, diagnostics } => Accepted {
+      value: OpenApiOperationWireContractFacts {
+        coordination: coordination,
+        admitted_method: admitted_method,
+        path_template: path_template
+      },
+      diagnostics: diagnostics
+    }
+    Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 

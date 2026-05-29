@@ -4,6 +4,10 @@
 //! `src/v4/extdeps/formats/openapi.dag`: `OpenApiOperationWireContractFacts`
 //! composes `coordination.dag` `WireContractFacts`; exchange / settlement /
 //! consistency authority routes through `coordination_effect_obligation(Http)`.
+//!
+//! **PR receipt (P5 Mechanism (b)):** this harness + matching
+//! `EXPECTED_HAND_AUTHORED_TEST` line in `sg0_census_test.rs` + INVARIANTS table
+//! row land in the same PR.
 
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceField, SurfaceItem, SurfaceType, TypeAngleArg};
@@ -85,30 +89,33 @@ fn v4_extdeps_openapi_operation_wire_contract_composes_coordination_facts() {
         "OpenApiPathTemplateKey"
     );
     assert!(
-        OPENAPI_DAG.contains("fn openapi_operation_exchange_authority() -> ExchangePattern")
-            && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http).required_exchange"),
-        "OpenAPI operation exchange must route through Http obligation row, not a parallel RequestReply witness"
+        OPENAPI_DAG.contains("fn openapi_http_obligation() -> CoordinationEffectObligation")
+            && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http)"),
+        "OpenAPI wire-contract facts must source the Http obligation row from coordination.dag"
     );
     assert!(
-        OPENAPI_DAG.contains("fn openapi_operation_settlement_authority() -> SettlementGuarantee<SettleBound>")
-            && OPENAPI_DAG.contains("wire_contract_settlement_from_obligation(")
-            && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http).required_settlement"),
-        "OpenAPI operation settlement must route through Http obligation row via bound coercion, not inline ImmediateSettlement"
+        OPENAPI_DAG.contains("fn openapi_http_settlement_from_obligation(")
+            && OPENAPI_DAG.contains("ImmediateSettlement => Accepted { value: ImmediateSettlement")
+            && OPENAPI_DAG.contains("openapi_http_bounded_settlement_not_admitted"),
+        "Http settlement must project ImmediateSettlement from the obligation row and fail-closed on bounded required settlement"
     );
     assert!(
-        OPENAPI_DAG.contains("fn openapi_operation_consistency_authority() -> ConsistencyGuarantee<ConvergeBound>")
-            && OPENAPI_DAG.contains("wire_contract_consistency_from_obligation(")
-            && OPENAPI_DAG.contains("coordination_effect_obligation(effect: Http).required_consistency"),
-        "OpenAPI operation consistency must route through Http obligation row via bound coercion, not inline NoReplicaConvergence"
+        OPENAPI_DAG.contains("fn openapi_http_consistency_from_obligation(")
+            && OPENAPI_DAG.contains("NoReplicaConvergence => Accepted { value: NoReplicaConvergence")
+            && OPENAPI_DAG.contains("openapi_http_bounded_consistency_not_admitted"),
+        "Http consistency must project NoReplicaConvergence from the obligation row and fail-closed on bounded required consistency"
     );
     assert!(
-        !OPENAPI_DAG.contains("settlement: ImmediateSettlement,")
-            && !OPENAPI_DAG.contains("consistency: NoReplicaConvergence"),
-        "openapi_http_wire_contract_facts must not restate Http obligation settlement/consistency as inline literals"
+        !OPENAPI_DAG.contains("data openapi_operation_exchange_request_reply")
+            && !OPENAPI_DAG.contains("wire_contract_settlement_from_obligation")
+            && !OPENAPI_DAG.contains("SettleBound { steps: 0 }"),
+        "OpenAPI must not carry a parallel RequestReply witness, generic obligation coercion with fabricated bounds, or steps:0 stubs"
     );
     assert!(
-        OPENAPI_DAG.contains("fn openapi_operation_wire_contract(")
+        OPENAPI_DAG.contains("fn openapi_http_wire_contract_facts(")
+            && OPENAPI_DAG.contains("-> Outcome<WireContractFacts>")
+            && OPENAPI_DAG.contains("fn openapi_operation_wire_contract(")
             && OPENAPI_DAG.contains("facts: facts.coordination"),
-        "OpenApiOperationWireContractFacts must lower to coordination WireContract via facts.coordination"
+        "OpenApiOperationWireContractFacts must compose coordination WireContract via Outcome-guarded facts.coordination"
     );
 }

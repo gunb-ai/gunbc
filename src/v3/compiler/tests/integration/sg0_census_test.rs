@@ -855,6 +855,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // T-4.8 coordination substrate: decomposed WireContractFacts + CoordinationBind shape,
     // with WIRECONTRACT-OBLIGATION-TABLE-T4.8 per-effect obligation rows.
     "src/v3/compiler/tests/integration/v4_extdeps_coordination_dag_smoke_test.rs",
+    // T-4.6 openapi wire-contract composition with coordination.dag (SL-3229-OPENAPI-WIRECONTRACT-COORDINATION).
+    "src/v3/compiler/tests/integration/v4_extdeps_openapi_dag_smoke_test.rs",
     // T-4.7 React framework substrate: `compile_to_dag` smoke on
     // `src/v4/extdeps/frameworks/react.dag` (zero module diagnostics).
     // SG-0 ratchet per INVARIANTS §P5(b) + typescript extdeps precedent.
