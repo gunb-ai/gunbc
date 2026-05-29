@@ -269,6 +269,10 @@ fn v4_workflow_release_modeled_and_bound_to_release_yml() {
         "{RELEASE_YML_PATH}: publish bundle must ship target-authority script beside install.sh"
     );
     assert!(
+        RELEASE_YML.contains("dist/*") && RELEASE_YML.contains("dist/scripts/*"),
+        "{RELEASE_YML_PATH}: gh-release upload globs must include nested dist/scripts/ assets"
+    );
+    assert!(
         RELEASE_YML.contains(&format!("- name: {publish_step}")),
         "{RELEASE_YML_PATH}: must create GitHub Release"
     );

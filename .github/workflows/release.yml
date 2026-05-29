@@ -106,5 +106,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          # `dist/*` does not match nested paths; stage step puts target authority under dist/scripts/.
+          files: |
+            dist/*
+            dist/scripts/*
           generate_release_notes: true
