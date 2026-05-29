@@ -710,10 +710,11 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
 }
 
 
-fn ci_component_affected_from_git_diff_read(outcome: CiGitDiffReadOutcome) -> CiComponentAffected {
+fn ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>) -> CiComponentAffected {
   match outcome {
-    ReadOk { git_diff } => ci_component_affected_from_git_diff(git_diff: git_diff)
-    ReadFailClosed { diagnostic: _ } => ci_component_affected_fail_closed()
+    Accepted { value: git_diff, diagnostics: _ } =>
+      ci_component_affected_from_git_diff(git_diff: git_diff)
+    Rejected { diagnostics: _ } => ci_component_affected_fail_closed()
   }
 }
 
@@ -723,67 +724,6 @@ fn ci_int_at_least_one(n: Int) -> Int {
     1
   } else {
     n
-  }
-}
-
-
-fn ci_runner_pool_has_nonuniform_runner_counts(pools: List<SelfHostedRunnerPool>) -> Bool {
-  ci_runner_pool_max_runner_count(pools: pools) != ci_runner_pool_min_runner_count(pools: pools)
-}
-
-
-fn ci_runner_pool_m1_probe_witness_holds(pools: List<SelfHostedRunnerPool>) -> Bool {
-  non_empty(xs: pools)
-    && ci_runner_pool_has_nonuniform_runner_counts(pools: pools)
-}
-
-
-data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_holds(
-  pools: ci_self_hosted_runner_pools
-)
-
-
-fn ci_runner_pool_min_jobserver_token_cap(pools: List<SelfHostedRunnerPool>) -> Int {
-  if length(xs: pools) == 0 {
-    0
-  } else {
-    fold(pools, init: ci_int_min_fold_sentinel, f: fn(acc, pool) {
-      if pool.jobserver_token_cap < acc {
-        pool.jobserver_token_cap
-      } else {
-        acc
-      }
-    })
-  }
-}
-
-
-fn ci_runner_pool_max_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
-  if length(xs: pools) == 0 {
-    0
-  } else {
-    fold(pools, init: 0, f: fn(acc, pool) {
-      if pool.runner_count > acc {
-        pool.runner_count
-      } else {
-        acc
-      }
-    })
-  }
-}
-
-
-fn ci_runner_pool_min_runner_count(pools: List<SelfHostedRunnerPool>) -> Int {
-  if length(xs: pools) == 0 {
-    0
-  } else {
-    fold(pools, init: ci_int_min_fold_sentinel, f: fn(acc, pool) {
-      if pool.runner_count < acc {
-        pool.runner_count
-      } else {
-        acc
-      }
-    })
   }
 }
 
@@ -800,37 +740,101 @@ fn ci_runner_pool_host_count(pools: List<SelfHostedRunnerPool>) -> Int {
 }
 
 
-fn ci_runner_pool_runner_spread(max_runners: Int, min_runners: Int) -> Int {
-  if max_runners == min_runners {
-    1
+fn ci_fleet_min_runner_count() -> Int {
+  fold(ci_self_hosted_runner_pools, init: ci_srv1_pool.runner_count, f: fn(acc, pool) {
+    if pool.runner_count < acc {
+      pool.runner_count
+    } else {
+      acc
+    }
+  })
+}
+
+
+fn ci_fleet_max_runner_count() -> Int {
+  fold(ci_self_hosted_runner_pools, init: ci_srv1_pool.runner_count, f: fn(acc, pool) {
+    if pool.runner_count > acc {
+      pool.runner_count
+    } else {
+      acc
+    }
+  })
+}
+
+
+fn ci_fleet_min_jobserver_token_cap() -> Int {
+  fold(
+    ci_self_hosted_runner_pools,
+    init: ci_srv1_pool.jobserver_token_cap,
+    f: fn(acc, pool) {
+      if pool.jobserver_token_cap < acc {
+        pool.jobserver_token_cap
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+
+fn ci_runner_pool_has_nonuniform_runner_counts_on_fleet() -> Bool {
+  ci_fleet_max_runner_count() != ci_fleet_min_runner_count()
+}
+
+
+fn ci_runner_pool_m1_probe_witness_holds(pools: List<SelfHostedRunnerPool>) -> Bool {
+  non_empty(xs: pools)
+    && ci_runner_pool_has_nonuniform_runner_counts_on_fleet()
+}
+
+
+data ci_runner_pool_m1_probe_witness: Bool = ci_runner_pool_m1_probe_witness_holds(
+  pools: ci_self_hosted_runner_pools
+)
+
+
+fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Outcome<Int> {
+  if ci_runner_pool_m1_probe_witness {
+    let min_runners = ci_fleet_min_runner_count()
+    let max_runners = ci_fleet_max_runner_count()
+    let spread = max_runners - min_runners
+    int_div(
+      a: int_mul(
+        a: ci_runner_pool_total_runner_count(pools: ci_self_hosted_runner_pools) - min_runners,
+        b: ci_runner_pool_host_count(pools: ci_self_hosted_runner_pools)
+      ),
+      b: spread,
+      at: Textual { file: ci_workflow_file, extent: WholeFile }
+    )
   } else {
-    max_runners - min_runners
+    Rejected {
+      diagnostics: diagnostics_singleton(
+        d: ci_diagnostic(reason: ci_runner_pool_m1_witness_violation)
+      )
+    }
   }
 }
 
 
-// Modeled concurrent M1 cargo-check fanout across the fleet: spread peer slots across
-// hosts so one probe does not claim more than min(jobserver_token_cap) / fanout_slots.
-fn ci_m1_probe_cargo_fanout_slots(pools: List<SelfHostedRunnerPool>) -> Int {
-  let min_runners = ci_runner_pool_min_runner_count(pools: pools)
-  let max_runners = ci_runner_pool_max_runner_count(pools: pools)
-  let total_runners = ci_runner_pool_total_runner_count(pools: pools)
-  let hosts = ci_runner_pool_host_count(pools: pools)
-  ci_int_div_totalizing(
-    a: int_mul(a: total_runners - min_runners, b: hosts),
-    b: ci_runner_pool_runner_spread(max_runners: max_runners, min_runners: min_runners)
-  )
+fn ci_m1_probe_cargo_check_jobs_from_fleet() -> Outcome<Int> {
+  match ci_m1_probe_cargo_fanout_slots_from_fleet() {
+    Accepted { value: fanout_slots, diagnostics: _ } =>
+      int_div(
+        a: ci_fleet_min_jobserver_token_cap(),
+        b: ci_int_at_least_one(n: fanout_slots),
+        at: Textual { file: ci_workflow_file, extent: WholeFile }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
 }
 
 
-fn ci_m1_probe_cargo_check_jobs_from_pools(pools: List<SelfHostedRunnerPool>) -> Int {
-  ci_int_div_totalizing(
-    a: ci_runner_pool_min_jobserver_token_cap(pools: pools),
-    b: ci_int_at_least_one(n: ci_m1_probe_cargo_fanout_slots(pools: pools))
-  )
+fn ci_m1_probe_cargo_check_jobs_fleet_int() -> Int {
+  match ci_m1_probe_cargo_check_jobs_from_fleet() {
+    Accepted { value: jobs, diagnostics: _ } => jobs
+    Rejected { diagnostics: _ } => 0
+  }
 }
 
 
-data m1_probe_cargo_check_jobs: Int = ci_m1_probe_cargo_check_jobs_from_pools(
-  pools: ci_self_hosted_runner_pools
-)
+data m1_probe_cargo_check_jobs: Int = ci_m1_probe_cargo_check_jobs_fleet_int()

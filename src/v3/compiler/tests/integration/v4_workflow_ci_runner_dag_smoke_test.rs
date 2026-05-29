@@ -291,6 +291,30 @@ fn v4_workflow_ci_test_claim_selection_entrypoints() {
         "{CI_DAG_PATH}: M1 probe witness must use std.algebra non_empty"
     );
     assert!(
+        !CI_DAG.contains("CiGitDiffReadOutcome"),
+        "{CI_DAG_PATH}: git diff read must use canonical Outcome<GitDiffNameOnly>, not a parallel coproduct"
+    );
+    assert!(
+        CI_DAG.contains("ci_component_affected_from_git_diff_read(outcome: Outcome<GitDiffNameOnly>)"),
+        "{CI_DAG_PATH}: git diff read boundary must project through std.diagnostic Outcome"
+    );
+    assert!(
+        !CI_DAG.contains("ci_int_div_totalizing"),
+        "{CI_DAG_PATH}: runner-pool arithmetic must not fabricate int_div Rejected into a plausible quotient"
+    );
+    assert!(
+        !CI_DAG.contains("ci_int_min_fold_sentinel"),
+        "{CI_DAG_PATH}: fleet min folds must seed from ci_srv1_pool rows, not a magic sentinel"
+    );
+    assert!(
+        CI_DAG.contains("init: ci_srv1_pool.runner_count"),
+        "{CI_DAG_PATH}: fleet min/max folds must seed from modeled srv1 pool row"
+    );
+    assert!(
+        CI_DAG.contains("ci_m1_probe_cargo_fanout_slots_from_fleet()"),
+        "{CI_DAG_PATH}: M1 fanout must derive through witness-gated Outcome<Int> fleet API"
+    );
+    assert!(
         CI_DAG.contains("RerunNodeSetFailClosed { evidence: _ } => roster"),
         "{CI_DAG_PATH}: fail-closed must return full roster on RerunNodeSetFailClosed (AI-16/R1-7)"
     );

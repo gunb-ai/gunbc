@@ -34,29 +34,24 @@ pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 
 pub const CI_SELF_HOSTED_RUNNER_POOLS: [SelfHostedRunnerPool; 2] = [CI_SRV1_POOL, CI_SRV2_POOL];
 
-pub fn ci_runner_pool_min_jobserver_token_cap(pools: &[SelfHostedRunnerPool]) -> u32 {
-    if pools.is_empty() {
-        return 0;
-    }
-    pools
+pub fn ci_fleet_min_jobserver_token_cap() -> u32 {
+    CI_SELF_HOSTED_RUNNER_POOLS
         .iter()
-        .map(|p| p.jobserver_token_cap)
-        .min()
-        .unwrap_or(0)
+        .fold(CI_SRV1_POOL.jobserver_token_cap, |acc, pool| {
+            acc.min(pool.jobserver_token_cap)
+        })
 }
 
-pub fn ci_runner_pool_max_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
-    if pools.is_empty() {
-        return 0;
-    }
-    pools.iter().map(|p| p.runner_count).max().unwrap_or(0)
+pub fn ci_fleet_max_runner_count() -> u32 {
+    CI_SELF_HOSTED_RUNNER_POOLS
+        .iter()
+        .fold(CI_SRV1_POOL.runner_count, |acc, pool| acc.max(pool.runner_count))
 }
 
-pub fn ci_runner_pool_min_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
-    if pools.is_empty() {
-        return 0;
-    }
-    pools.iter().map(|p| p.runner_count).min().unwrap_or(0)
+pub fn ci_fleet_min_runner_count() -> u32 {
+    CI_SELF_HOSTED_RUNNER_POOLS
+        .iter()
+        .fold(CI_SRV1_POOL.runner_count, |acc, pool| acc.min(pool.runner_count))
 }
 
 pub fn ci_runner_pool_total_runner_count(pools: &[SelfHostedRunnerPool]) -> u32 {
@@ -71,39 +66,37 @@ pub fn ci_int_at_least_one(n: u32) -> u32 {
     n.max(1)
 }
 
-pub fn ci_runner_pool_has_nonuniform_runner_counts(pools: &[SelfHostedRunnerPool]) -> bool {
-    ci_runner_pool_max_runner_count(pools) != ci_runner_pool_min_runner_count(pools)
-}
-
 pub fn ci_runner_pool_m1_probe_witness_holds(pools: &[SelfHostedRunnerPool]) -> bool {
-    !pools.is_empty() && ci_runner_pool_has_nonuniform_runner_counts(pools)
+    !pools.is_empty() && ci_fleet_max_runner_count() != ci_fleet_min_runner_count()
 }
 
-pub fn ci_runner_pool_runner_spread(max_runners: u32, min_runners: u32) -> u32 {
-    if max_runners == min_runners {
-        1
-    } else {
-        max_runners - min_runners
+pub fn ci_m1_probe_cargo_fanout_slots_from_fleet() -> Option<u32> {
+    if !ci_runner_pool_m1_probe_witness_holds(&CI_SELF_HOSTED_RUNNER_POOLS) {
+        return None;
     }
+    let min_runners = ci_fleet_min_runner_count();
+    let max_runners = ci_fleet_max_runner_count();
+    let spread = max_runners - min_runners;
+    if spread == 0 {
+        return None;
+    }
+    let total_runners = ci_runner_pool_total_runner_count(&CI_SELF_HOSTED_RUNNER_POOLS);
+    let hosts = ci_runner_pool_host_count(&CI_SELF_HOSTED_RUNNER_POOLS);
+    Some((total_runners - min_runners) * hosts / spread)
 }
 
-pub fn ci_m1_probe_cargo_fanout_slots(pools: &[SelfHostedRunnerPool]) -> u32 {
-    let min_runners = ci_runner_pool_min_runner_count(pools);
-    let max_runners = ci_runner_pool_max_runner_count(pools);
-    let total_runners = ci_runner_pool_total_runner_count(pools);
-    let hosts = ci_runner_pool_host_count(pools);
-    let spread = ci_runner_pool_runner_spread(max_runners, min_runners);
-    (total_runners - min_runners) * hosts / spread
-}
-
-pub fn ci_m1_probe_cargo_check_jobs_from_pools(pools: &[SelfHostedRunnerPool]) -> u32 {
-    let fanout = ci_int_at_least_one(ci_m1_probe_cargo_fanout_slots(pools));
-    ci_runner_pool_min_jobserver_token_cap(pools) / fanout
+pub fn ci_m1_probe_cargo_check_jobs_from_fleet() -> Option<u32> {
+    let fanout = ci_m1_probe_cargo_fanout_slots_from_fleet()?;
+    let fanout = ci_int_at_least_one(fanout);
+    if fanout == 0 {
+        return None;
+    }
+    Some(ci_fleet_min_jobserver_token_cap() / fanout)
 }
 
 /// Modeled authority for `data m1_probe_cargo_check_jobs` in `src/v4/workflow/ci.dag`.
 pub fn m1_probe_cargo_check_jobs() -> u32 {
-    ci_m1_probe_cargo_check_jobs_from_pools(&CI_SELF_HOSTED_RUNNER_POOLS)
+    ci_m1_probe_cargo_check_jobs_from_fleet().unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -120,23 +113,13 @@ mod tests {
 
     #[test]
     fn m1_probe_cargo_check_jobs_derived_as_four() {
-        assert_eq!(
-            ci_m1_probe_cargo_fanout_slots(&CI_SELF_HOSTED_RUNNER_POOLS),
-            6
-        );
+        assert_eq!(ci_m1_probe_cargo_fanout_slots_from_fleet(), Some(6));
+        assert_eq!(ci_m1_probe_cargo_check_jobs_from_fleet(), Some(4));
         assert_eq!(m1_probe_cargo_check_jobs(), 4);
     }
 
     #[test]
-    fn runner_spread_fail_closed_when_max_equals_min() {
-        assert_eq!(ci_runner_pool_runner_spread(20, 20), 1);
-    }
-
-    #[test]
-    fn min_folds_return_zero_for_empty_pool_list() {
-        let empty: &[SelfHostedRunnerPool] = &[];
-        assert_eq!(ci_runner_pool_min_jobserver_token_cap(empty), 0);
-        assert_eq!(ci_runner_pool_min_runner_count(empty), 0);
-        assert_eq!(ci_runner_pool_max_runner_count(empty), 0);
+    fn witness_required_for_fleet_m1_derivation() {
+        assert!(ci_runner_pool_m1_probe_witness_holds(&CI_SELF_HOSTED_RUNNER_POOLS));
     }
 }
