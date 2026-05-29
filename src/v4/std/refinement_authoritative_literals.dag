@@ -1,5 +1,5 @@
 // src/v4/std/refinement_authoritative_literals.dag
-// Scope: upstream formatter default literals — discharged via make_* at authoritative locus.
+// Scope: upstream formatter default literals — Outcome receipts + witnessed discharge fns.
 // Status: T-25-core formatter dissolution; tied to refinement_formatter_literals_accept.dag.
 
 
@@ -18,322 +18,1003 @@ import v4.std.refinement {
   make_non_negative_int_at_authoritative,
   make_positive_int_at_authoritative,
 }
+import v4.std.diagnostic { Outcome, Accepted, Rejected }
 
 
-// Each literal is a primary data row plus *_reattempt sibling: total match requires a Rejected arm,
-// but admitted upstream bases only reject on substrate fault. Reattempt re-runs make_* (fail-closed)
-// without bare Refined fabrication or unbounded discharge-fn recursion (P4).
-// 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail — dissolve-on-arrival:
-// each data row discharged through make_*_at_authoritative; witness ties constant to Accepted carrier.
-// forbidden: bare PositiveInt { refined: Refined { base } } without matching acceptance witness.
+// Receipt rows hold the partial authoritative boundary (Outcome). Discharge fns project to
+// carriers for formatter defaults; Rejected receipt is substrate fault (re-run make_*, no
+// mutual data sibling). Witnessed per literal in refinement_formatter_literals_accept.dag.
+// 🟡 gated — feature:refinement-authoritative-literal-discharge — bind T-25-tail
 
-data authoritative_positive_int_2: PositiveInt = match make_positive_int_at_authoritative(value: 2) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_2_reattempt
+data authoritative_positive_int_2_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 2)
+
+fn authoritative_positive_int_2() -> PositiveInt {
+  match authoritative_positive_int_2_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_2_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_2_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 2) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_2
+fn authoritative_positive_int_2_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_2_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_4: PositiveInt = match make_positive_int_at_authoritative(value: 4) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_4_reattempt
+data authoritative_positive_int_2_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 2)
+
+fn authoritative_positive_int_2_reattempt() -> PositiveInt {
+  match authoritative_positive_int_2_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_2_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_4_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 4) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_4
+fn authoritative_positive_int_2_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_2_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_8: PositiveInt = match make_positive_int_at_authoritative(value: 8) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_8_reattempt
+data authoritative_positive_int_4_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 4)
+
+fn authoritative_positive_int_4() -> PositiveInt {
+  match authoritative_positive_int_4_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_4_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_8_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 8) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_8
+fn authoritative_positive_int_4_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 4) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_4_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_10: PositiveInt = match make_positive_int_at_authoritative(value: 10) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_10_reattempt
+data authoritative_positive_int_4_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 4)
+
+fn authoritative_positive_int_4_reattempt() -> PositiveInt {
+  match authoritative_positive_int_4_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_4_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_10_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 10) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_10
+fn authoritative_positive_int_4_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 4) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_4_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_60: PositiveInt = match make_positive_int_at_authoritative(value: 60) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_60_reattempt
+data authoritative_positive_int_8_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 8)
+
+fn authoritative_positive_int_8() -> PositiveInt {
+  match authoritative_positive_int_8_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_8_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_60_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 60) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_60
+fn authoritative_positive_int_8_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 8) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_8_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_70: PositiveInt = match make_positive_int_at_authoritative(value: 70) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_70_reattempt
+data authoritative_positive_int_8_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 8)
+
+fn authoritative_positive_int_8_reattempt() -> PositiveInt {
+  match authoritative_positive_int_8_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_8_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_70_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 70) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_70
+fn authoritative_positive_int_8_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 8) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_8_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_80: PositiveInt = match make_positive_int_at_authoritative(value: 80) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_80_reattempt
+data authoritative_positive_int_10_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 10)
+
+fn authoritative_positive_int_10() -> PositiveInt {
+  match authoritative_positive_int_10_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_10_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_80_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 80) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_80
+fn authoritative_positive_int_10_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 10) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_10_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_88: PositiveInt = match make_positive_int_at_authoritative(value: 88) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_88_reattempt
+data authoritative_positive_int_10_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 10)
+
+fn authoritative_positive_int_10_reattempt() -> PositiveInt {
+  match authoritative_positive_int_10_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_10_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_88_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 88) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_88
+fn authoritative_positive_int_10_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 10) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_10_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_100: PositiveInt = match make_positive_int_at_authoritative(value: 100) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_100_reattempt
+data authoritative_positive_int_60_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 60)
+
+fn authoritative_positive_int_60() -> PositiveInt {
+  match authoritative_positive_int_60_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_60_discharge_substrate_fault()
+  }
 }
 
-data authoritative_positive_int_100_reattempt: PositiveInt = match make_positive_int_at_authoritative(value: 100) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_positive_int_100
+fn authoritative_positive_int_60_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 60) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_60_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_0: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 0) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_0_reattempt
+data authoritative_positive_int_60_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 60)
+
+fn authoritative_positive_int_60_reattempt() -> PositiveInt {
+  match authoritative_positive_int_60_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_60_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_0_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 0) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_0
+fn authoritative_positive_int_60_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 60) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_60_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_1: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1_reattempt
+data authoritative_positive_int_70_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 70)
+
+fn authoritative_positive_int_70() -> PositiveInt {
+  match authoritative_positive_int_70_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_70_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_1_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1
+fn authoritative_positive_int_70_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 70) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_70_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_2: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 2) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_2_reattempt
+data authoritative_positive_int_70_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 70)
+
+fn authoritative_positive_int_70_reattempt() -> PositiveInt {
+  match authoritative_positive_int_70_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_70_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_2_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 2) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_2
+fn authoritative_positive_int_70_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 70) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_70_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_4: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 4) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_4_reattempt
+data authoritative_positive_int_80_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 80)
+
+fn authoritative_positive_int_80() -> PositiveInt {
+  match authoritative_positive_int_80_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_80_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_4_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 4) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_4
+fn authoritative_positive_int_80_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 80) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_80_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_8: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 8) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_8_reattempt
+data authoritative_positive_int_80_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 80)
+
+fn authoritative_positive_int_80_reattempt() -> PositiveInt {
+  match authoritative_positive_int_80_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_80_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_8_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 8) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_8
+fn authoritative_positive_int_80_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 80) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_80_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_10: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 10) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_10_reattempt
+data authoritative_positive_int_88_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 88)
+
+fn authoritative_positive_int_88() -> PositiveInt {
+  match authoritative_positive_int_88_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_88_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_10_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 10) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_10
+fn authoritative_positive_int_88_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 88) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_88_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_18: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 18) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_18_reattempt
+data authoritative_positive_int_88_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 88)
+
+fn authoritative_positive_int_88_reattempt() -> PositiveInt {
+  match authoritative_positive_int_88_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_88_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_18_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 18) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_18
+fn authoritative_positive_int_88_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 88) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_88_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_19: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 19) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_19_reattempt
+data authoritative_positive_int_100_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 100)
+
+fn authoritative_positive_int_100() -> PositiveInt {
+  match authoritative_positive_int_100_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_100_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_19_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 19) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_19
+fn authoritative_positive_int_100_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 100) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_100_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_35: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 35) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_35_reattempt
+data authoritative_positive_int_100_reattempt_receipt: Outcome<PositiveInt> = make_positive_int_at_authoritative(value: 100)
+
+fn authoritative_positive_int_100_reattempt() -> PositiveInt {
+  match authoritative_positive_int_100_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_100_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_35_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 35) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_35
+fn authoritative_positive_int_100_reattempt_discharge_substrate_fault() -> PositiveInt {
+  match make_positive_int_at_authoritative(value: 100) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_positive_int_100_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_50: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 50) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_50_reattempt
+data authoritative_non_negative_int_0_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 0)
+
+fn authoritative_non_negative_int_0() -> NonNegativeInt {
+  match authoritative_non_negative_int_0_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_0_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_50_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 50) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_50
+fn authoritative_non_negative_int_0_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 0) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_0_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_60: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 60) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_60_reattempt
+data authoritative_non_negative_int_0_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 0)
+
+fn authoritative_non_negative_int_0_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_0_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_0_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_60_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 60) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_60
+fn authoritative_non_negative_int_0_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 0) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_0_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_80: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 80) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_80_reattempt
+data authoritative_non_negative_int_1_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 1)
+
+fn authoritative_non_negative_int_1() -> NonNegativeInt {
+  match authoritative_non_negative_int_1_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_80_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 80) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_80
+fn authoritative_non_negative_int_1_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_120: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 120) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_120_reattempt
+data authoritative_non_negative_int_1_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 1)
+
+fn authoritative_non_negative_int_1_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_1_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_120_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 120) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_120
+fn authoritative_non_negative_int_1_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_150: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 150) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_150_reattempt
+data authoritative_non_negative_int_2_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 2)
+
+fn authoritative_non_negative_int_2() -> NonNegativeInt {
+  match authoritative_non_negative_int_2_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_2_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_150_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 150) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_150
+fn authoritative_non_negative_int_2_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_2_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_300: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 300) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_300_reattempt
+data authoritative_non_negative_int_2_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 2)
+
+fn authoritative_non_negative_int_2_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_2_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_2_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_300_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 300) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_300
+fn authoritative_non_negative_int_2_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_2_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_500: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 500) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_500_reattempt
+data authoritative_non_negative_int_4_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 4)
+
+fn authoritative_non_negative_int_4() -> NonNegativeInt {
+  match authoritative_non_negative_int_4_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_4_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_500_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 500) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_500
+fn authoritative_non_negative_int_4_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 4) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_4_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_1000: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_reattempt
+data authoritative_non_negative_int_4_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 4)
+
+fn authoritative_non_negative_int_4_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_4_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_4_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_1000_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000
+fn authoritative_non_negative_int_4_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 4) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_4_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_1000000: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000000) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_reattempt
+data authoritative_non_negative_int_8_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 8)
+
+fn authoritative_non_negative_int_8() -> NonNegativeInt {
+  match authoritative_non_negative_int_8_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_8_discharge_substrate_fault()
+  }
 }
 
-data authoritative_non_negative_int_1000000_reattempt: NonNegativeInt = match make_non_negative_int_at_authoritative(value: 1000000) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000
+fn authoritative_non_negative_int_8_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 8) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_8_discharge_substrate_fault()
+  }
 }
 
-data authoritative_at_least_minus_one_int_minus_1: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: -1) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_reattempt
+data authoritative_non_negative_int_8_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 8)
+
+fn authoritative_non_negative_int_8_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_8_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_8_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_at_least_minus_one_int_minus_1_reattempt: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: -1) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1
+fn authoritative_non_negative_int_8_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 8) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_8_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_at_least_minus_one_int_0: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: 0) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_reattempt
+data authoritative_non_negative_int_10_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 10)
+
+fn authoritative_non_negative_int_10() -> NonNegativeInt {
+  match authoritative_non_negative_int_10_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_10_discharge_substrate_fault()
+  }
 }
 
-data authoritative_at_least_minus_one_int_0_reattempt: AtLeastMinusOneInt = match make_at_least_minus_one_int_at_authoritative(value: 0) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0
+fn authoritative_non_negative_int_10_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 10) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_10_discharge_substrate_fault()
+  }
 }
 
-data authoritative_at_least_minus_two_int_minus_2: AtLeastMinusTwoInt = match make_at_least_minus_two_int_at_authoritative(value: -2) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_reattempt
+data authoritative_non_negative_int_10_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 10)
+
+fn authoritative_non_negative_int_10_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_10_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_10_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_at_least_minus_two_int_minus_2_reattempt: AtLeastMinusTwoInt = match make_at_least_minus_two_int_at_authoritative(value: -2) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2
+fn authoritative_non_negative_int_10_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 10) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_10_reattempt_discharge_substrate_fault()
+  }
 }
 
-data authoritative_exact_one_int_1: ExactOneInt = match make_exact_one_int_at_authoritative(value: 1) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_exact_one_int_1_reattempt
+data authoritative_non_negative_int_18_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 18)
+
+fn authoritative_non_negative_int_18() -> NonNegativeInt {
+  match authoritative_non_negative_int_18_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_18_discharge_substrate_fault()
+  }
 }
 
-data authoritative_exact_one_int_1_reattempt: ExactOneInt = match make_exact_one_int_at_authoritative(value: 1) {
-  Accepted { value: carrier, diagnostics: _ } => carrier
-  Rejected { diagnostics: _ } => authoritative_exact_one_int_1
+fn authoritative_non_negative_int_18_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 18) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_18_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_18_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 18)
+
+fn authoritative_non_negative_int_18_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_18_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_18_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_18_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 18) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_18_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_19_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 19)
+
+fn authoritative_non_negative_int_19() -> NonNegativeInt {
+  match authoritative_non_negative_int_19_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_19_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_19_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 19) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_19_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_19_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 19)
+
+fn authoritative_non_negative_int_19_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_19_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_19_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_19_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 19) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_19_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_35_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 35)
+
+fn authoritative_non_negative_int_35() -> NonNegativeInt {
+  match authoritative_non_negative_int_35_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_35_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_35_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 35) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_35_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_35_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 35)
+
+fn authoritative_non_negative_int_35_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_35_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_35_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_35_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 35) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_35_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_50_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 50)
+
+fn authoritative_non_negative_int_50() -> NonNegativeInt {
+  match authoritative_non_negative_int_50_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_50_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_50_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 50) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_50_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_50_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 50)
+
+fn authoritative_non_negative_int_50_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_50_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_50_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_50_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 50) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_50_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_60_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 60)
+
+fn authoritative_non_negative_int_60() -> NonNegativeInt {
+  match authoritative_non_negative_int_60_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_60_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_60_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 60) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_60_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_60_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 60)
+
+fn authoritative_non_negative_int_60_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_60_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_60_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_60_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 60) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_60_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_80_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 80)
+
+fn authoritative_non_negative_int_80() -> NonNegativeInt {
+  match authoritative_non_negative_int_80_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_80_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_80_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 80) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_80_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_80_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 80)
+
+fn authoritative_non_negative_int_80_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_80_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_80_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_80_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 80) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_80_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_120_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 120)
+
+fn authoritative_non_negative_int_120() -> NonNegativeInt {
+  match authoritative_non_negative_int_120_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_120_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_120_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 120) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_120_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_120_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 120)
+
+fn authoritative_non_negative_int_120_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_120_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_120_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_120_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 120) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_120_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_150_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 150)
+
+fn authoritative_non_negative_int_150() -> NonNegativeInt {
+  match authoritative_non_negative_int_150_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_150_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_150_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 150) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_150_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_150_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 150)
+
+fn authoritative_non_negative_int_150_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_150_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_150_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_150_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 150) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_150_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_300_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 300)
+
+fn authoritative_non_negative_int_300() -> NonNegativeInt {
+  match authoritative_non_negative_int_300_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_300_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_300_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 300) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_300_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_300_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 300)
+
+fn authoritative_non_negative_int_300_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_300_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_300_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_300_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 300) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_300_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_500_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 500)
+
+fn authoritative_non_negative_int_500() -> NonNegativeInt {
+  match authoritative_non_negative_int_500_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_500_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_500_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 500) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_500_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_500_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 500)
+
+fn authoritative_non_negative_int_500_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_500_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_500_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_500_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 500) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_500_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_1000_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 1000)
+
+fn authoritative_non_negative_int_1000() -> NonNegativeInt {
+  match authoritative_non_negative_int_1000_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1000_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1000) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_1000_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 1000)
+
+fn authoritative_non_negative_int_1000_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_1000_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1000_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1000) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_1000000_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 1000000)
+
+fn authoritative_non_negative_int_1000000() -> NonNegativeInt {
+  match authoritative_non_negative_int_1000000_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1000000_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1000000) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_discharge_substrate_fault()
+  }
+}
+
+data authoritative_non_negative_int_1000000_reattempt_receipt: Outcome<NonNegativeInt> = make_non_negative_int_at_authoritative(value: 1000000)
+
+fn authoritative_non_negative_int_1000000_reattempt() -> NonNegativeInt {
+  match authoritative_non_negative_int_1000000_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_non_negative_int_1000000_reattempt_discharge_substrate_fault() -> NonNegativeInt {
+  match make_non_negative_int_at_authoritative(value: 1000000) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_non_negative_int_1000000_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_at_least_minus_one_int_minus_1_receipt: Outcome<AtLeastMinusOneInt> = make_at_least_minus_one_int_at_authoritative(value: -1)
+
+fn authoritative_at_least_minus_one_int_minus_1() -> AtLeastMinusOneInt {
+  match authoritative_at_least_minus_one_int_minus_1_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_at_least_minus_one_int_minus_1_discharge_substrate_fault() -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: -1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_discharge_substrate_fault()
+  }
+}
+
+data authoritative_at_least_minus_one_int_minus_1_reattempt_receipt: Outcome<AtLeastMinusOneInt> = make_at_least_minus_one_int_at_authoritative(value: -1)
+
+fn authoritative_at_least_minus_one_int_minus_1_reattempt() -> AtLeastMinusOneInt {
+  match authoritative_at_least_minus_one_int_minus_1_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_at_least_minus_one_int_minus_1_reattempt_discharge_substrate_fault() -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: -1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_minus_1_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_at_least_minus_one_int_0_receipt: Outcome<AtLeastMinusOneInt> = make_at_least_minus_one_int_at_authoritative(value: 0)
+
+fn authoritative_at_least_minus_one_int_0() -> AtLeastMinusOneInt {
+  match authoritative_at_least_minus_one_int_0_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_at_least_minus_one_int_0_discharge_substrate_fault() -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: 0) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_discharge_substrate_fault()
+  }
+}
+
+data authoritative_at_least_minus_one_int_0_reattempt_receipt: Outcome<AtLeastMinusOneInt> = make_at_least_minus_one_int_at_authoritative(value: 0)
+
+fn authoritative_at_least_minus_one_int_0_reattempt() -> AtLeastMinusOneInt {
+  match authoritative_at_least_minus_one_int_0_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_at_least_minus_one_int_0_reattempt_discharge_substrate_fault() -> AtLeastMinusOneInt {
+  match make_at_least_minus_one_int_at_authoritative(value: 0) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_one_int_0_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_at_least_minus_two_int_minus_2_receipt: Outcome<AtLeastMinusTwoInt> = make_at_least_minus_two_int_at_authoritative(value: -2)
+
+fn authoritative_at_least_minus_two_int_minus_2() -> AtLeastMinusTwoInt {
+  match authoritative_at_least_minus_two_int_minus_2_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_at_least_minus_two_int_minus_2_discharge_substrate_fault() -> AtLeastMinusTwoInt {
+  match make_at_least_minus_two_int_at_authoritative(value: -2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_discharge_substrate_fault()
+  }
+}
+
+data authoritative_at_least_minus_two_int_minus_2_reattempt_receipt: Outcome<AtLeastMinusTwoInt> = make_at_least_minus_two_int_at_authoritative(value: -2)
+
+fn authoritative_at_least_minus_two_int_minus_2_reattempt() -> AtLeastMinusTwoInt {
+  match authoritative_at_least_minus_two_int_minus_2_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_at_least_minus_two_int_minus_2_reattempt_discharge_substrate_fault() -> AtLeastMinusTwoInt {
+  match make_at_least_minus_two_int_at_authoritative(value: -2) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_at_least_minus_two_int_minus_2_reattempt_discharge_substrate_fault()
+  }
+}
+
+data authoritative_exact_one_int_1_receipt: Outcome<ExactOneInt> = make_exact_one_int_at_authoritative(value: 1)
+
+fn authoritative_exact_one_int_1() -> ExactOneInt {
+  match authoritative_exact_one_int_1_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_exact_one_int_1_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_exact_one_int_1_discharge_substrate_fault() -> ExactOneInt {
+  match make_exact_one_int_at_authoritative(value: 1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_exact_one_int_1_discharge_substrate_fault()
+  }
+}
+
+data authoritative_exact_one_int_1_reattempt_receipt: Outcome<ExactOneInt> = make_exact_one_int_at_authoritative(value: 1)
+
+fn authoritative_exact_one_int_1_reattempt() -> ExactOneInt {
+  match authoritative_exact_one_int_1_reattempt_receipt {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_exact_one_int_1_reattempt_discharge_substrate_fault()
+  }
+}
+
+fn authoritative_exact_one_int_1_reattempt_discharge_substrate_fault() -> ExactOneInt {
+  match make_exact_one_int_at_authoritative(value: 1) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: _ } => authoritative_exact_one_int_1_reattempt_discharge_substrate_fault()
+  }
 }
 
