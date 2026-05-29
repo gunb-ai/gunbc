@@ -49,7 +49,8 @@ use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::expr_span as surface_expr_span;
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
-    SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, TypeAngleArg, VariantPayload,
+    SurfacePattern, SurfacePatternField, SurfaceRecordField, SurfaceType, SurfaceVariant,
+    TypeAngleArg, VariantPayload,
 };
 use crate::types::TypeShape;
 
@@ -3786,6 +3787,458 @@ fn materialize_algebra_machine_width_width_nat(
     compose_algebra_machine_width_connective(dag, compose_tpl, algebra_id, mw_inst)
 }
 
+/// Record-field map for `ConfigPatchRecord<Config>`: each `name: T` in `Config` becomes
+/// `name: FieldPatch<T>` in the patch record (T-4.16 `config-patch-record-projection`).
+fn materialize_config_patch_record_from_config_decl(
+    dag: &mut Dag,
+    config_ty: DeclarationId,
+    span: &SourceSpan,
+) -> Option<TypeConnective> {
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, config_ty, &mut subst)?;
+    let children = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => children.clone(),
+        _ => return None,
+    };
+    let field_patch_tpl = v4_std_patch_named_declaration(dag, "FieldPatch")?;
+    let field_patch_param = template_param_id(dag, field_patch_tpl, 0)?;
+    let patch_children: Vec<Field> = children
+        .into_iter()
+        .map(|field| {
+            let field_ty = concretize_decl_with_lower_subst(dag, field.ty, &subst, 0);
+            let patch_field_ty = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id: patch_field_ty,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template: field_patch_tpl,
+                    arguments: vec![TemplateArgument {
+                        parameter: field_patch_param,
+                        value: field_ty,
+                    }],
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: span.clone(),
+            });
+            Field {
+                label: field.label.clone(),
+                ty: patch_field_ty,
+            }
+        })
+        .collect();
+    Some(TypeConnective::Conj {
+        children: patch_children,
+    })
+}
+
+fn materialize_config_patch_record_connective(
+    dag: &mut Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    args: &[TypeAngleArg],
+    span: &SourceSpan,
+) -> Option<TypeConnective> {
+    if args.len() != 1 {
+        return None;
+    }
+    let config_ty = type_angle_arg_to_declaration_id(&args[0], symbols, local, dag);
+    materialize_config_patch_record_from_config_decl(dag, config_ty, span)
+}
+
+fn config_patch_record_decl_for_config(
+    dag: &mut Dag,
+    config_decl: DeclarationId,
+    span: &SourceSpan,
+) -> Option<DeclarationId> {
+    let connective = materialize_config_patch_record_from_config_decl(dag, config_decl, span)?;
+    let id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id,
+        name: None,
+        connective,
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span.clone(),
+    });
+    Some(id)
+}
+
+const V4_STD_PATCH_DAG_SUFFIX: &str = "v4/std/patch.dag";
+
+fn declaration_authority_is_v4_std_patch(dag: &Dag, decl_id: DeclarationId) -> bool {
+    dag.declaration(decl_id)
+        .span
+        .file
+        .replace('\\', "/")
+        .ends_with(V4_STD_PATCH_DAG_SUFFIX)
+}
+
+/// Unique top-level declaration authored in `src/v4/std/patch.dag` (fail-closed on homographs).
+fn v4_std_patch_named_declaration(dag: &Dag, name: &str) -> Option<DeclarationId> {
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| {
+            decl.name.as_deref() == Some(name)
+                && declaration_authority_is_v4_std_patch(dag, decl.id)
+        })
+        .map(|decl| decl.id)
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|id| id.raw());
+    match matches.as_slice() {
+        [only] => Some(*only),
+        _ => None,
+    }
+}
+
+/// Surface `Parameterized` names must resolve to the canonical `v4.std.patch` template id.
+fn surface_parameterized_name_resolves_to_template(
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+    local: &HashMap<String, DeclarationId>,
+    surface_name: &str,
+    expected_template_name: &str,
+) -> bool {
+    let Some(canonical) = v4_std_patch_named_declaration(dag, expected_template_name) else {
+        return false;
+    };
+    let Some(&resolved) = local
+        .get(surface_name)
+        .or_else(|| symbols.get(surface_name))
+    else {
+        return false;
+    };
+    resolved == canonical
+}
+
+fn callable_is_v4_std_patch_config_patch_layer(dag: &Dag, decl_id: DeclarationId) -> bool {
+    v4_std_patch_named_declaration(dag, "config_patch_layer") == Some(decl_id)
+}
+
+fn config_patch_layer_args_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "config_patch_layer requires exactly two named arguments (base: <config>, patch: <config-patch>)"
+            .to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
+fn config_patch_layer_body_fallback_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "config_patch_layer must be expanded at the call site by the v3 lowerer; \
+              executing the surface stub body is forbidden"
+            .to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
+fn config_patch_record_materialization_failed_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "ConfigPatchRecord<Config> requires Config to lower to a record (Conj)".to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
+/// Parse `config_patch_layer(base: …, patch: …)` call-site named operands.
+fn extract_config_patch_layer_operands(
+    args: &[SurfaceExpr],
+) -> Option<(&SurfaceExpr, &SurfaceExpr)> {
+    let [SurfaceExpr::Record { fields, .. }] = args else {
+        return None;
+    };
+    let mut base = None;
+    let mut patch = None;
+    for field in fields {
+        match field.name.as_str() {
+            "base" if base.is_none() => base = Some(&field.value),
+            "patch" if patch.is_none() => patch = Some(&field.value),
+            _ => return None,
+        }
+    }
+    Some((base?, patch?))
+}
+
+/// Project one record field from a Var or Path carrier (the call-site base/patch expressions).
+fn surface_field_access_expr(
+    carrier: &SurfaceExpr,
+    field_label: &str,
+    span: &SourceSpan,
+) -> Option<SurfaceExpr> {
+    let field_span = SourceSpan::new(span.file.as_str(), span.byte_start, span.byte_end);
+    match carrier {
+        SurfaceExpr::Var {
+            name,
+            span: carrier_span,
+        } => Some(SurfaceExpr::Path {
+            segments: vec![name.clone(), field_label.to_string()],
+            segment_spans: vec![carrier_span.clone(), field_span],
+            span: span.clone(),
+        }),
+        SurfaceExpr::Path {
+            segments,
+            segment_spans,
+            span: path_span,
+        } => {
+            let mut segs = segments.clone();
+            let mut spans = segment_spans.clone();
+            segs.push(field_label.to_string());
+            spans.push(field_span);
+            Some(SurfaceExpr::Path {
+                segments: segs,
+                segment_spans: spans,
+                span: path_span.clone(),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Symbols for expanding `config_patch_layer` at a call site: caller scope plus
+/// `apply_field_patch` from `v4.std.patch` (resolved via `Dag::declaration_by_name`, not
+/// caller imports).
+fn config_patch_layer_expansion_symbols(
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Option<HashMap<String, DeclarationId>> {
+    let apply_field_patch = v4_std_patch_named_declaration(dag, "apply_field_patch")?;
+    let mut expansion_symbols = symbols.clone();
+    expansion_symbols.insert("apply_field_patch".to_string(), apply_field_patch);
+    Some(expansion_symbols)
+}
+
+fn config_patch_layer_missing_apply_field_patch_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "config_patch_layer expansion requires `apply_field_patch` from v4.std.patch in the compilation DAG"
+            .to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
+fn surface_apply_field_patch_from_operands(
+    base_operand: &SurfaceExpr,
+    patch_operand: &SurfaceExpr,
+    field_label: &str,
+    span: &SourceSpan,
+) -> Option<SurfaceExpr> {
+    let base_field = surface_field_access_expr(base_operand, field_label, span)?;
+    let patch_field = surface_field_access_expr(patch_operand, field_label, span)?;
+    Some(SurfaceExpr::Call {
+        target: "apply_field_patch".to_string(),
+        args: vec![SurfaceExpr::Record {
+            fields: vec![
+                SurfaceRecordField {
+                    name: "base".to_string(),
+                    value: base_field,
+                    span: span.clone(),
+                },
+                SurfaceRecordField {
+                    name: "patch".to_string(),
+                    value: patch_field,
+                    span: span.clone(),
+                },
+            ],
+            span: span.clone(),
+        }],
+        span: span.clone(),
+    })
+}
+
+/// Expand `config_patch_layer(base: …, patch: …)` into per-field `apply_field_patch`
+/// and a config record rebuild (same semantics as hand-written `*_layer` mirrors).
+#[allow(clippy::too_many_arguments)]
+fn try_lower_config_patch_layer_invocation(
+    base_target_decl: DeclarationId,
+    args: &[SurfaceExpr],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> Option<PortId> {
+    if !callable_is_v4_std_patch_config_patch_layer(dag, base_target_decl) {
+        return None;
+    }
+    let config_decl = match expected_decl {
+        Some(decl) => decl,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_layer_args_diagnostic(span),
+            ));
+        }
+    };
+    let (base_operand, patch_operand) = match extract_config_patch_layer_operands(args) {
+        Some(operands) => operands,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_layer_args_diagnostic(span),
+            ));
+        }
+    };
+    let conj_id = match walk_to_conj_decl(dag, config_decl) {
+        Some(id) => id,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "config_patch_layer return type must be a record (Conj)".to_string(),
+                    span: span.clone(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
+                },
+            ));
+        }
+    };
+    let children = match &dag.declaration(conj_id).connective {
+        TypeConnective::Conj { children } => children.clone(),
+        _ => {
+            return Some(unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: "config_patch_layer return type must be a record (Conj)".to_string(),
+                    span: span.clone(),
+                    correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                        "LoweringDiagnostic",
+                    ),
+                },
+            ));
+        }
+    };
+    if !matches!(
+        base_operand,
+        SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. }
+    ) || !matches!(
+        patch_operand,
+        SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. }
+    ) {
+        return Some(unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: "config_patch_layer operands must be variables or paths".to_string(),
+                span: span.clone(),
+                correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                    "LoweringDiagnostic",
+                ),
+            },
+        ));
+    }
+    let patch_record_decl = match config_patch_record_decl_for_config(dag, config_decl, span) {
+        Some(decl) => decl,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_record_materialization_failed_diagnostic(span),
+            ));
+        }
+    };
+    let base_port = lower_expr(
+        base_operand,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        Some(config_decl),
+    );
+    if matches!(
+        dag.port(base_port).state(),
+        crate::dag::PortState::Unresolved
+    ) {
+        return Some(base_port);
+    }
+    let patch_port = lower_expr(
+        patch_operand,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        Some(patch_record_decl),
+    );
+    if matches!(
+        dag.port(patch_port).state(),
+        crate::dag::PortState::Unresolved
+    ) {
+        return Some(patch_port);
+    }
+    let mut record_fields: Vec<SurfaceRecordField> = Vec::with_capacity(children.len());
+    for field in children {
+        let value = match surface_apply_field_patch_from_operands(
+            base_operand,
+            patch_operand,
+            &field.label,
+            span,
+        ) {
+            Some(expr) => expr,
+            None => {
+                return Some(unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "config_patch_layer operands must be variables or paths so field `{}` can be projected",
+                            field.label
+                        ),
+                        span: span.clone(),
+                        correction:
+                            crate::diagnostics::Correction::deferred_for_diagnostic_class(
+                                "LoweringDiagnostic",
+                            ),
+                    },
+                ));
+            }
+        };
+        record_fields.push(SurfaceRecordField {
+            name: field.label.clone(),
+            value,
+            span: span.clone(),
+        });
+    }
+    let expansion_symbols = match config_patch_layer_expansion_symbols(dag, symbols) {
+        Some(symbols) => symbols,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_layer_missing_apply_field_patch_diagnostic(span),
+            ));
+        }
+    };
+    Some(lower_record_literal_expr(
+        &record_fields,
+        span,
+        dag,
+        scope,
+        callable_scope,
+        &expansion_symbols,
+        Some(config_decl),
+    ))
+}
+
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
 /// Arrow parameters, and template arguments. Allocates anonymous (unnamed)
 /// declarations for composite shapes; looks up named references against
@@ -3828,6 +4281,39 @@ fn type_to_declaration_id(
                     span: span.clone(),
                 });
                 return id;
+            }
+            if surface_parameterized_name_resolves_to_template(
+                dag,
+                symbols,
+                local,
+                name,
+                "ConfigPatchRecord",
+            ) {
+                if let Some(connective) =
+                    materialize_config_patch_record_connective(dag, symbols, local, args, span)
+                {
+                    let id = dag.alloc_declaration_id();
+                    dag.push_declaration(Declaration {
+                        id,
+                        name: None,
+                        connective,
+                        type_params: Vec::new(),
+                        phantom_params: Vec::new(),
+                        meta_tag: None,
+                        specialization_parent: None,
+                        inhabits: None,
+                        value_body: None,
+                        refinement: None,
+                        nominal_opacity: None,
+                        span: span.clone(),
+                    });
+                    return id;
+                }
+                report_declaration_error(
+                    dag,
+                    config_patch_record_materialization_failed_diagnostic(span),
+                );
+                return alloc_identifier_stub(dag, "ConfigPatchRecord", span);
             }
             let template_id = local
                 .get(name)
@@ -3928,6 +4414,26 @@ fn type_to_connective(
                 materialize_algebra_machine_width_width_nat(dag, symbols, local, name, args, span)
             {
                 return conn;
+            }
+            if surface_parameterized_name_resolves_to_template(
+                dag,
+                symbols,
+                local,
+                name,
+                "ConfigPatchRecord",
+            ) {
+                if let Some(conn) =
+                    materialize_config_patch_record_connective(dag, symbols, local, args, span)
+                {
+                    return conn;
+                }
+                report_declaration_error(
+                    dag,
+                    config_patch_record_materialization_failed_diagnostic(span),
+                );
+                return TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                    "ConfigPatchRecord".to_string(),
+                ));
             }
             let template = local
                 .get(name)
@@ -5245,7 +5751,10 @@ fn concretize_decl_with_lower_subst(
     }
     let decl = dag.declaration(current).clone();
     match decl.connective {
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => match subst.lookup(current) {
+            Some(bound) => concretize_decl_with_lower_subst(dag, bound, subst, depth + 1),
+            None => current,
+        },
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             concretize_decl_with_lower_subst(dag, next, subst, depth + 1)
@@ -7477,6 +7986,44 @@ fn lower_fn_item_expr_body(
         return outer_scope;
     }
 
+    // `config_patch_layer` is expanded at call sites (`try_lower_config_patch_layer_invocation`).
+    // Do not lower the surface stub body (`base`) — that would silently discard `patch` on any
+    // invocation path that bypasses the interceptor.
+    if callable_is_v4_std_patch_config_patch_layer(dag, fn_decl_id) {
+        let body_span = surface_expr_span(body).clone();
+        let err_port = dag.alloc_port(None);
+        dag.mark_unresolved(
+            err_port,
+            config_patch_layer_body_fallback_diagnostic(&body_span),
+        );
+        if let Some(return_ty) = return_ty {
+            dag.set_port_type(err_port, return_ty);
+        } else if let Some(diag) = return_type_diagnostic {
+            dag.mark_unresolved(err_port, diag);
+        }
+        let bind_id = dag.alloc_node_id();
+        dag.push_node(Behavior::Bind(BindNode {
+            id: bind_id,
+            name: name.to_string(),
+            value: err_port,
+            params: param_ports,
+            span: body_span,
+            lane2_workflow: None,
+            emit_participation: Some(BindEmitParticipation::UserCallable),
+        }));
+        dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
+            inputs: param_decl_inputs,
+            output: return_decl_id,
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
+        };
+        let mut outer_scope = outer_scope;
+        outer_scope.insert(name.to_string(), err_port);
+        return outer_scope;
+    }
+
     // 4. Lower the body.
     let body_start_index = dag.nodes().len();
     let lowered_body_return_port = lower_expr(
@@ -9032,6 +9579,18 @@ fn lower_resolved_callable_invocation(
     symbols: &HashMap<String, DeclarationId>,
     expected_decl: Option<DeclarationId>,
 ) -> PortId {
+    if let Some(port) = try_lower_config_patch_layer_invocation(
+        base_target_decl,
+        args,
+        span,
+        dag,
+        scope,
+        callable_scope,
+        symbols,
+        expected_decl,
+    ) {
+        return port;
+    }
     let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
     let mut input_ports: Vec<PortId> = Vec::new();
     let mut template_arguments: Vec<TemplateArgument> = Vec::new();
@@ -11310,6 +11869,10 @@ mod tests {
         SourceSpan::new("lower_decl_ref_test.v3", 0, 0)
     }
 
+    fn test_v4_std_patch_span() -> SourceSpan {
+        SourceSpan::new("src/v4/std/patch.dag", 0, 100)
+    }
+
     fn push_test_declaration(
         dag: &mut Dag,
         name: &str,
@@ -12065,5 +12628,582 @@ mod tests {
         assert!(
             fold_repeat_string_semantics("x", super::REPEAT_STRING_FOLD_MAX_COUNT + 1).is_none()
         );
+    }
+
+    #[test]
+    fn extract_config_patch_layer_operands_accepts_base_and_patch() {
+        let span = test_span();
+        let args = vec![SurfaceExpr::Record {
+            fields: vec![
+                SurfaceRecordField {
+                    name: "base".to_string(),
+                    value: SurfaceExpr::Var {
+                        name: "defaults".to_string(),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                },
+                SurfaceRecordField {
+                    name: "patch".to_string(),
+                    value: SurfaceExpr::Var {
+                        name: "layer0".to_string(),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                },
+            ],
+            span: span.clone(),
+        }];
+        let (base, patch) = extract_config_patch_layer_operands(&args).expect("named operands");
+        assert!(matches!(base, SurfaceExpr::Var { name, .. } if name == "defaults"));
+        assert!(matches!(patch, SurfaceExpr::Var { name, .. } if name == "layer0"));
+    }
+
+    #[test]
+    fn extract_config_patch_layer_operands_rejects_wrong_labels() {
+        let span = test_span();
+        let args = vec![SurfaceExpr::Record {
+            fields: vec![SurfaceRecordField {
+                name: "outer".to_string(),
+                value: SurfaceExpr::Var {
+                    name: "x".to_string(),
+                    span: span.clone(),
+                },
+                span: span.clone(),
+            }],
+            span: span.clone(),
+        }];
+        assert!(extract_config_patch_layer_operands(&args).is_none());
+    }
+
+    #[test]
+    fn extract_config_patch_layer_operands_rejects_missing_base_or_patch() {
+        let span = test_span();
+        let only_base = vec![SurfaceExpr::Record {
+            fields: vec![SurfaceRecordField {
+                name: "base".to_string(),
+                value: SurfaceExpr::Var {
+                    name: "defaults".to_string(),
+                    span: span.clone(),
+                },
+                span: span.clone(),
+            }],
+            span: span.clone(),
+        }];
+        assert!(extract_config_patch_layer_operands(&only_base).is_none());
+    }
+
+    #[test]
+    fn config_patch_record_decl_materializes_for_empty_config_conj() {
+        let mut dag = Dag::new();
+        let empty_cfg = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Conj {
+                children: Vec::new(),
+            },
+        );
+        let field_patch_t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("PatchT".to_string())),
+        );
+        let field_patch_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("FieldPatch".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![field_patch_t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+        let _ = field_patch_tpl;
+        let patch_decl = config_patch_record_decl_for_config(&mut dag, empty_cfg, &test_span())
+            .expect("empty Config");
+        let TypeConnective::Conj { children } = &dag.declaration(patch_decl).connective else {
+            panic!("expected patch record Conj");
+        };
+        assert!(children.is_empty());
+    }
+
+    #[test]
+    fn surface_field_access_expr_projects_call_site_carrier() {
+        let span = test_span();
+        let carrier = SurfaceExpr::Var {
+            name: "defaults".to_string(),
+            span: span.clone(),
+        };
+        let access = surface_field_access_expr(&carrier, "line_length", &span).expect("path");
+        assert!(matches!(
+            access,
+            SurfaceExpr::Path { segments, .. }
+            if segments == ["defaults", "line_length"]
+        ));
+    }
+
+    fn list_instantiation_element(dag: &Dag, list_inst: DeclarationId) -> DeclarationId {
+        let TypeConnective::Instantiation { arguments, .. } =
+            &dag.declaration(list_inst).connective
+        else {
+            panic!("expected List instantiation");
+        };
+        arguments[0].value
+    }
+
+    /// Nested `List<T>` config fields must materialize as `FieldPatch<List<Int>>`, not
+    /// `FieldPatch<List<T>>`, when `ConfigPatchRecord<Config>` is applied to `Config<Int>`.
+    #[test]
+    fn materialize_config_patch_record_substitutes_nested_list_type_param() {
+        let mut dag = Dag::new();
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let list_tpl = dag.declaration_by_name("List").expect("bootstrap List").id;
+        let list_tpl_param = template_param_id(&dag, list_tpl, 0).expect("List type param");
+
+        let t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+        );
+
+        let list_t = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: list_tpl,
+                arguments: vec![TemplateArgument {
+                    parameter: list_tpl_param,
+                    value: t_param,
+                }],
+            },
+        );
+
+        let config_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("Cfg".to_string()),
+                connective: TypeConnective::Conj {
+                    children: vec![Field {
+                        label: "magics".to_string(),
+                        ty: list_t,
+                    }],
+                },
+                type_params: vec![t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+
+        let field_patch_t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("PatchT".to_string())),
+        );
+        let field_patch_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("FieldPatch".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![field_patch_t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+
+        let mut symbols = HashMap::new();
+        symbols.insert("Cfg".to_string(), config_tpl);
+        symbols.insert("Int".to_string(), int_id);
+        symbols.insert("FieldPatch".to_string(), field_patch_tpl);
+
+        let span = test_span();
+        let args = [TypeAngleArg::TypeExpr {
+            ty: Box::new(SurfaceType::Parameterized {
+                name: "Cfg".to_string(),
+                args: vec![TypeAngleArg::TypeExpr {
+                    ty: Box::new(SurfaceType::Named {
+                        name: "Int".to_string(),
+                        span: span.clone(),
+                    }),
+                }],
+                span: span.clone(),
+            }),
+        }];
+
+        let patch_conj = materialize_config_patch_record_connective(
+            &mut dag,
+            &symbols,
+            &HashMap::new(),
+            &args,
+            &span,
+        )
+        .expect("Cfg<Int> is a record");
+
+        let TypeConnective::Conj { children } = patch_conj else {
+            panic!("expected patch Conj");
+        };
+        assert_eq!(children.len(), 1);
+        let patch_magics = children[0].ty;
+        let inner = {
+            let TypeConnective::Instantiation { arguments, .. } =
+                &dag.declaration(patch_magics).connective
+            else {
+                panic!("expected FieldPatch instantiation");
+            };
+            arguments[0].value
+        };
+        let list_inner = list_instantiation_element(&dag, inner);
+        assert_eq!(
+            list_inner, int_id,
+            "patch field must be FieldPatch<List<Int>>, not FieldPatch<List<T>>"
+        );
+        assert_ne!(
+            list_inner, t_param,
+            "must not fall back to unspecialized List<T> type param"
+        );
+    }
+
+    /// `ConfigPatchRecord<BlackCfg>` must substitute through a config type alias (`BlackCfg = Cfg<Int>`),
+    /// not only through direct `ConfigPatchRecord<Cfg<Int>>`.
+    #[test]
+    fn materialize_config_patch_record_substitutes_through_config_type_alias() {
+        let mut dag = Dag::new();
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let list_tpl = dag.declaration_by_name("List").expect("bootstrap List").id;
+        let list_tpl_param = template_param_id(&dag, list_tpl, 0).expect("List type param");
+        let t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("T".to_string())),
+        );
+        let list_t = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: list_tpl,
+                arguments: vec![TemplateArgument {
+                    parameter: list_tpl_param,
+                    value: t_param,
+                }],
+            },
+        );
+        let cfg_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("Cfg".to_string()),
+                connective: TypeConnective::Conj {
+                    children: vec![Field {
+                        label: "magics".to_string(),
+                        ty: list_t,
+                    }],
+                },
+                type_params: vec![t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let cfg_int = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: cfg_tpl,
+                arguments: vec![TemplateArgument {
+                    parameter: t_param,
+                    value: int_id,
+                }],
+            },
+        );
+        let field_patch_t_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("PatchT".to_string())),
+        );
+        let field_patch_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("FieldPatch".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![field_patch_t_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+        let config_patch_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("Config".to_string())),
+        );
+        let config_patch_record_tpl = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("ConfigPatchRecord".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: vec![config_patch_param],
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+
+        let mut symbols = HashMap::new();
+        symbols.insert("Cfg".to_string(), cfg_tpl);
+        symbols.insert("BlackCfg".to_string(), cfg_int);
+        symbols.insert("Int".to_string(), int_id);
+        symbols.insert("FieldPatch".to_string(), field_patch_tpl);
+        symbols.insert("ConfigPatchRecord".to_string(), config_patch_record_tpl);
+
+        let span = test_span();
+        let args = [TypeAngleArg::TypeExpr {
+            ty: Box::new(SurfaceType::Named {
+                name: "BlackCfg".to_string(),
+                span: span.clone(),
+            }),
+        }];
+
+        let patch_conj = materialize_config_patch_record_connective(
+            &mut dag,
+            &symbols,
+            &HashMap::new(),
+            &args,
+            &span,
+        )
+        .expect("alias-bound config lowers to a record");
+
+        let TypeConnective::Conj { children } = patch_conj else {
+            panic!("expected patch Conj");
+        };
+        let patch_magics = children[0].ty;
+        let inner = {
+            let TypeConnective::Instantiation { arguments, .. } =
+                &dag.declaration(patch_magics).connective
+            else {
+                panic!("expected FieldPatch instantiation");
+            };
+            arguments[0].value
+        };
+        let list_inner = list_instantiation_element(&dag, inner);
+        assert_eq!(list_inner, int_id);
+    }
+
+    #[test]
+    fn config_patch_record_materialization_requires_imported_template_name() {
+        let mut dag = Dag::new();
+        let int_id = dag.int_shape().expect("bootstrap Int").declaration;
+        let field_patch_tpl = dag.declaration_by_name("FieldPatch");
+        let field_patch_tpl = if let Some(decl) = field_patch_tpl {
+            decl.id
+        } else {
+            push_anonymous_test_declaration(
+                &mut dag,
+                TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+            )
+        };
+        let mut symbols = HashMap::new();
+        symbols.insert("Int".to_string(), int_id);
+        symbols.insert("FieldPatch".to_string(), field_patch_tpl);
+        // Deliberately omit `ConfigPatchRecord` from symbols — surface spelling alone must not run
+        // the projection hook.
+
+        let span = test_span();
+        let ty = SurfaceType::Parameterized {
+            name: "ConfigPatchRecord".to_string(),
+            args: vec![TypeAngleArg::TypeExpr {
+                ty: Box::new(SurfaceType::Named {
+                    name: "Int".to_string(),
+                    span: span.clone(),
+                }),
+            }],
+            span: span.clone(),
+        };
+
+        assert!(
+            !surface_parameterized_name_resolves_to_template(
+                &dag,
+                &symbols,
+                &HashMap::new(),
+                "ConfigPatchRecord",
+                "ConfigPatchRecord",
+            ),
+            "unimported surface name must not match the patch template"
+        );
+
+        let connective = type_to_connective(&ty, &symbols, &HashMap::new(), &mut dag);
+        assert!(
+            matches!(
+                connective,
+                TypeConnective::Instantiation { .. }
+                    | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+            ),
+            "expected ordinary instantiation/stub, not materialized patch Conj, got {connective:?}"
+        );
+        assert!(
+            !matches!(connective, TypeConnective::Conj { .. }),
+            "must not materialize without imported ConfigPatchRecord template"
+        );
+    }
+
+    #[test]
+    fn surface_parameterized_name_requires_v4_std_patch_authority() {
+        let mut dag = Dag::new();
+        let homograph = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("ConfigPatchRecord".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let canonical = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("ConfigPatchRecord".to_string()),
+                connective: TypeConnective::Conj {
+                    children: Vec::new(),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_v4_std_patch_span(),
+            });
+            id
+        };
+        let mut symbols = HashMap::new();
+        symbols.insert("ConfigPatchRecord".to_string(), homograph);
+        assert!(
+            !surface_parameterized_name_resolves_to_template(
+                &dag,
+                &symbols,
+                &HashMap::new(),
+                "ConfigPatchRecord",
+                "ConfigPatchRecord",
+            ),
+            "same-named non-patch.dag declaration must not authorize projection"
+        );
+        symbols.insert("ConfigPatchRecord".to_string(), canonical);
+        assert!(surface_parameterized_name_resolves_to_template(
+            &dag,
+            &symbols,
+            &HashMap::new(),
+            "ConfigPatchRecord",
+            "ConfigPatchRecord",
+        ));
+    }
+
+    #[test]
+    fn callable_is_v4_std_patch_config_patch_layer_rejects_homograph() {
+        let mut dag = Dag::new();
+        let patch_span = test_v4_std_patch_span();
+        let homograph = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("config_patch_layer".to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: Vec::new(),
+                    output: dag.int_shape().expect("Int").declaration,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let canonical = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: Some("config_patch_layer".to_string()),
+                connective: TypeConnective::Arrow {
+                    inputs: Vec::new(),
+                    output: dag.int_shape().expect("Int").declaration,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: patch_span.clone(),
+            });
+            id
+        };
+        assert!(!callable_is_v4_std_patch_config_patch_layer(
+            &dag, homograph
+        ));
+        assert!(callable_is_v4_std_patch_config_patch_layer(&dag, canonical));
     }
 }
