@@ -54,7 +54,11 @@ import v4.std.node {
   content_hash,
   ByteOffsetCacheEligible,
   ByteOffsetCacheIneligible,
-  byte_offset_cache_key
+  byte_offset_cache_key,
+  canonical_tag_byte_limb_out_of_range,
+  canonical_tag_scalar_int_one,
+  canonical_tag_scalar_int_succ,
+  canonical_tag_scalar_int_zero
 }
 import v4.std.algebra { Empty, fold_list, list_snoc_item }
 import v4.std.verdict { Verdict, Deferred, Fail, Pass }
@@ -458,7 +462,9 @@ data ci_projection_fixpt_left_hash_edge: Symbol = ci_projection_fixpt_left_hash_
 data ci_projection_fixpt_right_hash_edge: Symbol = ci_projection_fixpt_right_hash_edge
 data ci_projection_fixpt_pinned_hash_edge: Symbol = ci_projection_fixpt_pinned_hash_edge
 data ci_projection_hash_pin_edge: Symbol = ci_projection_hash_pin_edge
-data ci_projection_string_char_edge: Symbol = ci_projection_string_char_edge
+data ci_projection_char_succ_edge: Symbol = ci_projection_char_succ_edge
+data ci_projection_char_pred_edge: Symbol = ci_projection_char_pred_edge
+data ci_projection_command_variant_edge: Symbol = ci_projection_command_variant_edge
 data ci_projection_command_produces_edge: Symbol = ci_projection_command_produces_edge
 data ci_projection_command_test_name_edge: Symbol = ci_projection_command_test_name_edge
 data ci_projection_command_lenses_edge: Symbol = ci_projection_command_lenses_edge
@@ -606,37 +612,27 @@ fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
 }
 
 
-fn ci_char_projection_node(c: Char) -> Node {
-  match byte_offset_cache_key(i: c) {
-    ByteOffsetCacheEligible { digest: digest } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ci_named_edge(
-            name: ci_projection_string_char_edge,
-            target: bootstrap_hash_pin_projection_node(
-              pin: BootstrapHashPin { digest: digest, pin: ci_cache_char_byte_offset_ineligible_tag }
-            )
-          )
-        ]
-      }
-    ByteOffsetCacheIneligible {
-      boundary_tag: boundary_tag,
-      witness: witness
-    } =>
-      Node {
-        kind: TypeNode { connective: Conj },
-        children: [
-          ci_named_edge(
-            name: ci_projection_string_char_edge,
-            target: combine_hash(
-              a: ci_atom(sym: boundary_tag),
-              b: witness
-            )
-          )
-        ]
-      }
+fn ci_byte_limb_projection_node(limb: Int) -> Node {
+  if limb < 0 || limb > 255 {
+    ci_atom(sym: canonical_tag_byte_limb_out_of_range)
+  } else if limb == 0 {
+    ci_atom(sym: canonical_tag_scalar_int_zero)
+  } else if limb == 1 {
+    ci_atom(sym: canonical_tag_scalar_int_one)
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        ci_named_edge(name: ci_projection_char_succ_edge, target: ci_atom(sym: canonical_tag_scalar_int_succ)),
+        ci_named_edge(name: ci_projection_char_pred_edge, target: ci_byte_limb_projection_node(limb: limb - 1))
+      ]
+    }
   }
+}
+
+
+fn ci_char_projection_node(c: Char) -> Node {
+  ci_byte_limb_projection_node(limb: c)
 }
 
 
@@ -665,7 +661,7 @@ fn ci_command_projection_node(c: CiCommand) -> Node {
       Node {
         kind: TypeNode { connective: Conj },
         children: [
-          ci_named_edge(name: ci_projection_command_test_name_edge, target: ci_atom(sym: ci_cache_cmd_ignored_test_tag)),
+          ci_named_edge(name: ci_projection_command_variant_edge, target: ci_atom(sym: ci_cache_cmd_ignored_test_tag)),
           ci_named_edge(name: ci_projection_command_test_name_edge, target: ci_string_projection_node(s: name))
         ]
       }
@@ -853,14 +849,7 @@ fn ci_bootstrap_plan_cache_hash() -> Hash {
 
 
 fn ci_command_cache_digest(c: CiCommand) -> Hash {
-  match c {
-    IgnoredTestCommand { test_name: name } =>
-      combine_hash(
-        a: content_hash(n: ci_command_projection_node(c: IgnoredTestCommand { test_name: name })),
-        b: ci_string_cache_digest(s: name)
-      )
-    _ => content_hash(n: ci_command_projection_node(c: c))
-  }
+  content_hash(n: ci_command_projection_node(c: c))
 }
 
 
