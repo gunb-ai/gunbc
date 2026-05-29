@@ -308,9 +308,31 @@ pub fn verify_emitted_source_file(
     target: EmitVerificationTarget,
     source_path: &Path,
 ) -> Result<(), VerifierRunError> {
-    let spec = clean_emission_spec(dag, target)?;
-    let binding = parse_post_emit_verifier(dag, spec)?;
+    let spec =
+        clean_emission_spec(dag, target).map_err(verifier_parse_error_to_run_error)?;
+    let binding =
+        parse_post_emit_verifier(dag, spec).map_err(verifier_parse_error_to_run_error)?;
     run_post_emit_verifier(&binding, source_path)
+}
+
+fn verifier_parse_error_to_run_error(err: VerifierParseError) -> VerifierRunError {
+    VerifierRunError::InvocationFailed {
+        command: "post_emit_verifier_contract".to_string(),
+        io_error: err.to_string(),
+    }
+}
+
+impl fmt::Display for VerifierParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VerifierParseError::MissingDeclaration => {
+                write!(f, "clean_emission spec not found in bootstrap dag")
+            }
+            VerifierParseError::MalformedSpec { detail, .. } => {
+                write!(f, "malformed clean_emission spec: {detail}")
+            }
+        }
+    }
 }
 
 /// Emit `program_dag` for `target`, write the source into `scratch_dir`, and
