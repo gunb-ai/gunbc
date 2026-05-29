@@ -17,7 +17,8 @@ import v4.compiler.name_resolve {
   ImportVisible,
   ResolutionSubject,
   admit_import_entry,
-  resolve_with_admission
+  resolve_with_admission,
+  validate_module_roots
 }
 import v4.extdeps.languages.dag {
   dag_c3_surface_sugar_service,
@@ -29,7 +30,7 @@ import v4.extdeps.languages.dag {
 }
 import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.collection { empty_map }
-import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq }
 import v4.std.logic { Bool }
 import v4.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
@@ -183,6 +184,23 @@ fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
 }
 
 
+fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
+  match validate_module_roots(roots: fc_single_found_root()) {
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_eq(a: d, b: None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
+  match validate_module_roots(roots: fc_duplicate_roots()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+
 data claim_admit_import_missing_module_is_rejected: TestClaim = CompilesClaim {
   label: "name_resolve/admit_import_entry: missing import target is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -205,6 +223,24 @@ data claim_resolve_subject_name_not_in_roots_is_rejected: TestClaim = CompilesCl
   label: "name_resolve/resolve_with_admission: subject name not in validated roots is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fc_claim_input(ok: resolve_subject_name_not_in_roots_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_validate_module_roots_threads_accepted_projection_diagnostics: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: accepted projection diagnostics thread through Outcome",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: validate_module_roots_threads_accepted_projection_diagnostics()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+
+data claim_validate_module_roots_merges_pending_before_duplicate_reject: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: duplicate reject merges pending projection diagnostics",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: validate_module_roots_merges_pending_before_duplicate_reject()),
   expected_value: fc_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

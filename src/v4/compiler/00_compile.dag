@@ -24,7 +24,7 @@ import v4.compiler.target_carriers { TargetSource }
 import v4.std.target_model { TargetModel }
 import v4.extdeps.languages.dag { dag_language_model_wave1 }
 import v4.lens.fact_density { fact_density_hollow_alias_gate }
-import v4.std.algebra { Cons, Empty, FreeMonoid, list_append, list_snoc_item }
+import v4.std.algebra { FreeMonoid, list_append, list_snoc_item }
 import v4.std.collection { List }
 import v4.std.diagnostic {
   Accepted,
@@ -39,11 +39,9 @@ import v4.std.diagnostic {
   bind_outcome,
   bind_outcome_accepted,
   diagnostics_singleton,
-  diagnostics_merge,
   outcome_accepted,
   outcome_rejected,
-  outcome_with_diagnostics,
-  rejected_with_pending
+  outcome_with_diagnostics
 }
 import v4.std.module_batch { ModuleBatch }
 import v4.std.node { Edge, Node, NodeFold, Symbol, fold_node }
