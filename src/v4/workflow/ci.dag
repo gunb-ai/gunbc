@@ -612,6 +612,7 @@ fn ci_gate_run_policy_projection_node(policy: CiGateRunPolicy) -> Node {
 }
 
 
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — dissolve-on: std/node canonical `byte_offset_cache_key` Node projection replaces this Peano byte-limb tree (O(|c|) frames per Char); cache digest path stays `ci_char_cache_digest` (O(log |c|) base-256 per comment below).
 fn ci_byte_limb_projection_node(limb: Int) -> Node {
   if limb < 0 || limb > 255 {
     ci_atom(sym: canonical_tag_byte_limb_out_of_range)
