@@ -424,9 +424,14 @@ cluster** — `formatter-int-refinement` (63 sites · 9 formatter files;
 the broader landed-T-25-core dissolve-now set is 66 sites — see §A1)
 should have dissolved when T-25-core (`std/refinement.dag`) landed in
 PR #3354. Prose deferrals and the long tail of feature gates remain
-honest. Combined with the four smaller T-4.16 follow-on gates (§1.3, §1.4,
-§1.5, §1.6), there is a clear T-4.16 close-out opportunity to dissolve
-~69 yellow marks against substrate that already exists.
+honest. Combined with the smaller T-4.16 follow-on gates (§1.3, §1.4, §1.6 —
+§1.5 already folded into §A1's 66-site set), there is a clear T-4.16
+close-out opportunity to dissolve **~76 yellow marks** against
+substrate that already exists: 66 (§A1 landed-T-25-core set) + 7
+(§1.3 cross-field) + 2 (§1.4 deprecated-alias) + 1 (§1.6 unstable-
+option-validity) = **76**. Matches §5's ~75 row (±1 grep tolerance
+for the "~" prefix; see §0 last-reproduced footnote on B-population
+drift).
 
 The misclassifications cluster in **two places**:
 
