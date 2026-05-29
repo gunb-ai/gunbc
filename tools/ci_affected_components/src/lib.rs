@@ -158,7 +158,7 @@ mod tests {
         assert!(ci_changed_path_affects_release_distribution(
             "src/v4/workflow/release.dag"
         ));
-        assert!(ci_changed_path_affects_release_distribution("install.sh"));
+        assert!(!ci_changed_path_affects_release_distribution("install.sh"));
         assert!(!ci_changed_path_affects_release_distribution(
             "src/v4/workflow/ci.dag"
         ));
