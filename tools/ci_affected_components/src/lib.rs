@@ -77,6 +77,7 @@ pub fn ci_changed_path_affects_v4(path: &str) -> bool {
 
 pub fn ci_changed_path_affects_workflow_policy(path: &str) -> bool {
     path.starts_with(".github/workflows/")
+        || path == "src/v4/workflow/ci.dag"
         || path.starts_with("src/v4/workflow/ci/")
         || path.starts_with("tools/ci_affected_components")
         || path.starts_with("scripts/check-workflow-path-regex-inventory")
