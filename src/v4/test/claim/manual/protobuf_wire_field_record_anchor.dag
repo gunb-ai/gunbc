@@ -1,0 +1,54 @@
+// src/v4/test/claim/manual/protobuf_wire_field_record_anchor.dag
+// Scope: Compile anchors for ProtoWireFieldRecord coproduct arms (tag/payload correlated).
+// Status: compile-only groundedness testcase.
+
+module v4.test.claim.manual.protobuf_wire_field_record_anchor
+
+import v4.extdeps.formats.protobuf {
+  ProtoWireEndGroupField,
+  ProtoWireFieldRecord,
+  ProtoWireFixed32Field,
+  ProtoWireFixed64Field,
+  ProtoWireLengthDelimitedField,
+  ProtoWireStartGroupField,
+  ProtoWireVarintField,
+}
+import v4.std.cardinality { NonZeroNat }
+import v4.std.nat { Succ, Zero }
+
+
+data protobuf_anchor_wire_record_field_number: NonZeroNat = NonZeroNat { prev: Succ { prev: Zero } }
+
+
+data protobuf_anchor_wire_record_varint: ProtoWireFieldRecord = ProtoWireVarintField {
+  field_number: protobuf_anchor_wire_record_field_number,
+  lexeme: "0",
+}
+
+
+data protobuf_anchor_wire_record_fixed32: ProtoWireFieldRecord = ProtoWireFixed32Field {
+  field_number: protobuf_anchor_wire_record_field_number,
+  octets_lexeme: "00000000",
+}
+
+
+data protobuf_anchor_wire_record_fixed64: ProtoWireFieldRecord = ProtoWireFixed64Field {
+  field_number: protobuf_anchor_wire_record_field_number,
+  octets_lexeme: "0000000000000000",
+}
+
+
+data protobuf_anchor_wire_record_length_delimited: ProtoWireFieldRecord = ProtoWireLengthDelimitedField {
+  field_number: protobuf_anchor_wire_record_field_number,
+  payload_lexeme: "x",
+}
+
+
+data protobuf_anchor_wire_record_start_group: ProtoWireFieldRecord = ProtoWireStartGroupField {
+  field_number: protobuf_anchor_wire_record_field_number,
+}
+
+
+data protobuf_anchor_wire_record_end_group: ProtoWireFieldRecord = ProtoWireEndGroupField {
+  field_number: protobuf_anchor_wire_record_field_number,
+}
