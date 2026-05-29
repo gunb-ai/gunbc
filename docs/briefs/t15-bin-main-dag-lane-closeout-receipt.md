@@ -1,8 +1,8 @@
 # T-15 bin/main.dag lane — worker closeout receipt
 
-**Session:** `proud-otter-724` (closeout child of `nimble-carp-710`)  
-**Work item:** `node://adhoc-63221782-2d4` — *T-15 bin/main.dag lane closeout*  
-**Execution PR:** [#3897](https://github.com/gunb-ai/gunbc/pull/3897) (`session/nimble-carp-710`)  
+**Session:** `cool-dove-432` (closeout child of `still-tern-34`)  
+**Work item:** `node://adhoc-a1c824bf-2fb` — *T-15 bin/main.dag lane closeout*  
+**Execution PR:** [#3897](https://github.com/gunb-ai/gunbc/pull/3897) (`session/nimble-carp-710`) — **MERGED** 2026-05-29  
 **Authority:** `src/v4/TASKS.md` §T-15, `src/v4/bin/main.dag`, `src/v4/workflow/bootstrap.dag`
 
 ## What was verified (closeout pass)
