@@ -254,22 +254,31 @@ fn module_root_for_name_fold(
           ModuleRootProjectionRejected { diagnostics: d }
         ModuleRootFoundDuplicate =>
           ModuleRootFoundDuplicate
-        _ =>
+        ModuleRootNotFound =>
           match qualified_name_from_module_node(root: root) {
             Accepted { value: candidate, diagnostics: _ } =>
               module_root_for_name_fold(
                 roots: rest,
                 name: name,
                 acc: if qualified_name_eq(a: candidate, b: name) {
-                  match acc {
-                    ModuleRootNotFound => ModuleRootFoundOnce { root: root }
-                    ModuleRootFoundOnce { root: _ } => ModuleRootFoundDuplicate
-                    ModuleRootFoundDuplicate => ModuleRootFoundDuplicate
-                    ModuleRootProjectionRejected { diagnostics: d } =>
-                      ModuleRootProjectionRejected { diagnostics: d }
-                  }
+                  ModuleRootFoundOnce { root: root }
                 } else {
-                  acc
+                  ModuleRootNotFound
+                }
+              )
+            Rejected { diagnostics: d } =>
+              ModuleRootProjectionRejected { diagnostics: d }
+          }
+        ModuleRootFoundOnce { root: found } =>
+          match qualified_name_from_module_node(root: root) {
+            Accepted { value: candidate, diagnostics: _ } =>
+              module_root_for_name_fold(
+                roots: rest,
+                name: name,
+                acc: if qualified_name_eq(a: candidate, b: name) {
+                  ModuleRootFoundDuplicate
+                } else {
+                  ModuleRootFoundOnce { root: found }
                 }
               )
             Rejected { diagnostics: d } =>
