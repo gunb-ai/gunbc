@@ -295,6 +295,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "SwiftConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        # T-4 Wave 2b law-kind coproduct (absent at merge-base; scaffold:T-4-wave-2b).
+        out["SwiftModelCoreLawKey"] = ("🟡", "SL-T4-WAVE2B-SWIFT-LAW-KEY")
     if rel == "src/v4/extdeps/languages/wasm.dag":
         # New T-4/T-11 language slice (absent at merge-base).
         for nm in (
@@ -304,6 +306,8 @@ def coproduct_tag_from_merge_base(rel: str) -> dict[str, tuple[str, str]]:
             "WasmConcreteSyntaxToken",
         ):
             out[nm] = ("🟢", "CP-3229-GREEN-TERMINAL")
+        # T-4 Wave 2b law-kind coproduct (absent at merge-base; scaffold:T-4-wave-2b).
+        out["WasmModelCoreLawKey"] = ("🟡", "SL-T4-WAVE2B-WASM-LAW-KEY")
     if rel == "src/v4/std/integer.dag":
         # T-3A shared-fact vocabulary for T-4 language primitive fact-bundles
         # (absent at merge-base).
@@ -435,6 +439,21 @@ def format_coproduct_tag(emoji: str, ref: str, type_name: str | None = None) -> 
             "feature:model-core-law-expression-carrier — "
             "scaffold:T-4-wave-2b · law-kind coproduct for ts_model_core_law_node kind edge — "
             "owner:T-4 typescript language model lane — "
+            "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
+            "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
+        )
+    if type_name == "WasmModelCoreLawKey":
+        return (
+            "// 🟡 coproduct dissolution — SL-T4-WAVE2B-WASM-LAW-KEY — "
+            "feature:model-core-law-expression-carrier — "
+            "scaffold:T-4-wave-2b · law-kind coproduct for wasm_model_core_law_node kind edge — "
+            "owner:T-4 wasm language model lane — "
+    if type_name == "SwiftModelCoreLawKey":
+        return (
+            "// 🟡 coproduct dissolution — SL-T4-WAVE2B-SWIFT-LAW-KEY — "
+            "feature:model-core-law-expression-carrier — "
+            "scaffold:T-4-wave-2b · law-kind coproduct for swift_model_core_law_node kind edge — "
+            "owner:T-4 swift language model lane — "
             "dissolve-on-arrival: std/algebra exports typed law/equation Nodes replacing "
             "kind atoms (same gate as model_core ModelCoreWave1BoolLawKey)."
         )
@@ -634,10 +653,10 @@ def main() -> None:
         ),
         (
             "src/v4/extdeps/languages/swift.dag",
-            "// Scope: Swift language/standard-library scalar fact-bundles and ModelCore wave-1.",
+            "// Scope: Swift language/standard-library scalar fact-bundles, ModelCore wave-1 (primitives), wave-2b (inhabitance+laws+effects+partiality).",
             "// Anchor: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/thebasics/",
             "// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
-            "// Status: T-4 Swift wave-1; fixed-width integer spellings are explicit, Int/UInt stay platform-word-width facts, Float/Double carry IEEE-754 precision; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.",
+            "// Status: T-4 Swift wave-1+2b; fixed-width integer spellings explicit, Int/UInt platform-word-width, Float/Double IEEE-754; wave-2b: signed int OrderedRing + unsigned int CommutativeSemiring + float ApproximateField + bool BooleanAlgebra + string FreeMonoid inhabitance; laws+effects+partiality; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 grammar/token substrate for T-11; bool canonical-B decl-ref is E-6(b) staging.",
             "// 🟡",
         ),
         (
@@ -645,7 +664,7 @@ def main() -> None:
             "// Scope: WebAssembly Core numeric value types — LanguageModel fact-bundles (Shape A).",
             "// Anchor: https://webassembly.github.io/spec/core/types.html#number-types",
             "// Consumes: v4.std.grammar, v4.std.lexing, v4.std.collection, v4.std.model_core, v4.std.target_model, v4.std.node, v4.std.logic, v4.std.algebra, v4.std.text.",
-            "// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).",
+            "// Status: T-4 wasm slice — Core §2.3.1 number types (i32/i64/f32/f64 wave-1); wave-2b: inhabitance+laws+effects+partiality; `core: ModelCore` (#3474); canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/target_model.dag; MVP-1 WAT grammar/token substrate for T-11; v128/funcref/externref 🟡 wave-2; integer sign-agnostic per spec (width + modular wrap, not signed/unsigned partition).",
             "// 🟡",
         ),
         (
