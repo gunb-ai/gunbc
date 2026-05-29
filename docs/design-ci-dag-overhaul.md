@@ -153,13 +153,24 @@ flowchart TB
 
 Exact CLI lands in A0/A2 with T-38. **There is no S1, S2, or S3 in this lane.**
 
+**Substrate today (`src/v4/workflow/ci.dag` on `main`):**
+
+| Artifact | Status | Notes |
+|----------|--------|-------|
+| `CiPipeline` / `CiJob` / `CiCommand` | **modeled** | Policy graph exists; GHA still schedules via hand `ci.yml` buckets |
+| `affected_set_rerun_nodes` / `RerunNodeSet` | **modeled** (`v4.lens.affected_set`) | Feeds T-21 rerun frontier |
+| `ci_select_from_affected_set` | **modeled — TestClaim roster only** | `fn` at `ci.dag` ~L585; wired to `TestClaimCorpusEvalCommand.selection_fn` |
+| `ci_select_ci_jobs_from_affected_set` (or equivalent) | **not yet** | Required to replace GHA `if: v2/v3/v4` with interpreter schedule over `ci_pipeline` |
+| `CiComponentAffected` | **not in `ci.dag`** | Shell/YAML bucket authority only — **A1** deletes outputs; **A2** makes buckets unnecessary |
+
 **Viability — dropping `CiComponentAffected` scheduling:**
 
 | Question | Answer |
 |----------|--------|
-| **Viable?** | **Yes.** T-21 frontier + `ci_select_from_affected_set` already model precise selection. |
-| **Blocker?** | **Process only:** PR #3853 currently mirrors buckets to GHA — **must not merge that wiring**; land diff witness + bin only, or fold bucket deletion into **A1**. |
-| **Risk** | Interpreter must handle full `ci_pipeline` in one run (or explicit modeled partitions) — tracked in A2, not a reason to keep buckets. |
+| **Viable?** | **Yes, after A2** — not “already.” TestClaim narrowing exists; **CiJob/CiCommand** scheduling from the same `AffectedSet` / fail-closed frontier is an explicit **A2** deliverable. |
+| **Blocker?** | **A1:** #3853 must land witness only (no bucket→GHA). **A2:** add pipeline-level selector + interpreter entry; then delete bucket `if:`. |
+| **Fail-closed rule** | Pipeline selector must be a **superset** of required work on ambiguity (same spirit as `test_claim_ci_selection_fail_closed` + `RerunNodeSetFailClosed`) — never skip a job whose inputs intersect the rerun frontier. |
+| **Risk** | Interpreter must execute selected `ci_pipeline` subgraph in one harness — tracked in A2, not a reason to keep buckets past A2. |
 
 ---
 
