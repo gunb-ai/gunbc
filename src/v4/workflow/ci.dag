@@ -118,7 +118,7 @@ type CiComponentAffected {
 // Consumed by YamlStatic workflow projection and M1 rust-emit probe cargo parallelism cap.
 // Closed fleet fact: operator srv1/srv2 are Ampere Altra (Arm64) only — no open fallback variant.
 type RunnerArch
-  = Arm64
+  = RunnerArchArm64
 
 type SelfHostedRunnerPool {
   host: Symbol
@@ -159,7 +159,7 @@ data ci_srv2_host: Symbol = ci_srv2_host
 
 data ci_srv1_pool: SelfHostedRunnerPool = {
   host: ci_srv1_host
-  arch: Arm64
+  arch: RunnerArchArm64
   core_count: 128
   runner_count: 20
   jobserver_token_cap: 25
@@ -167,7 +167,7 @@ data ci_srv1_pool: SelfHostedRunnerPool = {
 
 data ci_srv2_pool: SelfHostedRunnerPool = {
   host: ci_srv2_host
-  arch: Arm64
+  arch: RunnerArchArm64
   core_count: 128
   runner_count: 30
   jobserver_token_cap: 36

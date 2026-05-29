@@ -3,7 +3,7 @@
 /// Closed fleet fact: operator srv1/srv2 are Arm64 only (single-variant `RunnerArch` in `ci.dag`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunnerArch {
-    Arm64,
+    RunnerArchArm64,
 }
 
 /// Structural mirror of `SelfHostedRunnerPool` in `src/v4/workflow/ci.dag`.
@@ -18,7 +18,7 @@ pub struct SelfHostedRunnerPool {
 
 pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv1",
-    arch: RunnerArch::Arm64,
+    arch: RunnerArch::RunnerArchArm64,
     core_count: 128,
     runner_count: 20,
     jobserver_token_cap: 25,
@@ -26,7 +26,7 @@ pub const CI_SRV1_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
 
 pub const CI_SRV2_POOL: SelfHostedRunnerPool = SelfHostedRunnerPool {
     host: "srv2",
-    arch: RunnerArch::Arm64,
+    arch: RunnerArch::RunnerArchArm64,
     core_count: 128,
     runner_count: 30,
     jobserver_token_cap: 36,

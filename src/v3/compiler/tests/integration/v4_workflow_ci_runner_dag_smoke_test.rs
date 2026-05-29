@@ -405,7 +405,7 @@ fn v4_workflow_ci_m1_rust_emit_probe_modeled_and_bound_to_ci_yml() {
     );
     assert!(
         CI_DAG.contains("type RunnerArch")
-            && CI_DAG.contains("= Arm64")
+            && CI_DAG.contains("= RunnerArchArm64")
             && !CI_DAG.contains("RunnerArchUnknown"),
         "{CI_DAG_PATH}: runner arch must be a closed single-variant coproduct"
     );
