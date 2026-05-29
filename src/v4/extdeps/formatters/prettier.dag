@@ -209,7 +209,7 @@ fn apply_prettier_formatting_options_patch(base: PrettierFormattingOptions, patc
 }
 
 
-// 🟡 gated — consumer:config-patch-record-projection — bind v4.std.patch — dissolve-on-arrival: `options` uses nested PrettierFormattingOptionsPatch (not FieldPatch<PrettierFormattingOptions>); only `overrides` is a scalar FieldPatch arm.
+// 🟡 gated — feature:prettier-nested-config-patch — bind T-4.16 follow-on — dissolve-on-arrival: model `options` as `FieldPatch<PrettierFormattingOptions>` (or nested patch substrate) so `PrettierConfigPatch = ConfigPatchRecord<PrettierConfig>`; until then hand `prettier_layer` composes nested `PrettierFormattingOptionsPatch` + scalar `overrides`.
 type PrettierConfigPatch {
   options: PrettierFormattingOptionsPatch
   overrides: FieldPatch<List<PrettierOverrideEntry>>

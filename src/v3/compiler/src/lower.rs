@@ -3926,6 +3926,30 @@ fn surface_field_access_expr(
     }
 }
 
+/// Symbols for expanding `config_patch_layer` at a call site: caller scope plus
+/// `apply_field_patch` from `v4.std.patch` (resolved via `Dag::declaration_by_name`, not
+/// caller imports).
+fn config_patch_layer_expansion_symbols(
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Option<HashMap<String, DeclarationId>> {
+    let apply_field_patch = dag.declaration_by_name("apply_field_patch")?.id;
+    let mut expansion_symbols = symbols.clone();
+    expansion_symbols.insert("apply_field_patch".to_string(), apply_field_patch);
+    Some(expansion_symbols)
+}
+
+fn config_patch_layer_missing_apply_field_patch_diagnostic(span: &SourceSpan) -> Diagnostic {
+    Diagnostic::ResolveError {
+        name: "config_patch_layer expansion requires `apply_field_patch` from v4.std.patch in the compilation DAG"
+            .to_string(),
+        span: span.clone(),
+        correction: crate::diagnostics::Correction::deferred_for_diagnostic_class(
+            "LoweringDiagnostic",
+        ),
+    }
+}
+
 fn surface_apply_field_patch_from_operands(
     base_operand: &SurfaceExpr,
     patch_operand: &SurfaceExpr,
@@ -4048,13 +4072,22 @@ fn try_lower_config_patch_layer_invocation(
             span: span.clone(),
         });
     }
+    let expansion_symbols = match config_patch_layer_expansion_symbols(dag, symbols) {
+        Some(symbols) => symbols,
+        None => {
+            return Some(unresolved_port(
+                dag,
+                config_patch_layer_missing_apply_field_patch_diagnostic(span),
+            ));
+        }
+    };
     Some(lower_record_literal_expr(
         &record_fields,
         span,
         dag,
         scope,
         callable_scope,
-        symbols,
+        &expansion_symbols,
         Some(config_decl),
     ))
 }
