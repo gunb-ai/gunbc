@@ -1991,7 +1991,14 @@ fn wasm_language_model_canonical_symbols() -> Set<Symbol> {
         sym == wasm_production_f64_numeric_literal ||
         sym == wasm_production_numeric_const_instr ||
         sym == wasm_production_numeric_binop_instr ||
-        sym == wasm_production_localidx ||
+        sym == wasm_production_localidx_numeric ||
+        sym == wasm_production_localidx_named ||
+        sym == wasm_production_labelidx_numeric ||
+        sym == wasm_production_labelidx_named ||
+        sym == wasm_production_funcidx_numeric ||
+        sym == wasm_production_funcidx_named ||
+        sym == wasm_surface_labelidx ||
+        sym == wasm_surface_funcidx ||
         sym == wasm_mvp1_source_literal
     }
   }
@@ -2456,6 +2463,121 @@ fn wasm_partiality_semantics_wave2b() -> PartialitySemanticsDecl {
         reason: wasm_partial_integer_remainder_by_zero
       )
     ]
+  }
+}
+
+fn wasm_wave2a_extra_lex_rules() -> List<LexRule> {
+  [
+    wasm_lex_rule(token_class: wasm_token_kw_br_if, text: "br_if"),
+    wasm_lex_rule(token_class: wasm_token_kw_call, text: "call")
+  ]
+}
+
+fn wasm_wave2a_lex_rules() -> LexRuleSet {
+  let base = wasm_wave1_lex_rules()
+  LexRuleSet {
+    rules: list_append(left: base.rules, right: wasm_wave2a_extra_lex_rules())
+  }
+}
+
+fn wasm_wave2a_lex() -> LexRules {
+  ModeledLexRules { root: wasm_wave2a_lex_rules() }
+}
+
+fn wasm_grammar_production_control_br_if() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_control_br_if,
+    expression: wasm_grammar_sequence(
+      left: wasm_grammar_terminal(token_class: wasm_token_kw_br_if),
+      right: wasm_grammar_labelidx_expr()
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_control_br_if)
+  }
+}
+
+fn wasm_grammar_production_control_call() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_control_call,
+    expression: wasm_grammar_sequence(
+      left: wasm_grammar_terminal(token_class: wasm_token_kw_call),
+      right: wasm_grammar_funcidx_expr()
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_control_call)
+  }
+}
+
+fn wasm_grammar_production_wave2a_instr() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_wave2a_instr,
+    expression: wasm_grammar_choice(
+      left: Nonterminal { production: wasm_production_control_br_if },
+      right: Nonterminal { production: wasm_production_control_call }
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_wave2a_instr)
+  }
+}
+
+fn wasm_grammar_production_wave2a_text_fragment() -> GrammarProduction {
+  GrammarProduction {
+    name: wasm_production_wave2a_text_fragment,
+    expression: wasm_grammar_repeat(
+      element: Nonterminal { production: wasm_production_wave2a_instr }
+    ),
+    emitted: wasm_grammar_atom(id: wasm_surface_wave2a_text_fragment)
+  }
+}
+
+fn wasm_wave2a_grammar_root() -> GrammarRoot {
+  GrammarRoot {
+    start: wasm_production_wave2a_text_fragment,
+    productions: [
+      wasm_grammar_production_wave2a_text_fragment(),
+      wasm_grammar_production_wave2a_instr(),
+      wasm_grammar_production_control_br_if(),
+      wasm_grammar_production_control_call(),
+      wasm_grammar_production_localidx_numeric(),
+      wasm_grammar_production_localidx_named(),
+      wasm_grammar_production_labelidx_numeric(),
+      wasm_grammar_production_labelidx_named(),
+      wasm_grammar_production_funcidx_numeric(),
+      wasm_grammar_production_funcidx_named()
+    ],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn wasm_wave2a_grammar() -> ParseGrammar {
+  ModeledGrammar { root: wasm_wave2a_grammar_root() }
+}
+
+fn wasm_language_model_canonical_symbols_wave2a() -> Set<Symbol> {
+  Set {
+    member: fn(sym) {
+      wasm_language_model_canonical_symbols().member(sym) ||
+        sym == wasm_token_u32_literal ||
+        sym == wasm_token_labelidx_literal ||
+        sym == wasm_token_funcidx_literal ||
+        sym == wasm_token_kw_br_if ||
+        sym == wasm_token_kw_call ||
+        sym == wasm_surface_control_br_if ||
+        sym == wasm_surface_control_call ||
+        sym == wasm_surface_wave2a_instr ||
+        sym == wasm_surface_wave2a_text_fragment ||
+        sym == wasm_production_wave2a_instr ||
+        sym == wasm_production_wave2a_text_fragment ||
+        sym == wasm_production_control_br_if ||
+        sym == wasm_production_control_call
+    }
+  }
+}
+
+fn wasm_language_model_wave2a() -> WasmLanguageModel {
+  WasmLanguageModel {
+    lex: wasm_wave2a_lex(),
+    grammar: wasm_wave2a_grammar(),
+    language_identity: wasm_language_model_surface_id,
+    canonical_symbols: wasm_language_model_canonical_symbols_wave2a(),
+    core: wasm_model_core_wave1()
   }
 }
 

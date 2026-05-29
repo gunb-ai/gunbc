@@ -1,0 +1,83 @@
+// src/v4/test/claim/parse/wasm_wave2a_label_funcidx.dag
+// Scope: TestClaim rows for Wasm Wave 2a idx-kinds (labelidx + funcidx) via wasm_language_model_wave2a().
+// Status: T-22 runner deferred — execution pending T-22 complexity fix.
+
+module v4.test.claim.parse.wasm_wave2a_label_funcidx
+
+import v4.std.grammar { ParseTree }
+import v4.compiler.tokenize { tokenize }
+import v4.compiler.parse { parse }
+import v4.extdeps.languages.wasm {
+  wasm_wave2a_lex,
+  wasm_wave2a_grammar
+}
+import v4.std.diagnostic { Accepted, Outcome, Rejected }
+import v4.std.node { Atom, Node, Symbol, TypeNode }
+import v4.std.logic { Bool }
+import v4.std.text { String }
+import v4.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+
+data wasm_wave2a_idx_file: Symbol = wasm_wave2a_idx_file
+data wasm_wave2a_idx_bool_true: Symbol = wasm_wave2a_idx_bool_true
+data wasm_wave2a_idx_bool_false: Symbol = wasm_wave2a_idx_bool_false
+
+data wasm_wave2a_br_if_numeric_source: String = "br_if 0"
+data wasm_wave2a_call_named_source: String = "call $add"
+
+fn wasm_wave2a_idx_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: wasm_wave2a_idx_bool_true } }, children: [] }
+    false => Node { kind: TypeNode { connective: Atom { identity: wasm_wave2a_idx_bool_false } }, children: [] }
+  }
+}
+
+fn wasm_wave2a_idx_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn wasm_wave2a_idx_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
+  match tokenize(
+    text: text,
+    file: wasm_wave2a_idx_file,
+    rules: wasm_wave2a_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: wasm_wave2a_grammar())
+  }
+}
+
+data claim_wasm_wave2a_br_if_numeric_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts br_if with numeric labelidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_idx_bool_atom(
+    b: wasm_wave2a_idx_parse_accepted(
+      out: wasm_wave2a_idx_tokenize_and_parse_source(text: wasm_wave2a_br_if_numeric_source)
+    )
+  ),
+  rhs: wasm_wave2a_idx_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_wasm_wave2a_call_named_parses: TestClaim = EqualsClaim {
+  label: "Wasm Wave 2a accepts call with named funcidx",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: wasm_wave2a_idx_bool_atom(
+    b: wasm_wave2a_idx_parse_accepted(
+      out: wasm_wave2a_idx_tokenize_and_parse_source(text: wasm_wave2a_call_named_source)
+    )
+  ),
+  rhs: wasm_wave2a_idx_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
