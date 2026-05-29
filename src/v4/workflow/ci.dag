@@ -52,12 +52,14 @@ import v4.std.text { Char, String }
 import v4.std.diagnostic {Correction, Diagnostic, Extent, Locus, NoCorrectionReason, Outcome, Accepted, Rejected, None, diagnostics_singleton}
 import v4.std.integer { int_mul, int_div }
 import v4.std.algebra {
+  any,
   count_equal,
   count_where,
   filter,
   for_all,
   is_prefix_of,
   length,
+  non_empty,
   unique
 }
 import v4.std.verification {
@@ -701,14 +703,6 @@ fn ci_changed_path_affects_workflow_policy(changed: RepoPath) -> Bool {
 }
 
 
-fn ci_any_changed_path_matches(
-  changed_paths: List<RepoPath>,
-  predicate: fn(RepoPath) -> Bool
-) -> Bool {
-  count_where(xs: changed_paths, predicate: predicate) != 0
-}
-
-
 fn ci_component_affected_fail_closed() -> CiComponentAffected {
   CiComponentAffected {
     v2: true
@@ -721,20 +715,11 @@ fn ci_component_affected_fail_closed() -> CiComponentAffected {
 
 fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponentAffected {
   CiComponentAffected {
-    v2: ci_any_changed_path_matches(
-      changed_paths: git_diff.changed_paths,
-      predicate: ci_changed_path_affects_v2
-    ),
-    v3: ci_any_changed_path_matches(
-      changed_paths: git_diff.changed_paths,
-      predicate: ci_changed_path_affects_v3
-    ),
-    v4: ci_any_changed_path_matches(
-      changed_paths: git_diff.changed_paths,
-      predicate: ci_changed_path_affects_v4
-    ),
-    workflow_policy: ci_any_changed_path_matches(
-      changed_paths: git_diff.changed_paths,
+    v2: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v2),
+    v3: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v3),
+    v4: any(xs: git_diff.changed_paths, predicate: ci_changed_path_affects_v4),
+    workflow_policy: any(
+      xs: git_diff.changed_paths,
       predicate: ci_changed_path_affects_workflow_policy
     )
   }
@@ -758,18 +743,13 @@ fn ci_int_at_least_one(n: Int) -> Int {
 }
 
 
-fn ci_runner_pool_is_nonempty(pools: List<SelfHostedRunnerPool>) -> Bool {
-  length(xs: pools) != 0
-}
-
-
 fn ci_runner_pool_has_nonuniform_runner_counts(pools: List<SelfHostedRunnerPool>) -> Bool {
   ci_runner_pool_max_runner_count(pools: pools) != ci_runner_pool_min_runner_count(pools: pools)
 }
 
 
 fn ci_runner_pool_m1_probe_witness_holds(pools: List<SelfHostedRunnerPool>) -> Bool {
-  ci_runner_pool_is_nonempty(pools: pools)
+  non_empty(xs: pools)
     && ci_runner_pool_has_nonuniform_runner_counts(pools: pools)
 }
 
