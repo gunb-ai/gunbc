@@ -796,30 +796,27 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
 }
 
 
-fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts) -> Node {
-  match facts.scalar {
-    IntScalar { kind, width } => Node {
-      kind: TypeNode { connective: Conj },
-      children: [
-        lean_named_edge(
-          name: lean_witness_integer_commutative_ring,
-          target: lean_inhabitant_atom(id: lean_witness_integer_commutative_ring)
-        ),
-        lean_named_edge(
-          name: lean_witness_field_representation,
-          target: lean_inhabitant_atom(id: facts.representation)
-        ),
-        lean_named_edge(
-          name: lean_witness_field_signedness,
-          target: lean_int_kind_node(kind: kind)
-        ),
-        lean_named_edge(
-          name: lean_witness_field_width,
-          target: lean_int_width_node(width: width)
-        )
-      ]
-    }
-    BoolScalar => lean_bool_algebra_witness_node()
+fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      lean_named_edge(
+        name: lean_witness_integer_commutative_ring,
+        target: lean_inhabitant_atom(id: lean_witness_integer_commutative_ring)
+      ),
+      lean_named_edge(
+        name: lean_witness_field_representation,
+        target: lean_inhabitant_atom(id: facts.representation)
+      ),
+      lean_named_edge(
+        name: lean_witness_field_signedness,
+        target: lean_int_kind_node(kind: kind)
+      ),
+      lean_named_edge(
+        name: lean_witness_field_width,
+        target: lean_int_width_node(width: width)
+      )
+    ]
   }
 }
 
@@ -839,61 +836,34 @@ fn lean_bool_algebra_witness_node() -> Node {
   }
 }
 
-fn lean_integer_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabitanceDecl {
+fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = lean_primitive_facts_node(facts: facts)
-  // Both signed and unsigned Lean fixed-precision integers use modular arithmetic
-  // (two's-complement / unsigned mod 2^n). Unsigned types expose wrapping subtraction,
-  // so they have an additive inverse in the modular sense and form Z/2^n Z —
-  // CommutativeRing, not merely Semiring. Neither class is OrderedRing: wrapping
-  // breaks a ≤ b → a+c ≤ b+c. Anchor: Lean 4 reference §Fixed-Precision Integers.
-  AlgebraInhabitanceDecl {
-    algebra: commutative_ring_node(inhabitant: inhabitant),
-    inhabitant: inhabitant,
-    witness: lean_integer_algebra_witness_node(facts: facts)
-  }
-}
-
-fn lean_bool_algebra_inhabitance() -> AlgebraInhabitanceDecl {
-  let inhabitant = lean_primitive_facts_node(facts: lean_facts_bool)
-  AlgebraInhabitanceDecl {
-    algebra: boolean_algebra_node(inhabitant: inhabitant),
-    inhabitant: inhabitant,
-    witness: lean_bool_algebra_witness_node()
-  }
-}
-
-fn lean_integer_algebra_inhabitance_step(
-  acc: List<AlgebraInhabitanceDecl>,
-  facts: LeanPrimitiveFacts
-) -> List<AlgebraInhabitanceDecl> {
   match facts.scalar {
-    IntScalar { kind: _, width: _ } =>
-      list_snoc_item(
-        xs: acc,
-        item: lean_integer_algebra_inhabitance(facts: facts)
-      )
-    BoolScalar => acc
+    // Both signed and unsigned Lean fixed-precision integers use modular arithmetic
+    // (two's-complement / unsigned mod 2^n). Unsigned types expose wrapping subtraction,
+    // so they have an additive inverse in the modular sense and form Z/2^n Z —
+    // CommutativeRing, not merely Semiring. Neither class is OrderedRing: wrapping
+    // breaks a ≤ b → a+c ≤ b+c. Anchor: Lean 4 reference §Fixed-Precision Integers.
+    IntScalar { kind, width } => AlgebraInhabitanceDecl {
+      algebra: commutative_ring_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: lean_integer_algebra_witness_node(facts: facts, kind: kind, width: width)
+    }
+    BoolScalar => AlgebraInhabitanceDecl {
+      algebra: boolean_algebra_node(inhabitant: inhabitant),
+      inhabitant: inhabitant,
+      witness: lean_bool_algebra_witness_node()
+    }
   }
 }
 
-fn lean_integer_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
+fn lean_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   fold_list(
     xs: lean_primitive_facts_catalog,
     empty: Empty,
     cons: fn(acc, facts) {
-      lean_integer_algebra_inhabitance_step(acc: acc, facts: facts)
+      list_snoc_item(xs: acc, item: lean_scalar_algebra_inhabitance(facts: facts))
     }
-  )
-}
-
-fn lean_bool_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  [lean_bool_algebra_inhabitance()]
-}
-
-fn lean_model_core_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
-  list_append(
-    left: lean_integer_algebra_inhabitance_decls(),
-    right: lean_bool_algebra_inhabitance_decls()
   )
 }
 
