@@ -16,6 +16,7 @@ type ConfigPatchRecord<Config>
 // Per-field `apply_field_patch` fold over `Config`; expanded at call sites from the Config record shape.
 // Surface body is syntactic only — v3 lowerer expands calls (`try_lower_config_patch_layer_invocation`)
 // and rejects direct execution of the fn stub (`config_patch_layer_body_fallback_diagnostic`).
+// Call-site `base` / `patch` operands must be projectable carriers (Var or Path), not arbitrary expressions.
 fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {
   base
 }
