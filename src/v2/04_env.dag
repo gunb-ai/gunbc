@@ -1,9 +1,4 @@
 // v2 type environment -- structural type bindings and lookup.
-//
-// Defines the TypeEnv and TypeBinding types used throughout inference
-// and emit. Provides the core operations: lookup, merge, and cycle
-// membership checks.
-//
 module v2.compiler.infer_env
 
 import v2.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
@@ -64,8 +59,6 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
   authored_name_at(source_indices: env.source_indices, node: node)
 }
 
-// Node-based lookup accessors — encapsulate identity extraction so
-// resolve callers use node-based API, not string-based.
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.ident {
     Some { value: id } => lookup_type(env: env, ident: id)
@@ -100,7 +93,6 @@ fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: Str
   map_insert(fields, type_name, concat(existing, [InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }]))
 }
 
-// Cross-type variant: element_type differs from type_name (e.g., Node.inferred has element_type "InferredNode")
 fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Some { value: fs } => fs
@@ -123,8 +115,6 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
   )
 }
 
-// Convert a flat list of InductiveFields to the map format keyed by type_name.
-// Used to load compiler type declarations from std/node.dag.
 fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
   fields |> fold(init: empty_map(), f: (acc, field) =>
     let existing = match map_get(acc, field.type_name) {
@@ -141,9 +131,6 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
   let merged_source_indices = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.source_indices))
-  // All envs in a merge share the same intern_table (threaded from the
-  // frontend result), so we take the first one rather than re-interning
-  // every string, which would be O(N*M) per merge and dominate compile time.
   let merged_intern_table = match envs |> first {
     Some { value: first_env } => first_env.intern_table
     None => empty_intern_table()

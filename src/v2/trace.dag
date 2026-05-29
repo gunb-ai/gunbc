@@ -1,30 +1,11 @@
 // v2 trace model -- normalized execution traces, repro cases, source mapping.
-//
-// The compiler has no interpreter or executor. This module defines the
-// trace data contract that generated runtimes or host adapters can
-// populate, plus pure helpers for replay/filtering/remapping in .dag terms.
-//
-// Core model: immutable trace data + deterministic offline replay helpers.
-// Recording happens outside the compiler; this module keeps the normalized
-// schema and source-map machinery in one place.
-//
-// F1: Span preservation (SourceSpan threaded through emit + runtime adapters)
-// F2: Trace recording (TraceEvent/TraceFrame normalized from runtime events)
-// F3: Hermetic reproduction (capture function inputs → test case)
-// F4: Cross-language source mapping (generated code → .dag spans)
 
 module v2.compiler.trace
 
 import v2.std.core { SourceSpan }
-// Stack<T> uses generic functions which the stage0 parser doesn't yet support.
-// Use List<TraceFrame> as the trace stack until generic fn parsing lands.
 
 // =========================================================================
 // F1: Span mapping -- generated code line → source .dag span
-//
-// Emitters produce SpanMappings alongside generated code. Runtime adapters
-// can use these mappings to remap target-language failures and trace events
-// back to the originating .dag span.
 // =========================================================================
 
 type SpanMapping {
@@ -34,13 +15,6 @@ type SpanMapping {
 
 // =========================================================================
 // F2: Trace events -- normalized from emitted runtimes or host adapters
-//
-// TraceEvents form a structured log of execution. Enter/Exit pairs
-// bracket logical function or node activity. Error events capture failures
-// with full source context after remapping.
-//
-// The trace is accumulated as immutable data by the runtime or integration
-// layer. This module only defines the shared shape and pure transforms.
 // =========================================================================
 
 type TraceEvent
@@ -63,7 +37,6 @@ fn empty_trace() -> Trace {
   Trace { events: [], stack: [] }
 }
 
-// Append an event to a trace (returns new trace).
 fn trace_push_event(trace: Trace, event: TraceEvent) -> Trace {
   Trace { events: list_push(trace.events, event), stack: trace.stack }
 }
@@ -73,8 +46,6 @@ fn trace_push_frame(trace: Trace, frame: TraceFrame) -> Trace {
   Trace { events: trace.events, stack: list_push(trace.stack, frame) }
 }
 
-// Pop the top frame from the trace stack (function exit). O(n) with List.
-// Acceptable: trace stack is a data contract, not a hot path.
 fn trace_pop_frame(trace: Trace) -> Trace {
   let n = trace.stack |> count
   if n <= 1 {
@@ -88,7 +59,6 @@ fn trace_pop_frame(trace: Trace) -> Trace {
 // F2: Trace helpers -- extract fields from TraceEvent variants
 // =========================================================================
 
-// Extract the SourceSpan from any TraceEvent variant.
 fn event_span(event: TraceEvent) -> SourceSpan {
   match event {
     TraceEnter { node_id: _, span: s, inputs: _ } => s
@@ -97,7 +67,6 @@ fn event_span(event: TraceEvent) -> SourceSpan {
   }
 }
 
-// Extract the node_id from any TraceEvent variant.
 fn event_node_id(event: TraceEvent) -> String {
   match event {
     TraceEnter { node_id: id, span: _, inputs: _ } => id
@@ -108,13 +77,6 @@ fn event_node_id(event: TraceEvent) -> String {
 
 // =========================================================================
 // F2: Trace filtering and replay
-//
-// Because trace data is immutable, a recorded trace can be replayed and
-// filtered without mutating the original capture. Filtering reduces noise
-// for debugging and source-level inspection.
-//
-// FilterBySpan matches events whose span overlaps the given byte range.
-// SourceSpan uses byte offsets (start, end), not file/line.
 // =========================================================================
 
 type TraceFilter
@@ -122,7 +84,6 @@ type TraceFilter
   | FilterBySpan { start: Int, end: Int }
   | FilterErrors
 
-// Test whether an event's span overlaps the filter range [start, end).
 fn event_matches_span(event: TraceEvent, filter_start: Int, filter_end: Int) -> Bool {
   let sp = event_span(event: event)
   sp.start >= filter_start && sp.start < filter_end
@@ -144,20 +105,12 @@ fn replay_trace(trace: Trace, filter: TraceFilter) -> List<TraceEvent> {
 
 // =========================================================================
 // F2: Trace formatting
-//
-// Human-readable rendering of trace events. SourceSpan is byte-offset
-// based (start, end), so we format as "node_id at [start..end)".
 // =========================================================================
 
-// Format a span as a human-readable byte-range string.
 fn format_span(sp: SourceSpan) -> String {
   concat("[", to_string(sp.start), "..", to_string(sp.end), ")")
 }
 
-// Format a single TraceEvent as a human-readable string.
-//   TraceEnter  -> "> {node_id} at [start..end)"
-//   TraceExit   -> "< {node_id} at [start..end): {output}"
-//   TraceError  -> "! {node_id} at [start..end): {message}"
 fn format_trace_event(event: TraceEvent) -> String {
   match event {
     TraceEnter { node_id: id, span: sp, inputs: _ } =>
@@ -169,17 +122,12 @@ fn format_trace_event(event: TraceEvent) -> String {
   }
 }
 
-// Format an entire Trace as a list of human-readable strings, one per event.
 fn format_trace(trace: Trace) -> List<String> {
   trace.events |> map(e => format_trace_event(event: e))
 }
 
 // =========================================================================
 // F3: Hermetic reproduction
-//
-// At any function boundary, capture the inputs and observed trace to
-// produce a self-contained test case. Runtime-specific capture happens
-// outside the compiler; this module defines the normalized payload.
 // =========================================================================
 
 type ReproCase {
@@ -200,10 +148,6 @@ fn capture_repro(func_name: String, inputs: Map<String, String>, trace: Trace) -
 
 // =========================================================================
 // F4: Cross-language source mapping
-//
-// Source map alongside generated code. Maps positions in emitted target
-// language (Rust, Python, Go) back to .dag source spans. Used to
-// translate runtime errors (panics, tracebacks) into .dag terms.
 // =========================================================================
 
 type SourceMap {
@@ -211,11 +155,7 @@ type SourceMap {
   mappings: List<SpanMapping>
 }
 
-// Remap a target-language error location to the original .dag span.
-// Returns the .dag source span if a mapping exists, None otherwise.
 fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
-  // Find the closest mapping at or before the generated line.
-  // Mappings are ordered by generated_line.
   source_map.mappings
     |> filter(m => m.generated_line <= generated_line)
     |> last

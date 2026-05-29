@@ -36,8 +36,6 @@ fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// Builtin return-type seeds: `make_*` returns KernelTypeBuild (type + miss diags).
-// `builtin_kernel_seed_diagnostics` merges miss diags in `typecheck_module`.
 fn map_of_type_variables() -> Node {
   make_map_type(key: type_variable_node(id: "map_key"), value: type_variable_node(id: "map_value")).ty
 }
@@ -73,8 +71,6 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 }
 
 fn builtin_function_registry() -> Map<String, Node> {
-  // Int-returning functions (count is also an algebra method on collections;
-  // registered here as bridge so count(x) function syntax works alongside x |> count)
   let m = seed_node_map(key: "count", value: int_type)
   let m = map_insert(m, "string_length", int_type)
   let m = map_insert(m, "code_point", int_type)
@@ -83,16 +79,13 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "scan_string_end", int_type)
   let m = map_insert(m, "scan_to_eol", int_type)
   let m = map_insert(m, "skip_horizontal_ws", int_type)
-  // Int?-returning functions
   let m = map_insert(m, "parse_int", with_optional_cardinality(n: int_type))
-  // String-returning functions
   let m = map_insert(m, "char_at", string_type)
   let m = map_insert(m, "substring", string_type)
   let m = map_insert(m, "from_code_point", string_type)
   let m = map_insert(m, "chars_to_string", string_type)
   let m = map_insert(m, "to_string", string_type)
   let m = map_insert(m, "concat", string_type)
-  // Map-returning functions
   let m = map_insert(m, "map_insert", map_of_type_variables())
   let m = map_insert(m, "map_merge", map_of_type_variables())
   let m = map_insert(m, "with", map_of_type_variables())
@@ -100,16 +93,13 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "empty_set", set_ty)
   let m = map_insert(m, "set_insert", set_ty)
   let m = map_insert(m, "set_union", set_ty)
-  // Bool-returning functions
   let m = map_insert(m, "map_contains_key", bool_type)
   let m = map_insert(m, "map_has", bool_type)
   let m = map_insert(m, "emit_map_has", bool_type)
   let m = map_insert(m, "set_contains", bool_type)
-  // Optional-returning functions (type variable)
   let m = map_insert(m, "lookup", with_optional_cardinality(n: type_variable_node(id: "map_value")))
   let m = map_insert(m, "map_get", with_optional_cardinality(n: type_variable_node(id: "map_value")))
   let m = map_insert(m, "Some", with_optional_cardinality(n: type_variable_node(id: "some_inner")))
-  // List-returning functions (type variable element)
   let m = map_insert(m, "map_keys", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "map_values", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "reverse", list_of_type_variable(id: "collection_element"))
