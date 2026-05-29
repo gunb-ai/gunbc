@@ -22,7 +22,6 @@ import v4.std.node { Symbol }
 import v4.std.platform { Linux, Macos, OperatingSystem, Windows }
 import v4.std.target_triple {
   TargetTriple,
-  tier1_linux_x86_64_gnu,
   tier1_macos_aarch64,
   tier1_macos_x86_64,
   tier1_windows_x86_64_msvc,
@@ -210,7 +209,7 @@ data install_target_aarch64_windows_msvc: InstallTarget = InstallTarget {
 // RELEASE_TODO.md §5 Phase 1. Windows targets are modeled (per operator "all common platforms
 // from day 1") and ship via the same channel as Phase 1.5 / Phase 2; downstream channel
 // projections filter by readiness gate.
-data release_phase1_published_targets: List<InstallTarget> = [
+data release_published_targets: List<InstallTarget> = [
   install_target_x86_64_linux_musl,
   install_target_aarch64_linux_musl,
   install_target_x86_64_macos,
@@ -232,7 +231,7 @@ data github_release_tarball_channel: InstallChannel = GitHubReleaseTarball {
   release_tag_authority: gunbc_release_tag_v0_1_0,
   install_script_posix_name: "install.sh",
   install_script_powershell_name: "install.ps1",
-  targets: release_phase1_published_targets
+  targets: release_published_targets
 }
 
 data homebrew_formula_channel: InstallChannel = HomebrewFormula {

@@ -13,7 +13,7 @@ module v4.extdeps.platform_detection
 
 
 import v4.std.collection { List }
-import v4.std.platform { Aarch64, Architecture, Linux, Macos, OperatingSystem, Windows, X86, X86_64 }
+import v4.std.platform { Aarch64, Architecture, Linux, Macos, OperatingSystem, X86, X86_64 }
 import v4.std.text { String }
 
 
