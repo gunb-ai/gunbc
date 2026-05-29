@@ -10,15 +10,19 @@ module v4.extdeps.formats.openapi
 
 import v4.extdeps.coordination {
   BindRef,
+  ConsistencyGuarantee,
+  ConvergeBound,
   CoordinationBind,
   EndpointRef,
   ExchangePattern,
   Http,
-  ImmediateSettlement,
-  NoReplicaConvergence,
+  SettlementGuarantee,
+  SettleBound,
   WireContract,
   WireContractFacts,
-  coordination_effect_obligation
+  coordination_effect_obligation,
+  wire_contract_consistency_from_obligation,
+  wire_contract_settlement_from_obligation
 }
 import v4.extdeps.formats.json { JsonDocument, JsonValue }
 import v4.extdeps.formats.json_schema { JsonSchema }

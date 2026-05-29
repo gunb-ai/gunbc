@@ -116,6 +116,24 @@ fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
   ]
 }
 
+fn wire_contract_settlement_from_obligation(
+  settlement: SettlementGuarantee<RequiredSettleBound>
+) -> SettlementGuarantee<SettleBound> {
+  match settlement {
+    ImmediateSettlement => ImmediateSettlement
+    SettlesWithin { bound: _ } => SettlesWithin { bound: SettleBound { steps: 0 } }
+  }
+}
+
+fn wire_contract_consistency_from_obligation(
+  consistency: ConsistencyGuarantee<RequiredConvergeBound>
+) -> ConsistencyGuarantee<ConvergeBound> {
+  match consistency {
+    NoReplicaConvergence => NoReplicaConvergence
+    EventuallyConsistent { bound: _ } => EventuallyConsistent { bound: ConvergeBound { steps: 0 } }
+  }
+}
+
 // coincides: src/v4/std/node.dag A1/K-1, operator-ratified 2026-05-15.
 type BindRef {
   identity: Symbol
