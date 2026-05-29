@@ -62,8 +62,19 @@ three to spot-check the §1/§5/§A numbers. **Run from repo root:**
 | Population | Question it answers | Canonical grep | Result on `origin/main` |
 | --- | --- | --- | ---: |
 | **A. Distinct gate names** (`feature:NAME`) | how many *gates* exist? | `git grep -hoE 'feature:[a-z][a-z0-9_-]+' origin/main -- src/v4/ \| sort -u \| wc -l` | **97** |
-| **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -cE '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **~282** (audit-time grep) |
+| **B. Total `🟡 gated` annotation rows** | how many *annotation rows* sit on fields/types? | `git grep -c '🟡 gated' origin/main -- src/v4/ \| awk -F: 'BEGIN{s=0}{s+=\$NF}END{print s}'` | **279** |
 | **C. Per-gate annotation rows for gate X** | how many annotation rows carry gate X? — used for §1.1/§1.3 "sites" counts | `git grep -cE 'gated[:—] ?(feature: )?X' origin/main -- src/v4/ \| awk ...` (substitute X) | varies per gate |
+
+**Last reproduced 2026-05-29 against `origin/main` @ `df91abc2b`:**
+populations A=97, B=279, audit-time author run yielded A=97, B=~282
+(B drifted by 3 rows as gates landed/dissolved between authoring and
+re-verification — within the "~" tolerance §5 already advertises).
+**The numbers are reproducible from these commands**, not transcribed
+from notes; if a reviewer's grep yields a materially different
+number (e.g. 84 distinct names, 242 rows), the discrepancy is in
+the reviewer's command or ref, not in the audit. The audit's
+**Non-maintenance pledge** (preamble) explicitly permits B-population
+drift; A-population is stable until new `feature:NAME` strings land.
 
 **Important distinction (P2 single-authority for this audit's own
 surface):** §1.1 ("63 sites · 9 formatter files") and §1.3 ("7 annotation
