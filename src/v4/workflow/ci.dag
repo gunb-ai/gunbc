@@ -43,7 +43,9 @@ import v4.std.node {
   TypeNode,
   combine_hash,
   content_hash,
-  byte_offset_cache_digest
+  ByteOffsetCacheEligible,
+  ByteOffsetCacheIneligible,
+  byte_offset_cache_key
 }
 import v4.std.algebra { fold_list }
 import v4.std.collection { List }
@@ -62,7 +64,15 @@ import v4.std.verification {
   test_claim_ci_selection_fail_closed,
   test_claim_evaluation_touches_rerun_frontier
 }
-import v4.workflow.bootstrap { v4_stage0_binary, bootstrap_plan, bootstrap_stage_output }
+import v4.workflow.bootstrap {
+  BootstrapHashPin,
+  BootstrapPlan,
+  CompileStage,
+  FixptStage1Stage2,
+  bootstrap_plan,
+  bootstrap_stage_output,
+  v4_stage0_binary
+}
 
 
 // 🟡 coproduct dissolution — LB-P4-3213
@@ -347,6 +357,9 @@ data ci_cache_lens_unused_params_tag: Symbol = ci_cache_lens_unused_params_tag
 data ci_cache_lens_structural_resolution_tag: Symbol = ci_cache_lens_structural_resolution_tag
 data ci_cache_lens_table_decision_tree_tag: Symbol = ci_cache_lens_table_decision_tree_tag
 data ci_cache_string_empty_tag: Symbol = ci_cache_string_empty_tag
+data ci_cache_char_byte_offset_ineligible_tag: Symbol = ci_cache_char_byte_offset_ineligible_tag
+data ci_cache_bootstrap_consumes_empty_tag: Symbol = ci_cache_bootstrap_consumes_empty_tag
+data ci_cache_bootstrap_plan_rejected_tag: Symbol = ci_cache_bootstrap_plan_rejected_tag
 
 
 fn ci_symbol_digest(sym: Symbol) -> Hash {
@@ -373,7 +386,20 @@ fn ci_gate_run_policy_cache_digest(policy: CiGateRunPolicy) -> Hash {
 
 // v4.std.text Char = Nat (scalar); use O(log |c|) base-256 digest, not Peano scalar_int_hash.
 fn ci_char_cache_digest(c: Char) -> Hash {
-  byte_offset_cache_digest(i: c)
+  match byte_offset_cache_key(i: c) {
+    ByteOffsetCacheEligible { digest: digest } => digest
+    ByteOffsetCacheIneligible {
+      boundary_tag: boundary_tag,
+      witness: witness
+    } =>
+      combine_hash(
+        a: ci_symbol_digest(sym: ci_cache_char_byte_offset_ineligible_tag),
+        b: combine_hash(
+          a: ci_symbol_digest(sym: boundary_tag),
+          b: witness
+        )
+      )
+  }
 }
 
 
@@ -404,6 +430,77 @@ fn ci_lens_id_cache_digest(lens: LensIdV0) -> Hash {
 }
 
 
+fn ci_symbol_list_cache_digest(xs: List<Symbol>) -> Hash {
+  fold_list(
+    xs: xs,
+    empty: ci_symbol_digest(sym: ci_cache_bootstrap_consumes_empty_tag),
+    cons: fn(acc, sym) {
+      combine_hash(a: acc, b: ci_symbol_digest(sym: sym))
+    }
+  )
+}
+
+
+fn ci_bootstrap_hash_pin_cache_digest(pin: BootstrapHashPin) -> Hash {
+  combine_hash(
+    a: ci_symbol_digest(sym: pin.pin),
+    b: pin.digest
+  )
+}
+
+
+fn ci_compile_stage_cache_digest(stage: CompileStage) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: ci_symbol_digest(sym: stage.produces),
+      b: ci_symbol_digest(sym: stage.compiled_by)
+    ),
+    b: combine_hash(
+      a: ci_bootstrap_hash_pin_cache_digest(pin: stage.produces_hash),
+      b: ci_symbol_list_cache_digest(xs: stage.consumes)
+    )
+  )
+}
+
+
+fn ci_fixpt_stage_cache_digest(fixpt: FixptStage1Stage2) -> Hash {
+  combine_hash(
+    a: combine_hash(
+      a: ci_symbol_digest(sym: fixpt.left),
+      b: ci_symbol_digest(sym: fixpt.right)
+    ),
+    b: combine_hash(
+      a: combine_hash(
+        a: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.left_hash),
+        b: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.right_hash)
+      ),
+      b: ci_bootstrap_hash_pin_cache_digest(pin: fixpt.pinned_hash)
+    )
+  )
+}
+
+
+// IRT-4: bootstrap_plan is the authority ci_command_authority_ok uses for BootstrapStageCompile.
+// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 / TASKS.md T-22 — consumer:ci_command_cache_digest BootstrapStageCompile — dissolve-on: content_hash(Node projection of BootstrapPlan) replaces ci_bootstrap_plan_cache_digest manual field mirror below.
+fn ci_bootstrap_plan_cache_digest() -> Hash {
+  match bootstrap_plan {
+    Accepted { value: plan, diagnostics: _ } =>
+      combine_hash(
+        a: combine_hash(
+          a: ci_compile_stage_cache_digest(stage: plan.seed),
+          b: ci_compile_stage_cache_digest(stage: plan.self0)
+        ),
+        b: combine_hash(
+          a: ci_compile_stage_cache_digest(stage: plan.self1),
+          b: ci_fixpt_stage_cache_digest(fixpt: plan.fixpt)
+        )
+      )
+    Rejected { diagnostics: _ } =>
+      ci_symbol_digest(sym: ci_cache_bootstrap_plan_rejected_tag)
+  }
+}
+
+
 fn ci_command_cache_digest(c: CiCommand) -> Hash {
   match c {
     LintCommand => ci_symbol_digest(sym: ci_cache_cmd_lint_tag)
@@ -423,8 +520,11 @@ fn ci_command_cache_digest(c: CiCommand) -> Hash {
       )
     BootstrapStageCompile { produces: produces } =>
       combine_hash(
-        a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
-        b: ci_symbol_digest(sym: produces)
+        a: combine_hash(
+          a: ci_symbol_digest(sym: ci_cache_cmd_bootstrap_compile_tag),
+          b: ci_symbol_digest(sym: produces)
+        ),
+        b: ci_bootstrap_plan_cache_digest()
       )
     M1RustEmitProbeCommand => ci_symbol_digest(sym: ci_cache_cmd_m1_probe_tag)
     TestClaimCorpusEvalCommand { selection_fn: fn_name } =>
