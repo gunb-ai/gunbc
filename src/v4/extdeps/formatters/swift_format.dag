@@ -8,17 +8,17 @@ module v4.extdeps.formatters.swift_format
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  authoritative_exact_one_int_1,
-  authoritative_non_negative_int_1,
-  authoritative_non_negative_int_2,
-  authoritative_positive_int_100,
-  authoritative_positive_int_2,
-  authoritative_positive_int_8,
+  discharge_exact_one_int_catalog_row,
+  discharge_non_negative_int_catalog_row,
+  discharge_positive_int_catalog_row,
 }
 import v4.std.refinement {
-  PositiveInt,
-  NonNegativeInt,
   ExactOneInt,
+  NonNegativeInt,
+  PositiveInt,
+  exact_one_int_authoritative_literal,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal,
 }
 
 
@@ -94,12 +94,12 @@ type SwiftFormatConfig {
 
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
-  version: authoritative_exact_one_int_1,
-  line_length: authoritative_positive_int_100,
-  indentation: SwiftFormatSpaces { count: authoritative_positive_int_2 },
-  tab_width: authoritative_positive_int_8,
-  maximum_blank_lines: authoritative_non_negative_int_1,
-  spaces_before_end_of_line_comments: authoritative_non_negative_int_2,
+  version: discharge_exact_one_int_catalog_row(receipt: exact_one_int_authoritative_literal(value: 1)),
+  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100)),
+  indentation: SwiftFormatSpaces { count: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2)) },
+  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 8)),
+  maximum_blank_lines: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1)),
+  spaces_before_end_of_line_comments: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 2)),
   respects_existing_line_breaks: true,
   line_break_before_control_flow_keywords: false,
   line_break_before_each_argument: false,

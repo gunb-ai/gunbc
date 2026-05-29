@@ -8,21 +8,14 @@ module v4.extdeps.formatters.rustfmt
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  authoritative_non_negative_int_0,
-  authoritative_non_negative_int_1,
-  authoritative_non_negative_int_18,
-  authoritative_non_negative_int_35,
-  authoritative_non_negative_int_50,
-  authoritative_non_negative_int_80,
-  authoritative_positive_int_10,
-  authoritative_positive_int_100,
-  authoritative_positive_int_4,
-  authoritative_positive_int_60,
-  authoritative_positive_int_70,
+  discharge_non_negative_int_catalog_row,
+  discharge_positive_int_catalog_row,
 }
 import v4.std.refinement {
-  PositiveInt,
   NonNegativeInt,
+  PositiveInt,
+  non_negative_int_authoritative_literal,
+  positive_int_authoritative_literal,
 }
 
 
@@ -256,20 +249,20 @@ type RustfmtConfig {
 // Official rustfmt 1.6 defaults. edition field defaults to 2015 per rustfmt spec regardless of project edition.
 data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   indent_style: RustfmtIndentBlock,
-  tab_spaces: authoritative_positive_int_4,
+  tab_spaces: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 4)),
   hard_tabs: false,
 
-  max_width: authoritative_positive_int_100,
-  comment_width: authoritative_non_negative_int_80,
-  chain_width: authoritative_positive_int_60,
-  single_line_if_else_max_width: authoritative_non_negative_int_50,
-  single_line_let_else_max_width: authoritative_non_negative_int_50,
-  fn_call_width: authoritative_positive_int_60,
-  attr_fn_like_width: authoritative_positive_int_70,
-  struct_lit_width: authoritative_non_negative_int_18,
-  struct_variant_width: authoritative_non_negative_int_35,
-  array_width: authoritative_positive_int_60,
-  short_array_element_width_threshold: authoritative_positive_int_10,
+  max_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100)),
+  comment_width: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 80)),
+  chain_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 60)),
+  single_line_if_else_max_width: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 50)),
+  single_line_let_else_max_width: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 50)),
+  fn_call_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 60)),
+  attr_fn_like_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 70)),
+  struct_lit_width: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 18)),
+  struct_variant_width: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 35)),
+  array_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 60)),
+  short_array_element_width_threshold: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 10)),
 
   brace_style: RustfmtBraceSameLineWhere,
   control_brace_style: RustfmtControlBraceAlwaysSameLine,
@@ -291,21 +284,21 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   fn_params_layout: RustfmtFnParamsTall,
   fn_args_layout: RustfmtFnParamsTall,
   fn_single_line: false,
-  inline_attribute_width: authoritative_non_negative_int_0,
+  inline_attribute_width: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 0)),
 
   reorder_modules: true,
   reorder_impl_items: false,
 
   newline_style: RustfmtNewlineAuto,
-  blank_lines_upper_bound: authoritative_non_negative_int_1,
-  blank_lines_lower_bound: authoritative_non_negative_int_0,
+  blank_lines_upper_bound: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 1)),
+  blank_lines_lower_bound: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 0)),
 
   wrap_comments: false,
   normalize_comments: false,
   normalize_doc_attributes: false,
   format_strings: false,
   format_code_in_doc_comments: false,
-  doc_comment_code_block_width: authoritative_positive_int_100,
+  doc_comment_code_block_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 100)),
   format_generated_files: true,
   hide_parse_errors: false,
 
@@ -324,8 +317,8 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   remove_nested_parens: true,
   combine_control_expr: true,
   hex_literal_case: RustfmtHexPreserve,
-  enum_discrim_align_threshold: authoritative_non_negative_int_0,
-  struct_field_align_threshold: authoritative_non_negative_int_0,
+  enum_discrim_align_threshold: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 0)),
+  struct_field_align_threshold: discharge_non_negative_int_catalog_row(receipt: non_negative_int_authoritative_literal(value: 0)),
   spaces_around_ranges: false,
   space_after_colon: true,
   space_before_colon: false,

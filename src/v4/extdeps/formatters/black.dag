@@ -8,10 +8,11 @@ module v4.extdeps.formatters.black
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  authoritative_positive_int_88,
+  discharge_positive_int_catalog_row,
 }
 import v4.std.refinement {
   PositiveInt,
+  positive_int_authoritative_literal,
 }
 
 
@@ -79,7 +80,7 @@ type BlackConfig {
 
 
 data black_defaults: BlackConfig = BlackConfig {
-  line_length: authoritative_positive_int_88,
+  line_length: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 88)),
   target_version: BlackTargetVersionAbsent,
   required_version: BlackRequiredVersionAbsent,
   pyi: false,

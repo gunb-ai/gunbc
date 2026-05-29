@@ -9,11 +9,11 @@ module v4.extdeps.formatters.prettier
 import v4.std.collection { List }
 import v4.std.patch { FieldPatch, apply_field_patch }
 import v4.std.refinement_authoritative_literals {
-  authoritative_positive_int_2,
-  authoritative_positive_int_80,
+  discharge_positive_int_catalog_row,
 }
 import v4.std.refinement {
   PositiveInt,
+  positive_int_authoritative_literal,
 }
 
 
@@ -177,8 +177,8 @@ type PrettierConfig {
 
 
 data prettier_default_formatting: PrettierFormattingOptions = PrettierFormattingOptions {
-  print_width: authoritative_positive_int_80,
-  tab_width: authoritative_positive_int_2,
+  print_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 80)),
+  tab_width: discharge_positive_int_catalog_row(receipt: positive_int_authoritative_literal(value: 2)),
   use_tabs: false,
   semi: true,
   single_quote: false,
