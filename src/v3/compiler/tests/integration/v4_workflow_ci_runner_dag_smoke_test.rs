@@ -752,7 +752,9 @@ fn v4_workflow_ci_bankruptcy_tier0_modeled_and_legacy_jobs_deleted() {
         "{CI_DAG_PATH}: needs closure must be bounded (P4) — not unbounded recursion on unresolved needs"
     );
     assert!(
-        CI_DAG.contains("ci_symbol_resolves(s: n, jobs: jobs) && !ci_member(s: n, ids: selected_ids)"),
+        CI_DAG.contains(
+            "ci_symbol_resolves(s: n, jobs: jobs) && !ci_member(s: n, ids: selected_ids)"
+        ),
         "{CI_DAG_PATH}: needs closure must ignore unresolved need symbols"
     );
 }
