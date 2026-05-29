@@ -11,8 +11,11 @@ pub const FABRICATION_SENTINEL: &str = concat!("__BUG", "_NO_PROFILE_");
 
 /// Fail if `FABRICATION_SENTINEL` appears in any tracked `*.rs` / `*.dag` outside `docs/`.
 pub fn check_fabrication_sentinels(repo_root: &Path) -> Result<(), Vec<String>> {
+    let paths = git_ls_files(repo_root, &["*.rs", "*.dag"]).map_err(|e| {
+        vec![format!("git ls-files: {e}")]
+    })?;
     let mut violations = Vec::new();
-    for path in git_ls_files(repo_root, &["*.rs", "*.dag"])? {
+    for path in paths {
         if path.starts_with("docs/") {
             continue;
         }
