@@ -18,6 +18,7 @@ import v4.std.diagnostic {
   Unavailable,
   UserInputBoundary,
   diagnostics_singleton,
+  outcome_rejected,
   port_locus
 }
 import v4.std.node { Symbol }
@@ -258,107 +259,206 @@ fn exact_one_int_authoritative_literal(value: Int) -> Outcome<ExactOneInt> {
 }
 
 
-// Witnessed catalog discharge: extract carrier on Accepted. Rejected arm is substrate-
-// authoring exhaustiveness sink (no discharge↔reject mutual recursion — P4); witnessed
-// unreachable per row in refinement_formatter_literals_accept.dag (T-25-tail prover bind).
-// Outcome boundary preserved on *_authoritative_literal.
+// Catalog discharge preserves Outcome end-to-end (fail-closed; no carrier fabrication on Rejected).
 fn discharge_positive_int_authoritative_catalog_literal(
   receipt: Outcome<PositiveInt>,
-) -> PositiveInt {
+) -> Outcome<PositiveInt> {
   match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      positive_int_authoritative_catalog_substrate_fault_terminal()
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
 
-fn positive_int_authoritative_catalog_substrate_fault_terminal() -> PositiveInt {
-  match make_positive_int_at_authoritative(value: 1) {
+// Witnessed catalog projection for formatter defaults. Rejected diverts to non-returning
+// substrate fault (re-propagates diagnostics; no sentinel carriers — P3).
+fn positive_int_from_authoritative_catalog(receipt: Outcome<PositiveInt>) -> PositiveInt {
+  match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      positive_int_authoritative_catalog_substrate_fault_terminal()
+    Rejected { diagnostics: diagnostics } =>
+      positive_int_authoritative_catalog_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn positive_int_authoritative_catalog_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> PositiveInt {
+  match positive_int_authoritative_catalog_substrate_fault_outcome(diagnostics: diagnostics) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: rejected } =>
+      positive_int_authoritative_catalog_substrate_fault(diagnostics: rejected)
+  }
+}
+
+
+fn positive_int_authoritative_catalog_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<PositiveInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_non_negative_int_authoritative_catalog_literal(
   receipt: Outcome<NonNegativeInt>,
-) -> NonNegativeInt {
+) -> Outcome<NonNegativeInt> {
   match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      non_negative_int_authoritative_catalog_substrate_fault_terminal()
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
 
-fn non_negative_int_authoritative_catalog_substrate_fault_terminal() -> NonNegativeInt {
-  match make_non_negative_int_at_authoritative(value: 0) {
+fn non_negative_int_from_authoritative_catalog(
+  receipt: Outcome<NonNegativeInt>,
+) -> NonNegativeInt {
+  match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      non_negative_int_authoritative_catalog_substrate_fault_terminal()
+    Rejected { diagnostics: diagnostics } =>
+      non_negative_int_authoritative_catalog_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn non_negative_int_authoritative_catalog_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> NonNegativeInt {
+  match non_negative_int_authoritative_catalog_substrate_fault_outcome(diagnostics: diagnostics) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: rejected } =>
+      non_negative_int_authoritative_catalog_substrate_fault(diagnostics: rejected)
+  }
+}
+
+
+fn non_negative_int_authoritative_catalog_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<NonNegativeInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_at_least_minus_one_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusOneInt>,
-) -> AtLeastMinusOneInt {
+) -> Outcome<AtLeastMinusOneInt> {
   match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      at_least_minus_one_int_authoritative_catalog_substrate_fault_terminal()
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
 
-fn at_least_minus_one_int_authoritative_catalog_substrate_fault_terminal() -> AtLeastMinusOneInt {
-  match make_at_least_minus_one_int_at_authoritative(value: -1) {
+fn at_least_minus_one_int_from_authoritative_catalog(
+  receipt: Outcome<AtLeastMinusOneInt>,
+) -> AtLeastMinusOneInt {
+  match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      at_least_minus_one_int_authoritative_catalog_substrate_fault_terminal()
+    Rejected { diagnostics: diagnostics } =>
+      at_least_minus_one_int_authoritative_catalog_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn at_least_minus_one_int_authoritative_catalog_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> AtLeastMinusOneInt {
+  match at_least_minus_one_int_authoritative_catalog_substrate_fault_outcome(
+    diagnostics: diagnostics
+  ) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: rejected } =>
+      at_least_minus_one_int_authoritative_catalog_substrate_fault(diagnostics: rejected)
+  }
+}
+
+
+fn at_least_minus_one_int_authoritative_catalog_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<AtLeastMinusOneInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_at_least_minus_two_int_authoritative_catalog_literal(
   receipt: Outcome<AtLeastMinusTwoInt>,
-) -> AtLeastMinusTwoInt {
+) -> Outcome<AtLeastMinusTwoInt> {
   match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      at_least_minus_two_int_authoritative_catalog_substrate_fault_terminal()
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
 
-fn at_least_minus_two_int_authoritative_catalog_substrate_fault_terminal() -> AtLeastMinusTwoInt {
-  match make_at_least_minus_two_int_at_authoritative(value: -2) {
+fn at_least_minus_two_int_from_authoritative_catalog(
+  receipt: Outcome<AtLeastMinusTwoInt>,
+) -> AtLeastMinusTwoInt {
+  match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      at_least_minus_two_int_authoritative_catalog_substrate_fault_terminal()
+    Rejected { diagnostics: diagnostics } =>
+      at_least_minus_two_int_authoritative_catalog_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn at_least_minus_two_int_authoritative_catalog_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> AtLeastMinusTwoInt {
+  match at_least_minus_two_int_authoritative_catalog_substrate_fault_outcome(
+    diagnostics: diagnostics
+  ) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: rejected } =>
+      at_least_minus_two_int_authoritative_catalog_substrate_fault(diagnostics: rejected)
+  }
+}
+
+
+fn at_least_minus_two_int_authoritative_catalog_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<AtLeastMinusTwoInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
 fn discharge_exact_one_int_authoritative_catalog_literal(
   receipt: Outcome<ExactOneInt>,
-) -> ExactOneInt {
+) -> Outcome<ExactOneInt> {
   match receipt {
-    Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      exact_one_int_authoritative_catalog_substrate_fault_terminal()
+    Accepted { value: carrier, diagnostics: diagnostics } =>
+      Accepted { value: carrier, diagnostics: diagnostics }
+    Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
   }
 }
 
 
-fn exact_one_int_authoritative_catalog_substrate_fault_terminal() -> ExactOneInt {
-  match make_exact_one_int_at_authoritative(value: 1) {
+fn exact_one_int_from_authoritative_catalog(receipt: Outcome<ExactOneInt>) -> ExactOneInt {
+  match receipt {
     Accepted { value: carrier, diagnostics: _ } => carrier
-    Rejected { diagnostics: _ } =>
-      exact_one_int_authoritative_catalog_substrate_fault_terminal()
+    Rejected { diagnostics: diagnostics } =>
+      exact_one_int_authoritative_catalog_substrate_fault(diagnostics: diagnostics)
   }
+}
+
+
+fn exact_one_int_authoritative_catalog_substrate_fault(
+  diagnostics: NonEmptyDiagnostics,
+) -> ExactOneInt {
+  match exact_one_int_authoritative_catalog_substrate_fault_outcome(diagnostics: diagnostics) {
+    Accepted { value: carrier, diagnostics: _ } => carrier
+    Rejected { diagnostics: rejected } =>
+      exact_one_int_authoritative_catalog_substrate_fault(diagnostics: rejected)
+  }
+}
+
+
+fn exact_one_int_authoritative_catalog_substrate_fault_outcome(
+  diagnostics: NonEmptyDiagnostics,
+) -> Outcome<ExactOneInt> {
+  Rejected { diagnostics: diagnostics }
 }
 
 
