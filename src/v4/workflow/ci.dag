@@ -731,7 +731,7 @@ fn ci_component_affected_from_git_diff(git_diff: GitDiffNameOnly) -> CiComponent
 fn ci_component_affected_from_git_diff_read(outcome: CiGitDiffReadOutcome) -> CiComponentAffected {
   match outcome {
     ReadOk { git_diff } => ci_component_affected_from_git_diff(git_diff: git_diff)
-    ReadFailClosed { .. } => ci_component_affected_fail_closed()
+    ReadFailClosed { diagnostic: _ } => ci_component_affected_fail_closed()
   }
 }
 
