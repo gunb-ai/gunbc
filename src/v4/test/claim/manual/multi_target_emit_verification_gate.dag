@@ -14,18 +14,19 @@ import v4.std.node { Symbol, atom_node }
 import v4.std.verification {
   CompilesClaim,
   EqualsClaim,
-  ManualClaimAnchor,
   ManualAnchorAbsent,
+  ManualAnchorKey,
   TestClaim,
   TestClassification,
   TestgenLayer,
   TestgenTier,
+  manual_claim_anchor,
   test_claim_input
 }
 
 data emit_verification_gate_symbol: Symbol = emit_verification_gate_symbol
 
-data emit_verification_gate_anchor: ManualClaimAnchor = ManualAnchorAbsent
+data emit_verification_gate_anchor: ManualAnchorKey = ManualAnchorAbsent
 
 data emit_verification_gate_classification: TestClassification = {
   tier: Tier1
@@ -37,7 +38,7 @@ data emit_verification_gate_classification: TestClassification = {
 // until T-38 closes the structural bridge for manual claims.
 data claim_emit_verification_gate_obligation_modeled: TestClaim = CompilesClaim {
   label: "multi-target emit verification gate obligation is modeled (v3 harness is authority until T-38)"
-  anchor: ManualClaimAnchor { manual_anchor: emit_verification_gate_anchor }
+  anchor: manual_claim_anchor(anchor: emit_verification_gate_anchor)
   input: atom_node(s: emit_verification_gate_symbol)
   expected_value: atom_node(s: emit_verification_gate_symbol)
   classification: emit_verification_gate_classification
@@ -45,7 +46,7 @@ data claim_emit_verification_gate_obligation_modeled: TestClaim = CompilesClaim 
 
 data claim_emit_verification_gate_input_is_claim_subject: TestClaim = EqualsClaim {
   label: "emit verification gate claim subject is test_claim_input"
-  anchor: ManualClaimAnchor { manual_anchor: emit_verification_gate_anchor }
+  anchor: manual_claim_anchor(anchor: emit_verification_gate_anchor)
   lhs: test_claim_input(c: claim_emit_verification_gate_obligation_modeled)
   rhs: atom_node(s: emit_verification_gate_symbol)
   classification: emit_verification_gate_classification
