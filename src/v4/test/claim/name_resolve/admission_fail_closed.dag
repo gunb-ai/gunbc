@@ -54,6 +54,7 @@ data fc_subject_seg: Symbol = fc_subject_seg
 data fc_export_sym: Symbol = fc_export_sym
 data fc_export_a_sym: Symbol = fc_export_a_sym
 data fc_export_b_sym: Symbol = fc_export_b_sym
+data fc_fake_sym: Symbol = fc_fake_sym
 data fc_malformed_seg: Symbol = fc_malformed_seg
 data fc_malformed_child_sym: Symbol = fc_malformed_child_sym
 data fc_pass_sym: Symbol = fc_pass_sym
