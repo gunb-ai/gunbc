@@ -122,6 +122,11 @@ if [[ -e "$EXPORT_DIR" ]]; then
   fi
 fi
 
+# Also drop any leftover snapshot-<sha> branch from a prior dry run on the
+# same HEAD — the branch outlives the worktree, and the orphan checkout
+# below would refuse to recreate it. Safe: snapshot branches are throwaway.
+git branch -D "$SNAPSHOT_BRANCH" >/dev/null 2>&1 || true
+
 # Build the snapshot in an isolated worktree based on HEAD.
 git worktree add --detach "$EXPORT_DIR" "$SNAPSHOT_REF"
 
