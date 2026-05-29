@@ -147,7 +147,6 @@ type TestConventions {
   async_decorator: String?
 }
 
-// -- Import derivation types -----------------------------------------------
 
 type ImportTrigger
   = TypeUsageTrigger { type_name: String }
@@ -162,25 +161,21 @@ type ImportRule {
 }
 
 type SharingStrategy {
-  needs_sharing: Bool         // Rust: true (ownership), Python/Go: false (GC)
+  needs_sharing: Bool // Rust: true (ownership), Python/Go: false (GC)
   wrap_template: String
   // Clone templates: {0}=value, {1}=field (for field_clone).
   // In GC'd languages these are identity — no ownership transfer needed.
-  clone_value: String       // owned copy of a value: Rust "{0}.clone()", Python/Go "{0}"
-  deref_clone: String       // owned copy through shared pointer: Rust "(*{0}).clone()"
-  field_clone: String       // owned copy of a field: Rust "{0}.{1}.clone()", Python/Go "{0}.{1}"
-  iter_owned: String        // owned iterator from shared collection: Rust "{0}.iter().cloned()"
-  clone_suffix: String      // appended for owned element access: Rust ".cloned()", Python/Go ""
+  clone_value: String
+  deref_clone: String
+  field_clone: String
+  iter_owned: String
+  clone_suffix: String
   // Borrow templates: {0}=type (param) or {0}=expr (arg).
   // Rust: "&{0}" wraps both types and expressions. GC languages: identity (no borrows needed).
-  borrow_param_template: String  // wraps param type: Rust "&Rc<T>", Go/Python identity
-  borrow_arg_template: String    // wraps call-site arg: Rust "&x", Go/Python identity
+  borrow_param_template: String // wraps param type: Rust "&Rc<T>", Go/Python identity
+  borrow_arg_template: String
 }
 
-// -- Indexing semantics: per-collection-type rendering templates ------------
-// Templates use {0}=base, {1}=index/start, {2}=end (slices).
-// Applied via apply_type_template2 (index) / apply_type_template3 (slice).
-// Ref: std.languages CollectionOps/StringOps/MapOps (target design).
 type IndexingSemantics {
   list_index: String
   map_index: String
@@ -189,39 +184,24 @@ type IndexingSemantics {
   string_slice: String?
 }
 
-// -- Annotation requirements: when does a language need explicit type info? ---
-// Templates use {0}=name/ident, {1}=type-or-value, {2}=value (annotated let).
-// Applied via apply_type_template1/2/3 in shared emit.
-// Ref: std.languages StatementSyntax (let_binding / let_binding_inferred).
 type AnnotationRequirements {
-  let_binding_inferred: String     // e.g. "let {0} = {1};" / "{0} := {1}" / "{0} = {1}"
-  let_binding_annotated: String    // e.g. "let {0}: {1} = {2};" / "var {0} {1} = {2}" / "{0}: {1} = {2}"
-  lambda_param_typed: String       // e.g. "{0}: {1}" (Rust/Py) / "{0} {1}" (Go)
-  lambda_param_untyped: String     // e.g. "{0}" (Rust/Py) / "{0} interface{}" (Go)
+  let_binding_inferred: String
+  let_binding_annotated: String
+  lambda_param_typed: String
+  lambda_param_untyped: String
 }
 
-// -- Service field templates: per-language rendering of transport config fields --
-// Each service struct needs config fields driven by which transports it uses.
-// ServiceFieldSet (in 05_emit.dag) captures the structural fact; these templates
-// capture the per-language rendering. service_field_decls / service_field_ctors
-// (in 05_emit.dag) apply these templates against a ServiceFieldSet.
 type ServiceFieldTemplates {
-  rest_decl: String       // struct field (Rust/Go) or __init__ param (Python)
+  rest_decl: String
   auth_decl: String
   shell_decl: String
   file_decl: String
-  rest_ctor: String       // constructor body: Rust uses {0} for base_url default
+  rest_ctor: String
   auth_ctor: String
   shell_ctor: String
   file_ctor: String
 }
 
-// -- Method templates: per-method rendering for simple algebra method calls ---
-// Map<String, String> keyed by method name, value is a template string with
-// {recv} and {arg} named placeholders. Applied via apply_named_template.
-// Only covers methods whose rendering is pure string substitution on receiver
-// and first argument. Higher-order methods (map, filter, fold, etc.) that need
-// lambda/closure structure remain as dedicated emitter functions.
 
 // -- Block syntax: structural formatting facts per target language -----------
 // Two authorities:
@@ -231,88 +211,66 @@ type ServiceFieldTemplates {
 //     requirements (correctness during bootstrap; optional post-bootstrap
 //     via gofmt/rustfmt).
 type BlockSyntax {
-  block_open: String            // " {\n" (Go/Rust) or ":\n" (Python)
-  block_close: String           // "}" (Go/Rust) or "" (Python)
-  else_clause: String           // "} else {\n" (Go/Rust) or "else:\n" (Python)
-  match_keyword: String         // "match " (Rust/Python) or "switch " (Go)
-  case_keyword: String          // "" (Rust) or "case " (Go/Python)
-  arm_separator: String         // "," (Rust) or "\n" (Go/Python)
-  stmt_terminator: String       // ";" (Rust) or "" (Go/Python)
-  significant_whitespace: Bool  // true (Python) or false (Go/Rust)
+  block_open: String
+  block_close: String
+  else_clause: String
+  match_keyword: String
+  case_keyword: String
+  arm_separator: String
+  stmt_terminator: String
+  significant_whitespace: Bool
 }
 
-// ForEachSyntax: structural authority for iteration rendering.
-// Emit reads prefix/separator directly — no branching on target identity.
 type ForEachSyntax {
-  prefix: String                   // "for " (Rust/Python) or "for _, " (Go)
-  separator: String                // " in " (Rust/Python) or " := range " (Go)
+  prefix: String
+  separator: String
 }
 
-// Expression semantics — whether control flow constructs produce values.
-// Ref: Rust Reference §8.2.15 "If expressions", Go Spec "If statements",
-// Python §6.12 "Conditional expressions".
 type IfValueForm
-  = IfExpression           // Rust: if/else natively produces value
-  | ConditionalTernary     // Python: (then) if (cond) else (else)
-  | IfStatement            // Go: if is statement, needs wrapper for value
+  = IfExpression
+  | ConditionalTernary
+  | IfStatement
 
 type ExpressionSemantics {
   if_value_form: IfValueForm
-  wildcard_case: String?        // Go: "default", Rust/Python: none (use pattern)
-  variant_pattern: VariantPatternSyntax?  // None → type-name only (Go type switch)
-  guard_prefix: String?          // " if " (Python/Rust) / None (Go: no pattern guards)
-  // Return model — rendering convention for function return statements.
-  // The .dag source says `fn foo() -> Order`; the target language's convention
-  // determines how returns are rendered (single vs multi-return+error).
-  empty_return_value: String    // "None" (Python) / "struct{}{}, nil" (Go) / "()" (Rust)
-  return_suffix: String         // "" (Python/Rust) / ", nil" (Go)
-  suppress_unit_return: Bool    // false (Python/Rust) / true (Go: omit struct{} from sigs)
+  wildcard_case: String?
+  variant_pattern: VariantPatternSyntax?
+  guard_prefix: String?
+  empty_return_value: String
+  return_suffix: String
+  suppress_unit_return: Bool
 }
 
-// Variant pattern syntax — how match arms destructure variant constructors.
-// Python: Name(field=binding, ...)   → open="(", close=")", binding_sep="=", empty_suffix="()"
-// Rust:   Name { field: binding, ... } → open=" { ", close=" }", binding_sep=": ", empty_suffix=""
-// Go:     just Name (no destructuring) → None
 type VariantPatternSyntax {
-  open: String             // "(" or " { "
-  close: String            // ")" or " }"
-  binding_sep: String      // "=" (Python) or ": " (Rust)
-  empty_suffix: String     // "()" (Python) or "" (Rust)
+  open: String
+  close: String
+  binding_sep: String
+  empty_suffix: String
 }
 
-// Naming case — bootstrap-local mirror of std.languages.NamingCase.
-// PascalCase: visibility rendering. SnakeCase/CamelCase: identifier rendering.
-// AsAuthored: pass through unchanged (Dag target).
 type NamingCase = PascalCase | SnakeCase | CamelCase | AsAuthored
 
-// Visibility specification — how each language controls export/access.
-// Ref: Rust Reference §6.1 "Visibility", Go Spec "Exported identifiers".
-// Coproduct: each variant carries the data its renderer consumes.
 type VisibilitySpec
-  = KeywordVisibility { prefix: String }          // Rust: "pub "
-  | CaseVisibility { export_case: NamingCase }    // Go: PascalCase = exported
+  = KeywordVisibility { prefix: String }
+  | CaseVisibility { export_case: NamingCase }
 
 type TcoSyntax {
-  loop_keyword: String        // "loop" (Rust), "for" (Go), "while True" (Python)
-  break_return: String        // "break" (Rust), "return" (Go/Python)
-  continue_str: String        // "continue" (Rust/Go/Python) — includes terminator
-  temp_var_prefix: String     // "__tco_" (Rust/Python), "tco" (Go)
-  temp_decl_prefix: String    // "let " (Rust), "" (Go/Python)
-  temp_assign_op: String      // " = " (Rust/Python), " := " (Go)
+  loop_keyword: String
+  break_return: String
+  continue_str: String
+  temp_var_prefix: String
+  temp_decl_prefix: String
+  temp_assign_op: String
 }
 
-// Service method strategy — structural dispatch, not string templates.
-// Follows the VisibilitySpec/ErrorHandlingSyntax coproduct pattern.
 type ServiceMethodStrategy
-  = SelfInParams { self_param: String }       // Python: def m(self, ...); Rust: fn m(&self, ...)
-  | ExternalReceiver { var_name: String }     // Go: func (c *Name) m(...)
+  = SelfInParams { self_param: String }
+  | ExternalReceiver { var_name: String }
 
 type ServiceReturnStrategy
-  = ArrowReturn                               // Python/Rust: -> T (uses items.return_arrow)
-  | ErrorTupleReturn { error_type: String }   // Go: (T, error)
+  = ArrowReturn
+  | ErrorTupleReturn { error_type: String }
 
-// Service method accessors — emitter reads these instead of importing
-// the coproduct types directly (avoids stage0 bootstrap import gap).
 fn service_self_param(spec: LanguageSpec) -> String {
   match spec.service_method {
     SelfInParams { self_param: sp } => sp
@@ -362,17 +320,17 @@ fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
 // (parse "fn", emit "fn"/"def"/"func"). When each target language has
 // a full SyntaxSpec, ItemKeywords should derive from it (single authority).
 type ItemKeywords {
-  func_keyword: String          // "fn" / "def" / "func"
-  async_prefix: String          // "async " / "async " / ""
-  struct_keyword: String        // "struct" / "class" / "struct"
-  enum_keyword: String          // "enum" / "class" / "type"
-  type_alias_keyword: String    // "type" / "" / "type"
-  param_separator: String       // ", " (universal so far)
-  return_arrow: String          // " -> " / " -> " / " "
-  param_type_sep: String         // ": " (Rust/Python) / " " (Go)
-  module_keyword: String         // "mod" (Rust) / "" (Python) / "package" (Go)
-  import_keyword: String         // "use" (Rust) / "import" (Python) / "import" (Go)
-  import_from_keyword: String    // "" (Rust) / "from" (Python) / "" (Go)
+  func_keyword: String
+  async_prefix: String
+  struct_keyword: String
+  enum_keyword: String
+  type_alias_keyword: String
+  param_separator: String
+  return_arrow: String
+  param_type_sep: String
+  module_keyword: String
+  import_keyword: String
+  import_from_keyword: String
 }
 
 // Look up an emission keyword by item kind from a SyntaxSpec's item_forms.
@@ -404,59 +362,49 @@ type LanguageSpec {
   tco: TcoSyntax
   items: ItemKeywords
   expression_semantics: ExpressionSemantics
-  // C-1 extraction fields: expression syntax templates
-  lambda_template: String              // {0} = params, {1} = body
-  error_expr_template: String          // {0} = message string
-  list_literal_empty: String           // empty list literal
-  list_literal_template: String        // {0} = comma-separated elements
-  null_coalesce_template: String       // {0} = left, {1} = right
-  error_type_template: String          // {0} = error label
-  type_arg_open: String                // "<" or "["
-  type_arg_close: String               // ">" or "]"
-  void_type: String                    // "()" / "None" / ""
+  lambda_template: String
+  error_expr_template: String
+  list_literal_empty: String
+  list_literal_template: String
+  null_coalesce_template: String
+  error_type_template: String
+  type_arg_open: String
+  type_arg_close: String
+  void_type: String
   tuple_syntax: TupleSyntax
   string_interp: StringInterpSyntax
   // Callable type rendering: non-null overrides CallableRepr.template entirely.
   // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
   callable_type_template: String?
-  // Identifier case conversion for local variable names.
   naming_case: NamingCase
-  // Async call prefix — prepended to effectful calls (service/resource).
-  // Python: "await ". Go/Rust/Dag: "".
   async_call_prefix: String
-  // Bridge method rendering — how algebra method fallbacks render.
-  bridge_method_prefix: String              // "" (Python) or "v2rt." (Go)
-  bridge_method_case: NamingCase            // SnakeCase (Python) or PascalCase (Go)
-  bridge_method_overrides: Map<String, String>  // {"with": "with_update"} (Python) or {} (Go)
-  // Record literal syntax.
+  bridge_method_prefix: String
+  bridge_method_case: NamingCase
+  bridge_method_overrides: Map<String, String>
   record_lit: RecordLitSyntax
-  // Service method strategy — structural coproducts for method + return shape.
   service_method: ServiceMethodStrategy
   service_return: ServiceReturnStrategy
 }
 
 type TupleSyntax {
-  empty: String              // "()" / "Tuple" / "struct{}"
-  pair_template: String      // "({0}, {1})" — {0} = first, {1} = second
-  multi_template: String     // "({0})" — {0} = joined parts
-  separator: String          // ", " / "; "
-  first_accessor: String     // "[0]" (Python) / ".First" (Go)
-  second_accessor: String    // "[1]" (Python) / ".Second" (Go)
+  empty: String
+  pair_template: String
+  multi_template: String
+  separator: String
+  first_accessor: String
+  second_accessor: String
 }
 
-// Record literal syntax — how named and anonymous records render.
-// Python: TypeName(field=val, ...) / {"key": val}
-// Go: TypeName{Field: val, ...} / map[string]interface{}{"key": val}
 type RecordLitSyntax {
-  named_open: String           // "(" (Python) or "{" (Go)
-  named_close: String          // ")" (Python) or "}" (Go)
-  named_empty: String          // "()" (Python) or "{}" (Go) — appended to type name
-  named_field_sep: String      // "=" (Python) or ": " (Go)
-  named_field_join: String     // ", " (both)
-  anon_empty: String           // "{}" (Python) or "map[string]interface{}{}" (Go)
-  anon_prefix: String          // "{\n" (Python) or "map[string]interface{}{\n" (Go)
-  anon_suffix: String          // "}" (both)
-  anon_field_indent: String    // "    " (Python) or "\t" (Go)
+  named_open: String
+  named_close: String
+  named_empty: String
+  named_field_sep: String
+  named_field_join: String
+  anon_empty: String
+  anon_prefix: String
+  anon_suffix: String
+  anon_field_indent: String
 }
 
 // String interpolation — three structurally different models:
@@ -465,7 +413,7 @@ type RecordLitSyntax {
 // C-1: dissolves `match target` in emit_simple_string_interp.
 // InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
 type InterpStyle
-  = FormatArgs { placeholder: String }   // "{}" (Rust) or "%v" (Go)
+  = FormatArgs { placeholder: String }
   | InlineExpr
 
 type EscapePair {
@@ -475,9 +423,9 @@ type EscapePair {
 
 type StringInterpSyntax {
   style: InterpStyle
-  format_template: String          // FormatArgs: "format!(\"{0}\", {1})"; InlineExpr: "f\"{0}\""
-  plain_template: String           // no-interpolation fallback: "\"{0}\".to_string()" / "\"{0}\""
-  escape_pairs: List<EscapePair>   // interp-specific escaping applied after standard string escape
+  format_template: String
+  plain_template: String
+  escape_pairs: List<EscapePair>
 }
 
 // =========================================================================
@@ -918,9 +866,6 @@ fn go_spec() -> LanguageSpec {
 }
 
 fn dag_spec() -> LanguageSpec {
-  // Dag target is used for debug output and pretty-printing.
-  // Preserves rust_spec() values for existing fields to maintain behavior;
-  // new extraction fields (C-1) get Dag-specific values.
   LanguageSpec {
     target_name: "dag",
     reserved_words: ReservedWords {
@@ -1091,24 +1036,17 @@ fn target_operators(target: RenderTarget) -> List<OperatorSpec> {
   }
 }
 
-// Look up the target language's symbol for a BinOp.
-// Reads from per-language OperatorSpec in extdeps/languages/*/syntax.dag.
-// Type-aware: when algebra_field is provided, prefers specs matching that field.
-// Falls back to unconstrained specs (algebra_field: none) for languages like
-// Go/Rust where a single operator handles both int and float division.
 fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: AlgebraFieldKind?) -> String? {
   let ops = target_operators(target: target)
   let op_matching = ops |> filter(spec => match spec.binop {
     Some { value: b } => b == op
     None => false
   })
-  // Try algebra-specific match first
   let specific = match algebra_field {
     Some { value: af } =>
       op_matching |> filter(spec => match spec.algebra_field { Some { value: sf } => sf == af  _ => false }) |> first
     None => none
   }
-  // Fall back to unconstrained spec (algebra_field: none)
   let result = match specific {
     Some { value: _ } => specific
     None => op_matching |> filter(spec => spec.algebra_field == none) |> first
@@ -1119,7 +1057,6 @@ fn binop_symbol(target: RenderTarget, op: BinOp, algebra_field: AlgebraFieldKind
   }
 }
 
-// String-like type check: does this type use string comparison semantics?
 fn is_string_like(target: RenderTarget, name: String) -> Bool {
   match target {
     Rust => rust_string_types |> any(t => t == name)

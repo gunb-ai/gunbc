@@ -1,18 +1,4 @@
 // Type realization: data-driven type coercion from .dag algebra declarations.
-//
-// Live authority for the type rendering pipeline. 05_emit.dag reads
-// TypeCheckpoint (primitive coercion), InhabitantDecl (container coercion),
-// and CallableRepr (callable syntax) via the lookup functions below.
-//
-// Authority chain:
-//   std/coercion.dag               -> shared schema (TypeCheckpoint, InhabitantDecl, CallableRepr)
-//   extdeps/languages/*/types.dag  -> per-language data
-//   THIS FILE                      -> lookup functions + dispatch
-//
-// Consumers:
-//   05_emit.dag          -- coerce_primitive_type, coerce_container_template, target_callable, target_optional_template
-//   05_emit_rust.dag     -- coerce_primitive_type
-//   compiler_tests.rs    -- coercion registry tests
 
 module v2.compiler.coercion
 
@@ -148,8 +134,6 @@ fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
 
-// Reads the canonical `container_template_algebra` query in std/types.dag —
-// the single surface for alias/spelling normalization. No parallel table here.
 fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
   match container_template_algebra(name: container_name) {
     Some { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
@@ -174,9 +158,6 @@ fn apply_inhabitant_template2(template: String, first: String, second: String) -
 
 // =========================================================================
 // Structural test extraction -- auto-generate coercion tests from data
-//
-// Each TypeCheckpoint and InhabitantDecl in extdeps/languages/*/types.dag
-// produces test assertions. New data declarations → new tests automatically.
 // =========================================================================
 
 type CoercionAssertion
@@ -199,7 +180,6 @@ fn target_label(target: RenderTarget) -> String {
   }
 }
 
-// Generate checkpoint test: coerce_primitive_type(target, dag_name) == expected
 fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let cps = target_checkpoints(target: target)
@@ -235,7 +215,6 @@ fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
   }
 }
 
-// Generate is_copy tests (Rust-specific: checkpoints with is_copy != none)
 fn copy_tests() -> List<CoercionTestEntry> {
   let cps = target_checkpoints(target: Rust)
   let copy_assertions = cps |> flat_map(cp =>
@@ -243,7 +222,6 @@ fn copy_tests() -> List<CoercionTestEntry> {
       Some { value: v } => [CopyAssertion { target: Rust, dag_name: cp.dag_name, expected_copy: v }]
       None => []
     })
-  // Also test that unknown types return None
   if copy_assertions |> count == 0 { [] }
   else {
     [CoercionTestEntry {
@@ -253,10 +231,6 @@ fn copy_tests() -> List<CoercionTestEntry> {
   }
 }
 
-// Generate template application tests from inhabitant declarations.
-// For each arity-1 template, test apply_inhabitant_template1.
-// For each arity-2 template, test apply_inhabitant_template2.
-// Uses the target's own primitive types as template arguments.
 fn template_application_tests() -> List<CoercionTestEntry> {
   let targets = [Rust, Python, Go]
   let assertions = targets |> flat_map(t =>
@@ -280,7 +254,6 @@ fn template_application_tests() -> List<CoercionTestEntry> {
   }
 }
 
-// Master extraction: all coercion structural tests.
 fn extract_coercion_tests() -> List<CoercionTestEntry> {
   concat(
     checkpoint_tests(target: Rust),

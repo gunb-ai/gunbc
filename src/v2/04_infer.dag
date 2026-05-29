@@ -1,22 +1,4 @@
 // v2 namespace reconciler -- verifies that named structural compositions
-// are used consistently throughout the module graph.
-//
-// "Types" in the DAG language are named compositions (namespaces), not
-// formal type-theoretic constructs. This stage reconciles how names are
-// used with how they're defined:
-//
-//   - Namespace lookup: `Token` -> has fields `text`, `span`, `shape`
-//   - Consistency check: `Token { shape: x }` -> does x match TokenShape?
-//   - Identity propagation: `char_at(s, pos)` -> result is in String namespace
-//   - Coverage validation: does `match` cover all variants in the namespace?
-//
-// After this pass, every expression has a resolved namespace identity
-// (inferred: Node) and all name usages are reconciled with definitions.
-//
-// Dependency chain:
-//   v2.compiler.resolve (ModuleGraph, dependency order)
-//     -> v2.compiler.infer (reconciled graph, namespace-consistent)
-//       -> v2.compiler.emit (target-language files)
 
 module v2.compiler.infer
 
@@ -284,13 +266,11 @@ type ParentModulesResult {
   diagnostics: List<ErrorNode>
 }
 
-// Internal result type for variant-level resolution.
 type VariantResult {
   variant: Node
   diagnostics: List<ErrorNode>
 }
 
-// Accumulator for cycle detection fold.
 type CycleDetectState {
   recursive_names: Map<String, Bool>
   global_visited: Map<String, Bool>
@@ -298,9 +278,6 @@ type CycleDetectState {
 
 // =========================================================================
 // Scope merge helpers
-//
-// Parent imports still merge separately because they operate on already-
-// typed parent modules rather than the current module's raw items.
 // =========================================================================
 
 type InferScopeComponents {
@@ -330,9 +307,6 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
     Some { value: imp } =>
       match map_get(parent_index, imp.module_path) {
         Some { value: typed_parent } =>
-          // func_sigs from parent -- convert ResolvedFuncSig to DeclaredFuncSig
-          // (wrap inferred in Some) so all sigs share the same map type.
-          // Parent sigs always have concrete return types (inferred: Some).
           let next_func_sigs = fold(typed_parent.func_env.signatures |> map_values, init: func_sigs, f: (acc, rsig) =>
             let sig_key = rsig.name
             let sig_params = rsig.params
@@ -346,9 +320,6 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
               variant_provenance: rsig.variant_provenance
             })
           )
-          // svc_registry + svc_locals from parent items
-          // (variant_locals are derived from env.bindings in build_module_context,
-          //  which already includes all imported types — no merge needed here.)
           let parent_result = fold(typed_parent.items, init: InferScopeComponents {
             func_sigs: next_func_sigs, svc_registry: svc_registry,
             svc_locals: svc_locals
@@ -364,8 +335,6 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
                 svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
               }
             }
-            // Data declarations: body, no params, no transport, no connective.
-            // Add to scope as local variables so importing modules can reference them.
             else if titem.body != none && (titem.params |> count == 0) && titem.transport == none && titem.connective == NoConnective && titem.inferred != none {
               InferScopeComponents {
                 func_sigs: acc.func_sigs,
@@ -396,29 +365,23 @@ fn nominal_type_binding(name: String) -> TypeBinding {
   TypeBinding { name: name, resolved: nominal_leaf_type(name: name), provenance: SubValueUnknown }
 }
 
-// Classify a field's recursive relationship to its parent type.
-// Returns the RecursionShape if the field references the parent type, or none.
-// Dispatches on container identity (List/Set/Map), not arity.
 type FieldRecursionResult {
   shape: RecursionShape
   element_type: String
 }
 
 fn classify_field_recursion(field_node: Node, parent_name: String, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> FieldRecursionResult? {
-  // After field_to_child_node, type info is in inferred (not children).
   let type_expr = match field_node.inferred {
     Some { value: Resolved { node: rt } } => rt
     _ => field_node_type_expr(n: field_node)
   }
   let field_type_name = authored_name_at(source_indices: source_indices, node: type_expr)
   if field_type_name == parent_name {
-    // Self-referential: Direct or Optional based on cardinality
     match field_node.return_cardinality {
       CardOptional => Some { value: FieldRecursionResult { shape: OptionalRecursion, element_type: parent_name } }
       _ => Some { value: FieldRecursionResult { shape: DirectRecursion, element_type: parent_name } }
     }
   } else if is_container_type(name: field_type_name) {
-    // Container<T>: check if T is parent_name (self) or in recursive_type_set (cross-type)
     let arity = match container_expected_arity(name: field_type_name) {
       Some { value: a } => a
       None => 0
@@ -439,7 +402,6 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
       }
     } else { none }
   } else if set_contains(recursive_type_set, field_type_name) {
-    // Cross-type reference to another recursive type (e.g., InferredNode → Node)
     match field_node.return_cardinality {
       CardOptional => Some { value: FieldRecursionResult { shape: OptionalRecursion, element_type: field_type_name } }
       _ => Some { value: FieldRecursionResult { shape: DirectRecursion, element_type: field_type_name } }
@@ -447,7 +409,6 @@ fn classify_field_recursion(field_node: Node, parent_name: String, recursive_typ
   } else { none }
 }
 
-// Collect InductiveFields for the fields of a single variant or record.
 fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_name: String, recursive_type_set: Set<String>, acc: Map<String, List<InductiveField>>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   fields |> fold(init: acc, f: (field_acc, field_node) =>
     match classify_field_recursion(field_node: field_node, parent_name: parent_name, recursive_type_set: recursive_type_set, source_indices: source_indices) {
@@ -458,11 +419,8 @@ fn collect_fields_inductive(fields: List<Node>, parent_name: String, variant_nam
   )
 }
 
-// Collect InductiveFields from a type item (handles both Disj and Conj).
-// Detects both self-referential fields and cross-type references to other recursive types.
 fn collect_item_inductive_fields(item: Node, recursive_type_set: Set<String>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<InductiveField>> {
   let item_name = authored_name_at(source_indices: source_indices, node: item)
-  // Cross-type: any type can have fields referencing recursive types, not just recursive types themselves
   match item.connective {
     Disj =>
       item.children |> fold(init: empty_map(), f: (variant_acc, variant_node) =>
@@ -497,17 +455,8 @@ fn resolved_callable_type(func_params: List<Node>, ret: Node) -> Node {
 
 // =========================================================================
 // Service namespace locals
-//
-// Service names are dotted (e.g., "git.Core", "github.Gist"). Expressions
-// reference the namespace root ("git") as a variable. The parser stores
-// the namespace root as a structural property on the service Node, so
-// downstream stages read it directly instead of string-splitting.
 // =========================================================================
 
-// Read the namespace root from a service item's properties.
-// The parser stores it as a field-init node with name "namespace_root" and value LitStr(root).
-// Falls back to the full name if the property is absent.
-// Takes properties and name separately so it works for any Node.
 fn namespace_root_from_properties(properties: List<Node>, name: String, source_indices: Map<String, NewlineIndex>) -> String {
   match properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "namespace_root") |> first {
     Some { value: ns_prop } => match field_init_node_value(n: ns_prop).expr_data {
@@ -520,17 +469,8 @@ fn namespace_root_from_properties(properties: List<Node>, name: String, source_i
 
 // =========================================================================
 // Expression inference
-//
-// Assigns a resolved type (Node) to every expression Node in the AST, producing
-// Node values with inferred. This is a single top-down pass (not Hindley-Milner);
-// .dag has explicit type annotations on params and fields, so inference
-// is propagation, not unification.
 // =========================================================================
 
-// -------------------------------------------------------------------------
-// -------------------------------------------------------------------------
-// Helpers for typed expression inference
-// -------------------------------------------------------------------------
 
 fn expr_span(texpr: Node) -> SourceSpan {
   texpr.span
@@ -626,7 +566,6 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Nod
   }
 }
 
-// Kernel List construction: diagnostics come from KernelTypeBuild (infer_types).
 type KernelListTyDiag {
   ty: Node
   miss_diags: List<ErrorNode>
@@ -830,7 +769,6 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
   }
 }
 
-// Pipe fallback: `x |> map_keys` when method resolution did not yield a type.
 type MethodPipeFallback {
   result_ty: Node
   kernel_diags: List<ErrorNode>
@@ -860,8 +798,6 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-// Validate a cast at the .dag level. Returns a diagnostic if the cast
-// is invalid between numeric kernel types, or none if the cast is allowed.
 fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String) -> ErrorNode? {
   match source_inferred {
     Some { value: Resolved { node: src_node } } =>
@@ -942,9 +878,6 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
   }
 }
 
-// -------------------------------------------------------------------------
-// build_params_scope: add function params to locals in an InferScope
-// -------------------------------------------------------------------------
 
 fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
@@ -962,9 +895,6 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   }
 }
 
-// -------------------------------------------------------------------------
-// extend_scope: add a single local binding to an InferScope
-// -------------------------------------------------------------------------
 
 fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
   InferScope {
@@ -992,7 +922,6 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
   }
 }
 
-// Extend scope with lambda parameter names.
 fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown })
@@ -1012,7 +941,6 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
 fn scope_after_stmt_node(stmt: Node, stmt_type: Node, scope: InferScope) -> InferScope {
   match stmt.expr_data {
     ExprLet =>
-      // children: [value] or [value, body] -- no body means children has 1 element
       if stmt.children |> count <= 1 {
         let val = match stmt.children |> first {
           Some { value: v } => v
@@ -1085,20 +1013,15 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
   }
 }
 
-// Check if an optional method name matches a specific name.
 fn method_name_is(opt: String?, expected: String) -> Bool {
   if opt == none { false } else { opt.value == expected }
 }
 
-// Check if a named arg has a specific name.
 fn arg_has_name(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   let n = arg_name_at(n: arg, source_indices: source_indices)
   if n == none { false } else { n.value == name }
 }
 
-// Extract fold init arg info from the method args list.
-// Returns the inferred init arg if the method is fold and has enough args.
-// `method_args` should be the args excluding the collection receiver (already skipped for ExprCall).
 fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_args: Int, scope: InferScope, expected: Node?) -> ArgInferResult? {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   if is_fold && method_args |> count >= min_args {
@@ -1108,8 +1031,6 @@ fn extract_fold_init_info(method_name: String?, method_args: List<Node>, min_arg
     }
     match init_arg {
       Some { value: ia } =>
-        // Thread expected from caller context so empty collections (empty_map(), [])
-        // can adopt the expected type instead of falling back to bare nodes.
         let init_result = infer_expr(texpr: arg_value(n: ia), scope: scope, expected: expected)
         Some { value: ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: ia, source_indices: scope.type_env.source_indices), value: init_result.typed, span: ia.span, name_span: ia.span), diagnostics: init_result.diagnostics } }
       None => none
@@ -1138,9 +1059,6 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
-// Infer method args with element type context and fold special-casing.
-// Shared between ExprCall bridge and ExprMethodCall paths.
-// S6: elem_provenance threads IteratedSubValue from the receiver to lambda params.
 fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
@@ -1153,8 +1071,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         None => infer_arg_with_element_type(arg: a, element_type: element_type, scope: scope)
       }
     } else if is_fold && fold_info != none {
-      // Build synthetic callable expected with acc_type (first) + elem_type (last).
-      // ExprLambda's callable-expected handler threads params positionally.
       let fold_params = [
         make_param_node(name: "acc", type_expr: fold_acc_type, default_value: none, span: no_span(), name_span: no_span()),
         make_param_node(name: "elem", type_expr: element_type, default_value: none, span: no_span(), name_span: no_span())
@@ -1166,7 +1082,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         properties: [], type_annotation: none, is_self_recursive: false,
         has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
       }
-      // S6: set lambda_param_provenance so ExprLambda reads it without name-collision risk.
       let lam_value = arg_value(n: a)
       let prov_map = match elem_provenance {
         SubValueUnknown => empty_map()
@@ -1185,7 +1100,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       let ar = infer_expr(texpr: lam_value, scope: fold_scope, expected: Some { value: fold_callable })
       ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: ar.diagnostics }
     } else {
-      // S6: set lambda_param_provenance for non-fold lambda params (map/filter/etc).
       let nf_lam_value = arg_value(n: a)
       let nf_prov_map = match elem_provenance {
         SubValueUnknown => empty_map()
@@ -1209,12 +1123,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
 }
 
 
-// -------------------------------------------------------------------------
-// Collection function call inference: fold, flat_map, map, filter, any, all
-//
-// Infers the collection arg first to extract element type, then types
-// lambda params from the element type instead of type variables.
-// -------------------------------------------------------------------------
 
 fn is_lambda_expr(e: Node) -> Bool {
   match e.expr_data {
@@ -1223,7 +1131,6 @@ fn is_lambda_expr(e: Node) -> Bool {
   }
 }
 
-// Build substitution override maps for fold accumulator type resolution.
 fn seed_override_map() -> Map<String, Node> {
   fold([""], init: empty_map(), f: (acc, k) => map_insert(acc, k, unit_type))
 }
@@ -1240,18 +1147,10 @@ fn empty_override_map() -> Map<String, Node> {
 // Method return types now resolve structurally via AlgebraTypeVariable instantiation.
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
-  // Pass element_type as expected: lambdas use it for param typing,
-  // non-lambdas ignore it (expected is advisory, not mandatory).
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Some { value: element_type })
   ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
-// -------------------------------------------------------------------------
-// infer_expr: the main recursive function
-//
-// For each ExprData variant, produce a Node with inferred filled in.
-// Diagnostics are threaded through for reporting.
-// -------------------------------------------------------------------------
 
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
@@ -1260,8 +1159,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       ok_infer(texpr: make_expr_node(expr_data: ExprLiteral { value: lit }, children: [], inferred: Some { value: Resolved { node: infer_literal_node(lit: lit) } }, span: span))
 
     ExprError { kind: kind, message: message } =>
-      // No diagnostics here — resolve_expr_types already emitted the error.
-      // Re-emitting would produce duplicate error messages for every ExprError.
       let span = texpr.span
       InferResult {
         typed: make_expr_error_node(kind: kind, message: message, span: span),
@@ -1285,8 +1182,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         None =>
           match lookup_func_sig(func_env: scope.func_env, name: name) {
             Some { value: fsig } =>
-              // Zero-arg function reference IS an invocation — normalize to ExprCall.
-              // Multi-arg function reference is a value (Callable type).
               if (fsig.params |> count) == 0 {
                 ok_infer(texpr: make_named_expr_node(
                   name: name,
@@ -1406,7 +1301,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let func_name = expr_call_func_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
-      // Children are already arg nodes
       let call_args = texpr.children
       // Pre-fetch function sig for callable-aware lambda typing (P4.7e).
       let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
@@ -1414,13 +1308,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         Some { value: s } => s.params
         None => []
       }
-      // For bridge-eligible calls (e.g. map(list, fn)), infer the first arg
-      // first so lambda params can be typed from the collection's element type.
-      // For fold: also infer init arg to type accumulator param.
       let has_lambda = call_args |> any(a => is_lambda_expr(e: arg_value(n: a)))
-      // For Call form, args after the first are the "method args" (first is the collection).
       let call_method_args = call_args |> skip(1)
-      // Use method name string directly for dispatch.
       let call_method_name = Some { value: func_name }
       let call_fold_info = extract_fold_init_info(method_name: call_method_name, method_args: call_method_args, min_args: 2, scope: scope, expected: expected)
       let call_fold_acc_type = match call_fold_info {
@@ -1428,7 +1317,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         None => error_type
       }
       let arg_infer_results = if has_lambda && call_args |> count >= 2 && sig == none {
-        // Collection method bridge path (no known sig -- bridge to method call)
         match call_args |> first {
           Some { value: first_arg } =>
             let first_result = infer_expr(texpr: arg_value(n: first_arg), scope: scope, expected: none)
@@ -1460,10 +1348,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       }
       let typed_args = arg_infer_results |> map(air => air.typed_arg)
       let arg_diags = flat_map(arg_infer_results, air => air.diagnostics)
-      // typed_args are already arg nodes
       let typed_arg_nodes = typed_args
       if sig != none {
-        // Tier 1: known function signature
         let resolved_type = match sig {
           Some { value: s } => s.inferred
           None => error_type
@@ -1479,7 +1365,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           diagnostics: arg_diags
         }
       } else {
-        // Tier 2: try bridging to method call on first argument
         let first_arg_type = match typed_args |> first {
           Some { value: ta } => resolved_type(n: arg_value(n: ta))
           None => unit_type
@@ -1488,7 +1373,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: ta } => arg_value(n: ta)
           None => internal_expr_error_node(message: "method bridge missing receiver", span: span)
         }
-        // Refine fold_acc_type from lambda body when init is under-resolved.
         let call_acc_is_under_resolved = !is_fully_resolved(n: call_fold_acc_type, source_indices: scope.type_env.source_indices)
         let refined_call_fold_acc_type = if call_fold_info != none && call_acc_is_under_resolved {
           match typed_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
@@ -1506,7 +1390,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         )
         let is_known_method = method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
-          // Known collection method -- bridge Call to MethodCall
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
           let base_result_type = match method_resolution.result_type {
@@ -1534,9 +1417,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
           let bridge_result_type = method_tv.ty
           let template_subst_diags = method_tv.diagnostics
-          // Structural witness: does this method's template return ReceiverSelf?
-          // Only methods that structurally return the receiver type (map_insert,
-          // map_merge, etc.) justify patching the receiver from the result.
           let returns_receiver_self = if method_resolution.semantics == none { false } else {
             match method_resolution.semantics.value {
               AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } =>
@@ -1547,9 +1427,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               _ => false
             }
           }
-          // When the method returns ReceiverSelf and the result is resolved but
-          // the receiver was under-resolved (e.g., map_insert(empty_map(), k, v)),
-          // patch the receiver to carry the resolved type.
           let final_receiver = if returns_receiver_self && is_fully_resolved(n: bridge_result_type, source_indices: scope.type_env.source_indices) && !is_fully_resolved(n: first_arg_type, source_indices: scope.type_env.source_indices) {
             Node {
               name: receiver.name, span: receiver.span, ident_span: receiver.ident_span,
@@ -1575,9 +1452,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
           }
         } else if func_name == "empty_map" {
-          // Built-in: empty_map() → Map. Adopt expected type if it's a
-          // fully parameterized keyed collection (e.g. Map<K,V> from struct
-          // field or fold accumulator), otherwise emit a diagnostic.
           let bare_m = bare_map_node()
           match expected {
             Some { value: exp } =>
@@ -1714,7 +1588,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               }
           }
         } else if infer_builtin_call_type(name: func_name) != none {
-          // Tier 2b: runtime built-in functions (kernel List profile miss → diagnostics)
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
@@ -1733,7 +1606,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             diagnostics: concat(arg_diags, tier2b.kernel_diags)
           }
         } else {
-          // Tier 2c: callable-typed local (e.g. parameter `recurse: fn(Node) -> String`)
           let callable_local = match map_get(scope.locals, func_name) {
             Some { value: binding } =>
               if binding.resolved.params |> count > 0 { Some { value: binding.resolved } }
@@ -1757,7 +1629,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               diagnostics: arg_diags
             }
           } else {
-          // Tier 3: variant constructor (`NodeAt(payload)`), type constructor, or unknown
           match infer_variant_constructor_call(func_name: func_name, call_args: call_args, span: span, name_span: node_name_span(n: texpr), scope: scope) {
             Some { value: ctor_result } => ctor_result
             None =>
@@ -1792,17 +1663,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprMethodCall { method_semantics: _ } =>
       let method_name = expr_method_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
-      // children: [receiver, arg0, arg1, ...]
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
       let recv_result = infer_expr(texpr: recv, scope: scope, expected: none)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
-      // Type lambda args from receiver's element type instead of type variables.
-      // For fold: also infer init arg to type accumulator param.
       let recv_rt = resolved_type(n: recv_typed)
       let recv_elem_type = for_each_element_type_node(n: recv_rt, source_indices: scope.type_env.source_indices)
-      // Use method name string directly for dispatch.
       let mc_method_name = Some { value: method_name }
       let fold_info = extract_fold_init_info(method_name: mc_method_name, method_args: mc_args, min_args: 2, scope: scope, expected: expected)
       let fold_acc_type = match fold_info {
@@ -1813,9 +1680,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
-      // Refine fold_acc_type from lambda body when init is under-resolved.
-      // The lambda has been inferred (typed_mc_args), so its body return type
-      // carries the resolved type from the fold body (e.g., map_merge result).
       let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)
       let refined_fold_acc_type = if fold_info != none && mc_acc_is_under_resolved {
         match typed_mc_args |> filter(a => is_lambda_expr(e: arg_value(n: a))) |> first {
@@ -1834,7 +1698,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let pipe_fb = match method_resolution.result_type {
         Some { value: rt } => MethodPipeFallback { result_ty: rt, kernel_diags: [] }
         None =>
-          // Fallback: builtin used via pipe (x |> map_keys) — kernel List miss → diagnostics.
           method_pipe_map_keys_values_fallback(recv_rt: recv_rt, method_name: method_name, scope: scope, span: span)
       }
       let base_result_type = pipe_fb.result_ty
@@ -1860,7 +1723,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let result_type = method_tv_mc.ty
       let mc_template_diags = method_tv_mc.diagnostics
       let method_semantics = if method_resolution.semantics != none { method_resolution.semantics } else { Some { value: PlainMethodSemantics } }
-      // typed_mc_args are already arg nodes
       let typed_mc_arg_nodes = typed_mc_args
       let mc_texpr = make_named_expr_node(
         name: method_name, expr_data: ExprMethodCall { method_semantics: method_semantics },
@@ -1876,7 +1738,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprMatch =>
       let span = texpr.span
-      // children: [scrutinee, arm0, arm1, ...]
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
       let scrut_result = infer_expr(texpr: scrut, scope: scope, expected: none)
@@ -1885,10 +1746,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let scrut_rt = resolved_type(n: scrut_typed)
       let scrut_subject = pattern_subject_from_inferred(n: scrut_typed.inferred)
       let scrut_provenance = classify_binding_provenance(val: scrut, scope: scope)
-      // Infer all match arms independently with only the caller's expected type.
-      // Post-inference: compute a unified type across all arms, then patch any
-      // under-resolved arms. This is order-independent — arm ordering does not
-      // affect type resolution.
       let arm_infer_results = arm_nodes |> map(arm_node =>
         let arm_pat = arm_pattern(n: arm_node)
         let arm_g = arm_guard(n: arm_node)
@@ -1921,7 +1778,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           body_type: resolved_type(n: body_typed)
         }
       )
-      // Compute unified type across all arms via prefer_specific_type.
       let arm_body_types = arm_infer_results |> map(ar => ar.body_type)
       let unified_arm_type = match arm_body_types |> first {
         Some { value: first_type } =>
@@ -1930,8 +1786,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           )
         None => scrut_rt
       }
-      // Re-infer under-resolved arms with the unified type as expected.
-      // This lets empty_map() in None arms adopt the type from resolved arms.
       let arm_infer_results = if is_fully_resolved(n: unified_arm_type, source_indices: scope.type_env.source_indices) {
         arm_nodes |> enumerate |> map(pair =>
           let idx = pair.first
@@ -1942,7 +1796,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             None => ArmInferResult { typed_arm: arm_node, diagnostics: [], body_type: scrut_rt }
           }
           if !is_fully_resolved(n: original.body_type, source_indices: scope.type_env.source_indices) {
-            // Re-infer this arm with the unified type as expected.
             let arm_pat = arm_pattern(n: arm_node)
             let arm_g = arm_guard(n: arm_node)
             let arm_b = arm_body(n: arm_node)
@@ -2006,7 +1859,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprIf =>
       let span = texpr.span
-      // children: [cond, then] or [cond, then, else]
       let cond = if_condition(texpr: texpr)
       let then_expr = if_then_branch(texpr: texpr)
       let else_expr = if_else_branch(texpr: texpr)
@@ -2018,14 +1870,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let then_diags = then_result.diagnostics
       match else_expr {
         Some { value: else_branch } =>
-          // Both branches infer with only the caller's expected type.
-          // If one branch is under-resolved after initial inference,
-          // re-infer it with the resolved branch's type as expected.
-          // This is order-independent — either branch can provide context.
           let else_result = infer_expr(texpr: else_branch, scope: scope, expected: expected)
           let then_rt = resolved_type(n: then_result.typed)
           let else_rt = resolved_type(n: else_result.typed)
-          // Re-infer under-resolved branch with the resolved branch's type.
           let then_result = if !is_fully_resolved(n: then_rt, source_indices: scope.type_env.source_indices) && is_fully_resolved(n: else_rt, source_indices: scope.type_env.source_indices) {
             infer_expr(texpr: then_expr, scope: scope, expected: Some { value: else_rt })
           } else { then_result }
@@ -2073,10 +1920,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprLet =>
       let let_name = let_binding_name_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
-      // children: [value] or [value, body]
       let val_expr = let_value(texpr: texpr)
       let body_expr = let_body(texpr: texpr)
-      // Tail-return pattern: `let x = value; x` — value type equals outer expected.
       let is_tail_return = match body_expr {
         Some { value: bd } =>
           match bd.expr_data {
@@ -2110,13 +1955,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprRecordLit { parent_enum: _ } =>
       let span = texpr.span
-      // children: field init nodes
       let field_inits = texpr.children
       infer_record_lit(type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope)
 
     ExprListLit =>
       let span = texpr.span
-      // children: element expressions
       let elements = texpr.children
       let elem_expected = match expected {
         Some { value: exp } =>
@@ -2134,7 +1977,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           None => unit_type
         }
       } else {
-        // Empty list: adopt expected element type if available.
         match expected {
           Some { value: exp } =>
             if node_is_element_collection(n: exp, source_indices: scope.type_env.source_indices) {
@@ -2167,7 +2009,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprBinOp { op: op, algebra_field: _ } =>
       let span = texpr.span
-      // children: [left, right]
       let left_expr = binop_left(texpr: texpr)
       let right_expr = binop_right(texpr: texpr)
       let left_result = infer_expr(texpr: left_expr, scope: scope, expected: none)
@@ -2185,7 +2026,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprUnaryOp { op: op } =>
       let span = texpr.span
-      // children: [operand]
       let operand_expr = unaryop_operand(texpr: texpr)
       let operand_result = infer_expr(texpr: operand_expr, scope: scope, expected: none)
       let operand_typed = operand_result.typed
@@ -2202,15 +2042,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprLambda =>
       let span = texpr.span
-      // children: [body, param0, param1, ...]
       let lam_body = lambda_body(texpr: texpr)
       let lam_params = lambda_param_names_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let lam_param_nodes = texpr.children |> skip(1)
-      // If expected carries an element type, use it for lambda params.
-      // Single param or last param gets the element type; others get TypeVariable.
-      // Unified lambda element-type threading: expected flows to param scope.
-      // S6: read provenance from lambda_param_provenance (set by fold/map caller),
-      // not from scope.locals (which could shadow from outer same-named bindings).
       let elem_prov = match map_get(scope.lambda_param_provenance, "elem") {
         Some { value: p } => p
         None => SubValueUnknown
@@ -2218,8 +2052,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let lam_scope = if expected != none {
         let exp = expected.value
         if exp.params |> count > 0 {
-          // Callable expected: thread each callable param type to corresponding lambda param.
-          // Last param gets elem_prov; others get SubValueUnknown.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             match exp.params |> skip(pair.first) |> first {
@@ -2228,14 +2060,12 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             }
           )
         } else if lam_params |> count == 1 {
-          // Single element type expected: apply to sole param.
           match lam_params |> first {
             Some { value: p } =>
               extend_scope(scope: scope, name: p, resolved: exp, provenance: elem_prov)
             None => scope
           }
         } else {
-          // Element type expected with multiple params: last gets elem_prov, others SubValueUnknown.
           fold(lam_params |> enumerate, init: scope, f: (acc, pair) =>
             let param_prov = if pair.first == (lam_params |> count) - 1 { elem_prov } else { SubValueUnknown }
             if pair.first == (lam_params |> count) - 1 {
@@ -2254,8 +2084,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Some { value: callable_inferred(n: exp) }
         } else { none }
       } else { none }
-      // Clear lambda_param_provenance before entering the body — it's only
-      // for THIS lambda's params, not for nested lambdas inside the body.
       let body_scope = InferScope {
         type_env: lam_scope.type_env, func_env: lam_scope.func_env,
         locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
@@ -2265,7 +2093,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let body_result = infer_expr(texpr: lam_body, scope: body_scope, expected: body_expected)
       let body_typed = body_result.typed
       let body_diags = body_result.diagnostics
-      // Enrich param child nodes with inferred types from scope.
       let typed_param_nodes = lam_param_nodes |> enumerate |> map(pair =>
         let pn = pair.second
         let param_name = match lam_params |> skip(pair.first) |> first { Some { value: n } => n  None => "" }
@@ -2295,7 +2122,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprStringInterp =>
       let span = texpr.span
-      // children: text/interp part nodes
       let typed_part_nodes = texpr.children |> map(part_node =>
         match part_node.expr_data {
           ExprLiteral { value: _ } => part_node
@@ -2328,7 +2154,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprBlock =>
       let span = texpr.span
-      // children: stmt expressions
       let stmts = texpr.children
       if count(stmts) > 0 {
         let state = infer_block_stmts(
@@ -2347,15 +2172,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprCast =>
       let span = texpr.span
-      // children: [expr, target_type]
       let cast_inner = cast_expr(texpr: texpr)
       let target_type = cast_target(texpr: texpr)
       let inner_result = infer_expr(texpr: cast_inner, scope: scope, expected: none)
       let inner_typed = inner_result.typed
       let inner_diags = inner_result.diagnostics
-      // Validate cast at .dag level: only check when both types are in the
-      // numeric cast domain (Int, Float, Bool). Alias casts and user types
-      // are allowed unconditionally — they resolve to identity at emit time.
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
       let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name)
@@ -2372,7 +2193,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
     ExprForEach =>
       let variable = foreach_variable_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
-      // children: [collection, body]
       let coll = foreach_collection(texpr: texpr)
       let body_expr = foreach_body(texpr: texpr)
       let coll_result = infer_expr(texpr: coll, scope: scope, expected: none)
@@ -2392,7 +2212,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprIndex =>
       let span = texpr.span
-      // children: [base, index]
       let base_expr = index_base(texpr: texpr)
       let idx_key = index_expr(texpr: texpr)
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
@@ -2436,7 +2255,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprSlice =>
       let span = texpr.span
-      // children: [base, start, end]
       let base_expr = slice_base(texpr: texpr)
       let start_expr = slice_start(texpr: texpr)
       let end_expr = slice_end(texpr: texpr)
@@ -2493,7 +2311,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
 
     ExprReturn =>
       let span = texpr.span
-      // children: [value]
       let inner_expr = return_value(texpr: texpr)
       let inner_result = infer_expr(texpr: inner_expr, scope: scope, expected: expected)
       let ret_texpr = make_expr_node(expr_data: ExprReturn, children: [inner_result.typed], inferred: inner_result.typed.inferred, span: span)
@@ -2502,7 +2319,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         diagnostics: inner_result.diagnostics
       }
 
-    // All 20 ExprData variants are handled above. This arm catches NoExprData.
     _ =>
       let span = texpr.span
       InferResult {
@@ -2516,7 +2332,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   }
 }
 
-// `NodeAt(payload)` parses as ExprCall; route known positional variant constructors to record-lit inference.
 fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult? {
   match lookup_variant_parent_enum(scope: scope, name: func_name) {
     None => none
@@ -2576,24 +2391,13 @@ fn infer_variant_constructor_call(func_name: String, call_args: List<Node>, span
   }
 }
 
-// -------------------------------------------------------------------------
-// infer_record_lit: helper for RecordLit inference
-//
-// type_name is String? -- handle with == none check per v1 codegen limitation.
-// If type_name given, look up in type_env; else construct anonymous Product.
-// -------------------------------------------------------------------------
 
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope) -> InferResult {
-  // Look up the struct definition to propagate field types as expected context.
-  // This lets empty_map()/empty_list() adopt the declared field type (e.g.
-  // Map<String, Bool>) instead of producing bare containers.
   let struct_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
     let field_expected = match struct_fields |> filter(sf => authored_name_at(source_indices: scope.type_env.source_indices, node: sf) == fi_name) |> first {
       Some { value: sf } =>
-        // Struct definition children store type in inferred (via field_to_child_node),
-        // not in children[0] (which is empty).
         let ft = resolved_type(n: sf)
         if ft.ident_span != none { Some { value: ft } } else { none }
       None => none
@@ -2629,7 +2433,6 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
   let fi_diags = flat_map(fi_infer_results, fir => fir.diagnostics)
   if type_name == none {
-    // Anonymous record -- construct Conj node from field inits
     let child_nodes = fi_infer_results |> map(fir =>
       Node {
         name: field_init_node_name_at(n: fir.typed_field, source_indices: scope.type_env.source_indices), span: fir.typed_field.span, ident_span: fir.typed_field.ident_span,
@@ -2651,16 +2454,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       diagnostics: fi_diags
     }
   } else {
-    // Named record -- look up type in env.
-    // First try type_env (type definitions), then locals (variant constructors).
-    // Variant constructors like Some/None live in scope.locals with resolved
-    // pointing to the parent type name (for example Optional).
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
     let local_variant_parent = lookup_variant_parent_enum(scope: scope, name: type_name.value)
     let effective_lookup = match type_lookup {
       Some { value: _ } => type_lookup
       None =>
-        // Fall back to scope.locals for variant constructors
         let local_lookup = lookup_in_scope(locals: scope.locals, name: type_name.value)
         match local_lookup {
           Some { value: local_node } =>
@@ -2716,38 +2514,24 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
 // zero changes here.
 // =========================================================================
 
-// Track let-bound expressions that represent collection sizes.
-// Used to recognize proportional shrink: take(xs, count(xs) / 2).
 type SizeExpr
   = ParamSize { param: String }
   | DividedSize { param: String, divisor: Int }
 
-// Context threaded through the descent annotation walk.
-// sub_value_vars tracks which local variables are known sub-values of
-// a parameter, and what their structural relationship is.
-// size_aliases tracks variables bound to collection sizes (for ProportionalShrink).
-// M4 constraint: param_names uses String keys/values because .dag has no
-// declaration-reference type yet. Will migrate to structural refs with M4.
 type DescentContext {
   fn_name: String
-  param_names: Map<String, String>  // param_name → type_name (M4: String proxy)
-  param_order: List<String>         // param names in definition order
+  param_names: Map<String, String> // param_name → type_name (M4: String proxy)
+  param_order: List<String>
   type_env: TypeEnv
   sub_value_vars: Map<String, SubValueRelation>
   size_aliases: Map<String, SizeExpr>
-  scope_locals: Map<String, TypeBinding>  // C2: binding provenance from inference
+  scope_locals: Map<String, TypeBinding>
   func_sigs: Map<String, ResolvedFuncSig>
-  // Per-field provenance for variables bound to call results with multi-field
-  // output_provenance. Maps var_name → (field_name → SubValueRelation).
-  // When classify_let_value sees r.field, checks this map before inductive fields.
   per_field_vars: Map<String, Map<String, SubValueRelation>>
 }
 
-// Classify a let-value as a size expression for ProportionalShrink tracking.
-// Recognizes: xs |> count → ParamSize, n / 2 → DividedSize
 fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
   match val.expr_data {
-    // xs |> count → ParamSize { param: "xs" }
     ExprMethodCall { method_semantics: _ } =>
       let mname = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
       if mname == "count" {
@@ -2762,7 +2546,6 @@ fn classify_size_expr(val: Node, ctx: DescentContext) -> SizeExpr? {
           _ => none
         }
       } else { none }
-    // n / 2 → DividedSize if n is a known ParamSize
     ExprBinOp { op: _, algebra_field: _ } =>
       let left = binop_left(texpr: val)
       let right = binop_right(texpr: val)
@@ -2815,29 +2598,21 @@ fn proportional_skip_alias_plus_literal(alias_expr: Node, lit_expr: Node, param_
   }
 }
 
-// Classify a method-call expression as a collection shrink.
-// Recognizes: param |> take(mid) or param |> skip(mid) where mid is a known size alias.
 fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
   match arg_expr.expr_data {
     ExprMethodCall { method_semantics: _ } =>
       let mname = expr_method_name_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
       if mname == "take" || mname == "skip" {
         let receiver = method_receiver(texpr: arg_expr)
-        // Check receiver is the parameter
         match receiver.expr_data {
           ExprVar { binding_kind: _ } =>
             let rname = expr_var_name_at(texpr: receiver, source_indices: ctx.type_env.source_indices)
             if rname == param_name {
-              // Check argument is a known size alias
               let args = method_arg_nodes(texpr: arg_expr)
               match args |> first {
                 Some { value: arg_node } =>
                   let arg_val = arg_value(n: arg_node)
                   match arg_val.expr_data {
-                    // skip(k): literal integer k > 0 → ConstantShrink.
-                    // skip(k) on a non-empty list of length n produces max(0, n-k) < n.
-                    // The base case (empty list) must be handled by the function.
-                    // take(k) is NOT strict — take(k) on a list ≤ k is unchanged.
                     ExprLiteral { value: LitInt { value: k } } =>
                       if k > 0 && mname == "skip" {
                         match positive_descent_amount_from_positive_int(k: k) {
@@ -2847,7 +2622,6 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
                           None => SubValueUnknown
                         }
                       } else { SubValueUnknown }
-                    // skip(mid), take(mid): variable that is a known size alias
                     ExprVar { binding_kind: _ } =>
                       let aname = expr_var_name_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
                       match map_get(ctx.size_aliases, aname) {
@@ -2895,15 +2669,11 @@ fn classify_collection_shrink(arg_expr: Node, param_name: String, ctx: DescentCo
   }
 }
 
-// Accumulator for ExprBlock annotation: threads context through sequential children.
 type BlockAnnotateAcc {
   ctx: DescentContext
   children: List<Node>
 }
 
-// Extract callback_element_position from method semantics.
-// Returns the declared position if the method's algebra template declares
-// which callback parameter receives collection elements.
 fn method_callback_element_position(semantics: MethodSemantics?) -> Int? {
   match semantics {
     Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: _, cost_shape: _, algebra_template: at } } =>
@@ -2915,8 +2685,6 @@ fn method_callback_element_position(semantics: MethodSemantics?) -> Int? {
   }
 }
 
-// Keep fold bodies structurally linear so ownership can move accumulators
-// without adding branch-sensitive proof logic.
 fn maybe_insert_composed_field_relation(acc: Map<String, SubValueRelation>, fname: String, composed: SubValueRelation?) -> Map<String, SubValueRelation> {
   match composed {
     Some { value: rel } =>
@@ -2957,10 +2725,6 @@ fn maybe_insert_match_field_relation(fp_acc: Map<String, SubValueRelation>, pnam
   }
 }
 
-// Build per-field provenance for a let-binding whose value is a call with
-// multi-field output_provenance. Maps field names from the return type to
-// composed SubValueRelation. Returns ctx.per_field_vars with the new entry
-// added (or unchanged if not applicable).
 fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext) -> Map<String, Map<String, SubValueRelation>> {
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
@@ -2968,7 +2732,6 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       match map_get(ctx.func_sigs, callee) {
         Some { value: sig } =>
           if sig.output_provenance |> count > 1 {
-            // Multi-field: build field_name → composed SubValueRelation
             let return_type = sig.inferred
             let field_map = return_type.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
               let idx = pair.first
@@ -3004,9 +2767,6 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   }
 }
 
-// Resolve an expression to a ListRecursion InductiveField, if it represents
-// a collection of recursive sub-values. Handles field access on known types
-// (n.children), variables bound to list sub-values, and enumerate unwrapping.
 fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? {
   match expr.expr_data {
     ExprFieldAccess { summary: _ } =>
@@ -3059,11 +2819,6 @@ fn resolve_collection_field(expr: Node, ctx: DescentContext) -> InductiveField? 
   }
 }
 
-// Classify a let-binding's provenance from its typed value expression.
-// Used at binding-creation time to propagate sub-value evidence through
-// the scope without waiting for the post-hoc CX descent analysis.
-// Handles ExprVar (inherits provenance from scope) and ExprFieldAccess
-// (strict sub-value when the field is inductive).
 fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -3080,7 +2835,6 @@ fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation
           let bname = expr_var_name_at(texpr: base, source_indices: scope.type_env.source_indices)
           match map_get(scope.locals, bname) {
             Some { value: binding } =>
-              // Compose provenance via compose_sub_value (std/induction.dag authority).
               let fields = inductive_fields_for(env: scope.type_env, type_name: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved))
               let matching = fields |> filter(f => f.field_name == field) |> first
               match matching {
@@ -3095,8 +2849,6 @@ fn classify_binding_provenance(val: Node, scope: InferScope) -> SubValueRelation
   }
 }
 
-// Classify a let-binding value as a sub-value relation.
-// Handles ExprVar (alias), ExprFieldAccess (inductive field), and ExprCall (child accessor).
 fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   match val.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -3116,7 +2868,6 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
           let bname = expr_var_name_at(texpr: base, source_indices: ctx.type_env.source_indices)
-          // Per-field provenance: check if base was bound to a call with multi-field output
           let from_per_field = match map_get(ctx.per_field_vars, bname) {
             Some { value: field_map } => map_get(field_map, field)
             None => none
@@ -3146,7 +2897,6 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      // Check output provenance from func_sigs first
       let from_provenance = match map_get(ctx.func_sigs, callee) {
         Some { value: sig } =>
           match sig.output_provenance |> first {
@@ -3159,7 +2909,6 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       match from_provenance {
         Some { value: _ } => from_provenance
         None =>
-          // Fall back to hardcoded child accessor / tree-size-reducing table
           if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
             let call_args = val.children
             match call_args |> first {
@@ -3195,9 +2944,6 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             }
           } else { none }
       }
-    // Type-based collection detection: if the inferred type is List<T> where T is a
-    // recursive type, the result is a ListRecursion collection. This covers function
-    // calls like match_arm_nodes(texpr) → List<Node> without naming specific functions.
     _ =>
       let type_based = match val.inferred {
         Some { value: Resolved { node: rt } } =>
@@ -3220,9 +2966,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       match type_based {
         Some { value: _ } => type_based
         None =>
-          // Sub-classify by expression kind for non-type-based patterns
           match val.expr_data {
-    // Arithmetic let-bindings: let rest = value / 10, let next = pos + 1, let smaller = n - 1
     ExprBinOp { op: op } =>
       let left = binop_left(texpr: val)
       let right = binop_right(texpr: val)
@@ -3271,14 +3015,9 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
             }
           } else { none }
         Add =>
-          // param + k makes value LARGER, not smaller. This is NOT descent evidence.
-          // Position advance patterns are bounded by external constraints (token length),
-          // not by self-recursion on the incremented value.
           none
         _ => none
       }
-    // Collection-preserving methods: skip/filter/take/enumerate on a known collection
-    // preserve the ListRecursion property. Also: list-returning child accessors.
     ExprMethodCall { method_semantics: _ } =>
       let mname = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
       let is_collection_preserving = mname == "skip" || mname == "filter" || mname == "take" || mname == "enumerate" || mname == "reverse"
@@ -3288,17 +3027,13 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
         match coll_field {
           Some { value: ind_field } => Some { value: StrictSubValue { field: ind_field, factor: UnitShrink } }
           None =>
-            // For skip on a parameter of any List type (even non-recursive elements),
-            // the collection itself shrinks. Synthesize an InductiveField.
-            // Only skip is strictly decreasing; take(k) is NonIncreasing (unchanged when list ≤ k).
-            // Inspect the actual argument to get the shrink amount.
             if mname == "skip" {
               let skip_args = method_arg_nodes(texpr: val)
               let skip_amount = match skip_args |> first {
                 Some { value: a } =>
                   match arg_value(n: a).expr_data {
                     ExprLiteral { value: LitInt { value: k } } => if k > 0 { k } else { 0 }
-                    _ => 0  // fail-closed: skip(0) is legal, unknown amount is not strict decrease
+                    _ => 0 // fail-closed: skip(0) is legal, unknown amount is not strict decrease
                   }
                 None => 0
               }
@@ -3326,9 +3061,6 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
   }
 }
 
-// Classify a function call's output via the callee's output provenance.
-// Merges all matching param entries via meet_sub_value (deterministic
-// regardless of map iteration order).
 fn classify_call_via_provenance(call: Node, param_map: Map<String, SubValueRelation>, ctx: DescentContext) -> SubValueRelation? {
   let call_args = call.children
   let arg_by_name = fold(call_args, init: empty_map(), f: (acc, arg_node) =>
@@ -3359,7 +3091,6 @@ fn classify_call_via_provenance(call: Node, param_map: Map<String, SubValueRelat
   )
 }
 
-// Classify an argument expression's sub-value relation in the caller's context.
 fn classify_call_arg_provenance(arg_expr: Node, ctx: DescentContext) -> SubValueRelation? {
   match arg_expr.expr_data {
     ExprVar { binding_kind: _ } =>
@@ -3402,14 +3133,12 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           None => SubValueUnknown
         }
       }
-    // base.field where base is a param or bound sub-value, and field is inductive → StrictSubValue
     ExprFieldAccess { summary: _ } =>
       let base = field_access_base(texpr: arg_expr)
       let field = field_access_field_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
       match base.expr_data {
         ExprVar { binding_kind: _ } =>
           let bname = expr_var_name_at(texpr: base, source_indices: ctx.type_env.source_indices)
-          // Look up type from params first, then from bound sub-values
           let type_name = match map_get(ctx.param_names, bname) {
             Some { value: t } => t
             None =>
@@ -3431,23 +3160,16 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           }
         _ => SubValueUnknown
       }
-    // accessor(n: sub_value) — pure Node→Node accessor applied to a known sub-value.
-    // If the first argument is a sub-value, the result is also a sub-value (deeper descent).
-    // Covers patterns like param_node_type_expr(n: p), arg_value(n: a), arm_body(n: arm).
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let call_args = arg_expr.children
       match call_args |> first {
         Some { value: first_arg } =>
           let inner = arg_value(n: first_arg)
-          // Recursively classify the inner argument
           let inner_rel = classify_argument(arg_expr: inner, param_name: param_name, ctx: ctx)
           match inner_rel {
-            // If inner is a sub-value, the accessor result is also a sub-value
             StrictSubValue { field: _, factor: _ } => inner_rel
             IteratedSubValue { field: _ } => inner_rel
             ArithmeticDescent { param: _, factor: _ } => inner_rel
-            // Accessor applied to the parameter itself: check output provenance
-            // first, fall back to hardcoded child accessor tables.
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
               let from_provenance = match map_get(ctx.func_sigs, callee) {
@@ -3462,7 +3184,6 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
               match from_provenance {
                 Some { value: prov_rel } => prov_rel
                 None =>
-                  // Fall back to hardcoded child accessor / tree-size-reducing table
                   if is_child_accessor_in_model(name: callee) || is_tree_size_reducing(func_name: callee) {
                     let type_name = match map_get(ctx.param_names, param_name) { Some { value: t } => t  None => "" }
                     let fields = inductive_fields_for(env: ctx.type_env, type_name: type_name)
@@ -3475,8 +3196,6 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
                     ArithmeticDescent { param: param_name, factor: ConstantShrink { steps: OneStep } }
                   } else { PreservedValue }
               }
-            // Lawful non-structural inhabitants flow through unchanged: an accessor
-            // application that does not strengthen evidence keeps the lattice level.
             NonIncreasingValue => NonIncreasingValue
             StrictAxisErased => StrictAxisErased
             MixedTop => MixedTop
@@ -3484,7 +3203,6 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
           }
         None => SubValueUnknown
       }
-    // param |> take(mid) or param |> skip(mid) → collection shrink
     ExprMethodCall { method_semantics: _ } =>
       classify_collection_shrink(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     // Arithmetic descent: param - k, param / k, param + k (position advance on bounded domain).
@@ -3538,9 +3256,6 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             }
           } else { SubValueUnknown }
         Add =>
-          // param + k makes value LARGER, not smaller. This is NOT descent evidence.
-          // Position advance patterns (parser pos + 1) are bounded by other parameters
-          // (token length), not by self-recursion. Direct count_up(n: n + 1) is Forever.
           SubValueUnknown
         _ => SubValueUnknown
       }
@@ -3580,33 +3295,18 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
   }
 }
 
-// C2: Read argument provenance from binding provenance (scope_locals) for
-// ExprVar and ExprFieldAccess. scope_locals has provenance set during
-// inference (S2-S6) for function params. When the binding is not in
-// scope_locals (match arm/let bindings created during body inference),
-// fall back to classify_argument which reads sub_value_vars.
-// For expression-level patterns (accessor calls, collection shrinks,
-// arithmetic, transparent wrappers), delegate to classify_argument.
 fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) -> SubValueRelation {
   match arg_expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let vname = expr_var_name_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-      // Read provenance from binding set during inference (S2-S6).
-      // Falls back to classify_argument for bindings not in scope_locals
-      // (match arm/let bindings tracked in sub_value_vars by annotate_descent).
       match map_get(ctx.scope_locals, vname) {
         Some { value: binding } =>
           match binding.provenance {
             SubValueUnknown =>
-              // scope_locals has the binding but provenance is unknown.
-              // Fall back to classify_argument which checks sub_value_vars
-              // (populated by annotate_descent for match/let bindings).
               classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
             _ => binding.provenance
           }
         None =>
-          // Binding not in scope_locals (e.g., inner match/let binding).
-          // classify_argument reads sub_value_vars for these.
           classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
       }
     ExprFieldAccess { summary: _ } =>
@@ -3619,10 +3319,8 @@ fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) 
             Some { value: binding } =>
               match binding.provenance {
                 SubValueUnknown =>
-                  // Fall back to classify_argument for unknown provenance.
                   classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
                 _ =>
-                  // Compose provenance via compose_sub_value (std/induction.dag authority).
                   let fields = inductive_fields_for(env: ctx.type_env, type_name: authored_name_at(source_indices: ctx.type_env.source_indices, node: binding.resolved))
                   let matching = fields |> filter(f => f.field_name == field) |> first
                   match matching {
@@ -3631,20 +3329,16 @@ fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) 
                   }
               }
             None =>
-              // Binding not in scope_locals; fall back to classify_argument.
               classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
           }
         _ => SubValueUnknown
       }
-    // Expression-level patterns: delegate to classify_argument heuristics.
-    // Function return contracts (accessor calls) are deferred to a later step.
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     ExprMethodCall { method_semantics: _ } =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     ExprBinOp { op: _ } =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
-    // Transparent wrappers: delegate to classify_argument which handles them.
     ExprMatch =>
       classify_argument(arg_expr: arg_expr, param_name: param_name, ctx: ctx)
     ExprIf =>
@@ -3661,11 +3355,7 @@ fn read_arg_provenance(arg_expr: Node, param_name: String, ctx: DescentContext) 
   }
 }
 
-// Build descent_evidence for a self-call: one SubValueRelation per parameter
-// in definition order. Named args are matched by name; unnamed args fall back
-// to positional alignment.
 fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRelation> {
-  // Build map from arg name → arg_value_node
   let arg_map = call_node.children |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     let idx = pair.first
     let arg_node = pair.second
@@ -3675,9 +3365,7 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
       None => acc
     }
   )
-  // Build positional list for unnamed args
   let positional_args = call_node.children |> filter(arg_node => arg_name_at(n: arg_node, source_indices: ctx.type_env.source_indices) == none) |> map(arg_node => arg_value(n: arg_node))
-  // Produce evidence in param definition order
   let positional_idx = 0
   ctx.param_order |> enumerate |> map(pair =>
     let def_idx = pair.first
@@ -3685,7 +3373,6 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
     match map_get(arg_map, pname) {
       Some { value: arg_val } => read_arg_provenance(arg_expr: arg_val, param_name: pname, ctx: ctx)
       None =>
-        // Positional fallback: use position in unnamed arg list
         match positional_args |> skip(def_idx) |> first {
           Some { value: arg_val } => read_arg_provenance(arg_expr: arg_val, param_name: pname, ctx: ctx)
           None => SubValueUnknown
@@ -3694,9 +3381,6 @@ fn build_call_evidence(call_node: Node, ctx: DescentContext) -> List<SubValueRel
   )
 }
 
-// Walk a typed body and annotate self-call ExprCall nodes with descent_evidence.
-// Extends sub_value_vars when entering match arms (variant field bindings)
-// and let-bindings (aliases of known sub-values).
 fn descent_source_type(found: String, arg_node: Node, ctx: DescentContext) -> String {
   if found != "" { found }
   else {
@@ -3723,14 +3407,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       // For cross-calls, the SCC proof system reads this to build cross-edges.
       // Single authority: no parallel analysis needed.
       let evidence = build_call_evidence(call_node: body, ctx: ctx)
-      // Lambda transparency: when a call passes both a tracked parameter AND
-      // lambda arguments, the lambda parameters will receive sub-values of
-      // the tracked parameter. Register lambda params in the inner context
-      // so calls inside the lambda body get evidence instead of SubValueUnknown.
-      //
-      // Example: emit_shared_expr(texpr: texpr, recurse: child => self(texpr: child))
-      // The lambda param `child` receives sub-parts of `texpr`.
-      // Register child as PreservedValue with texpr's type so inner calls see it.
       let source_type = body.children |> fold(init: "", f: (found, arg_node) =>
         descent_source_type(found: found, arg_node: arg_node, ctx: ctx)
       )
@@ -3739,9 +3415,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         match arg_val.expr_data {
           ExprLambda =>
             if source_type != "" {
-              // Register lambda params with source param type for descent tracking.
-              // Most callback lambdas have 1-2 params. Register all with PreservedValue
-              // so calls inside the lambda body see them as related to the source param.
               let lparams = lambda_param_names_at(texpr: arg_val, source_indices: ctx.type_env.source_indices)
               let p1 = match lparams |> first { Some { value: n } => n  None => "" }
               let p2 = match lparams |> skip(1) |> first { Some { value: n } => n  None => "" }
@@ -3751,10 +3424,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   else if p1 != "" { map_insert(ctx.param_names, p1, source_type) }
                   else { ctx.param_names },
                 param_order: ctx.param_order, type_env: ctx.type_env,
-                // Register lambda params as IteratedSubValue when the source type has
-                // inductive fields. The callee dispatches on the source's children/fields
-                // and passes sub-parts to the callback. In a decidable language, all
-                // lambdas are statically known and callbacks receive sub-values.
                 sub_value_vars: if p1 != "" {
                   let source_fields = inductive_fields_for(env: ctx.type_env, type_name: source_type)
                   let cf = source_fields |> filter(f => match f.shape { ListRecursion => true  _ => false }) |> first
@@ -3785,17 +3454,13 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         expr_data: ExprCall { call_semantics: cs, descent_evidence: Some { value: evidence } }
       }
     ExprMatch =>
-      // If scrutinee is a parameter or a known sub-value, extend context
-      // with variant field bindings from each arm
       let scrut = match_scrutinee(texpr: body)
-      // Determine scrutinee type (for enum params) or inducing field (for field-access)
       let scrut_type = match scrut.expr_data {
         ExprVar { binding_kind: _ } =>
           let sname = expr_var_name_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
           match map_get(ctx.param_names, sname) {
             Some { value: t } => t
             None =>
-              // Also check sub_value_vars for the element_type
               match map_get(ctx.sub_value_vars, sname) {
                 Some { value: rel } =>
                   match rel {
@@ -3812,7 +3477,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           // fabricate sub-value evidence for arm bindings.
           ""
       }
-      // For field-access scrutinees (e.g., c.next), find the inducing InductiveField
       let scrut_inducing_field = match scrut.expr_data {
         ExprFieldAccess { summary: _ } =>
           let base = field_access_base(texpr: scrut)
@@ -3830,9 +3494,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
               } else { none }
             _ => none
           }
-        // collection_param |> first: unwrapping Optional element from a list parameter.
-        // If receiver is a tracked collection (param or sub-value with ListRecursion),
-        // the Some binding is an IteratedSubValue.
         ExprMethodCall { method_semantics: _ } =>
           let mname = expr_method_name_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
           if mname == "first" || mname == "last" {
@@ -3858,9 +3519,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
           }
         _ => none
       }
-      // Annotate scrutinee
       let annotated_scrut = annotate_descent(body: scrut, ctx: ctx)
-      // Process each arm with extended context
       let annotated_arms = match_arm_nodes(texpr: body) |> map(arm_node =>
         let variant_arm_ctx = match scrut_variant_sig {
           Some { value: sig } =>
@@ -3873,16 +3532,12 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         if scrut_has_inductive {
           match arm_pattern(n: arm_node) {
             VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
-              // For field-access scrutinees with OptionalRecursion, the Some.value
-              // binding IS the unwrapped sub-value (e.g., c.next: Chain? → rest: Chain)
               match scrut_inducing_field {
                 Some { value: ind_field } =>
                   if vname == "Some" {
                     bindings |> fold(init: ctx, f: (c, fb) =>
                       match field_binding_pattern(n: fb) {
                         Bind { name: bname } =>
-                          // Register binding as sub-value AND in param_names with element_type
-                          // so inner matches can look up the unwrapped type's inductive fields.
                           DescentContext {
                             fn_name: c.fn_name,
                             param_names: map_insert(c.param_names, bname, ind_field.element_type),
@@ -3893,8 +3548,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                             per_field_vars: c.per_field_vars
                           }
                         VariantPattern { name: inner_vname, parent_enum: _, field_bindings: inner_bindings } =>
-                          // Nested destructuring: Some { value: Resolved { node: rt } }
-                          // Look up inductive fields for the element_type (e.g., InferredNode)
                           let inner_ind_fields = inductive_fields_for(env: c.type_env, type_name: ind_field.element_type)
                           inner_bindings |> fold(init: c, f: (ic, inner_fb) =>
                             let inner_field_name = field_binding_name_at(n: inner_fb, source_indices: ctx.type_env.source_indices)
@@ -3924,7 +3577,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                     )
                   } else { ctx }
                 None =>
-                  // Standard case: match on enum parameter, look up variant fields
                   let ind_fields = inductive_fields_for(env: ctx.type_env, type_name: scrut_type)
                   bindings |> fold(init: ctx, f: (c, fb) =>
                     let field_name = field_binding_name_at(n: fb, source_indices: ctx.type_env.source_indices)
@@ -3949,9 +3601,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                   )
               }
             Bind { name: bname } =>
-              // Catch-all binds the entire scrutinee value.
-              // If scrutinee is a parameter, register alias in param_names (for field access)
-              // and sub_value_vars (for PreservedValue classification).
               if scrut_type != "" {
                 DescentContext {
                   fn_name: ctx.fn_name,
@@ -3982,10 +3631,8 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         } else { ctx }
         }
         let annotated_body = annotate_descent(body: arm_body(n: arm_node), ctx: arm_ctx)
-        // Reconstruct arm node with annotated body
         make_arm_node(pattern: arm_pattern(n: arm_node), guard: arm_guard(n: arm_node), body: annotated_body, span: arm_node.span)
       )
-      // Reconstruct match with annotated scrutinee and arms
       Node {
         name: body.name, span: body.span, ident_span: body.ident_span,
         children: concat([annotated_scrut], annotated_arms),
@@ -3998,23 +3645,17 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
     ExprLet =>
-      // If let-value is a known sub-value (variable alias, field access, or child accessor),
-      // extend context for binding name.
       let val = let_value(texpr: body)
       let binding_name = let_binding_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
       let val_relation = classify_let_value(val: val, ctx: ctx)
-      // Track size aliases: let n = xs |> count → ParamSize, let mid = n / 2 → DividedSize
       let size_alias = classify_size_expr(val: val, ctx: ctx)
       let inner_size_aliases = match size_alias {
         Some { value: se } => map_insert(ctx.size_aliases, binding_name, se)
         None => ctx.size_aliases
       }
-      // Per-field provenance: if the value is a call to a function with multi-field
-      // output_provenance, build field_name → SubValueRelation map for this binding.
       let inner_per_field = build_per_field_for_let(val: val, binding_name: binding_name, ctx: ctx)
       let inner_ctx = match val_relation {
         Some { value: rel } =>
-          // Register sub-value type in param_names so downstream field access works
           let sub_type = match rel {
             StrictSubValue { field: f, factor: _ } => f.element_type
             IteratedSubValue { field: f } => f.element_type
@@ -4040,9 +3681,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             per_field_vars: inner_per_field
           }
       }
-      // Lexical scope: value initializer sees OUTER context (binding not yet in scope),
-      // body sees inner_ctx (binding available). map_children would wrongly apply
-      // inner_ctx to the value, fabricating sub_value_vars that don't exist yet.
       let annotated_value = annotate_descent(body: val, ctx: ctx)
       let annotated_children = match let_body(texpr: body) {
         Some { value: body_child } => [annotated_value, annotate_descent(body: body_child, ctx: inner_ctx)]
@@ -4058,12 +3696,9 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
-    // ExprBlock: thread context through sequential children so that
-    // let-bindings extend context for subsequent statements.
     ExprBlock =>
       let threaded = body.children |> fold(init: BlockAnnotateAcc { ctx: ctx, children: [] }, f: (acc, child) =>
         let annotated = annotate_descent(body: child, ctx: acc.ctx)
-        // If this child is an ExprLet, extend context for subsequent children
         let next_ctx = match child.expr_data {
           ExprLet =>
             let val = let_value(texpr: child)
@@ -4115,18 +3750,10 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         has_non_tail_self_call: body.has_non_tail_self_call,
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
-    // Method calls on collections: thread descent context into fold/map/filter
-    // lambda bodies. The lambda element parameter is an IteratedSubValue of
-    // the receiver's collection field.
-    // S7: Read callback_element_position from algebra template instead of
-    // hardcoding method names. The template declares which callback param
-    // receives collection elements — no heuristic needed.
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: body, source_indices: ctx.type_env.source_indices)
       let elem_position = method_callback_element_position(semantics: ms)
       if elem_position != none {
-        // Check if receiver is a collection sub-value (field access or bound variable).
-        // Unwrap shape-preserving methods (enumerate) to reach the underlying collection.
         let raw_receiver = method_receiver(texpr: body)
         let receiver = match raw_receiver.expr_data {
           ExprMethodCall { method_semantics: _ } =>
@@ -4159,7 +3786,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
                 } else { none }
               _ => none
             }
-          // Receiver is a variable bound as a sub-value (e.g., cs from match children: cs)
           ExprVar { binding_kind: _ } =>
             let rname = expr_var_name_at(texpr: receiver, source_indices: ctx.type_env.source_indices)
             match map_get(ctx.sub_value_vars, rname) {
@@ -4175,21 +3801,14 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             }
           _ => none
         }
-        // Find the lambda argument and extend context for its element parameter
         let method_args = method_arg_nodes(texpr: body)
         let lambda_arg = method_args |> filter(a =>
           match arg_value(n: a).expr_data { ExprLambda => true  _ => false }
         ) |> first
-        // Inside a fold/map lambda, captured sub_value_vars are cleared.
-        // Captured variables have their descent multiplied by the fold
-        // iteration count (unknown), so they cannot produce valid evidence.
-        // Only the element parameter (if the receiver is a known collection
-        // field) gets registered as IteratedSubValue.
         let lambda_elem_info = match lambda_arg {
           Some { value: la } =>
             let lambda_node = arg_value(n: la)
             let lparams = lambda_param_names_at(texpr: lambda_node, source_indices: ctx.type_env.source_indices)
-            // S7: read declared position from template instead of assuming last param
             lparams |> skip(elem_position.value) |> first
           None => none
         }
@@ -4227,7 +3846,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
             }
           None => ctx
         }
-        // Annotate receiver with outer context, lambda args with inner (restricted) context
         let annotated_receiver = annotate_descent(body: method_receiver(texpr: body), ctx: ctx)
         let annotated_args = method_arg_nodes(texpr: body) |> map(arg_node =>
           let arg_val = arg_value(n: arg_node)
@@ -4253,8 +3871,6 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
       }
     ExprForEach =>
-      // foreach (elem in collection) { body } — if collection is a ListRecursion
-      // field, register the element variable as IteratedSubValue.
       let coll = foreach_collection(texpr: body)
       let fe_body = foreach_body(texpr: body)
       let fe_var = foreach_variable_at(texpr: body, source_indices: ctx.type_env.source_indices)
@@ -4293,13 +3909,10 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
         match_pattern: body.match_pattern, expr_data: body.expr_data
       }
     _ =>
-      // All other expression types (including lambdas): recurse into children
       map_children(node: body, transform: child => annotate_descent(body: child, ctx: ctx))
   }
 }
 
-// Extract type name from a node that may have its type in `inferred` (post
-// field_to_child_node) or in `children` (raw parsed form).
 fn resolved_type_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match n.inferred {
     Some { value: Resolved { node: rt } } => authored_name_at(source_indices: source_indices, node: rt)
@@ -4322,13 +3935,6 @@ fn resolved_type_name(n: Node, source_indices: Map<String, NewlineIndex>) -> Str
 // fail-closed: returns empty_map() for any body shape we can't analyze.
 // =========================================================================
 
-// Infer output provenance from a non-recursive function body.
-// Two modes:
-//   Scalar: single-element list — overall return value's relation to params.
-//   Per-field: multi-element list — one map per return type child (record field).
-// Per-field provenance enables CX to see through struct returns: when a function
-// returns { tokens: sub_list, expr: parsed }, field-level access r.tokens
-// carries the tokens field's specific provenance, not the whole struct's.
 fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> List<Map<String, SubValueRelation>> {
   let param_names = params |> map(p => param_node_name_at(n: p, source_indices: type_env.source_indices))
   let param_types = fold(params, init: empty_map(), f: (acc, p) =>
@@ -4355,13 +3961,10 @@ fn infer_output_provenance(body: Node, params: List<Node>, type_env: TypeEnv, sc
   }
 }
 
-// Classify a body expression's return value provenance relative to params.
-// Returns Map<param_name, SubValueRelation> for params with known relationships.
 fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
   match expr.expr_data {
     ExprVar { binding_kind: _ } =>
       let vname = expr_var_name_at(texpr: expr, source_indices: type_env.source_indices)
-      // Check let_prov first: locals shadow params (Track 3 limitation).
       match map_get(let_prov, vname) {
         Some { value: prov } => prov
         None =>
@@ -4406,8 +4009,6 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
       let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_sigs: func_sigs, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
       if map_keys(callee_result) |> count > 0 { callee_result }
       else {
-        // Kernel algebra methods (skip, etc.) aren't in func_sigs.
-        // Check for ShrinkEffect: receiver |> skip(N) with N > 0 → StrictSubValue.
         let is_shrink = match ms {
           Some { value: AlgebraMethodSemantics { method_def: _, fold_accumulator_type: _, size_effect: se, cost_shape: _, algebra_template: _ } } =>
             match se { Some { value: ShrinkEffect } => true  _ => false }
@@ -4489,9 +4090,6 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
       }
 
     ExprBlock =>
-      // Fold over block statements: extend let_prov for block-level let-bindings,
-      // return last statement's provenance. Let-with-body restores outer scope
-      // so the binding does not leak into subsequent statements.
       let block_result = fold(expr.children, init: BlockProvFoldState { prov: let_prov, last: empty_prov_map() }, f: (state, stmt) =>
         match stmt.expr_data {
           ExprLet =>
@@ -4501,10 +4099,8 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
             let updated_prov = map_insert(state.prov, bname, value_prov)
             match let_body(texpr: stmt) {
               Some { value: body } =>
-                // Let-with-body: binding scoped to body only; restore state.prov after.
                 BlockProvFoldState { prov: state.prov, last: classify_body_provenance(expr: body, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: updated_prov) }
               None =>
-                // Block-level let: binding persists for subsequent statements.
                 BlockProvFoldState { prov: updated_prov, last: value_prov }
             }
           _ =>
@@ -4527,13 +4123,11 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
   }
 }
 
-// Accumulator for ExprBlock fold in classify_body_provenance.
 type BlockProvFoldState {
   prov: Map<String, Map<String, SubValueRelation>>
   last: Map<String, SubValueRelation>
 }
 
-// Build named-arg map for ExprCall: all children are named arg nodes.
 fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   fold(call.children, init: empty_map(), f: (acc, arg_node) =>
     match arg_name_at(n: arg_node, source_indices: source_indices) {
@@ -4543,13 +4137,10 @@ fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> M
   )
 }
 
-// Build named-arg map for ExprMethodCall: receiver maps to callee's first
-// param (positional), remaining children are named arg nodes.
 fn method_call_args_by_name(call: Node, func_sigs: Map<String, ResolvedFuncSig>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  // Map receiver to callee's first param name
   let base = match map_get(func_sigs, mname) {
     Some { value: sig } =>
       match sig.params |> first {
@@ -4560,7 +4151,6 @@ fn method_call_args_by_name(call: Node, func_sigs: Map<String, ResolvedFuncSig>,
       }
     None => empty_map()
   }
-  // Add remaining named args
   fold(mc_args, init: base, f: (acc, arg_node) =>
     match arg_name_at(n: arg_node, source_indices: source_indices) {
       Some { value: aname } => map_insert(acc, aname, arg_value(n: arg_node))
@@ -4569,8 +4159,6 @@ fn method_call_args_by_name(call: Node, func_sigs: Map<String, ResolvedFuncSig>,
   )
 }
 
-// Compose callee output provenance with argument provenance.
-// Shared by ExprCall and ExprMethodCall in classify_body_provenance.
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
   match map_get(func_sigs, callee) {
     Some { value: sig } =>
@@ -4611,15 +4199,12 @@ fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, par
 // expression, then checks one level of ExprMatch/ExprIf for record arms.
 // Returns empty list if no record literal found (fail-closed to scalar mode).
 fn classify_body_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
-  // Walk through let/block to find terminal, accumulating let_prov context
   let unwrapped = unwrap_body_terminal(expr: expr, let_prov: let_prov, type_env: type_env)
   let terminal = unwrapped.expr
   let terminal_prov = unwrapped.let_prov
   classify_terminal_per_field(expr: terminal, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: terminal_prov)
 }
 
-// Classify a terminal expression (after let/block unwrapping) for per-field provenance.
-// Handles ExprRecordLit directly, and one level of ExprMatch/ExprIf.
 fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
   match expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
@@ -4669,8 +4254,6 @@ type BodyTerminal {
   let_prov: Map<String, Map<String, SubValueRelation>>
 }
 
-// Walk through ExprLet/ExprBlock chains to find the terminal expression,
-// accumulating let_prov context. Non-recursive for CX.
 fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRelation>>, type_env: TypeEnv) -> BodyTerminal {
   match expr.expr_data {
     ExprBlock =>
@@ -4682,19 +4265,15 @@ fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRe
   }
 }
 
-// Meet per-field provenance across branches (match arms, if branches).
-// All branches must have the same field count. Per-field, intersect param maps.
 fn meet_per_field_results(results: List<List<Map<String, SubValueRelation>>>) -> List<Map<String, SubValueRelation>> {
   match results |> first {
     None => []
     Some { value: first_result } =>
       if first_result |> count == 0 { [] }
       else {
-        // All branches must have same field count
         let all_same_count = results |> all(r => r |> count == first_result |> count)
         if !all_same_count { [] }
         else {
-          // Per-field: meet each position across branches
           first_result |> enumerate |> map(pair =>
             let idx = pair.first
             let field_provs = results |> map(r =>
@@ -4710,11 +4289,8 @@ fn meet_per_field_results(results: List<List<Map<String, SubValueRelation>>>) ->
   }
 }
 
-// Typed empty provenance map — avoids type inference ambiguity in nested folds.
 fn empty_prov_map() -> Map<String, SubValueRelation> { empty_map() }
 
-// Meet provenance maps across branches (match arms, if branches).
-// For each param, keep it only if present in ALL maps, with met relation.
 fn meet_body_provenance_maps(provs: List<Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
   match provs |> first {
     None => empty_prov_map()
@@ -4725,7 +4301,6 @@ fn meet_body_provenance_maps(provs: List<Map<String, SubValueRelation>>) -> Map<
   }
 }
 
-// Intersect two provenance maps: keep only keys present in both, meet values.
 fn intersect_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRelation>) -> Map<String, SubValueRelation> {
   fold(map_keys(a), init: empty_prov_map(), f: (result, key) =>
     match map_get(b, key) {
@@ -4754,13 +4329,9 @@ fn arm_ctx_from_variant_provenance(arm_node: Node, sig: ResolvedFuncSig, scrut: 
             let bind_name = match field_binding_pattern(n: fb) { Bind { name: bn } => bn  _ => "" }
             if bind_name == "" || field_label == "" { c }
             else {
-              // Look up by field name (not position) in the name-keyed provenance map.
               match map_get(variant_field_map, field_label) {
                 Some { value: param_map } =>
                   let composed = compose_callee_param_map(callee_prov: param_map, arg_by_name: call_args, param_names: c.param_order, param_types: c.param_names, type_env: c.type_env, func_sigs: c.func_sigs, let_prov: empty_map())
-                  // Meet ALL composed relations — don't drop any.
-                  // The composed map is keyed by caller param name. Meet gives
-                  // the conservative relation across all contributing params.
                   let all_rels = map_keys(composed) |> map(k => match map_get(composed, k) { Some { value: r } => r  None => SubValueUnknown })
                   let best = merge_argument_relations(rels: all_rels)
                   match best {
@@ -4807,13 +4378,7 @@ fn compose_output_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelat
   compose_sub_value_relations(arg_rel: arg_rel, callee_rel: callee_rel)
 }
 
-// Compute per-variant per-field provenance for a sum-type returning function.
-// For each variant constructor (ExprRecordLit) in the body, classifies its
-// field values. Returns Map<variant_name, List<Map<param_name, SubValueRelation>>>.
-// Empty if the return type isn't a sum type or no variant constructors found.
 fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
-  // return_type from item.inferred is a reference node (NoConnective).
-  // Look up the actual type definition to check for Disj connective.
   let rt_name = authored_name_at(source_indices: type_env.source_indices, node: return_type)
   let rt_def = lookup_type_by_name(env: type_env, name: rt_name)
   match rt_def {
@@ -4833,11 +4398,6 @@ fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>,
   }
 }
 
-// Walk return-position expressions collecting ExprRecordLit nodes whose
-// parent_enum matches. Only recurses into return positions: match arm bodies,
-// if then/else branches, let bodies, block last statements. Does NOT recurse
-// into match scrutinees, if conditions, or let values — those are not return
-// positions and could fabricate contracts from temporary same-enum literals.
 fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_sigs: Map<String, ResolvedFuncSig>, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   match body.expr_data {
     ExprRecordLit { parent_enum: pe } =>
@@ -4845,7 +4405,6 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
         Some { value: enum_name } =>
           if enum_name == parent_enum {
             let variant_name = body.name
-            // Build name-keyed provenance map (not position-dependent).
             let field_prov_map = body.children |> fold(init: empty_map(), f: (m, fi) =>
               let fname = field_init_node_name_at(n: fi, source_indices: type_env.source_indices)
               let fprov = classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov)
@@ -4861,12 +4420,10 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
         None => acc
       }
     ExprMatch =>
-      // Only recurse into arm bodies (return positions), not the scrutinee.
       match_arm_nodes(texpr: body) |> fold(init: acc, f: (a, arm) =>
         collect_variant_constructors(body: arm_body(n: arm), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: a)
       )
     ExprIf =>
-      // Only recurse into then/else branches (return positions), not the condition.
       let then_acc = collect_variant_constructors(body: if_then_branch(texpr: body), parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: let_prov, acc: acc)
       match if_else_branch(texpr: body) {
         Some { value: eb } =>
@@ -4874,8 +4431,6 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
         None => then_acc
       }
     ExprLet =>
-      // Only recurse into the let body (return position), not the let value.
-      // But still track let bindings for provenance composition.
       match let_body(texpr: body) {
         Some { value: b } =>
           let bname = let_binding_name_at(texpr: body, source_indices: type_env.source_indices)
@@ -4885,13 +4440,10 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
         None => acc
       }
     ExprBlock =>
-      // Only the last statement in a block is the return position.
-      // But track let bindings from earlier statements.
       let stmts = body.children
       let stmt_count = stmts |> count
       if stmt_count == 0 { acc }
       else {
-        // Accumulate let_prov from non-terminal statements
         let final_lp = stmts |> take(stmt_count - 1) |> fold(init: let_prov, f: (lp, stmt) =>
           match stmt.expr_data {
             ExprLet =>
@@ -4901,7 +4453,6 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
             _ => lp
           }
         )
-        // Recurse into only the last statement
         match stmts |> skip(stmt_count - 1) |> first {
           Some { value: last } =>
             collect_variant_constructors(body: last, parent_enum: parent_enum, param_names: param_names, param_types: param_types, type_env: type_env, func_sigs: func_sigs, let_prov: final_lp, acc: acc)
@@ -4912,9 +4463,6 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
   }
 }
 
-// Merge two field-level provenance maps (field_name → Map<param_name, SubValueRelation>).
-// For fields present in both, join the inner provenance maps. Fields in only one
-// side are kept. Used when multiple branches produce the same variant.
 fn merge_field_prov_maps(a: Map<String, Map<String, SubValueRelation>>, b: Map<String, Map<String, SubValueRelation>>) -> Map<String, Map<String, SubValueRelation>> {
   let from_a = fold(map_keys(a), init: empty_map(), f: (result, fname) =>
     match map_get(a, fname) {
@@ -4937,7 +4485,6 @@ fn merge_field_prov_maps(a: Map<String, Map<String, SubValueRelation>>, b: Map<S
   )
 }
 
-// Union two provenance maps: keep keys present in either, join values.
 fn union_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRelation>) -> Map<String, SubValueRelation> {
   let from_a = fold(map_keys(a), init: empty_prov_map(), f: (result, key) =>
     match map_get(a, key) {
@@ -4960,9 +4507,6 @@ fn union_prov_maps(a: Map<String, SubValueRelation>, b: Map<String, SubValueRela
   )
 }
 
-// Populate output provenance on resolved function signatures after body typing.
-// Two sources: (1) hardcoded tables (expr_child_roles, wrapper_child_roles,
-// function_size_effects), (2) body inference for non-recursive functions.
 fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv, type_env: TypeEnv, locals: Map<String, TypeBinding>) -> ResolvedFuncEnv {
   let updated_sigs = fold(typed_items, init: func_env.signatures, f: (acc, item) =>
     if item.params |> count > 0 {
@@ -4993,12 +4537,10 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
           None => acc
         }
       } else {
-        // Body inference for non-recursive functions
         match item.body {
           Some { value: body } =>
             if !expr_has_self_call(texpr: body, fn_name: fn_name, source_indices: type_env.source_indices) {
               let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_sigs: acc)
-              // Also compute per-variant provenance if the return type is a sum type
               let variant_prov = match item.inferred {
                 Some { value: Resolved { node: rt } } =>
                   compute_variant_provenance(body: body, return_type: rt, params: item.params, type_env: type_env, func_sigs: acc)
@@ -5027,7 +4569,6 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
   ResolvedFuncEnv { signatures: updated_sigs }
 }
 
-// Top-level: annotate a self-recursive function body with descent evidence.
 fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_sigs: Map<String, ResolvedFuncSig>) -> Node {
   let param_name_map = params |> fold(init: empty_map(), f: (acc, p) =>
     let pname = param_node_name_at(n: p, source_indices: type_env.source_indices)
@@ -5049,12 +4590,6 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
   annotate_descent(body: body, ctx: ctx)
 }
 
-// -------------------------------------------------------------------------
-// Transport/property inference: variant bindings (GET, POST, Bearer, etc.)
-// are already in scope.locals from imports. Running infer_expr on transport
-// property values sets binding_kind + inferred, enabling structural dispatch
-// in the emitter instead of string-name comparison.
-// -------------------------------------------------------------------------
 
 type InferPropertiesResult {
   props: List<Node>
@@ -5089,8 +4624,6 @@ fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertie
   }
 }
 
-// Infer only auth_source properties — other config properties are binding
-// declarations that reference operation parameters, not service-scope variables.
 fn infer_auth_source_properties(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
   let results = props |> map(p =>
     if field_init_node_name_at(n: p, source_indices: scope.type_env.source_indices) == "svc_auth_source" {
@@ -5138,27 +4671,18 @@ fn infer_transport_node(transport: Node?, scope: InferScope) -> InferTransportRe
   }
 }
 
-// -------------------------------------------------------------------------
-// infer_item: wraps each Node into its Node counterpart with inferred types
-// -------------------------------------------------------------------------
 
 fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   let typed_anno = item.type_annotation
-  // Infer transport properties with the correct scope.
   let transport_scope = if item.params |> count > 0 {
     build_params_scope(scope: scope, params: item.params)
   } else { scope }
   let transport_result = infer_transport_node(transport: item.transport, scope: transport_scope)
   let typed_transport = transport_result.transport
   let transport_diags = transport_result.diagnostics
-  // Infer auth_source property values (CredentialSource expressions).
-  // Other config properties (auth_input, endpoint, etc.) are binding
-  // declarations or literals that don't need inference — they reference
-  // operation parameters, not variables in the service scope.
   let props_result = infer_auth_source_properties(props: item.properties, scope: scope)
   let typed_properties = props_result.props
   let props_diags = props_result.diagnostics
-  // Type definition: has connective (record/sum) and is not a transport binding
   if item.connective != NoConnective && item.transport == none {
     TypedItemResult {
       item: Node {
@@ -5171,10 +4695,8 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: concat(transport_diags, props_diags)
     }
   }
-  // Function with body: infer body, resolve return type
   else if item.body != none && item.params |> count > 0 {
     let fn_scope = build_params_scope(scope: scope, params: item.params)
-    // Add uses bindings (e.g., uses net: Network) to scope
     let fn_scope = fold(item.uses, init: fn_scope, f: (s, u) =>
       extend_scope(scope: s, name: resource_use_name_at(n: u, source_indices: scope.type_env.source_indices), resolved: resource_use_resource(n: u), provenance: SubValueUnknown)
     )
@@ -5201,8 +4723,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: concat(transport_diags, props_diags, body_diags)
     }
   }
-  // Zero-arg function: has body, no params, but has inferred annotation.
-  // Must be checked BEFORE data definition to avoid misclassifying `fn foo() -> T { ... }` as data.
   else if item.body != none && item.params |> count == 0 && item.inferred != none {
     let fn_scope = scope
     let body_result = infer_expr(texpr: item.body.value, scope: fn_scope, expected: Some { value: resolved_type(n: item) })
@@ -5219,7 +4739,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: concat(transport_diags, props_diags, body_diags)
     }
   }
-  // Data definition: has body but no params, has type_annotation
   else if item.body != none && item.params |> count == 0 {
     let data_expected = if item.type_annotation != none { Some { value: item.type_annotation.value } } else { none }
     let val_result = infer_expr(texpr: item.body.value, scope: scope, expected: data_expected)
@@ -5237,7 +4756,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: concat(transport_diags, props_diags, val_diags)
     }
   }
-  // Extern func: has params but no body
   else if item.params |> count > 0 && item.body == none {
     TypedItemResult {
       item: Node {
@@ -5250,7 +4768,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
       diagnostics: concat(transport_diags, props_diags)
     }
   }
-  // Service/Resource/other: pass through
   else {
     TypedItemResult {
       item: Node {
@@ -5265,9 +4782,6 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
   }
 }
 
-// -------------------------------------------------------------------------
-// infer_items: walk all items in a module and produce Nodes
-// -------------------------------------------------------------------------
 
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
   map(items, item => infer_item(item: item, scope: scope))
@@ -5275,10 +4789,6 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 
 // =========================================================================
 // Kernel type environment
-//
-// The 8 kernel primitives that have no structural expansion.
-// These are the atoms of the type system -- everything else is
-// composed from them.
 // =========================================================================
 
 // Kernel primitives (String, Int, Bool, Float, Secret, Json, Unit, Bytes)
@@ -5293,11 +4803,6 @@ fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
 
 // =========================================================================
 // Build type environment for a single module
-//
-// Layers (in shadowing order, last wins):
-//   1. Kernel primitives (String, Int, Bool, ...)
-//   2. Imported types from parent environments
-//   3. Local type definitions from the module's items
 // =========================================================================
 
 // Names from the algebra type system that should not leak as ambient
@@ -5329,24 +4834,15 @@ fn kernel_span(name: String) -> SourceSpan {
 }
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
-  // Seed the kernel with primitive types so they resolve even when
-  // std.types is not in the compilation set (e.g., in isolated tests).
-  // Synthetic source entries let authored_name_at resolve kernel names
-  // without falling back to node.name.
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
-  // Also add entries for Optional/Some/None/value/none
   let source_indices = fold(["Optional", "Some", "None", "value", "none"], init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
-  // Pre-intern all kernel names so intern() lookups below are guaranteed
-  // to find them (intern is idempotent for names already in the table).
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional", "Some", "None", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  // Build kernel type bindings. Unit is the terminal object — empty product
-  // (Conj + 0 children), structurally unique among kernel types.
   let kernel_bindings_base = fold(
     map_keys(kernel_type_set),
     init: empty_map(),
@@ -5356,17 +4852,12 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       provenance: SubValueUnknown
     })
   )
-  // Override Unit with Conj connective (empty product, structurally distinct)
   let unit_span = kernel_span(name: "Unit")
   let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
     name: "Unit",
     resolved: Node { name: "Unit", span: unit_span, ident_span: Some { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
     provenance: SubValueUnknown
   })
-  // Register Optional as a Disj type so lookup_type("Optional") succeeds.
-  // The real Optional is parametric (Optional<T>), but the kernel provides
-  // the structural skeleton (Disj with Some/None variants) so that
-  // RecordLit and pattern matching resolve variant constructors correctly.
   let some_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Some { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Some { value: TypeVariable { id: "some_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let some_variant = Node { name: "Some", span: kernel_span(name: "Some"), ident_span: Some { value: kernel_span(name: "Some") }, children: [some_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Some { value: kernel_span(name: "Optional") }, children: [some_variant, none_type], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -5379,15 +4870,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
   let kernel = TypeEnv { bindings: kernel_bindings, recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table }
 
-  // Collect imported type bindings from parent modules.
-  // For type resolution to work on imported types (e.g., FileClassification
-  // has a field of type MimeType), we include ALL parent type bindings,
-  // not just explicitly named ones. The import list controls what the
-  // module author uses directly; resolution needs the transitive picture.
-  //
-  // Separate folds for each map/list field so the accumulator is a bare
-  // map/list (not a struct field). Rc::try_unwrap succeeds on bare
-  // accumulators -- avoids O(N^2) full-map cloning per import.
   let imports_std_types = module.resolved_imports |> any(imp => imp.module_path == "std.types")
   // Bootstrap bridge: seed std.types into modules that did not import it
   // explicitly so declaration-driven lookup can run during the transition.
@@ -5429,9 +4911,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let import_env = TypeEnv { bindings: import_bindings, recursive_types: import_recursive, recursive_type_set: import_recursive_set, inductive_fields: import_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   let import_diags = flat_map(module.resolved_imports, imp => match map_get(parent_index, imp.module_path) { Some { value: _ } => [] None => [make_error_node(diagnostic: InternalError { message: concat("missing parent environment for imported module '", imp.module_path, "' while typechecking '", module_name_str, "'"), span: imp.target_module.value.span }, module_name: module_name_str)] })
 
-  // Collect local type definitions from module items.
-  // Nodes with capabilities are registered as nominal types so they can be
-  // referenced in `uses` clauses (e.g., `uses net: Network`).
   let local_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let item_ident = intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id
     let has_structure = item.connective != NoConnective
@@ -5445,8 +4924,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown })
     } else if item.inferred != none && item.params |> count == 0 && item.body == none {
-      // Type alias: connective is none, but inferred references the aliased type
-      // For aliases, create a leaf node referencing the aliased type
       let alias_node = Node {
         name: item.name, span: item.span, ident_span: item.ident_span, children: [],
         connective: NoConnective, params: [], inferred: item.inferred,
@@ -5472,8 +4949,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       }
       map_insert(acc, item_ident, TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: bare_node, provenance: SubValueUnknown })
     } else if item.properties |> count > 0 && item.connective == NoConnective && item.transport == none && item.inferred == none && item.params |> count == 0 {
-      // Resource declaration: has properties (kind, mode) but no children/connective.
-      // Register as a nominal type so it can be referenced in `uses` clauses.
       map_insert(acc, item_ident, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: item)))
     } else {
       acc
@@ -5494,15 +4969,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       result
     } else { acc }
   )
-  // Compute local name set BEFORE merging param bindings (local_bindings consumed by map_merge).
   let local_name_set = fold(local_bindings |> map_keys, init: empty_map(), f: (acc, ident) => map_insert(acc, ident, true))
   let all_local_bindings = map_merge(local_bindings, param_bindings)
   let pre_local_env = TypeEnv { bindings: all_local_bindings, recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table }
 
-  // Merge in shadowing order: kernel < imports < local.
   let merged = merge_envs(envs: [kernel, import_env, pre_local_env])
-  // Precompute deps once per binding -- avoids repeated tree walks in cycle
-  // detection and topological resolution (was O(N^2*D), now O(B)).
   let all_deps_map = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, node_type_deps(n: b.resolved, source_indices: source_indices))
   )
@@ -5511,8 +4982,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let str_bindings = fold(merged.bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, b)
   )
-  // Precompute which types participate in cycles. Used by resolve_node
-  // to break recursive expansion without threading a growing resolving list.
   let cycle_set_str = detect_type_cycles_kahn(deps_map: all_deps_map, bindings: str_bindings)
   let cycle_set = cycle_set_str |> map(name => intern(table: intern_table, s: name).id)
   let cross_type_all_names = concat(cycle_set_str, map_keys(compiler_recursive_types))
@@ -5521,8 +4990,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let local_inductive_fields = build_item_inductive_fields(items: module_items(n: module.module), recursive_type_set: cross_type_set_str, source_indices: source_indices)
   let merged_inductive_fields = merge_inductive_fields(left: merged.inductive_fields, right: local_inductive_fields)
   let unresolved_env = TypeEnv { bindings: merged.bindings, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
-  // Resolve only LOCAL type bindings. Imported bindings are already resolved.
-  // (local_name_set computed above, before param_bindings merge.)
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
@@ -5540,11 +5007,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   }
 }
 
-// Diagnostic variant: stops after cycle detection, before resolve_env_bindings.
-// Used by the per-module profile test to isolate whether OOM is in
-// merge+cycles vs type resolution.
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
-  // Pre-intern kernel names (mirrors build_type_env).
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let zero_span = make_span(start: 0, end: 0)
@@ -5632,9 +5095,6 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   BuildTypeEnvResult { env: unresolved_env, diagnostics: [] }
 }
 
-// Type resolution functions moved to 04_resolve.dag (v2.compiler.infer_resolve)
-// (resolve_node, resolve_node_bounded, resolve_optional_node, resolve_field,
-//  resolve_param, resolve_expr_types, resolve_item_types, etc.)
 
 fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> ItemInfo {
   let kind = item_kind(item: item)
@@ -5680,8 +5140,6 @@ fn build_item_info(item: Node, source_indices: Map<String, NewlineIndex>, module
 fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContribution {
   let resolved = resolve_item_types(item: item, env: env, module_name: module_name)
   let ritem = resolved.item
-  // Include both parameterized functions and zero-arg functions (which have
-  // inferred annotation) in func_env. Excludes data declarations (no inferred).
   let is_func = ritem.params |> count > 0
   let is_zero_arg_func = ritem.params |> count == 0 && ritem.inferred != none && ritem.body != none
   let func_sig = if is_func || is_zero_arg_func {
@@ -5782,15 +5240,6 @@ fn build_module_context(contributions: List<ItemContribution>,
     diag_chunks: [],
     source_indices: env.source_indices
   )
-  // C2.1: variant constructor locals carry the structural parent enum node,
-  // not a bare nominal leaf. This means .inferred on variant expressions will be
-  // structurally authoritative — emit can read it directly without re-resolving
-  // through TypeEnv. binding.resolved.name still returns the enum's name for
-  // lookup_variant_parent_enum and record lit inference.
-  // Disambiguation: when a variant name appears in multiple enums (e.g. Rust
-  // in both RenderTarget and CodegenBackend), prefer the enum explicitly named
-  // in this module's imports over ambient std.types injection.
-  // Pre-compute import membership as an indexed set (FF — facts flow forward).
   let imported_enum_names = fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
     fold(imp.specific_names, init: acc, f: (inner, n) => map_insert(inner, n, true))
   )
@@ -5803,8 +5252,6 @@ fn build_module_context(contributions: List<ItemContribution>,
           Some { value: prev } =>
             let prev_is_imported = map_get(imported_enum_names, authored_name_at(source_indices: env.source_indices, node: prev.resolved)) != none
             if curr_is_imported && prev_is_imported {
-              // Both enums explicitly imported — ambiguous. Remove the
-              // binding so later phases cannot consume a fabricated choice.
               VariantFoldState {
                 locals: vacc.locals,
                 collision_errors: list_push(vacc.collision_errors, make_error_node(diagnostic: VariantCollision { variant: authored_name_at(source_indices: env.source_indices, node: child), enum1: authored_name_at(source_indices: env.source_indices, node: prev.resolved), enum2: authored_name_at(source_indices: env.source_indices, node: binding.resolved), span: no_span() }, module_name: module_name))
@@ -5842,10 +5289,6 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     source_indices: env.source_indices
   )
-  // C2.2: Optional Some/None now handled by the general variant constructor
-  // mechanism (C2.1). kernel_optional is a Disj node in env.bindings, so
-  // imported_variant_locals already registers Some and None with the structural
-  // parent node. No need for an explicit Optional-name override.
   let all_locals = fold(merged_scope.svc_locals |> map_values, init: env_variant_locals, f: (acc, binding) =>
     map_insert(acc, binding.name, binding)
   )
@@ -5861,9 +5304,6 @@ fn build_module_context(contributions: List<ItemContribution>,
 
 // =========================================================================
 // Typecheck a single module
-//
-// Builds the type environment, then resolves all type expressions in
-// every item. Returns the typed module with its environment.
 // =========================================================================
 
 type TypecheckModuleResult {
@@ -5907,8 +5347,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     module_name: resolved_module_name
   )
 
-  // Add data declarations to scope as local variables.
-  // Data items: body != none, params == [], no inferred (have type_annotation instead).
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
       map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown })
@@ -5929,17 +5367,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let typed_item_results = infer_items(items: ctx.resolved_items, scope: infer_scope)
   let typed_items = map(typed_item_results, tir => tir.item)
   let infer_diags = flat_map(typed_item_results, tir => tir.diagnostics)
-  // Populate output provenance on non-recursive function signatures.
-  // Must happen after body typing so we can analyze typed expressions.
   let updated_func_env = populate_output_provenance(
     typed_items: typed_items, func_env: ctx.func_env,
     type_env: env, locals: data_locals
   )
-  // Re-annotate recursive function bodies now that output provenance is
-  // populated. The first annotation pass (inside infer_items) ran before
-  // populate_output_provenance, so same-module callee sigs had empty
-  // output_provenance. Re-running with updated_func_env lets per-field
-  // struct provenance flow into descent evidence.
   let reannotated_items = map(typed_items, item =>
     if item.is_self_recursive && item.body != none {
       Node {
@@ -5960,9 +5391,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
-  // Preserve the parsed module node's ident_span (points at the dotted
-  // module name, not the whole module) so authored_name_at returns the
-  // module name instead of the full source text.
   let typed_base = module_node(name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
@@ -5980,10 +5408,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 
 // =========================================================================
 // Resolve all bindings in a TypeEnv
-//
-// After building the initial environment (which may contain Named
-// references within Product/Coproduct fields), resolve every binding
-// so downstream consumers see fully-structural types.
 // =========================================================================
 
 type EnvResolveResult {
@@ -5991,26 +5415,17 @@ type EnvResolveResult {
   diagnostics: List<ErrorNode>
 }
 
-// Result of resolving a single type binding -- follows the same
-// value+diagnostics pattern as ResolveResult, ItemResult, etc.
 type BindingResult {
   binding: TypeBinding
   diagnostics: List<ErrorNode>
 }
 
-// Accumulator for single-pass fold over type bindings:
-// collects resolved bindings and diagnostics together,
-// eliminating duplicate resolve_node calls.
 type BindingsAccum {
   bindings: Map<Int, TypeBinding>
   diagnostics: List<ErrorNode>
 }
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
-  // Resolve local types in topological (dependency) order. Each type is
-  // resolved exactly once, with all its dependencies already resolved in
-  // the environment. This is O(N * avg_fields) instead of O(B^D).
-  // Extract local binding names as a list.
   let remaining = map(
     filter(env.bindings |> map_values, b => map_contains_key(local_names, intern(table: env.intern_table, s: b.name).id)),
     b => b.name
@@ -6018,10 +5433,6 @@ fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int,
   topo_resolve_types(remaining: remaining, env: env, module_name: module_name, diagnostics: [], local_names: local_names, deps_map: deps_map, fuel: remaining |> count)
 }
 
-// Topological resolution loop for type bindings.
-// Resolves types whose dependencies are all already resolved (or primitive/recursive),
-// updates the environment, then recurses with the remaining types.
-// Same pattern as topo_resolve_loop for function signatures (line 3135).
 fn topo_resolve_types(
     remaining: List<String>,
     env: TypeEnv,
@@ -6035,8 +5446,6 @@ fn topo_resolve_types(
     return EnvResolveResult { env: env, diagnostics: diagnostics }
   }
 
-  // A type is ready when all its local dependencies are already resolved
-  // (not in remaining), primitive, or recursive (cycle-breaker).
   let remaining_set = fold(remaining, init: empty_set(), f: (acc, name) => set_insert(acc, name))
   let ready = filter(remaining, name =>
     match map_get(deps_map, name) {
@@ -6047,9 +5456,6 @@ fn topo_resolve_types(
   )
 
   if ready |> count == 0 {
-    // Stuck -- remaining types form undetected cycles or have missing deps.
-    // Resolve each as-is against current env to collect diagnostics.
-    // Single fold calls resolve_node once per name, collecting both bindings and diagnostics.
     let stuck_accum = fold(remaining, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
       let ident = intern(table: env.intern_table, s: name).id
       match map_get(env.bindings, ident) {
@@ -6068,8 +5474,6 @@ fn topo_resolve_types(
     }
   }
 
-  // Resolve ready types against current env -- single pass calls resolve_node
-  // once per name, collecting both updated bindings and diagnostics.
   let ready_accum = fold(ready, init: BindingsAccum { bindings: env.bindings, diagnostics: [] }, f: (acc, name) =>
     let ident = intern(table: env.intern_table, s: name).id
     match map_get(env.bindings, ident) {
@@ -6083,7 +5487,6 @@ fn topo_resolve_types(
     }
   )
 
-  // Remove resolved from remaining and recurse.
   let ready_set = fold(ready, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
   let next_remaining = filter(remaining, name => emit_map_has(m: ready_set, key: name) == false)
 
@@ -6100,9 +5503,6 @@ fn topo_resolve_types(
 
 // =========================================================================
 // Collect parent type environments for a module
-//
-// Gathers the TypeEnvs from all modules that this module imports from,
-// by looking up already-typed modules in the completed list.
 // =========================================================================
 
 fn collect_parent_envs(resolved: ResolvedModule, module_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> ParentModulesResult {
@@ -6190,7 +5590,6 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
       add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
     )
   )
-  // Convert Int-keyed recursive_type_set back to String-keyed for EmitGraphInfo.
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))

@@ -1,12 +1,4 @@
 // v2 artifact model -- explicit representation of buildable/deployable units.
-//
-// The compiler currently assumes a single monolithic artifact. This module
-// makes that assumption explicit as data, and provides the artifact-plan
-// and boundary-checking contracts for future orchestration layers.
-//
-// Only explicit artifact plans are authoritative today. The compiler
-// pipeline does not yet own multi-artifact partitioning; this module keeps
-// the plan data model honest until a real partitioner exists.
 
 module v2.compiler.artifact
 
@@ -22,7 +14,6 @@ type RenderTarget = Rust | Python | Go | Dag
 // Artifact kinds
 // =========================================================================
 
-// An artifact is a buildable/deployable unit.
 type ArtifactKind
   = ServiceBinary
   | Library
@@ -75,8 +66,6 @@ type ArtifactPlan {
 type PartitionRule
   = Explicit { artifacts: List<Artifact> }
 
-// Plan artifacts from an explicit rule. Placeholder partition strategies
-// were removed; adding new strategies should come with real authority.
 fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
   match rule {
     Explicit { artifacts: arts } =>
@@ -86,9 +75,6 @@ fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
 
 // =========================================================================
 // Artifact output -- per-artifact emission result
-//
-// Not wired into compile_sources yet; retained here so artifact reports
-// can model per-artifact files once orchestration is real.
 // =========================================================================
 
 type ArtifactOutput {
@@ -115,11 +101,6 @@ fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> Ar
 // =========================================================================
 // DAG artifact substrate (post-infer typed graph JSON, --target dag)
 // =========================================================================
-//
-// Practice 11: v4 Node/content_hash is the long-term authority; this v2 carrier
-// cites nodes by DagNodeId in JSON ($ref) instead of embedding Node by value.
-//
-// testcase: dag_artifact_shares_one_node_record (pipeline.rs)
 
 // 🟡 needs-more-work — feature:v2-dag-node-content-hash — dissolve-on: v4 Node/content_hash is DagNodeId authority (audit v2-dag-artifact-zip-fold-hang-2026-05-21.md Practice 11).
 type DagNodeId = String
