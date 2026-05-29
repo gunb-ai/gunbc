@@ -1,5 +1,5 @@
 // src/v4/test/claim/name_resolve/malformed_imported_root.dag
-// Scope: TestClaim — malformed catalog-entry root is rejected fail-closed.
+// Scope: TestClaim — malformed module root is rejected fail-closed.
 // Status: T-28 follow-up (issue #3674) behavior receipt; execution deferred to T-22 runner bridge.
 // Discovery: T-22 runner enumerates src/v4/test/claim/** recursively.
 // Anchor: INVARIANTS P3 (Fail-Closed) — malformed graph-entry root must produce a
@@ -16,8 +16,13 @@ import v4.compiler.name_resolve {
   ImportVisible,
   admit_import_entry
 }
-import v4.std.algebra { Cons, Empty }
-import v4.std.catalog { Catalog, Entry }
+import v4.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_named_edge,
+  dag_surface_module_header,
+  dag_surface_module_header_qualified_name
+}
+import v4.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v4.std.collection { empty_map }
 import v4.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode }
 import v4.std.qualified_name { QnCons, QnEmpty, QualifiedName }
@@ -49,17 +54,37 @@ fn malformed_claim_input(ok: Bool) -> Node {
 }
 
 
+fn malformed_qn_node() -> Node {
+  fold_list_node(
+    xs: Cons { head: malformed_seg, tail: Empty },
+    item_node: fn(sym) {
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [] }
+    }
+  )
+}
+
+
 // Atom node with one Positional child — violates well_formed (Atom requires NoEdges).
 fn malformed_root_node() -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: malformed_child_sym } },
-    children: [Edge {
-      label: Positional,
-      target: Node {
-        kind: TypeNode { connective: Atom { identity: malformed_child_sym } },
-        children: []
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: dag_surface_module_header,
+        target: dag_grammar_atom(id: dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: dag_surface_module_header_qualified_name,
+        target: malformed_qn_node()
+      ),
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: malformed_child_sym } },
+          children: []
+        }
       }
-    }]
+    ]
   }
 }
 
@@ -69,12 +94,10 @@ fn malformed_entry_name() -> QualifiedName {
 }
 
 
-fn catalog_with_malformed_entry() -> Catalog {
-  Catalog {
-    entries: Cons {
-      head: Entry { name: malformed_entry_name(), root: malformed_root_node() },
-      tail: Empty
-    }
+fn roots_with_malformed_entry() -> FreeMonoid<Node> {
+  Cons {
+    head: malformed_root_node(),
+    tail: Empty
   }
 }
 
@@ -92,14 +115,14 @@ fn initial_admission_state() -> AdmissionState {
 fn admit_result_is_rejected(state: AdmissionState) -> Bool {
   match state {
     AdmissionAccepted { bindings: _, origins: _ } => false
-    AdmissionRejected { diagnostic: _ } => true
+    AdmissionRejected { diagnostics: _ } => true
   }
 }
 
 
 data witness_malformed_root_is_rejected: Bool = admit_result_is_rejected(
   state: admit_import_entry(
-    catalog: catalog_with_malformed_entry(),
+    roots: roots_with_malformed_entry(),
     import_edge: import_edge_for_malformed(),
     state: initial_admission_state()
   )
@@ -107,7 +130,7 @@ data witness_malformed_root_is_rejected: Bool = admit_result_is_rejected(
 
 
 data claim_admit_malformed_root_is_rejected: TestClaim = CompilesClaim {
-  label: "name_resolve/admit_import_entry: malformed catalog-entry root is rejected",
+  label: "name_resolve/admit_import_entry: malformed module root is rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: malformed_claim_input(ok: witness_malformed_root_is_rejected),
   expected_value: malformed_pass_node(),

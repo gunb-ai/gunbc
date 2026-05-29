@@ -1757,9 +1757,7 @@ to define a new agent output surface.
   `qualified_name_from_module_node` in `extdeps/languages/dag.dag`. However,
   `compile_with_batch` itself is currently the stub: it returns
   `compile_with_batch_projection_gated_diagnostic()` unconditionally
-  (`src/v4/compiler/00_compile.dag:439`). The admission fold below is modeled
-  in the same file but is not the reachable public path until T-8 lands
-  per-identifier symbol mapping. This is not a successful virtual-loader
+  (`src/v4/compiler/00_compile.dag`). This is not a successful virtual-loader
   execution receipt; it is the fail-closed boundary receipt preserving T-35's
   locked surface without fabricating accepted batches.
   `compile_with_batch` runs admission first: it folds `batch.entries` applying
@@ -1790,9 +1788,10 @@ to define a new agent output surface.
   chain. This is the T-35 replacement for the current `compile_ingest_staging`
   resolve gate, not a claim that module-root admission is already wired there.
 
-  **Scope of T-35's change:** `compile_with_batch` folds `batch.entries`
-  (a `FreeMonoid<Node>`) with a `qualified_name_from_node` projection step and
-  returns `Rejected` with projection diagnostics on failure. The live
+  **Scope of T-35's change:** `compile_with_batch` passes `batch.entries`
+  (a `FreeMonoid<Node>`) to `resolve_with_admission`, which validates every root
+  via `qualified_name_from_module_node` and returns `Rejected` with projection
+  diagnostics on failure. The live
   `compile_ingest_staging` path does not run module-root admission today; it
   remains the tokenize → parse → normalize → single-tree resolve path until the
   batch entry point lands. No infer/emit behavior changes. `compile_with_batch` routes
