@@ -12,12 +12,14 @@
 
 | In scope | Out of scope |
 |----------|----------------|
-| Delete or disable legacy jobs/steps that are not Tier-0 | Pretend the old graph can be salvaged with more `if:` |
+| **Delete** legacy jobs/steps that are not Tier-0 (same PR as harness lands — D3) | **Disable** / comment-out / `if: false` legacy YAML left in repo (Q-R1: no bridge) |
 | One thin GHA harness + interpreter on `ci_pipeline` | Parallel YAML policy during “transition” |
 | Fixed-point / determinism / bootstrap integrity **modeled** | Re-running full release matrices on unchanged subgraphs |
 | Opt-in backlog for discipline, docs, manager-brief, etc. | Auto-carrying forward ~9 `check-*.sh` + duplicate v3/v4 compiles |
 
 **Operator quote (intent):** keep super-high-priority **integrity** (v2/v3/v4 fixed-point family); decide the rest deliberately.
+
+**B0 worker rule (aligned with `design-ci-dag-overhaul.md` Q-R1 / D3):** bankruptcy **means cut** — remove non–Tier-0 jobs and policy steps from `.github/workflows/ci.yml` in the bankruptcy PR. A “minimal harness + disabled legacy jobs” steady state is **forbidden**.
 
 ---
 
